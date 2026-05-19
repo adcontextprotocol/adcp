@@ -61,15 +61,15 @@ Where two facts combined would create a privacy harm (e.g., identity + context a
 
 ### Transport
 
-All AdCP traffic is over HTTPS (see [Security — Identity](/dist/docs/3.1.0-beta.0/building/understanding/security-model#layer-1-identity--who-is-actually-calling)). Signed requests (RFC 9421) are normative in 3.1. Transport security is a baseline assumption; the protocol builds on top of it.
+All AdCP traffic is over HTTPS (see [Security — Identity](/dist/docs/3.1.0-beta.0/building/concepts/security-model#layer-1-identity--who-is-actually-calling)). Signed requests (RFC 9421) are normative in 3.1. Transport security is a baseline assumption; the protocol builds on top of it.
 
 ### Residency
 
-Residency is not carried in the protocol. An agent's residency posture is a configuration and a contract property — implementers MUST document it, and operators MUST configure it to meet EU / UK / other regional requirements where applicable. See the [Security Model — data handling and subprocessors checklist](/dist/docs/3.1.0-beta.0/building/understanding/security-model#data-handling-and-subprocessors).
+Residency is not carried in the protocol. An agent's residency posture is a configuration and a contract property — implementers MUST document it, and operators MUST configure it to meet EU / UK / other regional requirements where applicable. See the [Security Model — data handling and subprocessors checklist](/dist/docs/3.1.0-beta.0/building/concepts/security-model#data-handling-and-subprocessors).
 
 ### Retention
 
-The protocol describes cache retention for idempotency (see [Layer 3: Idempotency](/dist/docs/3.1.0-beta.0/building/understanding/security-model#layer-3-idempotency--at-most-once-execution)) and audit-log retention for governance (see [Layer 5: Auditability](/dist/docs/3.1.0-beta.0/building/understanding/security-model#layer-5-auditability--the-trail-survives-the-transaction)). Retention of other data — creative assets, campaign state, LLM prompts, conversation logs — is the operator's responsibility.
+The protocol describes cache retention for idempotency (see [Layer 3: Idempotency](/dist/docs/3.1.0-beta.0/building/concepts/security-model#layer-3-idempotency--at-most-once-execution)) and audit-log retention for governance (see [Layer 5: Auditability](/dist/docs/3.1.0-beta.0/building/concepts/security-model#layer-5-auditability--the-trail-survives-the-transaction)). Retention of other data — creative assets, campaign state, LLM prompts, conversation logs — is the operator's responsibility.
 
 ### Processor / controller roles
 
@@ -86,9 +86,9 @@ Operators MUST document their role for each data flow and carry a DPA with each 
 
 ### Subprocessors and LLM providers
 
-Every LLM-powered agent has subprocessors: the LLM provider itself, plus any retrieval services, embeddings stores, or tool integrations. The DPA with each provider must be explicit about whether prompts, brand assets, first-party signals, or creative metadata may be retained or used for model training. See the [Security Model — data handling checklist](/dist/docs/3.1.0-beta.0/building/understanding/security-model#data-handling-and-subprocessors).
+Every LLM-powered agent has subprocessors: the LLM provider itself, plus any retrieval services, embeddings stores, or tool integrations. The DPA with each provider must be explicit about whether prompts, brand assets, first-party signals, or creative metadata may be retained or used for model training. See the [Security Model — data handling checklist](/dist/docs/3.1.0-beta.0/building/concepts/security-model#data-handling-and-subprocessors).
 
-LLM subprocessors also introduce an **integrity** risk, not only a confidentiality one: untrusted text in briefs, creative metadata, or tool outputs can carry prompt-injection payloads that cause the agent to leak credentials, issue unauthorized tool calls, or tamper with outputs. See [Threats specific to agentic advertising](/dist/docs/3.1.0-beta.0/building/understanding/security-model#threats-specific-to-agentic-advertising). This is out of scope for the protocol but in scope for every operator.
+LLM subprocessors also introduce an **integrity** risk, not only a confidentiality one: untrusted text in briefs, creative metadata, or tool outputs can carry prompt-injection payloads that cause the agent to leak credentials, issue unauthorized tool calls, or tamper with outputs. See [Threats specific to agentic advertising](/dist/docs/3.1.0-beta.0/building/concepts/security-model#threats-specific-to-agentic-advertising). This is out of scope for the protocol but in scope for every operator.
 
 ## Boundaries implementers must handle
 
@@ -110,7 +110,7 @@ What AdCP provides instead is the set of protocol-level inputs a DPO needs to de
 - **What each protocol carries and prohibits** — the [Privacy posture by domain](#privacy-posture-by-domain) summary above, plus the deep references linked from each domain.
 - **Controller / processor allocation** — the [Processor / controller roles](#processor--controller-roles) section above. Operators still MUST document their role per data flow and carry a DPA with each counterparty.
 - **Structural separation (TMP only)** — [TMP Privacy Architecture](/dist/docs/3.1.0-beta.0/trusted-match/privacy-architecture), including TEE attestation when deployed.
-- **Threat model and operational controls** — the [Security Model](/dist/docs/3.1.0-beta.0/building/understanding/security-model), including the [data handling and subprocessors checklist](/dist/docs/3.1.0-beta.0/building/understanding/security-model#data-handling-and-subprocessors).
+- **Threat model and operational controls** — the [Security Model](/dist/docs/3.1.0-beta.0/building/concepts/security-model), including the [data handling and subprocessors checklist](/dist/docs/3.1.0-beta.0/building/concepts/security-model#data-handling-and-subprocessors).
 - **LLM-provider subprocessor considerations** — the [Subprocessors and LLM providers](#subprocessors-and-llm-providers) section above, which covers both confidentiality (retention, training) and integrity (prompt injection).
 - **Explicit non-goals** — [Known Limitations](/dist/docs/3.1.0-beta.0/reference/known-limitations), which names what the protocol does not do (no protocol-level PII transport, no residency mechanism, no breach-notification SLA, etc.) so the deployer knows which controls they own.
 
@@ -119,7 +119,7 @@ Residency, retention, consent capture, data-subject rights workflows, cross-bord
 ## Related references
 
 - **[TMP Privacy Architecture](/dist/docs/3.1.0-beta.0/trusted-match/privacy-architecture)** — the structural separation model, with TEE attestation details
-- **[Security Model](/dist/docs/3.1.0-beta.0/building/understanding/security-model)** — threat model, layered defense, deployment checklist
-- **[Security (implementation reference)](/dist/docs/3.1.0-beta.0/building/implementation/security)** — normative rules for auth, idempotency, SSRF, governance verification
+- **[Security Model](/dist/docs/3.1.0-beta.0/building/concepts/security-model)** — threat model, layered defense, deployment checklist
+- **[Security (implementation reference)](/dist/docs/3.1.0-beta.0/building/by-layer/L1/security)** — normative rules for auth, idempotency, SSRF, governance verification
 - **[Privacy posture across domains](/dist/docs/3.1.0-beta.0/protocol/architecture#privacy-posture-across-domains)** — the summary table
 - **[Known Limitations](/dist/docs/3.1.0-beta.0/reference/known-limitations)** — what the protocol does not do on privacy

@@ -258,7 +258,7 @@ Orchestrators should validate refinement requests before sending:
 - **Valid entries** — Each product entry requires `scope` and `product_id`. Each proposal entry requires `scope` and `proposal_id`. Request-level entries require `scope` and `ask`. `action` is optional on product and proposal entries (defaults to `"include"`); valid values are `include` / `omit` / `more_like_this` for products and `include` / `omit` / `finalize` for proposals.
 - **Filters are absolute** — Send the full filter set you want applied, not a delta from the previous request.
 
-Client implementations should validate refinement requests against the [request schema](/dist/docs/3.1.0-beta.0/building/schemas-and-sdks) before sending.
+Client implementations should validate refinement requests against the [request schema](/dist/docs/3.1.0-beta.0/building/by-layer/L0/schemas) before sending.
 
 ## Error handling
 
@@ -316,4 +316,4 @@ The [Media Buy Specification](/dist/docs/3.1.0-beta.0/media-buy/specification#ge
 - [`get_products` task reference](/dist/docs/3.1.0-beta.0/media-buy/task-reference/get_products#refinement) — API reference with request/response schemas
 - [Media Products](/dist/docs/3.1.0-beta.0/media-buy/product-discovery/media-products) — product model and proposal structure
 - [Media Buy Specification](/dist/docs/3.1.0-beta.0/media-buy/specification#get_products) — normative requirements
-- [Orchestrator Design](/dist/docs/3.1.0-beta.0/building/implementation/orchestrator-design) — building buyer-side agents
+- [Orchestrator Design](/dist/docs/3.1.0-beta.0/building/operating/orchestrator-design) — building buyer-side agents

@@ -186,7 +186,7 @@ asyncio.run(create_and_pause_campaign())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | [account-ref](/dist/docs/3.1.0-beta.0/building/integration/accounts-and-agents#account-references) | Yes | Account that owns this media buy. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }`. Required for governance checks and account resolution. |
+| `account` | [account-ref](/dist/docs/3.1.0-beta.0/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account that owns this media buy. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }`. Required for governance checks and account resolution. |
 | `media_buy_id` | string | Yes | Seller's media buy identifier to update |
 | `revision` | integer | No | Expected current revision for optimistic concurrency. Seller rejects with `CONFLICT` on mismatch. Obtain from `get_media_buys` or the most recent response. |
 | `start_time` | string | No | Updated campaign start time |
@@ -197,7 +197,7 @@ asyncio.run(create_and_pause_campaign())
 | `packages` | PackageUpdate[] | No | Package-level updates (see below) |
 | `reporting_webhook` | object | No | Update reporting webhook configuration (see below) |
 | `idempotency_key` | string | No | Unique key for safe retries. If an update with the same key has already been processed, the seller returns the original response. MUST be unique per (seller, request) pair. Min 16 chars. |
-| `invoice_recipient` | [BusinessEntity](/dist/docs/3.1.0-beta.0/building/integration/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override who receives the invoice for this buy. The seller MUST validate authorization and include in `check_governance` when governance agents are configured. |
+| `invoice_recipient` | [BusinessEntity](/dist/docs/3.1.0-beta.0/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override who receives the invoice for this buy. The seller MUST validate authorization and include in `check_governance` when governance agents are configured. |
 | `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as `create_media_buy` packages. Only supported by sellers that advertise `add_packages` in `valid_actions`. |
 | `push_notification_config` | object | No | Webhook for async operation notifications |
 
@@ -860,7 +860,7 @@ AdCP tasks work across multiple protocols (MCP, A2A, REST). Each protocol handle
 - **Updates**: Protocol-specific mechanisms
 - **Long-running tasks**: Different timeout and notification patterns
 
-See [Async Operations](/dist/docs/3.1.0-beta.0/building/implementation/async-operations) for protocol-specific async patterns and examples.
+See [Async Operations](/dist/docs/3.1.0-beta.0/building/by-layer/L3/async-operations) for protocol-specific async patterns and examples.
 
 ## Best Practices
 
@@ -896,7 +896,7 @@ Check `affected_packages` in response to confirm changes were applied correctly.
 
 When a buyer's account has governance agents configured, sellers MUST call [`check_governance`](/dist/docs/3.1.0-beta.0/governance/campaign/tasks/check_governance) with `media_buy_id`, `planned_delivery`, and `phase: "modification"` before confirming an update. The governance agent validates change magnitude, budget reallocation, and new parameters against the campaign plan.
 
-See the [seller integration guide](/dist/docs/3.1.0-beta.0/building/implementation/seller-integration#execution-checks) for the full execution check workflow and code example.
+See the [seller integration guide](/dist/docs/3.1.0-beta.0/building/operating/seller-integration#execution-checks) for the full execution check workflow and code example.
 </Note>
 
 ## Next Steps
@@ -912,5 +912,5 @@ After updating a media buy:
 
 - [Media Buy Lifecycle](/dist/docs/3.1.0-beta.0/media-buy/media-buys/) - Complete campaign workflow
 - [Targeting](/dist/docs/3.1.0-beta.0/media-buy/advanced-topics/targeting) - Targeting overlays and restrictions
-- [Async Operations](/dist/docs/3.1.0-beta.0/building/implementation/async-operations) - Async patterns and status checking
+- [Async Operations](/dist/docs/3.1.0-beta.0/building/by-layer/L3/async-operations) - Async patterns and status checking
 - [create_media_buy](/dist/docs/3.1.0-beta.0/media-buy/task-reference/create_media_buy) - Initial campaign creation

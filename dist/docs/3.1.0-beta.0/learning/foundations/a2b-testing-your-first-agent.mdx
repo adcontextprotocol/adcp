@@ -34,10 +34,10 @@ description: "Module A2B: Hands-on lab — initialize an MCP session, call get_p
   <Card title="Sync creatives task" icon="paintbrush" href="/dist/docs/3.1.0-beta.0/creative/task-reference/sync_creatives">
     How to attach assets to a buy, dry-run validation, and assignment patterns.
   </Card>
-  <Card title="Error handling" icon="triangle-exclamation" href="/dist/docs/3.1.0-beta.0/building/implementation/error-handling">
+  <Card title="Error handling" icon="triangle-exclamation" href="/dist/docs/3.1.0-beta.0/building/by-layer/L3/error-handling">
     Error codes, retry behavior, and how to read the `errors[]` array.
   </Card>
-  <Card title="MCP integration guide" icon="plug" href="/dist/docs/3.1.0-beta.0/building/integration/mcp-guide">
+  <Card title="MCP integration guide" icon="plug" href="/dist/docs/3.1.0-beta.0/building/by-layer/L0/mcp-guide">
     Session initialization, the `mcp-session-id` header, and tool call format.
   </Card>
 </CardGroup>
@@ -247,7 +247,7 @@ curl -X POST https://test-agent.adcontextprotocol.org/mcp \
 `tasks/get` is an MCP protocol-level method, not an AdCP tool — it uses `"method": "tasks/get"` directly rather than the `"method": "tools/call"` + `"name": "..."` pattern used for AdCP tasks. It is auto-registered by the MCP SDK alongside `tasks/result`, `tasks/list`, and `tasks/cancel`.
 </Note>
 
-Poll every 2–5 seconds. When `task.status` is `completed`, the `result` field contains the full `create_media_buy` response with `media_buy_id`. See the [Task lifecycle](/dist/docs/3.1.0-beta.0/building/implementation/task-lifecycle) doc for all MCP task status values.
+Poll every 2–5 seconds. When `task.status` is `completed`, the `result` field contains the full `create_media_buy` response with `media_buy_id`. See the [Task lifecycle](/dist/docs/3.1.0-beta.0/building/by-layer/L3/task-lifecycle) doc for all MCP task status values.
 
 ## Common errors
 

@@ -48,7 +48,7 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 | `include_purged` | boolean | No | Include soft-purged creative tombstones (default: false). See [Purged tombstones](#purged-tombstones). |
 | `include_webhook_activity` | boolean | No | Include recent webhook fires per creative (default: false). See [Webhook activity](#webhook-activity). |
 | `webhook_activity_limit` | integer | No | Maximum `webhook_activity[]` records per creative when `include_webhook_activity: true` (default: 50, range 1–200). |
-| `account` | [AccountRef](/dist/docs/3.1.0-beta.0/building/integration/accounts-and-agents#account-references) | No | Account reference for pricing. When provided with `include_pricing`, the agent returns `pricing_options` from this account's rate card on each creative. |
+| `account` | [AccountRef](/dist/docs/3.1.0-beta.0/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference for pricing. When provided with `include_pricing`, the agent returns `pricing_options` from this account's rate card on each creative. |
 | `fields` | array | No | Specific fields to return (omit for all fields). Includes `"pricing_options"` for sparse selection. |
 
 ## Filtering options
@@ -57,7 +57,7 @@ The `filters` object supports these optional, composable filters:
 
 | Filter | Type | Description |
 |--------|------|-------------|
-| `accounts` | [AccountRef](/dist/docs/3.1.0-beta.0/building/integration/accounts-and-agents#account-references)[] | Filter by owning accounts |
+| `accounts` | [AccountRef](/dist/docs/3.1.0-beta.0/building/by-layer/L2/accounts-and-agents#account-references)[] | Filter by owning accounts |
 | `format_ids` | FormatID[] | Filter by structured format IDs |
 | `statuses` | [CreativeStatus](/dist/docs/3.1.0-beta.0/creative/specification#creative-status-lifecycle)[] | Filter by approval status |
 | `tags` | string[] | Filter by tags (all must match) |

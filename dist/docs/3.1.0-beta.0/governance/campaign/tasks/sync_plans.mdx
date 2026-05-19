@@ -124,7 +124,7 @@ These fields use the same ISO codes and semantics as `product-filters`, `offerin
 
 ## Plan-hash preimage
 
-Each plan item a buyer supplies here is the preimage the governance agent hashes to produce the `plan_hash` audit-layer claim carried in every [signed `governance_context`](/dist/docs/3.1.0-beta.0/building/implementation/security#signed-governance-context). Canonicalization rules, the closed bookkeeping exclusion list, retention obligations, and the full set of reference test vectors are specified in [Plan binding and audit](/dist/docs/3.1.0-beta.0/governance/campaign/specification#plan-binding-and-audit). Governance-agent implementers SHOULD run their hashing code against the eleven vectors under [`static/compliance/source/test-vectors/plan-hash/`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/plan-hash) before shipping.
+Each plan item a buyer supplies here is the preimage the governance agent hashes to produce the `plan_hash` audit-layer claim carried in every [signed `governance_context`](/dist/docs/3.1.0-beta.0/building/by-layer/L1/security#signed-governance-context). Canonicalization rules, the closed bookkeeping exclusion list, retention obligations, and the full set of reference test vectors are specified in [Plan binding and audit](/dist/docs/3.1.0-beta.0/governance/campaign/specification#plan-binding-and-audit). Governance-agent implementers SHOULD run their hashing code against the eleven vectors under [`static/compliance/source/test-vectors/plan-hash/`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/plan-hash) before shipping.
 
 ## Fields
 

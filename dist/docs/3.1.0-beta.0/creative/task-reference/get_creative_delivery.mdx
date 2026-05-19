@@ -18,7 +18,7 @@ At least one scoping filter (`media_buy_ids` or `creative_ids`) is required.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | [account-ref](/dist/docs/3.1.0-beta.0/building/integration/accounts-and-agents#account-references) | No | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Limits results to creatives within this account. |
+| `account` | [account-ref](/dist/docs/3.1.0-beta.0/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Limits results to creatives within this account. |
 | `media_buy_ids` | string[] | Yes* | Filter to specific media buys by publisher ID |
 | `creative_ids` | string[] | Yes* | Filter to specific creatives by ID |
 | `start_date` | string | No | Start date for delivery period (YYYY-MM-DD, interpreted in the platform's reporting timezone) |

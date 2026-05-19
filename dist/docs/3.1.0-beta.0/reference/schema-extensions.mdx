@@ -7,7 +7,7 @@ description: "Reference for AdCP-specific `x-` prefixed schema annotations."
 
 AdCP schemas carry several `x-` prefixed annotation keywords that supplement the JSON Schema vocabulary. JSON Schema validators ignore unknown `x-` keywords per [draft-07 §6](https://json-schema.org/draft-07/schema), so adding these keys is wire-compatible with any conforming validator.
 
-This page is the canonical reference for those annotations. Codegen consumers (TypeScript / Python / Go type generators), the storyboard runner, and the AdCP SDK family read these annotations programmatically; verifiers MAY read them but the normative behavior they describe is also documented in the relevant section of [security.mdx](/dist/docs/3.1.0-beta.0/building/implementation/security) or the field's own description.
+This page is the canonical reference for those annotations. Codegen consumers (TypeScript / Python / Go type generators), the storyboard runner, and the AdCP SDK family read these annotations programmatically; verifiers MAY read them but the normative behavior they describe is also documented in the relevant section of [security.mdx](/dist/docs/3.1.0-beta.0/building/by-layer/L1/security) or the field's own description.
 
 ## `x-status`
 
@@ -73,8 +73,8 @@ All within `static/schemas/source/protocol/get-adcp-capabilities-response.json`:
 
 | Field | Sub-keys used | Rule |
 |---|---|---|
-| `identity.brand_json_url` | `trust_root`, `required_when`, `schema_required_when`, `verifier_constraints`, `distinct_from` | Trust-root pointer for signing-key discovery; required-when tied to signing posture; schema-required in 4.0; distinct from `sponsored_intelligence.brand_url`. See [security.mdx §Discovering an agent's signing keys](/dist/docs/3.1.0-beta.0/building/implementation/security#discovering-an-agents-signing-keys-via-brand_json_url). |
-| `identity.key_origins` | `verifier_constraints` (`purpose_anchoring`) | Every purpose listed MUST have a corresponding signing posture declared elsewhere on the response. Cross-field rule. See [security.mdx §Origin separation](/dist/docs/3.1.0-beta.0/building/implementation/security#origin-separation). |
+| `identity.brand_json_url` | `trust_root`, `required_when`, `schema_required_when`, `verifier_constraints`, `distinct_from` | Trust-root pointer for signing-key discovery; required-when tied to signing posture; schema-required in 4.0; distinct from `sponsored_intelligence.brand_url`. See [security.mdx §Discovering an agent's signing keys](/dist/docs/3.1.0-beta.0/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url). |
+| `identity.key_origins` | `verifier_constraints` (`purpose_anchoring`) | Every purpose listed MUST have a corresponding signing posture declared elsewhere on the response. Cross-field rule. See [security.mdx §Origin separation](/dist/docs/3.1.0-beta.0/building/by-layer/L1/security#origin-separation). |
 | `request_signing.required_for` | `subset_of` | Every operation listed MUST also appear in `supported_for` — an operation can't be required without being supported. |
 | `request_signing.warn_for` | `disjoint_with`, `subset_of` | An operation MUST NOT appear in both `warn_for` and `required_for`. Every operation listed MUST also appear in `supported_for`. |
 | `webhook_signing.supported` | `verifier_constraints` (`must_equal_when`) | When the seller advertises mutating-webhook emission (`media_buy.reporting_delivery_methods` includes `webhook` OR `media_buy.content_standards.supports_webhook_delivery: true`), `supported` MUST be `true`. Closes a downgrade vector. |

@@ -10,7 +10,7 @@ Pick your path. Buyers call the public test agent in 5 minutes. Publishers and s
   <Card title="I'm calling an agent" icon="plug">
     Buyer side. The rest of this page walks through calling the public test agent — no signup, copy-pasteable curl.
   </Card>
-  <Card title="I'm building an agent" icon="server" href="/dist/docs/3.1.0-beta.0/building/build-an-agent">
+  <Card title="I'm building an agent" icon="server" href="/dist/docs/3.1.0-beta.0/building/by-layer/L4/build-an-agent">
     Publisher or seller side. Stand up an agent buyers can call.
   </Card>
 </CardGroup>
@@ -171,7 +171,7 @@ Replay the same request (same key, same payload) and the seller returns the orig
 { "idempotency": { "supported": true, "replay_ttl_seconds": 86400 } }
 ```
 
-See the [Security guide](/dist/docs/3.1.0-beta.0/building/implementation/security) for the full retry model, including `IDEMPOTENCY_CONFLICT`, `IDEMPOTENCY_EXPIRED`, and UUID v4 guidance for AdCP Verified agents.
+See the [Security guide](/dist/docs/3.1.0-beta.0/building/by-layer/L1/security) for the full retry model, including `IDEMPOTENCY_CONFLICT`, `IDEMPOTENCY_EXPIRED`, and UUID v4 guidance for AdCP Verified agents.
 
 **Response** (IDs will differ on each call):
 
@@ -264,7 +264,7 @@ app.post('/webhooks/adcp/*', async (req, res) => {
 });
 ```
 
-See the [Security guide](/dist/docs/3.1.0-beta.0/building/implementation/security) and [Webhooks guide](/dist/docs/3.1.0-beta.0/building/implementation/webhooks) for the full verification profile — required headers, covered components, nonce and date windows, and the negative-vector suite the compliance runner exercises.
+See the [Security guide](/dist/docs/3.1.0-beta.0/building/by-layer/L1/security) and [Webhooks guide](/dist/docs/3.1.0-beta.0/building/by-layer/L3/webhooks) for the full verification profile — required headers, covered components, nonce and date windows, and the negative-vector suite the compliance runner exercises.
 
 ## Using the client library
 

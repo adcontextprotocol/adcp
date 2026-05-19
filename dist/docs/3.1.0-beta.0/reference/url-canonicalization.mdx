@@ -4,7 +4,7 @@ description: "The canonicalization rules AdCP uses everywhere two URLs are compa
 "og:title": "AdCP — URL Canonicalization"
 ---
 
-AdCP compares URLs as identifiers in several places: the request-signing profile's `@target-uri`, `authorized_agents[].url` entries in `adagents.json`, `seller_agent.agent_url` on TMP `AvailablePackage`, `agent_url` in `format-id` and `ProviderEntry`, and any other registry where a URL is a primary key. A single canonicalization algorithm governs all of these so two byte-different-but-semantically-equal URLs compare equal regardless of which surface is doing the lookup. This page is the authoritative home of that algorithm; the [request-signing profile](/dist/docs/3.1.0-beta.0/building/implementation/security#signed-requests-transport-layer) cites it and adds transport-specific extensions.
+AdCP compares URLs as identifiers in several places: the request-signing profile's `@target-uri`, `authorized_agents[].url` entries in `adagents.json`, `seller_agent.agent_url` on TMP `AvailablePackage`, `agent_url` in `format-id` and `ProviderEntry`, and any other registry where a URL is a primary key. A single canonicalization algorithm governs all of these so two byte-different-but-semantically-equal URLs compare equal regardless of which surface is doing the lookup. This page is the authoritative home of that algorithm; the [request-signing profile](/dist/docs/3.1.0-beta.0/building/by-layer/L1/security#signed-requests-transport-layer) cites it and adds transport-specific extensions.
 
 ## Algorithm
 
@@ -36,7 +36,7 @@ After all eight steps, comparison is byte-for-byte. Implementations MUST NOT app
 
 | Surface | Comparison | Reference |
 |---|---|---|
-| Request signing | `@target-uri` canonical output signed and verified | [Signed Requests (Transport Layer)](/dist/docs/3.1.0-beta.0/building/implementation/security#signed-requests-transport-layer) |
+| Request signing | `@target-uri` canonical output signed and verified | [Signed Requests (Transport Layer)](/dist/docs/3.1.0-beta.0/building/by-layer/L1/security#signed-requests-transport-layer) |
 | TMP seller authorization | `seller_agent.agent_url` vs `authorized_agents[].url` | [TMP Sync-Time Validation](/dist/docs/3.1.0-beta.0/trusted-match/specification#sync-time-validation) |
 | TMP provider resolution | `ProviderEntry.agent_url` vs router's registered provider endpoint | [TMP Product Integration](/dist/docs/3.1.0-beta.0/trusted-match/specification#product-integration) |
 | `adagents.json` lookups | Any caller asking "is this agent authorized for this property?" | [adagents.json schema](https://adcontextprotocol.org/schemas/3.1.0-beta.0/adagents.json) |
@@ -47,7 +47,7 @@ After all eight steps, comparison is byte-for-byte. Implementations MUST NOT app
 
 ## Signing profile extensions
 
-The [request-signing profile](/dist/docs/3.1.0-beta.0/building/implementation/security#signed-requests-transport-layer) layers transport-specific rules on top of this algorithm:
+The [request-signing profile](/dist/docs/3.1.0-beta.0/building/by-layer/L1/security#signed-requests-transport-layer) layers transport-specific rules on top of this algorithm:
 
 - `@authority` is derived from the canonicalized authority and compared against the HTTP/2 `:authority` pseudo-header (or the as-received HTTP/1.1 `Host` header) after the same canonicalization. Non-signing callers derive `@authority` from the URL alone.
 - Malformed authorities are rejected with `request_target_uri_malformed` on the signing path; non-signing callers use their own authorization-failure code (e.g., `seller_not_authorized` for TMP).
