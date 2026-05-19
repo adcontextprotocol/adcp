@@ -296,6 +296,36 @@ export class AgentContextDatabase {
   }
 
   /**
+   * Find an organization that has saved any kind of auth (bearer, OAuth tokens,
+   * or OAuth client-credentials) for the given agent URL. Returns the most
+   * recently updated row's org id, or null if no credentials are saved by any
+   * org. Used by the periodic crawler so its probe runs with owner credentials
+   * when available — keeping a per-org-aware view of `oauth_required` instead
+   * of clobbering it back to `true` on every anonymous heartbeat. When multiple
+   * orgs have independently registered the same agent, the most recently
+   * updated set wins; that matches "freshly-rotated creds take precedence" and
+   * the periodic snapshot is a single shared row anyway.
+   */
+  async findOrgWithSavedAuth(agentUrl: string): Promise<string | null> {
+    const result = await query<{ organization_id: string }>(
+      `SELECT organization_id
+       FROM agent_contexts
+       WHERE agent_url = $1
+         AND (
+           auth_token_encrypted IS NOT NULL
+           OR oauth_access_token_encrypted IS NOT NULL
+           OR (oauth_cc_token_endpoint IS NOT NULL
+               AND oauth_cc_client_id IS NOT NULL
+               AND oauth_cc_client_secret_encrypted IS NOT NULL)
+         )
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [agentUrl],
+    );
+    return result.rows[0]?.organization_id ?? null;
+  }
+
+  /**
    * Create a new agent context
    */
   async create(input: CreateAgentContextInput): Promise<AgentContext> {
