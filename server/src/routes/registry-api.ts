@@ -5217,10 +5217,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
       // Resolve saved owner auth (static bearer / basic / OAuth) so the
       // probe sees the same credentials evaluate_agent_quality uses. The
-      // periodic crawl path stays unauthenticated by design. Auth is
-      // only resolved when the caller belongs to the owning org —
-      // resolveAgentOwnerOrg returns null for an AAO admin probing an
-      // agent they don't own, so the admin path probes unauthed.
+      // periodic crawl path also now resolves owner credentials when any
+      // org has registered them (see CrawlerService.resolveProbeAuth); this
+      // route still scopes auth to the caller's own org so an AAO admin
+      // refreshing someone else's agent probes anonymously rather than
+      // accidentally running with the owner's tokens.
       const ownerOrgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
       let resolvedAuth: SdkAuth | undefined;
       if (ownerOrgId) {
@@ -5407,10 +5408,32 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         await agentContextDb.saveAuthToken(context.id, auth_token, resolvedAuthType);
       }
 
+      // Re-probe with the freshly-saved credentials so the stored `oauth_required`
+      // flag reflects the new auth state immediately. Without this, the warning
+      // surfaced from the last (unauthenticated) crawl persists until the next
+      // periodic heartbeat — which itself probes unauthenticated and therefore
+      // can never clear the flag. Mirrors the auth resolution in /refresh.
+      // Refresh failure does NOT fail /connect: the credentials are saved
+      // correctly either way, and a follow-up manual refresh can recover.
+      let refreshed: Awaited<ReturnType<typeof crawler.refreshSingleAgent>> | null = null;
+      if (auth_token) {
+        try {
+          const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
+          const resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `connect:${agentUrl}` });
+          refreshed = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
+        } catch (refreshErr) {
+          logger.warn(
+            { err: refreshErr, agentUrl },
+            'Post-connect refresh failed; credentials saved but compliance flag may remain stale until next manual refresh',
+          );
+        }
+      }
+
       res.json({
         connected: true,
         has_auth: !!auth_token || context.has_auth_token,
         agent_context_id: context.id,
+        ...(refreshed ? { refresh: refreshed } : {}),
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to connect agent");
@@ -5473,11 +5496,28 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
         await agentContextDb.saveOAuthClientCredentials(context.id, parsed.creds);
 
+        // Re-probe with the freshly-saved credentials so the stored
+        // `oauth_required` flag reflects the new auth state immediately.
+        // Same rationale and best-effort semantics as /connect — see
+        // the comment there.
+        let refreshed: Awaited<ReturnType<typeof crawler.refreshSingleAgent>> | null = null;
+        try {
+          const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
+          const resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `connect-cc:${agentUrl}` });
+          refreshed = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
+        } catch (refreshErr) {
+          logger.warn(
+            { err: refreshErr, agentUrl },
+            'Post-connect-cc refresh failed; credentials saved but compliance flag may remain stale until next manual refresh',
+          );
+        }
+
         res.json({
           connected: true,
           has_auth: true,
           agent_context_id: context.id,
           auth_type: "oauth_client_credentials",
+          ...(refreshed ? { refresh: refreshed } : {}),
         });
       } catch (error) {
         logger.error({ err: error, path: req.path }, "Failed to save oauth client credentials");
