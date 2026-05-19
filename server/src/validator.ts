@@ -41,7 +41,8 @@ export class AgentValidator {
   async validate(
     domain: string,
     agentUrl: string,
-    scope?: AuthorizationScope
+    scope?: AuthorizationScope,
+    skipCache?: boolean
   ): Promise<AuthorizationResult> {
     const normalizedDomain = this.normalizeDomain(domain);
     const normalizedAgentUrl = this.normalizeUrl(agentUrl);
@@ -63,9 +64,11 @@ export class AgentValidator {
       agent_url: normalizedAgentUrl,
       scope: normalizedScope,
     });
-    const cached = this.cache.get(cacheKey);
-    if (cached) {
-      return cached;
+    if (!skipCache) {
+      const cached = this.cache.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
     }
 
     const result = await this.fetchAndValidate(
