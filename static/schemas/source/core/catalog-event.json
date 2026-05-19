@@ -1,0 +1,493 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/catalog-event.json",
+  "title": "Catalog Change Event",
+  "description": "A single event emitted by an AdCP agent's catalog change feed (GET /catalog/events). Events are append-only, UUID-v7-ordered, and denormalized \u2014 the payload carries the post-change state of the entity so consumers can update local state without a follow-up get_products / get_signals call. The discriminator is `event_type`; each branch defines the payload shape. See specs/catalog-change-feed.md for the full sync semantics and security posture.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "event_type"
+  },
+  "required": [
+    "event_id",
+    "event_type",
+    "entity_type",
+    "entity_id",
+    "payload",
+    "created_at"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID v7 identifier \u2014 monotonically ordered without server-clock skew. Consumers use this as the cursor on subsequent /catalog/events polls."
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "product.created",
+        "product.updated",
+        "product.priced",
+        "product.removed",
+        "signal.created",
+        "signal.updated",
+        "signal.priced",
+        "signal.removed",
+        "catalog.bulk_change"
+      ],
+      "description": "Discriminator. Determines the shape of `payload`."
+    },
+    "entity_type": {
+      "type": "string",
+      "enum": [
+        "product",
+        "signal",
+        "catalog"
+      ],
+      "description": "Entity class. 'product' for product.* events, 'signal' for signal.* events, 'catalog' for catalog.bulk_change."
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "Entity identifier. For product.* events, the product_id. For signal.* events, the signal_agent_segment_id. For catalog.bulk_change, an agent-defined operation id."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the agent emitted the event. Advisory \u2014 consumers MUST order by event_id (UUID v7), not by created_at, to avoid clock-skew artifacts."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-type-specific payload. Shape is determined by event_type per the oneOf below."
+    }
+  },
+  "oneOf": [
+    {
+      "description": "product.created \u2014 a new product was added to the agent's catalog.",
+      "properties": {
+        "event_type": {
+          "const": "product.created"
+        },
+        "entity_type": {
+          "const": "product"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "product_id",
+            "product"
+          ],
+          "properties": {
+            "product_id": {
+              "type": "string"
+            },
+            "product": {
+              "$ref": "/schemas/core/product.json",
+              "description": "Full post-change Product object."
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo",
+              "description": "When introducing an entity that exists only in an account overlay (e.g., a custom product for a single account), MUST emit applies_to: { scope: 'account', account_ids: [...] } to prevent the entity from leaking into every consumer's public-layer cache. Absent means { scope: 'public' }."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "product.updated \u2014 product metadata changed (name, description, formats, properties, targeting capabilities, measurement terms). Use changed_fields for fine-grained re-render, but be prepared to handle a full replacement.",
+      "properties": {
+        "event_type": {
+          "const": "product.updated"
+        },
+        "entity_type": {
+          "const": "product"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "product_id",
+            "applies_to"
+          ],
+          "properties": {
+            "product_id": {
+              "type": "string"
+            },
+            "product": {
+              "$ref": "/schemas/core/product.json",
+              "description": "Full post-change Product object. RECOMMENDED for denormalized event consumption."
+            },
+            "changed_fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Advisory list of changed top-level field names (e.g., ['format_ids', 'performance_standards']). Consumers MAY use for fine-grained re-render but MUST be able to handle a full replacement of the entity."
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "product.priced \u2014 pricing options changed (new option, removed option, price/floor change). Existing media buys unaffected; composition layer must re-price.",
+      "properties": {
+        "event_type": {
+          "const": "product.priced"
+        },
+        "entity_type": {
+          "const": "product"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "product_id",
+            "pricing_options",
+            "applies_to"
+          ],
+          "properties": {
+            "product_id": {
+              "type": "string"
+            },
+            "pricing_options": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "/schemas/core/pricing-option.json"
+              },
+              "description": "Full post-change pricing_options array. NOT a delta \u2014 consumers replace the prior options with this list."
+            },
+            "previous_pricing_option_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional. Lets consumers detect which pricing_option_ids were retired."
+            },
+            "effective_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the price change takes effect. A value in the future is a pre-announcement: consumers MAY warm caches but MUST NOT bind decisions until the effective time has passed. See specs/catalog-change-feed.md \u00a7`effective_at` and pre-announce."
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "product.removed \u2014 product no longer available. In-flight buys honor existing cancellation policy regardless of removal_reason; storefront catalog UX differs by reason.",
+      "properties": {
+        "event_type": {
+          "const": "product.removed"
+        },
+        "entity_type": {
+          "const": "product"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "product_id"
+          ],
+          "properties": {
+            "product_id": {
+              "type": "string"
+            },
+            "removal_reason": {
+              "$ref": "#/$defs/removalReason"
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "signal.created \u2014 a new signal was added to the agent's catalog.",
+      "properties": {
+        "event_type": {
+          "const": "signal.created"
+        },
+        "entity_type": {
+          "const": "signal"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "signal_agent_segment_id"
+          ],
+          "properties": {
+            "signal_agent_segment_id": {
+              "type": "string"
+            },
+            "signal_id": {
+              "$ref": "/schemas/core/signal-id.json"
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo",
+              "description": "When introducing a signal that exists only in an account overlay (e.g., a custom segment for a single account), MUST emit applies_to: { scope: 'account', account_ids: [...] } to prevent leak into every consumer's public-layer cache. Absent means { scope: 'public' }."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "signal.updated \u2014 signal metadata changed (description, coverage, deployments).",
+      "properties": {
+        "event_type": {
+          "const": "signal.updated"
+        },
+        "entity_type": {
+          "const": "signal"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "signal_agent_segment_id",
+            "applies_to"
+          ],
+          "properties": {
+            "signal_agent_segment_id": {
+              "type": "string"
+            },
+            "signal_id": {
+              "$ref": "/schemas/core/signal-id.json"
+            },
+            "changed_fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "signal.priced \u2014 signal pricing options changed.",
+      "properties": {
+        "event_type": {
+          "const": "signal.priced"
+        },
+        "entity_type": {
+          "const": "signal"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "signal_agent_segment_id",
+            "pricing_options",
+            "applies_to"
+          ],
+          "properties": {
+            "signal_agent_segment_id": {
+              "type": "string"
+            },
+            "signal_id": {
+              "$ref": "/schemas/core/signal-id.json"
+            },
+            "pricing_options": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "/schemas/core/vendor-pricing-option.json"
+              },
+              "description": "Full post-change pricing_options array. NOT a delta."
+            },
+            "previous_pricing_option_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "effective_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "signal.removed \u2014 signal no longer available.",
+      "properties": {
+        "event_type": {
+          "const": "signal.removed"
+        },
+        "entity_type": {
+          "const": "signal"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "signal_agent_segment_id"
+          ],
+          "properties": {
+            "signal_agent_segment_id": {
+              "type": "string"
+            },
+            "signal_id": {
+              "$ref": "/schemas/core/signal-id.json"
+            },
+            "removal_reason": {
+              "$ref": "#/$defs/removalReason"
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "catalog.bulk_change \u2014 fast-forward event emitted when a single operation affects many entities. Consumers SHOULD re-bootstrap via wholesale enumeration rather than processing per-entity events.",
+      "properties": {
+        "event_type": {
+          "const": "catalog.bulk_change"
+        },
+        "entity_type": {
+          "const": "catalog"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "summary",
+            "affected_entity_types",
+            "affected_count"
+          ],
+          "properties": {
+            "summary": {
+              "type": "string",
+              "description": "Human-readable description of the bulk operation (e.g., 'Q3 2026 rate card refresh')."
+            },
+            "affected_entity_types": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "enum": [
+                  "product",
+                  "signal"
+                ]
+              },
+              "description": "Which entity classes the operation touched."
+            },
+            "affected_count": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Approximate count of affected entities."
+            },
+            "recommendation": {
+              "type": "string",
+              "enum": [
+                "wholesale_resync"
+              ],
+              "description": "Advisory recommendation. Consumers MUST stagger their resyncs per the jittered coalescing rule \u2014 the recommendation is not a synchronized trigger."
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    }
+  ],
+  "$defs": {
+    "appliesTo": {
+      "type": "object",
+      "title": "Cache layer scope",
+      "description": "Declares which cache layer this event invalidates. See specs/catalog-change-feed.md \u00a7Cache layering and event scoping.",
+      "discriminator": {
+        "propertyName": "scope"
+      },
+      "oneOf": [
+        {
+          "description": "Public layer \u2014 invalidate the public-layer cache for the entity; all account overlays referencing that public version are also stale.",
+          "properties": {
+            "scope": {
+              "const": "public"
+            }
+          },
+          "required": [
+            "scope"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "Account overlay \u2014 invalidate the named account overlays only; public layer unaffected. The seller MAY omit account_ids when the affected set is competitively sensitive; the per-subscriber scope filter (see API Endpoints \u00a7Per-caller scope filtering) ensures each subscriber sees only events for accounts they're authorized for.",
+          "properties": {
+            "scope": {
+              "const": "account"
+            },
+            "account_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "description": "Optional. When present, names the accounts whose overlays are affected. When omitted, subscribers infer that their own principal's overlay is affected (they received the event because the per-subscriber scope filter routed it to them)."
+            }
+          },
+          "required": [
+            "scope"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "removalReason": {
+      "type": "string",
+      "enum": [
+        "withdrawn",
+        "cancellation",
+        "expired",
+        "depublication",
+        "policy_takedown"
+      ],
+      "description": "Why the entity was removed. 'withdrawn': seller-initiated, no resubmit path. 'cancellation': resource cancelled, may return. 'expired': time-bounded availability ended (flight ended, seasonal product retired). 'depublication': underlying property depublished (see publisher.adagents_changed in the registry feed). 'policy_takedown': governance-driven removal (AdCP governance agent OR external regulator/legal takedown). In-flight buys honor existing cancellation policy regardless of reason; storefront catalog UX differs."
+    }
+  }
+}

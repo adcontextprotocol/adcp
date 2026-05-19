@@ -164,6 +164,8 @@ The change-feed endpoints live on the agent itself, not a central registry.
 
 Poll the change feed.
 
+**Schemas:** [`core/catalog-events-response.json`](https://adcontextprotocol.org/schemas/v3/core/catalog-events-response.json) (response wrapper) and [`core/catalog-event.json`](https://adcontextprotocol.org/schemas/v3/core/catalog-event.json) (per-event discriminated payload). The event schema is the conformance contract for `applies_to`, `removal_reason`, `previous_pricing_option_ids`, `changed_fields`, `effective_at`, and the bulk-change summary fields.
+
 **Authentication:** Required. The caller must be authorized to call `get_products` / `get_signals` in `wholesale` mode against this agent — same authorization principal, same scope filter.
 
 **Per-caller scope filtering.** The feed MUST apply the same per-caller scope filter as the wholesale endpoint at event-emission time, not just at authentication. If the agent multi-tenants — multiple brand or operator principals share one agent — events that affect entities outside the caller's authorized scope MUST NOT appear in their feed response. This is a tenancy property, not an authorization property: a feed that authenticates but does not scope-filter leaks competitive intelligence (brand A sees brand B's `product.priced` events). Agents that cannot reliably scope events per-principal MUST NOT declare `catalog_change_feed.supported: true`.
