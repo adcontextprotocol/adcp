@@ -36,10 +36,11 @@ import { resolveUserNameWithFallbacks } from '../utils/resolve-user-name.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain, trackBackground } from '../services/brand-enrichment.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
+import { notifyBrandClaimOpportunity } from '../notifications/registry.js';
 import { canonicalizeBrandDomain, assertClaimableBrandDomain } from '../services/identifier-normalization.js';
 import { resolvePreferredOrganization, backfillPrimaryOrganization } from '../db/users-db.js';
 import { notifySystemError } from '../addie/error-notifier.js';
-import { canAddSeat, type SeatType } from '../db/organization-db.js';
+import { canAddSeat, type SeatType, OrganizationDatabase } from '../db/organization-db.js';
 import { sendToOrgAdmins, escapeSlackMrkdwn } from '../slack/org-group-dm.js';
 import {
   upsertOrganizationMembership,
@@ -996,6 +997,47 @@ export function createWorkOSWebhooksRouter(): Router {
                       logger.warn({ err, domain }, 'Background domain research failed for new user');
                     })
                   );
+                  // KYC nudge (#4744): if the signup domain maps to a brand
+                  // in the registry, notify ops in Slack so we can watch
+                  // who's signing up at known brands. The in-app banner +
+                  // viewer JIT prompt drive the user-side flow; this is the
+                  // ops-side visibility signal. At today's volume we notify
+                  // on every match regardless of brand verification state.
+                  if (user.email_verified) {
+                    trackBackground(
+                      (async () => {
+                        try {
+                          const brandDb = new BrandDatabase();
+                          const brand = await brandDb.getDiscoveredBrandByDomain(
+                            canonicalizeBrandDomain(domain),
+                          );
+                          if (!brand) return;
+                          let ownerName: string | null = null;
+                          if (brand.domain_verified && brand.workos_organization_id) {
+                            try {
+                              const orgDb = new OrganizationDatabase();
+                              const ownerOrg = await orgDb.getOrganization(brand.workos_organization_id);
+                              ownerName = ownerOrg?.name ?? null;
+                            } catch (orgErr) {
+                              logger.debug({ orgErr, domain }, 'failed to resolve verified-owner org name for signup notify');
+                            }
+                          }
+                          await notifyBrandClaimOpportunity({
+                            user_email: user.email,
+                            user_first_name: user.first_name ?? undefined,
+                            user_last_name: user.last_name ?? undefined,
+                            domain,
+                            brand_name: brand.brand_name ?? null,
+                            brand_view_url: `/brand/view/${encodeURIComponent(domain)}`,
+                            brand_already_verified: !!brand.domain_verified && !!brand.workos_organization_id,
+                            verified_owner_org_name: ownerName,
+                          });
+                        } catch (notifyErr) {
+                          logger.warn({ err: notifyErr, domain }, 'brand-claim opportunity notify failed');
+                        }
+                      })()
+                    );
+                  }
                 }
               }
             }

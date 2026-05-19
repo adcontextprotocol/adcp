@@ -101,6 +101,7 @@ import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
+import { createBrandClaimSuggestionRouter } from "./routes/me-brand-claim-suggestion.js";
 import { createMemberAgentsRouter } from "./routes/member-agents.js";
 import { createMeOrganizationDomainsRouter } from "./routes/me-organization-domains.js";
 import { createPublicPortraitRouter, createPortraitRouter, createAdminPortraitRouter } from "./routes/portraits.js";
@@ -1238,6 +1239,10 @@ export class HTTPServer {
     };
     const memberProfileRouter = createMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/me/member-profile', memberProfileRouter); // User profile routes: /api/me/member-profile/*
+
+    // Brand-claim suggestion endpoints — drives the signup-domain → claim
+    // nudge on the dashboard banner and brand-viewer JIT prompt (#4744).
+    this.app.use('/api/me', createBrandClaimSuggestionRouter({ brandDb: this.brandDb }));
     const adminMemberProfileRouter = createAdminMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/admin/member-profiles', adminMemberProfileRouter); // Admin profile routes: /api/admin/member-profiles/*
 

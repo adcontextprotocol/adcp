@@ -72,6 +72,70 @@ export async function notifyRegistryEdit(edit: {
 }
 
 /**
+ * Notify ops when a new user signs up whose verified email domain
+ * matches a brand in our registry — the KYC signal Brian flagged in
+ * the brand-claim follow-up (#4744). At today's signup volume we
+ * notify on every match regardless of brand verification state so ops
+ * can watch the funnel; later we can threshold by signal value.
+ *
+ * Fire-and-forget at the call site — never block the webhook response.
+ */
+export async function notifyBrandClaimOpportunity(opportunity: {
+  user_email: string;
+  user_first_name?: string;
+  user_last_name?: string;
+  domain: string;
+  brand_name?: string | null;
+  brand_view_url: string;
+  brand_already_verified: boolean;
+  verified_owner_org_name?: string | null;
+}): Promise<void> {
+  const channelId = getChannelId();
+  if (!channelId || !isSlackConfigured()) return;
+
+  const display = [opportunity.user_first_name, opportunity.user_last_name]
+    .filter(Boolean)
+    .join(' ')
+    || opportunity.user_email;
+  const brandLabel = opportunity.brand_name
+    ? `${opportunity.brand_name} (${opportunity.domain})`
+    : opportunity.domain;
+  const statusLine = opportunity.brand_already_verified
+    ? `_Brand is already verified-owned${opportunity.verified_owner_org_name ? ` by *${opportunity.verified_owner_org_name}*` : ''} — claim won't fire._`
+    : `_Brand is unclaimed — signup will see a claim suggestion._`;
+
+  const message: SlackBlockMessage = {
+    text: `🪪 New signup matches brand: ${opportunity.user_email} → ${opportunity.domain}`,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `🪪 *New signup matches a registry brand* — <${APP_URL}${opportunity.brand_view_url}|${brandLabel}>`,
+        },
+      },
+      {
+        type: 'section',
+        fields: [
+          { type: 'mrkdwn', text: `*User:*\n${display}` },
+          { type: 'mrkdwn', text: `*Email:*\n${opportunity.user_email}` },
+        ],
+      },
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: statusLine },
+      },
+    ],
+  };
+
+  try {
+    await sendChannelMessage(channelId, message);
+  } catch (error) {
+    logger.error({ error, domain: opportunity.domain }, 'Failed to send brand-claim opportunity notification');
+  }
+}
+
+/**
  * Notify when a new record is created and pending Addie review.
  */
 export async function notifyRegistryCreate(record: {
