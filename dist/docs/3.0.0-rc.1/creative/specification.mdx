@@ -1,0 +1,276 @@
+---
+title: Creative Specification
+sidebarTitle: Specification
+---
+
+<Info>
+**AdCP 3.0 Proposal** - This specification is under development for AdCP 3.0. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
+</Info>
+
+**Status**: Request for Comments
+**Last Updated**: February 2026
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
+
+## Abstract
+
+The Creative Protocol defines a standard interface for creative format discovery, manifest validation, creative generation, and preview rendering. This protocol enables AI agents to discover format specifications, build compliant creative assets, and generate previews across advertising platforms.
+
+## Protocol Overview
+
+The Creative Protocol provides:
+
+- Format discovery with full technical specifications
+- Manifest validation against format requirements
+- AI-powered creative generation and transformation
+- Preview rendering for creative verification
+- Universal macros for cross-platform tracking
+
+## Transport Requirements
+
+Creative agents MUST support at least one of the following transports:
+
+| Transport | Protocol | Description |
+|-----------|----------|-------------|
+| MCP | Model Context Protocol | Tool-based interaction via JSON-RPC |
+| A2A | Agent-to-Agent | Message-based interaction |
+
+Creative agents SHOULD support MCP as the preferred transport.
+
+Creative agents MUST declare Creative Protocol support via `get_adcp_capabilities`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
+  "adcp": { "major_versions": [2] },
+  "supported_protocols": ["creative"]
+}
+```
+
+## Core Concepts
+
+### Creative Agents
+
+Creative agents are authoritative sources for format definitions. A creative agent:
+
+- Defines and documents formats it owns
+- Validates manifests against format requirements
+- Generates previews showing how creatives will render
+- Optionally generates or transforms creatives from natural language briefs
+
+### Format Authority
+
+Each format has exactly one authoritative creative agent, identified by the `agent_url` in the format ID:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250_image"
+  }
+}
+```
+
+Creative agents MUST only return authoritative format definitions for formats they own.
+
+Creative agents MAY reference other creative agents that provide additional formats.
+
+### Formats
+
+Formats define how assets are assembled and rendered. A format specifies:
+
+- Media family (display, video, audio, dooh)
+- Required and optional asset types
+- Technical constraints (dimensions, duration, file size, codecs)
+- Rendering behavior and interaction expectations
+
+### Assets
+
+Assets are the building blocks of creatives. Asset types include:
+
+- **image**: Static images (JPEG, PNG, WebP, GIF)
+- **video**: Video files (MP4, WebM, MOV) or VAST tags
+- **audio**: Audio files (MP3, M4A) or DAAST tags
+- **text**: Headlines, descriptions, CTAs
+- **html**: HTML5 creatives or third-party tags
+- **javascript**: JavaScript tags
+- **url**: Tracking pixels, clickthrough URLs
+
+### Manifests
+
+Manifests pair format specifications with actual asset content. A manifest provides:
+
+- Format reference (agent_url + id)
+- Asset values keyed by asset_id from the format
+- Tracking URLs and macros
+
+Creative agents MUST validate manifests against format requirements before accepting them.
+
+### Universal Macros
+
+AdCP defines universal macros for cross-platform tracking. Creative agents MUST support these macros in tracking URLs:
+
+- `{TIMESTAMP}`: Unix timestamp
+- `{CACHEBUSTER}`: Random cache-busting value
+- `{CLICK_URL}`: Click tracking URL
+- `{REDIRECT_URL}`: Final destination URL
+
+Sales agents MUST translate universal macros to their ad server's native syntax.
+
+## Tasks
+
+The Creative Protocol defines three tasks. See task reference pages for complete request/response schemas and examples.
+
+### list_creative_formats
+
+**Reference**: [`list_creative_formats` task](/dist/docs/3.0.0-rc.1/creative/task-reference/list_creative_formats)
+
+Discover creative formats and their specifications.
+
+**Requirements:**
+- Creative agents MUST return full format specifications for formats they own
+- Creative agents MUST include `agent_url` identifying the authoritative agent for each format
+- Creative agents MUST include technical constraints (dimensions, duration, file types) in format definitions
+- Creative agents MAY include references to other creative agents providing additional formats
+- When filtering by `format_ids`, creative agents MUST return only the requested formats
+
+### build_creative
+
+**Reference**: [`build_creative` task](/dist/docs/3.0.0-rc.1/creative/task-reference/build_creative)
+
+Transform or generate creative manifests.
+
+**Requirements:**
+- Creative agents MUST validate input manifests against format requirements
+- Creative agents MUST return a valid manifest for the target format on success
+- Creative agents MUST return validation errors if the transformation cannot be completed
+- Creative agents SHOULD preserve tracking URLs and macros during transformation
+- Creative agents MAY use AI/LLM processing for generation tasks
+
+### preview_creative
+
+**Reference**: [`preview_creative` task](/dist/docs/3.0.0-rc.1/creative/task-reference/preview_creative)
+
+Generate preview renderings of creative manifests.
+
+**Requirements:**
+- Creative agents MUST validate manifests before generating previews
+- Creative agents MUST return preview URLs or HTML for valid manifests
+- Creative agents MUST include `expires_at` for preview URLs
+- Creative agents SHOULD support batch preview for multiple creatives
+- Creative agents MAY support multiple output formats (URL, HTML, image)
+
+## Error Handling
+
+Creative agents MUST return errors using the [standard AdCP error schema](/dist/docs/3.0.0-rc.1/building/implementation/error-handling).
+
+Common error codes:
+
+- `FORMAT_NOT_FOUND`: Requested format does not exist
+- `VALIDATION_ERROR`: Manifest failed format validation
+- `ASSET_MISSING`: Required asset not provided in manifest
+- `ASSET_INVALID`: Asset does not meet format constraints
+- `GENERATION_FAILED`: Creative generation could not be completed
+
+## Security Considerations
+
+### Transport Security
+
+All Creative Protocol communications MUST use HTTPS with TLS 1.2 or higher.
+
+### Asset Security
+
+- Creative agents SHOULD validate that asset URLs are accessible
+- Creative agents SHOULD scan assets for malware and malicious content
+- Creative agents MUST NOT execute untrusted JavaScript during validation
+
+### Preview Security
+
+- Preview URLs SHOULD be time-limited (indicated by `expires_at`)
+- Creative agents SHOULD sandbox HTML previews to prevent script execution
+- Consumers of `output_format: "html"` MUST only use trusted creative agents
+
+## Conformance
+
+### Creative Agent Conformance
+
+A conformant Creative Protocol agent MUST:
+
+1. Support at least one specified transport (MCP or A2A)
+2. Implement `list_creative_formats` for format discovery
+3. Return authoritative format definitions only for formats it owns
+4. Validate manifests against format specifications
+5. Use specified error codes
+
+A conformant Creative Protocol agent SHOULD:
+
+1. Implement `build_creative` for creative generation
+2. Implement `preview_creative` for preview rendering
+3. Support universal macros in tracking URLs
+
+### Consumer Conformance
+
+A conformant Creative Protocol consumer MUST:
+
+1. Use the `agent_url` from format IDs to identify the authoritative creative agent
+2. Validate manifests against format specifications before submission
+3. Handle validation errors appropriately
+4. Track visited URLs when recursively discovering formats to avoid infinite loops
+
+## Implementation Notes
+
+### Response Time Expectations
+
+Creative agents SHOULD target the following response times:
+
+| Operation Type | Target Latency |
+|----------------|----------------|
+| Format listing (list_creative_formats) | < 1 second |
+| Preview generation (preview_creative) | < 5 seconds |
+| Batch preview (10 creatives) | < 10 seconds |
+| Creative generation (build_creative) | < 60 seconds |
+
+### Recursive Format Discovery
+
+Creative agents MAY reference other creative agents in their `list_creative_formats` response:
+
+```json
+{
+  "creative_agents": [{
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "agent_name": "AdCP Reference Creative Agent",
+    "capabilities": ["validation", "assembly", "preview"]
+  }]
+}
+```
+
+Consumers MAY recursively query referenced agents to discover additional formats.
+
+Consumers MUST track visited URLs to prevent infinite loops during recursive discovery.
+
+### Format-Aware Validation
+
+Manifest validation MUST be performed in the context of the format specification:
+
+1. Look up the format definition from the authoritative creative agent
+2. For each asset in the manifest, find the corresponding entry in the format's `assets` array
+3. Validate the asset value against the type and constraints defined in the format
+
+The format definition determines what type each asset_id should be. Asset type information is NOT included in the manifest itself.
+
+### Standard vs Custom Formats
+
+- **Standard formats**: Based on IAB specifications, hosted by the reference creative agent (`https://creative.adcontextprotocol.org`)
+- **Custom formats**: Defined by individual publishers or creative platforms for specialized inventory
+
+Both work identically—the `agent_url` field identifies which agent is authoritative for each format.
+
+## Schema Reference
+
+| Schema | Description |
+|--------|-------------|
+| [`core/format.json`](https://adcontextprotocol.org/schemas/v2/core/format.json) | Format definition |
+| [`core/creative-manifest.json`](https://adcontextprotocol.org/schemas/v2/core/creative-manifest.json) | Creative manifest |
+| [`core/creative-asset.json`](https://adcontextprotocol.org/schemas/v2/core/creative-asset.json) | Asset definition |
+| [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-request.json) | list_creative_formats request |
+| [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-response.json) | list_creative_formats response |

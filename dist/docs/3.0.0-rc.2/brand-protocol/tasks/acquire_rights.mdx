@@ -1,0 +1,282 @@
+---
+title: acquire_rights
+description: "acquire_rights is the AdCP task for binding rights acquisition. Submit a pricing option and campaign details to receive generation credentials, rights constraints, and disclosure requirements from a brand agent."
+"og:title": "AdCP — acquire_rights"
+testable: true
+---
+
+Binding contractual request to acquire rights from a brand agent. Parallels `create_media_buy` — select a `pricing_option_id` from `get_rights` and provide campaign details. The agent clears against existing contracts and returns terms, generation credentials, and disclosure requirements.
+
+## Schema
+
+- **Request**: [`acquire-rights-request.json`](https://adcontextprotocol.org/schemas/latest/brand/acquire-rights-request.json)
+- **Response**: [`acquire-rights-response.json`](https://adcontextprotocol.org/schemas/latest/brand/acquire-rights-response.json)
+
+{/* Using latest because these schemas are not yet released in any version.
+     Update to correct version alias after the next release. */}
+
+## Response time
+
+Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status means the rights holder needs to review — resolution may take hours to days.
+
+## Quick start
+
+<CodeGroup>
+```json Request
+{
+  "rights_id": "janssen_likeness_voice",
+  "pricing_option_id": "monthly_exclusive",
+  "buyer": {
+    "domain": "bistro-oranje.nl",
+    "brand_id": "bistro_oranje"
+  },
+  "campaign": {
+    "description": "AI-generated video ads for Bistro Oranje steakhouse featuring Daan Janssen",
+    "uses": ["likeness", "voice"],
+    "countries": ["NL"],
+    "format_ids": [
+      { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_social_1080x1920" }
+    ],
+    "estimated_impressions": 50000,
+    "start_date": "2026-04-01",
+    "end_date": "2026-06-30"
+  },
+  "revocation_webhook": {
+    "url": "https://buyer.bistro-oranje.nl/webhooks/revocation",
+    "authentication": {
+      "schemes": ["HMAC-SHA256"],
+      "credentials": "whsk_bo_abc123...shared_secret_min_32_chars"
+    }
+  },
+  "idempotency_key": "acq_bo_janssen_2026q2_001",
+  "push_notification_config": {
+    "url": "https://buyer.bistro-oranje.nl/webhooks/adcp/acquire_rights/op_abc123",
+    "authentication": {
+      "schemes": ["HMAC-SHA256"],
+      "credentials": "whsk_bo_xyz789...shared_secret_min_32_chars"
+    }
+  }
+}
+```
+
+```json Response (acquired)
+{
+  "rights_id": "janssen_likeness_voice",
+  "status": "acquired",
+  "brand_id": "daan_janssen",
+  "terms": {
+    "pricing_option_id": "monthly_exclusive",
+    "amount": 350,
+    "currency": "EUR",
+    "period": "monthly",
+    "uses": ["likeness", "voice"],
+    "impression_cap": 100000,
+    "overage_cpm": 4.00,
+    "start_date": "2026-04-01",
+    "end_date": "2026-06-30",
+    "exclusivity": {
+      "scope": "Exclusive licensee for Daan Janssen in NL for food/restaurant brands",
+      "countries": ["NL"]
+    }
+  },
+  "generation_credentials": [
+    {
+      "provider": "midjourney",
+      "rights_key": "rk_mj_abc123...",
+      "uses": ["likeness"],
+      "expires_at": "2026-06-30T23:59:59Z"
+    },
+    {
+      "provider": "elevenlabs",
+      "rights_key": "rk_el_def456...",
+      "uses": ["voice"],
+      "expires_at": "2026-06-30T23:59:59Z"
+    }
+  ],
+  "rights_constraint": {
+    "rights_id": "janssen_likeness_voice",
+    "rights_agent": { "url": "https://agent.lotientertainment.com/mcp", "id": "loti_entertainment" },
+    "valid_from": "2026-04-01T00:00:00Z",
+    "valid_until": "2026-06-30T23:59:59Z",
+    "uses": ["likeness", "voice"],
+    "countries": ["NL"],
+    "impression_cap": 100000,
+    "approval_status": "approved",
+    "verification_url": "https://agent.lotientertainment.com/rights/rts_abc123/verify"
+  },
+  "restrictions": [
+    "All generated creatives must be submitted for approval before distribution",
+    "No modification of talent likeness beyond approved AI generation parameters"
+  ],
+  "disclosure": {
+    "required": true,
+    "text": "Features AI-generated likeness of Daan Janssen, used under license from Loti Entertainment"
+  },
+  "approval_webhook": {
+    "url": "https://agent.lotientertainment.com/rights/rts_abc123/approve",
+    "authentication": {
+      "schemes": ["Bearer"],
+      "credentials": "rk_approve_abc123...token_min_32_chars"
+    }
+  },
+  "usage_reporting_url": "https://agent.lotientertainment.com/rights/rts_abc123/usage"
+}
+```
+
+```json Response (pending approval)
+{
+  "rights_id": "janssen_likeness_voice",
+  "status": "pending_approval",
+  "brand_id": "daan_janssen",
+  "detail": "Creative concept requires talent approval per contract terms",
+  "estimated_response_time": "48h"
+}
+```
+
+```json Response (rejected — actionable)
+{
+  "rights_id": "janssen_likeness_voice",
+  "status": "rejected",
+  "brand_id": "daan_janssen",
+  "reason": "Active exclusivity with another brand for food/restaurant in NL through 2026-09-30",
+  "suggestions": [
+    "Available in BE and DE markets",
+    "Available in NL after 2026-10-01"
+  ]
+}
+```
+
+```json Response (rejected — final)
+{
+  "rights_id": "janssen_likeness_voice",
+  "status": "rejected",
+  "brand_id": "daan_janssen",
+  "reason": "This violates our public figures brand guidelines"
+}
+```
+
+```json Response (error)
+{
+  "errors": [
+    {
+      "code": "pricing_option_unavailable",
+      "message": "Pricing option 'monthly_exclusive' is no longer available for this rights offering"
+    }
+  ]
+}
+```
+</CodeGroup>
+
+## Parameters
+
+### Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `rights_id` | string | Yes | Rights offering identifier from `get_rights` |
+| `pricing_option_id` | string | Yes | Selected pricing option |
+| `buyer` | brand-ref | Yes | Buyer's brand identity |
+| `campaign.description` | string | Yes | How the rights will be used |
+| `campaign.uses` | string[] | Yes | Specific rights uses for this campaign |
+| `campaign.countries` | string[] | No | Countries where the campaign will run |
+| `campaign.format_ids` | format-id[] | No | Creative formats that will be produced |
+| `campaign.estimated_impressions` | integer | No | Estimated total impressions |
+| `campaign.start_date` | date | No | Campaign start date |
+| `campaign.end_date` | date | No | Campaign end date |
+| `revocation_webhook` | push-notification-config | Yes | Webhook for revocation notifications. If the rights holder needs to revoke rights, they POST a [revocation-notification](https://adcontextprotocol.org/schemas/latest/brand/revocation-notification.json) to this URL. |
+| `idempotency_key` | string | No | Client-generated key for safe retries. Resubmitting with the same key returns the original response. |
+| `push_notification_config` | push-notification-config | No | Webhook for async status updates if the acquisition requires approval. See [push notifications](/dist/docs/3.0.0-rc.2/building/implementation/webhooks). |
+
+### Response statuses
+
+The response uses a discriminated union on `status`:
+
+| Status | Description | Key fields |
+|--------|-------------|------------|
+| `acquired` | Rights cleared, credentials issued | `terms`, `generation_credentials`, `rights_constraint`, `disclosure` |
+| `pending_approval` | Requires rights holder review | `detail`, `estimated_response_time` |
+| `rejected` | Request denied | `reason`, `suggestions` (optional) |
+
+When `suggestions` is present on a rejected response, the rejection is actionable — the buyer can adjust their request and retry. When `suggestions` is absent, the rejection is final and the buyer should not retry for this rights/talent combination. This convention applies consistently across `acquire_rights` rejections, `get_rights` excluded results, and creative approval rejections.
+
+## Generation credentials
+
+When rights are acquired, the agent coordinates with LLM providers to issue scoped credentials:
+
+1. Agent clears the rights against existing contracts
+2. Agent tells the provider (e.g., Midjourney): "Issue a rights key for this talent, licensed to this buyer"
+3. Agent returns the credentials to the buyer
+
+**Any creative agent** can use these credentials. The LLM provider enforces usage constraints at generation time — the rights agent sets up the permission, the provider is the gatekeeper.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `provider` | string | LLM/generation service (e.g., "midjourney", "elevenlabs") |
+| `rights_key` | string | Scoped API key for generating rights-cleared content |
+| `uses` | string[] | Rights uses this credential covers |
+| `expires_at` | datetime | When the credential expires (provider-determined) |
+| `endpoint` | uri | Provider endpoint for rights-scoped generation (optional, uses provider default if omitted) |
+
+## Rights constraint
+
+When `status` is `acquired`, the response includes a `rights_constraint` object:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `rights_constraint` | object | Pre-built constraint for creative manifests. Contains validity period, country restrictions, and impression cap from agreed terms. Embed directly in the manifest's `rights` array. |
+
+## Creative lifecycle
+
+After acquiring rights:
+
+1. **Generate**: Creative agent uses `generation_credentials` to produce content
+2. **Manifest**: Embed the `rights_constraint` from the `acquire_rights` response directly into the creative manifest's `rights` array. The rights agent pre-builds this constraint with the correct validity period, country restrictions, and impression cap from the agreed terms.
+3. **Approve**: POST a [`creative-approval-request`](https://adcontextprotocol.org/schemas/latest/brand/creative-approval-request.json) to the `approval_webhook` URL, authenticating with the provided credentials. The response is a [`creative-approval-response`](https://adcontextprotocol.org/schemas/latest/brand/creative-approval-response.json) with status `approved`, `rejected`, or `pending_review`. If `pending_review`, poll the returned `status_url` for updates (suggested: every 5 minutes, back off to every 30 minutes after 1 hour).
+4. **Serve**: Place approved creative via `create_media_buy`, respecting country and date restrictions
+5. **Report**: Use [`report_usage`](/dist/docs/3.0.0-rc.2/accounts/tasks/report_usage) with `rights_id` for cap tracking and billing
+
+If `acquire_rights` returns `pending_approval` and you provided `push_notification_config`, you'll receive a webhook notification when the status changes to `acquired` or `rejected`. Otherwise, re-call `acquire_rights` with the same `rights_id` and `idempotency_key` after the `estimated_response_time` interval. Set `approval_status: 'pending'` on any creative manifests built during this period.
+
+## Revocation
+
+If the rights holder needs to revoke rights (talent controversy, contract violation, etc.), they POST a [`revocation-notification`](https://adcontextprotocol.org/schemas/latest/brand/revocation-notification.json) to the buyer's `revocation_webhook`, authenticating with the credentials provided at acquisition time. The notification contains a `notification_id` (for deduplication), `rights_id`, `brand_id`, `reason`, and `effective_at` timestamp.
+
+The buyer is responsible for:
+- Deduplicating by `notification_id` — the same revocation may be delivered multiple times
+- Stopping creative delivery by `effective_at`
+- Removing or replacing affected creatives from active campaigns
+- Ceasing use of generation credentials (providers may also invalidate credentials independently)
+
+Partial revocation is supported — if `revoked_uses` is present, only those uses are revoked (e.g., voice revoked but likeness remains).
+
+### Acknowledging revocations
+
+Return HTTP `200` immediately upon receiving and validating a revocation notification. The rights holder retries on non-`2xx` responses using exponential backoff (1s, 5s, 30s, 5m, 30m). After 6 failed attempts, the rights holder may escalate through other channels.
+
+All webhook authentication uses the AdCP [push notification signing convention](/dist/docs/3.0.0-rc.2/building/implementation/webhooks#hmac-sha256-recommended-for-production) — `X-ADCP-Signature` and `X-ADCP-Timestamp` headers with HMAC-SHA256.
+
+## Impression caps and overage
+
+When `terms.impression_cap` is set, it is a **soft cap**. Delivery is not automatically halted at the cap — the buyer is responsible for monitoring usage via `report_usage` and managing delivery accordingly. Impressions beyond the cap are billed at `terms.overage_cpm`. If the rights holder wants a hard cap (no delivery beyond the limit), they specify this in `restrictions`.
+
+## Usage reporting
+
+The `usage_reporting_url` in the acquired response is a convenience endpoint provided by the rights agent for HTTP-based impression reporting. It accepts the same payload as the [`report_usage`](/dist/docs/3.0.0-rc.2/accounts/tasks/report_usage) MCP task. Use whichever integration is simpler for your pipeline — the MCP tool for agent-to-agent workflows, or the URL for direct HTTP calls from ad servers.
+
+## Renewal and updates
+
+To extend a rights grant, adjust impression caps, change pricing, or pause/resume, use [`update_rights`](/dist/docs/3.0.0-rc.2/brand-protocol/tasks/update_rights). Extended grants receive re-issued generation credentials and an updated `rights_constraint` for re-embedding in manifests.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="update_rights" icon="rotate" href="/dist/docs/3.0.0-rc.2/brand-protocol/tasks/update_rights">
+    Extend, adjust, or pause an existing rights grant.
+  </Card>
+  <Card title="report_usage" icon="chart-line" href="/dist/docs/3.0.0-rc.2/accounts/tasks/report_usage">
+    Report impressions against rights grants for billing and cap tracking.
+  </Card>
+  <Card title="brand.json spec" icon="code" href="/dist/docs/3.0.0-rc.2/brand-protocol/brand-json">
+    Rights constraints on creative manifests.
+  </Card>
+</CardGroup>

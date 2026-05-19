@@ -1,0 +1,135 @@
+---
+title: Calling an AdCP agent
+sidebarTitle: Calling an agent
+description: "Wire-level invariants every AdCP buyer must follow: idempotency_key replay, account oneOf variants, async status:'submitted' polling, and error recovery from adcp_error.issues[]."
+"og:title": "AdCP — Calling an agent"
+---
+
+# Calling an AdCP agent
+
+This page is the canonical buyer-side wire contract: the rules that don't live cleanly in any single task schema, but apply to every mutating call you'll make. If you're building a buyer (DSP, planning tool, agentic client) and calling out to AdCP sales, creative, signals, governance, SI, or brand agents, read this once.
+
+The agent-facing version of this content lives at [`skills/call-adcp-agent/SKILL.md`](https://github.com/adcontextprotocol/adcp/blob/main/skills/call-adcp-agent/SKILL.md) — bundled into the [protocol tarball](/dist/docs/3.0.1/building/schemas-and-sdks) so SDKs can ship it to coding agents.
+
+## Discovery chain
+
+Walk these in order on first contact with any new agent:
+
+1. **Agent card** (A2A) or **`tools/list`** (MCP): returns tool *names*. AdCP MCP servers no longer publish per-tool parameter schemas in `tools/list` — every tool shows `{type: 'object', properties: {}}`. Don't try to infer shape from there.
+2. **`get_adcp_capabilities`**: returns supported protocols, AdCP major versions, and feature flags. Tells you *which* tools this agent supports, not how to call them. See [`get_adcp_capabilities`](/dist/docs/3.0.1/protocol/get_adcp_capabilities).
+3. **`get_schema(tool_name)`** *(when the agent exposes it — pending standardization, see [#3057](https://github.com/adcontextprotocol/adcp/issues/3057))*: returns the JSON Schema for a specific tool's request/response.
+4. **Bundled schemas** (offline, authoritative): every published AdCP version ships JSON Schemas for every tool, signed via Sigstore. The path differs by SDK — the spec repo source uses `dist/schemas/<version>/bundled/`, `@adcp/client` puts them at `schemas/cache/<version>/bundled/` after `npm run sync-schemas`, Python and Go SDKs use their own conventions. Don't hardcode a path; let the SDK's loader find them. Once located, each schema lives at `<protocol>/<tool>-{request,response}.json`.
+
+## Idempotency: replay vs. new operation
+
+Every mutating tool requires an `idempotency_key` (UUID).
+
+- **Same key on retry** → server replays the **same response**, byte-for-byte. Use this for transport-level retries (timeout, 5xx, dropped connection).
+- **Fresh key** → **new operation**, regardless of body. Generating a new UUID because the previous attempt failed is the most common way naïve callers create duplicate media buys.
+- **Same key, different body** → server-defined; most agents return the original cached response and ignore the body change. Don't rely on it.
+
+For async flows, the replayed response carries the **same `task_id`** so polling continues against the same task instead of forking.
+
+`idempotency_key` is required on: `create_media_buy`, `update_media_buy`, `sync_creatives`, `sync_audiences`, `sync_accounts`, `sync_catalogs`, `sync_event_sources`, `sync_plans`, `sync_governance`, `activate_signal`, `acquire_rights`, `log_event`, `report_usage`, `provide_performance_feedback`, `report_plan_outcome`, `create_property_list`, `update_property_list`, `delete_property_list`, `create_collection_list`, `update_collection_list`, `delete_collection_list`, `create_content_standards`, `update_content_standards`, `calibrate_content`, `si_initiate_session`, `si_send_message`.
+
+Missing the key → `adcp_error.code: 'VALIDATION_ERROR'` with `/idempotency_key` in `issues`.
+
+## `account` is `oneOf` — pick exactly one variant
+
+`account` is a discriminated union. On `create_media_buy` and `update_media_buy`, two variants:
+
+```json
+// variant 0: by seller-assigned id (from sync_accounts or list_accounts)
+"account": { "account_id": "seller_assigned_id" }
+
+// variant 1: by natural key (brand + operator, optional sandbox)
+"account": { "brand": { "domain": "acme.com" }, "operator": "sales.example" }
+```
+
+**Do NOT merge required fields across variants.** `additionalProperties: false` on each variant means `{account_id, brand}` fails BOTH.
+
+Other tools (e.g. `sync_creatives`) may accept a superset — always check the specific tool's schema.
+
+## Async responses: `status: 'submitted'` means queued
+
+A mutating tool can return one of three shapes:
+
+```json
+// Success (sync): the work is done
+{ "media_buy_id": "mb_123", "packages": [...], "confirmed_at": "..." }
+
+// Submitted (async): the work is queued
+{ "status": "submitted", "task_id": "tk_abc", "message": "Awaiting IO signature" }
+
+// Error: don't retry without fixing
+{ "errors": [{ "code": "PRODUCT_NOT_FOUND", "message": "..." }] }
+```
+
+When you see `status: 'submitted'`, the work is **not** complete. Poll via `tasks/get` (A2A) or the MCP async task extension, using the returned `task_id`. Over A2A the AdCP `task_id` also rides on `artifact.metadata.adcp_task_id`.
+
+## Error recovery — read `issues[]`
+
+Every validation failure produces an envelope shaped like:
+
+```json
+{
+  "adcp_error": {
+    "code": "VALIDATION_ERROR",
+    "recovery": "correctable",
+    "field": "/first/offending/pointer",
+    "issues": [
+      {
+        "pointer": "/account",
+        "keyword": "oneOf",
+        "message": "must match exactly one schema in oneOf",
+        "variants": [
+          { "index": 0, "required": ["account_id"],        "properties": ["account_id"] },
+          { "index": 1, "required": ["brand", "operator"], "properties": ["brand", "operator", "sandbox"] }
+        ]
+      },
+      { "pointer": "/brand/domain", "keyword": "required", "message": "must have required property 'domain'" }
+    ]
+  }
+}
+```
+
+- `issues[].pointer` — RFC 6901 JSON Pointer to the offending field
+- `issues[].keyword` — Ajv keyword (`required`, `type`, `oneOf`, `anyOf`, `additionalProperties`, `format`, `enum`)
+- `issues[].variants` — when `keyword` is `oneOf` or `anyOf`, each entry lists one variant's `required` + declared `properties`
+
+**For `oneOf` failures, pick ONE variant from `variants[]` and send only its `required` fields.** This is the fastest recovery path when you didn't know the field was a union.
+
+`recovery` values:
+
+- `correctable` — buyer-side fix; read `issues[]`, patch the pointers, resend
+- `transient` — retry with the **same** `idempotency_key`
+- `terminal` — requires human action (account suspended, payment required); do not retry
+
+## Common shape pitfalls
+
+| Symptom | What it means | Fix |
+|---|---|---|
+| `keyword: 'oneOf'` with `variants[]` | Discriminated union — you sent fields from multiple variants, or none | Pick ONE variant from `variants[]`. Send only its `required` fields. |
+| 2-3 `additionalProperties` errors at the same pointer | You merged `oneOf` variants | Drop to one variant. Don't keep "extra" fields "for completeness". |
+| `keyword: 'required'`, `pointer: '/idempotency_key'` | Mutating tool, no UUID | Generate fresh UUID per logical operation. Reuse on retries. |
+| `keyword: 'type'` or `additionalProperties` at `/budget` | Sent `{amount, currency}` | `budget` is a number. Currency is implied by `pricing_option_id`. |
+| `additionalProperties` at `/format_id` (string passed) | Sent `"format_id": "video_..."` | `format_id` is `{agent_url, id}` — always an object. |
+| `keyword: 'enum'` at `/destinations/*/type` | Made-up destination type | Use `'platform'` (with `platform`) or `'agent'` (with `agent_url`). |
+| Response carries `status: 'submitted'` and `task_id` | Async — work is queued, NOT done | Poll via `tasks/get` (A2A) or the MCP async task extension using `task_id`. |
+
+## Transport notes
+
+- **MCP**: `tools/call` with `{ name: 'tool_name', arguments: {...} }`. Read `structuredContent` for the typed response.
+- **A2A**: `message/send` with a `DataPart` of shape `{ skill: 'tool_name', input: {...} }`. The typed response is at `task.artifacts[0].parts[0].data`.
+
+Both transports share idempotency, error shape, schema enforcement, and handler semantics. If a call works on one, the equivalent call works on the other.
+
+A common trap: **A2A `Task.state: 'completed'` is not the same as AdCP completion.** A2A task state describes the transport call lifecycle; AdCP-level completion is in the artifact's payload (`structuredContent.status` or `data.status`). A `completed` A2A task can still carry a `submitted` AdCP response.
+
+## Related
+
+- Per-task request/response shapes: see the protocol-specific reference (`/docs/media-buy/`, `/docs/creative/`, `/docs/signals/`, etc.).
+- [Protocol architecture](/dist/docs/3.0.1/protocol/architecture) — how the protocol domains fit together.
+- [Required tasks](/dist/docs/3.0.1/protocol/required-tasks) — which tasks an agent must implement to claim a specialism.
+- [`get_adcp_capabilities`](/dist/docs/3.0.1/protocol/get_adcp_capabilities) — first call against any new agent.
+- [Schemas and SDKs](/dist/docs/3.0.1/building/schemas-and-sdks) — how SDKs consume the protocol tarball (which now bundles `skills/`).

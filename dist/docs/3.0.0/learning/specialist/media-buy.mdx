@@ -1,0 +1,151 @@
+---
+title: "S1: Media buy mastery"
+sidebarTitle: "S1: Media buy"
+description: "AdCP specialist module S1: Media buy mastery. Full transaction lifecycle, pricing models, proposals, forecasting, and multi-agent orchestration with live sandbox agents."
+"og:title": "AdCP — S1: Media buy mastery"
+---
+
+# S1: Media buy mastery
+
+<Info>
+**Members only** — Requires Practitioner credential. ~45 minutes with Addie. Combines hands-on lab and adaptive exam.
+</Info>
+
+This specialist module tests your mastery of the media buy transaction lifecycle. You'll work with live sandbox agents to execute complex flows: proposals, forecasting, refinement, packages, and multi-agent orchestration. Addie evaluates both your hands-on work and your conceptual understanding.
+
+Passing earns the **AdCP specialist — Media buy** credential.
+
+## Specialisms this track prepares you to validate
+
+Agents in the `media_buy` domain declare specific flows they support via the `specialisms` field on `get_adcp_capabilities`. Each specialism has a compliance storyboard at `/compliance/{version}/specialisms/{id}/` that a runner executes to verify the claim. This module prepares you to reason about and validate agents against these claims:
+
+| Specialism | Status | What it covers |
+|---|---|---|
+| `sales-guaranteed` | stable | Guaranteed media buys with human IO approval |
+| `sales-non-guaranteed` | stable | Non-guaranteed auction-based media buys |
+| `sales-proposal-mode` | stable | Media buys negotiated via proposal acceptance |
+| `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
+| `sales-broadcast-tv` | stable | Broadcast linear TV with guaranteed inventory and FCC cancellation rules |
+| `sales-social` | stable | Social media advertising platform with self-service flows |
+
+See the [Compliance Catalog](/dist/docs/3.0.0/building/compliance-catalog) for the full taxonomy and the [`specialism` enum](https://adcontextprotocol.org/schemas/v3/enums/specialism.json) for the authoritative list.
+
+## What you'll demonstrate
+
+- Execute the full media buy lifecycle including proposals and forecasting
+- Explain why every mutating media-buy request is cryptographically signed (RFC 9421): the signature is what lets the seller authenticate the buyer and detect tampering. No amount of lifecycle logic matters if you can't trust who sent the request.
+- Walk the buyer-identity resolution chain: signature → JWKS → agent entry → brand.json. Explain why `iss` claims and client-supplied headers are never treated as identity, and what each link in the chain defends against.
+- Apply `idempotency_key` correctly across the lifecycle: fresh UUID v4 per logical buy, same key + same payload on network retry (returns `replayed: true`), new key when the agent re-plans with a different payload, and the handling of `IDEMPOTENCY_CONFLICT` and `IDEMPOTENCY_EXPIRED`. Explain why this is what makes agent retries safe for real money.
+- Trace the state machine: `create_media_buy` returns `pending_creatives` or `pending_start`; `sync_creatives` clears `pending_creatives`; the seller MUST transition `pending_start` → `active` at flight start and webhook the orchestrator. Seller-initiated `rejected` is only valid from the pending states.
+- Reason about which actions are valid in which states (`cancel`, `sync_creatives` from pending states; `pause`/`resume`/`update_media_buy` from `active`), and handle `NOT_CANCELLABLE` and concurrency conflicts via `revision`
+- Select a `pricing_option_id` from a product's `pricing_options[]` array — CPM, vCPM, CPP, CPA, flat rate, time — and explain why different pricing models carry different `parameters`
+- Negotiate `measurement_terms` and `performance_standards` on guaranteed buys: propose overrides on `create_media_buy`, interpret seller acceptance (echoed back), adjustments, or `TERMS_REJECTED`. Recover by aligning to the seller's supported vendors or accepting product defaults.
+- Know that `update_media_buy` requires `account` (not just `media_buy_id`) so billing routes to the right relationship; omitting it is a protocol error
+- Tie broadcast buys to agency billing by attaching `agency_estimate_number` at the buy or package level (package-level overrides buy-level when flights or stations differ)
+- Use `get_media_buys` to check status, `valid_actions`, and creative approvals before acting
+- Handle pricing negotiation, budget allocation, and multi-agent orchestration
+- Use refinement and package requests for complex buying scenarios
+- Monitor and optimize campaign delivery using protocol tools
+- Reason about failure modes, conflict resolution, and edge cases
+
+## Prerequisite reading
+
+### Core transaction tasks
+
+<CardGroup cols={2}>
+  <Card title="get_products" icon="magnifying-glass" href="/dist/docs/3.0.0/media-buy/task-reference/get_products">
+    Product discovery: natural language briefs, structured filters, response schemas.
+  </Card>
+  <Card title="create_media_buy" icon="receipt" href="/dist/docs/3.0.0/media-buy/task-reference/create_media_buy">
+    Campaign creation: manual mode, proposal mode, approval lifecycle.
+  </Card>
+  <Card title="update_media_buy" icon="pen-to-square" href="/dist/docs/3.0.0/media-buy/task-reference/update_media_buy">
+    Campaign modification: budgets, targeting, scheduling, creative swaps.
+  </Card>
+  <Card title="get_media_buys" icon="list-check" href="/dist/docs/3.0.0/media-buy/task-reference/get_media_buys">
+    Operational status: lifecycle state, creative approvals, valid actions, delivery snapshots.
+  </Card>
+  <Card title="get_media_buy_delivery" icon="chart-line" href="/dist/docs/3.0.0/media-buy/task-reference/get_media_buy_delivery">
+    Delivery reporting: impressions, spend, completion rates, performance.
+  </Card>
+</CardGroup>
+
+### Supporting concepts
+
+<CardGroup cols={2}>
+  <Card title="Media buy specification" icon="scroll" href="/dist/docs/3.0.0/media-buy/specification">
+    The formal specification for the media buy protocol.
+  </Card>
+  <Card title="Pricing models" icon="tag" href="/dist/docs/3.0.0/media-buy/advanced-topics/pricing-models">
+    `pricing_options[]` and `pricing_option_id`: CPM, vCPM, CPP, CPA, flat rate, time.
+  </Card>
+  <Card title="Accountability terms" icon="handshake" href="/dist/docs/3.0.0/media-buy/advanced-topics/accountability">
+    Negotiate `performance_standards`, `measurement_terms`, and `cancellation_policy`. Recovery from `TERMS_REJECTED`.
+  </Card>
+  <Card title="Media buys overview" icon="layer-group" href="/dist/docs/3.0.0/media-buy/media-buys/index">
+    Campaign structure, the `pending_creatives` → `pending_start` → `active` state machine, and the approval lifecycle.
+  </Card>
+  <Card title="Trusted Match Protocol" icon="microchip" href="/dist/docs/3.0.0/trusted-match">
+    How TMP handles impression-time decisions such as cross-publisher frequency capping.
+  </Card>
+  <Card title="AdCP and OpenRTB" icon="arrows-left-right" href="/dist/docs/3.0.0/building/understanding/adcp-vs-openrtb">
+    How campaign workflows in AdCP connect to impression-time execution patterns.
+  </Card>
+  <Card title="Orchestrator design" icon="diagram-project" href="/dist/docs/3.0.0/building/implementation/orchestrator-design">
+    Architecture patterns for multi-agent orchestration.
+  </Card>
+  <Card title="Conversion tracking" icon="bullseye" href="/dist/docs/3.0.0/media-buy/conversion-tracking/index">
+    Event sources, log_event, and attribution setup.
+  </Card>
+  <Card title="Performance feedback" icon="comment-dots" href="/dist/docs/3.0.0/media-buy/task-reference/provide_performance_feedback">
+    Seller optimization feedback based on campaign performance.
+  </Card>
+  <Card title="Context and Identity Match" icon="arrows-split-up-and-left" href="/dist/docs/3.0.0/trusted-match/context-and-identity">
+    The two structurally separated operations that power impression-time execution.
+  </Card>
+  <Card title="Router architecture" icon="diagram-project" href="/dist/docs/3.0.0/trusted-match/router-architecture">
+    Deployment, fan-out, and provider configuration for the TMP Router.
+  </Card>
+</CardGroup>
+
+## Connecting to the test agent
+
+Lab exercises run against the public test agent. Use the shared token — no signup required:
+
+```bash
+export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+export AGENT_URL="https://test-agent.adcontextprotocol.org/mcp"
+```
+
+See the [Quickstart](/dist/docs/3.0.0/quickstart) for a walkthrough of your first call.
+
+## Lab exercises
+
+During the module, Addie will guide you through hands-on exercises:
+
+1. **Product discovery and evaluation** — Query multiple sandbox agents, compare products, evaluate pricing
+2. **Pricing option selection** — From the same product's `pricing_options[]` array, select a CPM option and a CPP option. Explain what each option's `parameters` mean and why the minimum spend differs.
+3. **Proposal and forecasting** — Request proposals, analyze delivery forecasts (spend curves and availability)
+4. **Terms negotiation** — On a guaranteed product, propose `measurement_terms` with a different vendor than the seller's default, and `performance_standards` with a tighter viewability threshold. Observe seller acceptance, adjustment, or `TERMS_REJECTED`. Recover by aligning to the seller's supported vendors.
+5. **Campaign creation and optimization** — Create a media buy, monitor delivery, execute updates. Verify `update_media_buy` fails without `account` and succeeds with it.
+6. **State machine walkthrough** — Create a buy and trace it through `pending_creatives` (no creatives attached) → `sync_creatives` → `pending_start` → `active` at flight start. Use `get_media_buys` at each step to read `status`, `valid_actions`, and transition timestamps. Force a seller rejection from `pending_start` via the sandbox controller and verify the terminal state.
+7. **Lifecycle management** — Check `valid_actions`, cancel a package, handle `NOT_CANCELLABLE`, use `revision` for concurrency
+8. **Broadcast billing** — Create a broadcast buy with a buy-level `agency_estimate_number` and one package that overrides it with a station-specific estimate number. Verify both appear on delivery reconciliation.
+9. **Multi-agent orchestration and execution** — Manage campaigns across multiple sellers. Trace a cross-publisher suppression scenario: a viewer sees an ad on publisher A, then visits publisher B within the 2-hour recency window — what does Identity Match return and why? Configure frequency parameters (5/week, 2-hour minimum recency) and predict delivery impact. Explain why Context Match and Identity Match are structurally separated.
+
+## Assessment
+
+| Dimension | Weight | What Addie evaluates |
+|-----------|--------|---------------------|
+| Protocol mastery | 30% | Comprehensive understanding of media buy lifecycle |
+| Targeting expertise | 25% | Masters advanced targeting capabilities |
+| Analytical skill | 25% | Analyzes delivery data effectively |
+| Problem solving | 20% | Handles complex scenarios and edge cases |
+
+Passing threshold: 70%.
+
+## Start this module
+
+<Card title="Start S1 with Addie" icon="play" href="https://agenticadvertising.org/chat">
+  "I'd like to start the media buy specialist module."
+</Card>

@@ -85,7 +85,6 @@
                     "expanded": false,
                     "pages": [
                       "docs/reference/whats-new-in-v3",
-                      "docs/reference/whats-new-in-3-1",
                       "docs/reference/migration/v3-readiness",
                       "docs/reference/migration/index",
                       "docs/reference/migration/prerelease-upgrades",
@@ -682,7 +681,6 @@
                 "expanded": false,
                 "pages": [
                   "docs/reference/whats-new-in-v3",
-                  "docs/reference/whats-new-in-3-1",
                   "docs/reference/migration/v3-readiness",
                   "docs/reference/migration/index",
                   "docs/reference/migration/prerelease-upgrades",

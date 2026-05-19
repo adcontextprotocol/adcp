@@ -1,0 +1,128 @@
+---
+title: TMP for Retail Media
+description: How TMP activates sponsored product packages with GTIN-level catalog refinement.
+"og:title": "AdCP TMP for Retail Media"
+---
+
+# TMP for Retail Media
+
+Retailers manage sponsored product placements across search results, category pages, and carousels. TMP's catalog refinement capabilities make it a natural fit — buyers can specify which products to feature, which promotions to highlight, and which items to suppress, all within the bounds of pre-negotiated packages.
+
+## How It Works Today
+
+Retail media networks use internal recommendation engines to decide which sponsored products appear. Buyers set campaign-level targeting (keywords, categories, budgets) but have limited real-time control over which specific products appear in which contexts. Each retailer has its own API and optimization logic.
+
+## Context Match
+
+When a shopper views a search results page or category page, the retailer sends a Context Match request:
+
+```json
+{
+  "type": "context_match_request",
+  "request_id": "ctx-retail-8f3a",
+  "property_rid": "01916f3a-e7ba-7000-8000-000000000040",
+  "property_id": "grocery-retailer-web",
+  "property_type": "website",
+  "placement_id": "search-results-sponsored",
+  "artifact_refs": [
+    { "type": "custom", "value": "search:beverages-coffee" }
+  ]
+}
+```
+
+The buyer responds with an offer:
+
+```json
+{
+  "type": "context_match_response",
+  "request_id": "ctx-retail-8f3a",
+  "offers": [
+    {
+      "package_id": "pkg-coffee-sponsored",
+      "brand": { "domain": "coldbrew.example.com", "brand_id": "coldbrew" },
+      "price": { "amount": 2.50, "currency": "USD", "model": "cpc" },
+      "summary": "Cold brew and iced latte — buy 2 get 1 free promotion",
+      "creative_manifest": {
+        "format_id": { "agent_url": "https://grocery-retailer.example.com", "id": "sponsored_product_listing" },
+        "assets": {
+          "items": {
+            "type": "product",
+            "items": [
+              { "gtin": "gtin-cold-brew-12oz", "badge": "BOGO", "image_url": "https://cdn.example.com/cold-brew-12oz.jpg" },
+              { "gtin": "gtin-iced-latte-4pk", "badge": "PROMO", "image_url": "https://cdn.example.com/iced-latte-4pk.jpg" }
+            ]
+          },
+          "promo_banner": {
+            "url": "https://cdn.example.com/banners/b2g1.png",
+            "width": 728,
+            "height": 90
+          }
+        }
+      },
+      "macros": {
+        "click_tracker": "https://track.example.com/click?pkg=coffee-sponsored",
+        "impression_tracker": "https://track.example.com/imp?pkg=coffee-sponsored"
+      }
+    }
+  ]
+}
+```
+
+The buyer's offer summary helps the retailer judge relevance. The creative manifest is included inline with the offer, specifying which catalog items to feature, promotion badges, and rendering assets. For large creatives, the manifest references external assets via URLs rather than embedding them directly.
+
+## Identity Match
+
+The retailer sends an Identity Match request with the shopper's loyalty token. The `package_ids` include ALL active packages for this buyer — not just those on the current page — to prevent the buyer from correlating this request with the context match by comparing package sets:
+
+```json
+{
+  "type": "identity_match_request",
+  "request_id": "id-retail-c7b2",
+  "identities": [
+    { "user_token": "tok_loyalty_m3p7", "uid_type": "publisher_first_party" },
+    { "user_token": "a1b2c3d4e5f67890abcdef...", "uid_type": "hashed_email" }
+  ],
+  "package_ids": ["pkg-coffee-sponsored", "pkg-snacks-display", "pkg-dairy-promo", "pkg-bakery-seasonal", "pkg-frozen-meals", "pkg-household-q1"]
+}
+```
+
+The buyer responds with the IDs of eligible packages and a TTL:
+
+```json
+{
+  "type": "identity_match_response",
+  "request_id": "id-retail-c7b2",
+  "eligible_package_ids": [
+    "pkg-coffee-sponsored",
+    "pkg-snacks-display",
+    "pkg-bakery-seasonal",
+    "pkg-frozen-meals"
+  ],
+  "ttl_sec": 60
+}
+```
+
+The publisher does not need to know why a user is or isn't eligible — just whether they are. Catalog items to display come from the creative manifest in the Context Match offer, not from the Identity Match response.
+
+## Activation
+
+The retailer joins both responses:
+
+- Accept the coffee sponsored offer
+- Use the inline creative manifest from the offer for catalog items, promotion badges, and rendering assets
+- Check Identity Match: is the package in `eligible_package_ids`?
+- The retailer's own recommendation engine integrates the sponsored results alongside organic results
+
+## Example Flow
+
+```
+Shopper searches "cold brew"
+  → Retailer sends Context Match: coffee sponsored package available
+  → Buyer: offer with creative manifest (cold brew + iced latte items, promo banner, badges)
+
+  → (fuzzed) Retailer sends Identity Match: loyalty token + all active package IDs
+  → Buyer: eligible_package_ids includes pkg-coffee-sponsored, ttl_sec: 60
+
+  → Retailer joins: accept offer, render items from creative manifest
+  → Render sponsored carousel in search results
+```

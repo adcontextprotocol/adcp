@@ -1,0 +1,956 @@
+---
+title: get_adcp_capabilities
+description: "get_adcp_capabilities is the first call a buyer makes to discover an AdCP seller's supported protocols, auth model, version, and feature capabilities. Request and response schema reference."
+"og:title": "AdCP — get_adcp_capabilities"
+testable: false
+---
+
+Discover a seller's protocol support and capabilities across all AdCP protocols. This is the first call a buyer should make to understand what a seller supports.
+
+**Response Time**: ~2 seconds (configuration lookup)
+
+**Purpose**:
+- **AdCP discovery** - Does this agent support AdCP? Which versions?
+- **Protocol support** - Which protocols (media_buy, signals, governance, sponsored_intelligence, creative, brand)?
+- **Auth model** - Does this seller trust the agent directly, or must each operator authenticate independently?
+- **Detailed capabilities** - Features, execution integrations, geo targeting, portfolio
+
+**Request Schema**: [`/schemas/3.0.1/protocol/get-adcp-capabilities-request.json`](https://adcontextprotocol.org/schemas/3.0.1/protocol/get-adcp-capabilities-request.json)
+**Response Schema**: [`/schemas/3.0.1/protocol/get-adcp-capabilities-response.json`](https://adcontextprotocol.org/schemas/3.0.1/protocol/get-adcp-capabilities-response.json)
+
+## Tool-Based Discovery
+
+AdCP uses native MCP/A2A tool discovery. **The presence of `get_adcp_capabilities` in an agent's tool list indicates AdCP support.**
+
+```
+Discovery Flow:
+1. Browse agent's tool list (MCP) or skills (A2A)
+2. See 'get_adcp_capabilities' tool → Agent supports AdCP
+3. Call get_adcp_capabilities → Get version, protocols, features, capabilities
+4. Proceed based on returned capabilities
+```
+
+This approach:
+- Uses standard MCP/A2A mechanisms (no custom extensions)
+- Always returns current capabilities (not stale metadata)
+- Single source of truth for all capability information
+
+:::note
+The agent card extension (`adcp-extension.json`) has been removed in v3. Use tool-based discovery instead.
+:::
+
+## Version Negotiation
+
+Sellers declare which major versions they support via `adcp.major_versions` in the response. Buyers declare which version they're using via `adcp_major_version` on the request.
+
+```
+Version Negotiation Flow:
+1. Buyer calls get_adcp_capabilities with adcp_major_version: 2
+2. Seller checks 2 against its major_versions: [2, 3]
+3. Version is supported → seller returns capabilities for v2
+4. Buyer includes adcp_major_version: 2 on all subsequent requests
+```
+
+`adcp_major_version` is an optional field on every AdCP request schema. Buyers SHOULD include it on all requests when interacting with a multi-version seller.
+
+**Seller behavior:**
+- If `adcp_major_version` is provided and supported → respond using that version's schemas
+- If `adcp_major_version` is provided but unsupported → return `VERSION_UNSUPPORTED` (buyer should call without `adcp_major_version` to discover supported versions)
+- If `adcp_major_version` is omitted → assume the highest supported version
+
+**Why major versions, not minor?** Semver policy guarantees backward compatibility within a major version. A seller at 3.1 can serve a buyer at 3.0 without negotiation. The capability model handles feature-level differences — buyers check specific capabilities (targeting systems, features, extensions) rather than version numbers to determine compatibility.
+
+## Request Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `adcp_major_version` | integer | Optional. The AdCP major version the buyer's payloads conform to. When provided, the seller validates against its `major_versions` and returns `VERSION_UNSUPPORTED` if not in range. When omitted, the seller assumes the highest major version it supports. |
+| `protocols` | string[] | Optional. Filter to specific protocols (`media_buy`, `signals`, `governance`, `sponsored_intelligence`, `creative`, `brand`). If omitted, returns all supported protocols. |
+
+## Response Structure
+
+### adcp
+
+Core AdCP protocol information:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[3]`) |
+| `idempotency` | object | **Required.** Idempotency semantics for mutating requests. See [idempotency](#idempotency). |
+
+#### idempotency
+
+Declares whether this seller honors `idempotency_key` replay protection on mutating requests. Mirrors the `request_signing.supported` pattern — a single positive declaration, decoupled from the window detail. Clients MUST NOT assume a default; a seller without this block is non-compliant and should be treated as unsafe for retry-sensitive operations.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | **Required.** Whether the seller deduplicates replays. When `false`, sending an `idempotency_key` is a no-op — the seller will NOT return `IDEMPOTENCY_CONFLICT` or `IDEMPOTENCY_EXPIRED`, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., `get_media_buys` by `buyer_ref`) before retrying spend-committing operations. |
+| `replay_ttl_seconds` | integer | Required when `supported: true`. How long the seller retains a canonical response for a key. Minimum `3600` (1h); recommended `86400` (24h); maximum `604800` (7d). |
+
+```json
+{
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+  }
+}
+```
+
+Sellers that do not support replay dedup declare it explicitly:
+
+```json
+{
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": false }
+  }
+}
+```
+
+**Verifying the declaration.** `idempotency.supported: true` is a trust-bearing claim that enables buyers to safely retry spend-committing operations. A compromised or buggy seller could advertise `true` while silently ignoring keys, causing buyer double-spend on retry. Buyers and conformance runners SHOULD probe the declaration with a deliberate payload-mutation replay: send two requests with the same `idempotency_key` but different canonical payloads — a conformant seller MUST return `IDEMPOTENCY_CONFLICT` on the second. Sellers declaring `supported: true` MUST pass this probe as part of the baseline compliance storyboard before the declaration is considered verified.
+
+### supported_protocols
+
+AdCP protocols this agent supports. This is the single capability axis — each value both (a) declares which tools the agent implements *and* (b) commits the agent to pass the baseline compliance storyboard at `/compliance/{version}/protocols/{protocol}/`. The runner maps JSON snake_case → URL kebab-case (`media_buy` → `/compliance/.../protocols/media-buy/`).
+
+```json
+{
+  "supported_protocols": ["media_buy", "creative"]
+}
+```
+
+Valid values: `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`.
+
+See the [Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog) for every protocol's scope. Support for the [compliance test controller](/dist/docs/3.0.1/building/implementation/comply-test-controller) is declared via the separate `compliance_testing` capability block (below), not as a protocol value.
+
+### specialisms
+
+Optional specialization claims. Each entry corresponds to a narrow storyboard at `/compliance/{version}/specialisms/{id}/`. Every specialism rolls up to one protocol in `supported_protocols` — claiming `sales-guaranteed` requires `media_buy`. The runner rejects a specialism whose parent protocol is missing.
+
+```json
+{
+  "specialisms": ["sales-guaranteed", "creative-template"]
+}
+```
+
+See the full [Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog) for every specialism and the [enum schema](https://adcontextprotocol.org/schemas/3.0.1/enums/specialism.json) for the authoritative list.
+
+### account
+
+Account and authentication capabilities. All sellers should declare this section — buyers read it before calling `sync_accounts`, `list_accounts`, or any authenticated task. Even simple publishers need account management to handle billing relationships and sandbox testing.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported_billing` | string[] | **Required.** Billing models this seller supports: `operator`, `agent`. The buyer must pass one of these values as `billing` in every `sync_accounts` entry. |
+| `require_operator_auth` | boolean | Default: `false`. Determines the account model. When `true` (explicit accounts): each operator authenticates independently, buyer discovers accounts via `list_accounts`, passes `account_id`. When `false` (implicit accounts): agent is trusted, buyer declares accounts via `sync_accounts`, passes natural key (`brand` + `operator`). For sandbox, the path follows the account model: explicit accounts discover pre-existing test accounts via `list_accounts`; implicit accounts declare sandbox via `sync_accounts` with `sandbox: true`. |
+| `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
+| `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling `get_products`. When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. |
+| `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/dist/docs/3.0.1/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
+| `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. For sandbox, the path follows the account model: explicit accounts discover pre-existing test accounts via `list_accounts`; implicit accounts declare sandbox via `sync_accounts` with `sandbox: true` — no real platform calls or spend. See [Sandbox mode](/dist/docs/3.0.1/media-buy/advanced-topics/sandbox). |
+
+#### Auth models
+
+**Implicit accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, then calls `sync_accounts` to declare which brands and operators it represents. The seller provisions accounts based on the agent's claims, optionally verifying operators against `brand.json`. All subsequent calls use the agent's single credential and pass natural keys (`brand` + `operator`).
+
+**Explicit accounts** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and discovers accounts via `list_accounts`. The buyer passes seller-assigned `account_id` values on all subsequent requests.
+
+For sandbox, the path follows the account model: explicit accounts (`require_operator_auth: true`) discover pre-existing test accounts via `list_accounts`; implicit accounts declare sandbox via `sync_accounts` with `sandbox: true`.
+
+See [Accounts and Agents](/dist/docs/3.0.1/building/integration/accounts-and-agents#what-sellers-declare) for full workflows and [seller patterns](/dist/docs/3.0.1/building/integration/accounts-and-agents#seller-patterns) for common combinations of auth model and billing support.
+
+### media_buy
+
+Media-buy protocol capabilities. Only present if `media_buy` is in `supported_protocols`. Sellers declaring `media_buy` should also include `account` (with `supported_billing`) and `media_buy.portfolio` — buyers need both to establish billing and understand inventory coverage. Compliance testing validates their presence.
+
+:::note 3.0 breaking changes
+The following fields have been removed from the capabilities response:
+- `media_buy.reporting` — Reporting is implied by `media_buy`. Use product-level `reporting_capabilities` instead.
+- `features.content_standards` — Replaced by `media_buy.content_standards` object. Presence of the object indicates support.
+- `features.audience_targeting` — Replaced by `media_buy.audience_targeting` object. Presence of the object indicates support.
+- `features.conversion_tracking` — Replaced by `media_buy.conversion_tracking` object. Presence of the object indicates support.
+- `execution.targeting.device_platform`, `device_type` — Implied by `media_buy` support.
+- `execution.targeting.audience_include`, `audience_exclude` — Implied by `audience_targeting` object presence.
+- `execution.trusted_match.supported` — Object presence indicates support.
+- `brand.identity` — Implied by `brand` in `supported_protocols`. `get_brand_identity` is always available.
+:::
+
+#### reporting_delivery_methods
+
+Declares which push-based delivery methods are available across the seller's product portfolio. Polling via `get_media_buy_delivery` is a required task for all `media_buy` sellers regardless of this field.
+
+| Method | Description | Configuration |
+|--------|-------------|---------------|
+| `webhook` | Seller pushes to buyer-provided URL | Buyer configures `reporting_webhook` per media buy |
+| `offline` | Seller pushes batch files to a cloud storage bucket | Seller provisions `reporting_bucket` per account |
+
+When absent, only polling is available. Cadence and metrics are declared per product in `reporting_capabilities`.
+
+When `offline` is declared, also include `offline_delivery_protocols` to declare which cloud storage protocols are supported (`s3`, `gcs`, `azure_blob`). Buyers express a protocol preference via `preferred_reporting_protocol` in `sync_accounts`; the seller provisions the account's `reporting_bucket` using a supported protocol.
+
+For offline delivery, the seller provisions a per-account bucket and grants the buyer read access out-of-band. The bucket location (including `file_retention_days`) appears on the account object returned by `sync_accounts` as `reporting_bucket`. See [Offline File Delivery](/dist/docs/3.0.1/media-buy/media-buys/optimization-reporting#offline-file-delivery-based-reporting) for details.
+
+#### features
+
+Optional media-buy features. **If declared true, seller MUST honor requests using that feature.**
+
+| Feature | Description |
+|---------|-------------|
+| `inline_creative_management` | Accepts creatives inline in `create_media_buy` requests |
+| `property_list_filtering` | Honors `property_list` parameter in `get_products` |
+| `catalog_management` | Supports `sync_catalogs` for catalog feed management |
+
+#### content_standards
+
+Content standards implementation details. Presence of this object indicates the seller supports content_standards configuration including sampling rates and category filtering. Gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supports_local_evaluation` | boolean | Whether the seller runs a local evaluation model. When `false`, `local_verdict` will always be `unevaluated` and the `failures_only` filter on `get_media_buy_artifacts` is not useful. |
+| `supported_channels` | string[] | Channels for which the seller can provide content artifacts. Helps buyers understand which parts of a mixed-channel buy will have content standards coverage. |
+| `supports_webhook_delivery` | boolean | Whether the seller supports push-based artifact delivery via `artifact_webhook` configured at buy creation time. |
+
+**Example:**
+
+```json
+{
+  "content_standards": {
+    "supports_local_evaluation": true,
+    "supported_channels": ["display", "olv", "podcast"],
+    "supports_webhook_delivery": true
+  }
+}
+```
+
+If `supports_local_evaluation` is `false`, the `failures_only` filter on `get_media_buy_artifacts` will return an empty result set — all verdicts will be `unevaluated`.
+
+#### execution
+
+Technical execution capabilities:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `trusted_match` | object | [TMP](/dist/docs/3.0.1/trusted-match) support. When present, this seller supports real-time contextual and/or identity matching. Check individual products for per-product TMP capabilities. |
+| `axe_integrations` | string[] | Deprecated. Legacy AXE URLs this seller can execute through. Use `trusted_match` for new integrations. |
+| `creative_specs` | object | Creative specification support (VAST versions, MRAID, etc.) |
+| `targeting` | object | Targeting capabilities (geo granularity) |
+
+##### axe_integrations
+
+`axe_integrations` is an array of Agentic Ad Exchange (AXE) endpoint URLs that this seller can execute through. AXE is the real-time execution layer for AdCP campaigns — it connects buyer agents to programmatic inventory via standardized exchanges.
+
+When a seller declares AXE URLs in their capabilities, buyers can:
+- Route impression-level execution through the declared exchange
+- Use the exchange's targeting, optimization, and measurement capabilities
+- Execute alongside the seller's direct-sold inventory
+
+Buyers discover AXE support via `get_adcp_capabilities` and filter products to AXE-enabled sellers using `required_axe_integrations` on [`get_products`](/dist/docs/3.0.1/media-buy/task-reference/get_products).
+
+##### creative_specs
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `vast_versions` | string[] | VAST versions supported (e.g., `["4.0", "4.1", "4.2"]`) |
+| `mraid_versions` | string[] | MRAID versions supported |
+| `vpaid` | boolean | VPAID support |
+| `simid` | boolean | SIMID support |
+
+##### targeting
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `geo_countries` | boolean | Country-level targeting using ISO 3166-1 alpha-2 codes |
+| `geo_regions` | boolean | Region/state-level targeting using ISO 3166-2 codes (e.g., `US-NY`, `GB-SCT`) |
+| `geo_metros` | object | Metro area targeting with system-specific support |
+| `geo_postal_areas` | object | Postal area targeting with country and precision support |
+| `age_restriction` | object | Age restriction capabilities with `supported` flag and `verification_methods` |
+| `language` | boolean | Language targeting (ISO 639-1 codes) |
+| `keyword_targets` | object | Keyword targeting with `supported_match_types` array (`broad`, `phrase`, `exact`). Presence indicates support. |
+| `negative_keywords` | object | Negative keyword targeting with `supported_match_types` array. Presence indicates support. |
+| `geo_proximity` | object | Proximity targeting from arbitrary coordinates (see below) |
+
+Device platform and device type targeting are implied by `media_buy` support. Audience include/exclude targeting is implied by the presence of the `audience_targeting` capabilities object.
+
+Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. If a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them. See [Targeting Overlays](/dist/docs/3.0.1/media-buy/advanced-topics/targeting) for exclusion semantics.
+
+**geo_proximity** specifies which proximity targeting methods are supported:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `radius` | boolean | Simple radius targeting (distance circle from a point) |
+| `travel_time` | boolean | Travel time isochrone targeting (requires a routing engine) |
+| `geometry` | boolean | Pre-computed GeoJSON geometry (buyer provides the polygon) |
+| `transport_modes` | string[] | Transport modes supported for isochrones: `driving`, `walking`, `cycling`, `public_transport` |
+
+**geo_metros** specifies which metro classification systems are supported:
+
+| System | Description |
+|--------|-------------|
+| `nielsen_dma` | Nielsen DMA codes (US market, e.g., `501` for NYC) |
+| `uk_itl1` | UK ITL Level 1 regions |
+| `uk_itl2` | UK ITL Level 2 regions |
+| `eurostat_nuts2` | Eurostat NUTS Level 2 regions (EU) |
+
+**geo_postal_areas** specifies which postal code systems are supported:
+
+| System | Description |
+|--------|-------------|
+| `us_zip` | US 5-digit ZIP codes (e.g., `10001`) |
+| `us_zip_plus_four` | US 9-digit ZIP+4 codes (e.g., `10001-1234`) |
+| `gb_outward` | UK postcode district (e.g., `SW1`, `EC1`) |
+| `gb_full` | UK full postcode (e.g., `SW1A 1AA`) |
+| `ca_fsa` | Canadian Forward Sortation Area (e.g., `K1A`) |
+| `ca_full` | Canadian full postal code (e.g., `K1A 0B1`) |
+| `de_plz` | German Postleitzahl (e.g., `10115`) |
+| `fr_code_postal` | French code postal (e.g., `75001`) |
+| `au_postcode` | Australian postcode (e.g., `2000`) |
+| `ch_plz` | Swiss Postleitzahl (e.g., `8000`) |
+| `at_plz` | Austrian Postleitzahl (e.g., `1010`) |
+
+#### audience_targeting
+
+Audience targeting capabilities. Presence of this object indicates the seller supports audience targeting, including `sync_audiences` and `audience_include`/`audience_exclude` in targeting overlays. Describes what identifier types the seller accepts for audience matching, size constraints, and expected matching latency.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `supported_identifier_types` | string[] | **Required** | PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports. Values: `hashed_email`, `hashed_phone`. |
+| `minimum_audience_size` | integer | **Required** | Minimum matched audience size required for targeting. Audiences below this threshold will have `status: too_small`. Varies by platform (100–1000 is typical). |
+| `supports_platform_customer_id` | boolean | | When `true`, the seller accepts the buyer's CRM/loyalty ID as a matchable identifier. Only applicable when the seller operates a closed ecosystem with a shared ID namespace (e.g., a retailer matching against their loyalty program). Buyers can include `platform_customer_id` values in `AudienceMember.identifiers`. Reporting on matched IDs typically requires a clean room or the seller's own reporting surface. |
+| `supported_uid_types` | string[] | | Universal ID types accepted for audience matching (MAIDs, RampID, UID2, etc.). MAID support varies significantly by platform — check this field before sending `uids` with `type: maid`. |
+| `matching_latency_hours` | object | | Expected matching latency range in hours after upload. Use to calibrate polling cadence and set appropriate expectations before configuring `push_notification_config`. Shape: `{ min: integer, max: integer }`. |
+
+#### conversion_tracking
+
+Seller-level conversion tracking capabilities. Declares what the seller supports for `kind: "event"` optimization goals.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `multi_source_event_dedup` | boolean | Whether the seller can deduplicate events across multiple event sources within a single goal. When `true`, the same `event_id` from multiple sources counts once. When `false` or absent, buyers should use a single event source per goal. |
+| `supported_event_types` | string[] | Event types this seller can track. If omitted, all standard event types are supported. |
+| `supported_uid_types` | string[] | Universal ID types accepted for user matching. |
+| `supported_hashed_identifiers` | string[] | Hashed PII types accepted (`hashed_email`, `hashed_phone`). Buyers must hash before sending (SHA-256, normalized). |
+| `supported_action_sources` | string[] | Action sources this seller accepts events from. |
+| `attribution_windows` | object[] | Available attribution windows. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via `attribution_window` on optimization goals. |
+
+#### portfolio
+
+Inventory portfolio information:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `publisher_domains` | string[] | **Required.** Publisher domains this seller represents |
+| `primary_channels` | string[] | Main advertising channels |
+| `primary_countries` | string[] | Main countries (ISO codes) |
+| `description` | string | Markdown portfolio description |
+| `advertising_policies` | string | Content policies and restrictions |
+
+### signals
+
+Signals protocol capabilities. Only present if `signals` is in `supported_protocols`. Reserved for future use.
+
+### creative
+
+Creative protocol capabilities. Only present if `creative` is in `supported_protocols`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supports_compliance` | boolean | When `true`, this creative agent can process briefs with compliance requirements (`required_disclosures`, `prohibited_claims`) and will validate that disclosures can be satisfied by the target format. Use the `disclosure_positions` filter on `list_creative_formats` to find compatible formats. |
+
+### governance
+
+Governance protocol capabilities. Only present if `governance` is in `supported_protocols`. Governance agents declare capabilities across four domains: property evaluation, creative evaluation, content standards verification, and policy registry integration.
+
+#### property_features
+
+Array of property features this governance agent can evaluate. See [Property Governance](/dist/docs/3.0.1/governance/property/index).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `feature_id` | string | **Required.** Unique identifier (e.g., `mfa_score`, `coppa_certified`). Use `registry:{policy_id}` prefix for features mapped to [Policy Registry](/dist/docs/3.0.1/governance/policy-registry) entries. |
+| `type` | string | **Required.** Data type: `binary`, `quantitative`, or `categorical` |
+| `range` | object | For quantitative: `{ min, max }` |
+| `categories` | string[] | For categorical: valid values |
+| `description` | string | Human-readable description |
+| `methodology_url` | string | URL to methodology documentation |
+
+#### creative_features
+
+Array of creative features this governance agent can evaluate. Same field schema as `property_features`. See [Creative Governance](/dist/docs/3.0.1/governance/creative/index).
+
+Creative governance agents evaluate creatives for security, content categorization, and regulatory compliance. Buyers filter creatives by feature requirements — for example, blocking creatives flagged for `auto_redirect` or requiring `registry:eu_ai_act_article_50` compliance.
+
+#### content_standards
+
+Content standards verification capabilities. See [Content Standards](/dist/docs/3.0.1/governance/content-standards/index).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | Whether this agent can serve as a content standards verification agent |
+| `calibration_formats` | string[] | Artifact asset types this agent can evaluate (e.g., `text`, `image`, `video`, `audio`) |
+
+#### policy_registry
+
+Policy registry integration capabilities. See [Policy Registry](/dist/docs/3.0.1/governance/policy-registry).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | Whether this agent consumes policies from the AdCP Policy Registry |
+| `domains` | string[] | Governance domains this agent covers (e.g., `campaign`, `property`, `creative`, `content_standards`) |
+
+**Example governance agent response:**
+
+```json
+{
+  "$schema": "/schemas/3.0.1/protocol/get-adcp-capabilities-response.json",
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+  },
+  "supported_protocols": ["governance"],
+  "governance": {
+    "property_features": [
+      { "feature_id": "mfa_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Made For Advertising detection (0=quality content, 100=likely MFA)", "methodology_url": "https://vendor.example.com/methodology/mfa" },
+      { "feature_id": "coppa_certified", "type": "binary", "description": "COPPA compliance certification" },
+      { "feature_id": "registry:uk_hfss", "type": "binary", "description": "UK HFSS advertising restrictions compliance" },
+      { "feature_id": "carbon_score", "type": "quantitative", "range": { "min": 0, "max": 100 }, "description": "Carbon footprint sustainability score", "methodology_url": "https://vendor.example.com/methodology/carbon-score" }
+    ],
+    "creative_features": [
+      { "feature_id": "registry:eu_ai_act_article_50", "type": "binary", "description": "EU AI Act Article 50 — AI-generated content disclosure" },
+      { "feature_id": "registry:ca_sb_942", "type": "binary", "description": "California SB 942 — AI transparency compliance" },
+      { "feature_id": "auto_redirect", "type": "binary", "description": "Detects auto-redirect behavior in creative code" },
+      { "feature_id": "credential_harvest", "type": "binary", "description": "Detects credential harvesting patterns" }
+    ],
+    "content_standards": {
+      "supported": true,
+      "calibration_formats": ["text", "image", "video"]
+    },
+    "policy_registry": {
+      "supported": true,
+      "domains": ["campaign", "property", "creative", "content_standards"]
+    }
+  }
+}
+```
+
+### compliance_testing
+
+Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via [`comply_test_controller`](/dist/docs/3.0.1/building/implementation/comply-test-controller). Omit the block if the agent does not support compliance testing.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scenarios` | string[] | Compliance testing scenarios this agent supports. Possible values: `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`. Runners MUST accept unknown scenario strings — new scenarios may be added in additive minor bumps. |
+
+Storyboard runners check for the `compliance_testing` block before running deterministic testing steps. If the agent does not include the block, controller-dependent storyboard steps cannot be validated.
+
+Agents that implement `comply_test_controller` SHOULD include the `compliance_testing` capability block and list supported scenarios. Agents that only support a subset of scenarios (e.g., media buy status but not SI sessions) declare only those scenarios — the runner skips unsupported ones.
+
+:::note
+Compliance testing requires sandbox mode. The `comply_test_controller` tool returns `FORBIDDEN` if the account is not in sandbox.
+:::
+
+### webhook_signing
+
+Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook` or `media_buy.content_standards.supports_webhook_delivery: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/dist/docs/3.0.1/building/implementation/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | **Required when the seller advertises mutating-webhook emission elsewhere in its capability surface.** `true` iff the seller signs outbound webhooks. `false` means the seller emits webhooks but does not sign them; buyers MUST fail onboarding. Sellers that emit no webhooks SHOULD omit the entire block rather than set `supported: false` — `false` is reserved for the unsafe posture of unsigned-webhook emission, not absence-of-webhooks. |
+| `profile` | string | **Required when `supported: true`.** The profile version string. Currently `"adcp/webhook-signing/v1"`. Future versions bump the string. |
+| `algorithms` | string[] | **Required when `supported: true`.** Subset of `["ed25519", "ecdsa-p256-sha256"]` — the algorithms this seller will sign webhooks with. Matches the webhook-signing verifier allowlist (see [Verifier checklist for webhooks](/dist/docs/3.0.1/building/implementation/security#webhook-callbacks), step 4). Buyers MUST be prepared to verify any algorithm listed AND MUST reject onboarding with a user-actionable error if an advertised algorithm is outside this enumerated set — a seller advertising an out-of-set algorithm (e.g., `hs256`) is either misconfigured or signalling a non-conforming profile. |
+| `legacy_hmac_fallback` | boolean | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0. |
+
+**Example:**
+
+```json
+{
+  "webhook_signing": {
+    "supported": true,
+    "profile": "adcp/webhook-signing/v1",
+    "algorithms": ["ed25519", "ecdsa-p256-sha256"],
+    "legacy_hmac_fallback": false
+  }
+}
+```
+
+The webhook-signing block is parallel to `request_signing` (inbound) and the two blocks cover the two signing directions between buyer and seller. Buyers SHOULD validate both at onboarding; a seller that signs one direction but not the other has a lopsided security posture that operators need to notice explicitly.
+
+### extensions_supported
+
+Array of extension namespaces this agent supports. Buyers can expect meaningful data in `ext.{namespace}` fields on responses from this agent.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `extensions_supported` | string[] | Extension namespaces (e.g., `["iab_tcf", "iab_gpp"]`) |
+
+Extension schemas are published in the [AdCP extension registry](/dist/docs/3.0.1/building/integration/context-sessions#extensions). When an agent declares support for an extension, buyers know to look for and process `ext.{namespace}` data in responses.
+
+**Example:**
+```json
+{
+  "extensions_supported": ["iab_tcf", "iab_gpp", "acmecorp"]
+}
+```
+
+### experimental_features
+
+Array of experimental AdCP surfaces this agent implements. A surface is experimental when its schema carries `x-status: experimental` — it is part of the core protocol but not yet frozen and may break between 3.x releases with 6 weeks' notice. Sellers that implement any experimental surface MUST list its feature id here.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "trusted_match.core", "sponsored_intelligence.core"]`) |
+
+Buyers should inspect `experimental_features` before relying on an experimental surface. A seller that does not list a surface is asserting it does not implement it — there is no "silently experimental" mode.
+
+**Example:**
+```json
+{
+  "experimental_features": ["brand.rights_lifecycle", "trusted_match.core"]
+}
+```
+
+See [experimental status](/dist/docs/3.0.1/reference/experimental-status) for the full stability contract, graduation criteria, and client guidance.
+
+This tells buyers:
+- Responses may include `ext.iab_tcf` with IAB TCF consent data
+- Responses may include `ext.iab_gpp` with IAB GPP (Global Privacy Platform) signals
+- Responses may include `ext.acmecorp` with vendor-specific data from Acme Corp
+
+## The Capability Contract
+
+**If a capability is declared, the seller MUST honor it.**
+
+- `media_buy.execution.targeting.geo_postal_areas.us_zip: true` → Buyer can send US ZIP codes, seller MUST honor them
+- `media_buy.execution.targeting.geo_metros.nielsen_dma: true` → Buyer can send DMA codes, seller MUST honor them
+- `media_buy.content_standards` object present → Seller MUST apply content standards when provided
+- `media_buy.audience_targeting` object present → Seller MUST support `sync_audiences` and audience targeting overlays
+- `media_buy.conversion_tracking` object present → Seller MUST support `sync_event_sources` and `log_event`
+- AXE URL in `media_buy.execution.axe_integrations` → Seller can execute through that exchange (legacy — new integrations use [TMP](/dist/docs/3.0.1/trusted-match))
+
+No silent ignoring. If a seller can't support a capability, they should declare `false` or omit it.
+
+## Common Scenarios
+
+### Basic Capability Discovery
+
+```javascript
+import { AdcpClient } from '@adcp/client';
+
+const client = new AdcpClient({ baseUrl: 'https://seller.example.com/mcp' });
+
+// Get seller capabilities
+const result = await client.getAdcpCapabilities({});
+
+if (result.errors) {
+  throw new Error(`Request failed: ${result.errors[0].message}`);
+}
+
+// Check protocol support
+console.log(`AdCP versions: ${result.adcp.major_versions.join(', ')}`);
+console.log(`Supported protocols: ${result.supported_protocols.join(', ')}`);
+
+// Check media-buy capabilities
+if (result.supported_protocols.includes('media_buy')) {
+  const mediaBuy = result.media_buy;
+
+  // Check content standards support (object presence = signal)
+  if (mediaBuy.content_standards) {
+    console.log('Content standards supported');
+  }
+
+  // Check AXE integrations (legacy — new integrations use TMP via trusted_match on products)
+  if (mediaBuy.execution?.axe_integrations?.includes('https://axe.example.com')) {
+    console.log('AXE integration available');
+  }
+
+  // Check geo targeting
+  if (mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip) {
+    console.log('US ZIP code targeting supported');
+  }
+
+  // Portfolio overview
+  console.log(`Publishers: ${mediaBuy.portfolio.publisher_domains.length}`);
+  console.log(`Channels: ${mediaBuy.portfolio.primary_channels?.join(', ')}`);
+}
+```
+
+### Check multi-protocol support
+
+```javascript
+const caps = await client.getAdcpCapabilities({});
+
+const sellsMedia = caps.supported_protocols.includes('media_buy');
+const managesCreatives = caps.supported_protocols.includes('creative');
+
+if (sellsMedia && managesCreatives) {
+  // Single agent handles both protocols — no need to discover a separate service
+  const formats = await client.listCreativeFormats({});
+  const delivery = await client.getCreativeDelivery({
+    media_buy_ids: ['mb_12345']
+  });
+}
+```
+
+### Filter sellers by capability
+
+```javascript
+// Find sellers that support specific requirements
+async function findCompatibleSellers(sellers, requirements) {
+  const compatible = [];
+
+  for (const sellerUrl of sellers) {
+    const client = new AdcpClient({ baseUrl: sellerUrl });
+    const caps = await client.getAdcpCapabilities({});
+
+    if (caps.errors) continue;
+
+    // Must support media_buy protocol
+    if (!caps.supported_protocols.includes('media_buy')) continue;
+
+    const mediaBuy = caps.media_buy;
+
+    // Check AXE integration requirement (legacy — new integrations use TMP)
+    if (requirements.axeIntegration) {
+      if (!mediaBuy.execution?.axe_integrations?.includes(requirements.axeIntegration)) {
+        continue;
+      }
+    }
+
+    // Check geo targeting requirement
+    if (requirements.postalCodeTargeting) {
+      if (!mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip) {
+        continue;
+      }
+    }
+
+    // Check content standards requirement (object presence = signal)
+    if (requirements.contentStandards) {
+      if (!mediaBuy.content_standards) {
+        continue;
+      }
+    }
+
+    compatible.push({ url: sellerUrl, capabilities: caps });
+  }
+
+  return compatible;
+}
+
+// Usage
+const sellers = await findCompatibleSellers(
+  ['https://seller1.com/mcp', 'https://seller2.com/mcp'],
+  {
+    axeIntegration: 'https://axe.example.com',
+    postalCodeTargeting: true,
+    contentStandards: true
+  }
+);
+```
+
+### Use Capabilities to Build Targeting
+
+Capabilities tell you what you CAN specify in create_media_buy targeting. Use `required_geo_targeting` to filter products to sellers that support specific geo targeting levels and systems:
+
+```javascript
+// First, check capabilities
+const caps = await client.getAdcpCapabilities({});
+
+if (!caps.supported_protocols.includes('media_buy')) {
+  throw new Error('Seller does not support media_buy protocol');
+}
+
+const mediaBuy = caps.media_buy;
+
+// Filter products to sellers with specific geo targeting capabilities
+const products = await client.getProducts({
+  brief: "Premium video inventory in US for ZIP-targeted campaign",
+  filters: {
+    channels: ['olv', 'ctv'],
+    countries: ['US'],
+    // Require seller supports ZIP targeting (capability filter - no actual ZIPs needed)
+    // level = granularity, system = classification taxonomy
+    required_geo_targeting: [
+      { level: 'postal_area', system: 'us_zip' }
+    ],
+    // Only include if seller supports this AXE (legacy — new integrations use TMP)
+    required_axe_integrations: ['https://axe.example.com']
+  }
+});
+
+// Then, create media buy with fine-grained targeting
+// (if seller supports postal areas, we can target specific ZIP codes)
+const buy = await client.createMediaBuy({
+  brand: { domain: 'mybrand.com' },
+  packages: [{
+    product_id: products.products[0].product_id,
+    pricing_option_id: products.products[0].pricing_options[0].id,
+    budget: 10000,
+    // Targeting overlay refines delivery within product coverage
+    targeting_overlay: {
+      geo_countries: ['US'],
+      // Only specify ZIP targeting if seller supports it
+      ...(mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip && {
+        geo_postal_areas: [{
+          system: 'us_zip',
+          values: ['10001', '10002', '10003', '10004', '10005']
+        }]
+      })
+    }
+  }],
+  start_time: { type: 'asap' },
+  end_time: '2025-03-01T00:00:00Z'
+});
+```
+
+**Two models for product geography:**
+
+| Inventory Type | Filter By | Example |
+|----------------|-----------|---------|
+| Digital (display, OLV, CTV) | Capability: `required_geo_targeting` | Products have broad coverage, target at buy time |
+| Local (radio, DOOH, local TV) | Coverage: `metros`, `regions` | Products ARE geographically bound |
+
+- **Digital inventory**: Use `countries` + `required_geo_targeting` (capability), apply fine-grained targeting in `create_media_buy`
+- **Local inventory**: Use `metros`/`regions` (coverage) to find products with coverage in your target markets
+
+### Local Inventory Example (Radio, DOOH)
+
+For locally-bound inventory, products ARE geographically specific. A radio station in NYC DMA only covers NYC.
+
+```javascript
+// Find radio products in specific DMAs
+const radioProducts = await client.getProducts({
+  brief: "Radio inventory in NYC and LA markets",
+  filters: {
+    channels: ['radio'],
+    // Coverage filter: products must cover these metros
+    metros: [
+      { system: 'nielsen_dma', code: '501' },  // NYC
+      { system: 'nielsen_dma', code: '803' }   // LA
+    ]
+  }
+});
+
+// For local inventory, targeting_overlay is optional -
+// the product's coverage IS the geography
+const buy = await client.createMediaBuy({
+  brand: { domain: 'mybrand.com' },
+  packages: [{
+    product_id: radioProducts.products[0].product_id,
+    pricing_option_id: radioProducts.products[0].pricing_options[0].id,
+    budget: 5000
+    // No targeting_overlay needed - product covers NYC DMA
+  }],
+  start_time: { type: 'asap' },
+  end_time: '2025-03-01T00:00:00Z'
+});
+```
+
+## Response Example
+
+```json
+{
+  "$schema": "/schemas/3.0.1/protocol/get-adcp-capabilities-response.json",
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+  },
+  "supported_protocols": ["media_buy"],
+  "account": {
+    "require_operator_auth": false,
+    "supported_billing": ["operator", "agent"]
+  },
+  "media_buy": {
+    "features": {
+      "inline_creative_management": true,
+      "property_list_filtering": true
+    },
+    "execution": {
+      "axe_integrations": ["https://axe.example.com"],
+      "creative_specs": {
+        "vast_versions": ["4.0", "4.1", "4.2"],
+        "mraid_versions": ["3.0"],
+        "vpaid": false,
+        "simid": true
+      },
+      "targeting": {
+        "geo_countries": true,
+        "geo_regions": true,
+        "geo_metros": {
+          "nielsen_dma": true
+        },
+        "geo_postal_areas": {
+          "us_zip": true,
+          "gb_outward": true,
+          "ca_fsa": true
+        },
+        "language": true,
+        "keyword_targets": {
+          "supported_match_types": ["broad", "phrase", "exact"]
+        },
+        "negative_keywords": {
+          "supported_match_types": ["broad", "exact"]
+        }
+      }
+    },
+    "content_standards": {
+      "supports_local_evaluation": true,
+      "supported_channels": ["display", "olv"],
+      "supports_webhook_delivery": false
+    },
+    "audience_targeting": {
+      "supported_identifier_types": ["hashed_email", "hashed_phone"],
+      "supports_platform_customer_id": false,
+      "supported_uid_types": ["uid2", "rampid"],
+      "minimum_audience_size": 500,
+      "matching_latency_hours": { "min": 1, "max": 24 }
+    },
+    "conversion_tracking": {
+      "multi_source_event_dedup": false,
+      "supported_event_types": ["purchase", "lead", "add_to_cart", "view_content"],
+      "supported_action_sources": ["website", "app"],
+      "attribution_windows": [
+        { "post_click": [{ "interval": 7, "unit": "days" }, { "interval": 28, "unit": "days" }], "post_view": [{ "interval": 1, "unit": "days" }, { "interval": 7, "unit": "days" }] }
+      ]
+    },
+    "portfolio": {
+      "publisher_domains": ["example.com", "news.example.com"],
+      "primary_channels": ["display", "olv"],
+      "primary_countries": ["US", "CA"]
+    }
+  },
+  "extensions_supported": ["acmecorp"],
+  "last_updated": "2025-01-23T10:00:00Z"
+}
+```
+
+This tells buyers:
+- **AdCP versions**: Version 1
+- **Protocols**: Media buy only
+- **Auth model**: Agent-trusted (`require_operator_auth: false`) — authenticate once, declare brands via `sync_accounts`
+- **Billing**: Operator or agent billing; default is operator
+- **Country targeting**: Available (ISO 3166-1 alpha-2: `US`, `GB`, etc.)
+- **Region targeting**: Available (ISO 3166-2: `US-NY`, `GB-SCT`, etc.)
+- **Metro targeting**: Nielsen DMA only (US market)
+- **Postal targeting**: US ZIP, UK outward codes, Canadian FSA
+- **Audience targeting**: Accepts hashed email, hashed phone, UID2, and RampID; minimum matched audience size of 500; matching latency 1–24 hours
+- **Conversion tracking**: Accepts purchase, lead, add_to_cart, view_content events from website/app; no multi-source dedup
+- **Extensions**: Vendor-specific data in `ext.acmecorp`
+
+### Multi-protocol agent
+
+An agent can implement multiple protocols from a single endpoint. This is common for sellers that manage both media buying and creative generation — the buyer calls all tasks on the same URL.
+
+```json
+{
+  "$schema": "/schemas/3.0.1/protocol/get-adcp-capabilities-response.json",
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+  },
+  "supported_protocols": ["media_buy", "creative"],
+  "account": {
+    "require_operator_auth": false,
+    "supported_billing": ["operator"]
+  },
+  "media_buy": {
+    "features": {
+      "inline_creative_management": true
+    },
+    "portfolio": {
+      "publisher_domains": ["news.example.com"],
+      "primary_channels": ["display", "olv"]
+    }
+  },
+  "creative": {
+    "has_creative_library": true,
+    "supports_generation": true,
+    "supports_transformation": false,
+    "supports_compliance": false
+  }
+}
+```
+
+This agent supports:
+- **Media Buy Protocol**: Product discovery, media buying, delivery reporting
+- **Creative Protocol**: Creative library management, AI-powered creative generation, variant-level delivery analytics via `get_creative_delivery`
+- **Shared account**: A single account established via `sync_accounts` applies to both protocols
+
+When `supported_protocols` includes `"creative"`, the buyer can call Creative Protocol tasks (`list_creative_formats`, `sync_creatives`, `get_creative_delivery`, etc.) on this agent. See [Creative capabilities on sales agents](/dist/docs/3.0.1/creative/sales-agent-creative-capabilities).
+
+### Geo Standards Reference
+
+| Level | System | Examples |
+|-------|--------|----------|
+| Country | ISO 3166-1 alpha-2 | `US`, `GB`, `DE`, `CA` |
+| Region | ISO 3166-2 | `US-NY`, `GB-SCT`, `DE-BY`, `CA-ON` |
+| Metro (US) | `nielsen_dma` | `501` (NYC), `803` (LA), `602` (Chicago) |
+| Metro (UK) | `uk_itl2` | `UKI` (London), `UKD` (North West) |
+| Metro (EU) | `eurostat_nuts2` | `DE30` (Berlin), `FR10` (Île-de-France) |
+| Postal (US) | `us_zip` | `10001`, `90210` |
+| Postal (US) | `us_zip_plus_four` | `10001-1234` |
+| Postal (UK) | `gb_outward` | `SW1`, `EC1`, `M1` |
+| Postal (UK) | `gb_full` | `SW1A 1AA` |
+| Postal (CA) | `ca_fsa` | `K1A`, `M5V` |
+
+## Migration from list_authorized_properties (v2)
+
+The `list_authorized_properties` task was removed in v3. If migrating from v2:
+
+| Old Field | New Location |
+|-----------|--------------|
+| `publisher_domains` | `media_buy.portfolio.publisher_domains` |
+| `primary_channels` | `media_buy.portfolio.primary_channels` |
+| `primary_countries` | `media_buy.portfolio.primary_countries` |
+| `portfolio_description` | `media_buy.portfolio.description` |
+| `advertising_policies` | `media_buy.portfolio.advertising_policies` |
+| `last_updated` | `last_updated` (top level) |
+
+New fields:
+- `adcp.major_versions` - Version compatibility
+- `supported_protocols` - Which domain protocols are supported
+- `media_buy.features` - Optional feature support
+- `media_buy.execution.axe_integrations` - Ad exchange support
+- `media_buy.execution.creative_specs` - VAST/MRAID versions
+- `media_buy.execution.targeting` - Geo targeting granularity
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `AUTH_REQUIRED` | Authentication needed | Provide credentials |
+| `VERSION_UNSUPPORTED` | Declared `adcp_major_version` not in seller's `major_versions` | Call without `adcp_major_version` to discover supported versions, then retry |
+| `INTERNAL_ERROR` | Server error | Retry with backoff |
+
+## Best Practices
+
+**1. Cache Capabilities**
+Capabilities rarely change. Cache results and use `last_updated` for staleness detection.
+
+**2. Check Protocol Support First**
+Before accessing protocol-specific fields, verify the protocol is in `supported_protocols`.
+
+**3. Check Before Requesting**
+Don't send postal areas for a system the seller doesn't support. Don't request features the seller doesn't support.
+
+**4. Fail Fast on Incompatibility**
+If a seller doesn't support required capabilities, skip them early rather than discovering failures later.
+
+**5. Read the Auth Model Before Proceeding**
+Check `account.require_operator_auth` immediately after discovery. Agent-trusted and operator-scoped flows diverge significantly: the former uses a single credential for all brands and operators, the latter requires per-operator credentials and sessions.
+
+**6. Use Protocol Version for Routing**
+Route requests to appropriate API versions based on `adcp.major_versions`.
+
+## Next Steps
+
+After discovering capabilities:
+
+1. **Set up accounts**: Follow the auth model from `account.require_operator_auth` — see [Accounts and Agents](/dist/docs/3.0.1/building/integration/accounts-and-agents#what-sellers-declare)
+2. **Filter products**: Use [`get_products`](/dist/docs/3.0.1/media-buy/task-reference/get_products) with capability-aware filters
+3. **Validate properties**: Fetch publisher `adagents.json` files for property definitions
+4. **Create buys**: Use [`create_media_buy`](/dist/docs/3.0.1/media-buy/task-reference/create_media_buy) with supported features
+
+## Learn More
+
+- [Accounts and Agents](/dist/docs/3.0.1/building/integration/accounts-and-agents) - Auth models, account setup, billing
+- [adagents.json Specification](/dist/docs/3.0.1/governance/property/adagents) - Publisher authorization files
+- [Product Filters](/dist/docs/3.0.1/media-buy/task-reference/get_products#filters) - Capability-aware filtering
+- [Content Standards](/dist/docs/3.0.1/governance/content-standards) - Brand safety configuration

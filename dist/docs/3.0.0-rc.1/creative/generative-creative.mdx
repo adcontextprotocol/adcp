@@ -1,0 +1,217 @@
+---
+title: Generative Creative
+---
+
+The Creative Protocol enables AI-powered creative generation and asset management for advertising campaigns. This guide will help you create your first creative in 5 minutes.
+
+> **Technical Reference**: This guide shows how to use the [`build_creative` task](/dist/docs/3.0.0-rc.1/creative/task-reference/build_creative). For complete API specifications, see the task reference documentation.
+
+## Overview
+
+The Creative Protocol provides AI-powered creative generation:
+
+- **`build_creative`**: Generate creative content using AI with either static manifests or dynamic code
+- **`preview_creative`**: Generate previews of creative manifests
+- **`list_creative_formats`**: Discover supported creative formats
+
+Assets are provided via [brand identity](/dist/docs/3.0.0-rc.1/brand-protocol/brand-json) - no separate asset library management needed.
+
+## Quick Start: Generate Your First Creative
+
+### Step 1: Basic Creative Generation
+
+Here's the simplest possible request to generate a native display ad:
+
+```json
+{
+  "message": "Create a simple ad for a coffee shop promotion - 20% off all drinks this week",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_native"
+  },
+  "output_mode": "manifest"
+}
+```
+
+### Step 2: Understanding the Response
+
+You'll receive a structured creative manifest:
+
+```json
+{
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_native"
+    },
+    "assets": {
+      "headline": {
+        "content": "20% Off All Drinks This Week!"
+      },
+      "description": {
+        "content": "Visit our cozy coffee shop and enjoy premium coffee at an unbeatable price."
+      },
+      "call_to_action": {
+        "content": "Visit Today"
+      }
+    }
+  }
+}
+```
+
+### Step 3: Refine Your Creative
+
+Iterate by passing the previous output's `creative_manifest` back with a new `message`. Alternatively, update the brief asset (`assets.brief`) to change the creative direction — the brief is the buyer-owned source of truth for what the creative should be.
+
+```json
+{
+  "message": "Make the headline more exciting and add urgency",
+  "target_format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_native"
+  },
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_native"
+    },
+    "assets": {
+      "headline": {
+        "content": "20% Off All Drinks This Week!"
+      }
+    }
+  }
+}
+```
+
+## Common Patterns
+
+### Using brand identity
+
+Provide brand context for better creative generation:
+
+```json
+{
+  "message": "Create a display ad for our coffee shop promotion",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
+  "brand": {
+    "domain": "mycoffeeshop.com"
+  },
+  "output_mode": "manifest"
+}
+```
+
+**Minimal brand reference**: Start with just a domain for low-friction creative generation:
+
+```json
+{
+  "message": "Create a coffee shop ad",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_native"
+  },
+  "brand": {
+    "domain": "mycoffeeshop.com"
+  }
+}
+```
+
+See [brand.json reference](/dist/docs/3.0.0-rc.1/brand-protocol/brand-json) for comprehensive examples.
+
+### Using Your Own Assets
+
+Provide existing assets to incorporate into the creative:
+
+```json
+{
+  "message": "Create a display ad featuring our signature latte",
+  "target_format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_300x250"
+    },
+    "assets": {
+      "brand_logo": {
+        "url": "https://mycoffeeshop.com/assets/logo.png",
+        "width": 200,
+        "height": 50
+      }
+    }
+  }
+}
+```
+
+### Generating Dynamic Code
+
+For real-time personalization, use code mode:
+
+```json
+{
+  "message": "Create a weather-responsive coffee ad that shows hot drinks when cold, iced drinks when warm",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_native"
+  },
+  "output_mode": "code"
+}
+```
+
+## Format Discovery
+
+### Standard Formats
+
+Common format IDs you can use immediately:
+- `display_native` - Native advertising format
+- `display_300x250` - Medium rectangle banner
+- `video_standard_30s` - 30-second video ad
+
+### Publisher-Specific Formats
+
+For custom publisher formats, specify the source:
+
+```json
+{
+  "message": "Create a premium video ad",
+  "format_id": {
+    "agent_url": "https://premium-publisher.com",
+    "id": "premium_video_15s"
+  },
+  "output_mode": "manifest"
+}
+```
+
+## Next Steps
+
+- **Browse Examples**: See [Task Reference](/dist/docs/3.0.0-rc.1/creative/task-reference/build_creative) for detailed examples
+- **Learn Advanced Features**: Explore real-time inference and dynamic creative generation
+- **Integration Guide**: Learn how to integrate with your existing creative workflows
+- **Best Practices**: Asset organization and creative optimization strategies
+
+## Common Issues
+
+### Format Not Found
+If you get a format error, the publisher may not support that format. Try:
+1. Use a standard AdCP format first (`display_native`, `video_standard_30s`)
+2. Check the publisher's `list_creative_formats` endpoint
+3. Verify the `format_source` URL is correct
+
+### Creative Quality Issues
+To improve creative output:
+1. Be more specific in your message: "Create a minimalist coffee ad with earth tones"
+2. Provide comprehensive brand identity with assets and guidelines
+3. Iterate using [refinement](/dist/docs/3.0.0-rc.1/creative/task-reference/build_creative#iterative-refinement) — pass back the manifest with a new message, or update the brief asset
+
+### Asset Management
+Assets are provided via [brand identity](/dist/docs/3.0.0-rc.1/brand-protocol/brand-json):
+1. Include assets in brand identity with descriptive tags
+2. Use `asset_filters` in requests to select specific assets
+3. Reference product catalogs for large inventories
+
+Ready to create your first creative? Start with the basic example above and explore from there!

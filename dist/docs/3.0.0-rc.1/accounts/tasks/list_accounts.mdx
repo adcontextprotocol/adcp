@@ -1,0 +1,210 @@
+---
+title: list_accounts
+testable: false
+---
+
+Returns all accounts the authenticated agent can operate on this vendor agent. Use this to discover existing accounts, check status changes on pending accounts, and retrieve `account_id` values for use in protocol operations.
+
+`list_accounts` works across all vendor protocols — media buy agents, signals agents, governance agents, and creative agents all return accounts through this same task.
+
+**Response Time**: ~1s.
+
+**Request Schema**: [`/schemas/v3/account/list-accounts-request.json`](https://adcontextprotocol.org/schemas/v3/account/list-accounts-request.json)
+**Response Schema**: [`/schemas/v3/account/list-accounts-response.json`](https://adcontextprotocol.org/schemas/v3/account/list-accounts-response.json)
+
+## Quick Start
+
+List all accounts this agent can operate:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { ListAccountsResponseSchema } from "@adcp/client";
+
+const result = await testAgent.listAccounts({});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListAccountsResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+for (const account of validated.accounts) {
+  console.log(`${account.account_id}: ${account.name} (${account.status})`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.list_accounts()
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for account in result.accounts:
+        print(f"{account.account_id}: {account.name} ({account.status})")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Request Parameters
+
+All parameters are optional. An empty request returns all accounts.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
+| `sandbox` | boolean | No | When true, return only sandbox accounts. When false or omitted, return only live accounts. |
+| `pagination` | object | No | Pagination cursor for large account sets. |
+
+## Response
+
+| Field | Description |
+|-------|-------------|
+| `accounts` | Array of account objects (see below) |
+| `errors` | Array of errors, if the request failed |
+| `pagination` | Pagination cursor for the next page, if more results exist |
+
+**Each account includes:**
+
+| Field | Description |
+|-------|-------------|
+| `account_id` | Vendor agent's identifier. Pass this to protocol tasks: `create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, and other operations. May be absent when `status: "rejected"`. |
+| `name` | Vendor agent's display name for the account |
+| `brand` | Brand reference object: `domain` (the [brand registry](/dist/docs/3.0.0-rc.1/brand-protocol/brand-json) house domain) and optional `brand_id` (sub-brand within the house) |
+| `operator` | Operator domain. Always present — when the brand operates directly, `operator` equals the brand's domain. |
+| `status` | Current account state: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed` |
+| `billing` | Billing model in effect: `operator` or `agent` |
+| `account_scope` | How the seller scoped this account: `operator`, `brand`, `operator_brand`, or `agent`. See [account scope](/dist/docs/3.0.0-rc.1/building/integration/accounts-and-agents#account-scope). |
+| `setup` | Present when `status: "pending_approval"`. Contains `url` for completing setup and `message` explaining what's needed. |
+
+## Common Scenarios
+
+### Poll until account becomes active
+
+After `sync_accounts` returns `pending_approval`, poll until the account is ready:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { ListAccountsResponseSchema } from "@adcp/client";
+
+async function waitForAccount(targetAccountId, maxAttempts = 20) {
+  for (let i = 0; i < maxAttempts; i++) {
+    const result = await testAgent.listAccounts({ status: "active" });
+
+    if (!result.success) {
+      throw new Error(`Request failed: ${result.error}`);
+    }
+
+    const validated = ListAccountsResponseSchema.parse(result.data);
+
+    if ("errors" in validated && validated.errors) {
+      throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+    }
+
+    if ("accounts" in validated) {
+      const account = validated.accounts.find(a => a.account_id === targetAccountId);
+      if (account) {
+        console.log(`Account active: ${account.account_id}`);
+        return account;
+      }
+    }
+
+    // Wait 30 seconds before polling again
+    await new Promise(resolve => setTimeout(resolve, 30_000));
+  }
+
+  throw new Error(`Account ${targetAccountId} did not become active`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def wait_for_account(target_account_id: str, max_attempts: int = 20):
+    for _ in range(max_attempts):
+        result = await test_agent.simple.list_accounts(status='active')
+
+        if hasattr(result, 'errors') and result.errors:
+            raise Exception(f"Operation failed: {result.errors}")
+
+        account = next(
+            (a for a in result.accounts if a.account_id == target_account_id),
+            None
+        )
+        if account:
+            print(f"Account active: {account.account_id}")
+            return account
+
+        await asyncio.sleep(30)
+
+    raise Exception(f"Account {target_account_id} did not become active")
+```
+
+</CodeGroup>
+
+### Filter active accounts only
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { ListAccountsResponseSchema } from "@adcp/client";
+
+const result = await testAgent.listAccounts({ status: "active" });
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListAccountsResponseSchema.parse(result.data);
+
+if ("accounts" in validated) {
+  for (const account of validated.accounts) {
+    console.log(`${account.account_id}: ${account.name} — billing: ${account.billing}`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.list_accounts(status='active')
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for account in result.accounts:
+        print(f"{account.account_id}: {account.name} — billing: {account.billing}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `ACCOUNT_NOT_FOUND` | No accounts found for this agent | Run `sync_accounts` first to establish a buying relationship |
+
+## Next Steps
+
+- [sync_accounts](/dist/docs/3.0.0-rc.1/accounts/tasks/sync_accounts) — Sync advertiser accounts with a seller
+- [Accounts and agents](/dist/docs/3.0.0-rc.1/building/integration/accounts-and-agents) — Billing models, trust models, and authorized operators
+- [Brand protocol](/dist/docs/3.0.0-rc.1/brand-protocol/brand-json) — How vendor agents resolve brand identity from the brand's `domain`

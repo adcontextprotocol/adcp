@@ -1,0 +1,122 @@
+---
+title: Protocol architecture
+sidebarTitle: Architecture
+"og:image": /images/concepts/protocol-domain-map.png
+description: "AdCP protocol architecture: identity layer (brand, registry, accounts), transaction domains (media buy, creative, signals, sponsored intelligence), and cross-cutting governance."
+"og:title": "AdCP — Protocol architecture"
+---
+
+# Protocol architecture
+
+AdCP operates at multiple layers, providing a clean separation between business roles, orchestration, and technical execution.
+
+## Protocol domain map
+
+<img src="/images/concepts/protocol-domain-map.png" alt="Three-layer architecture diagram showing identity layer (brand, registry, accounts) at top, transaction domains (media buy, creative, signals, sponsored intelligence) in the middle, and governance as a cross-cutting layer connecting to all transaction domains" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+### Identity layer
+
+Three protocol domains establish who the parties are before any transaction occurs.
+
+**Brand Protocol** defines buy-side identity through `brand.json` files hosted at `/.well-known/brand.json`. Brands declare their corporate hierarchy, sub-brands, properties, and authorized operators. Any domain can be resolved to a canonical brand identity. See [Brand Protocol](/dist/docs/3.0.0/brand-protocol).
+
+**Registry** provides a public REST API for entity resolution and agent discovery. Resolve a brand domain, find which agents are authorized to sell a publisher's inventory, or discover agents by capability. See [Registry API](/dist/docs/3.0.0/registry).
+
+**Accounts** establishes the commercial relationship between buyers and sellers. Every AdCP transaction happens within an account that defines billing terms, operator authorization, and usage reporting. Accounts are grounded in brand identity from the Brand Protocol. See [Accounts Protocol](/dist/docs/3.0.0/accounts/overview).
+
+### Transaction domains
+
+Four protocol domains handle core advertising operations. The [Trusted Match Protocol (TMP)](/dist/docs/3.0.0/trusted-match) serves as the execution layer, connecting planning-time decisions to real-time activation through a four-phase lifecycle:
+
+1. **Planning** — `get_products` and `create_media_buy` establish packages, budgets, and targeting criteria.
+2. **Execution** — TMP Context Match determines content fit; TMP Identity Match checks user eligibility. Both operations run at serve time with structural privacy separation.
+3. **Engagement** — Sponsored Intelligence sessions deliver conversational brand experiences.
+4. **Reporting** — `get_media_buy_delivery` aggregates delivery data across sellers.
+
+**Media Buy** covers inventory discovery (`get_products`), campaign creation (`create_media_buy`), and delivery reporting (`get_media_buy_delivery`). Publishers return structured media products with pricing, targeting options, and delivery forecasts. Buyers can request proposals — structured media plans that encode publisher expertise. See [Media Buy](/dist/docs/3.0.0/media-buy).
+
+**Creative** handles format discovery (`list_creative_formats`), AI-powered creative generation (`build_creative`), catalog synchronization (`sync_catalogs`), and creative delivery tracking. Creative agents resolve brand identity from the Brand Protocol to generate on-brand assets. See [Creative](/dist/docs/3.0.0/creative).
+
+**Signals** enables audience and targeting data discovery (`get_signals`) and activation (`activate_signal`). Data providers publish signal catalogs that buyers can discover with natural language queries, then activate on decisioning platforms. See [Signals](/dist/docs/3.0.0/signals/overview).
+
+**Sponsored Intelligence** defines conversational brand experiences in AI assistants. When a user expresses interest in a brand, the host initiates a consent-first session where the brand's agent engages conversationally with text, voice, UI components, or commerce handoffs. See [Sponsored Intelligence](/dist/docs/3.0.0/sponsored-intelligence/overview).
+
+### Governance (cross-cutting)
+
+**Governance** operates across all transaction domains. Governance agents manage property lists (curated sets of properties for targeting or exclusion), content standards (brand suitability policies), and creative governance (security scanning, content categorization). Governance data flows into media buy decisions, creative validation, and signal activation. See [Governance Protocol](/dist/docs/3.0.0/governance/overview).
+
+Human-in-the-loop enters the protocol through two mechanisms: any mutation may be taken async for human review via the task lifecycle, and campaign governance provides a declarative buyer-side review channel via `sync_plans` and `check_governance`. See [How human-in-the-loop enters the protocol](/dist/docs/3.0.0/governance/embedded-human-judgment#how-human-in-the-loop-enters-the-protocol). This is not a real-time protocol: operations may take minutes to days when human approval is required.
+
+### Privacy posture across domains
+
+AdCP's privacy posture is not uniform. TMP is the only domain that enforces privacy **structurally** — through separated code paths, schema-level prohibitions on combining identity with context, and independently verifiable decorrelation. Every other domain relies on **contractual confidentiality or per-session consent** — the parties exchanging data are bound by the account's terms or the user's consent, not by protocol-level separation. Governance gating (via campaign governance) is orthogonal: it can require human approval on budget, policy, or brand-safety grounds, but it does not change the privacy mechanism of the underlying domain.
+
+| Domain | Privacy mechanism | Notes |
+|---|---|---|
+| Trusted Match Protocol | **Structural separation** | Context Match and Identity Match operate on separated code paths; schemas prohibit crossover. See [TMP privacy architecture](/dist/docs/3.0.0/trusted-match/privacy-architecture). |
+| Media Buy | Contractual | Buyer and seller exchange full plan context under account terms. |
+| Creative | Contractual | Creative assets and targeting signals pass through the creative agent under account terms. |
+| Signals | Contractual | Audience and signal data exchanged under account terms and signal-provider agreements. |
+| Brand / Registry / Accounts | Public or contractual | Brand identity is public (`brand.json`); commercial terms are account-scoped. |
+| Sponsored Intelligence | Consent-first | The user consents per session; the brand agent sees conversation content, and identity only when the user shares it. Networks that route sessions may see routing metadata — see [Networks](/dist/docs/3.0.0/sponsored-intelligence/networks). |
+| Governance | Contractual | Governance agents receive the context needed to evaluate policies under account terms. |
+
+"Structural" means the protocol — not the operator's policy — prevents the combination of sensitive data. If you need that property outside TMP, build it yourself or compose with TMP.
+
+---
+
+## Ecosystem layers
+
+The protocol domain map above shows how AdCP tasks relate to each other. The diagram below shows how these map to real-world roles and systems.
+
+<img src="/images/concepts/ecosystem-layers.png" alt="Four-tier ecosystem diagram showing business parties at top, orchestration layer with specialized agents in the middle, technical execution below, and governance with human oversight spanning all layers" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+### Business parties
+
+**Buy side** — advertisers, agencies, retail media networks, and curators packaging inventory and data for specific use cases.
+
+**Media seller** — publishers, sales houses, rep firms, SSPs, and ad networks.
+
+These parties exchange impressions and money through the orchestration layer.
+
+### Orchestration layer
+
+**Media orchestration platform** — evaluates sellers and audiences, executes buying strategies. Communicates with specialized agents via MCP.
+
+**Signals agent** — MCP servers exposing audience and targeting data discovery and activation.
+
+**Sales agent** — MCP servers exposing media product discovery and campaign execution.
+
+**Creative agent** — MCP servers exposing format discovery and AI-powered creative generation.
+
+### Technical execution
+
+**Trusted Match Protocol (TMP)** — real-time execution layer that determines which pre-negotiated packages should activate for a given impression. Two structurally separated operations — Context Match (content fit) and Identity Match (user eligibility) — connect planning-time media buys to serve-time decisions across web, mobile, CTV, AI assistants, and retail media. See [TMP documentation](/dist/docs/3.0.0/trusted-match).
+
+**Agentic eXecution Engine (AXE)** — deprecated predecessor to TMP. See [AXE documentation](/dist/docs/3.0.0/media-buy/advanced-topics/agentic-execution-engine).
+
+**Decisioning platform** — the infrastructure that selects which ad to serve, via direct campaigns or programmatic (RTB). Examples include DSPs, SSPs, and ad servers.
+
+### Governance and human oversight
+
+**Governance agents** provide compliance and quality control across all layers: property lists, brand suitability scoring, quality measurement (MFA score, ad density), and privacy compliance (COPPA, TCF, GDPR). They operate at setup time, real-time, and post-bid.
+
+**Human-in-the-loop** — manual approval at decision points. See [How human-in-the-loop enters the protocol](/dist/docs/3.0.0/governance/embedded-human-judgment#how-human-in-the-loop-enters-the-protocol).
+
+---
+
+## State persistence and horizontal scaling
+
+AdCP is a multi-instance protocol. A single buyer's workflow with an agent may be routed across multiple backend replicas — `create_media_buy` may land on one replica, the subsequent `get_media_buy` on another — and both calls MUST see the same state.
+
+### Normative requirements
+
+State keyed by a `(brand, account)` tuple MUST survive across agent process instances. This includes but is not limited to accounts, catalogs, creatives, audiences, event sources, governance configuration, active campaigns, proposals, insertion-order approval records, signal activations, sponsored-intelligence sessions, async task records, and idempotency-key cache entries. Implementations MUST NOT use in-process memory as the primary store for any `(brand, account)`-scoped state that a subsequent call can read back. In-process storage does not satisfy this requirement. For the canonical (non-exhaustive) catalog of state domains, see [Account state](/dist/docs/3.0.0/building/integration/account-state).
+
+**Acceptable storage:** Postgres, Redis, DynamoDB, or any shared store that persists across process restarts and is reachable from every replica. **Not acceptable:** module-level variables, per-process Maps or dicts, single-node file storage, or sticky-session routing that masks the absence of shared state.
+
+Within a single `(brand, account)` context, implementations MUST support read-your-writes across replicas: after a successful non-async response, a subsequent request routed to any replica MUST observe the write. Async/pending task state (status transitions, `context_id`, push-notification subscriptions) is itself subject to this rule — once a task record is created, it MUST be readable from any replica. Eventual consistency is acceptable when the staleness window is bounded and disclosed — either capped at the implementation's documented async polling interval, or declared explicitly in `get_adcp_capabilities`.
+
+**Sandbox exemption.** Sandbox accounts are allowed to carry ephemeral state that does not persist across process restarts (see [Sandbox mode](/dist/docs/3.0.0/media-buy/advanced-topics/sandbox)). Within a single sandbox session, read-your-writes across replicas still applies.
+
+Implementations may prove this invariant by architecture (managed serverless + shared datastore), by multi-instance compliance testing, or by their own verification; the protocol cares about the invariant, not the methodology. See [Validate your agent — Verifying cross-instance state](/dist/docs/3.0.0/building/validate-your-agent#verifying-cross-instance-state).
