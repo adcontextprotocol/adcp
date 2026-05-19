@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
   getHostedBrandByDomain: vi.fn(),
   insertBrandLogo: vi.fn(),
   countBrandLogos: vi.fn().mockResolvedValue(0),
+  countLogosBySource: vi.fn().mockResolvedValue(0),
+  countPendingDomainsForUser: vi.fn().mockResolvedValue(0),
+  setSlackThreadTs: vi.fn().mockResolvedValue(undefined),
   editDiscoveredBrand: vi.fn().mockResolvedValue({ brand: {}, revision_number: 1 }),
   createDiscoveredBrand: vi.fn().mockResolvedValue(undefined),
   upsertDiscoveredBrand: vi.fn().mockResolvedValue(undefined),
@@ -56,7 +59,10 @@ vi.mock('../../src/db/brand-logo-db.js', () => ({
   BrandLogoDatabase: class {
     insertBrandLogo = mocks.insertBrandLogo;
     countBrandLogos = mocks.countBrandLogos;
+    countLogosBySource = mocks.countLogosBySource;
+    countPendingDomainsForUser = mocks.countPendingDomainsForUser;
     listBrandLogos = mocks.listBrandLogos;
+    setSlackThreadTs = mocks.setSlackThreadTs;
   },
 }));
 
@@ -113,6 +119,9 @@ describe('Addie upload_brand_logo write-authority gate', () => {
     vi.clearAllMocks();
     mocks.safeFetch.mockResolvedValue(fakeStreamResponse(Buffer.from('fake-png-bytes')));
     mocks.countBrandLogos.mockResolvedValue(0);
+    mocks.countLogosBySource.mockResolvedValue(0);
+    mocks.countPendingDomainsForUser.mockResolvedValue(0);
+    mocks.setSlackThreadTs.mockResolvedValue(undefined);
     mocks.detectContentType.mockResolvedValue('image/png');
     mocks.validateLogoTags.mockReturnValue({ valid: true });
     mocks.notifyPendingBrandLogo.mockResolvedValue(null);

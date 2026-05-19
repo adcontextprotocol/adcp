@@ -22,6 +22,9 @@ const mocks = vi.hoisted(() => ({
   isVerifiedOwner: vi.fn(),
   insertLogo: vi.fn(),
   countLogos: vi.fn().mockResolvedValue(0),
+  countLogosBySource: vi.fn().mockResolvedValue(0),
+  countPendingDomainsForUser: vi.fn().mockResolvedValue(0),
+  setSlackThreadTs: vi.fn().mockResolvedValue(undefined),
   listLogos: vi.fn().mockResolvedValue([]),
   rebuildManifestLogos: vi.fn().mockResolvedValue(undefined),
   notifyPendingBrandLogo: vi.fn().mockResolvedValue(null),
@@ -58,8 +61,11 @@ vi.mock('../../src/middleware/auth.js', () => ({
 vi.mock('../../src/db/brand-logo-db.js', () => ({
   BrandLogoDatabase: class {
     countBrandLogos = mocks.countLogos;
+    countLogosBySource = mocks.countLogosBySource;
+    countPendingDomainsForUser = mocks.countPendingDomainsForUser;
     insertBrandLogo = mocks.insertLogo;
     listBrandLogos = mocks.listLogos;
+    setSlackThreadTs = mocks.setSlackThreadTs;
   },
 }));
 
@@ -114,6 +120,12 @@ describe('POST /api/brands/:domain/logos write authority', () => {
     mocks.insertLogo.mockReset();
     mocks.notifyPendingBrandLogo.mockReset();
     mocks.notifyPendingBrandLogo.mockResolvedValue(null);
+    mocks.countLogosBySource.mockReset();
+    mocks.countLogosBySource.mockResolvedValue(0);
+    mocks.countPendingDomainsForUser.mockReset();
+    mocks.countPendingDomainsForUser.mockResolvedValue(0);
+    mocks.setSlackThreadTs.mockReset();
+    mocks.setSlackThreadTs.mockResolvedValue(undefined);
     mocks.insertLogo.mockImplementation(async (input) => ({
       id: 'logo_test_id',
       ...input,
