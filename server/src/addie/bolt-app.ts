@@ -103,6 +103,7 @@ import {
   guardBareJsonEnvelope,
   logInteraction,
 } from './security.js';
+import { splitMrkdwnIntoSections, truncateNotificationText } from './slack-blocks.js';
 import type { RequestTools } from './claude-client.js';
 import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
@@ -1807,9 +1808,9 @@ async function handleUserMessage({
             await say(apology);
           } else {
             await say({
-              text: slackText,
+              text: truncateNotificationText(slackText),
               blocks: [
-                { type: 'section', text: { type: 'mrkdwn', text: slackText } },
+                ...splitMrkdwnIntoSections(slackText),
                 ...fallbackImages.slice(0, 3).map(img => ({
                   type: 'image' as const,
                   image_url: img.url,
@@ -1844,15 +1845,9 @@ async function handleUserMessage({
           await say("I'm sorry, I encountered an error. Please try again.");
         } else {
           await say({
-            text: slackText,
+            text: truncateNotificationText(slackText),
             blocks: [
-              {
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: slackText,
-                },
-              },
+              ...splitMrkdwnIntoSections(slackText),
               ...images.slice(0, 3).map(img => ({
                 type: 'image' as const,
                 image_url: img.url,
