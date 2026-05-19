@@ -164,7 +164,7 @@
         "public",
         "account"
       ],
-      "description": "Declares whether the catalog_version and pricing_version on this response describe a universal layer or an account-specific overlay. REQUIRED when the request included `account`; MAY be omitted (implicitly 'public') when the request did not. 'public': this account prices off the agent's published rate card; the caller MAY dedupe its cache with the unauthenticated view. 'account': the response includes account-specific overrides; the caller MUST cache the version under the account_id. Agents MAY return cache_scope: 'public' on an account-scoped request that previously had overrides — callers SHOULD interpret this as a downgrade and drop their account-overlay. The field has no default in the account-provided case; agents MUST declare explicitly to surface custom-pricing decisions at the response site rather than as silent miscaches downstream."
+      "description": "Declares whether the catalog_version and pricing_version on this response describe a universal layer or an account-specific overlay. REQUIRED on every response (the schema enforces this — the safety property of the two-layer cache model depends on it). 'public': this response describes the agent's published rate card; the caller MAY dedupe under (agent, discovery_mode, filters, destinations, countries) without scoping by account. 'account': this response includes account-specific overrides; the caller MUST cache the version under that tuple plus account_id. When the request did NOT include `account`, the agent MUST return `cache_scope: 'public'`. When the request included `account`, the agent MUST return either 'public' (this account prices off the public rate card — caller dedupes) or 'account' (account-specific overrides exist — caller caches under the account key). Agents MAY return 'public' on an account-scoped request that previously had overrides — callers SHOULD interpret this as a downgrade. Without schema-required cache_scope, an agent silently omitting the field on an account-scoped response would cause callers to mis-key the cache and serve account-overlay payloads to other accounts — the canonical safety invariant of the entire cache layering model."
     },
     "unchanged": {
       "type": "boolean",
@@ -191,13 +191,13 @@
     "required": ["unchanged"]
   },
   "then": {
-    "description": "Catalog-unchanged response: signals MUST be omitted; catalog_version MUST be present.",
-    "required": ["catalog_version"],
+    "description": "Catalog-unchanged response: signals MUST be omitted; catalog_version and cache_scope MUST be present (echoed from the cached version).",
+    "required": ["catalog_version", "cache_scope"],
     "not": { "required": ["signals"] }
   },
   "else": {
-    "description": "Standard response: signals[] is present.",
-    "required": ["signals"]
+    "description": "Standard response: signals[] MUST be present and cache_scope MUST declare the response's cache layer.",
+    "required": ["signals", "cache_scope"]
   },
   "additionalProperties": true
 }

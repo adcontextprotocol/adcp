@@ -19,7 +19,7 @@
     "event_id": {
       "type": "string",
       "format": "uuid",
-      "description": "UUID v7 identifier \u2014 monotonically ordered without server-clock skew. Consumers use this as the cursor on subsequent /catalog/events polls."
+      "description": "UUID **v7** identifier \u2014 monotonically ordered without server-clock skew. Consumers use this as the cursor on subsequent /catalog/events polls. The `format: uuid` schema constraint accepts any UUID version; v7 is a spec-level MUST that schema validators will not catch alone \u2014 sellers MUST emit v7 specifically, callers SHOULD verify the version nibble when ordering matters."
     },
     "event_type": {
       "type": "string",
@@ -73,7 +73,8 @@
           "type": "object",
           "required": [
             "product_id",
-            "product"
+            "product",
+            "applies_to"
           ],
           "properties": {
             "product_id": {
@@ -85,7 +86,7 @@
             },
             "applies_to": {
               "$ref": "#/$defs/appliesTo",
-              "description": "When introducing an entity that exists only in an account overlay (e.g., a custom product for a single account), MUST emit applies_to: { scope: 'account', account_ids: [...] } to prevent the entity from leaking into every consumer's public-layer cache. Absent means { scope: 'public' }."
+              "description": "REQUIRED. Sellers MUST declare the cache layer explicitly on every *.created event. When introducing an entity that exists only in an account overlay (e.g., a custom product for a single account), the seller MUST emit { scope: 'account', account_ids: [...] } to prevent the entity from leaking into every consumer's public-layer cache. For public-layer additions, declare { scope: 'public' } explicitly rather than relying on a default \u2014 schema-required declaration prevents the quiet-failure path where a forgotten applies_to leaks an account-only entity to all consumers."
             }
           },
           "additionalProperties": true
@@ -176,6 +177,11 @@
               "format": "date-time",
               "description": "When the price change takes effect. A value in the future is a pre-announcement: consumers MAY warm caches but MUST NOT bind decisions until the effective time has passed. See specs/catalog-change-feed.md \u00a7`effective_at` and pre-announce."
             },
+            "retracts_event_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Optional. When this event retracts a prior pre-announced *.priced (per the \u00a7`effective_at` and pre-announce rules), set this to the event_id of the announcement being retracted. Lets consumers detect retraction deterministically by event_id lookup rather than maintaining per-entity 'latest-event' state. When present, the retraction MUST carry effective_at <= the retracted event's effective_at."
+            },
             "applies_to": {
               "$ref": "#/$defs/appliesTo"
             }
@@ -231,7 +237,8 @@
         "payload": {
           "type": "object",
           "required": [
-            "signal_agent_segment_id"
+            "signal_agent_segment_id",
+            "applies_to"
           ],
           "properties": {
             "signal_agent_segment_id": {
@@ -242,7 +249,7 @@
             },
             "applies_to": {
               "$ref": "#/$defs/appliesTo",
-              "description": "When introducing a signal that exists only in an account overlay (e.g., a custom segment for a single account), MUST emit applies_to: { scope: 'account', account_ids: [...] } to prevent leak into every consumer's public-layer cache. Absent means { scope: 'public' }."
+              "description": "REQUIRED. Agents MUST declare the cache layer explicitly on every *.created event. When introducing a signal that exists only in an account overlay (e.g., a custom segment for a single account), the agent MUST emit { scope: 'account', account_ids: [...] } to prevent leak into every consumer's public-layer cache. For public-layer additions, declare { scope: 'public' } explicitly rather than relying on a default \u2014 schema-required declaration prevents the quiet-failure path."
             }
           },
           "additionalProperties": true
@@ -331,6 +338,11 @@
             "effective_at": {
               "type": "string",
               "format": "date-time"
+            },
+            "retracts_event_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Optional. When this event retracts a prior pre-announced *.priced, set this to the event_id of the announcement being retracted. See product.priced for the full retraction contract."
             },
             "applies_to": {
               "$ref": "#/$defs/appliesTo"
@@ -421,7 +433,7 @@
               "enum": [
                 "wholesale_resync"
               ],
-              "description": "Advisory recommendation. Consumers MUST stagger their resyncs per the jittered coalescing rule \u2014 the recommendation is not a synchronized trigger."
+              "description": "Advisory recommendation. Consumers MUST stagger their resyncs per the jittered coalescing rule \u2014 the recommendation is not a synchronized trigger. Modeled as a single-value enum (not a boolean) so future minor versions can extend the recommendation vocabulary (e.g., cursor_advance, subscribe_to_subscope) without a breaking shape change. Consumers MUST be prepared to ignore unknown recommendation values."
             },
             "applies_to": {
               "$ref": "#/$defs/appliesTo"
