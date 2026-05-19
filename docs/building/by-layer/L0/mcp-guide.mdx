@@ -62,7 +62,7 @@ console.log(response.context); // { ui: 'buyer_dashboard', session: '123' }
 
 ## MCP Response Format
 
-**Normative:** AdCP MCP responses use a **flat structure** — envelope fields (`status`, `context_id`, `context`, `task_id`, `timestamp`, `replayed`, `adcp_error`, `governance_context`) and task-body fields appear as siblings at the root of the tool response. The `payload` object defined on [`core/protocol-envelope.json`](/schemas/v3/core/protocol-envelope.json) is a documentary grouping construct, NOT a serialized wire key: body fields are NOT nested under a `payload:` key on MCP. This matches MCP's native `structuredContent` convention.
+**Normative:** AdCP MCP responses use a **flat structure** — envelope fields (`status`, `context_id`, `context`, `task_id`, `timestamp`, `replayed`, `adcp_error`, `governance_context`) and task-body fields appear as siblings at the root of the tool response. The `payload` object defined on [`core/protocol-envelope.json`](https://adcontextprotocol.org/schemas/v3/core/protocol-envelope.json) is a documentary grouping construct, NOT a serialized wire key: body fields are NOT nested under a `payload:` key on MCP. This matches MCP's native `structuredContent` convention.
 
 ```json
 {
@@ -82,7 +82,7 @@ console.log(response.context); // { ui: 'buyer_dashboard', session: '123' }
 
 **`context_id` vs `context` — semantically orthogonal.**
 - `context_id` is a **server-managed session identifier** for tracking related operations across multiple tool invocations. The server issues it; the caller MAY echo it on subsequent calls to thread a session. Distinct from MCP's transport-level session.
-- `context` is a **caller-supplied opaque echo object** ([`core/context.json`](/schemas/v3/core/context.json)) — the agent preserves it byte-for-byte without parsing. Used for buyer-side correlation (UI session IDs, trace IDs, custom metadata).
+- `context` is a **caller-supplied opaque echo object** ([`core/context.json`](https://adcontextprotocol.org/schemas/v3/core/context.json)) — the agent preserves it byte-for-byte without parsing. Used for buyer-side correlation (UI session IDs, trace IDs, custom metadata).
 - Both MAY appear on the same response. They are NOT aliases.
 
 **Status handling**: see [Task Lifecycle](/docs/building/by-layer/L3/task-lifecycle) for complete status handling patterns.
