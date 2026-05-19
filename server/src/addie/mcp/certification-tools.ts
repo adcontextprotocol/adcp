@@ -435,7 +435,7 @@ async function issueCertifierBadge(
   if (!cred.certifier_group_id || !memberContext?.workos_user) return null;
 
   try {
-    const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl } = await import('../../services/certifier-client.js');
+    const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl, buildRecipientName } = await import('../../services/certifier-client.js');
     if (!isCertifierConfigured()) return null;
 
     const expiryDate = cred.tier === 1 ? undefined : (() => {
@@ -447,7 +447,7 @@ async function issueCertifierBadge(
     const credential = await issueCredential({
       groupId: cred.certifier_group_id,
       recipient: {
-        name: `${memberContext.workos_user.first_name} ${memberContext.workos_user.last_name}`,
+        name: buildRecipientName(memberContext.workos_user),
         email: memberContext.workos_user.email,
       },
       ...(expiryDate ? { expiryDate } : {}),
