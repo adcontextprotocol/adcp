@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.1.0"
+version: "2.2.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -111,6 +111,10 @@ step_result:
     - error                   # transport-level error (no validations attempted)
     - request                 # exact request the runner sent (see request block)
     - response                # exact response observed (see response block)
+    - notices                 # array of notice objects attached to this step's
+                              # result — informational signals that MUST NOT
+                              # change `passed`. See the notice block below for
+                              # the field shape and the canonical first-day codes.
 
 validation_result:
   description: |
@@ -789,6 +793,132 @@ skip_result:
       DETAILED_SKIP_TO_CANONICAL in the conforming implementation for a
       concrete mapping.
 
+notice:
+  description: |
+    Advisory signal attached to a storyboard step result or run summary.
+    Notices are informational — they MUST NOT contribute to steps_failed,
+    validations_failed, or any other required-failure counter, and they
+    MUST NOT change `step_result.passed` or run-level pass/fail counters.
+
+    Notices fill the gap between three existing signals:
+      - Validation failures (passed: false) — the agent did something wrong.
+      - Skip reasons — the runner could not apply the storyboard.
+      - Advisory-severity validations — the storyboard author marked a check
+        as non-blocking during a runner adoption window.
+
+    A notice is none of those: it is a forward-looking or migration advisory
+    about a passing observation. Examples: an agent still advertising a
+    deprecated specialism that the spec recommends dropping; an agent that
+    passes today but advertises a capability shape that will be required at
+    a named future spec version; an adopter using a legacy fallback that is
+    scheduled for removal at a named future version.
+
+    Spec storyboards that motivate canonical notices SHOULD reference the
+    notice `code` (not the prose). The reference adopter currently
+    motivating the contract is the `signed_requests_specialism_deprecated`
+    notice in `universal/signed-requests.yaml` — the runner SHOULD emit
+    this notice when an agent claims the deprecated `signed-requests`
+    specialism alongside `request_signing.supported: true`, advising
+    the agent to drop the now-redundant specialism claim.
+
+    Forward compatibility: receivers MUST treat an unknown `code` or
+    `severity` value as well-formed and surface the notice verbatim. New
+    codes and severities ship additively; rejecting on unknown values
+    defeats the contract.
+
+  required_fields:
+    - severity                # "info" | "deprecation" | "future_required"
+                              # info             — passing behavior is fine
+                              #                    today; advisory context only
+                              #                    (e.g., "this agent is using
+                              #                    an alternate but supported
+                              #                    pathway").
+                              # deprecation      — agent-side claim or behavior
+                              #                    is allowed today but the
+                              #                    spec recommends migration
+                              #                    (e.g., legacy specialism
+                              #                    enum values still accepted
+                              #                    for back-compat).
+                              # future_required  — capability that is optional
+                              #                    today will be required at a
+                              #                    named future spec version;
+                              #                    agents that do not advertise
+                              #                    it will fail compliance
+                              #                    after the cut. `effective_version`
+                              #                    MUST be populated.
+    - code                    # stable machine-readable identifier
+                              # (SCREAMING_SNAKE-or-lowercase_snake; the
+                              # canonical first-day codes below use
+                              # lowercase_snake). Runners MUST NOT change
+                              # the code for the same advisory across
+                              # versions — consumers aggregate by code.
+                              # Unknown codes from a forward-compat runner
+                              # MUST be surfaced verbatim by receivers, not
+                              # rejected.
+    - message                 # human-readable description. Runners MUST
+                              # fence this string when rendering to a
+                              # shared LLM-fed surface per the same rules
+                              # as skip_result.detail — the storyboard
+                              # author controls the substring.
+  optional_fields:
+    - effective_version       # When severity is "future_required", the
+                              # AdCP version that flips the requirement
+                              # (e.g., "4.0"). REQUIRED for future_required
+                              # severity, MAY be present on "deprecation"
+                              # to name the removal version, MUST NOT be
+                              # set on "info".
+    - requirement             # When the notice is tied to a structured
+                              # `requires:` name in storyboard-schema.yaml,
+                              # repeat the requirement value here so
+                              # dashboards can correlate notices with the
+                              # gate that motivated them.
+    - capability_path         # Dotted path into the agent's
+                              # `get_adcp_capabilities` response that
+                              # motivated the notice
+                              # (e.g., "request_signing.supported",
+                              # "webhook_signing.legacy_hmac_fallback").
+                              # Lets consumers link the notice to the
+                              # exact capability flag without parsing the
+                              # message string.
+    - reference_url           # optional spec or issue URL with more context
+                              # (e.g., the upstream issue tracking the
+                              # deprecation, or the relevant section in
+                              # /docs/building/by-layer/L3/error-handling.mdx).
+  canonical_codes:
+    description: |
+      First-day published codes runners SHOULD emit when the underlying
+      condition holds. Additional codes are registered by adding entries
+      here in subsequent spec revisions; runners MAY emit codes outside
+      this list (consumers must accept unknown codes per the forward-compat
+      rule above), but SHOULD prefer canonical codes when one fits.
+    signed_requests_specialism_deprecated:
+      severity: deprecation
+      spec_source: universal/signed-requests.yaml
+      capability_path: specialisms
+      message_template: |
+        Agent advertises the deprecated `signed-requests` specialism
+        enum value. Drop it and rely solely on
+        `request_signing.supported: true`. The enum value is removed
+        in AdCP 4.0 (see adcontextprotocol/adcp#3078).
+    request_signing_required_in_4_0:
+      severity: future_required
+      effective_version: "4.0"
+      spec_source: protocol/get-adcp-capabilities-response.json#request_signing
+      capability_path: request_signing.supported
+      message_template: |
+        `request_signing.supported: true` is optional in 3.x but required
+        for spend-committing operations in AdCP 4.0. Agents that do not
+        advertise support will fail compliance on the 4.0 cut.
+    legacy_hmac_fallback_removed_in_4_0:
+      severity: deprecation
+      effective_version: "4.0"
+      spec_source: protocol/get-adcp-capabilities-response.json#webhook_signing.legacy_hmac_fallback
+      capability_path: webhook_signing.legacy_hmac_fallback
+      message_template: |
+        Agent advertises `webhook_signing.legacy_hmac_fallback: true`.
+        The HMAC fallback path is deprecated and removed in AdCP 4.0;
+        receivers SHOULD migrate to RFC 9421 signatures only.
+
 cascade_rules:
   description: |
     Rules governing when a runner MUST propagate `prerequisite_failed` to
@@ -919,6 +1049,19 @@ run_summary:
                                   # declared check type). Surfaces "runner is
                                   # older than the storyboard" as a distinct
                                   # signal from clean passes.
+    - notices                     # array of notice objects scoped to the run
+                                  # rather than a specific step (e.g., a
+                                  # `request_signing_required_in_4_0` notice
+                                  # emitted once per run when the agent does
+                                  # not advertise `request_signing.supported`,
+                                  # regardless of which storyboard the
+                                  # observation surfaced on). Runners MAY
+                                  # emit the same code on step_result.notices
+                                  # AND run_summary.notices when an advisory
+                                  # is both step-specific and run-wide;
+                                  # consumers dedupe by `code`. See the
+                                  # notice block above for shape and
+                                  # canonical_codes.
     - validations_advisory_failed # count of validation_result entries with
                                   # passed: false and severity: advisory.
                                   # These do NOT contribute to steps_failed
