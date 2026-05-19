@@ -3916,7 +3916,7 @@ export function createMemberToolHandlers(
 
     let output = '';
     if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
-    if (resolved.source === 'oauth') output += '_Using saved OAuth credentials._\n\n';
+    else if (resolved.source === 'oauth') output += '_Using saved OAuth credentials._\n\n';
     output += `## Agent: ${safeAgentName || resolved.resolvedUrl}\n\n`;
 
     // No capabilities declared — disambiguate: auth failure vs. genuinely
@@ -3929,17 +3929,19 @@ export function createMemberToolHandlers(
     if (supportedProtocols.length === 0 && specialisms.length === 0) {
       if (resolved.source === 'saved' || resolved.source === 'oauth' || resolved.source === 'explicit') {
         const safeUrl = sanitizeAgentField(resolved.resolvedUrl, 300);
-        const authLabel = resolved.source === 'oauth' ? 'OAuth token' : 'saved credentials';
+        // 'explicit' is a test/internal codepath (caller passed a raw token directly);
+        // label it the same as saved credentials since the diagnosis steps are identical.
+        const authLabel = resolved.source === 'oauth' ? 'OAuth token' : resolved.source === 'explicit' ? 'the provided token' : 'saved credentials';
         output += `I tested your agent using your ${authLabel}, but got back an empty capabilities response — no \`supported_protocols\` and no \`specialisms\`.\n\n`;
         if (probeError) {
           const safeProbeErr = fenceAgentValue(probeError, 300);
           output += `The agent reported: ${safeProbeErr || '(no detail)'}\n\n`;
         }
         output += `This usually means the credentials didn't reach the agent:\n\n`;
-        output += `1. **Verify the credentials work:** curl \`${safeUrl}\` directly with your credentials and confirm \`supported_protocols\` appears in the response.\n`;
+        output += `1. **Verify the credentials work:** curl "${safeUrl}" directly with your credentials and confirm \`supported_protocols\` appears in the response.\n`;
         output += `2. **Re-save if needed:** run \`save_agent\` again with the correct credentials.\n`;
         output += `3. **Check the SDK version:** if you're using \`@adcp/sdk\`, make sure it's up to date — older versions have a known issue that drops the auth header on the capabilities precheck path.\n\n`;
-        output += `If credentials look correct and the SDK is current, the agent may be returning an anonymous-shaped response for unrecognized auth rather than a 401. Confirm the agent accepts the auth scheme and credential format you saved.`;
+        output += `If credentials look correct and the SDK is current, the agent may be returning an anonymous-shaped response for unrecognized auth rather than a 401. Confirm the agent accepts the auth scheme and credential format you saved.\n`;
         return output;
       }
       output += `Your agent didn't tell us what it does yet.\n\n`;
