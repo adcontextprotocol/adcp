@@ -173,6 +173,14 @@ export class TrainingSalesPlatform
       supported_hashed_identifiers: ['hashed_email' as const],
       supported_action_sources: ['website' as const, 'app' as const],
     },
+    // Seller-level rollup of metric-optimization capabilities. Honest
+    // union across catalog products (product-factory.ts assigns these
+    // by channel mix). Mirrors the same declaration on the legacy /mcp
+    // route (task-handlers.ts handleGetAdcpCapabilities). adcp-client#1818
+    // will auto-derive this from product-level supported_metrics once
+    // the SDK ships the seller-level field; until then both surfaces
+    // declare it manually for parity.
+    supported_optimization_metrics: ['clicks' as const, 'views' as const, 'completed_views' as const, 'engagements' as const, 'reach' as const],
     supportedBillings: ['agent', 'operator'] as const,
     // Auto-derives `compliance_testing.scenarios[]` from the adapters
     // wired in `serverOptions.complyTest`. Empty block opts in; the
