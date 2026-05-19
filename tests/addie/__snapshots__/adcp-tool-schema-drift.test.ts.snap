@@ -23,7 +23,6 @@ exports[`AdCP task registry completeness > registry task names match expected se
   "get_property_list",
   "get_rights",
   "get_signals",
-  "list_authorized_properties",
   "list_collection_lists",
   "list_content_standards",
   "list_creative_formats",
