@@ -353,7 +353,13 @@ Inventory portfolio information:
 
 ### signals
 
-Signals protocol capabilities. Only present if `signals` is in `supported_protocols`. Reserved for future use.
+Signals protocol capabilities. Only present if `signals` is in `supported_protocols`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `data_provider_domains` | string[] | Data provider domains this signals agent is authorized to resell. Buyers should fetch each provider's `adagents.json` for signal catalog definitions and to verify authorization. |
+| `discovery_modes` | string[] | Discovery modes the agent supports on `get_signals`. `"brief"` (semantic discovery via `signal_spec` / `signal_ids`) is implicit and always supported. Declare `"wholesale"` to advertise that callers can omit `signal_spec` / `signal_ids` and enumerate the full priced catalog. Agents not declaring `"wholesale"` MAY return `INVALID_REQUEST` for wholesale calls. Absent declaration is treated as `["brief"]`. |
+| `features.catalog_signals` | boolean | Supports signals from data provider catalogs with structured `signal_id` references. |
 
 ### creative
 
@@ -571,6 +577,34 @@ Buyers should inspect `experimental_features` before relying on an experimental 
 ```
 
 See [experimental status](/docs/reference/experimental-status) for the full stability contract, graduation criteria, and client guidance.
+
+### catalog_change_feed
+
+Per-agent inventory change-feed capabilities. Declared by sales agents (products) and signals agents (signals). When `supported` is `true`, consumers can poll `GET /catalog/events` on this agent to maintain a near-real-time mirror of its product and/or signal catalog without re-fetching unchanged inventory. Complementary to (and independent of) the `catalog_version` conditional-fetch tokens on `get_products` and `get_signals`. See `specs/catalog-change-feed.md` for the full spec.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | **Required.** Whether this agent publishes a change feed. When `false` or this stanza is absent, consumers fall back to wholesale polling (optionally with `if_catalog_version` probes). |
+| `retention_window_days` | integer | Minimum age of events the agent guarantees to serve. Consumers whose cursor is older than this window get `RETENTION_EXPIRED` and MUST resync via wholesale enumeration. SHOULD be 30 days; MUST NOT be less than 7. |
+| `webhooks_supported` | boolean | Whether the agent supports webhook subscriptions on `/catalog/subscriptions`. Polling the feed is always the source of truth — webhooks are best-effort notifications. |
+| `event_types` | string[] | Event types this agent emits. Sales agents emit `product.*` events; signals agents emit `signal.*` events; agents that are both publish both event families on one feed. `catalog.bulk_change` is the fast-forward event recommended for rate-card sweeps that would otherwise produce thousands of individual events. |
+
+**Example (sales + signals agent):**
+
+```json
+{
+  "catalog_change_feed": {
+    "supported": true,
+    "retention_window_days": 30,
+    "webhooks_supported": true,
+    "event_types": [
+      "product.created", "product.updated", "product.priced", "product.removed",
+      "signal.created", "signal.updated", "signal.priced", "signal.removed",
+      "catalog.bulk_change"
+    ]
+  }
+}
+```
 
 This tells buyers:
 - Responses may include `ext.iab_tcf` with IAB TCF consent data

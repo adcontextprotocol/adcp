@@ -1,0 +1,250 @@
+# Catalog Change Feed
+
+## Problem
+
+Sales agents and signals agents publish catalogs (`get_products buying_mode: "wholesale"`, `get_signals discovery_mode: "wholesale"`) that consumers want to mirror locally. With wholesale enumeration alone, the only way to detect catalog changes is to re-fetch the entire catalog and diff. This produces three concrete problems:
+
+1. **Cost and latency.** A storefront syncing N sources hits each agent's paginated catalog every poll interval, even when nothing has changed. Sellers absorb the load; consumers pay the latency.
+2. **No fast-path for "just changed."** A seller who just updated a bundle's pricing has no way to tell consumers "re-fetch me now." Consumers see the change on the next polling interval — minutes to hours later — which is unacceptable for time-sensitive pricing changes (dayparting, makegood adjustments).
+3. **No diff signal at all.** Even with full re-fetch, consumers must compare every product/signal field against a local snapshot to detect changes. There is no protocol-level "this product changed since you last saw it" primitive.
+
+The registry already has a solved version of this problem in [`specs/registry-change-feed.md`](./registry-change-feed.md): UUID-v7 cursor-based event feed, optional webhook notifications, retention window, denormalized payloads. That spec covers properties, agents, publishers, and authorizations *at the registry level*. This spec covers the analogous mechanism *at the agent level* — for products and signals inside a single sales/signals agent's catalog.
+
+The `catalog_version` conditional-fetch tokens on `get_products` / `get_signals` (the ETag-style probe added in v3.1) are a complementary cheap-probe mechanism for agents that don't implement the full feed. Consumers MAY use `catalog_version` to validate their cursor is still current without consuming feed bandwidth.
+
+## Goals
+
+1. Consumers can poll a single per-agent feed endpoint and maintain a near-real-time mirror of the agent's product and signal catalog without re-fetching unchanged inventory.
+2. Sellers can trigger immediate notification to subscribers after a catalog mutation.
+3. Optional webhook subscriptions reduce polling frequency, with delivery semantics consistent with the registry feed.
+4. The mechanism is symmetric for sales agents (products) and signals agents (signals). Agents that are both publish both event families on one feed.
+5. Backward-compatible: agents that don't implement the feed continue to work — consumers fall back to `wholesale` polling, optionally with `catalog_version` probes.
+
+## Design Principles
+
+- **Polling is the source of truth.** Webhooks are best-effort notifications; the feed is durable. Same posture as the registry feed.
+- **Cursor-based, not timestamp-based.** UUID v7 event IDs are monotonically ordered and avoid clock-skew problems.
+- **Events are denormalized.** Payload contains the post-change state of the entity, so consumers can update local state without a follow-up `get_products`/`get_signals` call.
+- **One feed per agent.** A sales agent that also publishes signals exposes both event families on one feed. Consumers filter by event type.
+- **Symmetric with the registry feed.** A consumer that already implements `RegistrySync` should be able to implement `CatalogSync` against an agent with minimal new code.
+
+---
+
+## Event Model
+
+### Event Types
+
+| Event | Trigger | Why consumers care |
+|-------|---------|--------------------|
+| `product.created` | New product added to the agent's catalog | New inventory available for composition / discovery |
+| `product.updated` | Product metadata changed (name, description, formats, properties, targeting capabilities, measurement terms) | Storefront catalog needs re-render |
+| `product.priced` | Pricing options changed (new option, removed option, price/floor change) | Composition layer must re-price; existing media buys unaffected (locked at `create_media_buy` time) |
+| `product.removed` | Product no longer available | Remove from catalog; existing media buys honored per cancellation policy |
+| `signal.created` | New signal added | New targeting/composition option |
+| `signal.updated` | Signal metadata changed (description, coverage, deployments) | Re-render in consumer catalog |
+| `signal.priced` | Signal pricing options changed | Composition layer must re-price |
+| `signal.removed` | Signal no longer available | Remove from catalog |
+| `catalog.bulk_change` | Agent performed a bulk operation (e.g., seasonal rate-card update affecting >100 entities) | Trigger consumer re-sync via wholesale enumeration rather than processing every event |
+
+`catalog.bulk_change` is the "fast-forward" event. When a seller does a rate-card sweep that touches thousands of products, the agent SHOULD emit one `catalog.bulk_change` event with a summary payload rather than thousands of `product.priced` events.
+
+### Event Payload Examples
+
+**`product.priced`:**
+
+```json
+{
+  "product_id": "prod_premium_ctv_us",
+  "pricing_options": [
+    { "pricing_option_id": "po_cpm_v2", "model": "cpm", "cpm": 18.50, "currency": "USD" }
+  ],
+  "previous_pricing_option_ids": ["po_cpm_v1"],
+  "effective_at": "2026-06-01T00:00:00Z"
+}
+```
+
+The post-change `pricing_options[]` is included in full. `previous_pricing_option_ids[]` lets consumers detect that `po_cpm_v1` was retired. `effective_at` lets the agent announce changes before they take effect.
+
+**`product.updated`:**
+
+```json
+{
+  "product_id": "prod_premium_ctv_us",
+  "changed_fields": ["format_ids", "performance_standards"],
+  "product": { "...full Product object..." }
+}
+```
+
+`changed_fields[]` is advisory — consumers MAY use it for fine-grained re-render, but MUST be able to handle a full replacement of the entity.
+
+**`signal.priced`:**
+
+```json
+{
+  "signal_agent_segment_id": "sigagent_seg_4421",
+  "signal_id": { "source": "catalog", "data_provider_domain": "acme-data.com", "id": "luxury_auto_intenders" },
+  "pricing_options": [
+    { "pricing_option_id": "po_cpm_2", "model": "cpm", "cpm": 2.75, "currency": "USD" }
+  ],
+  "previous_pricing_option_ids": ["po_cpm_1"],
+  "effective_at": "2026-06-01T00:00:00Z"
+}
+```
+
+**`catalog.bulk_change`:**
+
+```json
+{
+  "summary": "Q3 2026 rate card refresh",
+  "affected_entity_types": ["product"],
+  "affected_count": 1480,
+  "recommendation": "wholesale_resync"
+}
+```
+
+---
+
+## API Endpoints
+
+The change-feed endpoints live on the agent itself, not a central registry.
+
+### `GET /catalog/events`
+
+Poll the change feed.
+
+**Authentication:** Required. The caller must be authorized to call `get_products` / `get_signals` in `wholesale` mode against this agent — same authorization scope.
+
+**Parameters:**
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `cursor` | UUID | (none) | Last `event_id` processed. Omit for start of retention window. |
+| `types` | string | all | Comma-separated event types. Supports glob: `product.*` |
+| `limit` | integer | 1000 | Max events per response. Max 10000. |
+
+**Response:**
+
+```json
+{
+  "events": [
+    {
+      "event_id": "019539a0-...",
+      "event_type": "product.priced",
+      "entity_type": "product",
+      "entity_id": "prod_premium_ctv_us",
+      "payload": { "...": "..." },
+      "created_at": "2026-05-18T10:00:00Z"
+    }
+  ],
+  "next_cursor": "019539a1-...",
+  "has_more": true,
+  "retention_window_days": 30
+}
+```
+
+Retention is agent-declared via `catalog_change_feed.retention_window_days` in `get_adcp_capabilities` (SHOULD be 30 days; MUST NOT be less than 7). Consumers whose `cursor` is older than the retention window get a `RETENTION_EXPIRED` error and MUST resync via wholesale enumeration.
+
+### `POST /catalog/subscriptions`
+
+Register a webhook for change notifications. Optional — agents MAY refuse to implement webhooks and require polling.
+
+**Request:**
+
+```json
+{
+  "url": "https://storefront.example.com/hooks/catalog",
+  "events": ["product.*", "signal.priced"],
+  "secret": "subscriber-provided-hmac-secret"
+}
+```
+
+**Response:**
+
+```json
+{
+  "subscription_id": "sub_...",
+  "status": "active"
+}
+```
+
+Additional CRUD: `GET /catalog/subscriptions`, `DELETE /catalog/subscriptions/:id`.
+
+### Webhook Delivery
+
+Webhooks are notifications, not event delivery — same posture as the registry feed.
+
+```
+POST https://storefront.example.com/hooks/catalog
+X-AdCP-Catalog-Signature: sha256={hmac}
+X-AdCP-Catalog-Event: product.priced
+
+{
+  "event_count": 3,
+  "latest_event_id": "019...",
+  "event_types": ["product.priced", "product.updated"],
+  "feed_url": "https://salesagent.example.com/catalog/events?cursor=019..."
+}
+```
+
+**Coalescing:** Events are batched per subscriber per 30-second window. A rate-card sweep produces one webhook notification, not thousands.
+
+**Retries:** 3 attempts with exponential backoff (30s, 5m, 30m). 24 hours of failures → subscription marked `suspended` and subscriber notified out-of-band.
+
+---
+
+## Capability Declaration
+
+Agents declare feed support in `get_adcp_capabilities`:
+
+```json
+{
+  "catalog_change_feed": {
+    "supported": true,
+    "retention_window_days": 30,
+    "webhooks_supported": true,
+    "event_types": [
+      "product.created", "product.updated", "product.priced", "product.removed",
+      "signal.created", "signal.updated", "signal.priced", "signal.removed",
+      "catalog.bulk_change"
+    ]
+  }
+}
+```
+
+Agents that don't declare this stanza are presumed to not support the feed. Consumers fall back to polling via `wholesale` mode (optionally with `if_catalog_version` probes).
+
+---
+
+## Consumer Pattern
+
+1. **Bootstrap:** Call `get_products buying_mode: "wholesale"` (and/or `get_signals discovery_mode: "wholesale"`) — paginated full enumeration. Persist locally with entity IDs and the returned `catalog_version`.
+2. **Steady state:** Poll `GET /catalog/events?cursor={last_event_id}` every 30–60 seconds, or wait for webhook notification and then poll. Apply events to local catalog.
+3. **Recovery:** If `next_cursor` returns `RETENTION_EXPIRED` or a `catalog.bulk_change` event is observed, re-bootstrap via wholesale.
+
+The `catalog_version` token on the bootstrap response is the durable handle the consumer uses to validate its mirror against any future `get_products` / `get_signals` call. Combined with the feed, a consumer can detect drift between feed-applied state and seller-of-record state without re-fetching the catalog payload.
+
+---
+
+## Relationship to Other Specs
+
+- **`specs/registry-change-feed.md`** covers the central registry (properties, agents, publishers, authorizations). This spec covers per-agent inventory (products, signals). They compose: an `agent.profile_updated` event in the registry feed indicates a coarse change at the agent level; the agent's own catalog feed gives entity-level detail.
+- **`get_signals` wholesale mode** (issue #4762) defines the wholesale enumeration mode that bootstraps consumers before they switch to the feed.
+- **`catalog_version` conditional fetch** (issue #4761) is a complementary cheap-probe mechanism for agents that don't implement the full feed. Consumers MAY use `catalog_version` to validate their cursor is still current without consuming feed bandwidth.
+
+---
+
+## Implementation Phases
+
+1. **Event log + feed endpoint.** Reference implementation in the AdCP signals/sales agent SDKs. `catalog_events` storage, `GET /catalog/events` endpoint, capability declaration. Solves polling-based change detection.
+2. **SDK `CatalogSync` client.** Add `CatalogSync` to `@adcp/client` (TypeScript first, then Go and Python). Mirrors `RegistrySync`: bootstrap via wholesale, poll the feed, maintain in-memory product/signal index, event emitter for reactivity.
+3. **Webhook subscriptions.** Subscription CRUD, delivery worker with coalescing, retry/suspension logic. Most operationally complex — ship after the feed endpoint has proven stable.
+4. **Cross-feed correlation.** SDK convenience: `CatalogSync` and `RegistrySync` together expose authorization-aware views ("Which agents publish signals authorized by this data provider?" answered locally from registry feed + catalog feed without server calls).
+
+---
+
+## Open Questions
+
+1. **Per-agent versus federated feed.** An alternative design is a central change-feed at the registry that proxies per-agent catalogs. *Rejected:* the registry doesn't see inside agent catalogs; agents own their inventory.
+2. **Required retention.** 30 days is a recommendation. Should the spec MUST a minimum? *Recommendation: SHOULD 30 days, MUST not less than 7* (reflected in the capability schema).
+3. **Event ordering across entity types.** Strict per-entity ordering is required (product price changes must be linearizable per `product_id`). Cross-entity ordering is not required — UUID v7 gives consumers a stable cursor without expensive global ordering.
+4. **Signing of events.** Should events be content-signed by the agent? The registry feed spec defers this to the 4.0 root-of-trust work. Same answer here — out of scope for v3.1.

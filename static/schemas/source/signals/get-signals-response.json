@@ -114,6 +114,54 @@
         "$ref": "/schemas/core/error.json"
       }
     },
+    "incomplete": {
+      "type": "array",
+      "description": "Declares what the agent could not finish within the caller's time_budget or due to internal limits. Each entry identifies a scope that is missing or partial. Absent when the response is fully complete.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "signals",
+              "pricing",
+              "catalog"
+            ],
+            "description": "'signals': not all matching signals were returned. 'pricing': signals returned but pricing is absent or unconfirmed. 'catalog': in wholesale mode, whole-catalog enumeration could not complete in the time budget."
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable explanation of what is missing and why."
+          },
+          "estimated_wait": {
+            "allOf": [
+              {
+                "$ref": "/schemas/core/duration.json"
+              }
+            ],
+            "description": "How much additional time would resolve this scope. Allows the caller to decide whether to retry with a larger time_budget."
+          }
+        },
+        "required": [
+          "scope",
+          "description"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "catalog_version": {
+      "type": "string",
+      "description": "Opaque token representing the version of the catalog state used to compose this response. Agents that implement conditional-fetch (if_catalog_version) MUST return this on every response so callers can cache and probe later. Callers MUST treat the value as opaque — no format, no ordering, no inspection. Scoped to the request parameters that produced it (discovery_mode, account, filters, destinations, countries). See specs/catalog-change-feed.md."
+    },
+    "pricing_version": {
+      "type": "string",
+      "description": "Opaque token representing the version of the pricing layer. When the agent supports independent pricing versioning, pricing_version changes when prices move but catalog_version changes only when structure/metadata moves. Agents not separating these MAY omit pricing_version and use catalog_version for both."
+    },
+    "unchanged": {
+      "type": "boolean",
+      "description": "True ONLY when the request carried if_catalog_version (and/or if_pricing_version) matching the agent's current version, in which case signals[] MUST be omitted; catalog_version (echoed) MUST still be present. Callers receiving unchanged: true MUST NOT mutate their local catalog mirror."
+    },
     "pagination": {
       "$ref": "/schemas/core/pagination-response.json"
     },
@@ -128,8 +176,19 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": [
-    "signals"
+  "oneOf": [
+    {
+      "description": "Catalog-unchanged response: unchanged is true; signals MUST be omitted; catalog_version MUST be present.",
+      "properties": {
+        "unchanged": { "const": true }
+      },
+      "required": ["unchanged", "catalog_version"],
+      "not": { "required": ["signals"] }
+    },
+    {
+      "description": "Standard response: signals[] is present.",
+      "required": ["signals"]
+    }
   ],
   "additionalProperties": true
 }

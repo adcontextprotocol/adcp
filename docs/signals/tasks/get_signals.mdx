@@ -18,14 +18,17 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `signal_spec` | string | Conditional | Natural language description of the desired signals. Required unless `signal_ids` is provided. |
-| `signal_ids` | SignalID[] | Conditional | Specific signals to look up by data provider and ID. Required unless `signal_spec` is provided. |
-| `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account for this request. When provided, the signals agent returns per-account pricing options if configured. |
+| `discovery_mode` | string | No (v3.1+ SHOULD include) | `"brief"` (default) or `"wholesale"`. `"brief"`: existing behavior — `signal_spec` or `signal_ids` is required, agent performs inference/RAG. `"wholesale"`: raw catalog enumeration — `signal_spec` and `signal_ids` MUST NOT be provided; agent returns its full priced catalog, paginated, scoped by `filters` / `account` / `destinations` / `countries` when present. **Timing semantics:** `"wholesale"` is a catalog read — agents SHOULD respond synchronously and MUST NOT route through the async/Submitted arm; partial completion uses [`incomplete[]`](#incomplete-array). Agents receiving requests from pre-v3.1 clients without `discovery_mode` MUST default to `"brief"`. Probe support via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) (`signals.discovery_modes`). |
+| `signal_spec` | string | Conditional | Natural language description of the desired signals. Required when `discovery_mode` is `"brief"` (and `signal_ids` is absent). MUST NOT be provided when `discovery_mode` is `"wholesale"`. |
+| `signal_ids` | SignalID[] | Conditional | Specific signals to look up by data provider and ID. Required when `discovery_mode` is `"brief"` (and `signal_spec` is absent). MUST NOT be provided when `discovery_mode` is `"wholesale"`. |
+| `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account for this request. When provided, the signals agent returns per-account pricing options if configured. In wholesale mode, this is the rate-card scope; when omitted the agent returns default rate-card pricing or omits `pricing_options` entirely. |
 | `destinations` | Destination[] | No | Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. See Destination Object below. |
 | `countries` | string[] | No | Countries where signals will be used (ISO 3166-1 alpha-2 codes) |
-| `filters` | Filters | No | Filters to refine results (see Filters Object below) |
+| `filters` | Filters | No | Filters to refine results (see Filters Object below). In wholesale mode, filters constrain the enumerated catalog (e.g., `filters.data_providers: ["acme-data"]` returns only that provider's signals). |
+| `if_catalog_version` | string | No | Opaque `catalog_version` token from a prior `get_signals` response. When provided, the agent compares against its current catalog version and MAY return `unchanged: true` (with `signals` omitted) if nothing has changed. Versions are scoped to the (agent, account, filters, `discovery_mode`) tuple. See [Catalog versioning](#catalog-versioning). |
+| `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. Narrower scope than `if_catalog_version`: structure AND pricing must be unchanged. Optional — agents that don't track pricing separately ignore this. |
 | `max_results` | number | No | **Deprecated.** Use `pagination.max_results` instead. When both are present, `pagination.max_results` takes precedence. Will be removed in AdCP 4.0. |
-| `pagination` | object | No | Pagination envelope. `pagination.max_results` (max: 100, default: 50) controls page size; `pagination.cursor` (opaque token from previous response) advances pages. |
+| `pagination` | object | No | Pagination envelope. `pagination.max_results` (max: 100, default: 50) controls page size; `pagination.cursor` (opaque token from previous response) advances pages. Required for wholesale (catalogs may be large). |
 
 ### Destination Object
 
@@ -626,6 +629,131 @@ Discover all available deployments across platforms:
 5. **Activation Required**: If `is_live` is false, use the `activate_signal` task
 6. **The message field** provides a quick summary of the most relevant findings
 
+## Wholesale catalog enumeration
+
+When a consumer (storefront, federated marketplace, registry) needs to mirror a signals agent's full priced catalog, set `discovery_mode: "wholesale"` and omit `signal_spec` / `signal_ids`. Wholesale enumeration is symmetric with [`get_products` `buying_mode: "wholesale"`](/docs/media-buy/task-reference/get_products): synchronous, paginated, firm-priced, with partial completion declared via `incomplete[]`.
+
+### Request
+
+```json
+{
+  "$schema": "/schemas/signals/get-signals-request.json",
+  "discovery_mode": "wholesale",
+  "account": { "account_id": "acct_123" },
+  "filters": {
+    "catalog_types": ["marketplace", "owned"],
+    "data_providers": ["acme-data", "nova-insights"]
+  },
+  "pagination": { "max_results": 50 }
+}
+```
+
+### Response
+
+```json
+{
+  "$schema": "/schemas/signals/get-signals-response.json",
+  "message": "Returning 50 of 312 signals in wholesale mode.",
+  "context_id": "ctx-wholesale-001",
+  "catalog_version": "v2026-05-18T08:00:00Z-acme-rev412",
+  "signals": [
+    {
+      "signal_id": { "source": "catalog", "data_provider_domain": "acme-data.com", "id": "luxury_auto_intenders" },
+      "signal_agent_segment_id": "sigagent_seg_4421",
+      "name": "Luxury Auto Intenders",
+      "description": "Households researching premium vehicles in the last 30 days.",
+      "signal_type": "marketplace",
+      "data_provider": "Acme Data",
+      "coverage_percentage": 18.4,
+      "deployments": [
+        { "type": "platform", "platform": "the-trade-desk", "is_live": true,
+          "activation_key": { "type": "segment_id", "segment_id": "ttd_seg_99821" } }
+      ],
+      "pricing_options": [
+        { "pricing_option_id": "po_cpm_1", "model": "cpm", "cpm": 2.50, "currency": "USD" }
+      ]
+    }
+  ],
+  "pagination": { "has_more": true, "cursor": "eyJvIjo1MH0=", "total_count": 312 }
+}
+```
+
+### Authorization and provenance
+
+Marketplace signals (`signal_type: "marketplace"`) remain attributable to their upstream data provider. Wholesale enumeration does not collapse provenance:
+
+- Each marketplace signal carries `data_provider`.
+- Consumers SHOULD verify provider authorization via the provider's `adagents.json` — the signals agent's URL must appear in the provider's authorization list for that signal class.
+- Storefronts and registries MAY use wholesale enumeration plus `adagents.json` cross-reference to materialize a "data publisher catalog" view: for each known data provider, the set of signals available via authorized signals agents, with prices.
+
+### Pricing
+
+`pricing_options[]` MUST be populated for authenticated callers when the agent has firm prices to declare. When `account` is omitted, the agent returns default rate-card pricing or omits `pricing_options[]` (in which case the caller MUST re-query with `account` before composing). Unauthenticated callers MAY receive catalog metadata without pricing.
+
+### Capability declaration
+
+Signals agents declare wholesale support in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities):
+
+```json
+{
+  "signals": {
+    "discovery_modes": ["brief", "wholesale"]
+  }
+}
+```
+
+Agents not declaring `"wholesale"` MAY return `INVALID_REQUEST` for wholesale calls. The capability declaration is the canonical signal — callers SHOULD probe before issuing wholesale requests.
+
+## Catalog versioning
+
+Even with wholesale enumeration, a consumer mirroring an agent's catalog would re-fetch every paginated page on each poll just to detect changes. To avoid that, `get_signals` supports an opaque `catalog_version` token returned on every response. Pass it back via `if_catalog_version` on a subsequent call and the agent MAY short-circuit with `unchanged: true` — no catalog payload, no per-page diff.
+
+### Unchanged response
+
+**Request:**
+
+```json
+{
+  "$schema": "/schemas/signals/get-signals-request.json",
+  "discovery_mode": "wholesale",
+  "if_catalog_version": "v2026-05-18T08:00:00Z-acme-rev412"
+}
+```
+
+**Response (catalog unchanged):**
+
+```json
+{
+  "$schema": "/schemas/signals/get-signals-response.json",
+  "message": "Catalog unchanged since v2026-05-18T08:00:00Z-acme-rev412.",
+  "context_id": "ctx-abc-789",
+  "unchanged": true,
+  "catalog_version": "v2026-05-18T08:00:00Z-acme-rev412",
+  "pricing_version": "v2026-05-18T08:00:00Z-acme-rev412"
+}
+```
+
+When `unchanged: true`, `signals[]` MUST be omitted and consumers MUST NOT mutate their local catalog mirror.
+
+### Rules
+
+- Tokens are **opaque**. No format, no ordering, no inspection.
+- A returned `catalog_version` is scoped to the request parameters that produced it. Callers MUST cache the version alongside the `(account, filters, discovery_mode, destinations, countries)` tuple used.
+- `pricing_version` is an optional finer-grained token: when present, it changes when prices move but `catalog_version` changes only when structure/metadata moves. Common for rate-card sweeps that don't change segment metadata.
+- Pre-v3.1 agents that ignore `if_catalog_version` simply return the full payload — semantically correct, just inefficient.
+
+For ongoing change tracking beyond conditional fetch, see `specs/catalog-change-feed.md` — a per-agent event stream that emits `signal.created` / `signal.updated` / `signal.priced` / `signal.removed` events for incremental sync.
+
+## Incomplete array
+
+When the agent cannot complete all work within the caller's `time_budget` (or due to internal limits), the response includes `incomplete` — an array declaring what is missing. Callers can use `estimated_wait` to decide whether to retry with a larger budget.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `scope` | string | Yes | `"signals"`: not all matching signals were returned. `"pricing"`: signals returned but pricing is absent or unconfirmed. `"catalog"`: in wholesale mode, whole-catalog enumeration could not complete. |
+| `description` | string | Yes | Human-readable explanation of what is missing and why. |
+| `estimated_wait` | Duration | No | How much additional time would resolve this scope. |
+
 ## Iterative refinement
 
 `get_signals` supports iterative refinement without a separate mode flag. The combination of `signal_spec` and `signal_ids` determines the operation:
@@ -635,6 +763,7 @@ Discover all available deployments across platforms:
 | `signal_spec` only | Discovery — find signals matching the description |
 | `signal_ids` only | Exact lookup — return specific signals by ID |
 | `signal_ids` + `signal_spec` | Refinement — start from known signals, adjust per the spec |
+| `discovery_mode: "wholesale"` (neither `signal_spec` nor `signal_ids`) | Wholesale — enumerate the agent's full priced catalog. See [Wholesale catalog enumeration](#wholesale-catalog-enumeration). |
 
 To refine previous results, pass back the `signal_id` values from signals you want to keep, and provide an updated `signal_spec` describing what to change:
 

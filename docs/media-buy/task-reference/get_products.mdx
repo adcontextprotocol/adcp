@@ -140,6 +140,8 @@ asyncio.run(discover_with_filters())
 | `filters` | Filters | No | Structured filters (see below) |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
 | `pagination` | PaginationRequest | No | Cursor-based pagination for large product catalogs (see below) |
+| `if_catalog_version` | string | No | Opaque `catalog_version` token from a prior `get_products` response. When provided, the seller compares against its current catalog version and MAY return `unchanged: true` (with `products` omitted) if nothing has changed. Versions are scoped to the (agent, account, filters, `buying_mode`, `property_list`, `catalog`) tuple. See [Catalog versioning](#catalog-versioning). |
+| `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. Narrower scope than `if_catalog_version`: structure AND pricing must be unchanged. Optional — sellers that don't track pricing separately ignore this and fall back to `if_catalog_version` semantics. |
 | `time_budget` | Duration | No | Maximum time the buyer will commit to this request. The seller returns the best results achievable within this budget and does not start processes (human approvals, expensive external queries) that cannot complete in time. When omitted, the seller decides timing. Example: `{"interval": 30, "unit": "seconds"}`. |
 
 <Note>
@@ -313,6 +315,9 @@ Pagination is optional. When omitted, the server returns all results (or a serve
 | `refinement_applied` | [RefinementResult[]](#refinement_applied-response) | Seller acknowledgment of each `refine` entry, matched by position. Only present when `buying_mode` is `"refine"`. See [refinement_applied](#refinement_applied-response) above. |
 | `incomplete` | [IncompleteEntry[]](#incomplete-array) | Declares what the seller could not finish within the `time_budget` or due to internal limits. Each entry identifies a scope with a human-readable explanation. Absent when the response is fully complete. See [incomplete array](#incomplete-array) below. |
 | `filter_diagnostics` | object | Optional non-fatal observability block describing how `filters` narrowed the candidate set — `total_candidates` plus per-filter `excluded_by` counts (keyed by filter name). Disambiguates "no inventory" from "your filter excluded everything" when the result list is empty or unexpectedly small. Counts only — never product names — to avoid leaking competitive intelligence. See [filter_diagnostics](#filter_diagnostics) below. |
+| `catalog_version` | string | Opaque token representing the version of the catalog state used to compose this response. Sellers implementing conditional-fetch (`if_catalog_version`) MUST return this on every response so buyers can cache and probe later. Treat as opaque — no format, no ordering, no inspection. See [Catalog versioning](#catalog-versioning). |
+| `pricing_version` | string | Optional opaque token representing the version of the pricing layer. When the seller supports independent pricing versioning, `pricing_version` changes when prices move but `catalog_version` changes only when structure/metadata moves. Sellers not separating these MAY omit `pricing_version` and use `catalog_version` for both. |
+| `unchanged` | boolean | `true` ONLY when the request carried `if_catalog_version` (and/or `if_pricing_version`) matching the seller's current version, in which case `products[]` MUST be omitted; `catalog_version` (echoed) MUST still be present. Buyers receiving `unchanged: true` MUST NOT mutate their local catalog mirror. |
 
 ### filter_diagnostics
 
@@ -351,6 +356,60 @@ When the seller cannot complete all work within the `time_budget` (or due to its
 | `scope` | string | Yes | `"products"`: not all inventory sources were searched. `"pricing"`: products returned but pricing is absent or unconfirmed. `"forecast"`: products returned but forecast data is absent. `"proposals"`: proposals were not generated or are incomplete. |
 | `description` | string | Yes | Human-readable explanation of what is missing and why. |
 | `estimated_wait` | Duration | No | How much additional time would resolve this scope. |
+
+### Catalog versioning
+
+A buyer that just synced a seller's catalog can ask "has anything changed since version X?" in one cheap call, regardless of catalog size. Sellers return an opaque `catalog_version` on every response; buyers pass it back via `if_catalog_version` on the next call and the seller MAY short-circuit with `unchanged: true` — no products payload, no per-page diff. Patterned on HTTP `ETag` / `If-None-Match`.
+
+**Unchanged response example:**
+
+Request:
+
+```json
+{
+  "$schema": "/schemas/media-buy/get-products-request.json",
+  "buying_mode": "wholesale",
+  "if_catalog_version": "v2026-05-18T08:00:00Z-acme-rev412"
+}
+```
+
+Response (catalog unchanged):
+
+```json
+{
+  "$schema": "/schemas/media-buy/get-products-response.json",
+  "message": "Catalog unchanged since v2026-05-18T08:00:00Z-acme-rev412.",
+  "context_id": "ctx-abc-789",
+  "unchanged": true,
+  "catalog_version": "v2026-05-18T08:00:00Z-acme-rev412",
+  "pricing_version": "v2026-05-18T08:00:00Z-acme-rev412"
+}
+```
+
+Response (catalog changed — full payload returned):
+
+```json
+{
+  "$schema": "/schemas/media-buy/get-products-response.json",
+  "message": "Returning 312 products.",
+  "context_id": "ctx-abc-790",
+  "unchanged": false,
+  "catalog_version": "v2026-05-18T10:15:00Z-acme-rev415",
+  "pricing_version": "v2026-05-18T10:15:00Z-acme-rev415",
+  "products": [],
+  "pagination": { "has_more": true, "cursor": "..." }
+}
+```
+
+**Rules**
+
+- Tokens are **opaque**. No format, no ordering, no inspection.
+- A returned `catalog_version` is scoped to the request parameters that produced it. Buyers MUST cache the version alongside the `(account, filters, buying_mode, property_list, catalog)` tuple used.
+- `pricing_version` is an optional finer-grained token: when present, it changes when prices move but `catalog_version` changes only when structure/metadata moves. Common for rate-card sweeps that don't change product metadata.
+- **Pagination interaction.** `catalog_version` describes the catalog as a whole, not individual pages. When the catalog mutates between pages, sellers SHOULD return the new `catalog_version` on each page (RECOMMENDED) or snapshot the catalog at the start of pagination. Buyers receiving a `catalog_version` change mid-pagination SHOULD restart pagination from `cursor: null`.
+- Pre-v3.1 sellers that ignore `if_catalog_version` simply return the full payload — semantically correct, just inefficient (same as the unchanged-server path in HTTP).
+
+For ongoing change tracking beyond conditional fetch, see `specs/catalog-change-feed.md` — a per-agent event stream that emits `product.created` / `product.updated` / `product.priced` / `product.removed` events for incremental sync.
 
 **See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-response.json)
 

@@ -202,6 +202,14 @@
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"
     },
+    "if_catalog_version": {
+      "type": "string",
+      "description": "Opaque catalog_version token returned by a prior get_products response from this agent. When provided, the agent compares against its current catalog version and MAY return an unchanged: true response (with products omitted) if nothing has changed. Versions are scoped to the (agent, account, filters, buying_mode, property_list, catalog) tuple — callers MUST cache the version alongside the request parameters used. Backward-compatible: pre-v3.1 agents that ignore this field simply return the full payload, same as the unchanged-server path. See specs/catalog-change-feed.md for the full sync pattern."
+    },
+    "if_pricing_version": {
+      "type": "string",
+      "description": "Opaque pricing_version token from a prior get_products response. Narrower scope than if_catalog_version: structure AND pricing must be unchanged for the agent to return unchanged: true. Optional — agents that don't track pricing separately ignore this and fall back to if_catalog_version semantics. Useful for storefronts that re-price compositions far more often than they re-render catalogs."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

@@ -240,6 +240,18 @@
     "pagination": {
       "$ref": "/schemas/core/pagination-response.json"
     },
+    "catalog_version": {
+      "type": "string",
+      "description": "Opaque token representing the version of the catalog state used to compose this response. Agents that implement conditional-fetch (if_catalog_version) MUST return this on every response so callers can cache and probe later. Callers MUST treat the value as opaque — no format, no ordering, no inspection. Scoped to the request parameters that produced it (buying_mode, account, filters, property_list, catalog). See specs/catalog-change-feed.md."
+    },
+    "pricing_version": {
+      "type": "string",
+      "description": "Opaque token representing the version of the pricing layer. When the agent supports independent pricing versioning, pricing_version changes when prices move but catalog_version changes only when structure/metadata moves. Agents not separating these MAY omit pricing_version and use catalog_version for both."
+    },
+    "unchanged": {
+      "type": "boolean",
+      "description": "True ONLY when the request carried if_catalog_version (and/or if_pricing_version) matching the agent's current version, in which case products[] MUST be omitted; catalog_version (echoed) MUST still be present. Callers receiving unchanged: true MUST NOT mutate their local catalog mirror."
+    },
     "sandbox": {
       "type": "boolean",
       "description": "When true, this response contains simulated data from sandbox mode."
@@ -251,8 +263,19 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": [
-    "products"
+  "oneOf": [
+    {
+      "description": "Catalog-unchanged response: unchanged is true; products MUST be omitted; catalog_version MUST be present.",
+      "properties": {
+        "unchanged": { "const": true }
+      },
+      "required": ["unchanged", "catalog_version"],
+      "not": { "required": ["products"] }
+    },
+    {
+      "description": "Standard response: products[] is present.",
+      "required": ["products"]
+    }
   ],
   "additionalProperties": true
 }

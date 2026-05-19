@@ -717,6 +717,20 @@
           },
           "minItems": 1
         },
+        "discovery_modes": {
+          "type": "array",
+          "description": "Discovery modes this signals agent supports on get_signals. 'brief' (default — every signals agent supports this): semantic discovery driven by signal_spec or signal_ids. 'wholesale': raw catalog enumeration — caller omits signal_spec/signal_ids and the agent returns its full priced catalog, paginated, scoped by filters/account/destinations/countries. Agents that do not declare 'wholesale' MAY return INVALID_REQUEST for wholesale calls. Absent declaration is treated as ['brief'].",
+          "items": {
+            "type": "string",
+            "enum": [
+              "brief",
+              "wholesale"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["brief"]
+        },
         "features": {
           "type": "object",
           "description": "Optional signals features supported",
@@ -1378,6 +1392,48 @@
         "description": "Experimental feature id (dot-separated lowercase identifiers, e.g., 'brand.rights_lifecycle', 'governance.campaign', 'trusted_match.core')"
       },
       "uniqueItems": true
+    },
+    "catalog_change_feed": {
+      "type": "object",
+      "description": "Per-agent inventory change-feed capabilities. Declared by sales agents (products) and signals agents (signals). When supported is true, consumers can poll GET /catalog/events on this agent to maintain a near-real-time mirror of its product and/or signal catalog without re-fetching unchanged inventory. Complementary to (and independent of) the catalog_version conditional-fetch tokens on get_products and get_signals. See specs/catalog-change-feed.md.",
+      "properties": {
+        "supported": {
+          "type": "boolean",
+          "description": "Whether this agent publishes a change feed. When false or this stanza is absent, consumers fall back to wholesale polling, optionally with if_catalog_version probes."
+        },
+        "retention_window_days": {
+          "type": "integer",
+          "minimum": 7,
+          "description": "Minimum age of events that the agent guarantees to serve. Consumers whose cursor is older than this window get a RETENTION_EXPIRED error and MUST resync via wholesale enumeration. Specification SHOULDs 30 days; MUST NOT be less than 7."
+        },
+        "webhooks_supported": {
+          "type": "boolean",
+          "description": "Whether this agent supports webhook subscriptions on /catalog/subscriptions. Polling the feed is always the source of truth — webhooks are best-effort notifications."
+        },
+        "event_types": {
+          "type": "array",
+          "description": "Event types this agent emits. Sales agents emit product.* events. Signals agents emit signal.* events. Agents that are both publish both event families on one feed. catalog.bulk_change is the fast-forward event recommended for rate-card sweeps that would otherwise produce thousands of individual events.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "product.created",
+              "product.updated",
+              "product.priced",
+              "product.removed",
+              "signal.created",
+              "signal.updated",
+              "signal.priced",
+              "signal.removed",
+              "catalog.bulk_change"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "supported"
+      ]
     },
     "last_updated": {
       "type": "string",
