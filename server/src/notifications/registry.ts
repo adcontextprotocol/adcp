@@ -193,6 +193,93 @@ export async function notifyRegistryRollback(rollback: {
 }
 
 /**
+ * Strip Slack mrkdwn meta-characters from user-controlled strings before
+ * interpolating them into a channel message. Without this, an uploader
+ * could plant `<!channel>` / `<!here>` / `<@U…>` mentions to ping the
+ * whole moderator channel, or `<https://evil/|legit-text>` to plant a
+ * phishing link in a moderator-trusted surface. Replaces angle brackets
+ * and ampersand with HTML-escaped equivalents and inserts a zero-width
+ * space inside `!channel|here|everyone` so the broadcast token loses
+ * its meaning while staying human-readable.
+ */
+function sanitizeMrkdwn(s: string): string {
+  return s
+    .replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]!))
+    .replace(/!(channel|here|everyone)/gi, '!​$1');
+}
+
+/**
+ * Notify moderators when a community logo upload queues for review.
+ *
+ * Fires from both the HTTP route and the Addie MCP tool whenever a logo
+ * lands with `review_status='pending'`. Verified-owner uploads (auto-
+ * approved) do NOT fire this — they're owner-attested and don't need a
+ * second pair of eyes. Returns the message ts so future approval/rejection
+ * notifications can thread off it.
+ */
+export async function notifyPendingBrandLogo(upload: {
+  domain: string;
+  logo_id: string;
+  content_type: string;
+  tags: string[];
+  uploader_email?: string;
+  uploader_name?: string;
+  upload_note?: string;
+  source: 'community' | 'addie';
+}): Promise<string | null> {
+  const channelId = getChannelId();
+  if (!channelId || !isSlackConfigured()) return null;
+
+  const rawUploader = upload.source === 'addie'
+    ? 'Addie (chat)'
+    : (upload.uploader_name || upload.uploader_email || 'Unknown');
+  const uploaderDisplay = sanitizeMrkdwn(rawUploader);
+  const reviewUrl = `${APP_URL}/brand/view/${upload.domain}`;
+  const tagsLine = upload.tags.length ? upload.tags.join(', ') : '(none)';
+
+  const fields = [
+    { type: 'mrkdwn', text: `*Uploader:*\n${uploaderDisplay}` },
+    { type: 'mrkdwn', text: `*Tags:*\n${tagsLine}` },
+    { type: 'mrkdwn', text: `*Format:*\n${upload.content_type}` },
+  ] as const;
+
+  const blocks: SlackBlockMessage['blocks'] = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `🖼️ *Logo pending review:* <${reviewUrl}|${upload.domain}>`,
+      },
+    },
+    { type: 'section', fields: [...fields] },
+  ];
+
+  if (upload.upload_note) {
+    // Truncate to keep the Slack block under the 3000-char text limit and
+    // sanitize before interpolating — the note is uploader-controlled and
+    // posted into a moderator-trusted channel.
+    const note = sanitizeMrkdwn(upload.upload_note.slice(0, 500));
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*Note:*\n${note}` },
+    });
+  }
+
+  const message: SlackBlockMessage = {
+    text: `🖼️ Logo pending review: ${upload.domain} by ${uploaderDisplay}`,
+    blocks,
+  };
+
+  try {
+    const result = await sendChannelMessage(channelId, message);
+    return result.ts || null;
+  } catch (error) {
+    logger.error({ error, domain: upload.domain, logoId: upload.logo_id }, 'Failed to send pending-logo notification');
+    return null;
+  }
+}
+
+/**
  * Notify when a user is banned from editing.
  */
 export async function notifyRegistryBan(ban: {
