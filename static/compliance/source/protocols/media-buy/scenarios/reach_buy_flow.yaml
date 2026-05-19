@@ -94,6 +94,12 @@ fixtures:
       channels: ["video"]
       format_ids:
         - id: "video_30s"
+      metric_optimization:
+        supported_metrics:
+          - "reach"
+        supported_reach_units:
+          - "households"
+          - "individuals"
   pricing_options:
     - product_id: "reach_ctv_q2"
       pricing_option_id: "auction_cpm"
@@ -159,8 +165,8 @@ phases:
     title: "Create a reach-optimized buy with a supported reach_unit"
     narrative: |
       The buyer creates a media buy whose package carries a metric-kind
-      optimization_goal with metric: reach, reach_unit: households (assumed
-      to be in the product's supported_reach_units for CTV inventory), and
+      optimization_goal with metric: reach, reach_unit: households (explicitly
+      declared in the product fixture's supported_reach_units), and
       a target_frequency band of 1–3 over a 7-day rolling window. The seller
       should accept and return a media_buy_id used for subsequent delivery
       checks.
@@ -223,14 +229,18 @@ phases:
       rejection in performance_buy_flow and the unbound audience_id
       rejection in audience_buy_flow.
 
-      The literal string "phantom_unit" is chosen because no spec-defined
-      reach_unit value matches it and no honest product will declare it in
-      supported_reach_units. Sellers that round-trip "phantom_unit" as
-      accepted are demonstrating they don't validate against their product
-      capability declarations.
+      "devices" is chosen because it is a valid spec-defined reach_unit enum
+      value that the reach_ctv_q2 product fixture deliberately omits from
+      supported_reach_units (which declares only "households" and
+      "individuals"). Using a valid enum value satisfies
+      negative_path: payload_well_formed (the request is schema-valid),
+      while the fixture exclusion ensures the rejection must come from the
+      seller's capability-checking logic rather than schema validation.
+      Sellers that silently accept "devices" are demonstrating they don't
+      validate reach_unit against their product capability declarations.
 
     steps:
-      - id: create_media_buy_with_phantom_reach_unit
+      - id: create_media_buy_with_unsupported_reach_unit
         title: "Submit a reach goal whose reach_unit is not in supported_reach_units"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
@@ -258,7 +268,7 @@ phases:
               optimization_goals:
                 - kind: "metric"
                   metric: "reach"
-                  reach_unit: "phantom_unit"
+                  reach_unit: "devices"
           idempotency_key: "$generate:uuid_v4#reach_buy_flow_rejection_unsupported_reach_unit"
         validations:
           - check: error_code
