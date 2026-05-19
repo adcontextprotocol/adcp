@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/enums/attribution-methodology.json",
+  "title": "Attribution Methodology",
+  "description": "How attribution between ad exposure and outcome events was computed. Used as a `qualifier.attribution_methodology` key on `committed_metrics`, `missing_metrics`, `metric_aggregates`, and `performance-feedback.metric` to disambiguate the same outcome metric reported under different methodologies — `conversion_value` measured deterministically (matched purchase IDs) is not the same number as `conversion_value` measured probabilistically (modeled match) and should never be summed across methodologies. The retail-media closed-loop pattern typically reports under `deterministic_purchase`; MMM and clean-room outputs typically report under `modeled` or `probabilistic`; panel-based measurement (Nielsen, comScore, Edison) reports under `panel_based`.",
+  "type": "string",
+  "enum": ["deterministic_purchase", "probabilistic", "panel_based", "modeled"],
+  "enumDescriptions": {
+    "deterministic_purchase": "1:1 deterministic match between exposed users and purchasers, typically via shared identifier (loyalty card, logged-in account, hashed email). Standard in retail-media closed-loop measurement (Walmart Connect, Kroger Precision, Amazon DSP attribution).",
+    "probabilistic": "Probabilistic match using statistical models over device graphs, IP/UA fingerprinting, or behavioral signals. No 1:1 identifier link.",
+    "panel_based": "Panel methodology — outcomes measured against a recruited respondent panel and projected to the population. Standard for Nielsen, comScore, Edison Research, and similar panel providers.",
+    "modeled": "Modeled output — Media Mix Modeling (MMM), Multi-Touch Attribution (MTA), incrementality testing, or other statistical inference that produces an estimated outcome rather than a directly-observed match. Includes most clean-room outputs."
+  }
+}

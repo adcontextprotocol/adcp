@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/error-details/billing-not-permitted-for-agent.json",
+  "title": "Billing Not Permitted For Agent Details",
+  "description": "Recommended details shape for BILLING_NOT_PERMITTED_FOR_AGENT errors. Returned when the seller's declared `supported_billing` capability accepts the requested value but the calling buyer agent's commercial relationship with the seller does not (e.g., the agent is onboarded as passthrough-only — no payments relationship — so `agent` and `advertiser` reject). The shape is deliberately minimal: it returns the value that was rejected and at most one suggested retry value (typically `operator`). It MUST NOT carry the agent's full permitted-billing subset, the agent's other commercial state (rate cards, payment terms, credit limit, billing entity), or any per-account state — those are commercial-state oracles. Sellers MUST NOT add ad-hoc keys to this object: any field carrying per-agent commercial state is forbidden, even if `additionalProperties` would permit it. The recovery contract is: if `suggested_billing` is present, the agent MAY retry autonomously with that value; if absent, the rejection is terminal-pending-onboarding and the agent MUST surface to a human at the buyer to complete payments-relationship onboarding with the seller offline.",
+  "type": "object",
+  "properties": {
+    "rejected_billing": {
+      "$ref": "/schemas/3.1.0-beta.0/enums/billing-party.json",
+      "description": "The `billing` value the seller rejected — echoed verbatim from the request for caller-side reconciliation."
+    },
+    "suggested_billing": {
+      "$ref": "/schemas/3.1.0-beta.0/enums/billing-party.json",
+      "description": "A single billing value the calling buyer agent MAY retry with autonomously. Typically `operator` for passthrough-only agents. Sellers MAY omit this field when no retryable value exists for this agent's commercial relationship — in that case the rejection is terminal-pending-onboarding and the buyer MUST complete offline payments-relationship onboarding before any value other than the original request will succeed. Sellers MUST NOT populate this field with the full subset of values the agent may use; the field surfaces at most one canonical retry."
+    }
+  },
+  "required": [
+    "rejected_billing"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "rejected_billing": "agent",
+      "suggested_billing": "operator"
+    },
+    {
+      "rejected_billing": "advertiser"
+    }
+  ]
+}

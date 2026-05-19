@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/core/notification-config.json",
+  "title": "Notification Config",
+  "description": "Account-level webhook subscription for notifications whose lifecycle outlives any single media buy — creative state changes, library purges, future org-level signals. Distinct from `push-notification-config.json`, which anchors at a per-resource operation (a single task or media buy). An account MAY register multiple notification configs to fan a single seller's events out to multiple buyer-side endpoints; each entry filters by `event_types`. As with push-notification-config, the default signing scheme is the AdCP RFC 9421 webhook profile against the seller's brand.json `agents[]` JWKS; the optional `authentication` block opts into the deprecated Bearer / HMAC-SHA256 fallback for compatibility. Credentials and shared secrets in `authentication.credentials` are write-only — sellers MUST NOT echo them back in `list_accounts` responses.",
+  "type": "object",
+  "properties": {
+    "subscriber_id": {
+      "type": "string",
+      "description": "Buyer-supplied identifier for this subscription endpoint. Echoed on every webhook payload and on every `webhook_activity[]` record fired against this config so the buyer can attribute fires across multiple endpoints. MUST be unique within the account's `notification_configs[]` — uniqueness is enforced by the seller at registration time; duplicates are rejected with `errors[]`. Always required (even with a single subscriber) so the SDK contract is uniform — no conditional required-when-multiple rules to trip up implementations. Format is opaque — recommended values are short kebab-case slugs (`buyer-primary`, `audit-bus`, `dx-team`).",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Webhook endpoint URL. Same wire contract as `push-notification-config.url` — `format: \"uri\"`, no destination-port allowlist enforced by the protocol, SSRF protection via the IP-range check defined in docs/building/by-layer/L1/security.mdx#webhook-url-validation-ssrf."
+    },
+    "event_types": {
+      "type": "array",
+      "description": "Notification types this subscriber wishes to receive on the registered `url`. The seller MUST NOT fire other types against this endpoint, and MUST NOT silently widen the filter when new types are added to `notification-type.json`. When omitted, the seller MUST default to a no-fire policy and surface an `errors[]` entry on `sync_accounts` so the buyer notices the missing filter. Values are drawn from `notification-type.json`, but only types whose contract anchors at the account scope are valid here — media-buy-anchored types (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) belong on a media buy's `push_notification_config`, not on this surface; sellers MUST reject those entries with an `errors[]` warning rather than silently dropping them.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/enums/notification-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "authentication": {
+      "type": "object",
+      "description": "Legacy authentication selector. Same precedence and semantics as `push-notification-config.authentication` — presence opts the seller into Bearer or HMAC-SHA256 signing; absence selects the default RFC 9421 webhook profile keyed off the seller's brand.json `agents[]` JWKS. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on `list_accounts` reads.",
+      "properties": {
+        "schemes": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/3.1.0-beta.0/enums/auth-scheme.json"
+          },
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "credentials": {
+          "type": "string",
+          "description": "Credentials for the legacy scheme. Bearer: token. HMAC-SHA256: shared secret. Minimum 32 characters. Exchanged out-of-band during onboarding. Write-only.",
+          "minLength": 32
+        }
+      },
+      "required": [
+        "schemes",
+        "credentials"
+      ],
+      "additionalProperties": false
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "When false, the seller persists the configuration but suppresses fires. Use to pause a noisy subscriber without losing the registration. Sellers MUST NOT skip persisting the entry when `active: false` — the buyer's next `sync_accounts` MUST observe the same array, otherwise the buyer cannot distinguish pause from drop."
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "subscriber_id",
+    "url",
+    "event_types"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Single subscriber receiving creative lifecycle events",
+      "data": {
+        "subscriber_id": "buyer-primary",
+        "url": "https://buyer.example/webhooks/adcp/creative",
+        "event_types": [
+          "creative.status_changed",
+          "creative.purged"
+        ],
+        "active": true
+      }
+    },
+    {
+      "description": "Audit bus subscriber (one of multiple entries on the same account; the array lives on the account, this is a single item)",
+      "data": {
+        "subscriber_id": "audit-bus",
+        "url": "https://audit.buyer.example/adcp/ingest",
+        "event_types": [
+          "creative.status_changed",
+          "creative.purged"
+        ],
+        "active": true
+      }
+    },
+    {
+      "description": "Legacy Bearer authentication (deprecated, 4.0 removal)",
+      "data": {
+        "subscriber_id": "buyer-primary",
+        "url": "https://buyer.example/webhooks/adcp",
+        "event_types": [
+          "creative.status_changed"
+        ],
+        "authentication": {
+          "schemes": [
+            "Bearer"
+          ],
+          "credentials": "AbCdEf0123456789AbCdEf0123456789"
+        },
+        "active": true
+      }
+    }
+  ]
+}
