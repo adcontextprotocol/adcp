@@ -16,7 +16,7 @@ The Media Buy Protocol provides 11 standardized tasks for managing advertising c
 | Task | Purpose | Response Time |
 |------|---------|---------------|
 | `get_products` | Discover inventory using natural language | ~60s |
-| `list_authorized_properties` | See publisher properties | ~1s |
+| `get_adcp_capabilities` | See agent capabilities, supported protocols, and publisher properties | ~1s |
 | `list_creative_formats` | View creative specifications | ~1s |
 | `create_media_buy` | Create campaigns | Minutes-Days |
 | `update_media_buy` | Modify campaigns | Minutes-Days |
@@ -91,22 +91,6 @@ Discover advertising products using natural language briefs.
 **Response contains:**
 - `products`: Array of matching products with `product_id`, `name`, `description`, `pricing_options`
 - Each product includes `format_ids` (supported creative formats) and `targeting` (available targeting)
-
----
-
-### list_authorized_properties
-
-Get the list of publisher properties this agent can sell.
-
-**Request:**
-```json
-{}
-```
-
-No parameters required.
-
-**Response contains:**
-- `publisher_domains`: Array of domain strings the agent is authorized to sell
 
 ---
 
