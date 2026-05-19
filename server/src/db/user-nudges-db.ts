@@ -1,10 +1,13 @@
 /**
- * Per-user dismissed-nudges state.
+ * Per-user dismissed-nudges state — and, by extension, per-user fire-once
+ * markers for system events keyed off the same primitive.
  *
  * Tracks when a user dismissed a soft banner / in-app prompt so the
  * caller can implement a re-surface cooldown without each feature
- * building its own dismissal table. First consumer: brand-claim
- * suggestion (#4744).
+ * building its own dismissal table. Also used as a dedupe table for
+ * fire-once-per-(user,event) Slack notifications — same shape, different
+ * semantics. Use a distinct `nudge_key` prefix to keep the two uses
+ * unambiguous when reading the table by hand.
  *
  * nudge_key namespacing convention: `<feature>:<scope>`. The scope is
  * optional — `onboarding:welcome` and `brand_claim_suggestion:scope3.com`

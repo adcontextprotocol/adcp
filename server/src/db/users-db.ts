@@ -214,6 +214,19 @@ export class UsersDatabase {
  * Cross-org auth code that relies on a deterministic "primary" should
  * tolerate the user changing primary across membership additions.
  */
+/**
+ * Lookup a user's email from the canonical `users` table by WorkOS id.
+ * Returns null when the user row doesn't exist (e.g. during the brief
+ * window between WorkOS user.created webhook and our upsert).
+ */
+export async function getUserEmailById(workosUserId: string): Promise<string | null> {
+  const result = await query<{ email: string }>(
+    `SELECT email FROM users WHERE workos_user_id = $1`,
+    [workosUserId],
+  );
+  return result.rows[0]?.email ?? null;
+}
+
 export async function resolvePreferredOrganization(workosUserId: string): Promise<string | null> {
   const result = await query<{ workos_organization_id: string }>(
     `SELECT om.workos_organization_id

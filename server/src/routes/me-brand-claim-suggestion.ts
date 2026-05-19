@@ -16,14 +16,37 @@ import { BrandDatabase } from '../db/brand-db.js';
 import {
   getBrandClaimSuggestionForUser,
   getSuggestionForDomain,
-  getUserEmailById,
   nudgeKey,
 } from '../services/brand-claim-suggestion.js';
+import { getUserEmailById } from '../db/users-db.js';
 import { recordNudgeDismissal } from '../db/user-nudges-db.js';
-import { canonicalizeBrandDomain } from '../services/identifier-normalization.js';
+import { canonicalizeBrandDomain, assertValidBrandDomain } from '../services/identifier-normalization.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('me-brand-claim-suggestion');
+
+// Defense in depth — cap the raw domain string before canonicalization so
+// a hostile client can't push megabytes of garbage through `normalizeDomain`
+// only to be rejected at validation. Real domains are ≤ 253 chars.
+const MAX_DOMAIN_LEN = 253;
+
+function parseDomainParam(raw: unknown): { ok: true; domain: string } | { ok: false; error: string } {
+  if (typeof raw !== 'string' || raw.length === 0 || raw.length > MAX_DOMAIN_LEN) {
+    return { ok: false, error: 'Invalid domain' };
+  }
+  let canonical: string;
+  try {
+    canonical = canonicalizeBrandDomain(raw);
+  } catch {
+    return { ok: false, error: 'Invalid domain' };
+  }
+  try {
+    assertValidBrandDomain(canonical);
+  } catch {
+    return { ok: false, error: 'Invalid domain' };
+  }
+  return { ok: true, domain: canonical };
+}
 
 export function createBrandClaimSuggestionRouter(config: { brandDb: BrandDatabase }): Router {
   const router = Router();
@@ -40,16 +63,14 @@ export function createBrandClaimSuggestionRouter(config: { brandDb: BrandDatabas
         return res.json({ suggestion: null });
       }
 
-      const scope = typeof req.query.domain === 'string' ? req.query.domain : null;
+      const scope = req.query.domain;
       let suggestion;
-      if (scope) {
-        let domain: string;
-        try {
-          domain = canonicalizeBrandDomain(scope);
-        } catch {
-          return res.status(400).json({ error: 'Invalid domain' });
+      if (typeof scope === 'string' && scope.length > 0) {
+        const parsed = parseDomainParam(scope);
+        if (!parsed.ok) {
+          return res.status(400).json({ error: parsed.error });
         }
-        suggestion = await getSuggestionForDomain(user.id, email, domain, { brandDb });
+        suggestion = await getSuggestionForDomain(user.id, email, parsed.domain, { brandDb });
       } else {
         suggestion = await getBrandClaimSuggestionForUser(user.id, email, { brandDb });
       }
@@ -65,18 +86,12 @@ export function createBrandClaimSuggestionRouter(config: { brandDb: BrandDatabas
   router.post('/brand-claim-suggestion/dismiss', requireAuth, async (req: Request, res: Response) => {
     try {
       const user = req.user as { id: string };
-      const rawDomain = typeof req.body?.domain === 'string' ? req.body.domain : null;
-      if (!rawDomain) {
-        return res.status(400).json({ error: 'domain is required' });
+      const parsed = parseDomainParam(req.body?.domain);
+      if (!parsed.ok) {
+        return res.status(400).json({ error: parsed.error });
       }
-      let domain: string;
-      try {
-        domain = canonicalizeBrandDomain(rawDomain);
-      } catch {
-        return res.status(400).json({ error: 'Invalid domain' });
-      }
-      await recordNudgeDismissal(user.id, nudgeKey(domain));
-      return res.json({ success: true, domain });
+      await recordNudgeDismissal(user.id, nudgeKey(parsed.domain));
+      return res.json({ success: true, domain: parsed.domain });
     } catch (error) {
       logger.error({ err: error }, 'Failed to record brand-claim suggestion dismissal');
       return res.status(500).json({ error: 'Failed to dismiss suggestion' });

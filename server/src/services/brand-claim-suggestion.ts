@@ -22,7 +22,6 @@
  *   - User dismissed in the last 30 days: respect the cooldown.
  */
 
-import { query } from '../db/client.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { getCompanyDomain } from '../utils/email-domain.js';
 import { canonicalizeBrandDomain } from './identifier-normalization.js';
@@ -114,6 +113,10 @@ export async function getBrandClaimSuggestionForUser(
  * just-in-time prompt. Returns the suggestion only when the requested
  * domain matches the user's verified email domain AND the standard
  * suggestion-applicability rules hold.
+ *
+ * Canonicalizes `requestedDomain` defensively even though every internal
+ * caller already passes a canonical value — keeps this function safe
+ * to call from new surfaces without auditing every callsite.
  */
 export async function getSuggestionForDomain(
   workosUserId: string,
@@ -124,29 +127,25 @@ export async function getSuggestionForDomain(
   const rawDomain = getCompanyDomain(email);
   if (!rawDomain) return null;
   let userDomain: string;
+  let canonicalRequested: string;
   try {
     userDomain = canonicalizeBrandDomain(rawDomain);
+    canonicalRequested = canonicalizeBrandDomain(requestedDomain);
   } catch {
     return null;
   }
-  if (userDomain !== requestedDomain) return null;
+  if (userDomain !== canonicalRequested) return null;
 
   return getBrandClaimSuggestionForUser(workosUserId, email, ctx);
 }
 
-export function nudgeKey(domain: string): string {
-  return `brand_claim_suggestion:${domain}`;
-}
-
 /**
- * Lookup the user's email from the canonical users table. Used by the
- * dashboard endpoint where the auth middleware exposes user.id but the
- * full WorkOS user object isn't necessarily attached.
+ * Build the storage key for a brand-claim dismissal. Defensively
+ * lowercases — every callsite today passes a canonicalized domain, but
+ * a typo or new caller passing `Scope3.com` would otherwise produce a
+ * different key from the canonical one and silently break the
+ * cooldown lookup.
  */
-export async function getUserEmailById(workosUserId: string): Promise<string | null> {
-  const result = await query<{ email: string }>(
-    `SELECT email FROM users WHERE workos_user_id = $1`,
-    [workosUserId],
-  );
-  return result.rows[0]?.email ?? null;
+export function nudgeKey(domain: string): string {
+  return `brand_claim_suggestion:${domain.toLowerCase()}`;
 }

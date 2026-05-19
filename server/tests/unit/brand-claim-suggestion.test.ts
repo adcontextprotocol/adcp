@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../src/db/users-db.js', () => ({
   resolvePrimaryOrganization: (...args: unknown[]) => mocks.resolvePrimaryOrganization(...args),
+  getUserEmailById: (...args: unknown[]) => mocks.getUserEmailById(...args),
 }));
 
 vi.mock('../../src/db/user-nudges-db.js', () => ({
@@ -236,8 +237,16 @@ describe('GET /api/me/brand-claim-suggestion', () => {
 
   it('400s a scoped query with a malformed domain', async () => {
     const res = await request(makeApp()).get('/api/me/brand-claim-suggestion?domain=://bogus');
-    expect(res.status).toBe(200); // canonicalizeBrandDomain coerces; bogus → empty → null
-    expect(res.body.suggestion).toBeNull();
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Invalid domain/i);
+  });
+
+  it('400s a scoped query with an over-long domain', async () => {
+    const long = 'a'.repeat(300) + '.example';
+    const res = await request(makeApp()).get(
+      `/api/me/brand-claim-suggestion?domain=${encodeURIComponent(long)}`,
+    );
+    expect(res.status).toBe(400);
   });
 });
 
@@ -264,5 +273,29 @@ describe('POST /api/me/brand-claim-suggestion/dismiss', () => {
     const res = await request(makeApp()).post('/api/me/brand-claim-suggestion/dismiss').send({});
     expect(res.status).toBe(400);
     expect(mocks.recordNudgeDismissal).not.toHaveBeenCalled();
+  });
+
+  it('400s a dismissal for an invalid domain shape', async () => {
+    const res = await request(makeApp())
+      .post('/api/me/brand-claim-suggestion/dismiss')
+      .send({ domain: 'not_a_real_domain' });
+    expect(res.status).toBe(400);
+    expect(mocks.recordNudgeDismissal).not.toHaveBeenCalled();
+  });
+
+  it('400s a dismissal whose raw domain exceeds 253 chars', async () => {
+    const long = 'a'.repeat(300) + '.example';
+    const res = await request(makeApp())
+      .post('/api/me/brand-claim-suggestion/dismiss')
+      .send({ domain: long });
+    expect(res.status).toBe(400);
+    expect(mocks.recordNudgeDismissal).not.toHaveBeenCalled();
+  });
+});
+
+describe('nudgeKey canonicalization guard', () => {
+  it('lowercases the domain so callers passing mixed-case hit the same key', () => {
+    expect(nudgeKey('Scope3.com')).toBe('brand_claim_suggestion:scope3.com');
+    expect(nudgeKey('scope3.com')).toBe('brand_claim_suggestion:scope3.com');
   });
 });

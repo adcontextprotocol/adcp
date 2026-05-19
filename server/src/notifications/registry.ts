@@ -10,6 +10,11 @@ import { sendChannelMessage, isSlackConfigured } from '../slack/client.js';
 import type { SlackBlockMessage } from '../slack/types.js';
 
 const CHANNEL_ID = process.env.REGISTRY_EDITS_CHANNEL_ID;
+// KYC / signup-ops channel — falls back to the registry-edits channel
+// when unset so the notification still fires in dev / staging without
+// extra env wiring, but distinct in prod so the two audiences don't mix
+// (wiki edits vs. signup KYC are different reviewer flows).
+const SIGNUP_OPS_CHANNEL_ID = process.env.SIGNUP_OPS_CHANNEL_ID || CHANNEL_ID;
 const APP_URL = process.env.APP_URL || 'https://agenticadvertising.org';
 
 function getChannelId(): string | null {
@@ -18,6 +23,14 @@ function getChannelId(): string | null {
     return null;
   }
   return CHANNEL_ID;
+}
+
+function getSignupOpsChannelId(): string | null {
+  if (!SIGNUP_OPS_CHANNEL_ID) {
+    logger.debug('SIGNUP_OPS_CHANNEL_ID / REGISTRY_EDITS_CHANNEL_ID not configured, skipping signup ops notification');
+    return null;
+  }
+  return SIGNUP_OPS_CHANNEL_ID;
 }
 
 /**
@@ -90,22 +103,40 @@ export async function notifyBrandClaimOpportunity(opportunity: {
   brand_already_verified: boolean;
   verified_owner_org_name?: string | null;
 }): Promise<void> {
-  const channelId = getChannelId();
+  const channelId = getSignupOpsChannelId();
   if (!channelId || !isSlackConfigured()) return;
 
-  const display = [opportunity.user_first_name, opportunity.user_last_name]
-    .filter(Boolean)
-    .join(' ')
-    || opportunity.user_email;
-  const brandLabel = opportunity.brand_name
-    ? `${opportunity.brand_name} (${opportunity.domain})`
-    : opportunity.domain;
+  // All user-controlled fields go through sanitizeMrkdwn before
+  // interpolation — first_name / last_name / email arrive from WorkOS
+  // signup (user-supplied), brand_name and verified_owner_org_name flow
+  // from the discovered-brands / organizations tables which can be
+  // populated by external research. Without sanitization an attacker
+  // could plant <!channel> mentions or <https://evil|legit-text> links
+  // into the moderator-trusted channel (same threat as #4754).
+  // Link labels additionally strip `|`, `<`, `>` since those break out
+  // of mrkdwn link syntax even after standard escaping.
+  const display = sanitizeMrkdwn(
+    [opportunity.user_first_name, opportunity.user_last_name]
+      .filter(Boolean)
+      .join(' ')
+      || opportunity.user_email,
+  );
+  const emailSafe = sanitizeMrkdwn(opportunity.user_email);
+  const domainSafe = sanitizeMrkdwn(opportunity.domain);
+  const brandLabel = sanitizeMrkdwnLinkLabel(
+    opportunity.brand_name
+      ? `${opportunity.brand_name} (${opportunity.domain})`
+      : opportunity.domain,
+  );
+  const ownerLabel = opportunity.verified_owner_org_name
+    ? sanitizeMrkdwn(opportunity.verified_owner_org_name)
+    : null;
   const statusLine = opportunity.brand_already_verified
-    ? `_Brand is already verified-owned${opportunity.verified_owner_org_name ? ` by *${opportunity.verified_owner_org_name}*` : ''} — claim won't fire._`
+    ? `_Brand is already verified-owned${ownerLabel ? ` by *${ownerLabel}*` : ''} — claim won't fire._`
     : `_Brand is unclaimed — signup will see a claim suggestion._`;
 
   const message: SlackBlockMessage = {
-    text: `🪪 New signup matches brand: ${opportunity.user_email} → ${opportunity.domain}`,
+    text: `🪪 New signup matches brand: ${emailSafe} → ${domainSafe}`,
     blocks: [
       {
         type: 'section',
@@ -118,7 +149,7 @@ export async function notifyBrandClaimOpportunity(opportunity: {
         type: 'section',
         fields: [
           { type: 'mrkdwn', text: `*User:*\n${display}` },
-          { type: 'mrkdwn', text: `*Email:*\n${opportunity.user_email}` },
+          { type: 'mrkdwn', text: `*Email:*\n${emailSafe}` },
         ],
       },
       {
@@ -133,6 +164,15 @@ export async function notifyBrandClaimOpportunity(opportunity: {
   } catch (error) {
     logger.error({ error, domain: opportunity.domain }, 'Failed to send brand-claim opportunity notification');
   }
+}
+
+/**
+ * Stricter sanitizer for link-label interpolation (`<url|LABEL>`). On
+ * top of the standard mrkdwn escaping, strip `|`, `<`, `>` because those
+ * break out of the label segment of Slack link syntax.
+ */
+function sanitizeMrkdwnLinkLabel(s: string): string {
+  return sanitizeMrkdwn(s).replace(/[<>|]/g, '');
 }
 
 /**
