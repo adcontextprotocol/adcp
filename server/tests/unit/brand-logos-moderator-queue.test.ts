@@ -173,7 +173,9 @@ describe('GET /api/brand-logos/:id/preview', () => {
     const res = await request(makeApp()).get('/api/brand-logos/11111111-1111-1111-1111-111111111111/preview');
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/^image\/png/);
-    expect(res.headers['cache-control']).toContain('private');
+    // no-store keeps the browser from replaying stale pending bytes after
+    // approval/rejection/deletion mid-cache.
+    expect(res.headers['cache-control']).toBe('private, no-store');
     expect(res.body).toBeInstanceOf(Buffer);
   });
 
@@ -206,10 +208,21 @@ describe('GET /api/brand-logos/:id/preview', () => {
     expect(res.status).toBe(403);
   });
 
-  it('404s when the logo does not exist', async () => {
+  it('404s a moderator when the logo does not exist', async () => {
     mocks.isModerator.mockResolvedValue(true);
     mocks.getLogoById.mockResolvedValue(null);
     const res = await request(makeApp()).get('/api/brand-logos/44444444-4444-4444-4444-444444444444/preview');
     expect(res.status).toBe(404);
+  });
+
+  it('returns 403 (not 404) when an unauthorized caller hits a missing UUID — avoids existence oracle', async () => {
+    // A logged-in non-moderator non-owner should NOT be able to
+    // distinguish "this UUID exists" from "this UUID doesn't" via the
+    // status code.
+    mocks.isModerator.mockResolvedValue(false);
+    mocks.isOwner.mockResolvedValue(false);
+    mocks.getLogoById.mockResolvedValue(null);
+    const res = await request(makeApp()).get('/api/brand-logos/55555555-5555-5555-5555-555555555555/preview');
+    expect(res.status).toBe(403);
   });
 });
