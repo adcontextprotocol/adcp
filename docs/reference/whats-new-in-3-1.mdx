@@ -4,6 +4,10 @@ description: "Adopter overview of AdCP 3.1 — distributed brand.json, dependenc
 "og:title": "AdCP — What's New in 3.1"
 ---
 
+<Warning>
+**Status: 3.1 beta.** The spec is feature-complete for 3.1; the published `@adcp/sdk` and the runtime grader are advisory-only against the new surfaces during beta. 3.1 GA target: **2026-05-29**. Adopters can pin `adcp_version: "3.1-beta"` today and migrate the pin to `"3.1"` on GA without code changes.
+</Warning>
+
 AdCP 3.1 is a minor release. Every 3.1 change is **additive** over 3.0: new fields are optional, no required field was removed, no shape changed in a way that breaks a 3.0-conformant client. **No breaking changes.** But schemas moved — 3.1 introduces meaningful new surfaces that solve production problems 3.0 left open. **You should bump your pin to 3.1 as soon as your SDK is ready** to pick up the new fields.
 
 For per-PR detail and migration tables, see [Release Notes § Version 3.1.0](/docs/reference/release-notes#version-3-1-0-unreleased). For long-form normative reference, follow the link on each headline below.
@@ -159,6 +163,22 @@ Three production-scale improvements. **Managed-network scale:** authoritative `a
 Capability-gated storyboard scenarios let sellers run *only* what they claim. New scenarios for `frequency_cap_enforcement`, `per_creative_attribution`, `metric_mode` + ROAS (using a `contains:` matcher), `audience_buy_flow`, `event_dedup_flow`, and `performance_buy_flow` (capability-gated CPA buys). Plus a new `requires` runtime gate on Storyboards that conditions execution on declared capabilities — no more all-or-nothing scenarios. The full set is enumerated on the [Compliance catalog](/docs/building/verification/compliance-catalog).
 
 → Spec: [Compliance catalog](/docs/building/verification/compliance-catalog) · PRs [#4312](https://github.com/adcontextprotocol/adcp/pull/4312), [#4642](https://github.com/adcontextprotocol/adcp/pull/4642), [#4664](https://github.com/adcontextprotocol/adcp/pull/4664), [#4722](https://github.com/adcontextprotocol/adcp/pull/4722), [#4727](https://github.com/adcontextprotocol/adcp/pull/4727), [#4731](https://github.com/adcontextprotocol/adcp/pull/4731)
+
+### Final-spec clarifications (WG-review batch)
+
+Ten normative tightenings landed as the spec settled into beta. Mostly low-risk — adopters who'd already inferred reasonable defaults will continue working — but worth knowing about because the grader will check them at GA.
+
+- **`PROPOSAL_NOT_FOUND` error code** (#4043). Completes the proposal-lifecycle error catalog (alongside `PROPOSAL_EXPIRED` and `PROPOSAL_NOT_COMMITTED`). Sellers MUST return it when a referenced `proposal_id` isn't recognized — wrong tenant, evicted from cache, or never finalized. Recovery: correctable.
+- **Forward-compatible `error.code` decoding** (#4227). Receivers MUST treat `error.code` as an **open enum** — decode unknown codes without rejecting, classify recovery from `error.recovery`, default to `transient` when recovery is absent. Senders from 3.1 onward MUST populate `error.recovery` on every error. Unblocks additive-in-patch for error codes on future maintenance lines without breaking pinned-version receivers.
+- **`idempotency_key` required on every AdCP task request** (#4399). Closes a longstanding gap where the spec said dedupe via idempotency_key but didn't require buyers to send one. Sellers MAY reject requests missing the key after 3.1 GA.
+- **MCP tool wrappers MUST tolerate envelope fields** (#4399). The protocol envelope (`status`, `context_id`, `context`, `task_id`, `timestamp`, `replayed`, `adcp_error`, `governance_context`, `idempotency_key`) on MCP requests now goes through the wrapper layer instead of being rejected as "unexpected fields." Closes a wrapper-layer bug where adopters had to omit envelope fields to call MCP successfully.
+- **MCP serialization normalization** (#2911). Drops `payload.required` from the protocol-envelope schema; adds the `context` field at envelope level; clarifies the flat-sibling MCP wire shape (envelope and body fields at the root, no nested `payload:` key). Adopters who'd implemented the de-facto flat shape are unaffected.
+- **Idempotency replay returns historical snapshot** (#4371). When a buyer retries a stateful create call (e.g., `create_media_buy`) within the replay window, the seller MUST return the **historical snapshot** of state-tracking fields (`status`, `confirmed_at`, etc.) — not the current state. Otherwise an at-most-once retry mutates the response from underneath the buyer.
+- **`refine[]` finalize-exclusivity + multi-finalize atomicity** (#4107). `get_products` `refine[]` semantics tightened: when one entry uses `action: "finalize"`, that entry MUST be the only one in the array — multi-finalize is rejected. Multi-finalize across multiple proposals goes through separate `get_products` calls. Atomicity guarantee: finalize either succeeds completely or leaves the proposal unchanged.
+- **`pending_creatives` status disambiguation** (#4196). The description now explicitly states buyer action is required — sellers awaiting creative sync MUST surface what's missing (creative count, deadline) in the response message rather than just emitting the status enum value. Clarifies adopter-facing UX without changing the wire shape.
+- **`notices` advisory channel on runner-output-contract** (#4418). Storyboard runners surface non-failure advisories (e.g., "agent still advertises a deprecated specialism, but the storyboard passed") through a structured `notices[]` field on the run output. Replaces ad-hoc `skip.detail` prose carrying advisory text — unparseable for graders and dashboards.
+
+→ Full batch shipped as one commit: PR [#4796](https://github.com/adcontextprotocol/adcp/pull/4796) (`4c124545f1`). See per-issue links for the full prose.
 
 ### Misc schema additions
 
