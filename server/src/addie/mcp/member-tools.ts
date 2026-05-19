@@ -354,9 +354,29 @@ function validateAgentUrl(agentUrl: string): string | null {
 }
 
 /**
- * Build auth options for the SDK from resolved auth.
+ * Normalize a Basic auth_token submitted to `save_agent` into the base64
+ * `user:password` form that gets persisted. Accepts either raw `user:password`
+ * or the already-base64-encoded form; the `:` character is not in the base64
+ * alphabet, so its presence unambiguously identifies the raw form. Returns
+ * `{ ok: true, stored }` on success and `{ ok: false }` when the value is
+ * neither shape (used to reject at the save_agent boundary so a malformed
+ * credential never lands in the DB).
+ *
+ * Exported for unit testing.
  */
-function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined {
+export function normalizeBasicAuthForStorage(token: string): { ok: true; stored: string } | { ok: false } {
+  if (token.includes(':')) {
+    return { ok: true, stored: Buffer.from(token, 'utf8').toString('base64') };
+  }
+  const decoded = Buffer.from(token, 'base64').toString('utf8');
+  if (!decoded.includes(':')) return { ok: false };
+  return { ok: true, stored: token };
+}
+
+/**
+ * Build auth options for the SDK from resolved auth. Exported for unit testing.
+ */
+export function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined {
   if (!resolved.authToken) return undefined;
 
   if (resolved.authType === 'basic') {
@@ -365,6 +385,16 @@ function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: 
     if (colonIndex >= 0) {
       return { type: 'basic', username: decoded.slice(0, colonIndex), password: decoded.slice(colonIndex + 1) };
     }
+    // Stored basic credential is malformed — likely a legacy row saved
+    // before save_agent normalized raw user:pass to base64. Re-classifying
+    // as bearer would send "Authorization: Bearer user:pass" on the wire;
+    // the agent rejects, and the user sees a misleading "agent didn't
+    // declare capabilities" error. Send the request unauthenticated
+    // instead so the auth-failure diagnostic in recommend_storyboards
+    // (which fires on empty capabilities + source=saved) correctly points
+    // the user at re-saving credentials.
+    logger.warn({ source: resolved.source, resolvedUrl: resolved.resolvedUrl }, 'addie: stored basic credential failed to decode as base64 user:pass; sending request unauthenticated');
+    return undefined;
   }
 
   return { type: 'bearer', token: resolved.authToken };
@@ -1233,7 +1263,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
           description: 'What kind of agent this is. Required — ask the owner; do not guess. `brand` (brand-side intent), `rights` (rights/clearance), `measurement` (verification/attribution), `governance` (policy/compliance), `creative` (creative production/format), `sales` (publisher/sell-side inventory), `buying` (DSP/buy-side execution), `signals` (audience/signal provider).',
         },
         auth_token: { type: 'string', description: 'Static auth token (stored encrypted). Mutually exclusive with oauth_client_credentials on any given save call.' },
-        auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the auth_token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token must be the base64-encoded "user:password" string, sent as Authorization: Basic <token>' },
+        auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the auth_token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token is "user:password" (the tool also accepts the base64-encoded form); stored base64-encoded and sent as Authorization: Basic <token>.' },
         oauth_client_credentials: {
           type: 'object',
           description: 'OAuth 2.0 client-credentials configuration for machine-to-machine auth (RFC 6749 §4.4). The SDK exchanges at the token endpoint before every call and refreshes on 401. Use this when the agent requires a bearer token minted from a client_id/client_secret pair, not a human authorization flow.',
@@ -5800,6 +5830,23 @@ export function createMemberToolHandlers(
     }
     const rawAuthType = input.auth_type as string | undefined;
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
+
+    // For Basic auth, accept either raw "user:password" or the base64-encoded
+    // form and normalize to base64 for storage. Aligns with CLI
+    // (--auth user:pass), SDK (createTestClient with {username, password}),
+    // and the dashboard's connect form — all of which accept raw input.
+    // Without normalization, save_agent was the ecosystem outlier requiring
+    // users to pre-encode; a raw value silently landed in the DB and got
+    // re-classified as Bearer at request time.
+    let storedAuthToken = authToken;
+    if (authToken && authType === 'basic') {
+      const normalized = normalizeBasicAuthForStorage(authToken);
+      if (!normalized.ok) {
+        return `**Error:** Basic auth_token must be "user:password" (or the base64-encoded form of it). The value you provided doesn't decode to a user:password pair.`;
+      }
+      storedAuthToken = normalized.stored;
+    }
+
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
 
     // Caller-declared agent type. Required at the schema level — the JSON-RPC
@@ -5940,8 +5987,8 @@ export function createMemberToolHandlers(
         if (agentName) {
           await agentContextDb.update(context.id, { agent_name: agentName, protocol });
         }
-        if (authToken) {
-          await agentContextDb.saveAuthToken(context.id, authToken, authType);
+        if (storedAuthToken) {
+          await agentContextDb.saveAuthToken(context.id, storedAuthToken, authType);
         }
         if (clientCredentials) {
           await agentContextDb.saveOAuthClientCredentials(context.id, clientCredentials);
@@ -5975,13 +6022,13 @@ export function createMemberToolHandlers(
         created_by: memberContext.workos_user.workos_user_id,
       });
 
-      if (authToken) {
-        await agentContextDb.saveAuthToken(context.id, authToken, authType);
+      if (storedAuthToken) {
+        await agentContextDb.saveAuthToken(context.id, storedAuthToken, authType);
       }
       if (clientCredentials) {
         await agentContextDb.saveOAuthClientCredentials(context.id, clientCredentials);
       }
-      if (authToken || clientCredentials) {
+      if (storedAuthToken || clientCredentials) {
         context = await agentContextDb.getById(context.id);
       }
 
