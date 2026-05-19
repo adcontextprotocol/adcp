@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": patch
+"adcontextprotocol": minor
 ---
 
 **Canonical formats 3.1 follow-ups — fixture, vocab, Pinterest disambiguation.**
@@ -13,11 +13,13 @@ Closes three of the GA-blocking follow-ups identified in PR #3307 expert review,
 
 - **Pinterest disambiguation worked example** in `docs/creative/canonical-formats.mdx`. Spells out which Pinterest product routes to which canonical: Promoted Pin → `native_in_feed`, Pinterest Collection → `sponsored_placement` (catalog-keyed), Idea Pin → `image_carousel`, Shopping Pin → `sponsored_placement` (fanout_mode: single_item). The cleave is asset-bundle vs catalog-row composition; same logic applies to Snap Story / Snap Collection, TikTok TopView / TikTok Collection, etc. Closes the routing ambiguity flagged by Pia + Nastassia at GA review.
 
-- **5 new IAB OpenRTB Native 1.2 Data Asset vocab entries** in `asset-group-vocabulary.json`: `likes` (type 4), `downloads` (type 5), `saleprice` (type 7), `address` (type 9), `secondary_body_text` aliased to `desc2` (type 10). Promoting these from `slots_override` extensions to canonical vocab tightens validation for app-install and e-commerce native units. `phone_number` description also annotated with its IAB type 8 mapping.
+- **10 new IAB OpenRTB Native 1.2 vocab entries** in `asset-group-vocabulary.json`.
+  - Five Data Asset additions: `likes` (type 4), `downloads` (type 5), `saleprice` (type 7), `address` (type 9), `secondary_body_text` aliased to `desc2` (type 10).
+  - Five core-native vocab additions surfaced by product-expert review — the `native_in_feed` canonical's default slots referenced these but the vocab didn't have entries, leaving the flagship fixture authoring against non-canonical IDs: `title` (Title Asset type 1; `headline` is the alias for the singular case, distinct from `headlines` pool used by responsive_creative), `main_image` (Image Asset type 3 main, with `image_main`/`hero_image` aliases), `icon` (Image Asset type 1), `advertiser_name` (the IAB `sponsoredBy` field), `sponsored_label` (renderer disclosure string).
+  - `phone_number` description annotated with IAB type 8; `body_text` annotated with IAB type 2. `price` description updated to call out the price ↔ saleprice discount-rendering convention.
 
-**Migration doc** updated: fixture count 12 → 13, dropped the "native_in_feed fixture follows in a subsequent PR" placeholder.
+**Migration doc** updated: 14 reference Product fixtures, dropped the "native_in_feed fixture follows in a subsequent PR" placeholder.
 
 Remaining 3.1 follow-ups tracked separately:
 - **SDK codegen (TypeScript + Python)** — multi-week build, the gating dependency for adopter consumption. Schemas shippable today; typed-tagged-union ergonomics arrive with codegen.
 - **`native_in_feed` conformance storyboard** — multi-phase YAML to extend `static/compliance/source/protocols/creative/index.yaml` with native sync_creatives + preview coverage.
-- **Adopter cohort communication** — Slack-back to the round-1 pilot cohort (Pia, Nastassia, others) confirming nobody has a catalog-less sponsored_placement mid-pilot before GA.

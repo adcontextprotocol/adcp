@@ -88,7 +88,37 @@
     "body_text": {
       "description": "Longer free-text body content.",
       "asset_type": "text",
-      "typical_use": "Body copy on Reddit, Amazon DSP, LinkedIn formats — distinct from short headlines."
+      "typical_use": "Body copy on Reddit, Amazon DSP, LinkedIn formats — distinct from short headlines. IAB OpenRTB Native 1.2 Data Asset type 2."
+    },
+    "title": {
+      "description": "Single headline string rendered verbatim on the creative (no pool / no per-render selection).",
+      "asset_type": "text",
+      "typical_use": "Native in-feed units, content-recommendation widgets, single-creative display ads where exactly one headline is rendered. IAB OpenRTB Native 1.2 Title Asset (type 1). Distinct from `headlines` (pool of variants for algorithmic surfaces that pick combinations) — `title` is one fixed string the renderer always uses.",
+      "aliases": ["headline"]
+    },
+    "main_image": {
+      "description": "Primary image asset rendered as the visual focal point of the creative.",
+      "asset_type": "image",
+      "typical_use": "Native in-feed units, content-recommendation widgets (the large thumbnail above the headline), single-image display creative. IAB OpenRTB Native 1.2 Image Asset type 3 (Main). Common sizes: 1200×627 (1.91:1), 1080×1080 (1:1), 1080×1350 (4:5).",
+      "aliases": ["image_main", "hero_image"]
+    },
+    "icon": {
+      "description": "Small square brand or app icon rendered alongside the main image.",
+      "asset_type": "image",
+      "typical_use": "App-install native units (app icon), publisher native cards (brand icon), content-recommendation widgets (source publisher icon). IAB OpenRTB Native 1.2 Image Asset type 1 (Icon). Typical size: 80×80 or 100×100, square aspect ratio.",
+      "aliases": ["icon_image", "brand_icon"]
+    },
+    "advertiser_name": {
+      "description": "Plain-text name of the advertiser running the creative (rendered with the unit).",
+      "asset_type": "text",
+      "typical_use": "Native in-feed units, content-recommendation widgets, sponsored-content cards. Maps to the IAB OpenRTB Native 1.2 `sponsoredBy` field — the renderer pairs this with `sponsored_label` (e.g., '<sponsored_label> by <advertiser_name>'). Required on most native surfaces for transparency.",
+      "aliases": ["sponsor_name", "brand_name_native"]
+    },
+    "sponsored_label": {
+      "description": "Disclosure label that identifies the unit as sponsored / promoted / advertising content (e.g., \"Sponsored\", \"Promoted\", \"Ad\").",
+      "asset_type": "text",
+      "typical_use": "Native in-feed units, content-recommendation widgets. The renderer pairs this with `advertiser_name` to surface the IAB-required disclosure. Default value typically \"Sponsored\" or \"Ad\"; sellers may localize.",
+      "aliases": ["disclosure_label", "ad_label"]
     },
     "cards": {
       "description": "Per-item carousel card array.",
@@ -103,9 +133,9 @@
       "aliases": ["cta_text", "call_to_action", "action_text", "button_text"]
     },
     "price": {
-      "description": "Product price slot rendered on the creative.",
+      "description": "Product price slot rendered on the creative — the regular (non-discounted) price.",
       "asset_type": "text",
-      "typical_use": "Pinterest shopping pins, Amazon Sponsored Brand product cards, retail-media catalog rendering, IAB OpenRTB Native 1.2 Data Asset type 6. Often pulled from a catalog field via `field_bindings`."
+      "typical_use": "Pinterest shopping pins, Amazon Sponsored Brand product cards, retail-media catalog rendering. IAB OpenRTB Native 1.2 Data Asset type 6. Often pulled from a catalog field via `field_bindings`. Pair with `saleprice` (type 7) to render the discount pattern — by IAB convention `price` is the original (struck-through) and `saleprice` is the discounted amount."
     },
     "display_url": {
       "description": "Visible URL or domain string shown above/below the headline on native units (does not need to match the click destination).",
