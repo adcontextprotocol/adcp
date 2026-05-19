@@ -1884,6 +1884,13 @@ export function createMemberToolHandlers(
     if (!memberContext?.workos_user?.workos_user_id) {
       return 'You need to be logged in to set your name. Please log in at https://agenticadvertising.org/dashboard first.';
     }
+    // Bounded — writes to users + organization_memberships + WorkOS on every
+    // call. Default cap (60/10min/user) is plenty for legitimate use.
+    const rate = await checkToolRateLimit('set_my_name', memberContext.workos_user.workos_user_id);
+    if (!rate.ok) {
+      const retrySeconds = Math.max(1, Math.ceil((rate.retryAfterMs ?? 60000) / 1000));
+      return `Rate limit exceeded on set_my_name. Try again in ~${retrySeconds} seconds.`;
+    }
     if (typeof input.first_name !== 'string') {
       throw new ToolError('first_name is required.');
     }

@@ -26,6 +26,7 @@ import { createLogger } from '../../logger.js';
 import { notifySpecialistCredential } from '../jobs/credential-digest.js';
 import { TRAINING_AGENT_URL, tenantUrlsForModule, type ModuleTenantUrls } from '../../training-agent/config.js';
 import { ToolError } from '../tool-error.js';
+import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { stripe } from '../../billing/stripe-client.js';
 import { attemptStripeReconciliation } from '../../billing/lazy-reconcile.js';
 
@@ -435,7 +436,7 @@ function validateDemonstrationIds(
  * deferred issuances on its next call.
  */
 export const NAME_REQUIRED_MARKER = 'NAME_REQUIRED';
-type IssueResult = string | null | typeof NAME_REQUIRED_MARKER;
+type IssueResult = string | null | 'NAME_REQUIRED';
 
 /**
  * Issue a Certifier badge for an awarded credential.
@@ -455,11 +456,16 @@ async function issueCertifierBadge(
 ): Promise<IssueResult> {
   if (!cred.certifier_group_id || !memberContext?.workos_user) return null;
 
-  // Gate: refuse to issue with email-as-name. Issuing a "tom@example.com"
-  // certificate is worse than the one-turn friction of asking for the name.
+  // Resolve the name from the freshest source available: the helper falls
+  // back to the DB when memberContext is stale (the closure-bound context
+  // doesn't see the row `set_my_name` just wrote), and to the Slack mapping
+  // when neither has a value.
+  const { resolveUserNameWithFallbacks } = await import('../../utils/resolve-user-name.js');
   const wu = memberContext.workos_user;
-  const hasFirst = (wu.first_name ?? '').trim().length > 0;
-  if (!hasFirst) {
+  const resolved = await resolveUserNameWithFallbacks(
+    getPool(), userId, wu.first_name, wu.last_name,
+  );
+  if (!(resolved.firstName ?? '').trim()) {
     logger.info({ userId, credId, email: wu.email }, 'Credential issuance gated: no first_name on file');
     return NAME_REQUIRED_MARKER;
   }
@@ -477,8 +483,12 @@ async function issueCertifierBadge(
     const credential = await issueCredential({
       groupId: cred.certifier_group_id,
       recipient: {
-        name: buildRecipientName(memberContext.workos_user),
-        email: memberContext.workos_user.email,
+        name: buildRecipientName({
+          first_name: resolved.firstName,
+          last_name: resolved.lastName,
+          email: wu.email,
+        }),
+        email: wu.email,
       },
       ...(expiryDate ? { expiryDate } : {}),
       ...(extraAttributes ? { customAttributes: extraAttributes } : {}),
@@ -544,14 +554,23 @@ async function checkAndFormatCredentials(
   const awarded = await certDb.checkAndAwardCredentials(userId);
 
   // Pick up the "awarded earlier, never issued to Certifier" backlog so a
-  // post-set_my_name retry actually finalizes the certificate. The repair
-  // script handles ops-side backfills; this is the user-facing retry.
+  // post-set_my_name retry actually finalizes the certificate. Bounded to a
+  // 24-hour window so we never accidentally re-issue a legitimately-issued
+  // older credential whose `certifier_credential_id` got nulled by an
+  // out-of-band operation (corrupt-row defense). The admin backfill route +
+  // repair script handle anything outside this window.
+  const RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
+  const now = Date.now();
   const existing = await certDb.getUserCredentials(userId);
   const deferred = existing
-    .filter(c => !c.certifier_credential_id && !awarded.includes(c.credential_id))
+    .filter(c =>
+      !c.certifier_credential_id &&
+      !awarded.includes(c.credential_id) &&
+      (now - new Date(c.awarded_at).getTime()) < RETRY_WINDOW_MS,
+    )
     .map(c => c.credential_id);
 
-  const toProcess = [...awarded, ...deferred];
+  const toProcess = [...new Set([...awarded, ...deferred])];
   if (toProcess.length === 0) return [];
 
   const creds = await certDb.getCredentials();
@@ -561,15 +580,15 @@ async function checkAndFormatCredentials(
   for (const credId of toProcess) {
     const cred = credMap.get(credId);
     if (cred) {
-      lines.push(`**Credential earned: ${cred.name}!**`);
       const result = await issueCertifierBadge(userId, credId, cred, memberContext);
       if (result === NAME_REQUIRED_MARKER) {
         nameRequired = true;
-        // Don't post share links or specialist notifications until the
-        // credential is actually issued — those re-fire on the retry pass
-        // once `set_my_name` has been called.
+        // Don't post "Credential earned!" or share links or specialist
+        // notifications until the credential is actually issued — those
+        // fire on the retry pass once `set_my_name` has been called.
         continue;
       }
+      lines.push(`**Credential earned: ${cred.name}!**`);
       lines.push(...buildShareLinks(cred.name, result));
 
       // Post immediate Slack notification for Specialist (tier 3) credentials
@@ -1899,6 +1918,13 @@ export function createCertificationToolHandlers(
   handlers.set('check_credentials', async () => {
     const userId = getUserId();
     if (!userId) return 'You need to be logged in to check your credentials.';
+    // Each call can fan out to N outbound Certifier calls (one per deferred
+    // credential); default cap (60/10min/user) bounds the blast radius.
+    const rate = await checkToolRateLimit('check_credentials', userId);
+    if (!rate.ok) {
+      const retrySeconds = Math.max(1, Math.ceil((rate.retryAfterMs ?? 60000) / 1000));
+      return `Rate limit exceeded on check_credentials. Try again in ~${retrySeconds} seconds.`;
+    }
     const lines = await checkAndFormatCredentials(userId, memberContext);
     if (lines.length === 0) {
       return 'No new credentials to issue. Your existing credentials are unchanged.';

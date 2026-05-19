@@ -25,4 +25,22 @@ describe('NAME_REQUIRED marker', () => {
     expect(NAME_REQUIRED_MARKER.trim()).toBe(NAME_REQUIRED_MARKER);
     expect(NAME_REQUIRED_MARKER).not.toMatch(/[\s*`]/);
   });
+
+  it('appears in the certification-tools source verbatim in three load-bearing sites', () => {
+    // The Sage rule, the warning line, and the sentinel return all reference
+    // NAME_REQUIRED_MARKER via template literal. This pins the count so a
+    // refactor that drops one accidentally fails the test instead of silently
+    // breaking the recovery loop.
+    const { readFileSync } = require('node:fs') as typeof import('node:fs');
+    const { resolve } = require('node:path') as typeof import('node:path');
+    const src = readFileSync(
+      resolve(__dirname, '../../src/addie/mcp/certification-tools.ts'),
+      'utf8',
+    );
+    const refs = src.match(/NAME_REQUIRED_MARKER/g) ?? [];
+    // 1 export + 1 type alias + 1 sentinel return + 1 caller comparison
+    // + 1 warning-line template + 2 Sage-rule template references = 7.
+    // Set a floor so dropping one fails loud while still allowing safe refactors.
+    expect(refs.length).toBeGreaterThanOrEqual(6);
+  });
 });
