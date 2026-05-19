@@ -32,6 +32,7 @@ import { BrandDatabase } from '../db/brand-db.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
+import { resolveUserNameWithFallbacks } from '../utils/resolve-user-name.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain, trackBackground } from '../services/brand-enrichment.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
@@ -370,43 +371,9 @@ async function deleteMembership(membership: OrganizationMembershipData): Promise
 async function upsertUser(user: UserData): Promise<void> {
   const pool = getPool();
 
-  // Resolve names: prefer WorkOS values, but when WorkOS sends empty names,
-  // preserve existing DB values or backfill from Slack mapping
-  let firstName = user.first_name;
-  let lastName = user.last_name;
-
-  if (!firstName?.trim() || !lastName?.trim()) {
-    const existing = await pool.query<{
-      first_name: string | null;
-      last_name: string | null;
-      slack_real_name: string | null;
-      slack_display_name: string | null;
-    }>(
-      `SELECT u.first_name, u.last_name, sm.slack_real_name, sm.slack_display_name
-       FROM users u
-       LEFT JOIN slack_user_mappings sm ON sm.slack_user_id = u.primary_slack_user_id
-       WHERE u.workos_user_id = $1`,
-      [user.id]
-    );
-
-    if (existing.rows.length > 0) {
-      const row = existing.rows[0];
-
-      // Keep existing DB names if WorkOS sends empty
-      if (!firstName?.trim()) firstName = row.first_name;
-      if (!lastName?.trim()) lastName = row.last_name;
-
-      // Backfill from Slack if still empty
-      if (!firstName?.trim() && !lastName?.trim()) {
-        const slackName = row.slack_real_name || row.slack_display_name;
-        if (slackName) {
-          const parts = slackName.trim().split(/\s+/);
-          firstName = parts[0];
-          lastName = parts.length > 1 ? parts.slice(1).join(' ') : null;
-        }
-      }
-    }
-  }
+  const { firstName, lastName } = await resolveUserNameWithFallbacks(
+    pool, user.id, user.first_name, user.last_name,
+  );
 
   await pool.query(
     `INSERT INTO users (
