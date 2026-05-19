@@ -53,7 +53,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { isUuid } from "./utils/uuid.js";
-import { resolveUserNameWithFallbacks } from "./utils/resolve-user-name.js";
+import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
@@ -7354,18 +7354,26 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           return res.status(400).json({ error: 'first_name must be a string' });
         }
 
-        const sanitize = (s: string) => s.trim().replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ');
-        const firstName = sanitize(req.body.first_name);
-        const lastName = typeof req.body.last_name === 'string' ? sanitize(req.body.last_name) || null : null;
+        // Reject overlong raw input *before* sanitizing so the user gets a
+        // clear 422 instead of silent truncation.
+        if (req.body.first_name.length > 255) {
+          return res.status(400).json({ error: 'first_name must be 255 characters or fewer' });
+        }
+        if (typeof req.body.last_name === 'string' && req.body.last_name.length > 255) {
+          return res.status(400).json({ error: 'last_name must be 255 characters or fewer' });
+        }
+
+        // sanitizeName strips C0/C1 controls + Unicode direction/format
+        // characters (RTL-override spoofing, ZWSP), collapses whitespace,
+        // trims, and caps at 255 chars — same guarantees as the Slack-source
+        // paths. It preserves multi-word names ("Mary Jane") intact.
+        const firstName = sanitizeName(req.body.first_name);
+        const lastName = typeof req.body.last_name === 'string'
+          ? (sanitizeName(req.body.last_name) || null)
+          : null;
 
         if (!firstName) {
           return res.status(400).json({ error: 'first_name is required' });
-        }
-        if (firstName.length > 255) {
-          return res.status(400).json({ error: 'first_name must be 255 characters or fewer' });
-        }
-        if (lastName && lastName.length > 255) {
-          return res.status(400).json({ error: 'last_name must be 255 characters or fewer' });
         }
 
         const pool = getPool();
@@ -7398,7 +7406,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         }
 
         invalidateMemberContextCache();
-        logger.info({ userId: user.id, firstName, lastName }, 'User updated their display name');
+        logger.info({ userId: user.id }, 'User updated their display name');
         res.json({ first_name: firstName, last_name: lastName });
       } catch (error) {
         logger.error({ err: error }, 'Update user name error');

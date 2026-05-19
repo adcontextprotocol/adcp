@@ -892,6 +892,10 @@
     let pendingInvitations = [];
     let joinableOrgs = [];
     let userDomain = null;
+    // Set to true right before re-entering init() after the name-capture form
+    // succeeds. Prevents the gate from re-firing if /api/me momentarily still
+    // returns a null first_name (cache, read-after-write race).
+    let nameJustCaptured = false;
 
     // Initialize page
     async function init() {
@@ -912,7 +916,7 @@
         // and Addie all read users.first_name; "undefined undefined" on a
         // certificate (escalation #382) was the symptom of skipping this.
         const hasName = (currentUser.first_name || '').trim().length > 0;
-        if (!hasName) {
+        if (!hasName && !nameJustCaptured) {
           document.getElementById('loading').style.display = 'none';
           document.getElementById('nameCaptureSection').style.display = 'block';
           return;
@@ -1459,6 +1463,12 @@
           var err = await resp.json().catch(function() { return null; });
           throw new Error((err && err.error) || 'Could not save your name. Please try again.');
         }
+        // Optimistic: don't re-call /api/me — the gate would loop if that
+        // response still returned an empty name (caching, race). The PUT
+        // already wrote through to users + memberships + WorkOS.
+        currentUser.first_name = first;
+        currentUser.last_name = last || null;
+        nameJustCaptured = true;
         document.getElementById('nameCaptureSection').style.display = 'none';
         document.getElementById('loading').style.display = 'block';
         await init();

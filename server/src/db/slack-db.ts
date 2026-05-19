@@ -6,6 +6,7 @@ import type {
   SlackMappingStats,
 } from '../slack/types.js';
 import { FREE_EMAIL_PROVIDER_DOMAINS } from '../services/identifier-normalization.js';
+import { splitFullName } from '../utils/resolve-user-name.js';
 
 /**
  * Escape LIKE pattern wildcards to prevent SQL injection
@@ -144,10 +145,7 @@ export class SlackDatabase {
     if (mapping) {
       const slackName = mapping.slack_real_name || mapping.slack_display_name;
       if (slackName?.trim()) {
-        const trimmed = slackName.trim();
-        const spaceIdx = trimmed.indexOf(' ');
-        const firstName = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
-        const lastName = spaceIdx === -1 ? null : trimmed.slice(spaceIdx + 1).trim() || null;
+        const { firstName, lastName } = splitFullName(slackName);
         await query(
           `UPDATE users
               SET first_name = COALESCE(NULLIF(TRIM(first_name), ''), $1),

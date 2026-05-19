@@ -1,5 +1,62 @@
 import type { PoolClient, Pool } from 'pg';
 
+const MAX_NAME_LEN = 255;
+
+// Defense-in-depth: drop C0/C1 controls, DEL, and Unicode direction/format
+// characters (U+200B..F, U+202A..E, U+2060..4, U+FEFF). A user setting their
+// Slack display name to an RTL-override that renders one way in Slack and
+// another on a Certifier PDF or in an Addie speaker prefix is a real (if
+// minor) spoofing surface; strip these before the value leaves the helper.
+function isInvisibleOrControl(cp: number): boolean {
+  // Keep \t (0x09), \n (0x0a), \r (0x0d) — they're treated as whitespace by
+  // the trim+collapse step below, so "Tom\tHespos" collapses to "Tom Hespos".
+  return (
+    (cp >= 0x00 && cp <= 0x08) ||
+    cp === 0x0b ||
+    cp === 0x0c ||
+    (cp >= 0x0e && cp <= 0x1f) ||
+    cp === 0x7f ||
+    (cp >= 0x200b && cp <= 0x200f) ||
+    (cp >= 0x202a && cp <= 0x202e) ||
+    (cp >= 0x2060 && cp <= 0x2064) ||
+    cp === 0xfeff
+  );
+}
+
+function stripInvisibles(value: string): string {
+  let out = '';
+  for (const ch of value) {
+    const cp = ch.codePointAt(0);
+    if (cp !== undefined && !isInvisibleOrControl(cp)) out += ch;
+  }
+  return out;
+}
+
+/**
+ * Strip invisible / control characters, collapse internal whitespace runs,
+ * trim, and cap at 255 chars. Multi-word first names like "Mary Jane" stay
+ * intact — this is *not* a name-splitter; use `splitFullName` for that.
+ */
+export function sanitizeName(value: string): string {
+  return stripInvisibles(value).trim().replace(/\s+/g, ' ').slice(0, MAX_NAME_LEN);
+}
+
+/**
+ * Split a single "full name" string into first / last. Collapses any run of
+ * whitespace, so "Tom  Hespos", "Tom\tHespos", and "Tom Hespos" all produce
+ * the same result. Returns `null` for the last half when the input is a
+ * single name like "Cher". Also strips invisible / control characters and
+ * caps each half at 255 chars (matches the `users` table column).
+ */
+export function splitFullName(fullName: string): { firstName: string; lastName: string | null } {
+  const cleaned = sanitizeName(fullName);
+  if (!cleaned) return { firstName: '', lastName: null };
+  const parts = cleaned.split(' ');
+  const firstName = (parts[0] ?? '').slice(0, MAX_NAME_LEN);
+  const lastName = parts.length > 1 ? parts.slice(1).join(' ').slice(0, MAX_NAME_LEN) : null;
+  return { firstName, lastName };
+}
+
 /**
  * Resolve a user's name with a fallback cascade so we don't end up persisting
  * NULL first/last when richer data already exists in our system. The cascade:
@@ -54,9 +111,9 @@ export async function resolveUserNameWithFallbacks(
   if (!firstName?.trim() && !lastName?.trim()) {
     const slackName = row.slack_real_name || row.slack_display_name;
     if (slackName) {
-      const parts = slackName.trim().split(/\s+/);
-      firstName = parts[0] ?? null;
-      lastName = parts.length > 1 ? parts.slice(1).join(' ') : null;
+      const split = splitFullName(slackName);
+      firstName = split.firstName || null;
+      lastName = split.lastName;
     }
   }
 

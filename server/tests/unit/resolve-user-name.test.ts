@@ -6,7 +6,7 @@
  * callback never looked at it.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { resolveUserNameWithFallbacks } from '../../src/utils/resolve-user-name.js';
+import { resolveUserNameWithFallbacks, splitFullName, sanitizeName } from '../../src/utils/resolve-user-name.js';
 
 type Row = {
   first_name: string | null;
@@ -20,6 +20,66 @@ function fakeDb(row: Row | null) {
     query: vi.fn().mockResolvedValue({ rows: row ? [row] : [] }),
   };
 }
+
+describe('sanitizeName', () => {
+  it('strips Unicode direction-override characters', () => {
+    // U+202E (RIGHT-TO-LEFT OVERRIDE) — a spoofing surface on certificates
+    expect(sanitizeName('Tom‮Hespos')).toBe('TomHespos');
+  });
+
+  it('strips zero-width space', () => {
+    expect(sanitizeName('Tom​Hespos')).toBe('TomHespos');
+  });
+
+  it('strips C0 controls and DEL', () => {
+    expect(sanitizeName('Tom\x00\x07\x1f\x7fHespos')).toBe('TomHespos');
+  });
+
+  it('collapses internal whitespace but preserves multi-word names', () => {
+    expect(sanitizeName('Mary   Jane  Watson')).toBe('Mary Jane Watson');
+  });
+
+  it('caps at 255 characters', () => {
+    const result = sanitizeName('A'.repeat(300));
+    expect(result.length).toBe(255);
+  });
+
+  it('returns empty string for whitespace-only input', () => {
+    expect(sanitizeName('   \t\n   ')).toBe('');
+  });
+});
+
+describe('splitFullName', () => {
+  it('splits two-part names', () => {
+    expect(splitFullName('Tom Hespos')).toEqual({ firstName: 'Tom', lastName: 'Hespos' });
+  });
+
+  it('treats tab as whitespace, returning a clean last name', () => {
+    expect(splitFullName('Tom\tHespos')).toEqual({ firstName: 'Tom', lastName: 'Hespos' });
+  });
+
+  it('collapses double-space without leaving a leading space in last name', () => {
+    expect(splitFullName('Tom  Hespos')).toEqual({ firstName: 'Tom', lastName: 'Hespos' });
+  });
+
+  it('returns null last name for single-word input', () => {
+    expect(splitFullName('Cher')).toEqual({ firstName: 'Cher', lastName: null });
+  });
+
+  it('joins three+ word names into the last-name slot', () => {
+    expect(splitFullName('Daniel Di Tullio')).toEqual({ firstName: 'Daniel', lastName: 'Di Tullio' });
+  });
+
+  it('strips a Unicode direction-override from a Slack-controlled name', () => {
+    // Without stripping, "Tom‮Hespos" would render reversed on a PDF
+    expect(splitFullName('Tom‮ Hespos')).toEqual({ firstName: 'Tom', lastName: 'Hespos' });
+  });
+
+  it('returns empty pair for empty or whitespace-only input', () => {
+    expect(splitFullName('')).toEqual({ firstName: '', lastName: null });
+    expect(splitFullName('   ')).toEqual({ firstName: '', lastName: null });
+  });
+});
 
 describe('resolveUserNameWithFallbacks', () => {
   it('uses WorkOS values when both are set', async () => {
