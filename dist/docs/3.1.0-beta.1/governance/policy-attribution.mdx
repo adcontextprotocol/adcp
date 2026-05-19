@@ -1,0 +1,163 @@
+---
+title: Policy Attribution
+description: "How producers tag mechanism-level filters and measurements with the authorizing policy, so audit trails and governance findings can trace back to why a specific threshold or evaluation exists."
+"og:title": "AdCP — Policy Attribution"
+sidebarTitle: Policy Attribution
+---
+
+When a buyer caps audience children-composition at 15%, the threshold itself doesn't explain why. The number is mechanical; the *reason* (UK HFSS) lives elsewhere. Without attribution, an auditor reading a property list six months later can't answer "why does this list exclude high-children-composition properties?" without human interpretation.
+
+Policy attribution closes that gap. Producers tag mechanism-level filters and measurements with `policy_id` to record the authorizing policy. Governance findings echo the same `policy_id` when emitting denials, so the trace runs end-to-end.
+
+## Three surfaces, one pattern
+
+| Surface | Producer | Use |
+|---|---|---|
+| [`core/feature-requirement.json`](https://adcontextprotocol.org/schemas/3.1.0-beta.1/core/feature-requirement.json) | Buyer (or buyer's compliance tooling) | Tag a buyer-authored threshold predicate with the policy that authorized it |
+| [`creative/creative-feature-result.json`](https://adcontextprotocol.org/schemas/3.1.0-beta.1/creative/creative-feature-result.json) | Creative agent / seller | Tag a measurement record with the policy that motivated the evaluation |
+| [`property/validation-result.json`](https://adcontextprotocol.org/schemas/3.1.0-beta.1/property/validation-result.json) `features[].policy_id` | Property-list agent | Tag a per-feature validation result with the policy that triggered the check |
+
+All three fields are optional. The first two were reserved in 3.0 GA; populating them in 3.1 is non-breaking for strict 3.0 validators. The third has been present on validation-result since 3.0.
+
+## When to populate `policy_id`
+
+Populate `policy_id` when **the filter or measurement exists because of a specific authorizing policy** — and the producer chose the specific mechanism as their encoding of that policy.
+
+Do **not** populate `policy_id` when the policy merely applies in general. Plan-level policy applicability is declared on the plan itself via `policy_ids[]` (sent to the buyer's governance agent through `sync_plans`). The filter-level field is for mechanism authorship, not blanket applicability.
+
+### Plan-level vs filter-level
+
+These are different jobs:
+
+| Buyer says | Where it lives | Who picks the mechanism |
+|---|---|---|
+| "Apply COPPA — governance figures out who qualifies" | `plan.policy_ids: ["us_coppa"]` | Buyer's governance agent |
+| "Compliance with COPPA means: require properties to attest to it" | `feature_requirements: [{feature_id: "registry:us_coppa", value: true}]` | Buyer, delegating measurement to the seller's `registry:` feature |
+| "I'm encoding HFSS as ≤15% children composition" | `feature_requirements: [{feature_id: "audience_children_composition", max_value: 15, policy_id: "uk_hfss"}]` | Buyer, picking the threshold themselves |
+
+Only the third row carries filter-level `policy_id`. The first two rows already capture intent at higher abstraction levels — the registry feature ID is itself the policy reference in the second case.
+
+## Round-trip via governance findings
+
+The attribution loop runs filter → governance agent → finding → audit. The agent acting on the buyer's plan calls `check_governance`; depending on `phase`, this is either an **intent check** (orchestrator-side, before commitment) or an **execution check** (seller-side, before binding planned delivery). Both paths produce findings with the same shape.
+
+```
+Buyer's property list (stored at the property-list agent)
+  feature_requirements:
+    - feature_id: audience_children_composition
+      max_value: 15
+      policy_id: uk_hfss        ← authored here
+                │
+                │ Acting agent resolves the property list, sees policy_id as pass-through metadata
+                ▼
+Planned action would violate the requirement
+                │
+                │ check_governance(plan_id, payload | planned_delivery, governance_context)
+                │   - orchestrator on intent check (tool + payload)
+                │   - seller on execution check (planned_delivery)
+                ▼
+Buyer's Governance agent emits a finding:
+  findings:
+    - category_id: regulatory_compliance
+      policy_id: uk_hfss        ← echoed from the originating requirement
+      severity: block
+      explanation: "Planned targeting exceeds the 15% children-composition cap."
+                │
+                ▼
+Audit: "why was this denied?" → uk_hfss → grep buyer's filters → find the originating requirement.
+```
+
+The acting agent (orchestrator or seller, depending on phase) is a transit point — it does not produce findings. The buyer's governance agent is the producer, and it has direct access to the buyer's filters (same trust boundary), so it can populate `policy_id` on findings by reading the underlying requirement.
+
+## Contract for producers
+
+**Buyer (or buyer's compliance tooling) authoring `feature-requirement`:**
+- SHOULD populate `policy_id` when the requirement encodes a specific policy threshold the buyer chose.
+- SHOULD NOT populate `policy_id` when the requirement is a general feature filter unrelated to any policy.
+- MUST reference a `policy_id` that resolves either in the policy registry or in the plan's `custom_policies[]`.
+
+**Creative agent or seller authoring `creative-feature-result`:**
+- SHOULD populate `policy_id` when the feature was measured for the purpose of a specific policy evaluation.
+- SHOULD NOT populate `policy_id` when the feature is a generic measurement (carbon score, brand consistency) unrelated to any policy.
+
+**Governance agent emitting findings:**
+- SHOULD echo `policy_id` on findings when the underlying violation traces to a filter or measurement carrying `policy_id`.
+- MUST NOT invent a `policy_id` that wasn't present on the originating filter — finding `policy_id` is for traceability, not for declaring new policy applicability (that belongs in `policies_evaluated[]`).
+
+## Worked examples
+
+### UK HFSS — buyer-encoded threshold
+
+The buyer's compliance team interprets UK HFSS as "audience must be less than 15% children." They encode that interpretation as a feature requirement:
+
+```json
+{
+  "feature_requirements": [
+    {
+      "feature_id": "audience_children_composition",
+      "max_value": 15,
+      "policy_id": "uk_hfss"
+    }
+  ]
+}
+```
+
+If a different team later asks "why 15? why not 20?", the policy_id points at the registry entry for UK HFSS, where the rationale and exemplars live.
+
+### COPPA — delegated to the seller's registry feature
+
+The buyer doesn't pick a threshold for COPPA — they delegate the evaluation entirely. The `registry:` prefix is a feature-naming convention (see [`property-feature-definition`](https://adcontextprotocol.org/schemas/3.1.0-beta.1/property/property-feature-definition.json) and [Policy Registry](/dist/docs/3.1.0-beta.1/governance/policy-registry#feature-prefix-convention)) where the feature ID `registry:<policy_id>` references a standardized policy directly:
+
+```json
+{
+  "feature_requirements": [
+    {
+      "feature_id": "registry:us_coppa",
+      "value": true
+    }
+  ]
+}
+```
+
+The feature ID *is* the policy reference. Adding `policy_id: "us_coppa"` here would be redundant — and would imply the buyer authored the mechanism, when in fact they delegated it.
+
+### Creative measurement — agent records the why
+
+A creative agent evaluates a creative for HFSS compliance and records:
+
+```json
+{
+  "feature_id": "uk_hfss_compliance",
+  "value": false,
+  "policy_id": "uk_hfss",
+  "methodology_version": "v2.1",
+  "measured_at": "2026-05-17T14:00:00Z"
+}
+```
+
+The `policy_id` answers "why did this evaluation run?" Anyone reviewing the creative's measurement history can correlate this result with the originating policy.
+
+When this result fails the creative-level governance check, the governance agent's finding echoes the same `policy_id`:
+
+```json
+{
+  "category_id": "regulatory_compliance",
+  "policy_id": "uk_hfss",
+  "severity": "block",
+  "explanation": "Creative failed UK HFSS compliance evaluation."
+}
+```
+
+The buyer can correlate the finding back to the originating measurement by matching `policy_id` across both records.
+
+## What attribution does not cover
+
+- **Top-down policy declaration from buyer to seller.** When the buyer wants the seller to apply specialized handling for a policy (HIPAA vendor, COPPA dataset) without the buyer encoding the mechanism, that's a separate surface tracked in [#4629](https://github.com/adcontextprotocol/adcp/issues/4629).
+- **Per-criterion attribution on audience selectors.** Audience exclusions in a plan should be derived from plan-level `policy_ids[]` by the buyer's governance agent — not hand-authored by buyers and tagged with policy authority. Audience-selector schemas do not carry `policy_id`.
+- **Per-criterion attribution on the targeting overlay.** Targeting fields (`geo_countries_exclude`, age restrictions, device platforms) use flat arrays without a per-entry shape; per-criterion attribution would require schema restructuring. Use plan-level declaration for these constraints.
+
+## See also
+
+- [Policy Registry](/dist/docs/3.1.0-beta.1/governance/policy-registry) — the shared library of `policy_id`s
+- [Policy Registry Sync](/dist/docs/3.1.0-beta.1/governance/policy-registry-sync) — how plans reference policies via `policy_ids[]` and `custom_policies[]`
+- [`check_governance`](/dist/docs/3.1.0-beta.1/governance/campaign/tasks/check_governance) — where findings are emitted with `policy_id` traceability
