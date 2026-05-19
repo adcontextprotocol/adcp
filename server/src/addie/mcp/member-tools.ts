@@ -655,9 +655,23 @@ export const MEMBER_TOOLS: AddieTool[] = [
     },
   },
   {
+    name: 'set_my_name',
+    description:
+      "Set the current user's first name and (optionally) last name. Writes through to the local DB, organization memberships, and back to WorkOS. Use this when a credential check tells you the user has no name on file, or whenever the user explicitly asks to set or correct their name.",
+    usage_hints: 'use when check_credentials returns NAME_REQUIRED, or the user says "my name is X" / "set my name to X". For full names like "Tom Hespos" split into first_name="Tom" + last_name="Hespos". Do NOT call this for an admin renaming someone else — that\'s update_user_name (admin only).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        first_name: { type: 'string', description: 'First name (required, 1-255 chars)' },
+        last_name: { type: 'string', description: 'Last name (optional, up to 255 chars). Pass empty string or omit to leave blank.' },
+      },
+      required: ['first_name'],
+    },
+  },
+  {
     name: 'update_my_profile',
     description:
-      "Update the current user's personal profile — who they are as a person. Can update headline, bio, expertise, interests, location, and social links. Only updates fields that are provided.",
+      "Update the current user's personal profile — who they are as a person. Can update headline, bio, expertise, interests, location, and social links. Only updates fields that are provided. Does NOT update first/last name — use set_my_name for that.",
     usage_hints: 'use when user wants to update their personal info, headline, bio, or expertise',
     input_schema: {
       type: 'object',
@@ -1866,6 +1880,60 @@ export function createMemberToolHandlers(
   // ============================================
   // PERSONAL PROFILE (the person)
   // ============================================
+  handlers.set('set_my_name', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to set your name. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+    // Bounded — writes to users + organization_memberships + WorkOS on every
+    // call. Default cap (60/10min/user) is plenty for legitimate use.
+    const rate = await checkToolRateLimit('set_my_name', memberContext.workos_user.workos_user_id);
+    if (!rate.ok) {
+      const retrySeconds = Math.max(1, Math.ceil((rate.retryAfterMs ?? 60000) / 1000));
+      return `Rate limit exceeded on set_my_name. Try again in ~${retrySeconds} seconds.`;
+    }
+    if (typeof input.first_name !== 'string') {
+      throw new ToolError('first_name is required.');
+    }
+
+    const { sanitizeName } = await import('../../utils/resolve-user-name.js');
+    const rawFirst = input.first_name;
+    const rawLast = typeof input.last_name === 'string' ? input.last_name : '';
+    if (rawFirst.length > 255) throw new ToolError('first_name must be 255 characters or fewer.');
+    if (rawLast.length > 255) throw new ToolError('last_name must be 255 characters or fewer.');
+
+    const firstName = sanitizeName(rawFirst);
+    const lastName = sanitizeName(rawLast) || null;
+    if (!firstName) throw new ToolError('first_name cannot be empty after trimming.');
+
+    const userId = memberContext.workos_user.workos_user_id;
+    const pool = getPool();
+    await pool.query(
+      `UPDATE users SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+      [firstName, lastName, userId]
+    );
+    await pool.query(
+      `UPDATE organization_memberships SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+      [firstName, lastName, userId]
+    );
+
+    try {
+      await getWorkos().userManagement.updateUser({
+        userId,
+        firstName,
+        lastName: lastName ?? undefined,
+      });
+    } catch (workosError) {
+      logger.warn({ err: workosError, userId }, 'set_my_name: WorkOS push failed (local update applied)');
+    }
+
+    const { invalidateMemberContextCache } = await import('../member-context.js');
+    invalidateMemberContextCache();
+    logger.info({ userId }, 'set_my_name: user name updated');
+
+    const display = lastName ? `${firstName} ${lastName}` : firstName;
+    return `Your name is set to **${display}**. Anything that uses your name (credentials, member announcements, Addie's greetings) will now use this.`;
+  });
+
   handlers.set('get_my_profile', async () => {
     if (!memberContext?.workos_user?.workos_user_id) {
       return 'You need to be logged in to see your profile. Please log in at https://agenticadvertising.org/dashboard first.';

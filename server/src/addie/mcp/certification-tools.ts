@@ -26,6 +26,7 @@ import { createLogger } from '../../logger.js';
 import { notifySpecialistCredential } from '../jobs/credential-digest.js';
 import { TRAINING_AGENT_URL, tenantUrlsForModule, type ModuleTenantUrls } from '../../training-agent/config.js';
 import { ToolError } from '../tool-error.js';
+import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { stripe } from '../../billing/stripe-client.js';
 import { attemptStripeReconciliation } from '../../billing/lazy-reconcile.js';
 
@@ -422,8 +423,29 @@ function validateDemonstrationIds(
 }
 
 /**
+ * Sentinel returned by `issueCertifierBadge` when issuance was blocked because
+ * the learner has no real name on file. The caller surfaces this as a
+ * `NAME_REQUIRED` line that Sage's prompt rules (see `buildCertificationContext`)
+ * know how to recover from: ask for first/last, call `set_my_name`, re-check.
+ *
+ * Exported so the prompt rule and the warning line and the tests all reference
+ * the same string — if the marker changes, every match site changes with it.
+ *
+ * The credential row is already awarded in `user_credentials`; only the
+ * Certifier-side issuance is deferred. `checkAndFormatCredentials` retries
+ * deferred issuances on its next call.
+ */
+export const NAME_REQUIRED_MARKER = 'NAME_REQUIRED';
+type IssueResult = string | null | 'NAME_REQUIRED';
+
+/**
  * Issue a Certifier badge for an awarded credential.
  * Handles expiry logic (tier 1 = no expiry, others = 2 years) and records the credential ID.
+ * Returns:
+ *   - the credential's publicId when issuance succeeded
+ *   - `NAME_REQUIRED` when the learner has no real name on file (gate fires
+ *     before any Certifier call — see escalation #382 and issue #4782)
+ *   - `null` on transient / configuration failures (logged for ops)
  */
 async function issueCertifierBadge(
   userId: string,
@@ -431,8 +453,22 @@ async function issueCertifierBadge(
   cred: { name: string; tier: number; certifier_group_id: string | null },
   memberContext: MemberContext | null,
   extraAttributes?: Record<string, string>,
-): Promise<string | null> {
+): Promise<IssueResult> {
   if (!cred.certifier_group_id || !memberContext?.workos_user) return null;
+
+  // Resolve the name from the freshest source available: the helper falls
+  // back to the DB when memberContext is stale (the closure-bound context
+  // doesn't see the row `set_my_name` just wrote), and to the Slack mapping
+  // when neither has a value.
+  const { resolveUserNameWithFallbacks } = await import('../../utils/resolve-user-name.js');
+  const wu = memberContext.workos_user;
+  const resolved = await resolveUserNameWithFallbacks(
+    getPool(), userId, wu.first_name, wu.last_name,
+  );
+  if (!(resolved.firstName ?? '').trim()) {
+    logger.info({ userId, credId, email: wu.email }, 'Credential issuance gated: no first_name on file');
+    return NAME_REQUIRED_MARKER;
+  }
 
   try {
     const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl, buildRecipientName } = await import('../../services/certifier-client.js');
@@ -447,8 +483,12 @@ async function issueCertifierBadge(
     const credential = await issueCredential({
       groupId: cred.certifier_group_id,
       recipient: {
-        name: buildRecipientName(memberContext.workos_user),
-        email: memberContext.workos_user.email,
+        name: buildRecipientName({
+          first_name: resolved.firstName,
+          last_name: resolved.lastName,
+          email: wu.email,
+        }),
+        email: wu.email,
       },
       ...(expiryDate ? { expiryDate } : {}),
       ...(extraAttributes ? { customAttributes: extraAttributes } : {}),
@@ -503,22 +543,53 @@ function buildShareLinks(
 
 /**
  * Check for newly earned credentials, issue badges, and return formatted lines.
+ * Also retries any previously-awarded credentials whose Certifier issuance
+ * was deferred (typically gated by `NAME_REQUIRED` on a prior turn) — that's
+ * the recovery path after Sage calls `set_my_name`.
  */
 async function checkAndFormatCredentials(
   userId: string,
   memberContext: MemberContext | null,
 ): Promise<string[]> {
   const awarded = await certDb.checkAndAwardCredentials(userId);
-  if (awarded.length === 0) return [];
+
+  // Pick up the "awarded earlier, never issued to Certifier" backlog so a
+  // post-set_my_name retry actually finalizes the certificate. Bounded to a
+  // 24-hour window so we never accidentally re-issue a legitimately-issued
+  // older credential whose `certifier_credential_id` got nulled by an
+  // out-of-band operation (corrupt-row defense). The admin backfill route +
+  // repair script handle anything outside this window.
+  const RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const existing = await certDb.getUserCredentials(userId);
+  const deferred = existing
+    .filter(c =>
+      !c.certifier_credential_id &&
+      !awarded.includes(c.credential_id) &&
+      (now - new Date(c.awarded_at).getTime()) < RETRY_WINDOW_MS,
+    )
+    .map(c => c.credential_id);
+
+  const toProcess = [...new Set([...awarded, ...deferred])];
+  if (toProcess.length === 0) return [];
+
   const creds = await certDb.getCredentials();
   const credMap = new Map(creds.map(c => [c.id, c]));
   const lines: string[] = [''];
-  for (const credId of awarded) {
+  let nameRequired = false;
+  for (const credId of toProcess) {
     const cred = credMap.get(credId);
     if (cred) {
+      const result = await issueCertifierBadge(userId, credId, cred, memberContext);
+      if (result === NAME_REQUIRED_MARKER) {
+        nameRequired = true;
+        // Don't post "Credential earned!" or share links or specialist
+        // notifications until the credential is actually issued — those
+        // fire on the retry pass once `set_my_name` has been called.
+        continue;
+      }
       lines.push(`**Credential earned: ${cred.name}!**`);
-      const publicId = await issueCertifierBadge(userId, credId, cred, memberContext);
-      lines.push(...buildShareLinks(cred.name, publicId));
+      lines.push(...buildShareLinks(cred.name, result));
 
       // Post immediate Slack notification for Specialist (tier 3) credentials
       if (cred.tier === 3) {
@@ -529,6 +600,13 @@ async function checkAndFormatCredentials(
         });
       }
     }
+  }
+
+  if (nameRequired) {
+    // Sage rule (see buildCertificationContext) tells her to ask the learner
+    // for first + last, call set_my_name, then re-check credentials.
+    lines.push('');
+    lines.push(`⚠️ **${NAME_REQUIRED_MARKER}** — credential earned but not yet issued: we have no name on file for this learner. Ask them for the name they'd like on the certificate (first + last), then call \`set_my_name\` with both, then call \`check_credentials\` to finalize issuance.`);
   }
   return lines;
 }
@@ -573,6 +651,8 @@ export async function buildCertificationContext(
   lines.push('**Mastery fast-track (CHECK EVERY TURN after turn 3)**: Teaching and assessment serve different purposes. Teaching is for the learner; assessment is for the credential. After each learner response, ask: "Has this learner given correct, detailed answers to 3+ concepts without needing correction?" If YES: (1) STOP running demos — no more sandbox tool calls, (2) SAY SO: "You clearly know this material — I\'m going to skip the tutorial and have you demonstrate the remaining concepts directly," (3) for each remaining concept, ask ONE targeted demonstration question (scenario-based, teach-back, or "walk me through") that produces auditable evidence of competency. The conversation transcript is the audit trail — the learner\'s own words showing they understand each dimension. Same scoring rubric, same dimension requirements, same minimum engagement — just no unnecessary instruction. Continuing to teach or demo after someone has demonstrated mastery is the #1 learner complaint.');
 
   lines.push('**Protocol accuracy (non-negotiable)**: When a learner asks about protocol details (field definitions, message flows, terminology, agent roles), use search_docs or search_repos to verify before answering. Never construct protocol answers from general knowledge. If you cannot verify, say "I need to check that" and search. Teaching mode does not override accuracy — a wrong answer during certification is worse than saying "let me look that up."');
+  lines.push('');
+  lines.push(`**Credential name recovery**: If a tool result contains the marker \`${NAME_REQUIRED_MARKER}\`, the learner just earned a credential but has no name on file for the certificate. Ask them in one short turn for the name they'd like on it (first + last, last optional). Once they answer, call \`set_my_name\` with \`first_name\` and \`last_name\` from what they said. Do not announce the tool call. After it succeeds, call \`check_credentials\` once to finalize and post the share links. Never paste the literal \`${NAME_REQUIRED_MARKER}\` string into the learner-facing reply.`);
   lines.push('');
 
   // Inject training-agent URLs for demos. Pull the union of tenant_ids
@@ -802,6 +882,16 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
     name: 'get_learner_progress',
     description: 'Get the current learner\'s progress across all certification modules and tracks. Shows which modules are completed, in progress, or not started, plus any earned certificates.',
     usage_hints: 'use for "my progress", "certification status", "what have I completed"',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'check_credentials',
+    description: 'Award any newly-eligible credentials and finalize any previously-deferred Certifier issuances for the current learner. Returns share links for newly-issued credentials, or a NAME_REQUIRED marker when the learner has no name on file. Use this after `set_my_name` to finalize a credential that was gated on the missing name.',
+    usage_hints: 'call after `set_my_name` to finalize a deferred credential; safe to call any time the learner asks "did I earn anything new?"',
     input_schema: {
       type: 'object',
       properties: {},
@@ -1818,6 +1908,28 @@ export function createCertificationToolHandlers(
       logger.error({ error }, 'Failed to complete certification module');
       throw new ToolError('Failed to record module completion. Please try again.');
     }
+  });
+
+  // ----- check_credentials -----
+  // Trigger an award/issue pass without completing a module. The primary use
+  // is the post-`set_my_name` retry: when a previous turn returned
+  // NAME_REQUIRED, Sage calls set_my_name to capture the learner's name and
+  // then calls this to finalize the deferred Certifier issuance.
+  handlers.set('check_credentials', async () => {
+    const userId = getUserId();
+    if (!userId) return 'You need to be logged in to check your credentials.';
+    // Each call can fan out to N outbound Certifier calls (one per deferred
+    // credential); default cap (60/10min/user) bounds the blast radius.
+    const rate = await checkToolRateLimit('check_credentials', userId);
+    if (!rate.ok) {
+      const retrySeconds = Math.max(1, Math.ceil((rate.retryAfterMs ?? 60000) / 1000));
+      return `Rate limit exceeded on check_credentials. Try again in ~${retrySeconds} seconds.`;
+    }
+    const lines = await checkAndFormatCredentials(userId, memberContext);
+    if (lines.length === 0) {
+      return 'No new credentials to issue. Your existing credentials are unchanged.';
+    }
+    return lines.join('\n');
   });
 
   // ----- get_learner_progress -----
