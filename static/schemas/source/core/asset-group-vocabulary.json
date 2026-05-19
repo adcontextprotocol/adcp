@@ -105,7 +105,18 @@
     "price": {
       "description": "Product price slot rendered on the creative.",
       "asset_type": "text",
-      "typical_use": "Pinterest shopping pins, Amazon Sponsored Brand product cards, retail-media catalog rendering. Often pulled from a catalog field via `field_bindings`."
+      "typical_use": "Pinterest shopping pins, Amazon Sponsored Brand product cards, retail-media catalog rendering, IAB OpenRTB Native 1.2 Data Asset type 6. Often pulled from a catalog field via `field_bindings`."
+    },
+    "display_url": {
+      "description": "Visible URL or domain string shown above/below the headline on native units (does not need to match the click destination).",
+      "asset_type": "text",
+      "typical_use": "Native in-feed and content-recommendation widgets (Taboola, Outbrain, Yahoo Native, AdMob Native). IAB OpenRTB Native 1.2 Data Asset type 11. The actual click destination lives on `landing_page_url`; `display_url` is presentation-only.",
+      "aliases": ["visible_url", "displayed_domain"]
+    },
+    "rating": {
+      "description": "Star or score rating rendered on the creative (e.g., \"4.5/5\", \"4.5 stars\").",
+      "asset_type": "text",
+      "typical_use": "App-install native units, product-rating native cards, review-style content-recommendation. IAB OpenRTB Native 1.2 Data Asset type 3."
     },
     "disclaimer": {
       "description": "Required legal disclaimer or fine print.",
