@@ -8006,7 +8006,7 @@ paths:
                 type: object
                 additionalProperties: {}
         "404":
-          description: "Brand not found, not public, pending review, manifest missing, or source_type is `enriched`. The 404 is intentional and content-stable; use `/api/brands/brand-json?domain=...` if you want enriched data."
+          description: Brand not found, not public, pending review, manifest missing, or source_type is `enriched`. The 404 is intentional and content-stable; use `/api/brands/brand-json?domain=...` if you want enriched data.
           content:
             application/json:
               schema:
@@ -8611,7 +8611,7 @@ paths:
                   description: Parent brand's apex domain. Self-reference rejected.
                 brand_manifest:
                   type: object
-                  description: "Updated manifest. Trusted classification keys are stripped server-side regardless of caller input (#3467)."
+                  description: Updated manifest. Trusted classification keys are stripped server-side regardless of caller input (#3467).
                   additionalProperties: {}
               required:
                 - edit_summary
