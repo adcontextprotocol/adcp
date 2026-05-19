@@ -127,7 +127,34 @@
     "phone_number": {
       "description": "Phone number for click-to-call placements (E.164 preferred).",
       "asset_type": "text",
-      "typical_use": "Google call-only ads, Bing call extensions, click-to-call retail/local placements."
+      "typical_use": "Google call-only ads, Bing call extensions, click-to-call retail/local placements. IAB OpenRTB Native 1.2 Data Asset type 8."
+    },
+    "likes": {
+      "description": "Social-proof like / favorite count rendered on the creative (e.g., \"12.4K likes\").",
+      "asset_type": "text",
+      "typical_use": "Social-feed native units, app-install native showing aggregate engagement. IAB OpenRTB Native 1.2 Data Asset type 4."
+    },
+    "downloads": {
+      "description": "Download count rendered on the creative (e.g., \"1M+ downloads\").",
+      "asset_type": "text",
+      "typical_use": "App-install native units (Google Play, App Store ad placements, in-feed app promos). IAB OpenRTB Native 1.2 Data Asset type 5."
+    },
+    "saleprice": {
+      "description": "Sale / discounted price rendered alongside the original `price` slot (e.g., struck-through original + sale price).",
+      "asset_type": "text",
+      "typical_use": "Retail / e-commerce native showing a discount or promotion. IAB OpenRTB Native 1.2 Data Asset type 7. Pair with `price` (regular price) and optionally `promo_code`.",
+      "aliases": ["sale_price", "discount_price"]
+    },
+    "address": {
+      "description": "Physical address rendered on the creative (e.g., for local-business or click-to-visit placements).",
+      "asset_type": "text",
+      "typical_use": "Local-business native, retail-store ads, click-to-directions placements. IAB OpenRTB Native 1.2 Data Asset type 9."
+    },
+    "secondary_body_text": {
+      "description": "Secondary descriptive copy rendered below the primary `body_text` (extended description).",
+      "asset_type": "text",
+      "typical_use": "Long-form native units where the renderer accepts a second descriptive paragraph (Yahoo Native long-form, content-recommendation extended cards). IAB OpenRTB Native 1.2 Data Asset type 10 (\"desc2\").",
+      "aliases": ["desc2", "body_text_2", "secondary_description"]
     },
     "promo_code": {
       "description": "Promotional / offer code rendered on the creative.",
