@@ -18,7 +18,7 @@ High-level summaries of major AdCP releases with migration guidance. For the at-
 Additive over 3.0 — every existing brand.json publisher continues to validate unchanged.
 
 <Info>
-**Upgrading from 3.0.x?** No code changes required. Schemas remain wire-compatible. SDK consumers bump `ADCP_VERSION` to `3.1.0` on release to pick up the new variant and field shapes. The one publisher-visible behaviour change: free-text values for `trademarks[].status` or `trademarks[].countries` now validate against the typed enum / ISO 3166-1 alpha-2 — non-conforming values surface as schema errors.
+**Upgrading from 3.0.x?** No code changes required. Schemas remain wire-compatible. SDK consumers bump `ADCP_VERSION` to `3.1.0` on release to pick up the new variant and field shapes. The one publisher-visible behavior change: free-text values for `trademarks[].status` or `trademarks[].countries` now validate against the typed enum / ISO 3166-1 alpha-2 — non-conforming values surface as schema errors.
 </Info>
 
 ### Adopter action
@@ -762,7 +762,7 @@ The `skills/` directory was hoisted into the protocol root after the 3.0.0 tarba
 
 ### Spec polish — no wire change
 
-Normative clarifications and docs corrections. None of these add new fields to stable schemas; they document behaviour the spec already implied.
+Normative clarifications and docs corrections. None of these add new fields to stable schemas; they document behavior the spec already implied.
 
 - **`acquire_rights` request validation** — Brand agents MUST reject expired campaign windows (`campaign.end_date` in the past) with `INVALID_REQUEST`. CPM-priced rights under a governed plan must include `campaign.estimated_impressions`. Closes implementer disagreement on identical requests. (#2680, #2681)
 - **`get_signals` pagination precedence** — When both top-level `max_results` and `pagination.max_results` are present, agents MUST honor `pagination.max_results`. Top-level `max_results` deprecated; removed in 4.0.
