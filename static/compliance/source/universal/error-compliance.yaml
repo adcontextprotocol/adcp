@@ -382,6 +382,60 @@ phases:
             value: "error_compliance--unsupported_major_version"
             description: "Context correlation_id returned unchanged"
 
+      - id: unsupported_release_version
+        title: "Reject unsupported adcp_version (release-precision)"
+        narrative: |
+          Send a get_products request asserting an unsupported release-precision
+          version. The seller must reject with VERSION_UNSUPPORTED and surface
+          `error.data.supported_versions[]` so the buyer can retry against a known
+          release.
+
+          This step is the release-precision sibling of `unsupported_major_version`
+          above. With 3.1 promoting `adcp_version` (release-precision, e.g. "3.1")
+          to the primary wire field, the error-path probe must also exercise the
+          release-precision shape — otherwise a seller could implement
+          integer-only VERSION_UNSUPPORTED validation and pass all storyboards
+          while shipping a broken 3.1 buyer experience. Advisory at 3.1; promotes
+          to required with the rest of the version-negotiation suite at the 3.2
+          storyboard cut.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: error_handling
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        severity: advisory
+        expected: |
+          Reject with:
+          - code: VERSION_UNSUPPORTED
+          - error.data.supported_versions[] present and non-empty (release-precision strings)
+          - message referencing the buyer's requested release and the seller's supported set
+
+        sample_request:
+          adcp_version: "99.0"
+          buying_mode: "brief"
+          brief: "Release-precision version negotiation probe"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "error_compliance--unsupported_release_version"
+        validations:
+          - check: error_code
+            value: "VERSION_UNSUPPORTED"
+            description: "Error code is VERSION_UNSUPPORTED on release-precision unsupported pin"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object even on errors"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance--unsupported_release_version"
+            description: "Context correlation_id returned unchanged"
+
       - id: supported_major_version
         title: "Accept supported adcp_major_version"
         narrative: |
