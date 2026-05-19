@@ -170,7 +170,25 @@ The replay-locally argument has carve-outs sellers MUST honor:
 
 ## Standard Error Codes
 
-Standard error codes are defined in [`error-code.json`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json). Sellers MAY use codes not in this vocabulary for platform-specific errors. Agents MUST handle unknown codes by falling back to the `recovery` classification.
+Standard error codes are defined in [`error-code.json`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json). The vocabulary is **open**: `error.code` is wire-typed as `string`, the standard codes are documentary, and senders MAY emit codes outside the standard set.
+
+### Forward-compatible decoding (normative)
+
+**The error-code vocabulary is open.** `error.code` is typed as `string` in [`core/error.json`](/schemas/v3/core/error.json) — not as a closed enum — so a strict JSON Schema validator MUST accept any string value. The standard vocabulary in `error-code.json` is documentary; it constrains neither sender nor receiver at the wire level.
+
+**Receivers MUST decode unknown codes.** A receiver pinned to AdCP version X that decodes a response carrying an `error.code` introduced in version X+1 (or a platform-specific code outside the standard vocabulary) MUST:
+
+1. Treat the response as well-formed — MUST NOT reject the envelope, throw a deserialization exception, or downgrade to a generic protocol error.
+2. Recover the recovery classification from `error.recovery` (top-level field on the error envelope) when present. `error.recovery` is the normative carrier; the `enumMetadata.recovery` in `error-code.json` is the documentary mirror.
+3. When `error.recovery` is absent (legacy senders), apply a conservative default. `transient` is the safe default for unknown codes — retry-with-backoff cannot do worse than terminal classification, and the manifest's [`error_code_policy.default_unknown_recovery`](/schemas/v3/manifest.schema.json) documents this as the canonical fallback.
+
+**Senders MAY emit codes outside the receiver's pinned vocabulary.** A sender emitting a 3.1-era code (e.g., `PROPOSAL_NOT_FOUND`) to a 3.0-pinned receiver does not violate the spec — the receiver is required by the rule above to handle it. When a sender knows the receiver's pinned version (via `adcp_version` envelope echo or capability discovery), senders SHOULD prefer a code from that version's vocabulary when an equivalent exists; senders MAY emit newer or platform-specific codes when no equivalent is available.
+
+**Senders MUST populate `error.recovery` on every error.** This is the normative carrier of recovery semantics across version skew — receivers cannot reliably classify a code they don't know, but they can always read `error.recovery`. Omitting it defeats the forward-compat rule.
+
+**Why this matters.** Forward-compatible decoding is the wire-level invariant that lets future maintenance lines (3.1.x, 4.0.x, …) ship new error codes additively without breaking older receivers. Without it, every new code is a wire change held to the next minor — the current drift-lint policy on 3.0.x. With it in 3.1+, new codes can register during a maintenance line's lifetime, which matters as adopters' real-world rejection paths surface new codes.
+
+**3.0.x policy unchanged.** 3.0.x receivers predate this normative rule, so 3.0.x stays wire-stable for the remainder of its support window — new codes still land at the next minor. This rule sets the receiver contract from 3.1 onward.
 
 **Not-found precedence.** When a referenced identifier does not resolve, sellers SHOULD return the resource-specific code when the resolved type is known from the request: `PRODUCT_NOT_FOUND` for `product_id`, `PACKAGE_NOT_FOUND` for `package_id`, `MEDIA_BUY_NOT_FOUND` for `media_buy_id`, `CREATIVE_NOT_FOUND` for `creative_id`, `SIGNAL_NOT_FOUND` for `signal_id`, `SESSION_NOT_FOUND` for SI `session_id`, `ACCOUNT_NOT_FOUND` for `account_id`, `PLAN_NOT_FOUND` for governance `plan_id`. Fall back to `REFERENCE_NOT_FOUND` for resource types without a dedicated code (e.g., property lists, content standards, rights grants, SI offerings, proposals, catalogs, event sources, collection lists, brands, individual properties). Typed parameters that lack a dedicated standard code MUST use `REFERENCE_NOT_FOUND` rather than minting a custom `*_NOT_FOUND` code — the vocabulary grows by upstream spec change, not by per-seller inflation. Clients SHOULD switch on `error.code` first; the resource-specific codes let clients dispatch without parsing `error.field`.
 
@@ -865,7 +883,7 @@ Leaks (don't):
 1. **Check `recovery` first** — it's the most reliable signal for how to handle an error
 2. **Implement retries** — use exponential backoff for transient errors
 3. **Respect rate limits** — honor `retry_after` values
-4. **Handle unknown codes gracefully** — fall back to the `recovery` classification
+4. **Handle unknown codes gracefully** — fall back to `error.recovery`; default to `transient` when absent (see [Forward-compatible decoding](#forward-compatible-decoding-normative))
 5. **Log with context** — include `code`, `recovery`, and `field` for debugging
 6. **Fallback strategies** — always have a backup (e.g., polling for webhooks)
 7. **Don't retry terminal errors** — escalate to a human operator
