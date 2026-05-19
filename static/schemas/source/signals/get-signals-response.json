@@ -176,19 +176,20 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "oneOf": [
-    {
-      "description": "Catalog-unchanged response: unchanged is true; signals MUST be omitted; catalog_version MUST be present.",
-      "properties": {
-        "unchanged": { "const": true }
-      },
-      "required": ["unchanged", "catalog_version"],
-      "not": { "required": ["signals"] }
+  "if": {
+    "properties": {
+      "unchanged": { "const": true }
     },
-    {
-      "description": "Standard response: signals[] is present.",
-      "required": ["signals"]
-    }
-  ],
+    "required": ["unchanged"]
+  },
+  "then": {
+    "description": "Catalog-unchanged response: signals MUST be omitted; catalog_version MUST be present.",
+    "required": ["catalog_version"],
+    "not": { "required": ["signals"] }
+  },
+  "else": {
+    "description": "Standard response: signals[] is present.",
+    "required": ["signals"]
+  },
   "additionalProperties": true
 }

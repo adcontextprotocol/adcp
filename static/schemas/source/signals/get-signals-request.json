@@ -80,31 +80,27 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "oneOf": [
-    {
-      "description": "Wholesale enumeration: discovery_mode is 'wholesale'; signal_spec and signal_ids MUST NOT be present.",
-      "properties": {
-        "discovery_mode": {
-          "const": "wholesale"
-        }
-      },
-      "required": [
-        "discovery_mode"
-      ],
-      "not": {
-        "anyOf": [
-          { "required": ["signal_spec"] },
-          { "required": ["signal_ids"] }
-        ]
-      }
+  "if": {
+    "properties": {
+      "discovery_mode": { "const": "wholesale" }
     },
-    {
-      "description": "Brief mode (default): signal_spec or signal_ids is required.",
+    "required": ["discovery_mode"]
+  },
+  "then": {
+    "description": "Wholesale enumeration: signal_spec and signal_ids MUST NOT be present.",
+    "not": {
       "anyOf": [
         { "required": ["signal_spec"] },
         { "required": ["signal_ids"] }
       ]
     }
-  ],
+  },
+  "else": {
+    "description": "Brief mode (default): signal_spec or signal_ids is required.",
+    "anyOf": [
+      { "required": ["signal_spec"] },
+      { "required": ["signal_ids"] }
+    ]
+  },
   "additionalProperties": true
 }

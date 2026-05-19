@@ -263,19 +263,20 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "oneOf": [
-    {
-      "description": "Catalog-unchanged response: unchanged is true; products MUST be omitted; catalog_version MUST be present.",
-      "properties": {
-        "unchanged": { "const": true }
-      },
-      "required": ["unchanged", "catalog_version"],
-      "not": { "required": ["products"] }
+  "if": {
+    "properties": {
+      "unchanged": { "const": true }
     },
-    {
-      "description": "Standard response: products[] is present.",
-      "required": ["products"]
-    }
-  ],
+    "required": ["unchanged"]
+  },
+  "then": {
+    "description": "Catalog-unchanged response: products MUST be omitted; catalog_version MUST be present.",
+    "required": ["catalog_version"],
+    "not": { "required": ["products"] }
+  },
+  "else": {
+    "description": "Standard response: products[] is present.",
+    "required": ["products"]
+  },
   "additionalProperties": true
 }
