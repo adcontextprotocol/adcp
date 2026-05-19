@@ -2,7 +2,7 @@
   "$schema": "/schemas/core/product.json",
   "product_id": "veo_generative_video_vertical_15s",
   "name": "Veo — 15s Generative Vertical Video",
-  "description": "Generative video synthesis from a creative_brief plus structured scenes. Buyer ships a brief (≤500 chars) and a scenes plan (3 scenes summing to 15s); Veo synthesizes the video. Genuinely nondeterministic — synthesis from in-spec inputs may produce out-of-spec frames; the platform's post-synthesis QA loop validates and reseeds up to N attempts before surfacing output. If the QA loop exhausts, build_creative returns task_failed with synthesis_failed reason. provenance_required: true means every produced asset carries a C2PA provenance manifest attributing synthesis to Veo (not the seller).",
+  "description": "Generative video synthesis from a creative_brief plus structured video_brief. Buyer ships a brief (≤500 chars) and a video_brief (3 segments summing to 15s); Veo synthesizes the video. Genuinely nondeterministic — synthesis from in-spec inputs may produce out-of-spec frames; the platform's post-synthesis QA loop validates and reseeds up to N attempts before surfacing output. If the QA loop exhausts, build_creative returns task_failed with synthesis_failed reason. provenance_required: true means every produced asset carries a C2PA provenance manifest attributing synthesis to Veo (not the seller).",
   "publisher_properties": [
     {
       "publisher_domain": "veo.example",

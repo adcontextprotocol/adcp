@@ -23,7 +23,7 @@ Canonical formats collapse today's separate format registry into product-bound d
 
 | Term | One-line definition |
 |---|---|
-| **Canonical format** | One of 11 AdCP-defined format archetypes that products narrow (e.g., `image`, `video_vast`, `audio_hosted`). The buyer's stable validation target. |
+| **Canonical format** | One of 12 AdCP-defined format archetypes that products narrow (e.g., `image`, `video_vast`, `audio_hosted`, `native_in_feed`). The buyer's stable validation target. |
 | **`format_kind`** | Discriminator value naming a canonical format (e.g., `"image"`). Selects which canonical's parameter schema applies. |
 | **`format_options`** | Array of `ProductFormatDeclaration`s on a v2 product. The 90% case is single-element; multi-element declares "accepts any of." |
 | **`ProductFormatDeclaration`** | Inline format declaration: `format_kind` + `params` + optional `capability_id` + optional `applies_to_channels` + optional `experimental` + optional `v1_format_ref[]` (always array — see below). |
@@ -43,7 +43,7 @@ Canonical formats collapse today's separate format registry into product-bound d
 | **`status` on canonicals** | Spec-maturity axis (`stable` / `preview` / `deprecated`). All canonicals are `preview` while v2 itself is in preview; per-canonical promotion to `stable` happens at 3.1 GA based on adopter evidence. |
 | **`since_version` / `migration_target_version`** | Release-precision lifecycle metadata on canonicals — when introduced, when stabilization or breaking revision is expected. |
 | **`validate_input`** | Spec-defined dry-run primitive — buyers verify a manifest against canonicals/products without committing to a render. |
-| **`build_creative`** | Creative-agent surface that produces a manifest from inputs (brief, scenes, brand). Sales agents do NOT expose `build_creative`. |
+| **`build_creative`** | Creative-agent surface that produces a manifest from inputs (brief, video_brief, brand). Sales agents do NOT expose `build_creative`. |
 | **`creative.supported_formats`** | Capabilities-response field on creative agents declaring which canonicals they can produce via `build_creative`. |
 | **`BrandRef`** | `{domain, brand_id?}` reference. Resolves brand context (logos, colors, voice) from `brand.json` automatically. |
 | **`brand_kit_override`** | Inline override on `BrandRef` for per-call brand-kit tweaks (logo, colors, voice, tagline) where `brand.json` is missing, stale, or inappropriate. Same pattern as `industries` and `data_subject_contestation` on BrandRef. |
@@ -96,7 +96,7 @@ A canonical (or a seller's specific product declaration) carries a single `exper
 | `agent_placement` | Tracking macro vocabulary / postback shape / cross-surface dedup intentionally underspecified for 3.1 | 3.2 tracking-contract spec |
 | `custom` | Inherently experimental — adopter-defined shape until promoted to a first-class `format_kind` | Per-shape promotion via the #3666 queue |
 
-The 6 IAB/VAST/DAAST re-encodings (`image`, `display_tag`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`) plus `html5` and `image_carousel` ship non-experimental — they're settled industry standards being re-encoded in canonical-formats vocabulary.
+The 7 IAB / VAST / DAAST / IAB-Native re-encodings (`image`, `display_tag`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `native_in_feed`) plus `html5` and `image_carousel` ship non-experimental — they're settled industry standards being re-encoded in canonical-formats vocabulary.
 
 Sellers MAY set `experimental: true` at the product-declaration level (on a specific `ProductFormatDeclaration`) even when the underlying canonical is non-experimental — useful for beta runtime paths or forward-looking catalog declarations the seller hasn't wired yet. Buyer SDKs SHOULD filter products with `experimental: true` from default views and offer an opt-in to surface them.
 
