@@ -175,7 +175,7 @@ Poll the change feed.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `cursor` | UUID | (none) | Last `event_id` processed. Omit for start of retention window. |
-| `types` | string | all | Comma-separated event types. Supports glob: `product.*` |
+| `types` | string | all | Comma-separated event types. Supports glob: `product.*`. **Unknown / unsupported types are ignored silently** (HTTP `Accept` semantics) — requesting `types=signal.priced` against a products-only agent returns an empty events[], not `INVALID_REQUEST`. Consumers SHOULD pre-filter against the agent's declared `catalog_change_feed.event_types[]` capability rather than relying on server-side validation to surface typos. |
 | `limit` | integer | 1000 | Max events per response. Max 10000. |
 
 **Response:**
@@ -241,7 +241,7 @@ Additional CRUD: `GET /catalog/subscriptions`, `DELETE /catalog/subscriptions/:i
 
 ### Webhook Delivery
 
-Webhooks are notifications, not event delivery — same posture as the registry feed.
+Webhooks are notifications, not event delivery — same posture as the registry feed. The body carries `event_count`, `latest_event_id`, `event_types`, and `feed_url` so the receiver knows what to fetch and where, but **receivers MUST NOT consume the webhook body as a source of state**. To apply events to their local mirror, receivers MUST poll `feed_url` (or `GET /catalog/events?cursor={last_event_id}`) and process the returned events through the same cursor-advance path they'd use without webhooks. The webhook is a go-poll signal; the feed is the source of truth. This collapses the SDK's idempotency surface from two paths to one and prevents adopter footguns where webhook-arrival order ≠ cursor order due to coalescing jitter.
 
 **Header namespace.** Catalog-feed webhooks use `X-AdCP-Catalog-*` headers; the registry feed uses `X-Registry-*` (see `specs/registry-change-feed.md`). The asymmetry is intentional — the catalog feed lives on each agent's own origin and shares HTTP space with that agent's other AdCP surfaces (hence the `X-AdCP-` prefix), while the registry feed is served from the central registry origin. Subscribers handling both feeds dispatch on the header namespace to route events to the right local index.
 

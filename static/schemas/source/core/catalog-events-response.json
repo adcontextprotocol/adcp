@@ -19,7 +19,7 @@
     "next_cursor": {
       "type": "string",
       "format": "uuid",
-      "description": "UUID v7 of the last event in the events[] array. Consumers persist this and pass as the `cursor` query parameter on the next poll. Present when events[] is non-empty; absent or echoes the request cursor when no new events were returned."
+      "description": "UUID v7 cursor for the next poll. Consumers persist this and pass as the `cursor` query parameter on the next request — unconditionally, regardless of whether events[] was empty. Behavior: when events[] is non-empty, next_cursor is the UUID of the last event in the array. When events[] is empty (consumer is caught up), next_cursor MUST echo the request's `cursor` parameter so consumers can write `cursor = response.next_cursor` without a null-check branch. Only absent when the consumer is making the initial poll (no `cursor` was sent and no events were returned)."
     },
     "has_more": {
       "type": "boolean",
