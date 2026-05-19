@@ -221,7 +221,7 @@ refine:
   - { scope: proposal, proposal_id: p2, ask: "shift more to ctv" }
 ```
 
-**Multi-finalize is atomic.** When multiple finalize entries target different proposals in one call, sellers MUST either commit all of them or none of them — partial commit is non-conformant. On failure, `refinement_applied[]` and `errors[]` carry per-position outcomes. Sellers that cannot guarantee atomic multi-proposal commit MUST reject multi-finalize arrays with `INVALID_REQUEST` (`error.message` SHOULD name the constraint, e.g., "this seller supports at most one finalize per call"), and buyers SHOULD then sequence single-finalize calls. There is no capability flag for multi-finalize support — the failure response is the discovery surface, so buyers MUST NOT assume support without a successful first attempt.
+**Multi-finalize is atomic.** When multiple finalize entries target different proposals in one call, sellers MUST either commit all of them or none of them — partial commit is non-conformant. On failure, `refinement_applied[]` and `errors[]` carry per-position outcomes. Sellers that cannot guarantee atomic multi-proposal commit MUST reject multi-finalize arrays with `MULTI_FINALIZE_UNSUPPORTED` (preferred — explicitly signals seller-side capability gap rather than client-side mistake) or `INVALID_REQUEST` (acceptable fallback for sellers on a pre-3.1 error catalog), and buyers SHOULD then sequence single-finalize calls. There is no capability flag for multi-finalize support — the failure response is the discovery surface, so buyers MUST NOT assume support without a successful first attempt.
 
 ## Proposals in refine mode
 
@@ -263,6 +263,7 @@ Client implementations should validate refinement requests against the [request 
 | `PRODUCT_NOT_FOUND` | One or more referenced product IDs are unknown or expired | Remove invalid IDs and retry, or re-discover with a `brief` request |
 | `PROPOSAL_EXPIRED` | A referenced proposal ID has passed its `expires_at` | Re-discover with a new `brief` or `wholesale` request |
 | `PROPOSAL_NOT_FOUND` | The referenced `proposal_id` is unknown to the seller (never finalized, wrong tenant, or evicted from cache) | Re-issue `get_products` in `refine` mode with `action: 'finalize'` to obtain a current proposal_id |
+| `MULTI_FINALIZE_UNSUPPORTED` | `refine[]` carried multiple `action: 'finalize'` entries but the seller cannot guarantee atomic multi-proposal commit | Sequence single-proposal finalize calls (one finalize per `get_products` call) |
 | `INVALID_REQUEST` | `refine` provided in `brief` or `wholesale` mode, empty `refine` array, or missing required fields | Check `buying_mode` and required fields |
 
 ### Troubleshooting: "must NOT have additional properties" on `refine[].id`

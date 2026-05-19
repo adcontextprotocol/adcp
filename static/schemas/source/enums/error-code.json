@@ -49,6 +49,7 @@
     "PRODUCT_EXPIRED",
     "PROPOSAL_NOT_COMMITTED",
     "PROPOSAL_NOT_FOUND",
+    "MULTI_FINALIZE_UNSUPPORTED",
     "IO_REQUIRED",
     "TERMS_REJECTED",
     "REQUOTE_REQUIRED",
@@ -120,6 +121,7 @@
     "PRODUCT_EXPIRED": "One or more referenced products have passed their expires_at timestamp and are no longer available for purchase. Recovery: correctable (re-discover with get_products to find current inventory).",
     "PROPOSAL_NOT_COMMITTED": "The referenced proposal has proposal_status 'draft' and cannot be used to create a media buy. Recovery: correctable (finalize the proposal first using get_products with buying_mode 'refine' and action 'finalize').",
     "PROPOSAL_NOT_FOUND": "The referenced proposal_id is not recognized by the seller — never finalized, belongs to a different tenant, or evicted from the seller's session cache before consumption. Distinct from `PROPOSAL_EXPIRED` (a known proposal whose `expires_at` window has passed) and `PROPOSAL_NOT_COMMITTED` (a known proposal still in `draft`). Recovery: correctable (re-issue `get_products` with `buying_mode: 'refine'` + `action: 'finalize'` to obtain a current proposal_id, then retry create_media_buy).",
+    "MULTI_FINALIZE_UNSUPPORTED": "Returned by sellers that cannot guarantee atomic commit across multiple proposals in a single `get_products` call (multiple `action: 'finalize'` entries in `refine[]` targeting different `proposal_id` values). The buyer's intent — atomic multi-proposal finalize — is structurally well-formed and per spec atomic, but this seller's downstream stack cannot satisfy the atomicity guarantee (e.g., the proposals route to two different ad servers with no 2PC). More specific than `INVALID_REQUEST` so buyers can distinguish 'this seller doesn't support multi-finalize' from 'the request itself is malformed'. Recovery: correctable (sequence the finalize calls one-`proposal_id`-per-call; there is no capability flag for multi-finalize support, so a successful first-attempt is the only positive discovery signal). See [refinement guide § Finalize is exclusive](/docs/media-buy/product-discovery/refinement#finalize-is-exclusive-within-refine).",
     "IO_REQUIRED": "The committed proposal requires a signed insertion order but no io_acceptance was provided. Recovery: correctable (review the proposal's insertion_order, accept terms, and include io_acceptance on create_media_buy).",
     "TERMS_REJECTED": "Buyer-proposed measurement_terms were rejected by the seller. The error details SHOULD identify which specific term was rejected and the seller's acceptable range or supported vendors. Recovery: correctable (adjust the proposed terms and retry, or omit measurement_terms to accept the product's defaults).",
     "REQUOTE_REQUIRED": "An update_media_buy request changes the parameter envelope (budget, flight dates, volume, targeting) the original quote was priced against. The pricing_option remains locked; the seller is declining the requested shape at that price. Distinct from TERMS_REJECTED (measurement) and POLICY_VIOLATION (content). Sellers SHOULD populate error.details.envelope_field with the field path(s) that breached the envelope (e.g., 'packages[0].budget', 'end_time') so the buyer's agent can autonomously re-discover. Recovery: correctable (re-negotiate via get_products in 'refine' mode against the existing proposal_id to obtain a fresh quote reflecting the new parameters, then resubmit the update against the new proposal_id).",
@@ -323,6 +325,10 @@
     "PROPOSAL_NOT_FOUND": {
       "recovery": "correctable",
       "suggestion": "re-issue get_products with buying_mode 'refine' and action 'finalize' to obtain a current proposal_id, then retry"
+    },
+    "MULTI_FINALIZE_UNSUPPORTED": {
+      "recovery": "correctable",
+      "suggestion": "sequence single-proposal finalize calls — one finalize entry per get_products call"
     },
     "IO_REQUIRED": {
       "recovery": "correctable",
