@@ -152,15 +152,23 @@
     },
     "catalog_version": {
       "type": "string",
-      "description": "Opaque token representing the version of the catalog state used to compose this response. Agents that implement conditional-fetch (if_catalog_version) MUST return this on every response so callers can cache and probe later. Callers MUST treat the value as opaque — no format, no ordering, no inspection. Scoped to the request parameters that produced it (discovery_mode, account, filters, destinations, countries). See specs/catalog-change-feed.md."
+      "description": "Opaque token representing the version of the catalog state used to compose this response. Agents that implement conditional-fetch (if_catalog_version) MUST return this on every response so callers can cache and probe later. Callers MUST treat the value as opaque — no format, no ordering, no inspection. The token is scope-keyed: it describes a version for the cache_scope declared on this response, NOT a global agent version. A caller caches `(cache_scope, catalog_version)` pairs and presents the matching token on the next request. Scoping dimensions: (agent, discovery_mode, filters, destinations, countries) for cache_scope: 'public'; that tuple plus account_id for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. See specs/catalog-change-feed.md for the full cache layering model."
     },
     "pricing_version": {
       "type": "string",
-      "description": "Opaque token representing the version of the pricing layer. When the agent supports independent pricing versioning, pricing_version changes when prices move but catalog_version changes only when structure/metadata moves. Agents not separating these MAY omit pricing_version and use catalog_version for both."
+      "description": "Opaque token representing the version of the pricing layer. When the agent supports independent pricing versioning, pricing_version changes when prices move but catalog_version changes only when structure/metadata moves. Same cache_scope keying as catalog_version. Agents not separating these MAY omit pricing_version and use catalog_version for both."
+    },
+    "cache_scope": {
+      "type": "string",
+      "enum": [
+        "public",
+        "account"
+      ],
+      "description": "Declares whether the catalog_version and pricing_version on this response describe a universal layer or an account-specific overlay. REQUIRED when the request included `account`; MAY be omitted (implicitly 'public') when the request did not. 'public': this account prices off the agent's published rate card; the caller MAY dedupe its cache with the unauthenticated view. 'account': the response includes account-specific overrides; the caller MUST cache the version under the account_id. Agents MAY return cache_scope: 'public' on an account-scoped request that previously had overrides — callers SHOULD interpret this as a downgrade and drop their account-overlay. The field has no default in the account-provided case; agents MUST declare explicitly to surface custom-pricing decisions at the response site rather than as silent miscaches downstream."
     },
     "unchanged": {
       "type": "boolean",
-      "description": "True ONLY when the request carried if_catalog_version (and/or if_pricing_version) matching the agent's current version, in which case signals[] MUST be omitted; catalog_version (echoed) MUST still be present. Callers receiving unchanged: true MUST NOT mutate their local catalog mirror."
+      "description": "True ONLY when the request carried if_catalog_version (and/or if_pricing_version) matching the agent's current version for the caller's cache_scope, in which case signals[] MUST be omitted; catalog_version (echoed), cache_scope (echoed), and pricing_version (echoed when used) MUST still be present. unchanged: false is permitted as an explicit no-op affirmation but MUST be accompanied by signals[]. Absent unchanged is equivalent to false. Callers receiving unchanged: true MUST NOT mutate their local catalog mirror."
     },
     "pagination": {
       "$ref": "/schemas/core/pagination-response.json"

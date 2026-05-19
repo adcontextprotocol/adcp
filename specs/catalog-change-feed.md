@@ -61,11 +61,16 @@ The `catalog_version` conditional-fetch tokens on `get_products` / `get_signals`
     { "pricing_option_id": "po_cpm_v2", "model": "cpm", "cpm": 18.50, "currency": "USD" }
   ],
   "previous_pricing_option_ids": ["po_cpm_v1"],
+  "applies_to": { "scope": "public" },
   "effective_at": "2026-06-01T00:00:00Z"
 }
 ```
 
-The post-change `pricing_options[]` is included in full. `previous_pricing_option_ids[]` lets consumers detect that `po_cpm_v1` was retired. `effective_at` lets the agent announce changes before they take effect.
+The post-change `pricing_options[]` is included in full. `previous_pricing_option_ids[]` lets consumers detect that `po_cpm_v1` was retired. `effective_at` lets the agent announce changes before they take effect (subject to the pre-announce rules below).
+
+**`applies_to`** declares which cache layer this event affects. See [Cache layering and event scoping](#cache-layering-and-event-scoping) below. `*.priced` and `*.updated` MUST carry `applies_to`. Other events (`*.created`, `*.removed`, `catalog.bulk_change`) MAY carry it; absence means `{ "scope": "public" }`.
+
+**`effective_at` and pre-announce.** An `effective_at` value in the future is a pre-announcement: the change is scheduled but not yet in effect. Consumers MAY use pre-announced events to warm caches but MUST NOT bind decisions against pre-announced pricing until the effective time has passed, and MUST re-verify (per Security Posture) post-effective. Sellers MAY retract a pre-announced change by emitting a follow-up `*.priced` event with the prior `pricing_option_id` restored before the original `effective_at`. Once the effective time passes without retraction, the change is committed and behaves as any post-fact event.
 
 **`product.updated`:**
 
@@ -73,11 +78,24 @@ The post-change `pricing_options[]` is included in full. `previous_pricing_optio
 {
   "product_id": "prod_premium_ctv_us",
   "changed_fields": ["format_ids", "performance_standards"],
+  "applies_to": { "scope": "public" },
   "product": { "...full Product object..." }
 }
 ```
 
 `changed_fields[]` is advisory — consumers MAY use it for fine-grained re-render, but MUST be able to handle a full replacement of the entity.
+
+**`product.removed`:**
+
+```json
+{
+  "product_id": "prod_premium_ctv_us",
+  "removal_reason": "withdrawn",
+  "applies_to": { "scope": "public" }
+}
+```
+
+`removal_reason` is OPTIONAL but RECOMMENDED. Values: `"withdrawn"` (seller-initiated removal, no resubmit path), `"cancellation"` (resource cancelled, may return), `"depublication"` (underlying property depublished — see `publisher.adagents_changed` in the registry feed), `"policy_takedown"` (governance-driven removal). Downstream consequences differ — in-flight buys honor existing cancellation policy regardless of reason, but storefront catalog UX differs (e.g., a `depublication` may surface "publisher offline" rather than "product removed").
 
 **`signal.priced`:**
 
@@ -89,9 +107,15 @@ The post-change `pricing_options[]` is included in full. `previous_pricing_optio
     { "pricing_option_id": "po_cpm_2", "model": "cpm", "cpm": 2.75, "currency": "USD" }
   ],
   "previous_pricing_option_ids": ["po_cpm_1"],
+  "applies_to": {
+    "scope": "account",
+    "account_ids": ["acct_acme_001", "acct_nova_002"]
+  },
   "effective_at": "2026-06-01T00:00:00Z"
 }
 ```
+
+Account-scoped pricing change: only the listed accounts' overlays should invalidate; the public layer is unaffected. The seller MAY omit `account_ids` when the affected set is competitively sensitive — the per-subscriber scope filter (see API Endpoints §Per-caller scope filtering) ensures each subscriber sees only events for accounts they're authorized for.
 
 **`catalog.bulk_change`:**
 
@@ -100,9 +124,28 @@ The post-change `pricing_options[]` is included in full. `previous_pricing_optio
   "summary": "Q3 2026 rate card refresh",
   "affected_entity_types": ["product"],
   "affected_count": 1480,
-  "recommendation": "wholesale_resync"
+  "recommendation": "wholesale_resync",
+  "applies_to": { "scope": "public" }
 }
 ```
+
+## Cache layering and event scoping
+
+Sellers publish two notional layers: a **public layer** (rate-card / structural / unauthenticated view) and **per-account overlays** (custom deals, account-specific rate cards). The conditional-fetch path (`if_catalog_version` on `get_products` / `get_signals`) and the change feed are both layer-aware.
+
+**Versions are scope-keyed.** A `catalog_version` token describes a state for one specific `cache_scope` value (`"public"` or `"account"`). Consumers cache `(scope, version)` pairs and present the matching token on the next request. See the response-field docs on `get_products.mdx` and `get_signals.mdx` for the request-shape details.
+
+**Events carry `applies_to.scope`.** Two values:
+
+| `applies_to.scope` | Meaning | Consumer action |
+|---|---|---|
+| `"public"` | Affects the seller's rate-card / structural layer. | Invalidate the public-layer cache for the entity; ALL account overlays referencing that public version are also stale. |
+| `"account"` with `account_ids[]` | Affects specific account overlays. The seller is willing to name them. | Invalidate only the named accounts' overlays. Public layer unaffected. |
+| `"account"` without `account_ids` | Affects specific accounts; seller withholds the list (competitive sensitivity). | The per-subscriber scope filter routes the event only to subscribers whose principal is in the affected set — receiving the event means "your principal's overlay is stale." Invalidate the receiving principal's overlay. |
+
+**Cross-scope downgrade.** A seller MAY return `cache_scope: "public"` on an `if_catalog_version` request that previously had `cache_scope: "account"`. This signals "this account no longer has overrides; you can drop the overlay and reference the public layer." The change feed equivalent is a `*.priced` event with `applies_to: { "scope": "public" }` after a prior account-scoped event — consumers drop the account overlay on the affected entity.
+
+**Most accounts at most sellers are public-layer.** Premium custom deals are the exception, not the rule. Consumers caching across N accounts at one seller will typically hold one public-layer cache and a small number of account overlays.
 
 ---
 
@@ -114,7 +157,9 @@ The change-feed endpoints live on the agent itself, not a central registry.
 
 Poll the change feed.
 
-**Authentication:** Required. The caller must be authorized to call `get_products` / `get_signals` in `wholesale` mode against this agent — same authorization scope.
+**Authentication:** Required. The caller must be authorized to call `get_products` / `get_signals` in `wholesale` mode against this agent — same authorization principal, same scope filter.
+
+**Per-caller scope filtering.** The feed MUST apply the same per-caller scope filter as the wholesale endpoint at event-emission time, not just at authentication. If the agent multi-tenants — multiple brand or operator principals share one agent — events that affect entities outside the caller's authorized scope MUST NOT appear in their feed response. This is a tenancy property, not an authorization property: a feed that authenticates but does not scope-filter leaks competitive intelligence (brand A sees brand B's `product.priced` events). Agents that cannot reliably scope events per-principal MUST NOT declare `catalog_change_feed.supported: true`.
 
 **Parameters:**
 
@@ -144,7 +189,7 @@ Poll the change feed.
 }
 ```
 
-Retention is agent-declared via `catalog_change_feed.retention_window_days` in `get_adcp_capabilities` (SHOULD be 30 days; MUST NOT be less than 7). Consumers whose `cursor` is older than the retention window get a `RETENTION_EXPIRED` error and MUST resync via wholesale enumeration.
+Retention is agent-declared via `catalog_change_feed.retention_window_days` in `get_adcp_capabilities` (SHOULD be 30 days; MUST NOT be less than 7). Consumers whose `cursor` is older than the retention window get a `RETENTION_EXPIRED` error (see `enums/error-code.json`) and MUST resync via wholesale enumeration. A malformed cursor returns `INVALID_REQUEST`; a cursor from a different agent returns `RETENTION_EXPIRED` (the consumer's local state is unrecoverable for this agent).
 
 ### `POST /catalog/subscriptions`
 
@@ -160,6 +205,19 @@ Register a webhook for change notifications. Optional — agents MAY refuse to i
 }
 ```
 
+**URL constraints (anti-SSRF).** Agents MUST validate the subscription URL at registration AND at each delivery attempt:
+
+- Scheme MUST be `https`.
+- Host MUST resolve to a public, routable address. Agents MUST reject hosts that resolve to RFC1918 / link-local / loopback / multicast / unique-local-IPv6 ranges, and MUST re-resolve DNS at delivery time (rebinding defense).
+- Hostname MUST NOT be a metadata-service address (e.g., `169.254.169.254`, AWS/GCP/Azure equivalents) regardless of scheme.
+- Agents SHOULD require a delivery-target challenge before activating a subscription: POST a one-time challenge token to the registered URL, expect the subscriber to echo it back at a known path (`/.well-known/adcp-catalog-webhook-challenge`). Closes the "register a victim URL to weaponize webhook fire against a third party" path.
+
+**Per-subscription cap.** Agents MUST limit subscriptions per principal (RECOMMEND 10). Reject with `RATE_LIMITED` when exceeded.
+
+**Subscription ownership.** Subscriptions are scoped to the creating principal. `GET /catalog/subscriptions` MUST return only the caller's own subscriptions. `DELETE /catalog/subscriptions/:id` MUST verify ownership before deletion. A compromised buyer principal MUST NOT be able to enumerate or delete other principals' subscriptions.
+
+**Secret rotation.** Agents SHOULD support `PATCH /catalog/subscriptions/:id` with a new `secret` value and a rotation overlap window (default 5 minutes) during which both old and new signatures are accepted. Subscribers rotating leaked secrets MUST be able to do so without losing delivery in flight.
+
 **Response:**
 
 ```json
@@ -169,7 +227,7 @@ Register a webhook for change notifications. Optional — agents MAY refuse to i
 }
 ```
 
-Additional CRUD: `GET /catalog/subscriptions`, `DELETE /catalog/subscriptions/:id`.
+Additional CRUD: `GET /catalog/subscriptions`, `DELETE /catalog/subscriptions/:id`, `PATCH /catalog/subscriptions/:id`.
 
 ### Webhook Delivery
 
@@ -181,6 +239,8 @@ Webhooks are notifications, not event delivery — same posture as the registry 
 POST https://storefront.example.com/hooks/catalog
 X-AdCP-Catalog-Signature: sha256={hmac}
 X-AdCP-Catalog-Event: product.priced
+X-AdCP-Catalog-Timestamp: 2026-05-18T10:00:00Z
+X-AdCP-Catalog-Delivery-Seq: 4421
 
 {
   "event_count": 3,
@@ -190,9 +250,11 @@ X-AdCP-Catalog-Event: product.priced
 }
 ```
 
-**Coalescing:** Events are batched per subscriber per 30-second window. A rate-card sweep produces one webhook notification, not thousands.
+**Anti-replay.** The HMAC signature MUST be computed over the canonical string `{timestamp}\n{delivery_seq}\n{body}` (newline-separated), with `{timestamp}` echoed in `X-AdCP-Catalog-Timestamp` (ISO 8601) and `{delivery_seq}` a strictly monotonic per-subscription counter echoed in `X-AdCP-Catalog-Delivery-Seq`. Receivers MUST reject signatures whose timestamp is more than 5 minutes skewed from receive time, and MUST reject deliveries whose sequence number is less than or equal to the last accepted sequence (modulo retry semantics — see Retries). Captured webhook bodies cannot be replayed at a later time or to a different subscription endpoint.
 
-**Retries:** 3 attempts with exponential backoff (30s, 5m, 30m). 24 hours of failures → subscription marked `suspended` and subscriber notified out-of-band.
+**Coalescing.** Events are batched per subscriber within a jittered window of 60–300 seconds (uniform distribution per subscriber, agent's choice). The window is jittered to prevent thundering-herd amplification: a `catalog.bulk_change` that fires to all subscribers within the same 30-second band would create a synchronized re-verify storm against the agent's `get_products` / `get_signals` endpoint. The `recommendation: "wholesale_resync"` payload field is advisory — consumers MUST stagger their resyncs and MUST honor the re-fetch coalescing rule in Security Posture.
+
+**Retries:** 3 attempts with exponential backoff (30s, 5m, 30m). 24 hours of failures → subscription marked `suspended` and subscriber notified out-of-band. The `delivery_seq` for a retried delivery is the same as the original — receivers de-dupe on `(subscription_id, delivery_seq)`, not on signature.
 
 ---
 
@@ -200,7 +262,9 @@ X-AdCP-Catalog-Event: product.priced
 
 Catalog events carry priced inventory changes — the same compromise-injection risks the registry feed addresses for authorizations and identity. The three load-bearing safety properties carry across one-for-one; this section restates them in the catalog context. See `specs/registry-change-feed.md` for the canonical formulation.
 
-**Advisory event payloads.** Feed-delivered catalog state is non-authoritative. The feed exists to tell consumers *that* something changed and to deliver the post-change payload as an optimization for cheap mirroring. Consumers that take a *binding* action on the change — finalizing a media buy at the new price, committing to a withdrawn product's cancellation policy, persisting a marketplace signal's deployment as authorized — MUST re-verify against an authoritative path before acting: a direct `get_products` / `get_signals` call against the agent (with the post-change `catalog_version` they observed in the feed), or the `adagents.json` cross-reference for marketplace-signal provenance. The feed is change-detection, not a trust anchor.
+**Advisory event payloads.** Feed-delivered catalog state is non-authoritative. The feed exists to tell consumers *that* something changed and to deliver the post-change payload as an optimization for cheap mirroring. Consumers that take a *binding* action on the change — finalizing a media buy at the new price, committing to a withdrawn product's cancellation policy, persisting a marketplace signal's deployment as authorized — MUST re-verify against an authoritative path before acting: a direct `get_products` / `get_signals` call against the agent (with the post-change `catalog_version` they observed in the feed), or the `adagents.json` cross-reference for marketplace-signal provenance.
+
+**What re-verify does and does not defend.** Be honest with the threat model: re-verifying with `get_products` / `get_signals` defends against feed-transport tampering (man-in-the-middle, captured-event replay, queue corruption between event-emission and webhook delivery). It does NOT defend against a compromised agent operator — the agent re-confirms its own lie. The 3.1 binding-action defense against operator compromise lives in the existing trust anchors that gate spend: the signed `create_media_buy` response (which a buyer prices their commitment against, not a feed event), and the publisher-pinned `signing_keys` in `adagents.json` for marketplace-signal provenance. Treat catalog-feed events accordingly — useful for cheap mirror invalidation, not for any decision that commits dollars or authority. The operator-compromise gap is what `R-1` (4.0 root-of-trust / key transparency) closes.
 
 **Re-fetch coalescing.** The re-verify rule is a per-consumer safety property, not a per-event one. A catalog-wide event (e.g., `catalog.bulk_change`, or a hot rotation that touches many entities) MUST NOT cause every subscriber to hammer the agent's `get_products` / `get_signals` endpoint. Consumers MAY coalesce re-fetches per `(agent_url, entity_type)` tuple within a short window (order of the agent's `Cache-Control` `max-age`, or ~60 seconds in its absence): multiple feed events observed during that window produce at most one authoritative fetch. Coalescing MUST NOT extend past the cache TTL the agent has declared.
 

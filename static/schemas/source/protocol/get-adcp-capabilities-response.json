@@ -191,6 +191,21 @@
           "minItems": 1,
           "uniqueItems": true
         },
+        "buying_modes": {
+          "type": "array",
+          "description": "Buying modes this seller supports on get_products. 'brief' (semantic discovery driven by the brief) is universally supported and implicit. 'wholesale' (raw catalog enumeration — caller omits brief and the seller returns the full priced catalog, paginated) is opt-in and SHOULD be declared explicitly so buyers can probe before issuing wholesale calls. 'refine' (iterate on prior products/proposals) is implicit when the seller declares supports_proposals or otherwise honors the refine array. Sellers MAY declare ['brief', 'wholesale'] to signal wholesale support; absent declaration is treated as ['brief'] for catalog-enumeration probing purposes and sellers MAY return INVALID_REQUEST for wholesale calls they do not support. Symmetric with signals.discovery_modes.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "brief",
+              "wholesale",
+              "refine"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["brief"]
+        },
         "reporting_delivery_methods": {
           "type": "array",
           "description": "How this seller delivers reporting data to buyers. Polling via get_media_buy_delivery is always available as a baseline regardless of this field. This array declares additional push-based delivery methods the seller supports. 'webhook': seller pushes to buyer-provided URL (configured per buy via reporting_webhook). 'offline': seller pushes batch files to a cloud storage bucket (seller-provisioned per account via reporting_bucket on the account object). When absent, only polling is available.",

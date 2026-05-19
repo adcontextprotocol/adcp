@@ -25,7 +25,7 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 | `destinations` | Destination[] | No | Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. See Destination Object below. |
 | `countries` | string[] | No | Countries where signals will be used (ISO 3166-1 alpha-2 codes) |
 | `filters` | Filters | No | Filters to refine results (see Filters Object below). In wholesale mode, filters constrain the enumerated catalog (e.g., `filters.data_providers: ["acme-data"]` returns only that provider's signals). |
-| `if_catalog_version` | string | No | Opaque `catalog_version` token from a prior `get_signals` response. When provided, the agent compares against its current catalog version and MAY return `unchanged: true` (with `signals` omitted) if nothing has changed. Versions are scoped to the (agent, account, filters, `discovery_mode`) tuple. See [Catalog versioning](#catalog-versioning). |
+| `if_catalog_version` | string | No | Opaque `catalog_version` token from a prior `get_signals` response. When provided, the agent compares against its current catalog version for the caller's `cache_scope` and MAY return `unchanged: true` (with `signals` omitted) if nothing has changed. See [Catalog versioning](#catalog-versioning) and [Cache layering](#cache-layering). |
 | `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_catalog_version`. Evaluation order: `if_catalog_version` mismatch → full payload; `if_catalog_version` matches but `if_pricing_version` mismatches → full payload (so the caller sees updated `pricing_options`); both match → agent MAY return `unchanged: true`. Agents that don't track pricing separately ignore this. |
 | `max_results` | number | No | **Deprecated.** Use `pagination.max_results` instead. When both are present, `pagination.max_results` takes precedence. Will be removed in AdCP 4.0. |
 | `pagination` | object | No | Pagination envelope. `pagination.max_results` (max: 100, default: 50) controls page size; `pagination.cursor` (opaque token from previous response) advances pages. Required for wholesale (catalogs may be large). |
@@ -729,21 +729,85 @@ Even with wholesale enumeration, a consumer mirroring an agent's catalog would r
   "context_id": "ctx-abc-789",
   "unchanged": true,
   "catalog_version": "v2026-05-18T08:00:00Z-acme-rev412",
-  "pricing_version": "v2026-05-18T08:00:00Z-acme-rev412"
+  "pricing_version": "v2026-05-18T08:00:00Z-acme-rev412",
+  "cache_scope": "public"
 }
 ```
 
 When `unchanged: true`, `signals[]` MUST be omitted and consumers MUST NOT mutate their local catalog mirror.
 
+### Catalog changed — full payload returned (abbreviated)
+
+```json test=false
+{
+  "message": "Returning 312 signals (catalog version advanced).",
+  "context_id": "ctx-abc-790",
+  "unchanged": false,
+  "catalog_version": "v2026-05-18T10:15:00Z-acme-rev415",
+  "pricing_version": "v2026-05-18T10:15:00Z-acme-rev415",
+  "cache_scope": "public",
+  "signals": [
+    {
+      "signal_id": { "source": "catalog", "data_provider_domain": "acme-data.com", "id": "luxury_auto_intenders" },
+      "signal_agent_segment_id": "sigagent_seg_4421",
+      "name": "Luxury Auto Intenders",
+      "description": "Households researching premium vehicles in the last 30 days.",
+      "signal_type": "marketplace",
+      "data_provider": "Acme Data",
+      "coverage_percentage": 18.4,
+      "deployments": [
+        { "type": "platform", "platform": "the-trade-desk", "is_live": true,
+          "activation_key": { "type": "segment_id", "segment_id": "ttd_seg_99821" } }
+      ],
+      "pricing_options": [
+        { "pricing_option_id": "po_cpm_1", "model": "cpm", "cpm": 2.50, "currency": "USD" }
+      ]
+    }
+  ],
+  "pagination": { "has_more": true, "cursor": "eyJvIjo1MH0=", "total_count": 312 }
+}
+```
+
 ### Rules
 
 - Tokens are **opaque**. No format, no ordering, no inspection.
-- A returned `catalog_version` is scoped to the request parameters that produced it. Callers MUST cache the version alongside the `(account, filters, discovery_mode, destinations, countries)` tuple used.
+- A returned `catalog_version` is scope-keyed via `cache_scope`. Callers cache `(cache_scope, catalog_version)` pairs alongside the `(account, filters, discovery_mode, destinations, countries)` tuple used. See [Cache layering](#cache-layering) for the two-layer model.
 - `pricing_version` is an optional finer-grained token: when present, it changes when prices move but `catalog_version` changes only when structure/metadata moves. Common for rate-card sweeps that don't change segment metadata.
 - **`if_pricing_version` requires `if_catalog_version`.** Pricing has no structural baseline of its own. Sending `if_pricing_version` without `if_catalog_version` is a schema-level error. The agent's evaluation is two-stage: catalog mismatch returns the full payload; catalog match with pricing mismatch also returns the full payload (so the caller sees updated `pricing_options`); both match → `unchanged: true`.
+- **`filters` canonicalization.** Agents MUST treat the `filters` object as canonicalized before hashing into the `catalog_version` keyspace: keys sorted lexicographically, omitted-and-default values treated identically, array values sorted where the filter has set semantics (e.g., `catalog_types`, `data_providers`). Callers that pass equivalent-but-differently-shaped filter objects MUST receive the same `catalog_version`. Prevents silent stale-mirror bugs from key-order or default-elision differences.
+- **Pagination interaction.** Agents MUST return `catalog_version` on every paginated page (not only the first) when they declare `catalog_change_feed.supported: true`; agents that do not declare the feed SHOULD do the same. If the catalog mutates between pages, the new version surfaces on the next page and the caller MUST restart pagination from `cursor: null` — the partial pages already received describe a stale version.
 - Pre-v3.1 agents that ignore `if_catalog_version` simply return the full payload — semantically correct, just inefficient.
 
 For ongoing change tracking beyond conditional fetch, see `specs/catalog-change-feed.md` — a per-agent event stream that emits `signal.created` / `signal.updated` / `signal.priced` / `signal.removed` events for incremental sync.
+
+## Cache layering
+
+Signals agents publish two notional layers: a **public layer** (the rate-card / structural view) and **per-account overlays** (account-specific pricing for premium buyers). The conditional-fetch path is layer-aware via `cache_scope`.
+
+**Two-layer cache.**
+
+| Layer | Cache key | What's stored |
+|---|---|---|
+| Public | `(agent, discovery_mode, filters, destinations, countries)` | `catalog_version_public`, the catalog payload as seen without an account ref |
+| Account overlay | `(agent, discovery_mode, filters, destinations, countries, account_id)` | `catalog_version_account`, the catalog payload when `cache_scope: "account"` was returned |
+
+**Behavior.**
+
+- Requests without `account` always return `cache_scope: "public"`. Callers cache under the public key.
+- Requests with `account` return `cache_scope: "public"` OR `"account"` (agent MUST declare; no default).
+  - `"public"`: this account prices off the rate card. Caller MAY dedupe — the version and payload are the same as the unauthenticated view.
+  - `"account"`: this response carries account-specific overrides. Caller caches under the account overlay key.
+- Agents MAY downgrade an account from `"account"` back to `"public"` — callers SHOULD interpret this as "this account no longer has overrides" and drop their overlay.
+
+**Conditional fetch with `if_catalog_version`.** Send the token paired with whichever scope it was returned in. The agent compares against the current version for that scope. If the caller's token belongs to an `"account"` scope but the agent responds with `cache_scope: "public"`, that's the downgrade signal.
+
+**Event invalidation.** The change feed declares `applies_to.scope` on `*.priced` and `*.updated` events:
+
+- `applies_to: { scope: "public" }` → invalidate the public-layer cache; all account overlays referencing that public version are also stale.
+- `applies_to: { scope: "account", account_ids: [...] }` → invalidate only the named accounts' overlays.
+- `applies_to: { scope: "account" }` without `account_ids` → seller withholds the affected set; the per-subscriber scope filter routes the event only to subscribers whose principal is in the affected set.
+
+See `specs/catalog-change-feed.md` §"Cache layering and event scoping" for the full event-side spec.
 
 ## Incomplete array
 

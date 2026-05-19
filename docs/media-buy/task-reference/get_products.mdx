@@ -317,7 +317,8 @@ Pagination is optional. When omitted, the server returns all results (or a serve
 | `filter_diagnostics` | object | Optional non-fatal observability block describing how `filters` narrowed the candidate set — `total_candidates` plus per-filter `excluded_by` counts (keyed by filter name). Disambiguates "no inventory" from "your filter excluded everything" when the result list is empty or unexpectedly small. Counts only — never product names — to avoid leaking competitive intelligence. See [filter_diagnostics](#filter_diagnostics) below. |
 | `catalog_version` | string | Opaque token representing the version of the catalog state used to compose this response. Sellers implementing conditional-fetch (`if_catalog_version`) MUST return this on every response so buyers can cache and probe later. Treat as opaque — no format, no ordering, no inspection. See [Catalog versioning](#catalog-versioning). |
 | `pricing_version` | string | Optional opaque token representing the version of the pricing layer. When the seller supports independent pricing versioning, `pricing_version` changes when prices move but `catalog_version` changes only when structure/metadata moves. Sellers not separating these MAY omit `pricing_version` and use `catalog_version` for both. |
-| `unchanged` | boolean | `true` ONLY when the request carried `if_catalog_version` (and/or `if_pricing_version`) matching the seller's current version, in which case `products[]` MUST be omitted; `catalog_version` (echoed) MUST still be present. Buyers receiving `unchanged: true` MUST NOT mutate their local catalog mirror. |
+| `cache_scope` | string | `"public"` or `"account"`. **REQUIRED** when the request included `account`; structurally `"public"` when not. Declares whether `catalog_version` / `pricing_version` describe a universal layer or an account-specific overlay. See [Cache layering](#cache-layering). |
+| `unchanged` | boolean | `true` ONLY when the request carried `if_catalog_version` (and/or `if_pricing_version`) matching the seller's current version for the buyer's `cache_scope`, in which case `products[]` MUST be omitted; `catalog_version`, `cache_scope`, and `pricing_version` (when used) MUST still be echoed. `unchanged: false` is permitted as an explicit no-op affirmation but MUST be accompanied by `products[]`. Absent `unchanged` is equivalent to `false`. Buyers receiving `unchanged: true` MUST NOT mutate their local catalog mirror. |
 
 ### filter_diagnostics
 
@@ -382,22 +383,35 @@ Response (catalog unchanged):
   "context_id": "ctx-abc-789",
   "unchanged": true,
   "catalog_version": "v2026-05-18T08:00:00Z-acme-rev412",
-  "pricing_version": "v2026-05-18T08:00:00Z-acme-rev412"
+  "pricing_version": "v2026-05-18T08:00:00Z-acme-rev412",
+  "cache_scope": "public"
 }
 ```
 
-Response (catalog changed — full payload returned):
+Response (catalog changed — full payload returned, abbreviated):
 
-```json
+```json test=false
 {
-  "$schema": "/schemas/media-buy/get-products-response.json",
-  "message": "Returning 312 products.",
+  "message": "Returning 50 of 312 products (catalog version advanced).",
   "context_id": "ctx-abc-790",
   "unchanged": false,
   "catalog_version": "v2026-05-18T10:15:00Z-acme-rev415",
   "pricing_version": "v2026-05-18T10:15:00Z-acme-rev415",
-  "products": [],
-  "pagination": { "has_more": true, "cursor": "..." }
+  "cache_scope": "public",
+  "products": [
+    {
+      "product_id": "prod_premium_ctv_us",
+      "name": "Premium CTV — US",
+      "description": "Run-of-network CTV inventory across premium publishers.",
+      "publisher_properties": [{ "publisher_domain": "streamhaus.example.com", "property_ids": ["primetime_ctv"] }],
+      "format_ids": [{ "id": "video_ctv_1080p_30s" }],
+      "delivery_type": "guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "po_cpm_v2", "pricing_model": "cpm", "currency": "USD", "fixed_price": 18.50 }
+      ]
+    }
+  ],
+  "pagination": { "has_more": true, "cursor": "eyJvIjo1MH0=", "total_count": 312 }
 }
 ```
 
@@ -407,10 +421,42 @@ Response (catalog changed — full payload returned):
 - A returned `catalog_version` is scoped to the request parameters that produced it. Buyers MUST cache the version alongside the `(account, filters, buying_mode, property_list, catalog)` tuple used.
 - `pricing_version` is an optional finer-grained token: when present, it changes when prices move but `catalog_version` changes only when structure/metadata moves. Common for rate-card sweeps that don't change product metadata.
 - **`if_pricing_version` requires `if_catalog_version`.** Pricing has no structural baseline of its own. Sending `if_pricing_version` without `if_catalog_version` is a schema-level error. The seller's evaluation is two-stage: catalog mismatch returns the full payload (pricing is implicitly stale); catalog match with pricing mismatch also returns the full payload (so the buyer sees updated `pricing_options`); both match → `unchanged: true`.
-- **Pagination interaction.** `catalog_version` describes the catalog as a whole, not individual pages. When the catalog mutates between pages, sellers SHOULD return the new `catalog_version` on each page (RECOMMENDED) or snapshot the catalog at the start of pagination. Buyers receiving a `catalog_version` change mid-pagination SHOULD restart pagination from `cursor: null`.
+- **`filters` canonicalization.** Sellers MUST treat the `filters` object as canonicalized before hashing into the `catalog_version` keyspace: keys MUST be sorted lexicographically, omitted-and-default values MUST be treated identically (a missing `delivery_type` key is the same scope as `delivery_type: null`), array values MUST be sorted where the filter has set semantics (e.g., `channels`, `format_ids`, `required_metrics`) and preserved-order where the filter has sequence semantics (e.g., `preferred_delivery_types`). Buyers that pass equivalent-but-differently-shaped filter objects MUST receive the same `catalog_version` from the seller. This rule prevents silent stale-mirror bugs from key-order or default-elision differences between buyer SDKs.
+- **Pagination interaction.** `catalog_version` describes the catalog as a whole, not individual pages. Sellers MUST return `catalog_version` on every paginated page (not only the first) when they declare `catalog_change_feed.supported: true`; sellers that do not declare the feed SHOULD do the same. When the catalog mutates between pages, the new version surfaces on the next page and the buyer MUST restart pagination from `cursor: null` — the partial pages they've already received describe a stale version. Sellers MAY alternatively snapshot the catalog at the start of pagination and serve all pages from that snapshot under the original version; either implementation is conformant as long as `catalog_version` on a given page is the version that page belongs to.
 - Pre-v3.1 sellers that ignore `if_catalog_version` simply return the full payload — semantically correct, just inefficient (same as the unchanged-server path in HTTP).
 
 For ongoing change tracking beyond conditional fetch, see `specs/catalog-change-feed.md` — a per-agent event stream that emits `product.created` / `product.updated` / `product.priced` / `product.removed` events for incremental sync.
+
+### Cache layering
+
+Sellers publish two notional layers: a **public layer** (the rate-card / structural view) and **per-account overlays** (custom deals, account-specific rate cards). The conditional-fetch path is layer-aware via `cache_scope`.
+
+**Why this matters.** A buyer mirroring catalogs across N accounts at one seller doesn't want to hold N copies of inventory that's actually identical for every buyer. The public layer is the seller's published rate card; most accounts at most sellers price off it directly. Premium custom deals are the exception.
+
+**Two-layer cache.**
+
+| Layer | Cache key | What's stored |
+|---|---|---|
+| Public | `(agent, buying_mode, filters, property_list, catalog)` | `catalog_version_public`, the catalog payload as seen without an account ref |
+| Account overlay | `(agent, buying_mode, filters, property_list, catalog, account_id)` | `catalog_version_account`, the catalog payload as seen WITH this account ref, when `cache_scope: "account"` was returned |
+
+**Behavior.**
+
+- Requests without `account` always return `cache_scope: "public"`. Buyers cache under the public key.
+- Requests with `account` return `cache_scope: "public"` OR `"account"` (seller MUST declare; no default).
+  - `"public"`: this account prices off the rate card. Buyer MAY dedupe — the version and payload are the same as the unauthenticated view. The buyer can serve subsequent requests for any account in `"public"` cache_scope from a single public-layer entry.
+  - `"account"`: this response carries account-specific overrides. Buyer caches under the account overlay key.
+- Sellers MAY downgrade an account from `"account"` back to `"public"` by returning `cache_scope: "public"` on a request that previously got `"account"` — buyers SHOULD interpret this as "this account no longer has overrides" and drop their account overlay.
+
+**Conditional fetch with `if_catalog_version`.** Send the token paired with whichever scope it was returned in. The seller compares against the current version for that scope. If the buyer's token belongs to an `"account"` scope but the seller responds with `cache_scope: "public"`, that's the downgrade signal — buyer drops the overlay.
+
+**Event invalidation.** The change feed declares `applies_to.scope` on `*.priced` and `*.updated` events:
+
+- `applies_to: { scope: "public" }` → invalidate the public-layer cache for the entity. All account overlays referencing that public version are also stale and SHOULD be refetched.
+- `applies_to: { scope: "account", account_ids: [...] }` → invalidate only the named accounts' overlays. The public layer is unaffected.
+- `applies_to: { scope: "account" }` without `account_ids` → the seller is withholding the affected set; the per-subscriber scope filter routes the event only to subscribers whose principal is in the affected set. Receiving the event means "your overlay is stale."
+
+See `specs/catalog-change-feed.md` §"Cache layering and event scoping" for the full event-side spec.
 
 **See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-response.json)
 

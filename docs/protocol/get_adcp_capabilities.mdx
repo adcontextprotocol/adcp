@@ -559,6 +559,11 @@ Extension schemas are published in the [AdCP extension registry](/docs/building/
 }
 ```
 
+This tells buyers:
+- Responses may include `ext.iab_tcf` with IAB TCF consent data
+- Responses may include `ext.iab_gpp` with IAB GPP (Global Privacy Platform) signals
+- Responses may include `ext.acmecorp` with vendor-specific data from Acme Corp
+
 ### experimental_features
 
 Array of experimental AdCP surfaces this agent implements. A surface is experimental when its schema carries `x-status: experimental` — it is part of the core protocol but not yet frozen and may break between 3.x releases with 6 weeks' notice. Sellers that implement any experimental surface MUST list its feature id here.
@@ -580,7 +585,9 @@ See [experimental status](/docs/reference/experimental-status) for the full stab
 
 ### catalog_change_feed
 
-Per-agent inventory change-feed capabilities. Declared by sales agents (products) and signals agents (signals). When `supported` is `true`, consumers can poll `GET /catalog/events` on this agent to maintain a near-real-time mirror of its product and/or signal catalog without re-fetching unchanged inventory. Complementary to (and independent of) the `catalog_version` conditional-fetch tokens on `get_products` and `get_signals`. See `specs/catalog-change-feed.md` for the full spec.
+Per-agent inventory change-feed capabilities. Declared by sales agents (products) and signals agents (signals). When `supported` is `true`, consumers can poll `GET /catalog/events` on this agent to maintain a near-real-time mirror of its product and/or signal catalog without re-fetching unchanged inventory. See `specs/catalog-change-feed.md` for the full spec.
+
+The conditional-fetch tokens (`if_catalog_version` / `if_pricing_version`) on [`get_products`](/docs/media-buy/task-reference/get_products#catalog-versioning) and [`get_signals`](/docs/signals/tasks/get_signals#catalog-versioning) are always available regardless of `catalog_change_feed.supported`. The change feed gives a continuous event stream; the version tokens give a cheap "anything changed?" probe. Adopters MAY ship either, both, or neither.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -605,11 +612,6 @@ Per-agent inventory change-feed capabilities. Declared by sales agents (products
   }
 }
 ```
-
-This tells buyers:
-- Responses may include `ext.iab_tcf` with IAB TCF consent data
-- Responses may include `ext.iab_gpp` with IAB GPP (Global Privacy Platform) signals
-- Responses may include `ext.acmecorp` with vendor-specific data from Acme Corp
 
 ## The Capability Contract
 
