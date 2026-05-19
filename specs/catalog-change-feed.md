@@ -68,9 +68,9 @@ The `catalog_version` conditional-fetch tokens on `get_products` / `get_signals`
 
 The post-change `pricing_options[]` is included in full. `previous_pricing_option_ids[]` lets consumers detect that `po_cpm_v1` was retired. `effective_at` lets the agent announce changes before they take effect (subject to the pre-announce rules below).
 
-**`applies_to`** declares which cache layer this event affects. See [Cache layering and event scoping](#cache-layering-and-event-scoping) below. `*.priced` and `*.updated` MUST carry `applies_to`. Other events (`*.created`, `*.removed`, `catalog.bulk_change`) MAY carry it; absence means `{ "scope": "public" }`.
+**`applies_to`** declares which cache layer this event affects. See [Cache layering and event scoping](#cache-layering-and-event-scoping) below. `*.priced` and `*.updated` MUST carry `applies_to`. Other events (`*.created`, `*.removed`, `catalog.bulk_change`) MAY carry it; absence means `{ "scope": "public" }`. **Exception:** when a `*.created` event introduces an entity that exists *only* in an account overlay (e.g., a custom signal made available to a single account), the seller MUST emit `applies_to: { "scope": "account", "account_ids": [...] }` — defaulting to `"public"` would leak the entity into every consumer's public-layer cache.
 
-**`effective_at` and pre-announce.** An `effective_at` value in the future is a pre-announcement: the change is scheduled but not yet in effect. Consumers MAY use pre-announced events to warm caches but MUST NOT bind decisions against pre-announced pricing until the effective time has passed, and MUST re-verify (per Security Posture) post-effective. Sellers MAY retract a pre-announced change by emitting a follow-up `*.priced` event with the prior `pricing_option_id` restored before the original `effective_at`. Once the effective time passes without retraction, the change is committed and behaves as any post-fact event.
+**`effective_at` and pre-announce.** An `effective_at` value in the future is a pre-announcement: the change is scheduled but not yet in effect. Consumers MAY use pre-announced events to warm caches but MUST NOT bind decisions against pre-announced pricing until the effective time has passed, and MUST re-verify (per Security Posture) post-effective. Sellers MAY retract a pre-announced change by emitting a follow-up `*.priced` event with the prior `pricing_option_id` restored; the retraction event MUST carry `effective_at` less than or equal to the original `effective_at` (so the retraction takes effect no later than the change it cancels) and is identified as a retraction by being the latest event for the affected entity, NOT by payload content match. Once the effective time passes without retraction, the change is committed and behaves as any post-fact event.
 
 **`product.updated`:**
 
@@ -95,7 +95,14 @@ The post-change `pricing_options[]` is included in full. `previous_pricing_optio
 }
 ```
 
-`removal_reason` is OPTIONAL but RECOMMENDED. Values: `"withdrawn"` (seller-initiated removal, no resubmit path), `"cancellation"` (resource cancelled, may return), `"depublication"` (underlying property depublished — see `publisher.adagents_changed` in the registry feed), `"policy_takedown"` (governance-driven removal). Downstream consequences differ — in-flight buys honor existing cancellation policy regardless of reason, but storefront catalog UX differs (e.g., a `depublication` may surface "publisher offline" rather than "product removed").
+`removal_reason` is OPTIONAL but RECOMMENDED. Values:
+- `"withdrawn"` — seller-initiated removal, no resubmit path
+- `"cancellation"` — resource cancelled, may return
+- `"expired"` — time-bounded availability ended (flight ended, seasonal product retired). Distinct from `withdrawn` (seller choice) and `cancellation` (resource state) — purely temporal
+- `"depublication"` — underlying property depublished (see `publisher.adagents_changed` in the registry feed)
+- `"policy_takedown"` — governance-driven removal, covering both AdCP governance-agent denials AND external regulator/legal takedowns (GDPR DSAR, court order, jurisdictional ban). Sellers SHOULD populate `error.details` or an out-of-band channel with the operator-actionable detail; the event itself MUST NOT leak regulator identity or sensitive case material.
+
+Downstream consequences differ — in-flight buys honor existing cancellation policy regardless of reason, but storefront catalog UX differs (a `depublication` may surface "publisher offline" rather than "product removed"; an `expired` may surface differently from a `withdrawn`).
 
 **`signal.priced`:**
 
@@ -207,16 +214,17 @@ Register a webhook for change notifications. Optional — agents MAY refuse to i
 
 **URL constraints (anti-SSRF).** Agents MUST validate the subscription URL at registration AND at each delivery attempt:
 
-- Scheme MUST be `https`.
+- Scheme MUST be `https`. Plain `http://` MUST be rejected.
+- TLS MUST be 1.2 or higher (1.3 RECOMMENDED). Agents MUST validate the server certificate chain against the system trust store, MUST verify SNI matches the registered hostname, and MUST NOT accept self-signed or expired certificates.
 - Host MUST resolve to a public, routable address. Agents MUST reject hosts that resolve to RFC1918 / link-local / loopback / multicast / unique-local-IPv6 ranges, and MUST re-resolve DNS at delivery time (rebinding defense).
 - Hostname MUST NOT be a metadata-service address (e.g., `169.254.169.254`, AWS/GCP/Azure equivalents) regardless of scheme.
-- Agents SHOULD require a delivery-target challenge before activating a subscription: POST a one-time challenge token to the registered URL, expect the subscriber to echo it back at a known path (`/.well-known/adcp-catalog-webhook-challenge`). Closes the "register a victim URL to weaponize webhook fire against a third party" path.
+- Agents SHOULD require a delivery-target challenge before activating a subscription: POST a one-time challenge token to the registered URL, expect the subscriber to echo it back at a known path (`/.well-known/adcp-catalog-webhook-challenge`). Closes the "register a victim URL to weaponize webhook fire against a third party" path. The challenge POST itself MUST pass the URL constraints above (HTTPS, TLS floor, address allowlist, rebind defense) — the challenge is not a carve-out from the anti-SSRF rules.
 
 **Per-subscription cap.** Agents MUST limit subscriptions per principal (RECOMMEND 10). Reject with `RATE_LIMITED` when exceeded.
 
 **Subscription ownership.** Subscriptions are scoped to the creating principal. `GET /catalog/subscriptions` MUST return only the caller's own subscriptions. `DELETE /catalog/subscriptions/:id` MUST verify ownership before deletion. A compromised buyer principal MUST NOT be able to enumerate or delete other principals' subscriptions.
 
-**Secret rotation.** Agents SHOULD support `PATCH /catalog/subscriptions/:id` with a new `secret` value and a rotation overlap window (default 5 minutes) during which both old and new signatures are accepted. Subscribers rotating leaked secrets MUST be able to do so without losing delivery in flight.
+**Secret rotation.** Agents SHOULD support `PATCH /catalog/subscriptions/:id` with a new `secret` value and a rotation overlap window (default 5 minutes) during which both old and new signatures are accepted. Subscribers rotating leaked secrets MUST be able to do so without losing delivery in flight. **The `delivery_seq` counter MUST NOT reset on secret rotation** — resetting would open an anti-replay gap during the overlap window where a captured webhook signed with the old secret and a low sequence number could be replayed against the new-secret monotonic-floor.
 
 **Response:**
 
@@ -252,7 +260,7 @@ X-AdCP-Catalog-Delivery-Seq: 4421
 
 **Anti-replay.** The HMAC signature MUST be computed over the canonical string `{timestamp}\n{delivery_seq}\n{body}` (newline-separated), with `{timestamp}` echoed in `X-AdCP-Catalog-Timestamp` (ISO 8601) and `{delivery_seq}` a strictly monotonic per-subscription counter echoed in `X-AdCP-Catalog-Delivery-Seq`. Receivers MUST reject signatures whose timestamp is more than 5 minutes skewed from receive time, and MUST reject deliveries whose sequence number is less than or equal to the last accepted sequence (modulo retry semantics — see Retries). Captured webhook bodies cannot be replayed at a later time or to a different subscription endpoint.
 
-**Coalescing.** Events are batched per subscriber within a jittered window of 60–300 seconds (uniform distribution per subscriber, agent's choice). The window is jittered to prevent thundering-herd amplification: a `catalog.bulk_change` that fires to all subscribers within the same 30-second band would create a synchronized re-verify storm against the agent's `get_products` / `get_signals` endpoint. The `recommendation: "wholesale_resync"` payload field is advisory — consumers MUST stagger their resyncs and MUST honor the re-fetch coalescing rule in Security Posture.
+**Coalescing.** Events are batched per subscriber within a jittered window of 60–300 seconds. The jitter MUST be drawn independently per `(subscription_id, event_id)` from a uniform distribution over `[60, 300]` and MUST NOT be a deterministic function of event content or a per-subscriber seed reused across events. Independent draws are load-bearing for two properties: (a) thundering-herd prevention — a `catalog.bulk_change` that fires to all subscribers within the same band would create a synchronized re-verify storm against the agent's `get_products` / `get_signals` endpoint; and (b) timing-oracle resistance — when an account-scoped event is delivered with withheld `account_ids` (see Cache layering and event scoping), a deterministic jitter would let a colluding observer correlate delivery times across vantage points to triangulate the affected account set. Independent per-event jitter degrades the oracle to within-window noise. Note: even with independent jitter, withheld-`account_ids` confidentiality is best-effort against well-resourced collusive observers (multiple principals comparing receipt times across many events); operators that need a hard guarantee MUST emit `applies_to.account_ids` explicitly. The `recommendation: "wholesale_resync"` payload field is advisory — consumers MUST stagger their resyncs and MUST honor the re-fetch coalescing rule in Security Posture.
 
 **Retries:** 3 attempts with exponential backoff (30s, 5m, 30m). 24 hours of failures → subscription marked `suspended` and subscriber notified out-of-band. The `delivery_seq` for a retried delivery is the same as the original — receivers de-dupe on `(subscription_id, delivery_seq)`, not on signature.
 

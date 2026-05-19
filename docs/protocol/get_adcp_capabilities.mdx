@@ -591,7 +591,7 @@ Conditional-fetch token capabilities for [`get_products`](/docs/media-buy/task-r
 |-------|------|-------------|
 | `supported` | boolean | **Required.** Whether the agent returns `catalog_version` on responses and honors `if_catalog_version` on requests. When absent or `false`, buyers can still probe by reading the response (the field-presence detection path) but can't pre-flight-decide which agents to cache versions for. |
 | `pricing_version_separate` | boolean | Whether the agent tracks `pricing_version` independently of `catalog_version`. When `true`, callers can send `if_pricing_version` alongside `if_catalog_version` for finer-grained "did prices change?" probes. When `false` or absent, the agent collapses both into `catalog_version` — sending `if_pricing_version` is wasted bytes. |
-| `cache_scope_account` | boolean | Whether the agent ever returns `cache_scope: "account"` (i.e., publishes per-account overlays distinct from the public rate card). When `true`, buyers MUST be prepared to maintain account-overlay caches alongside the public layer. When `false` or absent, all responses are `cache_scope: "public"` — the agent's rate card is universal across accounts. |
+| `cache_scope_account` | boolean | Whether the agent ever returns `cache_scope: "account"` (i.e., publishes per-account overlays distinct from the public rate card). When `true`, buyers MUST be prepared to maintain account-overlay caches alongside the public layer. When `false` or absent, all responses are `cache_scope: "public"` — the agent's rate card is universal across accounts. Note: declaring `true` advertises that the agent runs custom-pricing deals, which is itself a small market-posture signal; agents preferring confidentiality MAY omit the field and detect-on-call instead. |
 
 **Example:**
 
@@ -609,7 +609,9 @@ Conditional-fetch token capabilities for [`get_products`](/docs/media-buy/task-r
 
 Per-agent inventory change-feed capabilities. Declared by sales agents (products) and signals agents (signals). When `supported` is `true`, consumers can poll `GET /catalog/events` on this agent to maintain a near-real-time mirror of its product and/or signal catalog without re-fetching unchanged inventory. See `specs/catalog-change-feed.md` for the full spec.
 
-Complementary to (and independent of) [`catalog_versioning`](#catalog_versioning) — the change feed gives a continuous event stream; the version tokens give a cheap "anything changed?" probe. Adopters MAY ship either, both, or neither.
+Complementary to (and independent of) [`catalog_versioning`](#catalog-versioning) — the change feed gives a continuous event stream; the version tokens give a cheap "anything changed?" probe. Adopters MAY ship either, both, or neither.
+
+**Consumer precedence.** When more than one mechanism is declared, consumers SHOULD prefer them in this order: (1) `catalog_change_feed` when subscribing to a long-lived mirror (lowest latency, lowest seller cost); (2) `catalog_versioning` conditional fetch when the consumer only needs occasional polling (cheaper than full re-enumeration); (3) wholesale enumeration via `buying_modes` / `discovery_modes` when neither is declared, or as the recovery path after `RETENTION_EXPIRED` / `catalog.bulk_change` / cold start.
 
 | Field | Type | Description |
 |-------|------|-------------|

@@ -138,6 +138,17 @@ The response structure is identical across protocols, with only the transport wr
 
 Select the pricing option that matches your billing model and pass its `pricing_option_id` in `report_usage` for billing verification. If a signal offers multiple models (e.g., CPM and flat fee), choose based on your expected delivery volume and campaign structure.
 
+### Response Metadata
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `catalog_version` | string | Opaque token representing the version of the catalog state used to compose this response. Treat as opaque — no format, no ordering, no inspection. Returned on every response by agents implementing conditional-fetch. See [Catalog versioning](#catalog-versioning). |
+| `pricing_version` | string | Optional finer-grained token. Changes when prices move while `catalog_version` only changes for structure/metadata. Agents not separating these MAY omit `pricing_version`. |
+| `cache_scope` | string | `"public"` or `"account"`. **REQUIRED** when the request included `account`; structurally `"public"` when not. Declares whether `catalog_version` / `pricing_version` describe a universal layer or an account-specific overlay. See [Cache layering](#cache-layering). |
+| `unchanged` | boolean | `true` ONLY when the request carried `if_catalog_version` (and/or `if_pricing_version`) matching the agent's current version for the caller's `cache_scope`, in which case `signals[]` MUST be omitted; `catalog_version`, `cache_scope`, and `pricing_version` (when used) MUST still be echoed. `unchanged: false` is permitted as an explicit no-op affirmation but MUST be accompanied by `signals[]`. Absent `unchanged` is equivalent to `false`. Callers receiving `unchanged: true` MUST NOT mutate their local catalog mirror. |
+| `incomplete` | IncompleteEntry[] | Declares what the agent could not finish within the caller's `time_budget` or due to internal limits. See [Incomplete array](#incomplete-array). |
+| `pagination` | PaginationResponse | `has_more`, `cursor`, optional `total_count`. Required for wholesale mode. |
+
 ### Activation Key Object
 
 The activation key represents how to use the signal on a deployment target. It can be either a segment ID or a key-value pair:
@@ -776,6 +787,7 @@ When `unchanged: true`, `signals[]` MUST be omitted and consumers MUST NOT mutat
 - **`if_pricing_version` requires `if_catalog_version`.** Pricing has no structural baseline of its own. Sending `if_pricing_version` without `if_catalog_version` is a schema-level error. The agent's evaluation is two-stage: catalog mismatch returns the full payload; catalog match with pricing mismatch also returns the full payload (so the caller sees updated `pricing_options`); both match → `unchanged: true`.
 - **`filters` canonicalization.** Agents MUST treat the `filters` object as canonicalized before hashing into the `catalog_version` keyspace: keys sorted lexicographically, omitted-and-default values treated identically, array values sorted where the filter has set semantics (e.g., `catalog_types`, `data_providers`). Callers that pass equivalent-but-differently-shaped filter objects MUST receive the same `catalog_version`. Prevents silent stale-mirror bugs from key-order or default-elision differences.
 - **Pagination interaction.** Agents MUST return `catalog_version` on every paginated page (not only the first) when they declare `catalog_change_feed.supported: true`; agents that do not declare the feed SHOULD do the same. If the catalog mutates between pages, the new version surfaces on the next page and the caller MUST restart pagination from `cursor: null` — the partial pages already received describe a stale version.
+- **`unchanged: true` and in-progress pagination.** A caller mid-pagination MAY send `if_catalog_version` matching the version their pages so far were drawn from. If the agent confirms `unchanged: true`, the response omits `signals[]` and pagination envelope entirely; the caller abandons their in-progress walk under that version. Agents MAY NOT use the conditional-fetch short-circuit to skip individual pages within an active pagination — `unchanged` is whole-catalog-versus-cached-version, not per-page.
 - Pre-v3.1 agents that ignore `if_catalog_version` simply return the full payload — semantically correct, just inefficient.
 
 For ongoing change tracking beyond conditional fetch, see `specs/catalog-change-feed.md` — a per-agent event stream that emits `signal.created` / `signal.updated` / `signal.priced` / `signal.removed` events for incremental sync.

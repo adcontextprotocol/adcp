@@ -67,7 +67,7 @@
     },
     "if_catalog_version": {
       "type": "string",
-      "description": "Opaque catalog_version token returned by a prior get_signals response from this agent. When provided, the agent compares against its current catalog version and MAY return an unchanged: true response (with signals omitted) if nothing has changed. Versions are scoped to the (agent, account, filters, discovery_mode) tuple — callers MUST cache the version alongside the request parameters used. See specs/catalog-change-feed.md for the full sync pattern."
+      "description": "Opaque catalog_version token returned by a prior get_signals response from this agent. When provided, the agent compares against its current catalog version for the caller's cache_scope and MAY return an unchanged: true response (with signals omitted) if nothing has changed. The token is scope-keyed: callers cache `(cache_scope, catalog_version)` pairs. Scoping dimensions: (agent, discovery_mode, filters, destinations, countries) for cache_scope: 'public'; that tuple plus account_id for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. See specs/catalog-change-feed.md for the full sync pattern."
     },
     "if_pricing_version": {
       "type": "string",

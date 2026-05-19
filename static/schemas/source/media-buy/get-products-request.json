@@ -204,7 +204,7 @@
     },
     "if_catalog_version": {
       "type": "string",
-      "description": "Opaque catalog_version token returned by a prior get_products response from this agent. When provided, the agent compares against its current catalog version and MAY return an unchanged: true response (with products omitted) if nothing has changed. Versions are scoped to the (agent, account, filters, buying_mode, property_list, catalog) tuple — callers MUST cache the version alongside the request parameters used. Backward-compatible: pre-v3.1 agents that ignore this field simply return the full payload, same as the unchanged-server path. See specs/catalog-change-feed.md for the full sync pattern."
+      "description": "Opaque catalog_version token returned by a prior get_products response from this agent. When provided, the seller compares against its current catalog version for the buyer's cache_scope and MAY return an unchanged: true response (with products omitted) if nothing has changed. The token is scope-keyed: buyers cache `(cache_scope, catalog_version)` pairs. Scoping dimensions: (agent, buying_mode, filters, property_list, catalog) for cache_scope: 'public'; that tuple plus account_id for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. Backward-compatible: pre-v3.1 agents that ignore this field simply return the full payload, same as the unchanged-server path. See specs/catalog-change-feed.md for the full sync pattern."
     },
     "if_pricing_version": {
       "type": "string",
