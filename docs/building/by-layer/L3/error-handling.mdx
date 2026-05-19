@@ -550,6 +550,8 @@ function isRetryable(error) {
 
 ## Retry Logic
 
+The rules in this section bound every `transient`-classified error a caller may retry, including the `transient` default applied to unknown error codes under [§ Forward-compatible decoding](#forward-compatible-decoding-normative). A receiver that decodes an unknown code and falls back to `transient` MUST apply `maxRetries` and the jittered exponential-backoff schedule below; the open-enum decoding rule does not exempt receivers from the retry budget. A hostile or buggy sender emitting `code=GO_FOREVER, recovery=transient` cannot induce unbounded retries against a conformant client.
+
 ### Normative throttling behavior
 
 These rules apply when a caller receives a throttling-category error (`RATE_LIMITED`, or any error whose `recovery` is `transient` and whose `details` conform to the [`rate-limited`](https://adcontextprotocol.org/schemas/v3/error-details/rate-limited.json) detail shape):
