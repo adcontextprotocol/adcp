@@ -78,19 +78,23 @@ jobs:
           echo "::warning::flyctl deploy exited ${deploy_exit} — probing /health to distinguish API timeout from real failure"
           # Give Fly's edge a moment to settle in case rolling-restart is still in flight.
           sleep 10
-          health_code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 15 https://adcontextprotocol.org/health || echo "000")
-          echo "adcontextprotocol.org/health → ${health_code}"
+          # Probe the Fly hostname directly, not the Cloudflare-fronted
+          # public hostname. Cloudflare can cache /health responses and
+          # a stale 200 would mask a real outage. The Fly hostname bypasses
+          # CDN and reflects the actual app state on the machine.
+          health_code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 15 https://adcp-docs.fly.dev/health || echo "000")
+          echo "adcp-docs.fly.dev/health -> ${health_code}"
           if [ -s /tmp/health.json ]; then
             echo "Body (first 500 chars):"
             head -c 500 /tmp/health.json
             echo
           fi
-          if [ "$health_code" = "200" ]; then
-            echo "::warning::App is reachable (/health=200). Treating as fallback-success — the verification gate ran into a Fly API issue, not an app issue."
+          if [ "${health_code}" = "200" ]; then
+            echo "::warning::App is reachable on the Fly hostname (/health=200). Treating as fallback-success — the verification gate ran into a Fly API issue, not an app issue."
             echo "deploy_outcome=fallback-success" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "::error::flyctl deploy failed AND /health=${health_code} — real failure."
+          echo "::error::flyctl deploy failed AND adcp-docs.fly.dev/health=${health_code} — real failure."
           echo "deploy_outcome=hard-fail" >> "$GITHUB_OUTPUT"
           exit 1
 
