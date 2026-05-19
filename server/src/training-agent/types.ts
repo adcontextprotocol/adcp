@@ -363,6 +363,11 @@ export interface PackageState {
   formatIds?: FormatID[];
   creativeAssignments: string[];
   targeting?: PackageTargeting;
+  /** Buyer-declared optimization goals carried through from create_media_buy.
+   *  Persisted opaquely so delivery handlers can gate metric emission on
+   *  what the buyer actually requested (e.g., only surface reach + frequency
+   *  when a reach goal was requested). */
+  optimizationGoals?: Array<Record<string, unknown>>;
 }
 
 export interface ListReference {
