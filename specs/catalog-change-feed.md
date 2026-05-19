@@ -44,9 +44,11 @@ The `catalog_version` conditional-fetch tokens on `get_products` / `get_signals`
 | `signal.updated` | Signal metadata changed (description, coverage, deployments) | Re-render in consumer catalog |
 | `signal.priced` | Signal pricing options changed | Composition layer must re-price |
 | `signal.removed` | Signal no longer available | Remove from catalog |
-| `catalog.bulk_change` | Agent performed a bulk operation (e.g., seasonal rate-card update affecting >100 entities) | Trigger consumer re-sync via wholesale enumeration rather than processing every event |
+| `catalog.bulk_change` | Agent performed a bulk operation that crosses the threshold below | Trigger consumer re-sync via wholesale enumeration rather than processing every event |
 
-`catalog.bulk_change` is the "fast-forward" event. When a seller does a rate-card sweep that touches thousands of products, the agent SHOULD emit one `catalog.bulk_change` event with a summary payload rather than thousands of `product.priced` events.
+`catalog.bulk_change` is the "fast-forward" event. When a seller does a rate-card sweep that touches many products, the agent SHOULD emit one `catalog.bulk_change` event with a summary payload rather than per-entity events.
+
+**Threshold.** Agents SHOULD emit `catalog.bulk_change` when a single operation affects **>5% of the catalog** *or* **>100 entities**, **whichever is smaller**. The dual condition prevents two failure modes: small agents flooding consumers with absolute-threshold events for every change (5% caps it), and large agents hiding catalog-wide rotations behind a high absolute threshold (100 caps it). Agents MAY emit `catalog.bulk_change` for smaller operations when they know consumers benefit from the fast-forward (e.g., a rate-card change touching one heavily-used product). Consumers MUST handle interleaved per-entity events and bulk_change events idempotently.
 
 ### Event Payload Examples
 
@@ -173,6 +175,8 @@ Additional CRUD: `GET /catalog/subscriptions`, `DELETE /catalog/subscriptions/:i
 
 Webhooks are notifications, not event delivery — same posture as the registry feed.
 
+**Header namespace.** Catalog-feed webhooks use `X-AdCP-Catalog-*` headers; the registry feed uses `X-Registry-*` (see `specs/registry-change-feed.md`). The asymmetry is intentional — the catalog feed lives on each agent's own origin and shares HTTP space with that agent's other AdCP surfaces (hence the `X-AdCP-` prefix), while the registry feed is served from the central registry origin. Subscribers handling both feeds dispatch on the header namespace to route events to the right local index.
+
 ```
 POST https://storefront.example.com/hooks/catalog
 X-AdCP-Catalog-Signature: sha256={hmac}
@@ -189,6 +193,18 @@ X-AdCP-Catalog-Event: product.priced
 **Coalescing:** Events are batched per subscriber per 30-second window. A rate-card sweep produces one webhook notification, not thousands.
 
 **Retries:** 3 attempts with exponential backoff (30s, 5m, 30m). 24 hours of failures → subscription marked `suspended` and subscriber notified out-of-band.
+
+---
+
+## Security Posture
+
+Catalog events carry priced inventory changes — the same compromise-injection risks the registry feed addresses for authorizations and identity. The three load-bearing safety properties carry across one-for-one; this section restates them in the catalog context. See `specs/registry-change-feed.md` for the canonical formulation.
+
+**Advisory event payloads.** Feed-delivered catalog state is non-authoritative. The feed exists to tell consumers *that* something changed and to deliver the post-change payload as an optimization for cheap mirroring. Consumers that take a *binding* action on the change — finalizing a media buy at the new price, committing to a withdrawn product's cancellation policy, persisting a marketplace signal's deployment as authorized — MUST re-verify against an authoritative path before acting: a direct `get_products` / `get_signals` call against the agent (with the post-change `catalog_version` they observed in the feed), or the `adagents.json` cross-reference for marketplace-signal provenance. The feed is change-detection, not a trust anchor.
+
+**Re-fetch coalescing.** The re-verify rule is a per-consumer safety property, not a per-event one. A catalog-wide event (e.g., `catalog.bulk_change`, or a hot rotation that touches many entities) MUST NOT cause every subscriber to hammer the agent's `get_products` / `get_signals` endpoint. Consumers MAY coalesce re-fetches per `(agent_url, entity_type)` tuple within a short window (order of the agent's `Cache-Control` `max-age`, or ~60 seconds in its absence): multiple feed events observed during that window produce at most one authoritative fetch. Coalescing MUST NOT extend past the cache TTL the agent has declared.
+
+**Feed-event content signing (4.0 track).** The agent operator SHOULD content-sign every feed event with a long-lived agent signing key so consumers can detect a compromise that attempts to inject bogus `product.priced` / `product.removed` / `signal.*` events. This work is tracked alongside the **R-1 root-of-trust / key-transparency** deliverables for 4.0 (the same track that gates the registry feed's content-signing in `specs/registry-change-feed.md` §Feed-event content signing). Until it lands, consumers MUST rely on the re-verify rule above as the safety property — the feed is an optimization for fast change detection, not a source of pricing or authorization truth.
 
 ---
 

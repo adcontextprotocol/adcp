@@ -208,7 +208,7 @@
     },
     "if_pricing_version": {
       "type": "string",
-      "description": "Opaque pricing_version token from a prior get_products response. Narrower scope than if_catalog_version: structure AND pricing must be unchanged for the agent to return unchanged: true. Optional — agents that don't track pricing separately ignore this and fall back to if_catalog_version semantics. Useful for storefronts that re-price compositions far more often than they re-render catalogs."
+      "description": "Opaque pricing_version token from a prior get_products response. MUST only be sent together with if_catalog_version — pricing version has no structural baseline to compare against on its own. Evaluation order: (1) if_catalog_version mismatch → seller returns the full payload (pricing is implicitly stale); (2) if_catalog_version matches but if_pricing_version mismatches → seller returns the full payload so the buyer sees updated pricing_options; (3) both match → seller MAY return unchanged: true. Agents that don't track pricing separately ignore if_pricing_version and fall back to if_catalog_version semantics. Useful for storefronts that re-price compositions far more often than they re-render catalogs."
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -230,6 +230,9 @@
   "dependencies": {
     "catalog": [
       "brand"
+    ],
+    "if_pricing_version": [
+      "if_catalog_version"
     ]
   },
   "additionalProperties": true

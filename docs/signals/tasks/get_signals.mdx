@@ -26,7 +26,7 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 | `countries` | string[] | No | Countries where signals will be used (ISO 3166-1 alpha-2 codes) |
 | `filters` | Filters | No | Filters to refine results (see Filters Object below). In wholesale mode, filters constrain the enumerated catalog (e.g., `filters.data_providers: ["acme-data"]` returns only that provider's signals). |
 | `if_catalog_version` | string | No | Opaque `catalog_version` token from a prior `get_signals` response. When provided, the agent compares against its current catalog version and MAY return `unchanged: true` (with `signals` omitted) if nothing has changed. Versions are scoped to the (agent, account, filters, `discovery_mode`) tuple. See [Catalog versioning](#catalog-versioning). |
-| `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. Narrower scope than `if_catalog_version`: structure AND pricing must be unchanged. Optional — agents that don't track pricing separately ignore this. |
+| `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_catalog_version`. Evaluation order: `if_catalog_version` mismatch → full payload; `if_catalog_version` matches but `if_pricing_version` mismatches → full payload (so the caller sees updated `pricing_options`); both match → agent MAY return `unchanged: true`. Agents that don't track pricing separately ignore this. |
 | `max_results` | number | No | **Deprecated.** Use `pagination.max_results` instead. When both are present, `pagination.max_results` takes precedence. Will be removed in AdCP 4.0. |
 | `pagination` | object | No | Pagination envelope. `pagination.max_results` (max: 100, default: 50) controls page size; `pagination.cursor` (opaque token from previous response) advances pages. Required for wholesale (catalogs may be large). |
 
@@ -740,6 +740,7 @@ When `unchanged: true`, `signals[]` MUST be omitted and consumers MUST NOT mutat
 - Tokens are **opaque**. No format, no ordering, no inspection.
 - A returned `catalog_version` is scoped to the request parameters that produced it. Callers MUST cache the version alongside the `(account, filters, discovery_mode, destinations, countries)` tuple used.
 - `pricing_version` is an optional finer-grained token: when present, it changes when prices move but `catalog_version` changes only when structure/metadata moves. Common for rate-card sweeps that don't change segment metadata.
+- **`if_pricing_version` requires `if_catalog_version`.** Pricing has no structural baseline of its own. Sending `if_pricing_version` without `if_catalog_version` is a schema-level error. The agent's evaluation is two-stage: catalog mismatch returns the full payload; catalog match with pricing mismatch also returns the full payload (so the caller sees updated `pricing_options`); both match → `unchanged: true`.
 - Pre-v3.1 agents that ignore `if_catalog_version` simply return the full payload — semantically correct, just inefficient.
 
 For ongoing change tracking beyond conditional fetch, see `specs/catalog-change-feed.md` — a per-agent event stream that emits `signal.created` / `signal.updated` / `signal.priced` / `signal.removed` events for incremental sync.

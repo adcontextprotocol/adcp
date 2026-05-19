@@ -71,7 +71,7 @@
     },
     "if_pricing_version": {
       "type": "string",
-      "description": "Opaque pricing_version token from a prior get_signals response. Narrower scope than if_catalog_version: structure AND pricing must be unchanged for the agent to return unchanged: true. Agents that don't track pricing separately ignore this and fall back to if_catalog_version semantics."
+      "description": "Opaque pricing_version token from a prior get_signals response. MUST only be sent together with if_catalog_version — pricing version has no structural baseline to compare against on its own. Evaluation order: (1) if_catalog_version mismatch → agent returns the full payload; (2) if_catalog_version matches but if_pricing_version mismatches → agent returns the full payload so the caller sees updated pricing_options; (3) both match → agent MAY return unchanged: true. Agents that don't track pricing separately ignore this and fall back to if_catalog_version semantics."
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -100,6 +100,11 @@
     "anyOf": [
       { "required": ["signal_spec"] },
       { "required": ["signal_ids"] }
+    ]
+  },
+  "dependencies": {
+    "if_pricing_version": [
+      "if_catalog_version"
     ]
   },
   "additionalProperties": true
