@@ -197,6 +197,32 @@ The product entries define which products the seller should consider for the pro
 }
 ```
 
+## Finalize is exclusive within `refine[]`
+
+`action: "finalize"` is a commit, not a refinement — it transitions a draft proposal to committed with an expires_at hold window. When a buyer wants to finalize, the spec requires the `refine[]` array contain **only** finalize entries:
+
+- If any entry has `action: "finalize"`, **all** entries in the array MUST be proposal-scoped with `action: "finalize"`. Mixing finalize with `include` / `omit` entries, or with request- or product-scoped entries, MUST be rejected by the seller with `INVALID_REQUEST`.
+- Buyers needing to refine *and* commit in close succession **sequence** the calls: first a refine call (no finalize), then a finalize call against the resulting `proposal_id`(s). The two intents are distinct decisions and the spec treats them as distinct calls.
+
+```yaml
+# ✅ Refine only — no finalize present, mixed scopes allowed
+refine:
+  - { scope: proposal, proposal_id: p1, ask: "shift more to ctv" }
+  - { scope: request, ask: "frequency cap 3/day across all products" }
+
+# ✅ Finalize only — multiple finalize entries against different proposals
+refine:
+  - { scope: proposal, proposal_id: p1, action: finalize }
+  - { scope: proposal, proposal_id: p2, action: finalize }
+
+# ❌ Rejected — finalize mixed with non-finalize
+refine:
+  - { scope: proposal, proposal_id: p1, action: finalize }
+  - { scope: proposal, proposal_id: p2, ask: "shift more to ctv" }
+```
+
+**Multi-finalize is atomic.** When multiple finalize entries target different proposals in one call, sellers MUST either commit all of them or none of them — partial commit is non-conformant. On failure, `refinement_applied[]` and `errors[]` carry per-position outcomes. Sellers that cannot guarantee atomic multi-proposal commit MUST reject multi-finalize arrays with `INVALID_REQUEST` (`error.message` SHOULD name the constraint, e.g., "this seller supports at most one finalize per call"), and buyers SHOULD then sequence single-finalize calls. There is no capability flag for multi-finalize support — the failure response is the discovery surface, so buyers MUST NOT assume support without a successful first attempt.
+
 ## Proposals in refine mode
 
 Sellers MAY return proposals alongside refined products, even when the buyer did not include proposal entries. For example, a buyer refining three products may receive those products back with updated pricing *and* a proposal suggesting how to combine them.
