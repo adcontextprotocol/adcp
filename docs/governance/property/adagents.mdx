@@ -324,7 +324,18 @@ Absolute cache caps and refresh floors for authoritative files live in [Managed 
 
 ## Authorization Patterns
 
-AdCP supports four authorization patterns, each optimized for different use cases:
+Each `authorized_agents[]` entry requires **both** `authorization_type` and its paired companion field. The table below is the definitive reference — the companion field name does not always match the discriminator value (see `inline_properties` below).
+
+| `authorization_type` | Required companion field | Resolves against | Use case |
+|---|---|---|---|
+| `property_ids` | `property_ids: [...]` | Top-level `properties[]` by ID | Small, enumerable property lists |
+| `property_tags` | `property_tags: [...]` | Top-level `properties[]` by tag | Large networks; one tag covers many properties |
+| `inline_properties` | **`properties: [...]`** *(not `inline_properties`)* | Inline definitions in the agent entry | Small sets with no top-level `properties[]` |
+| `publisher_properties` | `publisher_properties: [...]` | Declared in this file; each entry names a `publisher_domain` resolved against that domain's `adagents.json` at validation time | Third-party agents representing multiple publishers |
+| `signal_ids` | `signal_ids: [...]` | Top-level `signals[]` by ID | Signal data providers — specific signal authorization |
+| `signal_tags` | `signal_tags: [...]` | Top-level `signals[]` by tag | Signal data providers — tag-based signal authorization |
+
+The first four types (`property_ids`, `property_tags`, `inline_properties`, `publisher_properties`) apply to property inventory. The last two (`signal_ids`, `signal_tags`) apply to signal data providers only.
 
 ### Pattern 1: Property IDs (Direct References)
 
@@ -407,6 +418,10 @@ AdCP supports four authorization patterns, each optimized for different use case
 ### Pattern 3: Inline Properties
 
 **Best for**: Small, specific property sets without top-level property declarations.
+
+<Warning>
+The companion field for `authorization_type: "inline_properties"` is **`properties`**, not `inline_properties`. Unlike every other type, the field name does not mirror the discriminator value — it reuses the same field name and object shape as the top-level `properties[]` array.
+</Warning>
 
 **Structure**:
 ```json
@@ -502,7 +517,7 @@ The above is semantically identical to repeating the singular-form entry once pe
 
 ## Authorization Qualifiers
 
-The four `authorization_type` patterns above answer **which inventory** an agent can sell. The optional qualifiers below answer **how** that inventory is being made available.
+The six `authorization_type` values above answer **which inventory** an agent can sell. The optional qualifiers below answer **how** that inventory is being made available.
 
 ### `delegation_type`
 
