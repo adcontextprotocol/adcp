@@ -51,9 +51,36 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Optional format IDs supported by this placement across the scoped properties and collections. Lets buyers answer which formats are available on which placements without relying on product-local definitions alone.",
+      "description": "Optional v1 format IDs supported by this placement across the scoped properties and collections. Lets buyers answer which formats are available on which placements without relying on product-local definitions alone. Parallel to `format_options[]` (canonical-formats v2 shape) — placements MAY carry either or both during the v1↔v2 migration window. When both are present, `format_options[]` is authoritative for buyers reading canonical-formats; `format_ids[]` is the v1 wire fallback.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "format_options": {
+      "type": "array",
+      "description": "Optional canonical-formats v2 declarations supported by this placement. Two ways to populate an entry: (1) reference an entry in the file's top-level `formats[]` by `capability_id` only — buyers resolve the full declaration from `formats[]` by matching `capability_id` (recommended; avoids duplication). (2) carry an inline `ProductFormatDeclaration` directly — for placement-specific narrowing that doesn't fit a reusable catalog entry. Same anyOf pattern as Product.\n\n**Capability-reference shape.** A capability-reference entry SHOULD carry ONLY `capability_id` — extra fields are allowed (`additionalProperties: true`) so adopters who want to attach a placement-local override like `display_name` don't get rejected by the branch boundary, but buyer SDKs MUST resolve the format from the top-level `formats[]` by `capability_id` and apply additional fields on the entry as placement-level overrides (NOT as a partial inline declaration). If a publisher needs to materially narrow the format at the placement, use the inline-declaration form instead.\n\n**Resolution scope is same-file only.** `capability_id` resolves only within this file's top-level `formats[]`; cross-file references are not supported by design. When `format_options[]` references a `capability_id` not declared in the file's top-level `formats[]`, validators MUST surface this as `FORMAT_CAPABILITY_UNRESOLVED` on the response `errors[]`. Buyers MUST fail closed for that placement (drop the format from the placement's accepted set) rather than silently dropping the placement or guessing intent.",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "title": "Capability reference",
+            "description": "Reference an entry in the file's top-level `formats[]` by `capability_id`. Resolved at validation time. additionalProperties: true so placement-local fields (display_name, etc.) carry through without forcing a full inline declaration.",
+            "required": ["capability_id"],
+            "properties": {
+              "capability_id": {
+                "type": "string",
+                "description": "Matches a `capability_id` in the file's top-level `formats[]`."
+              }
+            },
+            "additionalProperties": true
+          },
+          {
+            "$ref": "/schemas/core/product-format-declaration.json",
+            "title": "Inline declaration",
+            "description": "Inline canonical-formats v2 declaration. Use when the placement narrows a format in a way that's not worth a top-level catalog entry."
+          }
+        ]
       },
       "minItems": 1
     },

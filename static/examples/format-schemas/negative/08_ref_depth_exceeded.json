@@ -1,0 +1,17 @@
+{
+  "test_id": "fetch-contract-neg-08-ref-depth-exceeded",
+  "category": "ref_sandbox",
+  "description": "Transitive $ref chain exceeds depth 8 (or total $ref count exceeds 256). SDK MUST bound both depth and breadth before resolution.",
+  "setup": {
+    "request_uri": "https://creative.adcontextprotocol.org/extensions/deep_refs",
+    "declared_digest": "sha256:<computed>",
+    "response_status": 200,
+    "response_body_summary": "Schema with $ref chain a -> b -> c -> d -> e -> f -> g -> h -> i (9 deep)",
+    "response_headers": {
+      "Content-Type": "application/json"
+    }
+  },
+  "expected_outcome": "fail:ref_violation",
+  "expected_error_code": "FORMAT_PROJECTION_FAILED",
+  "rationale": "Depth <= 8 AND $ref count <= 256 across the resolved tree. Depth 8 with breadth 100 per level is 10^16 nodes \u2014 depth alone isn't enough."
+}

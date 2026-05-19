@@ -35,6 +35,15 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Assert dist/ contains every server/src runtime asset
+        # PR #4769 root cause: ui-element-formats.json was added to source
+        # and `require()`d by task-handlers.ts, but the build script didn't
+        # copy it into dist/, so the runtime image crashlooped with
+        # `Cannot find module './ui-element-formats.json'`. Prod was down
+        # ~75 min. This assertion fails CI the moment a referenced asset
+        # would be missing in the shipping artifact.
+        run: node scripts/copy-server-assets.cjs --check
+
       - name: Server unit tests
         run: npm run test:server-unit
 

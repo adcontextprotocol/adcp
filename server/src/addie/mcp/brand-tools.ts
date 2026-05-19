@@ -15,6 +15,7 @@ import { downloadAndCacheLogos, isBrandfetchUrl } from '../../services/logo-cdn.
 import { BrandLogoDatabase } from '../../db/brand-logo-db.js';
 import { safeFetch } from '../../utils/url-security.js';
 import { detectContentType, sanitizeSvg, validateLogoTags, computeSha256, extractDimensions, rebuildManifestLogos } from '../../services/brand-logo-service.js';
+import { notifyPendingBrandLogo } from '../../notifications/registry.js';
 import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 
@@ -605,11 +606,27 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       });
     }
 
-    // Check logo count cap
-    const count = await brandLogoDb.countBrandLogos(domain);
-    if (count >= 10) {
-      return JSON.stringify({ error: 'Maximum 10 logos per brand' });
+    // Per-brand community-cap: Addie uploads count as community, so they
+    // share the reserved-slot budget with route-level community uploads.
+    // Keeps Addie from saturating a brand's slots and locking out the
+    // verified owner who might claim it tomorrow. 8/2 split matches the
+    // HTTP route's MAX_COMMUNITY_LOGOS_PER_BRAND.
+    const communityCount = await brandLogoDb.countLogosBySource(domain, ['community']);
+    if (communityCount >= 8) {
+      return JSON.stringify({
+        error: `This brand already has ${communityCount} community-contributed logos. Wait for moderators to clear some, or for the verified owner to claim and manage it.`,
+        code: 'community_cap_reached',
+      });
     }
+
+    // No per-user threshold on the Addie path. The HTTP route uses
+    // `uploaded_by_user_id` as the bucket key; the Addie tool stores
+    // 'system:addie' across every chat session, which would make the
+    // counter a shared bucket — one user's batch session would DoS
+    // every Addie upload platform-wide for the threshold window. Chat
+    // sessions are already gated by AAO membership + Addie's own rate
+    // limiting; the per-brand community-cap above is the load-bearing
+    // defense against single-brand spam. See #4748 expert review.
 
     const logo = await brandLogoDb.insertBrandLogo({
       domain,
@@ -651,13 +668,30 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       await rebuildManifestLogos(domain, brandLogoDb, brandDb);
     }
 
+    // Fire-and-forget Slack notification so moderators see the pending upload.
+    notifyPendingBrandLogo({
+      domain,
+      logo_id: logo.id,
+      content_type: contentType,
+      tags,
+      upload_note: note,
+      source: 'addie',
+    }).then((threadTs) => {
+      if (threadTs) {
+        return brandLogoDb.setSlackThreadTs(logo.id, threadTs);
+      }
+    }).catch((err) => {
+      logger.warn({ err, domain }, 'Pending-logo Slack notification failed');
+    });
+
     // Exclude upload_note and original_filename from response (prompt injection vector)
     return JSON.stringify({
       success: true,
       domain,
       logo_id: logo.id,
       review_status: 'pending',
-      message: 'Logo queued for moderator review. It will not appear on the brand viewer until approved.',
+      message: 'Logo queued for moderator review (typically within 48h). It will not appear on the brand viewer until approved.',
+      review_sla_hours: 48,
       url: `/logos/brands/${domain}/${logo.id}`,
       content_type: contentType,
       tags,

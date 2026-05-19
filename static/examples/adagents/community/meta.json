@@ -1,0 +1,363 @@
+{
+  "$schema": "/schemas/adagents.json",
+  "contact": {
+    "name": "AdCP Community Registry \u2014 Meta translation",
+    "email": "registry@adcontextprotocol.org",
+    "domain": "adcontextprotocol.org"
+  },
+  "properties": [
+    {
+      "property_id": "instagram",
+      "property_type": "mobile_app",
+      "name": "Instagram",
+      "identifiers": [
+        {
+          "type": "ios_bundle",
+          "value": "com.burbn.instagram"
+        },
+        {
+          "type": "android_package",
+          "value": "com.instagram.android"
+        },
+        {
+          "type": "domain",
+          "value": "instagram.com"
+        }
+      ],
+      "tags": [
+        "meta_network",
+        "social_media"
+      ],
+      "supported_channels": [
+        "social",
+        "display",
+        "olv"
+      ],
+      "publisher_domain": "instagram.com"
+    },
+    {
+      "property_id": "facebook",
+      "property_type": "mobile_app",
+      "name": "Facebook",
+      "identifiers": [
+        {
+          "type": "ios_bundle",
+          "value": "com.facebook.Facebook"
+        },
+        {
+          "type": "android_package",
+          "value": "com.facebook.katana"
+        },
+        {
+          "type": "domain",
+          "value": "facebook.com"
+        }
+      ],
+      "tags": [
+        "meta_network",
+        "social_media"
+      ],
+      "supported_channels": [
+        "social",
+        "display",
+        "olv"
+      ],
+      "publisher_domain": "facebook.com"
+    },
+    {
+      "property_id": "whatsapp",
+      "property_type": "mobile_app",
+      "name": "WhatsApp",
+      "identifiers": [
+        {
+          "type": "ios_bundle",
+          "value": "net.whatsapp.WhatsApp"
+        },
+        {
+          "type": "android_package",
+          "value": "com.whatsapp"
+        }
+      ],
+      "tags": [
+        "meta_network",
+        "messaging"
+      ],
+      "supported_channels": [
+        "social",
+        "display"
+      ],
+      "publisher_domain": "whatsapp.com"
+    }
+  ],
+  "tags": {
+    "meta_network": {
+      "name": "Meta Network",
+      "description": "All Meta-owned properties"
+    },
+    "social_media": {
+      "name": "Social Media Apps",
+      "description": "Social networking applications"
+    },
+    "messaging": {
+      "name": "Messaging Apps",
+      "description": "Messaging and communication apps"
+    }
+  },
+  "formats": [
+    {
+      "capability_id": "meta_reels",
+      "display_name": "Meta Reels (Instagram + Facebook)",
+      "format_kind": "video_hosted",
+      "v1_format_ref": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
+          "id": "meta_reels"
+        }
+      ],
+      "applies_to_property_ids": [
+        "instagram",
+        "facebook"
+      ],
+      "params": {
+        "orientation": "vertical",
+        "aspect_ratio": "9:16",
+        "duration_ms_range": [
+          3000,
+          90000
+        ],
+        "min_width": 1080,
+        "min_height": 1920,
+        "max_file_size_mb": 200,
+        "video_codecs": [
+          "h264"
+        ],
+        "audio_codecs": [
+          "aac"
+        ],
+        "containers": [
+          "mp4"
+        ],
+        "headline_max_chars": 40,
+        "primary_text_max_chars": 125,
+        "captions": "recommended",
+        "cta_values": [
+          "LEARN_MORE",
+          "SHOP_NOW",
+          "DOWNLOAD",
+          "SIGN_UP",
+          "CONTACT_US",
+          "BOOK_NOW"
+        ],
+        "composition_model": "deterministic"
+      }
+    },
+    {
+      "capability_id": "meta_feed_image",
+      "display_name": "Meta Feed Image (Instagram + Facebook)",
+      "format_kind": "image",
+      "v1_format_ref": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
+          "id": "meta_feed_image"
+        }
+      ],
+      "applies_to_property_ids": [
+        "instagram",
+        "facebook"
+      ],
+      "params": {
+        "width": 1080,
+        "height": 1080,
+        "aspect_ratio": "1:1",
+        "max_file_size_kb": 30720,
+        "image_formats": [
+          "jpg",
+          "png"
+        ],
+        "headline_max_chars": 40,
+        "primary_text_max_chars": 125,
+        "cta_values": [
+          "LEARN_MORE",
+          "SHOP_NOW",
+          "DOWNLOAD",
+          "SIGN_UP",
+          "CONTACT_US",
+          "BOOK_NOW"
+        ]
+      }
+    },
+    {
+      "capability_id": "meta_stories_video",
+      "display_name": "Meta Stories Video (Instagram + Facebook)",
+      "format_kind": "video_hosted",
+      "v1_format_ref": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
+          "id": "meta_stories_video"
+        }
+      ],
+      "applies_to_property_ids": [
+        "instagram",
+        "facebook"
+      ],
+      "params": {
+        "orientation": "vertical",
+        "aspect_ratio": "9:16",
+        "duration_ms_range": [
+          1000,
+          60000
+        ],
+        "min_width": 1080,
+        "min_height": 1920,
+        "video_codecs": [
+          "h264"
+        ],
+        "audio_codecs": [
+          "aac"
+        ],
+        "containers": [
+          "mp4"
+        ],
+        "headline_max_chars": 40,
+        "primary_text_max_chars": 125,
+        "cta_values": [
+          "LEARN_MORE",
+          "SHOP_NOW",
+          "DOWNLOAD",
+          "SIGN_UP"
+        ]
+      }
+    },
+    {
+      "capability_id": "meta_feed_carousel",
+      "display_name": "Meta Feed Carousel (Instagram + Facebook)",
+      "format_kind": "image_carousel",
+      "v1_format_ref": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
+          "id": "meta_feed_carousel"
+        }
+      ],
+      "applies_to_property_ids": [
+        "instagram",
+        "facebook"
+      ],
+      "experimental": true,
+      "params": {
+        "cards_min": 2,
+        "cards_max": 10,
+        "card_aspect_ratio": "1:1",
+        "card_width": 1080,
+        "card_height": 1080,
+        "headline_max_chars": 40,
+        "primary_text_max_chars": 125
+      }
+    }
+  ],
+  "placements": [
+    {
+      "placement_id": "instagram_reels",
+      "name": "Instagram Reels",
+      "tags": [
+        "reels",
+        "vertical_video",
+        "social"
+      ],
+      "property_ids": [
+        "instagram"
+      ],
+      "format_options": [
+        {
+          "capability_id": "meta_reels"
+        }
+      ]
+    },
+    {
+      "placement_id": "facebook_reels",
+      "name": "Facebook Reels",
+      "tags": [
+        "reels",
+        "vertical_video",
+        "social"
+      ],
+      "property_ids": [
+        "facebook"
+      ],
+      "format_options": [
+        {
+          "capability_id": "meta_reels"
+        }
+      ]
+    },
+    {
+      "placement_id": "instagram_feed",
+      "name": "Instagram Feed",
+      "tags": [
+        "feed",
+        "social"
+      ],
+      "property_ids": [
+        "instagram"
+      ],
+      "format_options": [
+        {
+          "capability_id": "meta_feed_image"
+        },
+        {
+          "capability_id": "meta_feed_carousel"
+        }
+      ]
+    },
+    {
+      "placement_id": "instagram_stories",
+      "name": "Instagram Stories",
+      "tags": [
+        "stories",
+        "vertical_video",
+        "social"
+      ],
+      "property_ids": [
+        "instagram"
+      ],
+      "format_options": [
+        {
+          "capability_id": "meta_stories_video"
+        }
+      ]
+    }
+  ],
+  "placement_tags": {
+    "reels": {
+      "name": "Reels",
+      "description": "Short-form vertical video placements"
+    },
+    "vertical_video": {
+      "name": "Vertical Video",
+      "description": "9:16 aspect-ratio video surfaces"
+    },
+    "social": {
+      "name": "Social",
+      "description": "In-feed social placements"
+    },
+    "feed": {
+      "name": "Feed",
+      "description": "Main social feed surface"
+    },
+    "stories": {
+      "name": "Stories",
+      "description": "Ephemeral full-screen story surface"
+    }
+  },
+  "authorized_agents": [
+    {
+      "url": "https://creative.adcontextprotocol.org/translated/meta/agent",
+      "authorized_for": "Community-registry advisory only \u2014 not a Meta-authorized sales path. Routes buyers to the Meta-direct API. Once Meta publishes their own adagents.json at facebook.com/.well-known/adagents.json with real authorized_agents[], this file deprecates.",
+      "authorization_type": "property_tags",
+      "property_tags": [
+        "meta_network"
+      ],
+      "delegation_type": "ad_network"
+    }
+  ],
+  "last_updated": "2026-05-17T00:00:00Z"
+}

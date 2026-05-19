@@ -9,7 +9,7 @@ import { logoUploadRateLimiter } from '../middleware/rate-limit.js';
 import { BrandLogoDatabase } from '../db/brand-logo-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { BansDatabase } from '../db/bans-db.js';
-import { canReviewBrandLogos, isVerifiedBrandOwner } from '../services/brand-logo-auth.js';
+import { canReviewBrandLogos, isRegistryModerator, isVerifiedBrandOwner } from '../services/brand-logo-auth.js';
 import { enrichUserWithMembership } from '../utils/html-config.js';
 import {
   validateLogoTags,
@@ -21,6 +21,25 @@ import {
 } from '../services/brand-logo-service.js';
 import { createLogger } from '../logger.js';
 import { isUuid } from '../utils/uuid.js';
+import { notifyPendingBrandLogo, notifyBrandLogoReviewed } from '../notifications/registry.js';
+
+const PENDING_REVIEW_SLA_HOURS = 48;
+// Per-user pending-queue threshold: how many distinct brand domains a
+// single uploader can have in pending state at once, in the rolling
+// window. Trips when the user fans out uploads to enumerate ownership
+// state or saturate the moderator queue. Tuned for the holding-company
+// contributor pattern (one operator managing logos across many brands)
+// — 5/hr was too tight; 15/24h gives legit batch sessions headroom
+// while still blocking enumeration before it pays off.
+const MAX_PENDING_DOMAINS_PER_USER = 15;
+const PENDING_THRESHOLD_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+// Per-brand reserved owner slots: community uploads (pending or
+// approved — rejected/deleted don't count) can fill at most this many
+// of the brand's MAX_LOGOS_PER_BRAND slots. The remaining slots stay
+// reserved for the eventual verified owner. 8/2 split lets community
+// keep contributing on popular unowned brands while guaranteeing the
+// owner room for at least logo+wordmark when they claim.
+const MAX_COMMUNITY_LOGOS_PER_BRAND = 8;
 
 const logger = createLogger('brand-logo-routes');
 
@@ -95,10 +114,59 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           return res.status(400).json({ error: 'File is required' });
         }
 
-        // Logo count cap
-        const count = await brandLogoDb.countBrandLogos(domain);
-        if (count >= MAX_LOGOS_PER_BRAND) {
-          return res.status(400).json({ error: `Maximum ${MAX_LOGOS_PER_BRAND} logos per brand` });
+        // Per-user abuse signal: refuse community uploads when the caller
+        // already has MAX_PENDING_DOMAINS_PER_USER distinct domains pending
+        // in the threshold window. Verified owners bypass — they're
+        // attesting the brand they own, not enumerating. Soft-pause: just
+        // rejects new attempts; existing pending entries stay, and the
+        // threshold relaxes as moderators clear them. Returns 429 so
+        // automated callers back off rather than retry.
+        //
+        // TOCTOU: the check + INSERT below is not atomic. Two concurrent
+        // requests from the same user can both pass the threshold and
+        // both insert (cap = N×concurrency). The HTTP route's rate
+        // limiter bounds this. Hard upper limit is moderator workload,
+        // not a security boundary.
+        if (!isOwner) {
+          const pendingDomainCount = await brandLogoDb.countPendingDomainsForUser(
+            user.id,
+            PENDING_THRESHOLD_WINDOW_MS,
+          );
+          if (pendingDomainCount >= MAX_PENDING_DOMAINS_PER_USER) {
+            logger.warn(
+              { userId: user.id, email: user.email, pendingDomainCount, domain },
+              'brand-logo upload rejected: user pending-queue threshold tripped',
+            );
+            // Don't echo `pendingDomainCount` back to the caller — it's
+            // a precise enumeration oracle for any attacker calibrating
+            // their fan-out. `max_pending_domains` is the only signal
+            // a legit client actually needs.
+            return res.status(429).json({
+              error: 'You have too many brand logo uploads awaiting review. Wait for moderators to clear the queue before adding more.',
+              code: 'pending_queue_full',
+              max_pending_domains: MAX_PENDING_DOMAINS_PER_USER,
+            });
+          }
+        }
+
+        // Logo count cap. Community uploads (pending OR approved —
+        // rejected/deleted don't permanently consume slots) are reserved
+        // to MAX_COMMUNITY_LOGOS_PER_BRAND so a verified owner uploading
+        // after the community-pending pool filled isn't locked out of
+        // their own brand. Owner uploads still respect the overall cap.
+        if (isOwner) {
+          const count = await brandLogoDb.countBrandLogos(domain);
+          if (count >= MAX_LOGOS_PER_BRAND) {
+            return res.status(400).json({ error: `Maximum ${MAX_LOGOS_PER_BRAND} logos per brand` });
+          }
+        } else {
+          const communityCount = await brandLogoDb.countLogosBySource(domain, ['community']);
+          if (communityCount >= MAX_COMMUNITY_LOGOS_PER_BRAND) {
+            return res.status(400).json({
+              error: `This brand already has ${communityCount} community-contributed logos pending or approved. Wait for moderators to clear some, or for the verified owner to claim and manage it.`,
+              code: 'community_cap_reached',
+            });
+          }
         }
 
         // Validate tags
@@ -209,13 +277,39 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           logger.debug({ err, domain, userId: user.id }, 'Logo upload audit revision skipped');
         }
 
+        // Fire-and-forget Slack notification for pending uploads. Owners
+        // who self-approve don't need a moderator nudge. Capture the
+        // returned ts so the review path can thread its verdict reply
+        // under the original announcement (#4748).
+        if (reviewStatus === 'pending') {
+          notifyPendingBrandLogo({
+            domain,
+            logo_id: logo.id,
+            content_type: contentType,
+            tags,
+            uploader_email: user.email,
+            uploader_name: user.firstName
+              ? `${user.firstName} ${user.lastName ?? ''}`.trim()
+              : undefined,
+            upload_note: note,
+            source: 'community',
+          }).then((threadTs) => {
+            if (threadTs) {
+              return brandLogoDb.setSlackThreadTs(logo.id, threadTs);
+            }
+          }).catch((err) => {
+            logger.warn({ err, domain }, 'Pending-logo Slack notification failed');
+          });
+        }
+
         return res.status(201).json({
           success: true,
           domain,
           logo_id: logo.id,
           review_status: reviewStatus,
           ...(reviewStatus === 'pending' && {
-            message: 'Logo queued for moderator review. It will appear on the brand viewer once approved.',
+            message: `Logo queued for moderator review (typically within ${PENDING_REVIEW_SLA_HOURS}h). It will appear on the brand viewer once approved.`,
+            review_sla_hours: PENDING_REVIEW_SLA_HOURS,
           }),
           url: `/logos/brands/${domain}/${logo.id}`,
         });
@@ -319,6 +413,11 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         }
 
         const note = typeof req.body.note === 'string' ? req.body.note.slice(0, 500) : undefined;
+        // `updateLogoReviewStatus` returns the post-mutation row via
+        // RETURNING ${SUMMARY_COLUMNS}, which includes slack_thread_ts —
+        // no separate pre-fetch needed. Saves a round-trip and removes a
+        // TOCTOU window where the row could be deleted between fetch
+        // and update.
         const updated = await brandLogoDb.updateLogoReviewStatus(
           logoId,
           domain,
@@ -350,6 +449,24 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           // Non-critical
         }
 
+        // Thread the verdict under the original pending-logo notification
+        // when one exists. Fire-and-forget — Slack failure must not roll
+        // back a moderator's decision.
+        if (updated.slack_thread_ts) {
+          notifyBrandLogoReviewed({
+            thread_ts: updated.slack_thread_ts,
+            domain,
+            action: action as 'approve' | 'reject' | 'delete',
+            reviewer_email: user.email,
+            reviewer_name: user.firstName
+              ? `${user.firstName} ${user.lastName ?? ''}`.trim()
+              : undefined,
+            note,
+          }).catch((err) => {
+            logger.warn({ err, domain, logoId }, 'Logo-review Slack thread reply failed');
+          });
+        }
+
         return res.json({
           success: true,
           logo_id: logoId,
@@ -358,6 +475,103 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
       } catch (error) {
         logger.error({ err: error, domain: req.params.domain, id: req.params.id }, 'Logo review failed');
         return res.status(500).json({ error: 'Logo review failed' });
+      }
+    },
+  );
+
+  // GET /api/brand-logos/pending — cross-brand moderator queue.
+  // Returns the global list of pending logo uploads so moderators can
+  // drain them from one page rather than walking each brand individually.
+  router.get(
+    '/brand-logos/pending',
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const user = (req as any).user;
+        const moderator = await isRegistryModerator(user.id);
+        if (!moderator) {
+          return res.status(403).json({ error: 'Brand-registry moderators only' });
+        }
+
+        const rawLimit = parseInt(String(req.query.limit ?? ''), 10);
+        const rawOffset = parseInt(String(req.query.offset ?? ''), 10);
+        const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 200) : 50;
+        const offset = Number.isFinite(rawOffset) ? Math.max(rawOffset, 0) : 0;
+
+        const rows = await brandLogoDb.getPendingLogos(limit, offset);
+        const logos = rows.map((l) => ({
+          id: l.id,
+          domain: l.domain,
+          brand_name: (l as { brand_name?: string }).brand_name ?? null,
+          content_type: l.content_type,
+          source: l.source,
+          tags: l.tags,
+          width: l.width,
+          height: l.height,
+          uploaded_by_email: l.uploaded_by_email,
+          uploaded_by_user_id: l.uploaded_by_user_id,
+          upload_note: l.upload_note,
+          original_filename: l.original_filename,
+          created_at: l.created_at,
+          preview_url: `/api/brand-logos/${l.id}/preview`,
+          review_url: `/api/brands/${encodeURIComponent(l.domain)}/logos/${l.id}/review`,
+          brand_view_url: `/brand/view/${encodeURIComponent(l.domain)}`,
+        }));
+        return res.json({ logos, limit, offset });
+      } catch (error) {
+        logger.error({ err: error }, 'Failed to list pending logos');
+        return res.status(500).json({ error: 'Failed to list pending logos' });
+      }
+    },
+  );
+
+  // GET /api/brand-logos/:id/preview — moderator-only (or owner-of-the-
+  // brand-this-logo-belongs-to) image bytes for any review_status. The
+  // public CDN path (/logos/brands/:domain/:id) is strictly approved-only
+  // by design (#3393 follow-ups); this is the moderator escape hatch so
+  // they can actually see what they're reviewing.
+  //
+  // IMPORTANT: the owner-fallback path MUST gate on the row's stored
+  // domain (`row.domain`), never on a caller-supplied domain. Otherwise
+  // any verified owner of any brand could read any other brand's pending
+  // logo bytes by guessing UUIDs.
+  router.get(
+    '/brand-logos/:id/preview',
+    requireAuth,
+    logoUploadRateLimiter,
+    async (req: Request, res: Response) => {
+      try {
+        const user = (req as any).user;
+        const logoId = req.params.id;
+        if (!isUuid(logoId)) {
+          return res.status(400).json({ error: 'Invalid logo ID' });
+        }
+
+        const row = await brandLogoDb.getBrandLogoById(logoId);
+        const moderator = await isRegistryModerator(user.id);
+        const owner = row ? await isVerifiedBrandOwner(user.id, row.domain, brandDb) : false;
+
+        // Conflate not-found and not-authorized for unauthorized callers
+        // so a UUID guesser can't distinguish "this id doesn't exist" from
+        // "exists but you can't read it" — that distinction is an
+        // existence oracle. Moderators are the only callers who need the
+        // genuine 404 (e.g. when the queue UI is showing a stale row).
+        if (!row || (!moderator && !owner)) {
+          if (moderator) {
+            return res.status(404).json({ error: 'Logo not found' });
+          }
+          return res.status(403).json({ error: 'Not authorized to preview this logo' });
+        }
+
+        res.setHeader('Content-Type', row.content_type);
+        // Pending bytes can be approved, rejected, or hard-deleted
+        // mid-cache. `private` keeps shared caches out; `no-store` keeps
+        // the browser from replaying stale image bytes after a verdict.
+        res.setHeader('Cache-Control', 'private, no-store');
+        return res.send(row.data);
+      } catch (error) {
+        logger.error({ err: error, id: req.params.id }, 'Failed to serve logo preview');
+        return res.status(500).json({ error: 'Failed to serve preview' });
       }
     },
   );

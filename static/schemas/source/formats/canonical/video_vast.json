@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/video_vast.json",
+  "title": "Canonical Format: VAST Video",
+  "description": "VAST-tag-delivered video creative. Slot: `vast_tag` (vast asset, URL or inline XML, VAST 2.x-4.x). Tracking model: VAST events inherent to the spec — `impression`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `start`, `pause`, `resume`, `mute`, `unmute`, `expand`, `collapse`, `fullscreen`, `creativeView`, `clickTracking`, `error`. VPAID interactivity via `vpaid_enabled: true` flag. SIMID extensions for interactive video supported as VAST extensions. Orientation is a parameter (vertical / horizontal / square). Distinct from `video_hosted` (direct file with external tracking).",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "vast_tag", "asset_type": "vast", "required": true },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      ],
+      "description": "Default slots for video_vast canonical. Buyer ships a VAST tag (URL or inline XML, VAST 2.x-4.x) plus an optional clickthrough URL (which falls back to the VAST `ClickThrough` element when omitted). Tracking events are inherent to VAST and don't require explicit slots."
+    },
+    "orientation": {
+      "type": "string",
+      "enum": ["vertical", "horizontal", "square"]
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$"
+    },
+    "vast_version": {
+      "type": "string",
+      "enum": ["2.0", "3.0", "4.0", "4.1", "4.2"],
+      "description": "Required VAST version."
+    },
+    "vpaid_enabled": {
+      "type": "boolean",
+      "description": "Whether VPAID interactivity is supported. When true, the VAST tag may carry VPAID JS/Flash payloads."
+    },
+    "vpaid_version": {
+      "type": "string",
+      "enum": ["1.0", "2.0"]
+    },
+    "simid_supported": {
+      "type": "boolean",
+      "description": "Whether IAB SIMID interactive video extensions are supported."
+    },
+    "duration_ms_range": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "[min, max] duration in milliseconds. **Precedence**: `duration_ms_exact` takes precedence when both ship. SDKs SHOULD lint a warning when both fields ship."
+    },
+    "duration_ms_exact": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "When set, duration must equal exactly this value. Takes precedence over `duration_ms_range` when both ship."
+    },
+    "min_width": { "type": "integer", "minimum": 1 },
+    "max_width": { "type": "integer", "minimum": 1 },
+    "min_height": { "type": "integer", "minimum": 1 },
+    "max_height": { "type": "integer", "minimum": 1 },
+    "linear_required": {
+      "type": "boolean",
+      "description": "Whether the VAST creative must be linear (non-skippable in-stream)."
+    },
+    "skippable_after_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "When skippable, the buyer-side skip threshold in milliseconds (e.g., 5000 for 5-second skippable pre-roll)."
+    },
+    "max_wrapper_depth": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum VAST wrapper redirect depth permitted."
+    },
+    "ssl_required": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": true
+}

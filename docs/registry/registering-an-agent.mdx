@@ -27,7 +27,7 @@ There is one path: **an AAO member adds the agent to their member profile** via 
 
 **What this path attests:** the member has signed AAO terms; the URL, name, and contact are explicitly declared; the type is probe-verified. Visibility can be `public`, `members_only`, or `private` — see [Visibility](#visibility) below.
 
-There is no auto-population from crawled `adagents.json` files. Agents listed in third-party `adagents.json` files populate the publisher-authorization graph used by [Operator lookup](/docs/registry/api-reference/authorization-lookups/operator-lookup), `/api/registry/lookup/domain`, and `hasValidAdagents`, but they do not create catalog entries.
+There is no auto-population from crawled `adagents.json` files. Agents listed in third-party `adagents.json` files populate the publisher-authorization graph used by the Operator lookup endpoint (`GET /api/registry/operator?domain=X`), `/api/registry/lookup/domain`, and `hasValidAdagents`, but they do not create catalog entries.
 
 ## Programmatic registration (for CI, scripts, agents)
 
@@ -35,12 +35,12 @@ To register agents from CI, a deploy hook, or your own agent — without the das
 
 Authenticate with a WorkOS API key (`Authorization: Bearer sk_…`) or an OAuth user JWT. Mint an API key under [agenticadvertising.org/dashboard/api-keys](https://agenticadvertising.org/dashboard/api-keys).
 
-| Endpoint | Reference |
+| Endpoint | Purpose |
 |---|---|
-| `GET /api/me/agents` | [List my registered agents](/docs/registry/api-reference/member-agents/list-my-registered-agents) |
-| `POST /api/me/agents` | [Register an agent](/docs/registry/api-reference/member-agents/register-an-agent) |
-| `PATCH /api/me/agents/{url}` | [Update an agent](/docs/registry/api-reference/member-agents/update-an-agent) |
-| `DELETE /api/me/agents/{url}` | [Remove an agent](/docs/registry/api-reference/member-agents/remove-an-agent) |
+| `GET /api/me/agents` | List my registered agents |
+| `POST /api/me/agents` | Register an agent |
+| `PATCH /api/me/agents/{url}` | Update an agent |
+| `DELETE /api/me/agents/{url}` | Remove an agent |
 
 The path parameter on PATCH and DELETE is the agent's `url`, URL-encoded (e.g. `https%3A%2F%2Fagent.example.com%2Fmcp`). `POST` is idempotent on `url`: new entries return `201`; re-posting the same `url` updates the existing entry and returns `200`. Each successful write returns `{ agent, warnings? }` — `warnings` lists any tier-driven visibility downgrades (e.g. an Explorer-tier caller asking for `public` is stored as `members_only` with a `visibility_downgraded` warning).
 
@@ -110,6 +110,7 @@ To check whether your agent is referenced in a publisher's `adagents.json` (for 
 
 ## Related
 
-- [Operator lookup](/docs/registry/api-reference/authorization-lookups/operator-lookup) — auth-aware per-entity view of agents and authorizations.
-- [List agents](/docs/registry/api-reference/agent-discovery/list-agents) — full registry catalog.
-- [Request domain re-crawl](/docs/registry/api-reference/agent-discovery/request-domain-re-crawl) — refresh a publisher's `adagents.json` mapping in the authorization graph.
+- [Registry overview](/docs/registry) — endpoint catalog, lookup flows, and brand resolution.
+- `GET /api/registry/operator?domain=X` — auth-aware per-entity view of agents and authorizations.
+- `GET /api/registry/agents` — full registry catalog.
+- `POST /api/registry/recrawl` — refresh a publisher's `adagents.json` mapping in the authorization graph.

@@ -37,6 +37,30 @@ The Media Buy Protocol provides 11 standardized tasks for managing advertising c
 
 ---
 
+## Canonical formats (AdCP 3.1+)
+
+Products carry `format_options[]`: a list of `ProductFormatDeclaration` entries describing the creative shapes the product accepts. Each declaration carries:
+
+- `format_kind` — canonical type (image / html5 / display_tag / video_hosted / video_vast / audio_hosted / audio_daast / image_carousel / responsive_creative / sponsored_placement / agent_placement / custom)
+- `params` — per-canonical parameters narrowing the format (dimensions, durations, codecs, char limits, CTA enums)
+- Optional `capability_id` — disambiguates when a product carries multiple declarations of the same `format_kind`, and lets a placement reference a publisher-catalog declaration by ID rather than inlining
+- Optional `v1_format_ref: [{agent_url, id}]` — array linking this v2 declaration to one or more v1 named formats (for dual emission during the v1↔v2 migration). Multi-size declarations should carry one ref per size
+- Optional `seller_preference: "preferred" | "accepted" | "discouraged"` — soft routing hint when a multi-format product has several options at the same price
+
+**Multi-format products.** A flexible publisher slot is one product with N format_options entries — e.g., NYTimes Homepage accepts image OR html5 OR display_tag at multiple sizes via three format_options, one per type. Buyer picks the creative type they ship.
+
+**Size flexibility.** Display canonicals (image / html5 / display_tag) declare size in one of three modes: fixed (`width`+`height`), multi-size (`sizes: [{w,h}]` — mirrors OpenRTB `banner.format[]`), or responsive (`min_width`/`max_width`/`min_height`/`max_height`). Modes are mutually exclusive.
+
+**Discovering publisher catalogs.** `list_creative_formats(publisher_domain="meta.com")` returns the publisher's authoritative format list by reading `<publisher_domain>/.well-known/adagents.json` `formats[]`, falling back to the AAO community mirror at `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json`, then to agent-derived from own products. Response carries `source: "publisher" | "aao_mirror" | "agent_derived"` so buyers know which tier produced the list.
+
+**Conversion tracking lives elsewhere.** Pixel-firing, conversion events, and attribution belong on `sync_event_sources` / `event_log` (campaign-scoped), NOT on creative format declarations. Sending `pixel_id` in `platform_extensions` on a format is a category error.
+
+**Error codes specific to canonical formats.** `FORMAT_PROJECTION_FAILED`, `FORMAT_DECLARATION_DIVERGENT`, `FORMAT_DECLARATION_V1_AMBIGUOUS`, `FORMAT_CAPABILITY_UNRESOLVED`, `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE` — all non-fatal advisories surfaced via the response `errors[]` array. See `static/schemas/source/enums/error-code.json` for full recovery semantics.
+
+See `docs/creative/canonical-formats.mdx` for the full vocabulary, narrowing rules, and worked examples.
+
+---
+
 ## Task Reference
 
 ### get_products

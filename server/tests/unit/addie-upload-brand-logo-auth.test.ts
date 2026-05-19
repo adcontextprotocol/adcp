@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
   getHostedBrandByDomain: vi.fn(),
   insertBrandLogo: vi.fn(),
   countBrandLogos: vi.fn().mockResolvedValue(0),
+  countLogosBySource: vi.fn().mockResolvedValue(0),
+  countPendingDomainsForUser: vi.fn().mockResolvedValue(0),
+  setSlackThreadTs: vi.fn().mockResolvedValue(undefined),
   editDiscoveredBrand: vi.fn().mockResolvedValue({ brand: {}, revision_number: 1 }),
   createDiscoveredBrand: vi.fn().mockResolvedValue(undefined),
   upsertDiscoveredBrand: vi.fn().mockResolvedValue(undefined),
@@ -28,6 +31,11 @@ const mocks = vi.hoisted(() => ({
   extractDimensions: vi.fn().mockResolvedValue({ width: 64, height: 64 }),
   rebuildManifestLogos: vi.fn().mockResolvedValue(undefined),
   validateLogoTags: vi.fn().mockReturnValue({ valid: true }),
+  notifyPendingBrandLogo: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('../../src/notifications/registry.js', () => ({
+  notifyPendingBrandLogo: (...args: unknown[]) => mocks.notifyPendingBrandLogo(...args),
 }));
 
 vi.mock('../../src/db/brand-db.js', () => ({
@@ -51,7 +59,10 @@ vi.mock('../../src/db/brand-logo-db.js', () => ({
   BrandLogoDatabase: class {
     insertBrandLogo = mocks.insertBrandLogo;
     countBrandLogos = mocks.countBrandLogos;
+    countLogosBySource = mocks.countLogosBySource;
+    countPendingDomainsForUser = mocks.countPendingDomainsForUser;
     listBrandLogos = mocks.listBrandLogos;
+    setSlackThreadTs = mocks.setSlackThreadTs;
   },
 }));
 
@@ -108,8 +119,12 @@ describe('Addie upload_brand_logo write-authority gate', () => {
     vi.clearAllMocks();
     mocks.safeFetch.mockResolvedValue(fakeStreamResponse(Buffer.from('fake-png-bytes')));
     mocks.countBrandLogos.mockResolvedValue(0);
+    mocks.countLogosBySource.mockResolvedValue(0);
+    mocks.countPendingDomainsForUser.mockResolvedValue(0);
+    mocks.setSlackThreadTs.mockResolvedValue(undefined);
     mocks.detectContentType.mockResolvedValue('image/png');
     mocks.validateLogoTags.mockReturnValue({ valid: true });
+    mocks.notifyPendingBrandLogo.mockResolvedValue(null);
     mocks.insertBrandLogo.mockImplementation(async (input) => ({
       id: 'logo_addie_test',
       ...input,
@@ -143,6 +158,7 @@ describe('Addie upload_brand_logo write-authority gate', () => {
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
     expect(parsed.review_status).toBe('pending');
+    expect(parsed.review_sla_hours).toBe(48);
     expect(mocks.insertBrandLogo).toHaveBeenCalledWith(
       expect.objectContaining({
         source: 'community',
@@ -150,6 +166,29 @@ describe('Addie upload_brand_logo write-authority gate', () => {
         uploaded_by_user_id: 'system:addie',
       }),
     );
+    // Settle microtasks — notification is fire-and-forget.
+    await new Promise((r) => setImmediate(r));
+    expect(mocks.notifyPendingBrandLogo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domain: 'unowned.example',
+        logo_id: 'logo_addie_test',
+        source: 'addie',
+        tags: ['primary'],
+      }),
+    );
+  });
+
+  it('does NOT fire a Slack notification when the upload is refused (verified owner exists)', async () => {
+    mocks.getHostedBrandByDomain.mockResolvedValue({
+      workos_organization_id: 'org_owner',
+      domain_verified: true,
+    });
+    await upload({
+      domain: 'fandom.com',
+      logo_url: 'https://example.com/logo.png',
+      tags: ['primary'],
+    });
+    expect(mocks.notifyPendingBrandLogo).not.toHaveBeenCalled();
   });
 
   it('queues uploads as pending when the brand exists but is not domain-verified', async () => {

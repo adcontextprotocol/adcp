@@ -868,7 +868,7 @@ export function createCertificationRouters() {
     }
     backfillInProgress = true;
     try {
-      const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl } =
+      const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl, buildRecipientName } =
         await import('../services/certifier-client.js');
 
       if (!isCertifierConfigured()) {
@@ -936,7 +936,7 @@ export function createCertificationRouters() {
             const credential = await issueCredential({
               groupId: cred.certifier_group_id,
               recipient: {
-                name: `${user.first_name} ${user.last_name}`.trim() || user.email,
+                name: buildRecipientName(user),
                 email: user.email,
               },
             });
