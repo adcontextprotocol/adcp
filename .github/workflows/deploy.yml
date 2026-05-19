@@ -76,14 +76,20 @@ jobs:
             exit 0
           fi
           echo "::warning::flyctl deploy exited ${deploy_exit} — probing /health to distinguish API timeout from real failure"
-          # Give Fly's edge a moment to settle in case rolling-restart is still in flight.
-          sleep 10
           # Probe the Fly hostname directly, not the Cloudflare-fronted
           # public hostname. Cloudflare can cache /health responses and
           # a stale 200 would mask a real outage. The Fly hostname bypasses
           # CDN and reflects the actual app state on the machine.
-          health_code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 15 https://adcp-docs.fly.dev/health || echo "000")
-          echo "adcp-docs.fly.dev/health -> ${health_code}"
+          # Retry a few times in case the rolling restart hasn't settled —
+          # a healthy app reaches /health=200 within a couple of seconds
+          # once at least one machine is reachable.
+          health_code="000"
+          for attempt in 1 2 3 4; do
+            sleep 5
+            health_code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 15 https://adcp-docs.fly.dev/health || echo "000")
+            echo "attempt ${attempt}: adcp-docs.fly.dev/health -> ${health_code}"
+            if [ "${health_code}" = "200" ]; then break; fi
+          done
           if [ -s /tmp/health.json ]; then
             echo "Body (first 500 chars):"
             head -c 500 /tmp/health.json
@@ -106,6 +112,10 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
+          # pipefail so a silent flyctl failure (empty $images, count=0)
+          # surfaces as a real failure instead of being misread as
+          # "no running web/worker machines."
+          set -eo pipefail
           echo "Checking that all app machines are running the same image..."
 
           # Get image digests for started machines (web + worker process groups)
@@ -239,12 +249,22 @@ jobs:
           flyctl status -a adcp-docs > /tmp/forensics/fly-status.txt 2>&1 || true
           flyctl machines list -a adcp-docs --json > /tmp/forensics/fly-machines.json 2>&1 || true
           flyctl releases -a adcp-docs > /tmp/forensics/fly-releases.txt 2>&1 || true
-          flyctl logs -a adcp-docs --no-tail 2>&1 | tail -500 > /tmp/forensics/fly-logs-tail.txt || true
+          # Boot logs have historically contained JWT fragments, idempotency
+          # keys, and SDK init lines that echo env-derived config. The
+          # artifact is repo-readable for 30 days, so redact obvious secret
+          # shapes before persisting. This is best-effort — anything truly
+          # secret-shaped that doesn't match these patterns will still slip
+          # through, but most known leakage shapes are covered.
+          flyctl logs -a adcp-docs --no-tail 2>&1 \
+            | tail -500 \
+            | grep -v -iE 'authorization|bearer |authn=|secret|password|api[-_]?key|sk-[a-z0-9]|wos_[a-z0-9]|fly_[a-z0-9]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ' \
+            > /tmp/forensics/fly-logs-tail.txt || true
           # Capture the deploy-outcome we computed so the artifact is
           # self-describing in 30 days.
           echo "deploy_outcome=${{ steps.deploy.outputs.deploy_outcome }}" > /tmp/forensics/summary.txt
           echo "github_sha=${{ github.sha }}" >> /tmp/forensics/summary.txt
           echo "github_run_id=${{ github.run_id }}" >> /tmp/forensics/summary.txt
+          echo "note=fly-logs-tail.txt filtered for common secret shapes (Bearer/sk-/wos_/JWT/etc). Not exhaustive — treat as read-only." >> /tmp/forensics/summary.txt
           ls -la /tmp/forensics/
 
       - name: Upload Fly forensics
