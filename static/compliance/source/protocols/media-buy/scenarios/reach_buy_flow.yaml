@@ -94,6 +94,8 @@ fixtures:
       channels: ["video"]
       format_ids:
         - id: "video_30s"
+      metric_optimization:
+        supported_reach_units: ["households", "individuals"]
   pricing_options:
     - product_id: "reach_ctv_q2"
       pricing_option_id: "auction_cpm"
@@ -223,11 +225,12 @@ phases:
       rejection in performance_buy_flow and the unbound audience_id
       rejection in audience_buy_flow.
 
-      The literal string "phantom_unit" is chosen because no spec-defined
-      reach_unit value matches it and no honest product will declare it in
-      supported_reach_units. Sellers that round-trip "phantom_unit" as
-      accepted are demonstrating they don't validate against their product
-      capability declarations.
+      "devices" is chosen as the unsupported value: it is a valid spec enum
+      value, keeping the request schema-valid (payload_well_formed), but the
+      product fixture narrows supported_reach_units to ["households",
+      "individuals"] so the seller must reject it. Sellers that accept "devices"
+      are demonstrating they don't validate against their product capability
+      declarations.
 
     steps:
       - id: create_media_buy_with_phantom_reach_unit
@@ -258,7 +261,7 @@ phases:
               optimization_goals:
                 - kind: "metric"
                   metric: "reach"
-                  reach_unit: "phantom_unit"
+                  reach_unit: "devices"
           idempotency_key: "$generate:uuid_v4#reach_buy_flow_rejection_unsupported_reach_unit"
         validations:
           - check: error_code
