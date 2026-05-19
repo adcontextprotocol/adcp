@@ -76,6 +76,11 @@
       "target_version": "3.1",
       "note": "From sync_accounts billing coverage (#3831). Wire change \u2014 held for 3.1."
     },
+    "PROPOSAL_NOT_FOUND": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Proposal-lifecycle counterpart to PROPOSAL_EXPIRED / PROPOSAL_NOT_COMMITTED (#4043). Returned when a referenced proposal_id is unknown to the seller (never finalized, wrong tenant, or evicted from cache). Buyer-fixable: re-issue get_products in refine+finalize to obtain a current proposal_id. Wire change \u2014 held for 3.1."
+    },
     "PROVENANCE_CLAIM_CONTRADICTED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",

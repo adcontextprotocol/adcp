@@ -476,6 +476,7 @@ The wire-level `recovery: "correctable"` on the sandbox-only path is the registe
 | `PRODUCT_NOT_FOUND` | correctable | Referenced product IDs are unknown or expired | Remove invalid IDs, or re-discover with `get_products` |
 | `PRODUCT_UNAVAILABLE` | correctable | Product is sold out or no longer available | Choose a different product |
 | `PROPOSAL_EXPIRED` | correctable | Referenced proposal has passed its `expires_at` | Run `get_products` to get a fresh proposal |
+| `PROPOSAL_NOT_FOUND` | correctable | `proposal_id` is unknown to the seller (never finalized, wrong tenant, or evicted from cache) | Re-issue `get_products` with `buying_mode: "refine"` + `action: "finalize"` to obtain a current proposal_id |
 | `REQUOTE_REQUIRED` | correctable | Requested update falls outside the envelope (budget, dates, volume, targeting) the original quote was priced against; `pricing_option` remains locked | Call `get_products` with `buying_mode: "refine"` against the existing `proposal_id`, then resubmit against the new `proposal_id` |
 | `SIGNAL_NOT_FOUND` | correctable | Referenced signal does not exist in the catalog | Verify `signal_id` via `get_signals`, or confirm availability from this agent |
 | `AUDIENCE_TOO_SMALL` | correctable | Audience segment below minimum size | Broaden targeting or upload more audience members |
