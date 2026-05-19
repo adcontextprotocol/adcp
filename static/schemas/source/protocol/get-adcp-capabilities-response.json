@@ -165,7 +165,7 @@
         },
         "account_financials": {
           "type": "boolean",
-          "description": "Whether this seller supports the get_account_financials task for querying account-level financial status (spend, credit, invoices). Only applicable to operator-billed accounts.",
+          "description": "Whether this seller exposes the `get_account_financials` task for querying account-level financial status (spend, credit, invoices). Acts as a **pre-call discriminator** — buyers MUST consult this field before issuing `get_account_financials`; when `false` (or absent), sellers MAY reject the call with an `UNSUPPORTED_FEATURE` / `OPERATION_NOT_SUPPORTED` error. Companion pattern to `creative.bills_through_adcp` (issue #2881) — both fields let buyers gate optional capability calls on a single declared boolean rather than probing for support. Only applicable to operator-billed accounts; sellers using buyer-billed flows omit or set to `false`.",
           "default": false
         },
         "sandbox": {
