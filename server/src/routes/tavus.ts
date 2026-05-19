@@ -763,6 +763,17 @@ export function createTavusRouter() {
         if (event.type === "text") {
           fullResponse += event.text;
           sendChunk({ content: event.text });
+        } else if (event.type === "stream_error") {
+          // Mid-stream upstream failure (#4797). Drop the partial so we
+          // don't persist a truncated assistant turn into thread history
+          // and confuse the next-turn prompt assembly.
+          logger.warn(
+            { reason: event.reason, deltasBeforeError: event.deltasBeforeError, partialLength: fullResponse.length },
+            "Tavus: Addie stream interrupted mid-reply — discarding partial turn"
+          );
+          fullResponse = '';
+          streamError = true;
+          break;
         } else if (event.type === "error") {
           logger.error({ error: event.error }, "Tavus: Addie stream error");
           streamError = true;

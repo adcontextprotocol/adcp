@@ -1193,6 +1193,24 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
             maxRetries: event.maxRetries,
             reason: event.reason,
           });
+        } else if (event.type === 'stream_error') {
+          // Mid-stream upstream failure after partial delivery (#4797). Forward
+          // to the SSE client so it can render a Retry affordance, then end
+          // the response. The underlying throw on the next iteration is caught
+          // by the outer handler — persistence is already skipped because we
+          // never reach addMessage on this path. The partial fullText is
+          // discarded by virtue of returning here.
+          logger.warn(
+            { reason: event.reason, deltasBeforeError: event.deltasBeforeError, fullTextLength: fullText.length },
+            'Addie Chat Stream: Stream interrupted mid-reply — discarding partial turn'
+          );
+          sendEvent("stream_error", {
+            reason: event.reason,
+            deltasBeforeError: event.deltasBeforeError,
+            recoverable: true,
+          });
+          res.end();
+          return;
         } else if (event.type === 'done') {
           response = event.response;
         } else if (event.type === 'error') {

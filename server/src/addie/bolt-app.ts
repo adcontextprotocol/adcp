@@ -1652,6 +1652,11 @@ async function handleUserMessage({
   let fullText = '';
   const toolsUsed: string[] = [];
   const toolExecutions: { tool_name: string; parameters: Record<string, unknown>; result: string }[] = [];
+  // Mid-stream upstream failure tracking (#4797). When set, we render a recovery
+  // banner in Slack and skip persisting the partial turn so prompt assembly for
+  // the next turn doesn't feed the model a truncated assistant message.
+  let streamWasInterrupted = false;
+  let streamInterruptReason = '';
 
   try {
     // Get team ID from context for streaming
@@ -1734,6 +1739,30 @@ async function handleUserMessage({
             await setStatus(`${event.reason}, retrying (${event.attempt}/${event.maxRetries})...`);
           } catch {
             // Ignore status update errors
+          }
+        } else if (event.type === 'stream_error') {
+          // Mid-stream upstream failure after partial delivery (#4797). Render
+          // the recovery banner in place, finalize the Slack message with
+          // feedback buttons, and mark the turn so the outer catch skips
+          // persistence. The original error throws on the next iteration of
+          // the underlying stream — control will continue to the outer catch.
+          streamWasInterrupted = true;
+          streamInterruptReason = event.reason;
+          logger.warn(
+            { reason: event.reason, deltasBeforeError: event.deltasBeforeError, fullTextLength: fullText.length },
+            'Addie Bolt: Stream interrupted mid-reply — discarding partial turn'
+          );
+          try {
+            await streamer.append({
+              markdown_text: `\n\n_(${event.reason} — I didn't save this response. Ask again and I'll start over.)_`,
+            });
+          } catch (appendError) {
+            logger.warn({ appendError }, 'Addie Bolt: Recovery banner append failed');
+          }
+          try {
+            await streamer.stop({ blocks: [buildFeedbackBlock()] });
+          } catch (stopError) {
+            logger.warn({ stopError }, 'Addie Bolt: Streamer stop after interruption failed');
           }
         } else if (event.type === 'done') {
           response = event.response;
@@ -1838,6 +1867,39 @@ async function handleUserMessage({
       }
     }
   } catch (error) {
+    // Stream interrupted mid-reply (#4797): recovery banner already rendered
+    // inline when the stream_error event fired. Skip persistence of the
+    // partial turn — the user's message remains the most recent turn so a
+    // retry or rephrase replays cleanly without a truncated assistant
+    // message biasing the resample.
+    if (streamWasInterrupted) {
+      logger.info(
+        { reason: streamInterruptReason, partialLength: fullText.length },
+        'Addie Bolt: Skipping persistence for interrupted stream turn'
+      );
+      // Preserve security-audit symmetry: the user message already wrote a
+      // row upstream (line 1599). Emit a minimal interrupted-turn row so
+      // forensics for an Anthropic-degraded window doesn't show a wall of
+      // user inputs with no matching assistant rows.
+      logInteraction({
+        id: thread.thread_id,
+        timestamp: new Date(),
+        event_type: 'assistant_thread',
+        channel_id: channelId,
+        thread_ts: threadTs,
+        user_id: userId,
+        input_text: messageText || '',
+        input_sanitized: inputValidation.sanitized,
+        output_text: '',
+        tools_used: toolsUsed,
+        model: AddieModelConfig.chat,
+        latency_ms: Date.now() - startTime,
+        flagged: true,
+        flag_reason: `stream_interrupted: ${streamInterruptReason}`,
+      });
+      return;
+    }
+
     // Provide user-friendly error message based on error type
     let errorMessage: string;
     if (error instanceof Error && error.message.includes('prompt is too long')) {
