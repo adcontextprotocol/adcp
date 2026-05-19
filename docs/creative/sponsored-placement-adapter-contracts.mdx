@@ -1,6 +1,7 @@
 ---
 title: Sponsored Placement adapter contracts
-description: Four runtime contract families that ship under the single sponsored_placement canonical
+description: "Four runtime contract families that ship under the single sponsored_placement canonical — Amazon SP, Criteo/CitrusAd, Pinterest/Snap Collection, generative-per-SKU."
+"og:title": "AdCP — Sponsored Placement adapter contracts"
 ---
 
 The `sponsored_placement` canonical covers retail-media catalog-driven creative — Amazon SP, Criteo SP, CitrusAd SP, Pinterest Collection, generative-per-SKU. The schema captures the binary axes (`composition_model`, `fanout_mode`, `item_production_model`) but the runtime contract — fan-out semantics, catalog-asset wiring, per-adopter tracking — differs enough between adopter families that a manifest validating against `sponsored_placement` tells the buyer little about whether it will actually serve on a given retail-media network.
