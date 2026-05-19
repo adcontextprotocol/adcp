@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.1/error-details/action-not-allowed.json",
+  "title": "Action Not Allowed Details",
+  "description": "Details payload for ACTION_NOT_ALLOWED errors. Lets buyer SDKs offer a structured recovery path without a separate get_media_buys round-trip.",
+  "type": "object",
+  "properties": {
+    "attempted_action": {
+      "$ref": "/schemas/3.1.0-beta.1/enums/media-buy-valid-action.json",
+      "description": "The action the request mapped to, per the normative action-to-field mapping in update_media_buy task-reference."
+    },
+    "reason": {
+      "$ref": "/schemas/3.1.0-beta.1/enums/action-not-allowed-reason.json",
+      "description": "Why the action was rejected. Buyer SDKs branch on this to choose a recovery path."
+    },
+    "currently_available_actions": {
+      "type": "array",
+      "description": "Echo of the buy's resolved `available_actions[]` at rejection time. Buyer SDKs render this to the caller as the recovery option set.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.1/core/media-buy-available-action.json"
+      },
+      "uniqueItems": true
+    }
+  },
+  "required": ["attempted_action", "reason"],
+  "additionalProperties": true
+}
