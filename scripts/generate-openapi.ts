@@ -132,8 +132,19 @@ const outPath = path.join(__dirname, "..", "static", "openapi", "registry.yaml")
 // the generator unions its tracked output with anything already on disk,
 // preserving fields the Zod registry doesn't own. Generator wins on
 // conflicts so Zod-backed paths remain the source of truth.
-if (fs.existsSync(outPath)) {
-  const existingYaml = fs.readFileSync(outPath, "utf-8");
+// Read existing yaml in a single syscall — using existsSync followed by
+// readFileSync is a TOCTOU race CodeQL flags (the file could change between
+// the check and the read). ENOENT is the only error we treat as "no prior
+// yaml"; any other I/O error rethrows.
+let existingYaml: string | null = null;
+try {
+  existingYaml = fs.readFileSync(outPath, "utf-8");
+} catch (err) {
+  if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+    throw err;
+  }
+}
+if (existingYaml !== null) {
   const existingDoc = YAML.parse(existingYaml) as any;
 
   if (existingDoc?.paths) {
