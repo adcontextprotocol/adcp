@@ -21,6 +21,7 @@ import { storePreview } from './preview-store.js';
 
 const require = createRequire(import.meta.url);
 const referenceFormatsData = require('./reference-formats.json');
+const uiElementFormatsData = require('./ui-element-formats.json');
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -36,9 +37,17 @@ const MAX_BATCH_SIZE = 20;
 /**
  * Build formats with agent_url rewritten to the local endpoint.
  * Source data is the exact format catalog from the live creative.adcontextprotocol.org agent.
+ * Unions reference-formats (50 ad formats with canonical: {kind,...} annotations) with
+ * ui-element-formats (7 card scaffolding formats used by training-agent + preview-renderer).
+ * Cards are emitted in list_creative_formats so consumers (training-agent product-factory,
+ * preview-renderer) can resolve them by format_id; they are NOT ad formats and never project
+ * to ad canonicals.
  */
 export function buildReferenceFormats(agentUrl: string): Format[] {
-  const formats = structuredClone(referenceFormatsData) as Format[];
+  const formats = [
+    ...structuredClone(referenceFormatsData) as Format[],
+    ...structuredClone(uiElementFormatsData) as Format[],
+  ];
   for (const f of formats) {
     const fid = f.format_id as { agent_url: string; id: string };
     fid.agent_url = agentUrl;

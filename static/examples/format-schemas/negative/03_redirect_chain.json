@@ -1,0 +1,16 @@
+{
+  "test_id": "fetch-contract-neg-03-redirect-chain",
+  "category": "transport",
+  "description": "Origin responds 302 to a different URL. SDK MUST disable HTTP redirects and treat the 302 as a hard failure (NOT follow).",
+  "setup": {
+    "request_uri": "https://example.com/extensions/redirected",
+    "declared_digest": "sha256:<irrelevant>",
+    "response_status": 302,
+    "response_headers": {
+      "Location": "https://creative.adcontextprotocol.org/extensions/elsewhere"
+    }
+  },
+  "expected_outcome": "fail:transport",
+  "expected_error_code": "FORMAT_PROJECTION_FAILED",
+  "rationale": "Open redirects are a free SSRF primitive. The contract requires redirects disabled. If a follow IS implemented, the redirect target MUST pass the same scheme + SSRF + allowlist checks \u2014 but the simpler and stricter posture is no-follow."
+}
