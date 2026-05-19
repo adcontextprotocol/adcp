@@ -62,8 +62,8 @@
           },
           "asset_type": {
             "type": "string",
-            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "catalog", "zip", "card", "object"],
-            "description": "Discriminator selecting the asset schema this slot accepts. SDK codegen uses this to type the slot value. `card` is the multi-card carousel element type (see card-asset.json). `object` is a last-resort fallback for structured non-asset inputs that don't fit any primitive asset_type — prefer specific types whenever possible."
+            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "catalog", "zip", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"],
+            "description": "Discriminator selecting the asset schema this slot accepts. SDK codegen uses this to type the slot value. `card` is the multi-card carousel element type (see card-asset.json). `pixel_tracker` / `vast_tracker` / `daast_tracker` are the renderer-fired measurement-tracker primitives — see `/schemas/core/assets/pixel-tracker-asset.json` and the VAST / DAAST tracker schemas. `object` is a last-resort fallback for structured non-asset inputs that don't fit any primitive asset_type — prefer specific types whenever possible."
           },
           "required": {
             "type": "boolean",
@@ -118,9 +118,9 @@
             "then": { "not": { "required": ["max_chars"] } }
           },
           {
-            "$comment": "Non-size asset types (url, catalog, html, css, javascript, webhook, daast, vast, card, object) reject both — there's no defined per-slot size semantics on those.",
+            "$comment": "Non-size asset types (url, catalog, html, css, javascript, webhook, daast, vast, card, object, pixel_tracker, vast_tracker, daast_tracker) reject both — there's no defined per-slot size semantics on those.",
             "if": {
-              "properties": { "asset_type": { "enum": ["url", "catalog", "html", "css", "javascript", "webhook", "daast", "vast", "card", "object"] } },
+              "properties": { "asset_type": { "enum": ["url", "catalog", "html", "css", "javascript", "webhook", "daast", "vast", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"] } },
               "required": ["asset_type"]
             },
             "then": {

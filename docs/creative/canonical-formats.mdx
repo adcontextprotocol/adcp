@@ -861,6 +861,21 @@ A retail-media product that accepts a catalog reference plus a brief, and render
 
 `item_production_model: seller_pre_rendered_from_brief` says: for each catalog item, the seller renders ONE creative using the brief plus the catalog item's structured fields (title, image, price). `fanout_mode: per_item` says each item gets its own ad in delivery. Together they capture the multi-output generative pattern (1 brief × N items → N ads) under the existing `sponsored_placement` canonical.
 
+## Worked example — Pinterest: which canonical?
+
+Pinterest is the canonical disambiguation example because a single platform sells inventory under two structurally different shapes. Buyer agents reading these products must route to the matching canonical or the manifest won't render.
+
+| Pinterest product | Canonical | Why |
+|---|---|---|
+| **Promoted Pin** (sponsored single Pin in the home/search feed) | `native_in_feed` | Asset-bundle composition — buyer ships title + image + body + landing URL; Pinterest's renderer assembles the Pin to match feed look-and-feel. No catalog feed; the buyer-supplied bundle IS the creative. |
+| **Pinterest Collection** (single hero image + 3 product thumbnails sourced from a catalog) | `sponsored_placement` | Catalog-keyed — buyer ships a `source_catalog` reference (and an optional `hero_asset`); Pinterest composes the per-item thumbnails by reading product catalog rows. `fanout_mode: multi_item_in_creative` distinguishes Collection from per-item retail-media SP. |
+| **Pinterest Idea Pin** (multi-page swipeable native unit; pages may be image or video) | `image_carousel` | Multi-card swipe shape — the carousel canonical's per-card slot is polymorphic image-or-video, which matches Idea Pin pages that mix the two within one Pin. |
+| **Pinterest Shopping Pin** (single product Pin keyed to a catalog row) | `sponsored_placement` with `fanout_mode: single_item` | Single rendered creative pulled from one catalog item — still catalog-keyed composition, just one item per ad. |
+
+The cleave is **asset-bundle vs catalog-row composition**, not "is it Pinterest." Same logic applies to Snap Story Ad (native_in_feed) vs Snap Collection (sponsored_placement), TikTok TopView (native_in_feed via `applies_to_channels: ["social"]`) vs TikTok Collection (sponsored_placement), and so on. Buyer agents route on the composition shape; the publisher's brand of the surface is incidental.
+
+A buyer agent reading a `format_kind: native_in_feed` product knows to assemble the title/image/body/CTA bundle from its own creative pool. Reading `format_kind: sponsored_placement`, it knows to attach a catalog feed and let the seller compose per-item. The discriminator carries the decision; no per-platform branching needed.
+
 ## Validation flow — `validate_input`
 
 Buyers can dry-run a manifest against canonicals and/or specific products without committing to a render. The buyer's manifest below is a v2 manifest (`format_kind: "video_hosted"`); the slot key is the canonical's `asset_group_id` (`video_main`); the asset value carries its `asset_type` discriminator. The buyer asks `validate_input` to check both the canonical contract AND the seller's specific product narrowing in a single round-trip:
