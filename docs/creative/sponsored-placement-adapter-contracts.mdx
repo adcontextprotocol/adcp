@@ -1,0 +1,76 @@
+---
+title: Sponsored Placement adapter contracts
+description: Four runtime contract families that ship under the single sponsored_placement canonical
+---
+
+The `sponsored_placement` canonical covers retail-media catalog-driven creative — Amazon SP, Criteo SP, CitrusAd SP, Pinterest Collection, generative-per-SKU. The schema captures the binary axes (`composition_model`, `fanout_mode`, `item_production_model`) but the runtime contract — fan-out semantics, catalog-asset wiring, per-adopter tracking — differs enough between adopter families that a manifest validating against `sponsored_placement` tells the buyer little about whether it will actually serve on a given retail-media network.
+
+This page documents the four contract families, what runtime status each is `preview`-ready in, and the adopter-specific quirks that don't live in the schema. The canonical stays `preview` past 3.1 GA until at least two retail-media networks ship `format_schema` evidence (see [`canonical-formats.mdx` §`experimental` — one field, both axes](/docs/creative/canonical-formats#experimental--one-field-both-axes)).
+
+## The four contract families
+
+| Family | `composition_model` | `fanout_mode` | `item_production_model` | Adopters |
+|---|---|---|---|---|
+| **Retail-media deterministic, buyer-uploaded** | `deterministic` | `per_item` | `buyer_pre_rendered` | Amazon SP |
+| **Retail-media network-composed** | `deterministic` | `per_item` | `seller_pre_rendered_from_brief` | Criteo SP, CitrusAd SP |
+| **Collection-layout per impression** | `deterministic` (debatable) | `multi_item_in_creative` | `buyer_pre_rendered` | Pinterest Collection, Snap Collection |
+| **Generative-per-SKU** | algorithmic in practice | `per_item` | `seller_pre_rendered_from_brief` | Vendor-specific (Pencil, Persado, vertical retail-media platforms) |
+
+### 1. Retail-media deterministic, buyer-uploaded (Amazon SP)
+
+The buyer uploads the catalog assets (product image, headline, description) via `sync_creatives`. The retail-media network ingests the catalog row + assets and serves them deterministically against query/category triggers — no fan-out at render time. The buyer can predict per-impression rendering.
+
+- **Catalog-asset contract:** buyer supplies one creative per catalog item; the `source_catalog` slot points at the buyer's product feed; per-item assets are required.
+- **Tracking:** Amazon ASIN + standard retail-media event vocabulary. Per-item attribution maps to the catalog row's identifier.
+- **Adopter quirks:** Amazon's category-trigger system means the same uploaded creative may serve under different category contexts — buyers MUST treat impression-level category as untrusted-by-creative-shape; rely on Amazon's reporting for category attribution.
+- **`runtime_status` readiness:** `preview` is appropriate. Most predictable family; `format_schema` evidence from Amazon would promote toward `stable`.
+
+### 2. Retail-media network-composed (Criteo SP, CitrusAd SP)
+
+The buyer supplies a brief + brand assets (logo, brand colors); the retail-media network composes the placement against its own catalog + design templates. The buyer cannot predict per-impression rendering at the asset-bundle level, only at the brand-direction level.
+
+- **Catalog-asset contract:** buyer supplies brief + brand assets; the `source_catalog` is the *seller's* catalog (the retail-media network's product index), not the buyer's. The buyer's product references are matched to seller-catalog rows via SKU / GTIN / category.
+- **Tracking:** retail-media network's own event vocabulary; buyer attribution maps through the network's reporting API, not direct creative events.
+- **Adopter quirks:** Criteo's composition logic varies by retailer integration — the same buyer brief produces different placements on Walmart vs. Target vs. Best Buy via Criteo. Buyers MUST treat per-retailer rendering as opaque and rely on Criteo's aggregated reporting.
+- **`runtime_status` readiness:** `preview` is appropriate. The composition opacity is the gap to `stable` promotion — `format_schema` evidence would need to document the per-retailer variability.
+
+### 3. Collection-layout per impression (Pinterest Collection, Snap Collection)
+
+The buyer supplies a hero image + a collection of catalog items; the surface picks the collection layout per impression (grid, carousel, cover + reveal). `composition_model: deterministic` is technically true at the asset level but loose at the layout level.
+
+- **Catalog-asset contract:** buyer supplies one creative with a hero asset slot + an items array (each item: image + caption + URL). The `source_catalog` slot is the buyer's curated item collection, not a full product feed.
+- **Tracking:** Pinterest's collection-item events (`collection_item_click`, `collection_close_up`) plus standard impression/click. Per-item attribution available; layout-variant attribution is not exposed.
+- **Adopter quirks:** Snap Collection's "cover + reveal" layout requires a specific aspect ratio and asset count combination — schema doesn't enforce; buyers SHOULD pre-validate before sync.
+- **`runtime_status` readiness:** `preview` is appropriate. The "deterministic" claim survives at the asset level but layout variability blocks `stable` without per-surface conformance evidence.
+
+### 4. Generative-per-SKU (vendor-specific)
+
+The buyer supplies a brief + catalog reference; the seller's generative pipeline produces a unique creative per SKU. 1 brief × N catalog items → N rendered creatives. `composition_model` is effectively algorithmic — each output is a fresh generative composition against the brief.
+
+- **Catalog-asset contract:** buyer supplies the brief + a catalog scope (SKUs, categories, or full feed); the seller produces creatives via `build_creative` with `item_production_model: seller_pre_rendered_from_brief` and `fanout_mode: per_item`. The `source_catalog` slot is the buyer's product feed; assets are seller-generated.
+- **Tracking:** generative-output ID + buyer's catalog-item key (SKU/GTIN). Buyers SHOULD treat each generated creative as a distinct rendered output with its own performance signal, not as a copy of the brief.
+- **Adopter quirks:** generative seeds and prompts are typically not exposed back to the buyer; buyers cannot reproduce a specific generation. Plan for re-generation cycles rather than asset-edit cycles.
+- **`runtime_status` readiness:** `declared_only` until generative-quality evidence is documented per-adopter. `preview` is misleading — the composition is opaque to the buyer in a way `preview` doesn't capture.
+
+## `runtime_status` interaction matrix
+
+| Family | `preview` | `declared_only` | `stable` |
+|---|---|---|---|
+| Retail-media deterministic, buyer-uploaded | ✅ ready | n/a | gated on Amazon `format_schema` evidence |
+| Retail-media network-composed | ✅ ready | n/a | gated on per-retailer variability documentation |
+| Collection-layout per impression | ✅ ready | n/a | gated on per-surface conformance evidence |
+| Generative-per-SKU | ⚠ misleading | ✅ default | gated on generative-quality evidence; may not promote without per-vendor framing |
+
+`runtime_status` lives on the product (not the creative); see [`canonical-formats.mdx` §runtime status](/docs/creative/canonical-formats) for the field-level contract.
+
+## What this page is not
+
+- **Not a normative spec extension.** The four families share the existing `sponsored_placement` schema; this doc names the variability sellers and buyers will encounter against the canonical, but adds no required fields.
+- **Not a promotion gate.** The canonical's promotion to `stable` is gated on `format_schema` evidence across at least two adopters, per [canonical-formats.mdx](/docs/creative/canonical-formats). This page documents what `format_schema` evidence will need to cover for each family.
+- **Not exhaustive.** Adopters whose runtime contract doesn't fit one of the four families above SHOULD file an issue against the canonical-formats track so the matrix can be extended.
+
+## Refs
+
+- [#3307](https://github.com/adcontextprotocol/adcp/pull/3307) — original `sponsored_placement` canonical
+- [#4592](https://github.com/adcontextprotocol/adcp/issues/4592) — this doc
+- [`canonical-formats.mdx`](/docs/creative/canonical-formats) — overall canonical-formats vocabulary
