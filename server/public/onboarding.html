@@ -438,6 +438,24 @@
   <div class="container">
     <div id="loading" class="loading">Loading...</div>
 
+    <!-- Name capture: shown when WorkOS + Slack fallbacks both came back empty -->
+    <div id="nameCaptureSection" style="display: none;">
+      <h1>What should we call you?</h1>
+      <p class="subtitle">We use this on certificates, member announcements, and conversations with Addie. You can change it anytime in your profile.</p>
+      <div id="nameCaptureError" class="error" style="display: none; margin-bottom: var(--space-3);"></div>
+      <form id="nameCaptureForm" style="display: flex; flex-direction: column; gap: var(--space-3);">
+        <div class="form-group">
+          <label for="nameCaptureFirst" style="display: block; margin-bottom: var(--space-1); font-weight: var(--font-medium);">First name</label>
+          <input type="text" id="nameCaptureFirst" required autocomplete="given-name" maxlength="255" autofocus>
+        </div>
+        <div class="form-group">
+          <label for="nameCaptureLast" style="display: block; margin-bottom: var(--space-1); font-weight: var(--font-medium);">Last name <span style="color: var(--color-text-muted); font-weight: normal;">(optional)</span></label>
+          <input type="text" id="nameCaptureLast" autocomplete="family-name" maxlength="255">
+        </div>
+        <button type="submit" class="btn" id="nameCaptureSubmit" style="margin-top: var(--space-2);">Continue</button>
+      </form>
+    </div>
+
     <div id="mainContent" style="display: none;">
       <h1>Welcome to AgenticAdvertising.org<span id="welcomeName"></span></h1>
       <p class="subtitle">How would you like to get started?</p>
@@ -888,6 +906,17 @@
 
         const data = await response.json();
         currentUser = data.user;
+
+        // Gate: when WorkOS + Slack fallbacks both produced no name, ask the
+        // user before letting them proceed. Credentials, member announcements,
+        // and Addie all read users.first_name; "undefined undefined" on a
+        // certificate (escalation #382) was the symptom of skipping this.
+        const hasName = (currentUser.first_name || '').trim().length > 0;
+        if (!hasName) {
+          document.getElementById('loading').style.display = 'none';
+          document.getElementById('nameCaptureSection').style.display = 'block';
+          return;
+        }
 
         const urlParams = new URLSearchParams(window.location.search);
         const personalMode = urlParams.get('mode') === 'personal';
@@ -1402,6 +1431,43 @@
     // Add listeners to revenue tier radio buttons
     document.querySelectorAll('input[name="revenueTier"]').forEach(function(radio) {
       radio.addEventListener('change', updateCompanyPricing);
+    });
+
+    // Name capture form — submits to PUT /api/me/name, then re-runs init
+    // so the regular onboarding flow proceeds with the captured name.
+    document.getElementById('nameCaptureForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      var first = document.getElementById('nameCaptureFirst').value.trim();
+      var last = document.getElementById('nameCaptureLast').value.trim();
+      var errorEl = document.getElementById('nameCaptureError');
+      var submitBtn = document.getElementById('nameCaptureSubmit');
+      errorEl.style.display = 'none';
+      if (!first) {
+        errorEl.textContent = 'First name is required.';
+        errorEl.style.display = 'block';
+        return;
+      }
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Saving…';
+      try {
+        var resp = await fetch('/api/me/name', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ first_name: first, last_name: last || null }),
+        });
+        if (!resp.ok) {
+          var err = await resp.json().catch(function() { return null; });
+          throw new Error((err && err.error) || 'Could not save your name. Please try again.');
+        }
+        document.getElementById('nameCaptureSection').style.display = 'none';
+        document.getElementById('loading').style.display = 'block';
+        await init();
+      } catch (e) {
+        errorEl.textContent = e.message || 'Could not save your name. Please try again.';
+        errorEl.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Continue';
+      }
     });
 
     // Create organization form

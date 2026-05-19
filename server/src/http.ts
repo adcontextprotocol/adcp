@@ -53,6 +53,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { isUuid } from "./utils/uuid.js";
+import { resolveUserNameWithFallbacks } from "./utils/resolve-user-name.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
@@ -6502,10 +6503,14 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         logger.info({ userId: user.id }, 'User authenticated via OAuth callback');
 
         // Ensure user exists in local users table (webhooks may have been missed).
-        // On INSERT, use WorkOS values. On UPDATE, preserve user-set names:
-        // only fill in names that are currently empty in the DB.
+        // On INSERT, use WorkOS values — falling back to existing DB / Slack
+        // mapping when WorkOS itself has empty names. On UPDATE, preserve
+        // user-set names: only fill in names that are currently empty.
         try {
           const pool = getPool();
+          const { firstName, lastName } = await resolveUserNameWithFallbacks(
+            pool, user.id, user.firstName, user.lastName,
+          );
           await pool.query(
             `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
@@ -6516,7 +6521,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
                email_verified = EXCLUDED.email_verified,
                workos_updated_at = EXCLUDED.workos_updated_at,
                updated_at = NOW()`,
-            [user.id, user.email, user.firstName, user.lastName, user.emailVerified, user.createdAt, user.updatedAt]
+            [user.id, user.email, firstName, lastName, user.emailVerified, user.createdAt, user.updatedAt]
           );
         } catch (upsertError) {
           logger.error({ error: upsertError, userId: user.id }, 'Failed to upsert user on login');
@@ -7376,6 +7381,21 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           `UPDATE organization_memberships SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
           [firstName, lastName, user.id]
         );
+
+        // Push back to WorkOS so subsequent webhooks / SDK reads don't show
+        // empty names. Best-effort: a transient WorkOS failure shouldn't fail
+        // the user's local name update.
+        try {
+          if (workos) {
+            await workos.userManagement.updateUser({
+              userId: user.id,
+              firstName,
+              lastName: lastName ?? undefined,
+            });
+          }
+        } catch (workosError) {
+          logger.warn({ err: workosError, userId: user.id }, 'Failed to push name to WorkOS (local update applied)');
+        }
 
         invalidateMemberContextCache();
         logger.info({ userId: user.id, firstName, lastName }, 'User updated their display name');
