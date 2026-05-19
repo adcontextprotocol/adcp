@@ -2176,8 +2176,11 @@
           throw new Error(data.error || 'Failed to connect');
         }
 
-        // Replace the form with a success message and reload after a moment
-        form.innerHTML = '<div class="agent-connect-msg" style="color:var(--color-success-600);">Connected. Compliance check will run on the next heartbeat cycle.</div>';
+        // Replace the form with a success message and reload after a moment.
+        // The server re-probes with the new credentials before responding, so
+        // the reload shows fresh compliance state — no waiting for the next
+        // heartbeat.
+        form.innerHTML = '<div class="agent-connect-msg" style="color:var(--color-success-600);">Connected and re-checked.</div>';
         setTimeout(() => location.reload(), 1500);
       } catch (err) {
         saveBtn.disabled = false;

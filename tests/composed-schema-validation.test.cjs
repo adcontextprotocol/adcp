@@ -762,6 +762,7 @@ async function runTests() {
       await testBundledSchemaValidation(
         path.join(bundledPath, 'media-buy/get-products-response.json'),
         {
+          cache_scope: 'public',
           products: [
             {
               product_id: 'test_product',

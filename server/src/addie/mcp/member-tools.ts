@@ -4019,10 +4019,44 @@ export function createMemberToolHandlers(
 
     let output = '';
     if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
+    else if (resolved.source === 'oauth') output += '_Using saved OAuth credentials._\n\n';
     output += `## Agent: ${safeAgentName || resolved.resolvedUrl}\n\n`;
 
-    // No capabilities declared → coach the developer on how to fix it.
+    // No capabilities declared — disambiguate: auth failure vs. genuinely
+    // undeployed agent. When Addie used saved or OAuth credentials, an empty
+    // response most likely means auth didn't reach the agent (malformed
+    // credential, header silently dropped by the SDK, agent degraded to anon).
+    // Blaming the agent owner is wrong in this case; emit an auth diagnosis
+    // instead. Fall through to the developer-coaching path only when no
+    // credentials were expected.
     if (supportedProtocols.length === 0 && specialisms.length === 0) {
+      if (resolved.source === 'saved' || resolved.source === 'oauth' || resolved.source === 'explicit') {
+        // 'explicit' is a test/internal codepath (caller passed a raw token directly);
+        // label and remediation match `saved` since the diagnosis steps are identical.
+        // The four ResolvedAgentAuth.source variants ('explicit'|'saved'|'oauth'|'public'|'none')
+        // are an exhaustive enum from line 223; if a new variant is added, extend this branch.
+        const authLabel = resolved.source === 'oauth' ? 'OAuth token' : resolved.source === 'explicit' ? 'the provided token' : 'saved credentials';
+        const reSaveStep = resolved.source === 'oauth'
+          ? 'reconnect the OAuth provider — the access token may have expired or had its scope revoked'
+          : 'run `save_agent` again with the correct credentials';
+        // Render the agent URL inside inline-code backticks rather than
+        // interpolating into a copy-pasteable `curl "..."` example.
+        // sanitizeAgentField strips control chars and backticks but does not
+        // escape shell metacharacters (`"`, `$`, `\``), so an in-prose URL
+        // with crafted content would be a copy-paste foot-gun.
+        const safeUrl = sanitizeAgentField(resolved.resolvedUrl, 300);
+        output += `I tested your agent using your ${authLabel}, but got back an empty capabilities response — no \`supported_protocols\` and no \`specialisms\`.\n\n`;
+        if (probeError) {
+          const safeProbeErr = fenceAgentValue(probeError, 300);
+          output += `The agent reported: ${safeProbeErr || '(no detail)'}\n\n`;
+        }
+        output += `This usually means the credentials didn't reach the agent:\n\n`;
+        output += `1. **Verify the credentials work:** call \`${safeUrl}\` directly with your credentials (e.g. via curl or Postman) and confirm \`supported_protocols\` appears in the response.\n`;
+        output += `2. **Re-save if needed:** ${reSaveStep}.\n`;
+        output += `3. **Check the SDK version:** if you're using \`@adcp/sdk\`, make sure it's up to date — older versions have a known issue that drops the auth header on the capabilities precheck path.\n\n`;
+        output += `If credentials look correct and the SDK is current, the agent may be returning an anonymous-shaped response for unrecognized auth rather than a 401. Confirm the agent accepts the auth scheme and credential format you saved.\n`;
+        return output;
+      }
       output += `Your agent didn't tell us what it does yet.\n\n`;
       if (probeError) {
         const safeProbeErr = fenceAgentValue(probeError, 300);

@@ -266,6 +266,26 @@ Returned when the buy cannot be confirmed synchronously — e.g., guaranteed buy
 
 **Note**: Responses are mutually exclusive across these three shapes. Dispatch on `status` first: `"submitted"` → async envelope, otherwise check `errors` before accessing success fields.
 
+### When to return Submitted vs synchronous Success (normative)
+
+The choice between `submitted` and synchronous success is **per-call**, driven by per-product attributes and the seller's policy on each specific create — not a uniform per-seller rule. A sales-guaranteed seller may legitimately return synchronous success on some `create_media_buy` calls and `submitted` on others within the same session; conformant SDK skills MUST NOT instruct agents to return `submitted` for every `create_media_buy` regardless of input. Sellers that uniformly return `submitted` fail the non-IO-approval paths in the `sales-guaranteed` compliance storyboard.
+
+Sellers MUST return `submitted` when:
+
+- The request references one or more products with `delivery_type: "guaranteed"` **and** the seller declares the `requires_io_approval` capability — the human-approval handshake cannot complete inside the response. The completion artifact is delivered via `tasks/get` or webhook once IO signing finishes.
+- The request triggers a seller-side governance review that cannot complete synchronously (e.g., manual brand-safety review for a regulated vertical).
+- The request enters a batched-processing queue the seller cannot drain inside the response timeout.
+
+Sellers MUST return synchronous success when:
+
+- All referenced products have `delivery_type: "non_guaranteed"`. The buy is created and acknowledged in-line; `media_buy_id` and `packages` are issued immediately. This applies regardless of the seller's specialism — a sales-guaranteed seller serving a non-guaranteed product returns synchronous success.
+- The request references guaranteed products and the seller does NOT declare `requires_io_approval` (rare; typically retail-SKU or quoted-rate guaranteed flows where the seller has pre-cleared approval).
+- The buy enters a known non-terminal state immediately observable to the buyer (`pending_creatives` / `pending_start` / `active`).
+
+The compliance grader observes both paths against the same seller via separate storyboard scenarios: the `create_buy_submitted` scenario seeds a guaranteed product with `requires_io_approval`; four shared scenarios (`measurement_terms_rejected`, `pending_creatives_to_start`, `inventory_list_targeting`, `invalid_transitions`) seed non-guaranteed products and expect synchronous `media_buy_id` returns. Sellers that return `submitted` on the synchronous-expected scenarios fail compliance — see [`sales-guaranteed` specialism](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/specialisms/sales-guaranteed) for the fixture pattern (non-guaranteed products listed first so open-brief `get_products` calls resolve to a synchronous-create path).
+
+This rule resolves the skill ↔ storyboard contradiction tracked at [#3822](https://github.com/adcontextprotocol/adcp/issues/3822): an SDK skill that instructs agents to "return a task envelope for every `create_media_buy`" is non-conformant; the correct skill instructs agents to dispatch on per-product `delivery_type` and the seller's `requires_io_approval` capability.
+
 ## Common Scenarios
 
 ### Campaign with Targeting

@@ -120,10 +120,14 @@ export class MemberDatabase {
   }
 
   /**
-   * Get profile by primary brand domain. Brand-primary lives on
-   * `organization_domains.is_primary=true` post-Stage-2 (#4159), so this
-   * joins through the org_id rather than reading a column directly off
-   * member_profiles.
+   * Resolve a member profile by any linked domain on the owning org.
+   * Matches the other domain→org lookups in the codebase
+   * (`organization-domains-db.ts`, `me-organization-domains.ts`,
+   * `domain-resolution-db.ts`) — `organization_domains.UNIQUE(domain)`
+   * guarantees the join is unambiguous. We previously filtered on
+   * `is_primary = true`, which silently dropped orgs whose linked domain
+   * was registered as secondary and made `/api/registry/operator?domain=…`
+   * return `member: null` for legitimate members.
    */
   async getProfileByDomain(domain: string): Promise<MemberProfile | null> {
     const result = await query<MemberProfile>(
@@ -131,7 +135,6 @@ export class MemberDatabase {
          FROM member_profiles mp
          JOIN organization_domains od
            ON od.workos_organization_id = mp.workos_organization_id
-          AND od.is_primary = true
         WHERE LOWER(od.domain) = LOWER($1)
         LIMIT 1`,
       [domain]
