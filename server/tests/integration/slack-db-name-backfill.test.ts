@@ -73,42 +73,42 @@ describe.skipIf(!process.env.DATABASE_URL)('SlackDatabase.mapUser name backfill'
   it('fills first/last from slack_real_name when both are NULL', async () => {
     const workosUserId = await seedUser('a');
     const slackUserId = await seedSlackUser('a', { real: 'Lillie Ratliff', display: 'lillie' });
-    await slackDb.mapUser({ slack_user_id: slackUserId, workos_user_id: workosUserId, mapping_source: 'admin' });
+    await slackDb.mapUser({ slack_user_id: slackUserId, workos_user_id: workosUserId, mapping_source: 'manual_admin' });
     expect(await getUserName(workosUserId)).toEqual({ first_name: 'Lillie', last_name: 'Ratliff' });
   });
 
   it('falls back to slack_display_name when real_name is missing', async () => {
     const workosUserId = await seedUser('b');
     const slackUserId = await seedSlackUser('b', { real: null, display: 'Daniel Di Tullio' });
-    await slackDb.mapUser({ slack_user_id: slackUserId, workos_user_id: workosUserId, mapping_source: 'admin' });
+    await slackDb.mapUser({ slack_user_id: slackUserId, workos_user_id: workosUserId, mapping_source: 'manual_admin' });
     expect(await getUserName(workosUserId)).toEqual({ first_name: 'Daniel', last_name: 'Di Tullio' });
   });
 
   it('handles single-word Slack names without inventing a last name', async () => {
     const workosUserId = await seedUser('c');
     const slackUserId = await seedSlackUser('c', { real: 'Cher', display: null });
-    await slackDb.mapUser({ slack_user_id: slackUserId, workos_user_id: workosUserId, mapping_source: 'admin' });
+    await slackDb.mapUser({ slack_user_id: slackUserId, workos_user_id: workosUserId, mapping_source: 'manual_admin' });
     expect(await getUserName(workosUserId)).toEqual({ first_name: 'Cher', last_name: null });
   });
 
   it('does NOT overwrite existing user-set names', async () => {
     const workosUserId = await seedUser('d', { first: 'Kept', last: 'Original' });
     const slackUserId = await seedSlackUser('d', { real: 'Different Person', display: null });
-    await slackDb.mapUser({ slack_user_id: slackUserId, workos_user_id: workosUserId, mapping_source: 'admin' });
+    await slackDb.mapUser({ slack_user_id: slackUserId, workos_user_id: workosUserId, mapping_source: 'manual_admin' });
     expect(await getUserName(workosUserId)).toEqual({ first_name: 'Kept', last_name: 'Original' });
   });
 
   it('fills only the missing half when one of first/last is already set', async () => {
     const workosUserId = await seedUser('e', { first: 'Davide', last: null });
     const slackUserId = await seedSlackUser('e', { real: 'Davide Astuto', display: null });
-    await slackDb.mapUser({ slack_user_id: slackUserId, workos_user_id: workosUserId, mapping_source: 'admin' });
+    await slackDb.mapUser({ slack_user_id: slackUserId, workos_user_id: workosUserId, mapping_source: 'manual_admin' });
     expect(await getUserName(workosUserId)).toEqual({ first_name: 'Davide', last_name: 'Astuto' });
   });
 
   it('does nothing when the Slack mapping has no names', async () => {
     const workosUserId = await seedUser('f');
     const slackUserId = await seedSlackUser('f', { real: null, display: null });
-    await slackDb.mapUser({ slack_user_id: slackUserId, workos_user_id: workosUserId, mapping_source: 'admin' });
+    await slackDb.mapUser({ slack_user_id: slackUserId, workos_user_id: workosUserId, mapping_source: 'manual_admin' });
     expect(await getUserName(workosUserId)).toEqual({ first_name: null, last_name: null });
   });
 });
