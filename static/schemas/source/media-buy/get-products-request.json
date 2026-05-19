@@ -202,6 +202,14 @@
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"
     },
+    "if_catalog_version": {
+      "type": "string",
+      "description": "Opaque catalog_version token returned by a prior get_products response from this agent. When provided, the seller compares against its current catalog version for the buyer's cache_scope and MAY return an unchanged: true response (with products omitted) if nothing has changed. The token is scope-keyed: buyers cache `(cache_scope, catalog_version)` pairs. Scoping dimensions: (agent, buying_mode, filters, property_list, catalog) for cache_scope: 'public'; that tuple plus account_id for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. Backward-compatible: pre-v3.1 agents that ignore this field simply return the full payload, same as the unchanged-server path. See specs/catalog-change-feed.md for the full sync pattern."
+    },
+    "if_pricing_version": {
+      "type": "string",
+      "description": "Opaque pricing_version token from a prior get_products response. MUST only be sent together with if_catalog_version — pricing version has no structural baseline to compare against on its own. Evaluation order: (1) if_catalog_version mismatch → seller returns the full payload (pricing is implicitly stale); (2) if_catalog_version matches but if_pricing_version mismatches → seller returns the full payload so the buyer sees updated pricing_options; (3) both match → seller MAY return unchanged: true. Agents that don't track pricing separately ignore if_pricing_version and fall back to if_catalog_version semantics. Useful for storefronts that re-price compositions far more often than they re-render catalogs."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -222,6 +230,9 @@
   "dependencies": {
     "catalog": [
       "brand"
+    ],
+    "if_pricing_version": [
+      "if_catalog_version"
     ]
   },
   "additionalProperties": true

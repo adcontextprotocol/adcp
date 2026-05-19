@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/catalog-events-response.json",
+  "title": "Catalog Events Response",
+  "description": "Response shape for GET /catalog/events on an AdCP agent that declares catalog_change_feed.supported: true. Cursor-based pagination via next_cursor + has_more. See specs/catalog-change-feed.md §API Endpoints.",
+  "type": "object",
+  "required": [
+    "events",
+    "has_more"
+  ],
+  "properties": {
+    "events": {
+      "type": "array",
+      "description": "Events newer than the request's cursor, in event_id (UUID v7) order. Empty array is valid (consumer is caught up but more events MAY arrive — re-poll with the same cursor or the response's next_cursor).",
+      "items": {
+        "$ref": "/schemas/core/catalog-event.json"
+      }
+    },
+    "next_cursor": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID v7 cursor for the next poll. Consumers persist this and pass as the `cursor` query parameter on the next request — unconditionally, regardless of whether events[] was empty. Behavior: when events[] is non-empty, next_cursor is the UUID of the last event in the array. When events[] is empty (consumer is caught up), next_cursor MUST echo the request's `cursor` parameter so consumers can write `cursor = response.next_cursor` without a null-check branch. Only absent when the consumer is making the initial poll (no `cursor` was sent and no events were returned)."
+    },
+    "has_more": {
+      "type": "boolean",
+      "description": "Whether the agent has additional events beyond what was returned in this page. When true, the consumer SHOULD poll again immediately with next_cursor to catch up; when false, the consumer is current and can resume normal polling cadence."
+    },
+    "retention_window_days": {
+      "type": "integer",
+      "minimum": 7,
+      "description": "Echo of catalog_change_feed.retention_window_days from the agent's capability declaration. Surfaced on every feed response so callers don't have to re-fetch capabilities — useful when a consumer's cursor is approaching the retention edge."
+    }
+  },
+  "additionalProperties": true
+}
