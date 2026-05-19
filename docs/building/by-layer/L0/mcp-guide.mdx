@@ -741,6 +741,16 @@ const products = await handleAdcpCall('get_products', {
 
 ## MCP-Specific Considerations
 
+### Server-side tool wrappers MUST tolerate envelope fields
+
+Buyer SDKs send envelope-level fields (`idempotency_key`, `context_id`, `context`, `governance_context`, `push_notification_config`) uniformly across all AdCP tool calls — including read-only tools that don't consume them. MCP tool implementations MUST accept these fields and ignore the ones they don't use; they MUST NOT reject a call because an envelope field is present. Common traps:
+
+- **FastMCP / Pydantic strict signatures** — declare `idempotency_key: str | None = None` (and the other envelope fields) as accept-and-ignore optionals, or use `**kwargs` to swallow unknowns. `model_config = ConfigDict(extra='allow')` on input models if you control them.
+- **Zod / valibot with `.strict()`** on input schemas — drop `.strict()` or use a passthrough variant.
+- **OpenAPI codegen** that injects `additionalProperties: false` into input models — fix the generator config; the spec's request schemas declare `additionalProperties: true`.
+
+A wrapper that raises `unexpected_keyword_argument` on `idempotency_key` will fail compliance against any buyer SDK that follows the envelope contract. See [security.mdx > Server-side tool wrapper conformance](/docs/building/by-layer/L1/security#server-side-tool-wrapper-conformance) for the normative rule.
+
 ### Tool Discovery
 ```javascript
 // List available tools — use get_adcp_capabilities for runtime feature detection

@@ -356,6 +356,23 @@ Everything else in the request body — including `ext` — is included, and "mi
 
 AdCP SDK middleware ships JCS canonicalization so sellers don't roll their own. Rolling your own canonical form is a common source of "works on my machine" idempotency bugs — JCS is precisely specified to avoid that.
 
+#### Server-side tool wrapper conformance
+
+Buyer SDKs send envelope-level fields (`idempotency_key`, `context_id`, `context`, `governance_context`, `push_notification_config`) **uniformly across all AdCP tool calls**, including read-only tools that do not consume them — buyers cannot know per-tool which envelope fields the seller's wrapper happens to declare. Servers MUST tolerate envelope-level fields that arrive in tool params but are not declared in the tool's parameter schema. Concretely:
+
+- **Read tools (`get_products`, `list_creative_formats`, `list_accounts`, `get_signals`, etc.)** MUST accept and ignore `idempotency_key`, `context_id`, `context`, `push_notification_config`, and any other envelope field the buyer's SDK includes. Read tools do not cache by idempotency key (rule 2 caches only successful mutating responses), but they MUST NOT reject a call because the envelope field is present.
+- **Mutating tools** MUST accept envelope fields and route them per the rules above; they MUST NOT reject a call for envelope fields not declared in the tool signature.
+
+This is the server-side counterpart to the `additionalProperties: true` default that every published AdCP request schema declares. Configuring a server-side validator in a way that contradicts the schema's own `additionalProperties` declaration is a conformance violation. Common server-implementation traps:
+
+- **FastMCP / Pydantic with strict signatures** — a tool wrapper declared as `def get_products(brief: str)` raises `unexpected_keyword_argument` when the buyer sends `idempotency_key` inside the same params object. Fix: declare `idempotency_key: str | None = None` (and the other envelope fields) as accept-and-ignore optional parameters, or use a `**kwargs` catch-all and discard unknown keys. Pydantic-on-input uses `Extra.allow` or `model_config = ConfigDict(extra='allow')`.
+- **Zod / valibot with `.strict()`** on the inbound request schema rejects unknown keys for the same reason; remove `.strict()` on input schemas, or compose with a passthrough variant.
+- **OpenAPI-generated server stubs** with `additionalProperties: false` injected by the codegen tool — verify the generated input schema mirrors the spec's `additionalProperties: true` default; some generators flip the default during model emission.
+
+The wire-level invariant is: a buyer SDK MUST be able to send the same envelope-field set to every AdCP tool on every seller, and any seller that rejects on envelope fields breaks the cross-seller portability the protocol promises. This rule is normative for 3.1+; pre-existing wrappers that reject envelope fields are non-conformant at the next maintenance bump.
+
+Reference: this rule generalizes the per-validator pattern already established for response-side validators in [`runner-output-contract.yaml` > `response_schema_validator_semantics`](https://github.com/adcontextprotocol/adcp/blob/main/static/compliance/source/universal/runner-output-contract.yaml) — both rules express the same principle ("validator configuration MUST NOT contradict the schema's own `additionalProperties` declaration") on the two ends of the wire.
+
 #### Response-level replay indicator
 
 The protocol envelope carries a top-level `replayed` boolean on responses to mutating requests:
