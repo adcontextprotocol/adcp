@@ -48,8 +48,48 @@ import { sanitizeDraftForSlack } from './announcement-trigger.js';
 import { isSafeVisualUrl } from '../../services/announcement-visual.js';
 import { isSlackUserAAOAdmin } from '../mcp/admin-tools.js';
 import type { SlackBlock, SlackElement } from '../../slack/types.js';
+import {
+  splitMrkdwnIntoSections,
+  truncateNotificationText,
+} from '../slack-blocks.js';
 
 const logger = createLogger('announcement-handlers');
+
+/**
+ * LinkedIn's own post body cap is ~3000 chars; any draft beyond that is
+ * already broken before Slack-rendering. Show the editor as much as we
+ * can fit in one fenced section with a clear warning so they can
+ * regenerate or edit the draft. The Slack section cap (2900 with
+ * headroom) bounds what we display; the rest of the fenced section
+ * goes to header text, the warning line, and the fence delimiters.
+ */
+const LINKEDIN_FENCED_CONTENT_BUDGET = 2700;
+
+function buildLinkedInDraftSection(safeLinkedIn: string): {
+  type: 'section';
+  text: { type: 'mrkdwn'; text: string };
+} {
+  const header = '*LinkedIn draft* (copy-paste)';
+  if (safeLinkedIn.length <= LINKEDIN_FENCED_CONTENT_BUDGET) {
+    return {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `${header}\n\`\`\`${safeLinkedIn}\`\`\`` },
+    };
+  }
+  logger.warn(
+    { draftLength: safeLinkedIn.length, displayBudget: LINKEDIN_FENCED_CONTENT_BUDGET },
+    'LinkedIn draft exceeds display budget; truncating in review card',
+  );
+  const truncated = safeLinkedIn.slice(0, LINKEDIN_FENCED_CONTENT_BUDGET);
+  const warning = `:warning: Draft is ${safeLinkedIn.length} chars — exceeds LinkedIn's 3000-char limit. Truncated below; regenerate or edit the draft before posting.`;
+  return {
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text: `${header}\n${warning}\n\`\`\`${truncated}…\`\`\``,
+    },
+  };
+}
 
 const APP_URL = process.env.APP_URL || 'https://agenticadvertising.org';
 
@@ -444,12 +484,9 @@ export function renderReviewCard(args: {
       image_url: draft.visual_url,
       alt_text: draft.visual_alt_text ?? `${orgName} announcement visual`,
     },
-    { type: 'section', text: { type: 'mrkdwn', text: `*Slack draft*\n${safeSlack}` } },
+    ...splitMrkdwnIntoSections(`*Slack draft*\n${safeSlack}`),
     { type: 'divider' },
-    {
-      type: 'section',
-      text: { type: 'mrkdwn', text: `*LinkedIn draft* (copy-paste)\n\`\`\`${safeLinkedIn}\`\`\`` },
-    },
+    buildLinkedInDraftSection(safeLinkedIn),
   ];
 
   const skipped = Boolean(
@@ -575,10 +612,10 @@ export function buildPublicAnnouncementPayload(draft: DraftMetadata): {
   );
   const alt = draft.visual_alt_text ?? `${draft.org_name ?? 'New member'} announcement visual`;
   const blocks: SlackBlock[] = [
-    { type: 'section', text: { type: 'mrkdwn', text: safeSlack } },
+    ...splitMrkdwnIntoSections(safeSlack),
     { type: 'image', image_url: draft.visual_url, alt_text: alt },
   ];
-  return { text: safeSlack, blocks };
+  return { text: truncateNotificationText(safeSlack), blocks };
 }
 
 // Bolt's action body types are a discriminated union that doesn't compose
