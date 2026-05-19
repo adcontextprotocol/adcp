@@ -129,7 +129,7 @@ AdCP protocols this agent supports. This is the single capability axis — each 
 
 Valid values: `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`.
 
-See the [Compliance Catalog](/dist/docs/3.1.0-beta.1/building/compliance-catalog) for every protocol's scope. Support for the [compliance test controller](/dist/docs/3.1.0-beta.1/building/implementation/comply-test-controller) is declared via the separate `compliance_testing` capability block (below), not as a protocol value.
+See the [Compliance Catalog](/dist/docs/3.1.0-beta.1/building/verification/compliance-catalog) for every protocol's scope. Support for the [compliance test controller](/dist/docs/3.1.0-beta.1/building/by-layer/L3/comply-test-controller) is declared via the separate `compliance_testing` capability block (below), not as a protocol value.
 
 ### specialisms
 
@@ -141,7 +141,7 @@ Optional specialization claims. Each entry corresponds to a narrow storyboard at
 }
 ```
 
-See the full [Compliance Catalog](/dist/docs/3.1.0-beta.1/building/compliance-catalog) for every specialism and the [enum schema](https://adcontextprotocol.org/schemas/3.1.0-beta.1/enums/specialism.json) for the authoritative list.
+See the full [Compliance Catalog](/dist/docs/3.1.0-beta.1/building/verification/compliance-catalog) for every specialism and the [enum schema](https://adcontextprotocol.org/schemas/3.1.0-beta.1/enums/specialism.json) for the authoritative list.
 
 ### account
 
@@ -164,7 +164,7 @@ Account and authentication capabilities. All sellers should declare this section
 
 For sandbox, the path follows the account model: explicit accounts (`require_operator_auth: true`) discover pre-existing test accounts via `list_accounts`; implicit accounts declare sandbox via `sync_accounts` with `sandbox: true`.
 
-See [Accounts and Agents](/dist/docs/3.1.0-beta.1/building/integration/accounts-and-agents#what-sellers-declare) for full workflows and [seller patterns](/dist/docs/3.1.0-beta.1/building/integration/accounts-and-agents#seller-patterns) for common combinations of auth model and billing support.
+See [Accounts and Agents](/dist/docs/3.1.0-beta.1/building/by-layer/L2/accounts-and-agents#what-sellers-declare) for full workflows and [seller patterns](/dist/docs/3.1.0-beta.1/building/by-layer/L2/accounts-and-agents#seller-patterns) for common combinations of auth model and billing support.
 
 ### media_buy
 
@@ -500,9 +500,9 @@ Array of metrics this measurement agent computes.
 
 ### compliance_testing
 
-Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via [`comply_test_controller`](/dist/docs/3.1.0-beta.1/building/implementation/comply-test-controller). Omit the block if the agent does not support compliance testing.
+Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via [`comply_test_controller`](/dist/docs/3.1.0-beta.1/building/by-layer/L3/comply-test-controller). Omit the block if the agent does not support compliance testing.
 
-**Production deployments MUST NOT include this block.** `comply_test_controller` is sandbox-only at the deployment level; advertising the capability on a production endpoint is non-conformant even if dispatch is gated. See [Compliance test controller § Sandbox gating](/dist/docs/3.1.0-beta.1/building/implementation/comply-test-controller#sandbox-gating).
+**Production deployments MUST NOT include this block.** `comply_test_controller` is sandbox-only at the deployment level; advertising the capability on a production endpoint is non-conformant even if dispatch is gated. See [Compliance test controller § Sandbox gating](/dist/docs/3.1.0-beta.1/building/by-layer/L3/comply-test-controller#sandbox-gating).
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -513,18 +513,18 @@ Storyboard runners check for the `compliance_testing` block before running deter
 Agents that implement `comply_test_controller` SHOULD include the `compliance_testing` capability block and list supported scenarios. Agents that only support a subset of scenarios (e.g., media buy status but not SI sessions) declare only those scenarios — the runner skips unsupported ones.
 
 :::note
-Compliance testing is sandbox-only at the deployment level — production deployments MUST NOT advertise this block or expose `comply_test_controller` on any surface. `FORBIDDEN` is returned only when an in-sandbox caller passes `params` that reference a non-sandbox account; live-mode probes for the tool by name receive the transport's standard unknown-tool error. See [Sandbox gating](/dist/docs/3.1.0-beta.1/building/implementation/comply-test-controller#sandbox-gating).
+Compliance testing is sandbox-only at the deployment level — production deployments MUST NOT advertise this block or expose `comply_test_controller` on any surface. `FORBIDDEN` is returned only when an in-sandbox caller passes `params` that reference a non-sandbox account; live-mode probes for the tool by name receive the transport's standard unknown-tool error. See [Sandbox gating](/dist/docs/3.1.0-beta.1/building/by-layer/L3/comply-test-controller#sandbox-gating).
 :::
 
 ### webhook_signing
 
-Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook` or `media_buy.content_standards.supports_webhook_delivery: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/dist/docs/3.1.0-beta.1/building/implementation/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
+Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook` or `media_buy.content_standards.supports_webhook_delivery: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/dist/docs/3.1.0-beta.1/building/by-layer/L1/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `supported` | boolean | **Required when the seller advertises mutating-webhook emission elsewhere in its capability surface.** `true` iff the seller signs outbound webhooks. `false` means the seller emits webhooks but does not sign them; buyers MUST fail onboarding. Sellers that emit no webhooks SHOULD omit the entire block rather than set `supported: false` — `false` is reserved for the unsafe posture of unsigned-webhook emission, not absence-of-webhooks. |
 | `profile` | string | **Required when `supported: true`.** The profile version string. Currently `"adcp/webhook-signing/v1"`. Future versions bump the string. |
-| `algorithms` | string[] | **Required when `supported: true`.** Subset of `["ed25519", "ecdsa-p256-sha256"]` — the algorithms this seller will sign webhooks with. Matches the webhook-signing verifier allowlist (see [Verifier checklist for webhooks](/dist/docs/3.1.0-beta.1/building/implementation/security#webhook-callbacks), step 4). Buyers MUST be prepared to verify any algorithm listed AND MUST reject onboarding with a user-actionable error if an advertised algorithm is outside this enumerated set — a seller advertising an out-of-set algorithm (e.g., `hs256`) is either misconfigured or signalling a non-conforming profile. |
+| `algorithms` | string[] | **Required when `supported: true`.** Subset of `["ed25519", "ecdsa-p256-sha256"]` — the algorithms this seller will sign webhooks with. Matches the webhook-signing verifier allowlist (see [Verifier checklist for webhooks](/dist/docs/3.1.0-beta.1/building/by-layer/L1/security#webhook-callbacks), step 4). Buyers MUST be prepared to verify any algorithm listed AND MUST reject onboarding with a user-actionable error if an advertised algorithm is outside this enumerated set — a seller advertising an out-of-set algorithm (e.g., `hs256`) is either misconfigured or signalling a non-conforming profile. |
 | `legacy_hmac_fallback` | boolean | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0. |
 
 **Example:**
@@ -550,7 +550,7 @@ Array of extension namespaces this agent supports. Buyers can expect meaningful 
 |-------|------|-------------|
 | `extensions_supported` | string[] | Extension namespaces (e.g., `["iab_tcf", "iab_gpp"]`) |
 
-Extension schemas are published in the [AdCP extension registry](/dist/docs/3.1.0-beta.1/building/integration/context-sessions#extensions). When an agent declares support for an extension, buyers know to look for and process `ext.{namespace}` data in responses.
+Extension schemas are published in the [AdCP extension registry](/dist/docs/3.1.0-beta.1/building/by-layer/L2/context-sessions#extensions). When an agent declares support for an extension, buyers know to look for and process `ext.{namespace}` data in responses.
 
 **Example:**
 ```json
@@ -1068,14 +1068,14 @@ Route requests to appropriate API versions based on `adcp.major_versions`.
 
 After discovering capabilities:
 
-1. **Set up accounts**: Follow the auth model from `account.require_operator_auth` — see [Accounts and Agents](/dist/docs/3.1.0-beta.1/building/integration/accounts-and-agents#what-sellers-declare)
+1. **Set up accounts**: Follow the auth model from `account.require_operator_auth` — see [Accounts and Agents](/dist/docs/3.1.0-beta.1/building/by-layer/L2/accounts-and-agents#what-sellers-declare)
 2. **Filter products**: Use [`get_products`](/dist/docs/3.1.0-beta.1/media-buy/task-reference/get_products) with capability-aware filters
 3. **Validate properties**: Fetch publisher `adagents.json` files for property definitions
 4. **Create buys**: Use [`create_media_buy`](/dist/docs/3.1.0-beta.1/media-buy/task-reference/create_media_buy) with supported features
 
 ## Learn More
 
-- [Accounts and Agents](/dist/docs/3.1.0-beta.1/building/integration/accounts-and-agents) - Auth models, account setup, billing
+- [Accounts and Agents](/dist/docs/3.1.0-beta.1/building/by-layer/L2/accounts-and-agents) - Auth models, account setup, billing
 - [adagents.json Specification](/dist/docs/3.1.0-beta.1/governance/property/adagents) - Publisher authorization files
 - [Product Filters](/dist/docs/3.1.0-beta.1/media-buy/task-reference/get_products#filters) - Capability-aware filtering
 - [Content Standards](/dist/docs/3.1.0-beta.1/governance/content-standards) - Brand safety configuration

@@ -76,7 +76,7 @@ asyncio.run(main())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | object | Yes | [Account reference](/dist/docs/3.1.0-beta.1/building/integration/accounts-and-agents#account-references) — by `account_id` or natural key (`brand` + `operator` + optional `sandbox`). Must be an operator-billed account. |
+| `account` | object | Yes | [Account reference](/dist/docs/3.1.0-beta.1/building/by-layer/L2/accounts-and-agents#account-references) — by `account_id` or natural key (`brand` + `operator` + optional `sandbox`). Must be an operator-billed account. |
 | `period` | object | No | Date range for spend summary: `start` and `end` as ISO 8601 dates. Defaults to the current billing cycle if omitted. |
 
 ## Response
@@ -230,4 +230,4 @@ asyncio.run(main())
 
 - [list_accounts](/dist/docs/3.1.0-beta.1/accounts/tasks/list_accounts) -- Discover accounts and check their status
 - [get_adcp_capabilities](/dist/docs/3.1.0-beta.1/protocol/get_adcp_capabilities) -- Check `account_financials` before calling this task
-- [Accounts and agents](/dist/docs/3.1.0-beta.1/building/integration/accounts-and-agents) -- Billing models and account references
+- [Accounts and agents](/dist/docs/3.1.0-beta.1/building/by-layer/L2/accounts-and-agents) -- Billing models and account references

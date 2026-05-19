@@ -35,7 +35,7 @@ For information about format IDs and how to reference formats, see [Creative For
 | `preview_quality` | string | No | Render quality for inline previews: `"draft"` or `"production"`. Independent of the build `quality` — you can build at draft and preview at production, or vice versa. Only used when `include_preview` is true. |
 | `preview_output_format` | string | No | Output format for preview renders: `"url"` (default) or `"html"`. Only used when `include_preview` is true. |
 | `macro_values` | object | No | Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., `CLICK_URL`, `CACHEBUSTER`); values are the literal substitution strings. The creative agent translates universal macros to its platform's native syntax. Macros not provided here remain as `{MACRO}` placeholders for the sales agent to resolve at serve time. |
-| `account` | [AccountRef](/dist/docs/3.1.0-beta.1/building/integration/accounts-and-agents#account-references) | No | Account reference for pricing and billing. When present, the creative agent applies account-specific pricing from the rate card, records the build against the account, and can enforce quotas. Required by creative agents that charge for their services. |
+| `account` | [AccountRef](/dist/docs/3.1.0-beta.1/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference for pricing and billing. When present, the creative agent applies account-specific pricing from the rate card, records the build against the account, and can enforce quotas. Required by creative agents that charge for their services. |
 
 ### Pricing response fields
 
@@ -498,7 +498,7 @@ When the server expects to take more than 30 seconds but is actively processing,
 - **Human creative review** — brand guidelines require approval before returning
 - **External approval workflows** — third-party compliance or legal review
 
-For these cases, configure a webhook via `push_notification_config` to receive the result. See [Async Operations](/dist/docs/3.1.0-beta.1/building/implementation/async-operations) and [Push Notifications](/dist/docs/3.1.0-beta.1/building/implementation/webhooks).
+For these cases, configure a webhook via `push_notification_config` to receive the result. See [Async Operations](/dist/docs/3.1.0-beta.1/building/by-layer/L3/async-operations) and [Push Notifications](/dist/docs/3.1.0-beta.1/building/by-layer/L3/webhooks).
 
 ### Human-in-the-loop
 

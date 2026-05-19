@@ -25,7 +25,7 @@ This module covers AdCP-specific controls — the threat model, layered defenses
 
 ## Specialisms this track prepares you to validate
 
-The following `specialisms` fall under the security domain. Each has its own compliance storyboard — see the [Compliance Catalog](/dist/docs/3.1.0-beta.1/building/compliance-catalog) for the full taxonomy.
+The following `specialisms` fall under the security domain. Each has its own compliance storyboard — see the [Compliance Catalog](/dist/docs/3.1.0-beta.1/building/verification/compliance-catalog) for the full taxonomy.
 
 | Specialism | Status | What it covers |
 |---|---|---|
@@ -49,22 +49,22 @@ S4 (Governance) covers the 15-step JWS seller verification from the **seller's**
 ## Prerequisite reading
 
 <CardGroup cols={2}>
-  <Card title="Security model" icon="shield" href="/dist/docs/3.1.0-beta.1/building/understanding/security-model">
+  <Card title="Security model" icon="shield" href="/dist/docs/3.1.0-beta.1/building/concepts/security-model">
     AdCP's five-layer defense model: identity, isolation, idempotency, signed governance, and auditability.
   </Card>
-  <Card title="Security implementation" icon="lock" href="/dist/docs/3.1.0-beta.1/building/implementation/security">
+  <Card title="Security implementation" icon="lock" href="/dist/docs/3.1.0-beta.1/building/by-layer/L1/security">
     Implementation reference: idempotency enforcement, webhook HMAC verification, SSRF discipline, signed governance, principal isolation, and insert-rate ceiling.
   </Card>
   <Card title="Campaign governance specification" icon="file-code" href="/dist/docs/3.1.0-beta.1/governance/campaign/specification">
     Governance token structure, the JWS verification model, and the correlation model for multi-party lifecycle tracking.
   </Card>
-  <Card title="Operating an agent" icon="server" href="/dist/docs/3.1.0-beta.1/building/operating-an-agent">
+  <Card title="Operating an agent" icon="server" href="/dist/docs/3.1.0-beta.1/building/operating/operating-an-agent">
     Security as an operating concern: credential management, rotation cadences, and incident response.
   </Card>
   <Card title="Accounts and security" icon="key" href="/dist/docs/3.1.0-beta.1/media-buy/advanced-topics/accounts-and-security">
     Principal isolation, account-scoped access, and multi-tenant separation.
   </Card>
-  <Card title="Authentication" icon="fingerprint" href="/dist/docs/3.1.0-beta.1/building/integration/authentication">
+  <Card title="Authentication" icon="fingerprint" href="/dist/docs/3.1.0-beta.1/building/by-layer/L2/authentication">
     API key enforcement, OAuth discovery, RFC 9728 audience binding, and the authentication baseline specialism.
   </Card>
 </CardGroup>
