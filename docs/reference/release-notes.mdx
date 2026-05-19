@@ -67,6 +67,48 @@ See [`brand.json` § Distributed publishing](/docs/brand-protocol/brand-json) fo
 
 Additive over 3.0. Existing sellers continue to validate; buyers ignoring the new fields keep working. Buyers SHOULD upgrade reach-summation logic to gate on `reach_window` semantics.
 
+### Wire conformance — idempotency & envelope tolerance (#4399 / #4399b, #2911, #4227, #4371, #4418, #4107, #4196, #4043)
+
+A bundle of normative clarifications that codify deployed behavior and close ambiguities that surfaced from real adopter integrations. None require code changes for SDK-using integrators; hand-rolled MCP clients should review the universal-idempotency staged enforcement curve before the 3.2 cut.
+
+**`idempotency_key` is required on every AdCP task request — read and mutating alike (#4399b).** The 3.0 contract framed it as mutating-only, but `get_products` is polymorphic (`brief`/`wholesale` may return `Submitted`; `refine`+`finalize` is a commit) and buyers can't classify at call time. Enforcement is **staged**:
+
+- **3.1.0** — sellers MUST accept reads that carry `idempotency_key`; SHOULD reject reads that omit it (MAY accept the omission during the 3.1.x maintenance window).
+- **3.2.0** — sellers MUST reject reads that omit it.
+
+The cache holds read responses too from 3.1 onward — sellers MUST encrypt the cache tier at rest with the same controls applied to the underlying resource store. Operators with read-heavy buyer mixes SHOULD raise the rule-8 insert ceiling (sized originally against write-heavy traffic). See [security.mdx § Idempotency](/docs/building/by-layer/L1/security#idempotency) for the full contract.
+
+**MCP envelope serialization is now normative — flat on the wire (#2911).** `core/protocol-envelope.json` drops `required: [status, payload]`; envelope fields and body fields are siblings at the root of the MCP tool response (no nested `payload:` key). Matches shipping SDK behavior. `context` joins the envelope as a first-class field — caller-supplied opaque echo (`/schemas/core/context.json`) distinct from `context_id` (server-managed session). A2A and REST serializations are normative in the envelope's `notes` array.
+
+**MCP tool wrappers MUST tolerate envelope fields (#4399).** Server-side counterpart to `additionalProperties: true` on request schemas. FastMCP/Pydantic strict signatures, Zod `.strict()`, and OpenAPI codegen with `additionalProperties: false` injected into input models are all non-conformant. See [mcp-guide.mdx § Server-side tool wrappers](/docs/building/by-layer/L0/mcp-guide#server-side-tool-wrappers-must-tolerate-envelope-fields).
+
+**`error.code` decoding is forward-compatible by contract (#4227).** Receivers MUST treat unknown `error.code` values as valid, read `error.recovery` (the normative wire carrier from 3.1 onward) for the recovery class, default to `transient` when absent (bounded by §Retry Logic). Senders SHOULD populate `error.recovery` on every error from 3.1 onward — receivers across version skew can't rely on `enumMetadata.recovery` for codes they don't know. Sellers upgrading 3.0.x → 3.1 SHOULD audit error-emit paths before bumping the advertised `adcp_version`. See [error-handling.mdx § Forward-compatible decoding](/docs/building/by-layer/L3/error-handling#forward-compatible-decoding-normative).
+
+**Idempotency replay returns historical snapshots, not current state (#4371).** Rule 2's immutable-cache invariant extended explicitly to synchronous-success responses: state-tracking fields in cached payloads (`status`, `packages`, `affected_packages`, etc.) MUST NOT refresh on replay. Buyers reading state from a `replayed: true` response MUST re-read via the resource's read endpoint (`get_media_buys`, `list_accounts`, etc.) before acting on it.
+
+**`refine[]` finalize-exclusivity (#4107).** If any `refine[]` entry on `get_products` has `action: 'finalize'`, ALL entries MUST be proposal-scoped finalize entries. Mixing finalize with non-finalize entries is rejected with `INVALID_REQUEST`. Multi-finalize is atomic across proposal_ids; sellers that can't guarantee atomicity reject with `INVALID_REQUEST` (or `MULTI_FINALIZE_UNSUPPORTED` for a more specific signal). See [refinement guide § Finalize is exclusive](/docs/media-buy/product-discovery/refinement#finalize-is-exclusive-within-refine).
+
+**`notices` advisory channel on runner-output-contract (#4418).** New `step_result.notices` and `run_summary.notices` arrays — three severities (`info` / `deprecation` / `future_required`) with three canonical first-day codes (`signed_requests_specialism_deprecated`, `request_signing_required_in_4_0`, `legacy_hmac_fallback_removed_in_4_0`). Conformance dashboards will start surfacing 4.0 deprecation advisories as machine-readable notice codes rather than prose `skip.detail` strings.
+
+**Error catalog additions:** `PROPOSAL_NOT_FOUND` (#4043), `MULTI_FINALIZE_UNSUPPORTED` (#4107). Both forward-compat-safe under the #4227 decoding rule — 3.0 receivers see them, read `error.recovery: correctable`, and route accordingly without needing a vocabulary bump.
+
+**Description sharpenings:** `media-buy-status.pending_creatives` description leads with "Buyer-side action required" and explicitly contrasts with publisher/governance approval flows (#4196 — document, not rename; consistent with the `pending_X` convention).
+
+### Adopter action — wire-conformance bundle
+
+| If you are… | What you need to do |
+|---|---|
+| A buyer using `@adcp/client` or `adcp-py` | Nothing. Both SDKs already send `idempotency_key` uniformly on every call. |
+| A buyer with hand-rolled MCP clients (curl, thin clients, raw OpenAPI codegen) | Add `idempotency_key` to read tools (`get_products`, `list_creative_formats`, `list_accounts`, etc.) before the 3.2 cut. 3.1.0 sellers MAY accept omission during the grace window; 3.2.0 sellers MUST reject. |
+| A seller on FastMCP/Pydantic, Zod `.strict()`, or OpenAPI codegen | Audit input models — they MUST accept envelope fields (`idempotency_key`, `context_id`, `context`, `governance_context`, `push_notification_config`) on every tool. Use `extra='allow'` (Pydantic), drop `.strict()` (Zod), or fix codegen config (OpenAPI). |
+| A seller emitting `create_media_buy` synchronous-success responses with embedded `status` | Nothing changes. Existing byte-stable replay already conforms; the rule was silent on this case before, now it's explicit. |
+| A buyer agent reading `status` from a mutation response | Add a `replayed: true` guard: if set, call the resource's read endpoint (`get_media_buys`, `list_accounts`, etc.) before any state-dependent action. Without the guard, you'll hit `NOT_CANCELLABLE` and similar state-machine bugs against replayed responses. |
+| A seller emitting unsigned webhooks or claiming the deprecated `signed-requests` specialism | Read the new `notices` field on runner-output-contract — your conformance dashboards will start surfacing `request_signing_required_in_4_0` / `legacy_hmac_fallback_removed_in_4_0` / `signed_requests_specialism_deprecated`. Behavior is unchanged in 3.1; the advisories are forward-readiness for 4.0. |
+| A seller currently emitting unknown error codes (platform-specific or pre-3.1 additions) | Add `error.recovery` to every error envelope before bumping advertised `adcp_version` to 3.1. Receivers default to `transient` when absent, which is safe but suboptimal — populating the field correctly is the spec-compliant path. |
+| An adopter with strict-validator test fixtures or codegen against `core/protocol-envelope.json` | Refresh fixtures and decoders. The schema drops `required: [status, payload]` (#2911) — strict validators that asserted "envelope MUST reject responses missing `payload`" will start accepting envelopes they used to reject. SDK consumers using OpenAPI / quicktype / Pydantic codegen against the envelope will see `status` and `payload` flip from required to optional in generated types; audit downstream decoders that depended on those being present at the schema level. A2A consumers carry `status` via `task.status.state`; MCP/REST consumers reading the envelope as a pure JSON Schema decoder are the affected set. The new normative serialization rules in the envelope's `notes` describe what wire shape to expect per transport. |
+
+Additive over 3.0 — the entire bundle preserves wire compatibility for 3.0-conformant agents; the changes formalize behavior shipping SDKs already implement.
+
 ### Optimization goals — `kind: "vendor_metric"` (#4668, closes #4644)
 
 End-to-end vendor binding for optimization goals against vendor-attested measurement — attention (DV, IAS, Adelaide, TVision, Lumen), panel-based brand lift (Kantar, Upwave, Cint), emissions (Scope3, Good-Loop), retail-media partner metrics. Closes the goal-side gap that the #4618 release notes flagged: today's vendor-agnostic `attention_seconds` / `attention_score` enum values are meaningless without a vendor binding, since each measurement vendor defines them differently.

@@ -76,6 +76,16 @@
       "target_version": "3.1",
       "note": "From sync_accounts billing coverage (#3831). Wire change \u2014 held for 3.1."
     },
+    "MULTI_FINALIZE_UNSUPPORTED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Seller-side capability gap signal for #4107 multi-finalize atomicity. Returned when refine[] carries multiple action: finalize entries against different proposal_ids and the seller's downstream stack cannot guarantee atomic commit (e.g., proposals route to two different ad servers with no 2PC). More specific than INVALID_REQUEST so buyers can distinguish 'doesn't support multi-finalize' from 'request is malformed'. Buyer-fixable: sequence single-proposal finalize calls. Wire change \u2014 held for 3.1."
+    },
+    "PROPOSAL_NOT_FOUND": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Proposal-lifecycle counterpart to PROPOSAL_EXPIRED / PROPOSAL_NOT_COMMITTED (#4043). Returned when a referenced proposal_id is unknown to the seller (never finalized, wrong tenant, or evicted from cache). Buyer-fixable: re-issue get_products in refine+finalize to obtain a current proposal_id. Wire change \u2014 held for 3.1."
+    },
     "PROVENANCE_CLAIM_CONTRADICTED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",

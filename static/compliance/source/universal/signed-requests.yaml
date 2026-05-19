@@ -31,9 +31,11 @@ narrative: |
   enum value remains in the schema for back-compat (see
   [#3075](https://github.com/adcontextprotocol/adcp/issues/3075)). Agents that still
   advertise `specialisms: ["signed-requests"]` are graded via this universal storyboard;
-  the runner SHOULD emit an informational notice (not a failure) advising the agent to
-  drop the now-redundant specialism claim and rely solely on `request_signing.supported: true`.
-  4.0 removes the enum value entirely — see
+  the runner SHOULD emit the `signed_requests_specialism_deprecated` notice (severity
+  `deprecation`, see `runner-output-contract.yaml` > `notice` > `canonical_codes`) advising
+  the agent to drop the now-redundant specialism claim and rely solely on
+  `request_signing.supported: true`. The notice MUST NOT change `step_result.passed` —
+  it is an advisory, not a failure. 4.0 removes the enum value entirely — see
   [#3078](https://github.com/adcontextprotocol/adcp/issues/3078).
 
   **Composition with other storyboards.** This storyboard runs independently of any
