@@ -25,17 +25,21 @@ import { notifyPendingBrandLogo, notifyBrandLogoReviewed } from '../notification
 
 const PENDING_REVIEW_SLA_HOURS = 48;
 // Per-user pending-queue threshold: how many distinct brand domains a
-// single uploader can have in pending state at once. Trips when the user
-// fans out uploads to enumerate ownership or saturate the queue. Picked
-// from typical legit usage (a moderator-in-training updating a handful of
-// brand logos in a session); enumeration attempts hit this within minutes.
-const MAX_PENDING_DOMAINS_PER_USER = 5;
-const PENDING_THRESHOLD_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-// Per-brand reserved owner slots: community uploads (any status) can fill
-// at most this many of the brand's MAX_LOGOS_PER_BRAND slots so a verified
-// owner always has room for their own logos even if community-pending got
-// there first.
-const MAX_COMMUNITY_LOGOS_PER_BRAND = 5;
+// single uploader can have in pending state at once, in the rolling
+// window. Trips when the user fans out uploads to enumerate ownership
+// state or saturate the moderator queue. Tuned for the holding-company
+// contributor pattern (one operator managing logos across many brands)
+// — 5/hr was too tight; 15/24h gives legit batch sessions headroom
+// while still blocking enumeration before it pays off.
+const MAX_PENDING_DOMAINS_PER_USER = 15;
+const PENDING_THRESHOLD_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+// Per-brand reserved owner slots: community uploads (pending or
+// approved — rejected/deleted don't count) can fill at most this many
+// of the brand's MAX_LOGOS_PER_BRAND slots. The remaining slots stay
+// reserved for the eventual verified owner. 8/2 split lets community
+// keep contributing on popular unowned brands while guaranteeing the
+// owner room for at least logo+wordmark when they claim.
+const MAX_COMMUNITY_LOGOS_PER_BRAND = 8;
 
 const logger = createLogger('brand-logo-routes');
 
@@ -117,6 +121,12 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         // rejects new attempts; existing pending entries stay, and the
         // threshold relaxes as moderators clear them. Returns 429 so
         // automated callers back off rather than retry.
+        //
+        // TOCTOU: the check + INSERT below is not atomic. Two concurrent
+        // requests from the same user can both pass the threshold and
+        // both insert (cap = N×concurrency). The HTTP route's rate
+        // limiter bounds this. Hard upper limit is moderator workload,
+        // not a security boundary.
         if (!isOwner) {
           const pendingDomainCount = await brandLogoDb.countPendingDomainsForUser(
             user.id,
@@ -127,17 +137,21 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
               { userId: user.id, email: user.email, pendingDomainCount, domain },
               'brand-logo upload rejected: user pending-queue threshold tripped',
             );
+            // Don't echo `pendingDomainCount` back to the caller — it's
+            // a precise enumeration oracle for any attacker calibrating
+            // their fan-out. `max_pending_domains` is the only signal
+            // a legit client actually needs.
             return res.status(429).json({
-              error: `You already have ${pendingDomainCount} brand logo uploads awaiting review. Wait for moderators to clear the queue before adding more.`,
+              error: 'You have too many brand logo uploads awaiting review. Wait for moderators to clear the queue before adding more.',
               code: 'pending_queue_full',
-              pending_domain_count: pendingDomainCount,
               max_pending_domains: MAX_PENDING_DOMAINS_PER_USER,
             });
           }
         }
 
-        // Logo count cap. Community uploads (any status) are reserved to
-        // MAX_COMMUNITY_LOGOS_PER_BRAND so a verified owner uploading
+        // Logo count cap. Community uploads (pending OR approved —
+        // rejected/deleted don't permanently consume slots) are reserved
+        // to MAX_COMMUNITY_LOGOS_PER_BRAND so a verified owner uploading
         // after the community-pending pool filled isn't locked out of
         // their own brand. Owner uploads still respect the overall cap.
         if (isOwner) {
@@ -399,9 +413,11 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         }
 
         const note = typeof req.body.note === 'string' ? req.body.note.slice(0, 500) : undefined;
-        // Look up the row before mutating so we can thread the Slack
-        // verdict reply under the original pending-upload notification.
-        const priorRow = await brandLogoDb.getBrandLogoById(logoId);
+        // `updateLogoReviewStatus` returns the post-mutation row via
+        // RETURNING ${SUMMARY_COLUMNS}, which includes slack_thread_ts —
+        // no separate pre-fetch needed. Saves a round-trip and removes a
+        // TOCTOU window where the row could be deleted between fetch
+        // and update.
         const updated = await brandLogoDb.updateLogoReviewStatus(
           logoId,
           domain,
@@ -436,14 +452,14 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         // Thread the verdict under the original pending-logo notification
         // when one exists. Fire-and-forget — Slack failure must not roll
         // back a moderator's decision.
-        if (priorRow?.slack_thread_ts) {
+        if (updated.slack_thread_ts) {
           notifyBrandLogoReviewed({
-            thread_ts: priorRow.slack_thread_ts,
+            thread_ts: updated.slack_thread_ts,
             domain,
             action: action as 'approve' | 'reject' | 'delete',
             reviewer_email: user.email,
-            reviewer_name: (user as { firstName?: string; lastName?: string }).firstName
-              ? `${(user as { firstName?: string }).firstName} ${(user as { lastName?: string }).lastName ?? ''}`.trim()
+            reviewer_name: user.firstName
+              ? `${user.firstName} ${user.lastName ?? ''}`.trim()
               : undefined,
             note,
           }).catch((err) => {

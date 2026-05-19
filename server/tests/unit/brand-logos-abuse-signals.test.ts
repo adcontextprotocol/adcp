@@ -131,7 +131,8 @@ describe('Wedge A — per-user pending-queue threshold', () => {
   });
 
   it('429s a community uploader who has hit the distinct-domain threshold', async () => {
-    mocks.countPendingDomainsForUser.mockResolvedValue(5);
+    // Threshold is 15 distinct domains in 24h (PM review #4748).
+    mocks.countPendingDomainsForUser.mockResolvedValue(15);
     const app = makeApp({ hostedBrand: null, isOwner: false });
     const res = await request(app)
       .post('/api/brands/example.com/logos')
@@ -139,12 +140,14 @@ describe('Wedge A — per-user pending-queue threshold', () => {
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(429);
     expect(res.body.code).toBe('pending_queue_full');
-    expect(res.body.pending_domain_count).toBe(5);
+    // Don't echo the precise count — that's an enumeration oracle.
+    expect(res.body.pending_domain_count).toBeUndefined();
+    expect(res.body.max_pending_domains).toBe(15);
     expect(mocks.insertLogo).not.toHaveBeenCalled();
   });
 
   it('verified owners bypass the threshold entirely', async () => {
-    mocks.countPendingDomainsForUser.mockResolvedValue(99);
+    mocks.countPendingDomainsForUser.mockResolvedValue(999);
     mocks.countLogos.mockResolvedValueOnce(0);
     const app = makeApp({
       hostedBrand: { workos_organization_id: 'org_owner', domain_verified: true },
@@ -158,8 +161,8 @@ describe('Wedge A — per-user pending-queue threshold', () => {
     expect(mocks.countPendingDomainsForUser).not.toHaveBeenCalled();
   });
 
-  it('passes under the threshold (4 pending domains is still fine)', async () => {
-    mocks.countPendingDomainsForUser.mockResolvedValue(4);
+  it('passes under the threshold (14 pending domains is still fine)', async () => {
+    mocks.countPendingDomainsForUser.mockResolvedValue(14);
     const app = makeApp({ hostedBrand: null, isOwner: false });
     const res = await request(app)
       .post('/api/brands/example.com/logos')
@@ -180,8 +183,10 @@ describe('Wedge B — per-brand reserved owner slots', () => {
     mocks.insertLogo.mockImplementation(async (input) => ({ id: 'logo_x', ...input }));
   });
 
-  it('400s a community upload when the brand already has 5 community logos', async () => {
-    mocks.countLogosBySource.mockResolvedValue(5);
+  it('400s a community upload when the brand already has 8 community logos', async () => {
+    // 8/2 split (PM review #4748): community can fill at most 8 of 10
+    // slots so the verified owner always has room for 2 (logo + wordmark).
+    mocks.countLogosBySource.mockResolvedValue(8);
     const app = makeApp({ hostedBrand: null, isOwner: false });
     const res = await request(app)
       .post('/api/brands/example.com/logos')
@@ -194,8 +199,8 @@ describe('Wedge B — per-brand reserved owner slots', () => {
   });
 
   it('lets a verified owner upload even when community slots are saturated', async () => {
-    mocks.countLogosBySource.mockResolvedValue(5);
-    mocks.countLogos.mockResolvedValue(5); // 5 community + 0 owner
+    mocks.countLogosBySource.mockResolvedValue(8);
+    mocks.countLogos.mockResolvedValue(8); // 8 community + 0 owner
     const app = makeApp({
       hostedBrand: { workos_organization_id: 'org_owner', domain_verified: true },
       isOwner: true,
@@ -270,13 +275,13 @@ describe('Wedge C — threaded approve/reject Slack replies', () => {
 
   it('threads the verdict reply under the stored ts on approve', async () => {
     mocks.canReview.mockResolvedValue(true);
-    mocks.getLogoById.mockResolvedValue({
+    // updateLogoReviewStatus now returns slack_thread_ts via
+    // RETURNING ${SUMMARY_COLUMNS} — no separate pre-fetch.
+    mocks.updateReviewStatus.mockResolvedValue({
       id: '11111111-1111-1111-1111-111111111111',
       domain: 'example.com',
       slack_thread_ts: '1779110411.874',
-      review_status: 'pending',
     });
-    mocks.updateReviewStatus.mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111' });
     const app = makeApp({ hostedBrand: null, isOwner: false });
     const res = await request(app)
       .post('/api/brands/example.com/logos/11111111-1111-1111-1111-111111111111/review')
@@ -294,13 +299,11 @@ describe('Wedge C — threaded approve/reject Slack replies', () => {
 
   it('does not call the thread-reply notifier when no ts was stored', async () => {
     mocks.canReview.mockResolvedValue(true);
-    mocks.getLogoById.mockResolvedValue({
+    mocks.updateReviewStatus.mockResolvedValue({
       id: '22222222-2222-2222-2222-222222222222',
       domain: 'example.com',
       slack_thread_ts: null,
-      review_status: 'pending',
     });
-    mocks.updateReviewStatus.mockResolvedValue({ id: '22222222-2222-2222-2222-222222222222' });
     const app = makeApp({ hostedBrand: null, isOwner: false });
     await request(app)
       .post('/api/brands/example.com/logos/22222222-2222-2222-2222-222222222222/review')

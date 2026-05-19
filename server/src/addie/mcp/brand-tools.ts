@@ -609,33 +609,24 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     // Per-brand community-cap: Addie uploads count as community, so they
     // share the reserved-slot budget with route-level community uploads.
     // Keeps Addie from saturating a brand's slots and locking out the
-    // verified owner who might claim it tomorrow.
+    // verified owner who might claim it tomorrow. 8/2 split matches the
+    // HTTP route's MAX_COMMUNITY_LOGOS_PER_BRAND.
     const communityCount = await brandLogoDb.countLogosBySource(domain, ['community']);
-    if (communityCount >= 5) {
+    if (communityCount >= 8) {
       return JSON.stringify({
         error: `This brand already has ${communityCount} community-contributed logos. Wait for moderators to clear some, or for the verified owner to claim and manage it.`,
         code: 'community_cap_reached',
       });
     }
 
-    // Per-user abuse signal (Addie counts as 'system:addie'). Without
-    // this, a chat caller could ask Addie to fan out uploads across many
-    // unowned domains in a single session. Threshold matches the HTTP
-    // route's 5-distinct-domains-in-1-hour.
-    const pendingDomainCount = await brandLogoDb.countPendingDomainsForUser(
-      'system:addie',
-      60 * 60 * 1000,
-    );
-    if (pendingDomainCount >= 5) {
-      logger.warn(
-        { pendingDomainCount, domain },
-        'Addie upload_brand_logo rejected: system:addie pending-queue threshold tripped',
-      );
-      return JSON.stringify({
-        error: `Addie already has ${pendingDomainCount} brand logo uploads awaiting moderator review. Wait for the queue to clear before submitting more.`,
-        code: 'pending_queue_full',
-      });
-    }
+    // No per-user threshold on the Addie path. The HTTP route uses
+    // `uploaded_by_user_id` as the bucket key; the Addie tool stores
+    // 'system:addie' across every chat session, which would make the
+    // counter a shared bucket — one user's batch session would DoS
+    // every Addie upload platform-wide for the threshold window. Chat
+    // sessions are already gated by AAO membership + Addie's own rate
+    // limiting; the per-brand community-cap above is the load-bearing
+    // defense against single-brand spam. See #4748 expert review.
 
     const logo = await brandLogoDb.insertBrandLogo({
       domain,
