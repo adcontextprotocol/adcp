@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/core/attribution-window.json",
+  "title": "Attribution Window",
+  "description": "Describes the attribution methodology and lookback windows used for conversion measurement. Enables cross-platform comparison by making attribution methodology transparent. Used as a `$ref` from `optimization-goal.json` (buyer's optimization-time attribution choice), `get-media-buy-delivery-response.json` (seller-declared attribution methodology in delivery reports), and similar surfaces. All fields are optional individually but at least one of `post_click`, `post_view`, or `model` SHOULD be populated; absence of `model` means the seller's default attribution model applies (typically `last_touch` per industry convention) — sellers SHOULD populate `model` explicitly when committing to a specific methodology.",
+  "type": "object",
+  "properties": {
+    "post_click": {
+      "allOf": [{ "$ref": "/schemas/3.1.0-beta.0/core/duration.json" }],
+      "description": "Post-click attribution window. Conversions occurring within this duration after a click are attributed to the ad."
+    },
+    "post_view": {
+      "allOf": [{ "$ref": "/schemas/3.1.0-beta.0/core/duration.json" }],
+      "description": "Post-view attribution window. Conversions occurring within this duration after an ad impression (without click) are attributed to the ad."
+    },
+    "model": {
+      "$ref": "/schemas/3.1.0-beta.0/enums/attribution-model.json",
+      "description": "Attribution model used to assign credit when multiple touchpoints exist. SHOULD be populated when committing to a specific model; when absent, the seller's default applies."
+    }
+  },
+  "additionalProperties": true
+}

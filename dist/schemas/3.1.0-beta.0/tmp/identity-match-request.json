@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/tmp/identity-match-request.json",
+  "title": "Identity Match Request",
+  "description": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The buyer resolves the active package set for this seller from `seller_agent_url`; if `package_ids` is provided, its composition MUST be independent of the current placement (e.g., all-active or fuzzed; see field description) to prevent set-correlation attacks. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
+  "type": "object",
+  "x-status": "experimental",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional schema URI for validation. Ignored at runtime."
+    },
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin. Inlined here (rather than via core/version-envelope.json allOf) so this schema can keep `additionalProperties: false` — the privacy boundary on this endpoint is contract-bearing.",
+      "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$"
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "DEPRECATED in favor of adcp_version. Removed in 4.0. Inlined alongside adcp_version to preserve strict-mode on this endpoint.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "type": {
+      "type": "string",
+      "const": "identity_match_request",
+      "description": "Message type discriminator for deserialization."
+    },
+    "protocol_version": {
+      "type": "string",
+      "description": "TMP protocol version. Allows receivers to handle semantic differences across versions.",
+      "default": "1.0"
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Unique request identifier. MUST NOT correlate with any context match request_id."
+    },
+    "seller_agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "API endpoint URL of the seller agent issuing this request. The buyer's identity-match service uses this to resolve the active package set it has registered for this seller; when `package_ids` is omitted, evaluation occurs against that full set. If `seller_agent_url` does not match any seller for which the buyer has registered active packages, the buyer MUST return an empty `eligible_package_ids` set — it MUST NOT fall back to evaluating against another seller's active set. Compared using the AdCP URL canonicalization rules, not byte-equality — see docs/reference/url-canonicalization. Consistent with `seller_agent.agent_url` on `AvailablePackage` and `agent_url` in `adagents.json`."
+    },
+    "identities": {
+      "type": "array",
+      "description": "Identity tokens for the user, each tagged with its type. Publishers SHOULD include every token they have available — the buyer resolves on whichever graph matches. Entry order is not semantically significant; buyers use their own preference order when multiple entries resolve. Duplicate `(uid_type, user_token)` pairs MUST NOT appear; routers MAY reject or dedupe. `maxItems: 3` matches the TMPX plaintext budget (~120 bytes after HPKE overhead fits three 32-byte tokens); exceeding it forces buyer-side truncation.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "user_token": {
+            "type": "string",
+            "description": "Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII."
+          },
+          "uid_type": {
+            "$ref": "/schemas/3.1.0-beta.0/enums/uid-type.json",
+            "description": "Type of the user identifier. Tells the buyer which identity graph to resolve against, avoiding trial-and-error matching."
+          }
+        },
+        "required": [
+          "user_token",
+          "uid_type"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 3
+    },
+    "consent": {
+      "type": "object",
+      "description": "Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process the user token without consent information.",
+      "properties": {
+        "gdpr": {
+          "type": "boolean",
+          "description": "Whether GDPR applies to this request."
+        },
+        "tcf_consent": {
+          "type": "string",
+          "description": "IAB TCF v2.2 consent string. Present when gdpr is true."
+        },
+        "gpp": {
+          "type": "string",
+          "description": "IAB Global Privacy Platform string."
+        },
+        "us_privacy": {
+          "type": "string",
+          "description": "US Privacy string (CCPA). Deprecated in favor of GPP but still widely used."
+        }
+      },
+      "additionalProperties": false
+    },
+    "package_ids": {
+      "type": "array",
+      "description": "Optional. When omitted, the buyer evaluates eligibility against the full set of active packages it has registered for `seller_agent_url`. When provided, the composition of `package_ids` MUST be statistically independent of the current placement — sending only the page-specific subset would let the buyer correlate Identity Match with Context Match by comparing package sets. Two acceptable modes: (a) **all-active** — include every active package this buyer has at this publisher; (b) **fuzzed** — include a random sample of active packages, optionally padded with synthetic non-existent IDs, drawn from a distribution that does not depend on the current placement. The buyer's silent-drop behavior on unknown IDs (specified below) is what makes synthetic-ID padding safe — they do not affect the response shape and cannot leak registry membership. When both `seller_agent_url` and `package_ids` are present, the buyer evaluates against the intersection of its registered active set and `package_ids`; IDs in `package_ids` that the buyer has not registered for this seller MUST be silently ignored (not surfaced as errors) to avoid leaking registry membership back to the publisher.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "country": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2 country code. Routing directive for the TMP Router — used to select the correct regional provider. The router MUST strip this field before forwarding the request to the buyer agent. Not an identity signal."
+    }
+  },
+  "required": [
+    "type",
+    "request_id",
+    "seller_agent_url",
+    "identities"
+  ],
+  "additionalProperties": false
+}

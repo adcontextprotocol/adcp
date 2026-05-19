@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/enums/adcp-protocol.json",
+  "title": "AdCP Protocol",
+  "description": "AdCP protocols for task categorization — referenced by tasks-list-request, webhook payloads, and other task-lifecycle surfaces. Values are kebab-case. This enum shares the same axis as supported_protocols (see /schemas/protocol/get-adcp-capabilities-response.json), which uses snake_case on the wire. Compliance testing support is declared via the `capabilities.compliance_testing` block, not as a protocol value.",
+  "type": "string",
+  "enum": ["media-buy", "signals", "governance", "creative", "brand", "sponsored-intelligence", "measurement"],
+  "enumDescriptions": {
+    "media-buy": "Campaign creation, package management, delivery optimization, and conversion tracking",
+    "signals": "Audience signal discovery and activation",
+    "governance": "Property governance (identity, authorization, data, selection), brand standards, and compliance",
+    "creative": "Creative asset management, format discovery, and rendering",
+    "brand": "Brand identity, rights discovery, and rights acquisition",
+    "sponsored-intelligence": "AI-mediated commerce and conversational sponsored experiences, including buyer-agent sessions and measurement of AI-surfaced outcomes",
+    "measurement": "Measurement vendor capability discovery and per-metric reporting. Currently scoped to `get_adcp_capabilities` for catalog discovery (the `measurement` capability block); additional measurement tasks (reporting, attribution, panel queries) land in subsequent minors."
+  }
+}
