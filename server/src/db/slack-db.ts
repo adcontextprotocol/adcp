@@ -133,7 +133,34 @@ export class SlackDatabase {
         input.slack_user_id,
       ]
     );
-    return result.rows[0] || null;
+    const mapping = result.rows[0] || null;
+
+    // Backfill users.first_name/last_name from the Slack mapping when they're
+    // currently empty. The OAuth callback's resolveUserNameWithFallbacks runs
+    // the same cascade on next sign-in, but admin links and email-based
+    // auto-links happen out-of-band — without this, a learner can be Slack-
+    // linked, earn a credential via Sage, and never have signed in via OAuth
+    // in between. SQL-side split: first word → first_name, rest → last_name.
+    if (mapping) {
+      const slackName = mapping.slack_real_name || mapping.slack_display_name;
+      if (slackName?.trim()) {
+        const trimmed = slackName.trim();
+        const spaceIdx = trimmed.indexOf(' ');
+        const firstName = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
+        const lastName = spaceIdx === -1 ? null : trimmed.slice(spaceIdx + 1).trim() || null;
+        await query(
+          `UPDATE users
+              SET first_name = COALESCE(NULLIF(TRIM(first_name), ''), $1),
+                  last_name = COALESCE(NULLIF(TRIM(last_name), ''), $2),
+                  updated_at = NOW()
+            WHERE workos_user_id = $3
+              AND (NULLIF(TRIM(first_name), '') IS NULL OR NULLIF(TRIM(last_name), '') IS NULL)`,
+          [firstName, lastName, input.workos_user_id]
+        );
+      }
+    }
+
+    return mapping;
   }
 
   /**
