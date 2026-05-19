@@ -62,7 +62,7 @@ import { createEscalation } from "../db/escalation-db.js";
 import { insertTypeReclassification } from "../db/type-reclassification-log-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
 import { gateAgentVisibilityForCaller, computeAgentVisibilityGate, type VisibilityWarning, type AgentVisibilityGate } from "../services/agent-visibility-gate.js";
-import { getBrandPrimaryDomain } from "../services/brand-domain-resolver.js";
+import { getBrandPrimaryDomain, getBrandPrimaryDomainRecord } from "../services/brand-domain-resolver.js";
 import { normalizeFoundingMemberGrant } from "../services/founding-member-grant.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
@@ -682,11 +682,11 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           });
         }
         const profile = await memberDb.getProfileByOrgId(devOrgId);
-        const devBrandPrimary = await getBrandPrimaryDomain(devOrgId);
+        const devBrandRecord = await getBrandPrimaryDomainRecord(devOrgId);
         if (profile) {
-          if (devBrandPrimary) {
-            profile.resolved_brand = await resolveBrand(brandDb, devBrandPrimary);
-            (profile as unknown as Record<string, unknown>).primary_brand_domain = devBrandPrimary;
+          if (devBrandRecord) {
+            profile.resolved_brand = await resolveBrand(brandDb, devBrandRecord.domain);
+            (profile as unknown as Record<string, unknown>).primary_brand_domain = devBrandRecord.domain;
           }
         }
         const devHasApiAccess = hasApiAccess(resolveMembershipTier(localOrg));
@@ -698,7 +698,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           has_api_access: devHasApiAccess,
           agent_visibility_gate: computeAgentVisibilityGate({
             hasApiAccess: devHasApiAccess,
-            brandPrimaryDomain: devBrandPrimary,
+            brandPrimaryDomain: devBrandRecord?.domain ?? null,
+            brandDomainVerified: devBrandRecord?.verified ?? false,
           }),
         });
       }
@@ -744,14 +745,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       const profile = await memberDb.getProfileByOrgId(targetOrgId);
-      const brandPrimary = await getBrandPrimaryDomain(targetOrgId);
+      const brandRecord = await getBrandPrimaryDomainRecord(targetOrgId);
       if (profile) {
-        if (brandPrimary) {
-          profile.resolved_brand = await resolveBrand(brandDb, brandPrimary);
+        if (brandRecord) {
+          profile.resolved_brand = await resolveBrand(brandDb, brandRecord.domain);
           // After Stage 2 of #4159 dropped the column, the field is
           // re-derived from organization_domains.is_primary so clients
           // (member-profile.html, dashboard-agents.html) keep working.
-          (profile as unknown as Record<string, unknown>).primary_brand_domain = brandPrimary;
+          (profile as unknown as Record<string, unknown>).primary_brand_domain = brandRecord.domain;
         }
       }
 
@@ -768,7 +769,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         has_api_access: callerHasApiAccess,
         agent_visibility_gate: computeAgentVisibilityGate({
           hasApiAccess: callerHasApiAccess,
-          brandPrimaryDomain: brandPrimary,
+          brandPrimaryDomain: brandRecord?.domain ?? null,
+          brandDomainVerified: brandRecord?.verified ?? false,
         }),
       });
     } catch (error) {
@@ -1317,6 +1319,25 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         const localOrgForTier = await orgDb.getOrganization(targetOrgId);
         const callerHasApi = hasApiAccess(resolveMembershipTier(localOrgForTier));
         const gated = gateAgentVisibilityForCaller(updates.agents, callerHasApi);
+
+        // If any agent will be publicly listed, require a DNS-verified brand domain.
+        // Tier downgrade (above) is a soft warning; domain verification is a hard gate.
+        if (gated.agents.some((a) => a.visibility === 'public')) {
+          const brandRec = await getBrandPrimaryDomainRecord(targetOrgId);
+          if (!brandRec) {
+            return res.status(400).json({
+              error: 'brand_domain_required',
+              message: 'To list an agent publicly, your profile needs a primary brand domain.',
+            });
+          }
+          if (!brandRec.verified) {
+            return res.status(400).json({
+              error: 'brand_domain_unverified',
+              message: 'To list an agent publicly, your primary brand domain must be DNS-verified. Complete the domain verification challenge in the Brand section of your profile.',
+            });
+          }
+        }
+
         // Resolve `type` server-side from the capability snapshot. The
         // client cannot pin a misclassification (e.g. sales agent typed
         // 'buying') — the inferred_type from the crawler probe wins. See
@@ -1533,7 +1554,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // setPrimaryDomain (Stage 3) racing this read lands old-or-new — both
       // states the org legitimately controls, so worst case is wrong-brand
       // listing recoverable by re-publish.
-      const brandPrimaryDomain = await getBrandPrimaryDomain(orgId);
+      const brandPrimaryRecord = await getBrandPrimaryDomainRecord(orgId);
+      const brandPrimaryDomain = brandPrimaryRecord?.domain ?? null;
       const parsedAgents = typeof row.agents === 'string'
         ? JSON.parse(row.agents)
         : Array.isArray(row.agents) ? row.agents : [];
@@ -1589,6 +1611,16 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             body: {
               error: 'brand_domain_required',
               message: 'To list an agent publicly, your profile needs a primary brand domain. If you have a verified email domain in your organization (e.g. via SSO), it should auto-populate — otherwise, claim your brand domain in the Brand section of your profile.',
+            },
+          };
+        }
+        if (!brandPrimaryRecord?.verified) {
+          await client.query('ROLLBACK');
+          return {
+            status: 400,
+            body: {
+              error: 'brand_domain_unverified',
+              message: 'To list an agent publicly, your primary brand domain must be DNS-verified. Complete the domain verification challenge in the Brand section of your profile.',
             },
           };
         }
