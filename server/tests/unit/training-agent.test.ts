@@ -4044,6 +4044,48 @@ describe('get_media_buy_delivery handler', () => {
     expect(totals.cost_per_click).toBeCloseTo(totals.spend / totals.clicks, 2);
   });
 
+  it('omits cost_per_click when clicks are zero', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'no-clicks.example' }, operator: 'no-clicks.example', sandbox: true };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'no-clicks.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2025-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 15000,
+      }],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+
+    // Inject impressions + spend but explicitly clicks: 0
+    await simulateCallTool(server, 'comply_test_controller', {
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: mediaBuyId,
+        impressions: 300000,
+        clicks: 0,
+        reported_spend: { amount: 11000, currency: 'USD' },
+      },
+      account,
+      brand: { domain: 'no-clicks.example' },
+    });
+
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: mediaBuyId,
+    });
+    const totals = (result.media_buy_deliveries as Array<Record<string, unknown>>)[0].totals as Record<string, unknown>;
+    expect(totals.clicks).toBe(0);
+    expect(totals.cost_per_click).toBeUndefined();
+  });
+
   it('emits reach + frequency for a buy created with a reach optimization goal', async () => {
     const catalog = buildCatalog();
     const reachProduct = catalog.find(cp =>
@@ -4095,6 +4137,60 @@ describe('get_media_buy_delivery handler', () => {
     expect(totals.frequency).toBeDefined();
     expect(typeof totals.reach).toBe('number');
     expect((totals.reach as number) > 0).toBe(true);
+  });
+
+  it('emits completed_views + completion_rate for a buy created with a completed_views optimization goal', async () => {
+    const catalog = buildCatalog();
+    const cvProduct = catalog.find(cp =>
+      (cp.product as { metric_optimization?: { supported_metrics?: string[] } }).metric_optimization?.supported_metrics?.includes('completed_views'),
+    );
+    if (!cvProduct) throw new Error('No catalog product supports completed_views');
+    const product = cvProduct.product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'cv-delivery.example' }, operator: 'cv-delivery.example', sandbox: true };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'cv-delivery.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2025-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+        bid_price: 5.0,
+        optimization_goals: [{
+          kind: 'metric',
+          metric: 'completed_views',
+          view_duration_seconds: 6,
+          target: { kind: 'cost_per', value: 0.05 },
+        }],
+      }],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+
+    // Inject impressions so the completed_views derivation has something to scale from.
+    await simulateCallTool(server, 'comply_test_controller', {
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: mediaBuyId,
+        impressions: 750000,
+        reported_spend: { amount: 14000, currency: 'USD' },
+      },
+      account,
+      brand: { domain: 'cv-delivery.example' },
+    });
+
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: mediaBuyId,
+    });
+    const totals = (result.media_buy_deliveries as Array<Record<string, unknown>>)[0].totals as Record<string, unknown>;
+    expect(totals.completed_views).toBeDefined();
+    expect(totals.completion_rate).toBeDefined();
+    expect(typeof totals.completed_views).toBe('number');
+    expect((totals.completed_views as number) > 0).toBe(true);
   });
 
   it('omits cost_per_acquisition when no conversions were injected', async () => {
