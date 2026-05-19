@@ -99,12 +99,13 @@ COPY package*.json ./
 # dep tree; native deps are rebuilt explicitly per-package.
 RUN npm ci --omit=dev --ignore-scripts && npm rebuild sharp
 
-# Copy built files from builder
+# Copy built files from builder. Runtime assets under server/src/** (JSON
+# format catalogs, SQL migrations, Addie rule markdown, etc.) are mirrored
+# into dist/ by scripts/copy-server-assets.cjs during `npm run build`, so
+# `COPY ... /dist` is sufficient — no per-directory asset lines needed here.
+# Adding an asset to server/src/** is a one-place change.
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server/public ./server/public
-COPY --from=builder /app/server/src/db/migrations ./dist/db/migrations
-COPY --from=builder /app/server/src/creative-agent/*.json ./dist/creative-agent/
-COPY --from=builder /app/server/src/addie/rules/*.md ./dist/addie/rules/
 COPY --from=builder /app/static ./static
 COPY --from=builder /app/docs ./docs
 
