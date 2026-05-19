@@ -139,6 +139,39 @@
           },
           "minItems": 1
         },
+        "formats": {
+          "type": "array",
+          "description": "Publisher-authoritative format catalog. Declares the canonical-formats v2 shapes the publisher supports across its properties — the single place a publisher (or its community-registry stand-in) asserts \"these are the formats my inventory accepts.\" Products selling this publisher's inventory SHOULD reference these declarations by `capability_id` on the placement or via inline `format_options` whose `capability_id` matches an entry here, eliminating the N-copies-of-Meta-Reels-on-N-products drift surface.\n\nEach item is a `ProductFormatDeclaration` (same canonical-formats v2 shape used on Products) plus optional `applies_to_property_ids` / `applies_to_property_tags` for property scoping within the file. A `formats[]` entry without scope applies to all properties in the file; with scope, only to the named subset (e.g., Reels applies to Instagram + Facebook but not WhatsApp).\n\n**Community registry pattern (normative for unadopted platforms).** When a platform hasn't adopted AdCP (Meta, TikTok, Snap, Pinterest, etc.), AAO publishes a community-maintained adagents.json at `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json` carrying that platform's `formats[]`. Buyer SDKs fetch the platform's own `<domain>/.well-known/adagents.json` first; on 404 or absence-of-formats[], they fall back to the AAO mirror. When the platform adopts AdCP and publishes their own adagents.json with `formats[]`, the platform-hosted file takes precedence and the mirror entry becomes redundant (AAO maintainers deprecate it).\n\nThe `v1_format_ref.agent_url` on each declaration SHOULD match the agent_url of the file's hosting location — platform-hosted formats point at the platform's agent, community-mirror formats point at `https://creative.adcontextprotocol.org/translated/<platform>`. This keeps the v1 namespace converged regardless of which side hosts the catalog. See `docs/creative/canonical-formats.mdx` Meta Reels worked example.",
+          "items": {
+            "allOf": [
+              { "$ref": "/schemas/core/product-format-declaration.json" },
+              {
+                "type": "object",
+                "properties": {
+                  "applies_to_property_ids": {
+                    "type": "array",
+                    "description": "Optional property IDs from this file's `properties[]` that this format declaration applies to. When omitted, the declaration applies to all properties in the file. Mutually compatible with `applies_to_property_tags` (union is the effective scope). Example: Meta declares Reels with `applies_to_property_ids: [\"instagram\", \"facebook\"]` because WhatsApp doesn't carry Reels inventory.",
+                    "items": { "$ref": "/schemas/core/property-id.json" },
+                    "minItems": 1
+                  },
+                  "applies_to_property_tags": {
+                    "type": "array",
+                    "description": "Optional property tags from this file's `tags` map that this format declaration applies to. When omitted, the declaration applies to all properties in the file. Useful for network-wide formats (e.g., a managed network declaring `applies_to_property_tags: [\"premium_video\"]`). Compatible with `applies_to_property_ids` — a property is in scope if it matches either ID list or tag list.",
+                    "items": { "$ref": "/schemas/core/property-tag.json" },
+                    "minItems": 1
+                  }
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "superseded_by": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "Optional pointer indicating this adagents.json file has been superseded by another adagents.json at a different URL. Used by the AAO community-mirror lifecycle: when a platform (e.g., Meta) adopts AdCP and publishes its own adagents.json at `<platform-domain>/.well-known/adagents.json`, the AAO mirror file at `creative.adcontextprotocol.org/translated/<platform>/adagents.json` sets `superseded_by` to the platform-hosted URL. Buyer SDKs encountering a file with `superseded_by` SHOULD short-circuit and re-fetch from the named URL rather than serving stale content from the mirror. The mirror SHOULD continue serving with `superseded_by` set for ≥1 minor release after platform adoption so buyer caches keyed on the mirror URL get an explicit migration signal rather than a silent break."
+        },
         "tags": {
           "type": "object",
           "description": "Metadata for each tag referenced by properties. Provides human-readable context for property tag values.",
