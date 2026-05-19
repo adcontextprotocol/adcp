@@ -1,0 +1,13 @@
+{
+  "test_id": "fetch-contract-neg-02-http-scheme",
+  "category": "transport",
+  "description": "Request URI uses http:// (or file://, data:, anything non-https). SDK MUST refuse to fetch at the schema layer.",
+  "setup": {
+    "request_uri": "http://creative.adcontextprotocol.org/extensions/insecure",
+    "declared_digest": "sha256:<irrelevant>",
+    "fetch_attempted": false
+  },
+  "expected_outcome": "fail:transport",
+  "expected_error_code": "FORMAT_PROJECTION_FAILED",
+  "rationale": "https-only is enforced at the schema layer (platform-extension-ref.json pattern ^https://). Defense-in-depth: even if a malformed schema slips through, the fetch contract requires https-only refusal before any network operation."
+}

@@ -53,6 +53,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { isUuid } from "./utils/uuid.js";
+import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
@@ -128,6 +129,7 @@ import { createAccountLinkingRouter, handleEmailLinkVerification } from "./route
 import { createNetworkHealthApiRouter } from "./routes/network-health.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
+import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED, TRAINING_AGENT_URL } from "./training-agent/config.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
@@ -1092,7 +1094,8 @@ export class HTTPServer {
 
         // Only serve brand_json and community source types. Enriched (Brandfetch) entries are
         // not brand-attested — serving them under this URL would misrepresent third-party data
-        // as brand-authoritative. Community entries are served only when structurally valid.
+        // as brand-authoritative. editDiscoveredBrand promotes enriched→community on first
+        // human edit, so curated rows land here under the community type.
         if (brand.source_type !== 'brand_json' && brand.source_type !== 'community') {
           return res.status(404).json({ error: 'Brand not found' });
         }
@@ -1100,16 +1103,8 @@ export class HTTPServer {
         const manifest = brand.brand_manifest as Record<string, unknown> | undefined;
         if (!manifest) return res.status(404).json({ error: 'Brand not found' });
 
-        if (brand.source_type === 'community') {
-          // Community entries must be approved and have a recognizable brand.json root shape.
-          if (brand.review_status === 'pending') return res.status(404).json({ error: 'Brand not found' });
-          const hasValidShape =
-            (typeof manifest.house === 'object' && Array.isArray(manifest.brands)) ||
-            typeof manifest.house === 'string' ||
-            Array.isArray(manifest.agents) ||
-            Boolean(manifest.brand_agent) ||
-            typeof manifest.authoritative_location === 'string';
-          if (!hasValidShape) return res.status(404).json({ error: 'Brand not found' });
+        if (brand.source_type === 'community' && brand.review_status === 'pending') {
+          return res.status(404).json({ error: 'Brand not found' });
         }
 
         const schemaUrl = 'https://adcontextprotocol.org/schemas/v3/brand.json';
@@ -1226,6 +1221,9 @@ export class HTTPServer {
 
     // Mount brand feed import routes (RSS, YouTube, Spotify + bulk property/collection merge)
     this.app.use('/api', createBrandFeedsRouter({ brandDb: this.brandDb }));
+
+    // Mount brand ownership status route (drives Claim/Manage CTAs on /brand/view)
+    this.app.use('/api', createBrandOwnershipRouter({ brandDb: this.brandDb }));
 
     // Mount member profile routes
     const memberDb = new MemberDatabase();
@@ -4865,6 +4863,12 @@ export class HTTPServer {
       this.serveHtmlWithConfig(req, res, 'admin-geo.html'));
     this.app.get('/admin/brands', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-brands.html'));
+    // Brand-logo moderation queue: gated to authenticated users at the
+    // page layer; the underlying API enforces brand-registry-moderator
+    // membership so a non-moderator who navigates here sees an empty
+    // queue with a "not authorized" message rather than a hard 404.
+    this.app.get('/admin/brand-logos', requireAuth, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-brand-logos.html'));
 
     // Redirects from old /manage paths (preserve query strings)
     const manageRedirect = (target: string) => (req: express.Request, res: express.Response) => {
@@ -6499,10 +6503,14 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         logger.info({ userId: user.id }, 'User authenticated via OAuth callback');
 
         // Ensure user exists in local users table (webhooks may have been missed).
-        // On INSERT, use WorkOS values. On UPDATE, preserve user-set names:
-        // only fill in names that are currently empty in the DB.
+        // On INSERT, use WorkOS values — falling back to existing DB / Slack
+        // mapping when WorkOS itself has empty names. On UPDATE, preserve
+        // user-set names: only fill in names that are currently empty.
         try {
           const pool = getPool();
+          const { firstName, lastName } = await resolveUserNameWithFallbacks(
+            pool, user.id, user.firstName, user.lastName,
+          );
           await pool.query(
             `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
@@ -6513,7 +6521,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
                email_verified = EXCLUDED.email_verified,
                workos_updated_at = EXCLUDED.workos_updated_at,
                updated_at = NOW()`,
-            [user.id, user.email, user.firstName, user.lastName, user.emailVerified, user.createdAt, user.updatedAt]
+            [user.id, user.email, firstName, lastName, user.emailVerified, user.createdAt, user.updatedAt]
           );
         } catch (upsertError) {
           logger.error({ error: upsertError, userId: user.id }, 'Failed to upsert user on login');
@@ -7346,18 +7354,26 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           return res.status(400).json({ error: 'first_name must be a string' });
         }
 
-        const sanitize = (s: string) => s.trim().replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ');
-        const firstName = sanitize(req.body.first_name);
-        const lastName = typeof req.body.last_name === 'string' ? sanitize(req.body.last_name) || null : null;
+        // Reject overlong raw input *before* sanitizing so the user gets a
+        // clear 422 instead of silent truncation.
+        if (req.body.first_name.length > 255) {
+          return res.status(400).json({ error: 'first_name must be 255 characters or fewer' });
+        }
+        if (typeof req.body.last_name === 'string' && req.body.last_name.length > 255) {
+          return res.status(400).json({ error: 'last_name must be 255 characters or fewer' });
+        }
+
+        // sanitizeName strips C0/C1 controls + Unicode direction/format
+        // characters (RTL-override spoofing, ZWSP), collapses whitespace,
+        // trims, and caps at 255 chars — same guarantees as the Slack-source
+        // paths. It preserves multi-word names ("Mary Jane") intact.
+        const firstName = sanitizeName(req.body.first_name);
+        const lastName = typeof req.body.last_name === 'string'
+          ? (sanitizeName(req.body.last_name) || null)
+          : null;
 
         if (!firstName) {
           return res.status(400).json({ error: 'first_name is required' });
-        }
-        if (firstName.length > 255) {
-          return res.status(400).json({ error: 'first_name must be 255 characters or fewer' });
-        }
-        if (lastName && lastName.length > 255) {
-          return res.status(400).json({ error: 'last_name must be 255 characters or fewer' });
         }
 
         const pool = getPool();
@@ -7374,8 +7390,23 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           [firstName, lastName, user.id]
         );
 
+        // Push back to WorkOS so subsequent webhooks / SDK reads don't show
+        // empty names. Best-effort: a transient WorkOS failure shouldn't fail
+        // the user's local name update.
+        try {
+          if (workos) {
+            await workos.userManagement.updateUser({
+              userId: user.id,
+              firstName,
+              lastName: lastName ?? undefined,
+            });
+          }
+        } catch (workosError) {
+          logger.warn({ err: workosError, userId: user.id }, 'Failed to push name to WorkOS (local update applied)');
+        }
+
         invalidateMemberContextCache();
-        logger.info({ userId: user.id, firstName, lastName }, 'User updated their display name');
+        logger.info({ userId: user.id }, 'User updated their display name');
         res.json({ first_name: firstName, last_name: lastName });
       } catch (error) {
         logger.error({ err: error }, 'Update user name error');

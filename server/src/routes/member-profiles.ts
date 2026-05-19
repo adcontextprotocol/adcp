@@ -11,6 +11,7 @@ import { createLogger } from "../logger.js";
 import {
   requireAuth,
   requireAdmin,
+  refuseCrossTenantAdminApiKey,
   isDevModeEnabled,
   DEV_USERS,
 } from "../middleware/auth.js";
@@ -29,6 +30,13 @@ import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
 import { emailPrefsDb } from "../db/email-preferences-db.js";
 import { slugify } from "../services/collection-feed-sync.js";
+import {
+  verifyAgentHostname,
+  buildUnverifiedHostnameMessage,
+  checkAgentHostnameAgainstDomains,
+  getVerifiedOrgDomains,
+  isHostnameOwnershipRejection,
+} from "../services/agent-hostname-verification.js";
 import {
   isMemberProfileBootstrapBody,
   memberProfileBootstrapRateLimiter,
@@ -924,6 +932,76 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
+      // Canonicalize agent URLs before any downstream processing so
+      // the POST-create write shape matches every other write path
+      // (#3573). Without this, POST-create wrote non-canonical URLs
+      // into JSONB while PUT and per-agent POST canonicalized — same
+      // column, two shapes. Reject query strings / fragments and
+      // unparseable URLs explicitly so the hostname gate below can
+      // trust the URLs it sees.
+      if (Array.isArray(agents)) {
+        for (let i = 0; i < agents.length; i++) {
+          const a = agents[i];
+          // Reject malformed entries outright — silently skipping past
+          // a missing/invalid `url` lets a caller smuggle an entry
+          // through the hostname gate below (CodeQL
+          // js/user-controlled-bypass).
+          if (!a || typeof a.url !== 'string') {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}] must be an object with a string url`,
+            });
+          }
+          if (a.url.includes('?') || a.url.includes('#')) {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}].url must not contain query strings or fragments`,
+            });
+          }
+          const canonical = canonicalizeAgentUrl(a.url);
+          if (!canonical) {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}].url is not a valid agent URL`,
+            });
+          }
+          a.url = canonical;
+        }
+      }
+
+      // Hostname ownership check (#4499 MVP). The POST create path is
+      // the second smuggle vector past the per-agent POST gate (after
+      // the bulk PUT). No grandfathering is needed here — this branch
+      // creates a fresh profile, so there are no existing entries to
+      // honor. All agents in the body are NEW writes.
+      //
+      // Bulk shape (#4673): one query for the verified-domain list
+      // before the loop, pure check inside. Avoids N+1 queries when
+      // the caller submits many agents at once.
+      if (Array.isArray(agents) && agents.length > 0) {
+        const verifiedDomains = await getVerifiedOrgDomains(targetOrgId);
+        for (let i = 0; i < agents.length; i++) {
+          // Canonicalization loop above 400s on any entry without a
+          // string `url`, so by here every `agents[i].url` is a
+          // canonical string. Cast at the call site to satisfy TS
+          // without a conditional that CodeQL classifies as a
+          // user-controlled bypass.
+          const agentUrl = (agents[i] as AgentConfig).url as string;
+          const verification = checkAgentHostnameAgainstDomains(agentUrl, verifiedDomains, targetOrgId);
+          if (isHostnameOwnershipRejection(verification)) {
+            return res.status(400).json({
+              error: 'unverified_hostname',
+              message: `agents[${i}]: ${buildUnverifiedHostnameMessage(verification)}`,
+              agent_index: i,
+              agent_url: agentUrl,
+              agent_hostname: verification.agent_hostname,
+              verified_domains: verification.verified_domains,
+              reason: verification.reason,
+            });
+          }
+        }
+      }
+
       // Gate agent visibility on create using the same helper the PUT
       // path uses. Without this, an Explorer-tier user creating their
       // first profile can land `visibility: 'public'` directly in the
@@ -1162,23 +1240,80 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         // applied via two surfaces lands as the same row.
         for (let i = 0; i < updates.agents.length; i++) {
           const a = updates.agents[i] as AgentConfig & { url?: unknown };
-          if (a && typeof a.url === 'string') {
-            if (a.url.includes('?') || a.url.includes('#')) {
-              return res.status(400).json({
-                error: 'invalid_agent_url',
-                message: `agents[${i}].url must not contain query strings or fragments`,
-              });
-            }
-            const canonical = canonicalizeAgentUrl(a.url);
-            if (!canonical) {
-              return res.status(400).json({
-                error: 'invalid_agent_url',
-                message: `agents[${i}].url is not a valid agent URL`,
-              });
-            }
-            a.url = canonical;
+          // Reject malformed entries outright instead of skipping them
+          // — silently skipping past a missing/invalid `url` lets a
+          // caller smuggle an entry through the hostname gate below
+          // (CodeQL js/user-controlled-bypass).
+          if (!a || typeof a.url !== 'string') {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}] must be an object with a string url`,
+            });
+          }
+          if (a.url.includes('?') || a.url.includes('#')) {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}].url must not contain query strings or fragments`,
+            });
+          }
+          const canonical = canonicalizeAgentUrl(a.url);
+          if (!canonical) {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}].url is not a valid agent URL`,
+            });
+          }
+          a.url = canonical;
+        }
+
+        // Hostname ownership check (#4499 MVP). The bulk PUT had been a
+        // smuggle path past the per-agent POST gate — same JSONB column,
+        // same downstream consumers, no verification. Per-entry check
+        // here mirrors the POST handler; entries whose canonical URL is
+        // already in `existingProfile.agents` are grandfathered (a bulk
+        // PUT must remain idempotent for an unchanged caller). NEW URLs
+        // go through the gate.
+        // Canonicalize the existing URLs the same way we canonicalize
+        // incoming ones (above) so a legacy pre-#3573 row stored in
+        // non-canonical form (mixed case, trailing slash, etc.) still
+        // matches the grandfather check when a legitimate caller
+        // re-PUTs it. Without this, the gate rejects a re-PUT of an
+        // un-changed entry and the caller has no way to send the
+        // original form because canonicalization strips it server-side.
+        const existingUrls = new Set(
+          (existingProfile.agents ?? [])
+            .map((a) => {
+              if (!a || typeof a.url !== 'string') return null;
+              return canonicalizeAgentUrl(a.url) ?? a.url;
+            })
+            .filter((u): u is string => u !== null),
+        );
+        // Bulk shape (#4673): one query for the verified-domain list
+        // before the loop, pure check inside. Avoids N+1 queries when
+        // the bulk caller submits many agents at once.
+        const bulkVerifiedDomains = await getVerifiedOrgDomains(targetOrgId);
+        for (let i = 0; i < updates.agents.length; i++) {
+          // Canonicalization loop above 400s on any entry without a
+          // string `url`, so by here every `updates.agents[i].url` is a
+          // canonical string. Cast at the call site to satisfy TS
+          // without a conditional that CodeQL classifies as a
+          // user-controlled bypass.
+          const agentUrl = (updates.agents[i] as AgentConfig).url as string;
+          if (existingUrls.has(agentUrl)) continue;
+          const verification = checkAgentHostnameAgainstDomains(agentUrl, bulkVerifiedDomains, targetOrgId);
+          if (isHostnameOwnershipRejection(verification)) {
+            return res.status(400).json({
+              error: 'unverified_hostname',
+              message: `agents[${i}]: ${buildUnverifiedHostnameMessage(verification)}`,
+              agent_index: i,
+              agent_url: agentUrl,
+              agent_hostname: verification.agent_hostname,
+              verified_domains: verification.verified_domains,
+              reason: verification.reason,
+            });
           }
         }
+
         const localOrgForTier = await orgDb.getOrganization(targetOrgId);
         const callerHasApi = hasApiAccess(resolveMembershipTier(localOrgForTier));
         const gated = gateAgentVisibilityForCaller(updates.agents, callerHasApi);
@@ -1422,6 +1557,27 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         return { status: 404, body: { error: 'Agent not found at index' } };
       }
       const agent = agents[index];
+
+      // Re-verify hostname ownership on any non-private flip (#4499 MVP).
+      // A grandfathered row registered before the gate landed should not
+      // be promotable to `members_only` or `public` without satisfying
+      // the same constraint a fresh POST has to satisfy — escalation
+      // #340 was specifically about a public claim, and members_only is
+      // still discoverable to every paying member (the attack audience).
+      // Demotion to `private` is exempt — privacy is always safe.
+      if (target !== 'private') {
+        const verification = await verifyAgentHostname(orgId, agent.url);
+        if (isHostnameOwnershipRejection(verification)) {
+          await client.query('ROLLBACK');
+          return {
+            status: 400,
+            body: {
+              error: 'unverified_hostname',
+              message: buildUnverifiedHostnameMessage(verification),
+            },
+          };
+        }
+      }
 
       // Only the public path needs to reach out to brand.json, so the
       // brand-domain requirement is scoped to `target === 'public'`.
@@ -2383,6 +2539,23 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
       const { id } = req.params;
       const updates = req.body;
 
+      // Cross-tenant gate. `requireAdmin` keys off `:orgId` in the path,
+      // but this route uses `:id` (a profile UUID) — resolve the profile's
+      // org and apply the gate here. Without this, any WorkOS API key
+      // holding `admin:*` (issued by any org) could mutate any
+      // member_profiles row by guessing the UUID. Surfaced by security
+      // review on #4498.
+      const existingProfile = await memberDb.getProfileById(id);
+      if (!existingProfile) {
+        return res.status(404).json({
+          error: 'Profile not found',
+          message: `No member profile found with ID: ${id}`,
+        });
+      }
+      if (refuseCrossTenantAdminApiKey(req, res, existingProfile.workos_organization_id)) {
+        return;
+      }
+
       // Validate offerings if provided
       if (updates.offerings && Array.isArray(updates.offerings)) {
         const invalidOfferings = updates.offerings.filter((o: string) => !VALID_MEMBER_OFFERINGS.includes(o as any));
@@ -2445,6 +2618,18 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
   router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
+
+      // Cross-tenant gate — see PUT above for context.
+      const existingProfile = await memberDb.getProfileById(id);
+      if (!existingProfile) {
+        return res.status(404).json({
+          error: 'Profile not found',
+          message: `No member profile found with ID: ${id}`,
+        });
+      }
+      if (refuseCrossTenantAdminApiKey(req, res, existingProfile.workos_organization_id)) {
+        return;
+      }
 
       const deleted = await memberDb.deleteProfile(id);
 

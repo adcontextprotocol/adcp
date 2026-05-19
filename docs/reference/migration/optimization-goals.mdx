@@ -40,9 +40,9 @@ Every goal has a `kind` discriminator:
 }
 ```
 
-Supported metrics: `clicks`, `views`, `completed_views`, `viewed_seconds`, `attention_seconds`, `attention_score`, `engagements`, `follows`, `saves`, `profile_visits`, `reach`.
+Supported metrics: `clicks`, `views`, `completed_views`, `viewed_seconds`, `engagements`, `follows`, `saves`, `profile_visits`, `reach`. `attention_seconds` and `attention_score` are accepted but **deprecated** (slated for removal at next major) — use `kind: "vendor_metric"` with an explicit vendor binding instead.
 
-**How these surface in delivery:** `viewed_seconds` is reported via `viewability.viewed_seconds` (the same `standard` threshold governs both `viewable_rate` and `viewed_seconds`). `attention_seconds` and `attention_score` are vendor-defined with no graduated standard — they flow through `vendor_metric_values[]` with `metric_id: "attention_seconds"` or `"attention_score"` and the vendor identified on the row. The optimization-side vendor-binding follow-up is tracked in [#4644](https://github.com/adcontextprotocol/adcp/issues/4644).
+**How these surface in delivery:** `viewed_seconds` is reported via `viewability.viewed_seconds` (the same `standard` threshold governs both `viewable_rate` and `viewed_seconds`). Vendor-attested metrics — attention, panel-based brand lift, emissions, retail-media partner metrics — flow through the `kind: "vendor_metric"` goal kind on the optimization side and `vendor_metric_values[]` on the delivery side, keyed on `(vendor, metric_id)`. See [`kind: vendor_metric`](/docs/media-buy/conversion-tracking/#kind-vendor_metric) for the goal shape and the three-precondition rejection rule.
 
 Target types:
 - `cost_per` — Target cost per metric unit (e.g., $2.50 CPC)

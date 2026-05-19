@@ -326,6 +326,24 @@ export interface MediaBuyState {
    * cleared on the first deriveStatus read so subsequent real-workflow reads
    * see the normal pending_creatives guard. Never set by production code paths. */
   complyControllerForced?: boolean;
+  /** Open impairments — upstream dependency state changes affecting at least one
+   * package on this buy. health derives from impairments.length: empty → 'ok',
+   * non-empty → 'impaired'. Sellers add entries when a referenced resource
+   * (creative, audience, event_source, …) transitions offline; remove when the
+   * resource recovers or stops being a dependency (e.g., assignment swap). */
+  impairments?: Impairment[];
+}
+
+export interface Impairment {
+  impairmentId: string;
+  resourceType: 'audience' | 'creative' | 'catalog_item' | 'event_source' | 'property';
+  resourceId: string;
+  packageIds: string[];
+  transition: { from?: string; to: string };
+  reasonCode: string;
+  reason?: string;
+  observedAt: string;
+  remediation?: string;
 }
 
 export interface PackageState {
@@ -345,6 +363,11 @@ export interface PackageState {
   formatIds?: FormatID[];
   creativeAssignments: string[];
   targeting?: PackageTargeting;
+  /** Buyer-declared optimization goals carried through from create_media_buy.
+   *  Persisted opaquely so delivery handlers can gate metric emission on
+   *  what the buyer actually requested (e.g., only surface reach + frequency
+   *  when a reach goal was requested). */
+  optimizationGoals?: Array<Record<string, unknown>>;
 }
 
 export interface ListReference {

@@ -107,16 +107,27 @@ For A2A, skill parameters stay in `message.parts[].data.parameters`. The push no
 
 ## Operation IDs and URL templates
 
-Operation IDs let you route incoming webhooks to the right handler. The typical pattern:
+Operation IDs let you route incoming webhooks to the right handler. The pattern:
 
-1. Generate a unique ID per task call
-2. Embed it in the webhook URL path
-3. The seller echoes `operation_id` in the payload — no URL parsing needed
+1. Buyer generates a unique ID per task call
+2. Buyer threads it through to the seller as `operation_id` (typically by embedding in the webhook URL path, but the URL structure is the buyer's choice and is **opaque to the seller**)
+3. Seller echoes `operation_id` verbatim in every webhook payload — no URL parsing needed
 
-**URL template pattern:**
+**Normative wire contract:**
+
+- **Buyers MUST** supply `operation_id` to the seller for every webhook registration and SHOULD generate it as a unique value per task invocation (UUID recommended).
+- **Sellers MUST** echo the buyer-supplied `operation_id` value in every webhook payload exactly as received. The payload field is the **only** source of truth for correlation.
+- **Sellers MUST NOT** derive `operation_id` by parsing `push_notification_config.url` — the URL structure (path template, query parameters, opaque token, etc.) is implementation-defined from the seller's point of view and cannot be reliably reversed across implementations. A buyer's URL convention is not part of the protocol.
+- **Receivers MUST NOT** correlate webhooks by URL-path inspection in production code. The URL is for buyer-side server routing convenience only; the wire-level correlation identifier is the payload field.
+
+This matches the precedent set by every comparable async-notification protocol in ad tech (OpenRTB `nurl`/`burl`, VAST tracking pixels, A2A `PushNotificationConfig`): the entity firing the HTTP call never parses the receiver's URL for correlation data.
+
+**URL template pattern (buyer-side convention only):**
 ```
 https://you.com/webhooks/{task_type}/{agent_id}/{operation_id}
 ```
+
+The template above is a useful **server-side routing aid for the buyer** — it lets a buyer's HTTP server dispatch on path segments without first parsing the body — but it is not normative and sellers cannot rely on it. A buyer who prefers `?op=…`, a flat path, or an entirely opaque token is fully conformant as long as the seller-side `operation_id` is supplied through the SDK's send-side API.
 
 **Example (client library handles this automatically):**
 ```typescript
@@ -128,7 +139,9 @@ const webhookUrl = `https://you.com/adcp/webhook/create_media_buy/${agentId}/${o
 // pass webhookUrl in push_notification_config.url
 ```
 
-The seller's webhook payload will include `"operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443"`, so your handler can route to the right pending operation without parsing the URL.
+The seller's webhook payload will include `"operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443"`, so your handler can route to the right pending operation by reading the payload field directly — never by parsing the URL it arrived on.
+
+**Seller-SDK implementations** surface `operation_id` as an explicit parameter on the send-side webhook API (e.g., Python `WebhookSender.send_mcp(url=…, operation_id=…)`). The seller's application code threads the value through from the original task request to the webhook fire; the SDK never attempts to recover it from the URL.
 
 ### Echoing the caller's `context` object
 
@@ -444,6 +457,10 @@ app.post('/webhooks/adcp', async (req, res) => {
 
 **Always implement polling as backup.** Webhooks can fail due to network issues or server downtime. Use a slower poll interval when webhooks are configured (e.g., every 2 minutes instead of 30 seconds), and stop polling once you receive a terminal status via webhook.
 
+### Diagnosing missing fires
+
+When a buyer suspects a webhook isn't reaching its endpoint — gateway 5xx, stale-sequence dedup, drifted webhook URL, suppressed fires under a tripped circuit breaker — call [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys#webhook-activity) with `include_webhook_activity: true`. Each returned media buy will carry a `webhook_activity` array of recent fires for the calling principal, including `idempotency_key` (matches the payload's dedup key — correlate against your own endpoint log), `status` (`success` / `failed` / `timeout` / `connection_error` / `pending`), `http_status_code`, `attempt`, and `error_message`. The scope is the calling principal's own fires; no operator ticket required.
+
 ## Best practices
 
 1. **Always implement polling as backup** — webhooks can fail; poll at a reduced interval (e.g. every 2 minutes) when webhooks are configured, and stop once you receive a terminal status
@@ -513,7 +530,7 @@ This section is the transport half of the [Snapshot and log contract](/docs/prot
 
 ### Delivery semantics
 
-- **At-least-once delivery.** Sellers MAY re-fire the same logical event under retry. Receivers MUST dedupe by `idempotency_key` (or the equivalent event-scoped id surfaced in the payload — e.g., `notification_id` for `notification-type` events).
+- **At-least-once delivery.** Sellers MAY re-fire the same logical event under retry. Receivers MUST dedupe transport retries by `idempotency_key`. For state-shaped events that also carry a typed `notification_id` (see [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/mcp-webhook-payload.json) and [snapshot-and-log Rule 1](/docs/protocol/snapshot-and-log#1-two-distinct-ids-per-fire-and-per-state)), receivers MUST also track `notification_id` to correlate fires to current snapshot state — seeing the same `notification_id` under two different `idempotency_key` values is a re-emission signal, not a transport retry.
 - **No ordering guarantee.** Two events on the same resource within seconds MAY arrive out of order. Receivers MUST reconcile via the resource snapshot rather than treating webhook ordering as canonical.
 - **Idempotent application.** Apply the same payload twice and the resulting receiver state MUST be identical.
 
@@ -535,7 +552,7 @@ Sellers MAY declare a shorter coalescence window via `get_agent_capabilities` fo
 If a buyer's receiver was offline and missed a fire, recovery is **read the snapshot**. Two paths exist for every persistent channel and they're at parity in content:
 
 - Missed `impairment` event → call `get_media_buys` and read `impairments[]` (full state recovery).
-- Missed delivery report fire → call `get_media_buy_delivery` for the window in question. Once [#4590](https://github.com/adcontextprotocol/adcp/issues/4590) lands, the pull returns the same per-window slices the webhook delivered; until then, the pull returns date-range aggregates and daily breakdowns but cannot reconstruct hourly fires.
+- Missed delivery report fire → call `get_media_buy_delivery` for the window in question with `time_granularity` set to the granularity the seller declared in `reporting_capabilities.windowed_pull_granularities` (#4590). The pull returns the same per-window slices the webhook delivered. Sellers that have not yet declared a windowed granularity return date-range aggregates and daily breakdowns only and cannot reconstruct sub-daily fires.
 - Missed any other state-shaped event → call the corresponding `get_*` task.
 
 AdCP does not commit to an event-replay primitive at the transport layer. The webhook delivery visibility surface (`webhook_activity[]` on `get_media_buys`, proposed in [#4278](https://github.com/adcontextprotocol/adcp/issues/4278)) exposes recent fires within a retention window for **debugging** — buyers use it to verify that the seller fired and what HTTP status the receiver returned. It is not a data recovery channel; that's what the snapshot's per-window pull (#4590) is for.

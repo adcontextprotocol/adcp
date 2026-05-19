@@ -88,6 +88,15 @@
       "type": "string",
       "enum": ["transient", "correctable", "terminal"],
       "description": "Agent recovery classification. transient: retry after delay (rate limit, service unavailable, timeout). correctable: fix the request and resend (invalid field, budget too low, creative rejected). terminal: requires human action (account suspended, payment required, account not found). Senders SHOULD populate `recovery` on every error from 3.1 onward — it is the normative carrier of recovery semantics across version skew. A receiver that does not recognize `error.code` (a newer code, or a platform-specific code) MUST still be able to classify the error from `recovery`. The `enumMetadata.recovery` block in `enums/error-code.json` is the documentary mirror for known codes; `error.recovery` on the wire is authoritative."
+    },
+    "source": {
+      "type": "string",
+      "enum": ["producer", "sdk"],
+      "description": "Who emitted this error entry. `producer` (default when absent): emitted by the response's authoring agent (the seller for `get_products`, the creative agent for `build_creative`, etc.). `sdk`: augmented by a consuming SDK that detected a non-fatal advisory condition on consumption (e.g., `FORMAT_PROJECTION_FAILED` when the buyer SDK couldn't project a v1 format to a canonical, or `FORMAT_DECLARATION_DIVERGENT` when the SDK detected a producer bug on read). SDK-augmented entries SHOULD also set `sdk_id` so downstream consumers can identify which intermediate processor inserted the entry.\n\n**Multi-hop propagation (normative).** AdCP is a federated agent network — responses commonly traverse multiple SDKs (e.g., sales agent → interchange → DSP → buyer). When an SDK augments `errors[]` with a consumption-detected entry, the augmented response carries the entry forward to subsequent hops. Each hop that detects the same condition independently SHOULD deduplicate by `(code, field)` rather than re-emit; the existing entry's `sdk_id` identifies which earlier processor saw it first. Producer entries (those without `source: \"sdk\"`) are authoritative for what the response's authoring agent self-detected; SDK entries are observations made on top.\n\n**Replay/audit safety.** Persisted or replayed responses carry `source` and `sdk_id` so the audit trail can distinguish seller-emitted entries from SDK-augmented ones. Without `source`, a downstream consumer can't tell whether a code came from the seller or an intermediate SDK, which corrupts attribution."
+    },
+    "sdk_id": {
+      "type": "string",
+      "description": "Optional identifier for the SDK that augmented this error entry. Format: `<sdk_package_name>@<version>` (e.g., `@adcontextprotocol/adcp@7.3.0`, `adcontextprotocol-adcp-python@1.2.0`). MUST be set when `source: \"sdk\"`; MUST be absent when `source: \"producer\"` or absent. Lets downstream consumers identify which intermediate processor inserted the entry, useful for debugging cross-SDK divergence (e.g., one SDK detects a projection failure that another SDK's registry version doesn't)."
     }
   },
   "required": [

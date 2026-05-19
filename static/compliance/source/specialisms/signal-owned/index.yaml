@@ -27,7 +27,8 @@ narrative: |
   Pricing is hard-required here for the same reason as signal marketplaces: signals
   are rate-carded goods. Buyers cannot activate without a pricing_option_id to anchor
   billing. Agents distributing first-party signals without commercial terms belong on
-  list_authorized_properties or a different specialism, not this one.
+  a different specialism, not this one — the v2 `list_authorized_properties`
+  task is retired; portfolio advertising now lives on `get_adcp_capabilities`.
 
 agent:
   interaction_model: owned_signals

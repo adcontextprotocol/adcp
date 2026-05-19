@@ -343,9 +343,11 @@ Campaign governance extends beyond media buys to cover brand rights licensing, s
 
 ### Per-request version declaration
 
-All request schemas now include `adcp_major_version`, allowing v3 buyers to declare which major version their payloads conform to. Sellers validate against their `major_versions` and return `VERSION_UNSUPPORTED` if unsupported. When omitted, sellers default to their highest supported version.
+All request schemas now include `adcp_version` (release-precision, e.g., `"3.1"`), allowing v3 buyers to declare which release their payloads conform to. Sellers validate against their advertised `adcp.supported_versions` array on `get_adcp_capabilities` and echo `adcp_version` at the envelope root on every response. Unsupported releases return `VERSION_UNSUPPORTED`. When omitted, sellers default to their highest supported version.
 
-Note: `adcp_major_version` is a v3 field — v2 clients cannot set it (the field does not exist in v2 schemas). Multi-version sellers detect v2 payloads by structural cues (missing `buying_mode`, `fixed_rate` vs `fixed_price`, `geo_postal_codes` vs `geo_postal_areas`, etc.) rather than by this field.
+3.1 also retains `adcp_major_version` (integer) as a backwards-compatible legacy field, but release-precision `adcp_version` is the primary wire field going forward. See [Version negotiation](/docs/reference/versioning#version-negotiation) for the negotiation contract, migration timeline, and SDK pinning examples.
+
+Note: both fields are v3-only — v2 clients cannot set either (the fields do not exist in v2 schemas). Multi-version sellers detect v2 payloads by structural cues (missing `buying_mode`, `fixed_rate` vs `fixed_price`, `geo_postal_codes` vs `geo_postal_areas`, etc.) rather than by these fields.
 
 ### Collection lists
 

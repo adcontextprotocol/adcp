@@ -31,6 +31,7 @@ Additive over 3.0 — every existing brand.json publisher continues to validate 
 | A house running the AAO crawler today (or any consumer that walks brand hierarchy) | Read [`brand.json` § Mutual-assertion trust model](/docs/brand-protocol/brand-json#mutual-assertion-trust-model). The 3-tier read — identity-trusted vs relationship-trusted vs unverified — replaces the binary "is this in my portfolio" check for `brand_refs[]` pointer children. The 180-day TTL is already AAO's reference behavior. |
 | A publisher using free-text `status` or `countries` on `trademarks[]` entries | Move `status` values to the enum (`active`, `pending`, `abandoned`, `cancelled`, `expired`) and `countries` values to ISO 3166-1 alpha-2 codes. The fields were untyped via `additionalProperties: true`; they're now typed. Non-conforming values surface validation errors. |
 | An agency named in a house's `managed_by` claim | Nothing required at the protocol level. Aggregation by `managed_by` ("show me everything BBH manages") is the intended use; trust is not extended through it. Manager-side reciprocation is tracked as a follow-up. |
+| Building an SDK or in-house client against AdCP 3.x | Pin to a release via the constructor (`adcpVersion: "3.1"` / `adcp_version="3.1"` / `WithAdcpVersion("3.1")`) and emit `adcp_version` on every request alongside the `adcp_major_version` mirror. Read `supported_versions` from the seller's `get_adcp_capabilities` response; expect a `VERSION_UNSUPPORTED` typed error when your pin isn't in the list. See [Release-precision version negotiation](#release-precision-version-negotiation--pin-your-release-3493) below. |
 
 ### Distributed `brand.json` — new 5th variant and `brand_refs[]` (#4505, closes #3409 / #3533 / #3764 / #3910 / #3909)
 
@@ -62,7 +63,7 @@ See [`brand.json` § Distributed publishing](/docs/brand-protocol/brand-json) fo
 
 **`viewability.viewed_seconds`.** New field on the existing `viewability` block — average in-view duration per measurable impression. Reporting-side counterpart to the `viewed_seconds` optimization goal. Nested into the viewability block (not a top-level scalar) because the viewability `standard` governs the in-view threshold for both `viewable_rate` and `viewed_seconds`, and they share the same `measurable_impressions` denominator and vendor.
 
-**Attention metrics — vendor binding.** `attention_seconds` and `attention_score` are deliberately *not* added as graduated delivery scalars. The reporting path is `vendor_metric_values[]` keyed on `(vendor, metric_id)`. Optimization-side vendor binding is tracked in [#4644](https://github.com/adcontextprotocol/adcp/issues/4644) — proposes a `vendor_metric` optimization goal kind so buyers can declare *whose* attention model to optimize for, with end-to-end Adelaide→Adelaide reconciliation. See the [`#4579` close note](https://github.com/adcontextprotocol/adcp/issues/4579#issuecomment-4470761844) for the routing rationale and the [measurement taxonomy](/docs/measurement/taxonomy) for the Tier 0 / Tier 1 graduation policy that drove the split.
+**Attention metrics — vendor binding.** `attention_seconds` and `attention_score` are deliberately *not* added as graduated delivery scalars. The reporting path is `vendor_metric_values[]` keyed on `(vendor, metric_id)`. See the [`#4579` close note](https://github.com/adcontextprotocol/adcp/issues/4579#issuecomment-4470761844) for the routing rationale and the [measurement taxonomy](/docs/measurement/taxonomy) for the Tier 0 / Tier 1 graduation policy that drove the split.
 
 Additive over 3.0. Existing sellers continue to validate; buyers ignoring the new fields keep working. Buyers SHOULD upgrade reach-summation logic to gate on `reach_window` semantics.
 
@@ -106,6 +107,84 @@ The cache holds read responses too from 3.1 onward — sellers MUST encrypt the 
 | A seller currently emitting unknown error codes (platform-specific or pre-3.1 additions) | Add `error.recovery` to every error envelope before bumping advertised `adcp_version` to 3.1. Receivers default to `transient` when absent, which is safe but suboptimal — populating the field correctly is the spec-compliant path. |
 
 Additive over 3.0 — the entire bundle preserves wire compatibility for 3.0-conformant agents; the changes formalize behavior shipping SDKs already implement.
+
+### Optimization goals — `kind: "vendor_metric"` (#4668, closes #4644)
+
+End-to-end vendor binding for optimization goals against vendor-attested measurement — attention (DV, IAS, Adelaide, TVision, Lumen), panel-based brand lift (Kantar, Upwave, Cint), emissions (Scope3, Good-Loop), retail-media partner metrics. Closes the goal-side gap that the #4618 release notes flagged: today's vendor-agnostic `attention_seconds` / `attention_score` enum values are meaningless without a vendor binding, since each measurement vendor defines them differently.
+
+**New `kind: "vendor_metric"` goal shape.** Third `oneOf` branch on `optimization-goal.json`, structurally parallel to the existing `event` kind:
+
+```json
+{
+  "kind": "vendor_metric",
+  "vendor": { "domain": "adelaidemetrics.com" },
+  "metric_id": "attention_score",
+  "target": { "kind": "threshold_rate", "value": 70 },
+  "priority": 1
+}
+```
+
+`vendor` is the same BrandRef shape used everywhere a vendor-attested metric appears (`vendor_metric_values.vendor`, `reporting_capabilities.vendor_metrics`, `committed_metrics` vendor scope, `performance_standards.vendor`). `metric_id` is the canonical `vendor-metric-id` reference, sourced from the vendor's published `measurement.metrics[]` catalog.
+
+**New `vendor_metric_optimization` capability on the product.** Per-product declaration of which `(vendor, metric_id)` pairs the product's bidding stack can steer toward, with `supported_targets` per pair. Distinct from `reporting_capabilities.vendor_metrics` — a product may be able to report a vendor metric without being able to optimize against it (Scope3 emissions is the canonical case: many sellers report carbon-per-impression but can't yet steer bidding to minimize it).
+
+**Three-precondition rejection rule on goal acceptance.** Sellers MUST reject `vendor_metric` goals failing any of: (1) discovery — `metric_id` is in the vendor's published `measurement.metrics[]` (SHOULD this minor while vendor adoption catches up; MUST at next minor); (2) capability — `(vendor, metric_id)` is in the product's `vendor_metric_optimization.supported_metrics[]`; (3) reporting coherence — the package's `committed_metrics[]` includes a matching `{ scope: "vendor", vendor, metric_id }` entry. Optimization without committed reporting is unverifiable and is rejected at the wire level.
+
+**Deprecation.** `attention_seconds` and `attention_score` remain in the `metric` enum on `optimization-goal.json` and on `product.json` `metric_optimization.supported_metrics` for backwards compatibility this minor, marked **deprecated** in their descriptions. Slated for removal at next major. Sellers MAY reject the deprecated values with `TERMS_REJECTED` and a pointer to the `vendor_metric` kind. Same deprecation pattern used for `delivery_measurement.provider` → `vendors[]`.
+
+See [Metric lifecycle](/docs/media-buy/media-buys/optimization-reporting#metric-lifecycle) for the full capability → commitment → optimization → delivery picture and [`kind: vendor_metric`](/docs/media-buy/conversion-tracking/#kind-vendor_metric) for the goal-shape reference.
+
+### Release-precision version negotiation — pin your release (#3493)
+
+3.1 lands release-precision (`VERSION.RELEASE`, e.g. `"3.1"`) version negotiation on every request and response, with multi-release advertisement on capabilities. Buyers pin the release their payloads conform to; sellers advertise everything they speak and echo the release they actually served. The negotiation field moves from `core/protocol-envelope.json` into a shared `core/version-envelope.json` composed via `allOf $ref` across every request and response schema, so the contract is one place and SDKs regenerate types from it.
+
+`adcp_major_version` (the 3.0 integer field) and `adcp.major_versions` remain functional through all of 3.x — additive ship, no required changes for 3.0-conformant agents. The full migration table lives in [Versioning & Governance § Migration timeline](/docs/reference/versioning#migration-timeline).
+
+**Pin your release.** Every SDK exposes a constructor option for the version pin. Through 3.x, the SDK SHOULD also emit `adcp_major_version` automatically so legacy 3.x sellers that only read the integer keep negotiating correctly. The wire shape is **release-precision only** (`"3.1"`, `"3.1-beta.1"`) — full semver like `"3.1.2"` or `"3.1.0-beta.1"` is invalid on the wire.
+
+```typescript
+// @adcp/sdk (TypeScript)
+import { SingleAgentClient } from "@adcp/sdk";
+
+const client = new SingleAgentClient(
+  { agent_uri: "https://sales.example/mcp/", protocol: "mcp" },
+  { adcpVersion: "3.1" },   // emitted on every request as adcp_version
+                            // adcp_major_version: 3 mirror auto-emitted
+);
+```
+
+```python
+# adcp (Python)
+from adcp import ADCPClient
+from adcp.types import AgentConfig, Protocol
+
+client = ADCPClient(
+    AgentConfig(agent_uri="https://sales.example/mcp/", protocol=Protocol.MCP),
+    adcp_version="3.1",     # emitted on every request as adcp_version
+                            # adcp_major_version: 3 mirror auto-emitted
+)
+```
+
+```go
+// adcp-go (Go) — planned, tracked in adcontextprotocol/adcp-go#107
+import "github.com/adcontextprotocol/adcp-go/adcp"
+
+client, err := adcp.NewClient(
+    "https://sales.example/mcp/",
+    adcp.WithAdcpVersion("3.1"), // emitted on every request as adcp_version
+                                  // AdcpMajorVersion: 3 mirror auto-emitted
+)
+```
+
+**Read what the seller served.** Every response carries `adcp_version` echoed back at the release the seller actually served — not the seller's own latest. A 3.1 seller serving a 3.0 buyer at 3.0 echoes `"3.0"`. Buyers SHOULD validate the response against the echoed release's schema, not against their pin. Legacy 3.0 sellers omit the echo entirely; SDKs fall back to validating against the constructor pin in that case.
+
+**`VERSION_UNSUPPORTED` is typed.** When a buyer's pin isn't in the seller's `supported_versions`, the seller returns `VERSION_UNSUPPORTED` with `error.data` matching [`error-details/version-unsupported.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/error-details/version-unsupported.json) — `supported_versions` is authoritative for retry. SDKs raise a typed error rather than silently retrying; auto-downshift changes wire shape under the caller and is left to application code.
+
+**Wire shape is release-precision only.** `"3.1.2"`, `"3.1.0-beta.1"`, `"v3.1"`, and `"3"` are all invalid on the wire. SDKs that key bundles by full semver MUST normalize to release-precision (`"3.1.0-beta.1"` → `"3.1-beta.1"`) before emitting — the `published_version` field on meta-objects (schema registry, tarball `manifest.json`, compliance index, `/protocol/` discovery) is documentation, not a wire value. See [Versioning § Patches are not negotiated](/docs/reference/versioning#patches-are-not-negotiated) for the full wire-shape rule.
+
+**Compliance grader at 3.1 is advisory.** The grader runs the new `version_negotiation` universal storyboard and reports presence on requests and responses — see the [migration timeline](/docs/reference/versioning#migration-timeline) for the 3.1 → 3.2 → 4.0 cadence.
+
+Spec PR [#3493](https://github.com/adcontextprotocol/adcp/pull/3493). RFC: [`specs/version-negotiation.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/version-negotiation.md). Full normative reference: [Versioning & Governance § Version negotiation](/docs/reference/versioning#version-negotiation).
 
 ---
 

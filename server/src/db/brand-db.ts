@@ -1330,6 +1330,41 @@ export class BrandDatabase {
         values.push(input.has_brand_manifest);
       }
 
+      // Promote enriched→community when a human edits brand content. A
+      // Brandfetch-seeded row that's been hand-curated is community-attested.
+      // Without this, /brands/:domain/brand.json keeps 404ing the row because
+      // the source_type gate excludes enriched (#3529).
+      //
+      // Two guards keep this from over-firing into stealth promotion:
+      //
+      //   - System callers don't promote. `system:logo-service` rebuilds the
+      //     manifest's logos array whenever a logo is approved; that's not
+      //     curation of brand content, just provenance bookkeeping. Same for
+      //     `system:addie` and any future internal worker. Without this
+      //     check, a community logo upload to an enriched brand would
+      //     silently flip its source_type and start serving raw Brandfetch
+      //     fields under the community label.
+      //
+      //   - Only promote when the edit changes a brand-content field
+      //     (manifest, name, keller_type, names, parent/canonical/agent).
+      //     A pure edit_summary-only audit revision is not curation.
+      const isSystemEditor = typeof input.editor_user_id === 'string'
+        && input.editor_user_id.startsWith('system:');
+      const promotesContent =
+        input.brand_manifest !== undefined ||
+        input.brand_name !== undefined ||
+        input.brand_names !== undefined ||
+        input.keller_type !== undefined ||
+        input.parent_brand !== undefined ||
+        input.house_domain !== undefined ||
+        input.canonical_domain !== undefined ||
+        input.brand_agent_url !== undefined ||
+        input.brand_agent_capabilities !== undefined;
+      if (current.source_type === 'enriched' && promotesContent && !isSystemEditor) {
+        updates.push(`source_type = $${paramIndex++}`);
+        values.push('community');
+      }
+
       if (updates.length === 0) {
         await client.query('COMMIT');
         return { brand: this.deserializeDiscoveredBrand(current), revision_number: revisionNumber };

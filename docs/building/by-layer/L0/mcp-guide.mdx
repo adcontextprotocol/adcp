@@ -438,7 +438,7 @@ const result = await session.call('create_media_buy',
 }
 ```
 
-**Note:** This example follows the recommended URL-based routing pattern where `task_type` and `operation_id` are passed in the URL (e.g., `/webhooks/adcp/create_media_buy/op_456`). While the schema still supports these fields in the payload for backward compatibility, they are deprecated.
+**Note:** Receivers MUST correlate webhooks using `operation_id` (and `task_type`) from the payload body, **not** by parsing the webhook URL. Buyers MAY embed `operation_id` in the URL path or query for their own server-side routing convenience (the URL structure is opaque to the seller and entirely buyer-defined), but the seller never parses that URL — the seller echoes the buyer-supplied `operation_id` it was given at registration, and the wire-level source of truth for correlation is the payload field. See [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/mcp-webhook-payload.json) and [Webhooks — Operation IDs](/docs/building/by-layer/L3/webhooks#operation-ids-and-url-templates).
 
 The `result` field contains the AdCP data payload. For `completed`/`failed` statuses, this is the full task response (e.g., `create-media-buy-response.json`). For other statuses, use the status-specific schemas (e.g., `create-media-buy-async-response-working.json`).
 
@@ -447,18 +447,18 @@ The `result` field contains the AdCP data payload. For `completed`/`failed` stat
 The [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/mcp-webhook-payload.json) envelope includes:
 
 **Required fields:**
+- `idempotency_key` — Per-fire transport dedup key (see schema for full semantics)
+- `operation_id` — Buyer-supplied correlation identifier echoed verbatim by the seller. Receivers use this — **not** the URL path — to route notifications to the originating task. Sellers MUST NOT derive this by parsing the URL; the URL structure is implementation-defined from the seller's point of view.
 - `task_id` — Unique task identifier for correlation
+- `task_type` — Task name (e.g., `create_media_buy`, `sync_creatives`) for routing to per-task handlers
 - `status` — Current task status (completed, failed, working, input-required, etc.)
 - `timestamp` — ISO 8601 timestamp when webhook was generated
 
 **Optional fields:**
-- `domain` — AdCP domain ("media-buy" or "signals")
+- `notification_id` — Event-layer stable id for re-emission tracking (see schema)
+- `protocol` — AdCP protocol family (`media-buy` or `signals`)
 - `context_id` — Conversation/session identifier
 - `message` — Human-readable context about the status change
-
-**Deprecated fields (supported but not recommended):**
-- `task_type` — Task name (e.g., "create_media_buy", "sync_creatives") - ⚠️ **Deprecated:** See [URL-Based Routing](#best-practice-url-based-routing)
-- `operation_id` — Correlates a sequence of updates for the same operation - ⚠️ **Deprecated:** See [URL-Based Routing](#best-practice-url-based-routing)
 
 **Data field:**
 - `result` — Task-specific AdCP payload (see Data Schema Validation below)
@@ -822,7 +822,7 @@ if (adcpMeta) {
 - Enable compatibility checks based on version
 
 :::note
-The `adcp_version` field in server card metadata is a v2 convention and is not part of the v3 spec. For version negotiation, use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#version-negotiation) with the `adcp_major_version` field.
+The `adcp_version` field in server card metadata is a v2 convention and is not part of the v3 spec. For v3 version negotiation, the buyer sends release-precision `adcp_version` (e.g., `"3.1"`) on every request, and the seller advertises supported releases via `adcp.supported_versions` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) and echoes `adcp_version` at the envelope root on every response. The legacy integer-only `adcp_major_version` field is still accepted for backwards compatibility. See [versioning.mdx § Version negotiation](/docs/reference/versioning#version-negotiation) for the full contract.
 :::
 
 **Note:** The `_meta` field uses reverse DNS namespacing per the [MCP server.json spec](https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/server-json/generic-server-json.md). AdCP servers should support both `/.well-known/mcp.json` and `/.well-known/server.json` locations.

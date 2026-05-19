@@ -142,6 +142,14 @@
                 "type": "boolean",
                 "description": "Whether this is a sandbox account, echoed from the request. Only present for implicit accounts."
               },
+              "notification_configs": {
+                "type": "array",
+                "description": "Applied notification subscribers for this account, echoed after the seller diffs the requested state against persisted state. Present on `created`, `updated`, and `unchanged` results when the buyer included `notification_configs` in the request or any persisted entries exist on the account. `authentication.credentials` is omitted on every entry (write-only).",
+                "items": {
+                  "$ref": "/schemas/core/notification-config.json"
+                },
+                "maxItems": 16
+              },
               "authorization": {
                 "$ref": "/schemas/core/account-authorization.json",
                 "description": "Optional. The caller's scope grant against this account after the sync operation. Vendor agents of any type (media-buy, signals, governance, creative, brand) that support scope introspection SHOULD populate this so callers can preempt RBAC errors rather than discovering scope by trial and error. Media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Present on `created`, `updated`, and `unchanged` results; omitted on `failed` results (where the account did not reach a usable state). Absence means the vendor agent does not advertise introspectable scope — callers MUST NOT infer access from absence."

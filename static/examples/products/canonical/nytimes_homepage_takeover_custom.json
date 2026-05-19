@@ -1,0 +1,67 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "nytimes_homepage_takeover_premium",
+  "name": "NYTimes.com Homepage Takeover (Multi-Placement Sponsorship)",
+  "description": "24-hour multi-placement homepage takeover on NYTimes.com — bundles a homepage skin, a preroll video on homepage video assets, and a sponsorship-lockup banner adjacent to top-of-page content. Sold as a unit (exclusivity_window_hours: 24). Demonstrates `format_kind: \"custom\"` with `format_shape: multi_placement_takeover` and a `format_schema` URI+digest reference pointing at NYTimes's hosted schema describing the takeover's components. Required `canonical_formats_only: true` — no v1 named format can express the multi-component shape, so SDKs MUST NOT synthesize a v1 `format_id` for this declaration.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "nytimes.com",
+      "selection_type": "by_id",
+      "property_ids": [
+        "homepage_above_fold"
+      ]
+    }
+  ],
+  "channels": [
+    "display",
+    "olv"
+  ],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "flat_takeover_24h",
+      "pricing_model": "flat_rate",
+      "currency": "USD",
+      "fixed_price": 250000
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": [
+      "daily"
+    ],
+    "expected_delay_minutes": 240,
+    "timezone": "America/New_York",
+    "supports_webhooks": false,
+    "available_metrics": [
+      "impressions",
+      "clicks",
+      "spend",
+      "ctr",
+      "viewability"
+    ],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_kind": "custom",
+      "canonical_formats_only": true,
+      "format_shape": "multi_placement_takeover",
+      "format_schema": {
+        "uri": "https://nytimes.example/schemas/formats/homepage_takeover_v3",
+        "digest": "sha256:e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0a3"
+      },
+      "capability_id": "nytimes_homepage_takeover_premium",
+      "display_name": "Homepage Takeover — Premium Sponsorship",
+      "applies_to_channels": ["display", "olv"],
+      "params": {
+        "components": [
+          { "placement_type": "homepage_skin", "required": true },
+          { "placement_type": "preroll_video", "required": true },
+          { "placement_type": "sponsorship_lockup", "required": true }
+        ],
+        "exclusivity_window_hours": 24,
+        "ssl_required": true
+      }
+    }
+  ]
+}

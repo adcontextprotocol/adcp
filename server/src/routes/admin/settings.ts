@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin } from '../../middleware/auth.js';
+import { requireGlobalAdmin } from '../../middleware/auth.js';
 import {
   getAllSettings,
   getBillingChannel,
@@ -81,7 +81,7 @@ export function createAdminSettingsRouter(): Router {
   const router = Router();
 
   // GET /api/admin/settings - Get all system settings
-  router.get('/', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+  router.get('/', ...requireGlobalAdmin, async (_req: Request, res: Response) => {
     try {
       const settings = await getAllSettings();
       const billingChannel = await getBillingChannel();
@@ -114,7 +114,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // GET /api/admin/settings/slack-channels - List available Slack channels for picker
-  router.get('/slack-channels', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.get('/slack-channels', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       if (!isSlackConfigured()) {
         res.status(400).json({
@@ -165,7 +165,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/billing-channel - Update billing notification channel
-  router.put('/billing-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/billing-channel', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { channel_id, channel_name } = req.body;
 
@@ -214,7 +214,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/escalation-channel - Update escalation notification channel
-  router.put('/escalation-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/escalation-channel', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { channel_id, channel_name } = req.body;
 
@@ -263,7 +263,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/admin-channel - Update admin notification channel
-  router.put('/admin-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/admin-channel', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { channel_id, channel_name } = req.body;
 
@@ -306,7 +306,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/prospect-channel - Update prospect notification channel
-  router.put('/prospect-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/prospect-channel', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { channel_id, channel_name } = req.body;
 
@@ -349,7 +349,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/error-channel - Update error notification channel
-  router.put('/error-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/error-channel', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { channel_id, channel_name } = req.body;
 
@@ -392,7 +392,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/editorial-channel - Update editorial review notification channel
-  router.put('/editorial-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/editorial-channel', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { channel_id, channel_name } = req.body;
 
@@ -435,7 +435,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/announcement-channel - Update public announcement channel
-  router.put('/announcement-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/announcement-channel', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { channel_id, channel_name } = req.body;
 
@@ -480,7 +480,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // GET /api/admin/settings/audit - Recent system settings changes
-  router.get('/audit', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+  router.get('/audit', ...requireGlobalAdmin, async (_req: Request, res: Response) => {
     try {
       const entries = await getSettingAuditHistory(50);
       res.json({ entries });
@@ -491,7 +491,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/prospect-triage-enabled - Toggle automatic triage
-  router.put('/prospect-triage-enabled', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/prospect-triage-enabled', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { enabled } = req.body;
 

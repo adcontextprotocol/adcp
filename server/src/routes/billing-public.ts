@@ -24,7 +24,7 @@ import {
 } from "../billing/stripe-client.js";
 import { isStripeNotFound } from "../audit/integrity/stripe-helpers.js";
 import * as referralDb from "../db/referral-codes-db.js";
-import { sanitizeBillingAddress } from "../billing/billing-address.js";
+import { validateBillingAddress } from "../billing/billing-address.js";
 import {
   blockIfActiveSubscription,
   type ActiveSubscriptionBlock,
@@ -221,13 +221,14 @@ export function createPublicBillingRouter(): Router {
         });
       }
 
-      const sanitizedAddress = sanitizeBillingAddress(billingAddress);
-      if (!sanitizedAddress) {
+      const addressResult = validateBillingAddress(billingAddress);
+      if (!addressResult.ok) {
         return res.status(400).json({
-          error: "Incomplete billing address",
-          message: "Please provide line1, city, state, postal_code, and country (each ≤ 200 chars)",
+          error: "Invalid billing address",
+          message: addressResult.error,
         });
       }
+      const sanitizedAddress = addressResult.address;
 
       if (!lookupKey.startsWith("aao_")) {
         logger.warn({ lookupKey }, 'Invoice request rejected: invalid lookup key prefix');
@@ -983,14 +984,14 @@ export function createPublicBillingRouter(): Router {
       try {
         const user = req.user!;
         const { orgId } = req.params;
-        const sanitized = sanitizeBillingAddress(req.body);
-        if (!sanitized) {
+        const addressResult = validateBillingAddress(req.body);
+        if (!addressResult.ok) {
           return res.status(400).json({
-            error: "Incomplete billing address",
-            message:
-              "Please provide line1, city, state, postal_code, and country (each ≤ 200 chars)",
+            error: "Invalid billing address",
+            message: addressResult.error,
           });
         }
+        const sanitized = addressResult.address;
 
         const org = await orgDb.getOrganization(orgId);
         if (!org) {

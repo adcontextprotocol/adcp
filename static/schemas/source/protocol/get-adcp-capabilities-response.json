@@ -218,6 +218,17 @@
           "description": "Whether this seller commits to the proposal lifecycle on get_products: when called with buying_mode: 'brief' the seller will return at least one entry in proposals[]; when called with buying_mode: 'refine' + action: 'finalize' the seller will transition a proposal from draft to committed. A declaration of true is a commitment the seller will be graded against, not just a feature flag — sellers that decline a brief on policy grounds still owe a structured proposal-shaped rejection rather than an empty proposals[]. Most guaranteed-deal sellers (premium pubs, broadcast, CTV) declare true; auction-based PG, retail SKU, and quoted-rate direct-buy flows declare false. When false or absent, the seller serves products directly without proposal abstraction; conformance runners skip proposal-lifecycle storyboards.",
           "default": false
         },
+        "propagation_surfaces": {
+          "type": "array",
+          "description": "Where this seller surfaces dependency-resource impairments (creative rejected post-approval, audience suspended, catalog item withdrawn, event source insufficient, property depublished) to buyers. Non-exclusive: a seller mirroring impairments on both the buy snapshot AND firing webhooks declares `[\"snapshot\", \"webhook\"]` (the common case for premium guaranteed sellers). Each value names one surface where buyers can observe an impairment:\n\n- **`snapshot`** — seller propagates resource transitions into `media_buy.health` and `media_buy.impairments[]` on the next `get_media_buys` read. The `impairment.coherence` compliance assertion grades this surface; storyboards that exercise it (`media_buy_seller/dependency_impairment`, `media_buy_seller/dependency_impairment_cardinality`) require `\"snapshot\"` to be declared, else they grade `not_applicable`.\n- **`webhook`** — seller fires `notification-type: impairment` webhooks (configured via `push_notification_config`). Sellers declaring `\"webhook\"` MUST satisfy the persistent-channel webhook contract for the impairment event type. A seller declaring `[\"webhook\"]` without `\"snapshot\"` is webhook-only — buyers reconcile state from the push channel alone, and snapshot-coherence storyboards grade `not_applicable`.\n- **`out_of_band`** — seller propagates via channels outside the AdCP protocol surface entirely (email to trafficker, separate dashboard, partner-specific notification feed). Long-tail and enterprise-bundled platforms commonly use this when impairment workflows are managed in human channels. Sellers declaring only `[\"out_of_band\"]` are not graded by snapshot or webhook compliance — their bar is the offline agreement, not a protocol assertion. If a seller has impairment data in their API under a non-AdCP field name (a mapping gap, not truly out-of-band), they SHOULD document the mapping rather than declare `out_of_band` — the spec's gap, not the seller's posture, is what `out_of_band` legitimately covers.\n\nDefault: `[\"snapshot\"]` when absent (preserves the existing snapshot-coherence contract for sellers that don't declare). Empty array `[]` is invalid (`minItems: 1`) — omit the field to inherit the default rather than declaring no surfaces. Pick the surfaces that honestly describe where buyers will see impairments on this agent. Mixing is normative — `[\"snapshot\", \"webhook\"]` is the documented common case; `[\"snapshot\", \"webhook\", \"out_of_band\"]` is valid for sellers that ship all three surfaces (rare but legal). See lifecycle.mdx § Compliance for the per-surface contract.",
+          "items": {
+            "type": "string",
+            "enum": ["snapshot", "webhook", "out_of_band"]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "default": ["snapshot"]
+        },
         "features": {
           "$ref": "/schemas/core/media-buy-features.json"
         },
@@ -499,6 +510,16 @@
           ],
           "additionalProperties": true
         },
+        "supported_optimization_metrics": {
+          "type": "array",
+          "description": "Optimization metrics this seller can support on at least one of their products. Seller-level rollup of product-level metric_optimization.supported_metrics declarations (core/product.json). Buyers SHOULD filter their requested optimization goals against this list before submitting briefs. Sellers MUST keep this in sync with their product catalog — if no products support a metric, it must not appear here. Omitting this field means the seller declares no specific guarantees about which metrics they support; buyers should fall back to per-product inspection of metric_optimization.supported_metrics.",
+          "items": {
+            "type": "string",
+            "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
         "conversion_tracking": {
           "type": "object",
           "description": "Seller-level conversion tracking capabilities. Presence of this object indicates the seller supports sync_event_sources and log_event for conversion event tracking.",
@@ -506,6 +527,10 @@
             "multi_source_event_dedup": {
               "type": "boolean",
               "description": "Whether this seller can deduplicate conversion events across multiple event sources within a single goal. When true, the seller honors the deduplication semantics in optimization_goals event_sources arrays — the same event_id from multiple sources counts once. When false or absent, buyers should use a single event source per goal; multi-source arrays will be treated as first-source-wins. Most social platforms cannot deduplicate across independently-managed pixel and CAPI sources."
+            },
+            "per_creative_attribution": {
+              "type": "boolean",
+              "description": "Whether the seller can attribute conversions to specific creatives within a package and surface that breakdown via media_buy_deliveries[].by_package[].by_creative[].conversions in get_media_buy_delivery. Defaults to false when omitted. Sellers that report conversions only at the line / package / placement / campaign granularity (retail-media, MMP-mediated mobile, CTV performance) declare false (or omit) and the per-creative scenario grades not_applicable for them. Sellers that surface ad-level conversion attribution (most social platforms) declare true and the scenario asserts the breakdown is populated end-to-end. Defaults to false to preserve backward compatibility."
             },
             "supported_event_types": {
               "type": "array",
@@ -585,6 +610,29 @@
                 ],
                 "additionalProperties": true
               }
+            }
+          },
+          "additionalProperties": true
+        },
+        "frequency_capping": {
+          "type": "object",
+          "description": "Frequency capping capabilities. Presence of this object indicates the seller honors targeting.frequency_cap on packages and MUST reject caps it cannot enforce rather than silently dropping them. Buyers SHOULD inspect supported_per_units and supported_window_units before submitting caps; sellers without these sub-fields populated MAY accept any reach-unit / duration-unit combination they can enforce. Per-product overrides (for sellers with mixed addressable/non-addressable inventory) are a likely follow-up — file a separate RFC if needed.",
+          "properties": {
+            "supported_per_units": {
+              "type": "array",
+              "description": "Entity granularities the seller can enforce caps against. Values from the reach-unit enum. Omit to indicate all reach-unit values are supported.",
+              "items": { "$ref": "/schemas/enums/reach-unit.json" },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "supported_window_units": {
+              "type": "array",
+              "description": "Duration units the seller supports for frequency cap windows. Values must match the duration.json unit enum (e.g., 'hours', 'days', 'campaign'). Omit to indicate all duration units are supported.",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "uniqueItems": true
             }
           },
           "additionalProperties": true
@@ -946,10 +994,34 @@
           "description": "When true, this agent can transform or resize existing manifests via build_creative. The buyer provides a creative_manifest and a target_format_id, and the agent adapts the creative to the new format.",
           "default": false
         },
+        "supported_formats": {
+          "type": "array",
+          "description": "Canonical-formats path: format declarations describing which canonical formats this creative agent can produce via `build_creative`. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]` — `format_kind` discriminator + `params` (canonical's parameter schema including `slots`, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions). Replaces the v1 `list_creative_formats` discovery surface for creative agents.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "capability_id": {
+                "type": "string",
+                "description": "Stable identifier for this format declaration within the agent (e.g., 'audiostack_audio_30s'). Optional but recommended for declarations that may be referenced over time."
+              },
+              "format": {
+                "$ref": "/schemas/core/product-format-declaration.json",
+                "description": "Format declaration this agent can produce. Same shape as a product's inline `format_options[i]`: `format_kind` + `params` + `slots`."
+              }
+            },
+            "required": ["format"],
+            "additionalProperties": true
+          }
+        },
         "bills_through_adcp": {
           "type": "boolean",
           "description": "When true, this creative agent bills through the AdCP rate-card surface: list_creatives returns pricing_options when include_pricing=true with an authenticated account, build_creative populates pricing_option_id and vendor_cost on the response, and report_usage accepts records against the rate card. When false or absent, the agent bills out of band (flat license, SaaS contract, bundled enterprise agreement) and buyers should skip pricing fields and tolerate report_usage returning accepted: 0 with errors carrying BILLING_OUT_OF_BAND. A pre-call discriminator so buyer agents can route across many creative agents without first establishing an account to probe pricing.",
           "default": false
+        },
+        "canonical_catalog_version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+(\\.\\d+)?$",
+          "description": "Optional. The AdCP canonical-formats catalog version this agent's runtime is built against (e.g., `3.1`, `3.2.0`). Lets buyer SDKs detect canonical-catalog skew between their generated types and the seller's actual support. SDKs MAY declare the version they were generated against (typically the AdCP version they ship for); when seller and SDK versions disagree, SDKs SHOULD soft-warn rather than fail (the open-enum semantics on `canonical-format-kind.json` make unknown canonicals safe to retain, so skew is not a hard error — it just means the older side might not understand newer canonical values). Omitted by sellers who haven't yet generated against a versioned catalog; absence is interpreted as the AdCP version advertised by the broader capabilities response."
         }
       },
       "additionalProperties": true

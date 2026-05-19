@@ -1,0 +1,34 @@
+{
+  "test_id": "fetch-contract-pos-01-well-formed",
+  "category": "digest_verification",
+  "description": "Well-formed response: https + 200 + body parses as JSON + body sha256 matches declared digest + schema-compile under budget. The happy path.",
+  "setup": {
+    "request_uri": "https://creative.adcontextprotocol.org/extensions/test_format_shape_x",
+    "declared_digest": "sha256:<computed_from_response_body>",
+    "response_status": 200,
+    "response_body": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "/schemas/test/format-shape-x.json",
+      "title": "Test Format Shape X",
+      "type": "object",
+      "properties": {
+        "headline": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "image_url": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "headline"
+      ]
+    },
+    "response_headers": {
+      "Content-Type": "application/json"
+    }
+  },
+  "expected_outcome": "pass",
+  "rationale": "All contract gates pass: https-only OK, no redirect OK, body <=1 MiB OK, sha256 matches OK, valid Draft 07 OK, compile within budget OK."
+}

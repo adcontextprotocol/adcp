@@ -3,13 +3,14 @@ import { createWebhookFetch, SsrfRefusedError } from '../../src/training-agent/w
 
 describe('createWebhookFetch — SSRF guard', () => {
   let originalFetch: typeof globalThis.fetch;
-  let calls: string[];
+  let calls: Array<{ url: string; init: RequestInit | undefined }>;
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
     calls = [];
-    globalThis.fetch = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
-      calls.push(typeof input === 'string' || input instanceof URL ? input.toString() : input.url);
+    globalThis.fetch = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const url = typeof input === 'string' || input instanceof URL ? input.toString() : input.url;
+      calls.push({ url, init });
       return new Response('', { status: 200 });
     }) as typeof fetch;
   });
@@ -18,12 +19,17 @@ describe('createWebhookFetch — SSRF guard', () => {
     globalThis.fetch = originalFetch;
   });
 
+  /** Convenience: pull the recorded URLs without dragging out the init plumbing. */
+  function urls(): string[] {
+    return calls.map((c) => c.url);
+  }
+
   describe('with allowPrivateIp=true (dev/CI)', () => {
     const fetch = createWebhookFetch({ allowPrivateIp: true });
 
     it('passes loopback URLs through', async () => {
       await expect(fetch('http://127.0.0.1:9999/hook')).resolves.toBeInstanceOf(Response);
-      expect(calls).toEqual(['http://127.0.0.1:9999/hook']);
+      expect(urls()).toEqual(['http://127.0.0.1:9999/hook']);
     });
 
     it('passes public URLs through', async () => {
@@ -36,7 +42,7 @@ describe('createWebhookFetch — SSRF guard', () => {
 
     it('refuses literal IPv4 loopback', async () => {
       await expect(fetch('http://127.0.0.1/metadata')).rejects.toBeInstanceOf(SsrfRefusedError);
-      expect(calls).toEqual([]);
+      expect(urls()).toEqual([]);
     });
 
     it('refuses AWS/fly metadata (169.254.169.254)', async () => {
@@ -99,7 +105,46 @@ describe('createWebhookFetch — SSRF guard', () => {
     it('allows public hostnames', async () => {
       // example.com is guaranteed public by IANA.
       await expect(fetch('https://example.com/hook')).resolves.toBeInstanceOf(Response);
-      expect(calls).toEqual(['https://example.com/hook']);
+      expect(urls()).toEqual(['https://example.com/hook']);
+    });
+
+    it('forces redirect:manual on the underlying fetch (security.mdx SSRF step 4)', async () => {
+      // A 302 to `http://169.254.169.254/...` from a public buyer-controlled
+      // host would otherwise let the buyer punch through the IP-range check.
+      // Pinning the redirect mode at the wrapper layer prevents the SDK
+      // emitter or any future caller from accidentally re-enabling follow.
+      await fetch('https://example.com/hook');
+      expect(calls[0].init?.redirect).toBe('manual');
+    });
+
+    it('attaches the SSRF-safe dispatcher so connect-time DNS rebinding is rejected (security.mdx SSRF step 3)', async () => {
+      // The dispatcher's `connect.lookup` hook re-checks the resolved IP at
+      // TCP-connect time, closing the validation→connect TOCTOU window. We
+      // can't exercise the rebind from a unit test, but we can pin the
+      // construction shape: if a future refactor drops the dispatcher, this
+      // assertion fails before the SSRF gap silently reopens.
+      await fetch('https://example.com/hook');
+      expect((calls[0].init as RequestInit & { dispatcher?: unknown }).dispatcher).toBeDefined();
+    });
+  });
+
+  describe('redirect-mode pinning (applies in every environment)', () => {
+    it('pins redirect:manual even when allowPrivateIp is true', async () => {
+      // The no-follow contract is a security guard, not a routing
+      // affordance — dev/CI receivers shouldn't be able to bounce
+      // signed bodies to a metadata endpoint either.
+      const fetch = createWebhookFetch({ allowPrivateIp: true });
+      await fetch('http://127.0.0.1:9999/hook');
+      expect(calls[0].init?.redirect).toBe('manual');
+    });
+
+    it('does NOT attach the SSRF dispatcher when allowPrivateIp is true', async () => {
+      // The dispatcher's lookup rejects private IPs; attaching it under
+      // allowPrivateIp:true would defeat the loopback-receiver use case
+      // the flag exists to support.
+      const fetch = createWebhookFetch({ allowPrivateIp: true });
+      await fetch('http://127.0.0.1:9999/hook');
+      expect((calls[0].init as RequestInit & { dispatcher?: unknown }).dispatcher).toBeUndefined();
     });
   });
 });

@@ -125,6 +125,51 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
       "note": "Part of agent-permission-denied scope codes (#3887). Held for 3.1."
+    },
+    "FORMAT_PROJECTION_FAILED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Canonical-formats v1→v2 projection advisory (#3307). Non-fatal; surfaces on get_products errors[] when an SDK can't project a v1 named format to a v2 canonical via the registry. Wire change — held for 3.1."
+    },
+    "FORMAT_DECLARATION_DIVERGENT": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Canonical-formats dual-emission divergence advisory (#3307). Non-fatal; surfaces when a product carries both format_ids (v1) and format_options (v2) that disagree after projection. Wire change — held for 3.1."
+    },
+    "FORMAT_DECLARATION_V1_AMBIGUOUS": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Canonical-formats v1-ambiguity advisory (#3307; adcp-client #1815). Non-fatal; surfaces when registry has only family-level structural entries for a canonical (no invertible literal) so SDK can't pick a specific v1 format_id mechanically. SDKs MUST NOT synthesize — seller MUST author v1_format_ref on the v2 declaration. Wire change — held for 3.1."
+    },
+    "FORMAT_CAPABILITY_UNRESOLVED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Canonical-formats capability-resolution advisory (#3307; #4620). Non-fatal; surfaces when a placement's `format_options[].capability_id` references a capability not declared in the file's top-level `formats[]`. Same-file scope only (cross-file lookup not supported by design). Wire change — held for 3.1."
+    },
+    "FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Canonical-formats multi-size v1 emission advisory (#3307; adopter feedback from SDK implementor). Non-fatal; surfaces when a v2 declaration's `params.sizes[]` count exceeds its `v1_format_ref[]` count — v1 buyers see partial size coverage. Emitted alongside the partial v1 emit, not in place of it. SDK MAY (non-normative) fan out automatically via catalog lookup. Wire change — held for 3.1."
+    },
+    "PIXEL_TRACKER_LOSSY_DOWNGRADE": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "pixel_tracker → v1 url+tracker_pixel downgrade advisory (#3307; #4706). Non-fatal; surfaces when a 3.1 buyer SDK downgrades a pixel_tracker asset for a 3.0.x seller. URL still fires; lost fields (event variant, method:js execution context, or custom event timing) reported in error.details. Wire change — held for 3.1."
+    },
+    "PIXEL_TRACKER_UPGRADE_INFERRED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "v1 url+tracker_pixel → pixel_tracker upgrade-by-inference advisory (#3307; #4706). Non-fatal; surfaces when a 3.1 SDK upgrades a v1 tracker by inferring event and method from asset_id conventions. Wire change — held for 3.1."
+    },
+    "UNSUPPORTED_GRANULARITY": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "From get_media_buy_delivery windowed-pull recovery (#4590). Returned when a buyer requests a time_granularity the seller did not declare in reporting_capabilities.windowed_pull_granularities. Wire change — held for 3.1."
+    },
+    "UNSUPPORTED_PROVISIONING": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "From sync_accounts polymorphic-key refactor (#2261). Returned per-entry when the seller does not implement the entry's `sync_accounts` mode — settings-update sellers (explicit-account platforms) reject natural-key entries; provisioning-only sellers reject AccountRef-keyed entries. Wire change — held for 3.1."
     }
   }
 }

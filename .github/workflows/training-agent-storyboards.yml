@@ -48,23 +48,28 @@ jobs:
           # 001 (request_signature_required) and 027 (webhook auth unsigned)
           # both fire correctly. Floors capture the +31 step lift per tenant
           # from the storyboard's positive + negative conformance vectors.
+          # Re-baseline after fixing missing v6 SalesPlatform handlers
+          # (syncEventSources/logEvent), missing expect_error markers on
+          # phantom-rejection vectors (audience_buy_flow / performance_buy_flow),
+          # and the asap-timing scenario's IO_REQUIRED gap. +1-clean buffer
+          # below observed counts for flake tolerance.
           - tenant: signals
-            min_clean_storyboards: 67
+            min_clean_storyboards: 74
             min_passing_steps: 111
           - tenant: sales
-            min_clean_storyboards: 67
-            min_passing_steps: 314
+            min_clean_storyboards: 74
+            min_passing_steps: 380
           - tenant: governance
-            min_clean_storyboards: 65
-            min_passing_steps: 153
+            min_clean_storyboards: 73
+            min_passing_steps: 151
           - tenant: creative
-            min_clean_storyboards: 66
+            min_clean_storyboards: 73
             min_passing_steps: 169
           - tenant: creative-builder
-            min_clean_storyboards: 63
+            min_clean_storyboards: 70
             min_passing_steps: 146
           - tenant: brand
-            min_clean_storyboards: 66
+            min_clean_storyboards: 73
             min_passing_steps: 96
     steps:
       - uses: actions/checkout@v6

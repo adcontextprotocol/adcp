@@ -1,0 +1,14 @@
+{
+  "test_id": "fetch-contract-neg-05-ssrf-rfc1918",
+  "category": "ssrf",
+  "description": "Request URI's hostname resolves to an RFC 1918 private-space address (e.g., 10.0.0.0/8). SDK MUST resolve the hostname before fetching and reject.",
+  "setup": {
+    "request_uri": "https://internal.example.invalid/extensions/x",
+    "declared_digest": "sha256:<irrelevant>",
+    "resolved_ip": "10.99.99.99",
+    "fetch_attempted": false
+  },
+  "expected_outcome": "fail:transport",
+  "expected_error_code": "FORMAT_PROJECTION_FAILED",
+  "rationale": "RFC 1918 (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), loopback (127.0.0.0/8, ::1), link-local (169.254.0.0/16, fe80::/10), CGNAT (100.64.0.0/10), and any RFC 6761 special-use name MUST be rejected. SDK MUST pin the connection to the resolved IP (or re-resolve and re-validate per request) to defeat DNS rebinding."
+}
