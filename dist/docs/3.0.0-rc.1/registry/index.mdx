@@ -1,0 +1,382 @@
+---
+title: Registry API
+sidebarTitle: Overview
+description: Public REST API for brand resolution, property resolution, agent discovery, and authorization validation
+---
+
+The AgenticAdvertising.org registry provides a public REST API for resolving brands and properties, discovering agents, and validating authorization in the AdCP ecosystem.
+
+## Base URL
+
+```
+https://agenticadvertising.org
+```
+
+Most endpoints are **public and require no authentication**. [Authenticated endpoints](#authenticated-endpoints) require a Bearer token.
+
+## Quick Start
+
+Resolve a brand domain to its canonical identity:
+
+<CodeGroup>
+
+```bash cURL
+curl "https://agenticadvertising.org/api/brands/resolve?domain=acmecorp.com"
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/brands/resolve?domain=acmecorp.com"
+);
+const brand = await res.json();
+console.log(brand.brand_name, brand.canonical_domain);
+```
+
+```python Python
+import requests
+
+brand = requests.get(
+    "https://agenticadvertising.org/api/brands/resolve",
+    params={"domain": "acmecorp.com"}
+).json()
+print(brand["brand_name"], brand["canonical_domain"])
+```
+
+</CodeGroup>
+
+```json Response
+{
+  "canonical_id": "acmecorp.com",
+  "canonical_domain": "acmecorp.com",
+  "brand_name": "Acme Corp",
+  "keller_type": "master",
+  "house_domain": "acmecorp.com",
+  "source": "brand_json"
+}
+```
+
+## Rate Limits
+
+| Endpoint | Limit |
+|----------|-------|
+| Bulk resolve (`/api/brands/resolve/bulk`, `/api/properties/resolve/bulk`) | 20 requests/minute per IP |
+| Save endpoints (`/api/brands/save`, `/api/properties/save`) | 60 requests/hour per user |
+| All other endpoints | No limit |
+
+Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded.
+
+## Endpoint Groups
+
+<CardGroup cols={2}>
+  <Card title="Brand Resolution" icon="fingerprint" href="/dist/docs/3.0.0-rc.1/registry/index#brand-resolution">
+    Resolve domains to canonical brand identities, fetch brand.json files, and browse the brand registry.
+  </Card>
+  <Card title="Property Resolution" icon="building" href="/dist/docs/3.0.0-rc.1/registry/index#property-resolution">
+    Resolve publisher domains to property information, validate adagents.json, and browse properties.
+  </Card>
+  <Card title="Agent Discovery" icon="robot" href="/dist/docs/3.0.0-rc.1/registry/index#agent-discovery">
+    List registered and discovered agents, publishers, and view registry statistics.
+  </Card>
+  <Card title="Lookups & Authorization" icon="shield-check" href="/dist/docs/3.0.0-rc.1/registry/index#lookups--authorization">
+    Look up agents by domain, validate product authorization, and check property authorization in real time.
+  </Card>
+</CardGroup>
+
+### Brand Resolution
+
+These endpoints resolve domains to brand identities. The `source` field in the response indicates where the data came from:
+
+| Source | Meaning |
+|--------|---------|
+| `brand_json` | Resolved from the domain's `/.well-known/brand.json` file |
+| `enriched` | Enriched via Brandfetch API |
+| `community` | Submitted by a community member |
+
+All sources produce the same resolution response structure. To get full brand identity data (logos, colors, tone), use `/api/brands/enrich` or look up the brand in the registry.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/brands/resolve` | Resolve a domain to its canonical brand |
+| POST | `/api/brands/resolve/bulk` | Resolve up to 100 domains at once |
+| GET | `/api/brands/brand-json` | Fetch raw brand.json for a domain |
+| GET | `/api/brands/registry` | List all brands (search, pagination) |
+| GET | `/api/brands/enrich` | Enrich brand data via Brandfetch |
+| POST | `/api/brands/save` | Save or update a community brand (auth required) |
+
+### Property Resolution
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/properties/resolve` | Resolve a domain to its property info |
+| POST | `/api/properties/resolve/bulk` | Resolve up to 100 domains at once |
+| GET | `/api/properties/registry` | List all properties (search, pagination) |
+| GET | `/api/properties/validate` | Validate a domain's adagents.json |
+| POST | `/api/properties/save` | Save or update a hosted property (auth required) |
+
+### Agent Discovery
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/registry/agents` | List all agents (filter by type, with enrichment) |
+| GET | `/api/registry/publishers` | List all publishers |
+| GET | `/api/registry/stats` | Registry statistics |
+
+### Lookups & Authorization
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/registry/lookup/domain/{domain}` | Find agents authorized for a domain |
+| GET | `/api/registry/lookup/property` | Find agents by property identifier |
+| GET | `/api/registry/lookup/agent/{agentUrl}/domains` | Get all domains for an agent |
+| POST | `/api/registry/validate/product-authorization` | Validate agent product authorization |
+| POST | `/api/registry/expand/product-identifiers` | Expand property selectors to identifiers |
+| GET | `/api/registry/validate/property-authorization` | Real-time authorization check |
+
+### Validation Tools
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/adagents/validate` | Validate adagents.json for a domain |
+| POST | `/api/adagents/create` | Generate adagents.json content |
+
+### Search
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/search` | Search across brands, publishers, and properties |
+| GET | `/api/manifest-refs/lookup` | Find manifest references for a domain |
+
+### Agent Probing
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/public/discover-agent` | Probe an agent URL for capabilities |
+| GET | `/api/public/agent-formats` | Get creative formats from an agent |
+| GET | `/api/public/agent-products` | Get products from a sales agent |
+| GET | `/api/public/validate-publisher` | Validate a publisher domain |
+
+## Authentication
+
+Public endpoints (resolution, discovery, search) require no authentication. Write endpoints require a Bearer token issued to an AgenticAdvertising.org member organization.
+
+### Obtaining an API key
+
+1. Sign in at [agenticadvertising.org/dashboard/api-keys](https://agenticadvertising.org/dashboard/api-keys)
+2. Click **Create key** and copy the generated key
+
+### Using the API key
+
+Pass the key in the `Authorization` header:
+
+```
+Authorization: Bearer sk_...
+```
+
+### Authenticated endpoints
+
+These endpoints require a valid API key. Rate-limited to 60 requests per hour per user.
+
+#### Save brand
+
+`POST /api/brands/save`
+
+Save or update a community brand in the registry. For existing brands, creates a revision-tracked edit. Cannot edit authoritative brands managed via `brand.json` — those return `409 Conflict`.
+
+**Request body:**
+
+```json
+{
+  "domain": "acmecorp.com",
+  "brand_name": "Acme Corp",
+  "brand_manifest": {
+    "name": "Acme Corp",
+    "description": "A fictional company",
+    "logos": [{ "url": "https://acmecorp.com/logo.svg", "tags": ["icon"] }],
+    "colors": [{ "hex": "#FF5733", "type": "accent" }]
+  }
+}
+```
+
+`domain` and `brand_name` are required. `brand_manifest` (brand identity data) is optional. The brand's `source` is set to `"community"` by the server. Domains are normalized (protocol stripped, lowercased).
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST "https://agenticadvertising.org/api/brands/save" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain":"acmecorp.com","brand_name":"Acme Corp"}'
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/brands/save",
+  {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      domain: "acmecorp.com",
+      brand_name: "Acme Corp",
+    }),
+  }
+);
+const result = await res.json();
+```
+
+```python Python
+import requests
+
+result = requests.post(
+    "https://agenticadvertising.org/api/brands/save",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    json={"domain": "acmecorp.com", "brand_name": "Acme Corp"},
+).json()
+```
+
+</CodeGroup>
+
+```json Response (create)
+{
+  "success": true,
+  "message": "Brand \"Acme Corp\" saved to registry",
+  "domain": "acmecorp.com",
+  "id": "br_abc123"
+}
+```
+
+```json Response (update)
+{
+  "success": true,
+  "message": "Brand \"Acme Corp\" updated in registry (revision 2)",
+  "domain": "acmecorp.com",
+  "id": "br_abc123",
+  "revision_number": 2
+}
+```
+
+#### Save property
+
+`POST /api/properties/save`
+
+Save or update a hosted property in the registry. For existing properties, creates a revision-tracked edit. Cannot edit authoritative properties managed via `adagents.json` — those return `409 Conflict`.
+
+**Request body:**
+
+```json
+{
+  "publisher_domain": "examplepub.com",
+  "authorized_agents": [
+    { "url": "https://agent.example.com", "authorized_for": "sell" }
+  ],
+  "properties": [
+    { "type": "website", "name": "Example Publisher" }
+  ],
+  "contact": {
+    "name": "Ad Ops",
+    "email": "adops@examplepub.com"
+  }
+}
+```
+
+`publisher_domain` and `authorized_agents` (each with a required `url` and optional `authorized_for`) are required. `properties` (each requiring `type` and `name`) and `contact` are optional. Domains are normalized (protocol stripped, lowercased).
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST "https://agenticadvertising.org/api/properties/save" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "publisher_domain": "examplepub.com",
+    "authorized_agents": [{"url": "https://agent.example.com", "authorized_for": "sell"}],
+    "properties": [{"type": "website", "name": "Example Publisher"}]
+  }'
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/properties/save",
+  {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      publisher_domain: "examplepub.com",
+      authorized_agents: [{ url: "https://agent.example.com", authorized_for: "sell" }],
+      properties: [{ type: "website", name: "Example Publisher" }],
+    }),
+  }
+);
+const result = await res.json();
+```
+
+```python Python
+import requests
+
+result = requests.post(
+    "https://agenticadvertising.org/api/properties/save",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    json={
+        "publisher_domain": "examplepub.com",
+        "authorized_agents": [{"url": "https://agent.example.com", "authorized_for": "sell"}],
+        "properties": [{"type": "website", "name": "Example Publisher"}],
+    },
+).json()
+```
+
+</CodeGroup>
+
+```json Response (create)
+{
+  "success": true,
+  "message": "Hosted property created for examplepub.com",
+  "id": "prop_xyz789"
+}
+```
+
+```json Response (update)
+{
+  "success": true,
+  "message": "Property 'examplepub.com' updated (revision 2)",
+  "id": "prop_xyz789",
+  "revision_number": 2
+}
+```
+
+#### Submit brand (legacy)
+
+`POST /api/brands/discovered/community`
+
+Submit a brand for review. This endpoint predates `/api/brands/save` — prefer the save endpoint for new integrations.
+
+### Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Missing required fields or invalid domain |
+| 401 | Missing or invalid API key |
+| 409 | Cannot edit an authoritative brand/property (managed via `brand.json` or `adagents.json`) |
+| 429 | Rate limit exceeded (60 requests/hour) |
+
+## Protocol vs REST API
+
+The AdCP protocol defines MCP and A2A tasks for agent-to-agent communication (e.g. `get_products`, `create_media_buy`). The registry REST API is separate — it provides HTTP endpoints for looking up entities in the AgenticAdvertising.org registry.
+
+**Use the REST API** for discovery and authorization:
+- Resolve brand or property domains before making protocol calls
+- Discover which agents exist and what they're authorized for
+- Validate authorization in real time during ad serving
+- Build integrations that browse or search the registry
+
+**Use MCP/A2A tasks** for transactional operations:
+- Fetching products from a sales agent (`get_products`)
+- Creating media buys (`create_media_buy`)
+- Building creatives (`build_creative`)
+- Getting signals (`get_signals`)
+
+A typical integration uses both: resolve a publisher domain via the registry API, then call the authorized agent's MCP endpoint to transact.

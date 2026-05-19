@@ -1,0 +1,69 @@
+---
+title: delete_content_standards
+---
+
+# delete_content_standards
+
+Delete a content standards configuration.
+
+**Response time**: < 500ms
+
+## Request
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | Yes | ID of the standards configuration to delete |
+
+### Example Request
+
+```json
+{
+  "standards_id": "nike_emea_safety"
+}
+```
+
+## Response
+
+### Success Response
+
+```json
+{
+  "deleted": true,
+  "standards_id": "nike_emea_safety"
+}
+```
+
+### Error Responses
+
+**Not Found:**
+
+```json
+{
+  "errors": [
+    {
+      "code": "STANDARDS_NOT_FOUND",
+      "message": "No standards found with ID 'invalid_id'"
+    }
+  ]
+}
+```
+
+**Standards In Use:**
+
+```json
+{
+  "errors": [
+    {
+      "code": "STANDARDS_IN_USE",
+      "message": "Cannot delete standards 'nike_emea_safety' - currently referenced by active media buys"
+    }
+  ]
+}
+```
+
+Standards cannot be deleted while they are referenced by active media buys. Use [list_content_standards](./list_content_standards) to identify usage, or archive standards by setting an expiration date rather than deleting.
+
+## Related Tasks
+
+- [list_content_standards](./list_content_standards) - List all configurations
+- [create_content_standards](./create_content_standards) - Create a new configuration

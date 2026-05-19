@@ -1,0 +1,302 @@
+---
+title: "Migrating creatives"
+description: Step-by-step guide to migrating creative assignments (replacing creative_ids with weighted assignments) and asset discovery (replacing assets_required with the assets array)
+testable: true
+---
+
+# Migrating creatives
+
+AdCP v3 makes two breaking changes to creative handling: weighted creative assignments replace simple ID arrays, and a unified `assets` array replaces `assets_required` for format discovery.
+
+## Creative assignments
+
+### What changed
+
+| v2 field | v3 field | Change type |
+|----------|----------|-------------|
+| `creative_ids` (string array) | `creative_assignments` (object array) | Replaced |
+
+### Simple migration (equal weights)
+
+**v2:**
+```json
+{
+  "creative_ids": ["creative_1", "creative_2"]
+}
+```
+
+**v3 — omit `weight` for equal distribution:**
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-assignment.json",
+  "creative_id": "creative_1"
+}
+```
+
+In context of a `create_media_buy` package:
+
+```json
+{
+  "creative_assignments": [
+    { "creative_id": "creative_1" },
+    { "creative_id": "creative_2" }
+  ]
+}
+```
+
+When `weight` is omitted on all assignments, impressions are distributed equally.
+
+### Weighted assignments
+
+Control what percentage of impressions each creative receives:
+
+```json
+{
+  "creative_assignments": [
+    { "creative_id": "hero_video", "weight": 60 },
+    { "creative_id": "promo_video", "weight": 40 }
+  ]
+}
+```
+
+Weights are relative — they don't need to sum to 100, but doing so makes intent clear.
+
+### Placement targeting
+
+Assign specific creatives to specific placements within a product:
+
+```json
+{
+  "creative_assignments": [
+    {
+      "creative_id": "hero_video",
+      "placement_ids": ["homepage_hero"],
+      "weight": 100
+    },
+    {
+      "creative_id": "sidebar_banner",
+      "placement_ids": ["article_sidebar"],
+      "weight": 100
+    },
+    {
+      "creative_id": "fallback_banner",
+      "weight": 50
+    }
+  ]
+}
+```
+
+When `placement_ids` is omitted, the creative runs on all placements in the package. `placement_ids` references `placement_id` values from the product's placements array.
+
+<Note>
+`sync_creatives` does not support `placement_ids`. Use `create_media_buy` or `update_media_buy` for placement-level targeting.
+</Note>
+
+### Creative assignment schema
+
+Each assignment object:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-assignment.json",
+  "creative_id": "hero_video",
+  "weight": 60,
+  "placement_ids": ["homepage_hero"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `creative_id` | string | Yes | References a creative from `list_creatives` or `sync_creatives` |
+| `weight` | number (0-100) | No | Delivery weight. Omit for equal distribution. |
+| `placement_ids` | string[] | No | Target specific placements. Omit to run everywhere. |
+
+---
+
+## Asset discovery
+
+### What changed
+
+| v2 field | v3 field | Change type |
+|----------|----------|-------------|
+| `assets_required` (string array) | `assets` (object array) | Replaced |
+| `preview_image` | `format_card` | Replaced |
+
+### Format assets
+
+**v2** — only listed required asset IDs:
+```json
+{
+  "format_id": { "agent_url": "https://creatives.example.com", "id": "display_300x250" },
+  "name": "Standard Banner 300x250",
+  "assets_required": ["main_image", "headline"]
+}
+```
+
+**v3** — lists ALL assets with `required` boolean:
+```json
+{
+  "format_id": { "agent_url": "https://creatives.example.com", "id": "display_300x250" },
+  "name": "Standard Banner 300x250",
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "main_image",
+      "asset_type": "image",
+      "required": true,
+      "requirements": {
+        "min_width": 300,
+        "min_height": 250,
+        "accepted_mime_types": ["image/png", "image/jpeg"]
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "headline",
+      "asset_type": "text",
+      "required": true,
+      "requirements": {
+        "max_length": 50
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "impression_tracker",
+      "asset_type": "url",
+      "required": false,
+      "requirements": {
+        "url_type": "tracking_pixel"
+      }
+    }
+  ]
+}
+```
+
+### What the assets array provides
+
+- **Full discovery** — see ALL assets a format supports, not just required ones
+- **Type information** — each asset declares its `asset_type` (image, video, text, url, etc.)
+- **Requirements** — inline constraints (dimensions, length, MIME types)
+- **Optional assets** — trackers, companion banners, and other optional elements are now visible
+- **Repeatable groups** — carousel and multi-item formats use `item_type: "repeatable_group"`
+
+### Asset item types
+
+Each entry in the `assets` array has an `item_type` discriminator:
+
+**Individual assets** (`item_type: "individual"`):
+```json
+{
+  "item_type": "individual",
+  "asset_id": "main_video",
+  "asset_type": "video",
+  "required": true,
+  "requirements": {
+    "min_duration_seconds": 15,
+    "max_duration_seconds": 30,
+    "accepted_mime_types": ["video/mp4"]
+  }
+}
+```
+
+**Repeatable groups** (`item_type: "repeatable_group"`) for carousels and multi-item formats:
+```json
+{
+  "item_type": "repeatable_group",
+  "asset_group_id": "card",
+  "required": true,
+  "min_count": 2,
+  "max_count": 10,
+  "selection_mode": "sequential",
+  "assets": [
+    {
+      "asset_id": "card_image",
+      "asset_type": "image",
+      "required": true,
+      "requirements": {
+        "min_width": 600,
+        "min_height": 600,
+        "aspect_ratio": "1:1"
+      }
+    },
+    {
+      "asset_id": "card_title",
+      "asset_type": "text",
+      "required": true,
+      "requirements": {
+        "max_length": 40
+      }
+    }
+  ]
+}
+```
+
+### Format cards (replacing preview_image)
+
+v2's `preview_image` URL is replaced by `format_card`, which uses the creative rendering system:
+
+```json
+{
+  "format_card": {
+    "format_id": {
+      "agent_url": "https://creatives.example.com",
+      "id": "format_card_standard"
+    },
+    "manifest": {
+      "format_name": "Standard Banner 300x250",
+      "preview_url": "https://cdn.example.com/previews/banner_300x250.png"
+    }
+  }
+}
+```
+
+---
+
+## Migration steps
+
+### Creative assignments
+
+<Steps>
+  <Step title="Replace creative_ids">
+    Replace `creative_ids` arrays with `creative_assignments` object arrays.
+  </Step>
+  <Step title="Set creative_id">
+    Set `creative_id` on each assignment object.
+  </Step>
+  <Step title="Add weights">
+    Add weights if you need non-equal distribution, otherwise omit `weight`.
+  </Step>
+  <Step title="Add placement_ids">
+    Add `placement_ids` if you need placement-level targeting.
+  </Step>
+  <Step title="Update sync_creatives calls">
+    These use `creative_assignments` too, but without `placement_ids`.
+  </Step>
+</Steps>
+
+### Asset discovery
+
+<Steps>
+  <Step title="Replace assets_required">
+    Replace `assets_required` parsing with `assets` array iteration.
+  </Step>
+  <Step title="Check required boolean">
+    Check `required` boolean on each asset instead of assuming all listed assets are required.
+  </Step>
+  <Step title="Use asset_type">
+    Use `asset_type` to understand what kind of file each asset expects.
+  </Step>
+  <Step title="Handle item_type">
+    Check for `"individual"` vs `"repeatable_group"`.
+  </Step>
+  <Step title="Replace preview_image">
+    Replace `preview_image` reads with `format_card` rendering.
+  </Step>
+  <Step title="Validate">
+    Creative manifests must use exact `asset_id` values as keys.
+  </Step>
+</Steps>
+
+---
+
+**Related:** [Channels](/dist/docs/3.0.0-rc.1/reference/migration/channels) | [Pricing](/dist/docs/3.0.0-rc.1/reference/migration/pricing) | [Geo targeting](/dist/docs/3.0.0-rc.1/reference/migration/geo-targeting) | [Catalogs](/dist/docs/3.0.0-rc.1/reference/migration/catalogs) | [Attribution](/dist/docs/3.0.0-rc.1/reference/migration/attribution) | [AdCP v3 overview](/dist/docs/3.0.0-rc.1/reference/whats-new-in-v3)

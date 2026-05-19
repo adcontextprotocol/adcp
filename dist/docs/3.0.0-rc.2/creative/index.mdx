@@ -1,0 +1,153 @@
+---
+title: Creative protocol
+sidebarTitle: Overview
+"og:image": /images/walkthrough/panel-01-strategist-desk.png
+description: "The AdCP Creative Protocol manages ad creative from brief to delivery across CTV, display, and social using AI agents and standardized formats."
+"og:title": "AdCP — Creative protocol"
+---
+
+<img src="/images/walkthrough/panel-01-strategist-desk.png" alt="A creative strategist reviews ad mockups across multiple formats on her monitor" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+Maya is a creative strategist at a mid-size agency. She's launching a holiday campaign for Acme Outdoor across three channels: CTV, display, and social. She has one brief. She needs it running everywhere by Friday.
+
+This walkthrough follows her journey through AdCP — from brief to delivery reporting — showing how the protocol connects creative tools, publishers, and AI agents into a single workflow.
+
+## Step 1: Write the brief
+
+Maya starts with what she knows best: the creative direction.
+
+<img src="/images/walkthrough/panel-02-brief-radiates.png" alt="A creative brief radiates outward to TV, phone, laptop, and billboard screens" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+In AdCP, the brief is the `message` field on `build_creative`. Maya doesn't need to write JSON — her agency platform translates her direction into the protocol format:
+
+```json
+{
+  "message": "Holiday campaign for Acme Outdoor. Warm, adventurous tone. Hero product: Trail Pro 3000 hiking boot. Key message: 'Gift the adventure.' Use brand colors and winter imagery.",
+  "brand": { "domain": "acmeoutdoor.com" },
+  "target_format_ids": [
+    { "agent_url": "https://streamhaus.example", "id": "ssai_30s" },
+    { "agent_url": "https://outdoornet.example", "id": "display_300x250" },
+    { "agent_url": "https://outdoornet.example", "id": "display_728x90" }
+  ],
+  "quality": "draft",
+  "include_preview": true
+}
+```
+
+The brand identity — colors, logos, typography, tone — lives at `acmeoutdoor.com/.well-known/brand.json`. Every agent in the chain reads it from there. Maya's team maintains it once.
+
+<Accordion title="Agency language → protocol terms">
+
+| What Maya says | What the protocol calls it |
+|---|---|
+| Creative brief | `message` on `build_creative` |
+| Brand guidelines | `brand.json` at `/.well-known/brand.json` |
+| Comp / mockup | Preview (from `preview_creative`) |
+| Final creative | Production-quality manifest |
+| Trafficking | `sync_creatives` to each seller |
+| Campaign report | `get_creative_delivery` across agents |
+
+</Accordion>
+
+## Step 2: Discover what each seller supports
+
+Before generating anything, Maya's platform checks what formats each seller accepts. This happens automatically — but here's what's going on under the hood.
+
+Her platform calls `list_creative_formats` on each connected agent:
+
+<img src="/images/walkthrough/diagram-01-format-discovery.png" alt="Agency platform calls list_creative_formats on three sellers: StreamHaus returns CTV formats, Pinnacle Media returns display sizes, CommHub returns social formats" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Now Maya's platform knows: StreamHaus needs video files and VAST tags. Pinnacle needs display banners. CommHub needs feed-native content assets. One brief, three different output types.
+
+## Step 3: Generate and preview
+
+<img src="/images/walkthrough/panel-03-agents-collaborate.png" alt="Three AI agents collaborate at a workbench, passing creative assets between them" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Maya's platform routes the brief to the right creative agents. A CTV specialist handles video. A display agent handles banners. The social platform generates feed-native content that matches each community's voice.
+
+<img src="/images/walkthrough/diagram-02-generate-route.png" alt="Agency platform routes the brief to three agents: Video Agent receives build_creative for SSAI 30s, Display Agent receives build_creative for banner sizes, Social Platform receives create_media_buy with brief embedded" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+For CTV and display, Maya gets back draft-quality manifests she can preview immediately. For social, the platform will generate at serve time — but Maya can still preview what it would look like.
+
+<img src="/images/walkthrough/panel-04-draft-to-production.png" alt="Split screen showing a rough draft mockup transforming into a polished production creative" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Maya asks to see the CTV spot in a living room context and the social post in two different communities:
+
+```json
+{
+  "request_type": "single",
+  "creative_manifest": { "...": "video manifest from build_creative" },
+  "inputs": [
+    { "name": "Living room primetime", "context_description": "CTV app, evening, family household" },
+    { "name": "Mobile commute", "context_description": "Phone screen, morning, commuter" }
+  ]
+}
+```
+
+She reviews the drafts. The CTV spot needs a warmer color grade. She sends feedback via another `build_creative` call with an updated message. The agent iterates. This is the tissue session — fast, low-fidelity, focused on getting the direction right.
+
+When Maya's happy, she promotes to production quality:
+
+```json
+{ "quality": "production" }
+```
+
+## Step 4: Distribute to sellers
+
+<img src="/images/walkthrough/panel-05-distribute.png" alt="A strategist presses Launch while publisher connections light up in sequence" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Now the finished creatives need to reach each seller. Maya's platform calls `sync_creatives` on each one — same creative, adapted to each seller's required format:
+
+<img src="/images/walkthrough/diagram-03-distribute.png" alt="Creative agency platform distributes creatives via sync_creatives to three sellers: CTV seller returns pending review, Display seller returns approved, Social platform returns pending review for community guidelines" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Different sellers have different review processes. Pinnacle auto-approves based on brand safety rules. StreamHaus and CommHub do manual review. Maya's platform tracks approval state per seller — a creative approved on one and pending on another is normal, not an error.
+
+CommHub also checks community guidelines beyond standard ad policy. If a promoted post is rejected from a specific community, `list_creatives` shows the `rejection_reason` referencing that community's rules.
+
+## Step 5: Campaign runs — AI generates variants
+
+The campaign goes live. Here's where it gets interesting.
+
+On StreamHaus, the CTV spot runs as-is — one creative, one variant (Tier 1). On Pinnacle, the display ads run with asset group optimization — the platform tests different headline and image combinations (Tier 2). On CommHub, the social platform generates promoted posts that match each community's voice and trending topics (Tier 3).
+
+Maya doesn't manage any of this. The protocol handles it. But she can see everything that happened.
+
+## Step 6: Review delivery and variants
+
+<img src="/images/walkthrough/panel-06-delivery-dashboard.png" alt="A unified dashboard merging data from three sellers into combined performance charts" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+One week in, Maya pulls delivery data. Her platform calls `get_creative_delivery` on each agent and merges the results:
+
+<img src="/images/walkthrough/diagram-04-delivery-aggregation.png" alt="Three sellers report delivery data back to agency platform: CTV seller shows 1 variant with 150K impressions, Display seller shows 4 variants with 200K impressions, Social platform shows 12 AI-generated variants with 85K impressions plus engagement metrics" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+The social platform's response includes engagement metrics in the `ext` field — upvotes, comments, shares — alongside standard delivery metrics. Display variants include the manifest showing which headline/image combination each variant used. CTV includes completion rates and quartile data.
+
+## Step 7: Replay what ran
+
+<img src="/images/walkthrough/panel-07-variant-replay.png" alt="A strategist views a grid of ad variants with performance ratings, one highlighted as top performer" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Maya wants to see exactly what CommHub's AI generated for the hiking community. She finds the top-performing variant in the delivery data and replays it:
+
+```json
+{
+  "request_type": "variant",
+  "variant_id": "gen_hiking_community_v3"
+}
+```
+
+The platform renders exactly what was served — the generated headline, the community-adapted imagery, the engagement UI. Maya can see that the AI leaned into trail photography and used language that resonated with the hiking community. She takes this insight back to her next brief.
+
+## The full picture
+
+<img src="/images/walkthrough/diagram-05-lifecycle.png" alt="The full creative lifecycle: Write brief, Discover formats, Generate and preview, Iterate and approve, Distribute to sellers, Campaign runs, Review delivery and replay variants, then Inform next brief — completing the cycle" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Every step uses a standard AdCP task. Every agent — creative tools, publishers, social platforms — speaks the same protocol. Maya writes one brief, and AdCP handles the rest: format adaptation, multi-agent routing, cross-seller distribution, variant tracking, and unified reporting.
+
+## Go deeper
+
+- **Key concepts**: [Assets, formats, manifests, and creative agents](/dist/docs/3.0.0-rc.2/creative/key-concepts) — the building blocks behind this walkthrough
+- **AI creative**: [AI creative for campaign teams](/dist/docs/3.0.0-rc.2/creative/ai-creative-overview) — the strategic view for non-engineers
+- **Generative creative**: [Generative creative](/dist/docs/3.0.0-rc.2/creative/generative-creative) — Tier 1, 2, and 3 in depth
+- **Build an agent**: [Implementing creative agents](/dist/docs/3.0.0-rc.2/creative/implementing-creative-agents) — make your platform speak AdCP
+- **Orchestrate**: [Multi-agent orchestration](/dist/docs/3.0.0-rc.2/creative/multi-agent-orchestration) — the engineering patterns behind Maya's platform
+- **Get certified**: The [Buyer track](/dist/docs/3.0.0-rc.2/learning/tracks/buyer) teaches the full creative workflow through interactive modules

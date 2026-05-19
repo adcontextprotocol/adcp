@@ -1,0 +1,678 @@
+---
+title: list_creative_formats
+testable: true
+---
+
+
+Discover creative formats supported by a creative agent. Returns full format specifications including asset requirements and technical constraints.
+
+**Response Time**: ~1 second (database lookup)
+
+**Authentication**: None required (public endpoint for format discovery)
+
+**Request Schema**: [`/schemas/v2/media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-request.json)
+**Response Schema**: [`/schemas/v2/media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-response.json)
+
+## Sales Agent vs Creative Agent Behavior
+
+Both sales agents and creative agents implement `list_creative_formats`, but with different behaviors:
+
+**Creative agents** (like `https://creative.adcontextprotocol.org`):
+- Return **authoritative format definitions** they own
+- May reference other creative agents for additional formats
+- Provide full specifications for building and validating creatives
+
+**Sales agents** (like `https://test-agent.adcontextprotocol.org`):
+- Return **only formats used by active products**
+- Reference creative agents for format specifications
+- Filter results based on what's actually purchasable
+
+See [list_creative_formats (Sales Agent)](/dist/docs/3.0.0-rc.1/media-buy/task-reference/list_creative_formats) for sales agent-specific behavior.
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `format_ids` | FormatID[] | No | Return only specific format IDs (from `get_products` response) |
+| `type` | string | No | *(deprecated)* Filter by type: `audio`, `video`, `display`, `dooh`. Prefer `asset_types` filter instead. |
+| `asset_types` | string[] | No | Filter to formats accepting these asset types: `image`, `video`, `audio`, `text`, `html`, `javascript`, `url`. Uses OR logic. **Recommended over `type` filter.** |
+| `max_width` | integer | No | Maximum width in pixels (inclusive) - matches if ANY render fits |
+| `max_height` | integer | No | Maximum height in pixels (inclusive) - matches if ANY render fits |
+| `min_width` | integer | No | Minimum width in pixels (inclusive) |
+| `min_height` | integer | No | Minimum height in pixels (inclusive) |
+| `is_responsive` | boolean | No | Filter for responsive formats (adapt to container size) |
+| `name_search` | string | No | Search formats by name (case-insensitive partial match) |
+| `wcag_level` | string | No | Filter to formats meeting at least this WCAG level: `A`, `AA`, `AAA`. See [Accessibility](/dist/docs/3.0.0-rc.1/creative/accessibility). |
+| `disclosure_positions` | string[] | No | Filter to formats whose `supported_disclosure_positions` include all of these positions. Use to find formats compatible with a brief's compliance requirements. |
+| `output_format_ids` | FormatID[] | No | Filter to formats whose `output_format_ids` includes any of these. Returns formats that can produce these outputs — inspect their `input_format_ids` to see what inputs they accept. |
+| `input_format_ids` | FormatID[] | No | Filter to formats whose `input_format_ids` includes any of these. Returns formats that accept these creatives as input — inspect their `output_format_ids` to see what they can produce. |
+| `pagination` | object | No | Pagination: `max_results` (1-100, default 50) and `cursor` (opaque cursor from previous response) |
+
+### Multi-Render Dimension Filtering
+
+Formats may produce multiple rendered pieces (e.g., video + companion banner). Dimension filters use **"any render fits"** logic:
+
+- `max_width: 300, max_height: 250` - Returns formats where AT LEAST ONE render is ≤ 300×250
+- Use case: "Find formats that can render into my 300×250 ad slot"
+- Example: Format with primary video (1920×1080) + companion banner (300×250) **matches** because companion fits
+
+## Response
+
+| Field | Description |
+|-------|-------------|
+| `formats` | Array of full format definitions (format_id, name, assets, renders). The `type` field is deprecated and may be omitted. |
+| `creative_agents` | Optional array of other creative agents providing additional formats |
+
+See [Format schema](https://adcontextprotocol.org/schemas/v2/core/format.json) for complete format object structure.
+
+### Recursive Discovery
+
+Creative agents may reference other creative agents that provide additional formats:
+
+```json
+{
+  "creative_agents": [{
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "agent_name": "AdCP Reference Creative Agent",
+    "capabilities": ["validation", "assembly", "preview"]
+  }]
+}
+```
+
+Buyers can recursively query creative_agents. **Track visited URLs to avoid infinite loops.**
+
+## Catalog requirements
+
+Formats declare catalog needs as `catalog` asset types in their `assets` array. This tells buyers which catalogs to sync before submitting creatives for that format.
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "product_carousel_4x"
+  },
+  "name": "Product Carousel (4 items)",
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "product_catalog",
+      "asset_type": "catalog",
+      "required": true,
+      "requirements": {
+        "catalog_type": "product",
+        "min_items": 4,
+        "required_fields": ["name", "price", "image_url"]
+      }
+    }
+  ]
+}
+```
+
+Catalog assets use `asset_type: "catalog"` with a `requirements` object containing:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `catalog_type` | string | Required. The catalog type (e.g., `product`, `store`, `job`) |
+| `min_items` | integer | Minimum items the catalog must contain |
+| `max_items` | integer | Maximum items the format can render. Items beyond this limit are ignored |
+| `required_fields` | string[] | Fields that must be present on every item |
+| `feed_formats` | string[] | Accepted feed formats (e.g., `google_merchant_center`, `linkedin_jobs`) |
+
+When catalog assets are present, buyers should sync the required catalogs via [`sync_catalogs`](/dist/docs/3.0.0-rc.1/media-buy/task-reference/sync_catalogs) before submitting creatives. See [Catalogs](/dist/docs/3.0.0-rc.1/creative/catalogs) for the full lifecycle.
+
+## Common Scenarios
+
+### Get Specs for Product Format IDs
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+
+// Get full specs for formats returned by get_products
+const result = await testAgent.listCreativeFormats({
+  format_ids: [
+    {
+      agent_url: 'https://creative.adcontextprotocol.org',
+      id: 'video_15s_hosted'
+    },
+    {
+      agent_url: 'https://creative.adcontextprotocol.org',
+      id: 'display_300x250'
+    }
+  ]
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+// Validate response against schema
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+validated.formats.forEach(format => {
+  console.log(`${format.name}: ${format.assets.length} assets required`);
+});
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import ListCreativeFormatsRequest, FormatId
+
+async def main():
+    # Get full specs for formats returned by get_products
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(
+            format_ids=[
+                FormatId(agent_url='https://creative.adcontextprotocol.org', id='video_15s_hosted'),
+                FormatId(agent_url='https://creative.adcontextprotocol.org', id='display_300x250')
+            ]
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
+
+    for fmt in result.formats:
+        print(f"{fmt.name}: {len(fmt.assets)} assets required")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Find Formats by Asset Types
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+
+// Find formats that accept images and text
+const result = await testAgent.listCreativeFormats({
+  asset_types: ['image', 'text']
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+console.log(`Found ${validated.formats.length} formats`);
+
+// Examine asset requirements
+validated.formats.forEach(format => {
+  console.log(`\n${format.name}:`);
+  format.assets.forEach(asset => {
+    const label = asset.asset_role ?? asset.asset_id;
+    console.log(`  - ${label}: ${asset.asset_type}`);
+  });
+});
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import ListCreativeFormatsRequest
+
+async def main():
+    # Find formats that accept images and text
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(asset_types=['image', 'text'])
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
+
+    print(f"Found {len(result.formats)} formats")
+    for fmt in result.formats:
+        print(f"\n{fmt.name}:")
+        for asset in fmt.assets:
+            label = asset.asset_role or asset.asset_id
+            print(f"  - {label}: {asset.asset_type}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Find Third-Party Tag Formats
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+
+// Find formats that accept JavaScript or HTML tags
+const result = await testAgent.listCreativeFormats({
+  asset_types: ['javascript', 'html'],
+  max_width: 970,
+  max_height: 250
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+console.log(`Found ${validated.formats.length} third-party tag formats ≤ 970×250`);
+
+validated.formats.forEach(format => {
+  const renders = format.renders || [];
+  if (renders.length > 0) {
+    const dims = renders[0].dimensions;
+    console.log(`${format.name}: ${dims.width}×${dims.height}`);
+  }
+});
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import ListCreativeFormatsRequest
+
+async def main():
+    # Find formats that accept JavaScript or HTML tags
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(
+            asset_types=['javascript', 'html'],
+            max_width=970,
+            max_height=250
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
+
+    print(f"Found {len(result.formats)} third-party tag formats ≤ 970×250")
+    for fmt in result.formats:
+        if fmt.renders:
+            dims = fmt.renders[0].dimensions
+            print(f"{fmt.name}: {dims.width}×{dims.height}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Filter by Type and Dimensions
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+
+// Find video formats
+const result = await testAgent.listCreativeFormats({
+  type: 'video'
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+console.log(`Found ${validated.formats.length} video formats`);
+
+validated.formats.forEach(format => {
+  const assetTypes = format.assets.map(a => a.asset_type).join(', ');
+  console.log(`${format.name}: ${assetTypes}`);
+});
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import ListCreativeFormatsRequest
+
+async def main():
+    # Find video formats
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(type='video')
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
+
+    print(f"Found {len(result.formats)} video formats")
+    for fmt in result.formats:
+        asset_types = ', '.join(a.asset_type for a in fmt.assets)
+        print(f"{fmt.name}: {asset_types}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Search by Name
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+
+// Find mobile-optimized formats
+const result = await testAgent.listCreativeFormats({
+  name_search: 'mobile'
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+console.log(`Found ${validated.formats.length} mobile formats`);
+
+validated.formats.forEach(format => {
+  console.log(`- ${format.name} (${format.type})`);
+});
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import ListCreativeFormatsRequest
+
+async def main():
+    # Find mobile-optimized formats
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(name_search='mobile')
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
+
+    print(f"Found {len(result.formats)} mobile formats")
+    for fmt in result.formats:
+        print(f"- {fmt.name} ({fmt.type})")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Responsive Formats
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+
+// Find formats that adapt to container size
+const result = await testAgent.listCreativeFormats({
+  is_responsive: true,
+  type: 'display'
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+console.log(`Found ${validated.formats.length} responsive display formats`);
+
+validated.formats.forEach(format => {
+  console.log(`${format.name}: Adapts to container`);
+});
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import ListCreativeFormatsRequest
+
+async def main():
+    # Find formats that adapt to container size
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(is_responsive=True, type='display')
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
+
+    print(f"Found {len(result.formats)} responsive display formats")
+    for fmt in result.formats:
+        print(f"{fmt.name}: Adapts to container")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Discover Build Capabilities
+
+Some formats declare the output formats they can produce via `output_format_ids`. A creative builder (like a multi-publisher template tool) may accept one asset group and produce many publisher-specific formats. A format transformer may accept an existing creative and reformat it.
+
+The format schema expresses both sides of the relationship:
+
+- **`input_format_ids`** — existing creative formats this format accepts as input
+- **`output_format_ids`** — concrete output formats this format can produce
+
+These filters are ANDed — a format must match all specified filters. Within each filter, matching is OR (any ID in the array matches). A bare format ID (no dimension parameters) matches all parameterized variants of that format; a parameterized ID is an exact match.
+
+Note: `asset_types` and these filters target different things. A format that takes only creative manifests as input will have no entries in its `assets` array, so combining `asset_types` with `input_format_ids` will typically return no results.
+
+Serve-time dynamic creative (DCO platforms that render from data feeds at ad serving time) is not expressed through these fields — those platforms describe their inputs via `assets` and their output via the format itself.
+
+#### Given output formats I need, what inputs are accepted?
+
+<CodeGroup>
+
+```javascript test=false
+import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+
+// I need portrait video — what can generate it?
+const result = await testAgent.listCreativeFormats({
+  output_format_ids: [
+    { agent_url: 'https://creative.adcontextprotocol.org', id: 'video_9x16_15s' }
+  ]
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+validated.formats.forEach(format => {
+  const inputs = format.input_format_ids?.map(f => f.id) ?? ['(from brief)'];
+  console.log(`${format.name} accepts: ${inputs.join(', ')}`);
+});
+```
+
+```python test=false
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import ListCreativeFormatsRequest, FormatId
+
+async def main():
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(
+            output_format_ids=[
+                FormatId(agent_url='https://creative.adcontextprotocol.org', id='video_9x16_15s')
+            ]
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
+
+    for fmt in result.formats:
+        inputs = [f.id for f in fmt.input_format_ids] if fmt.input_format_ids else ['(from brief)']
+        print(f"{fmt.name} accepts: {', '.join(inputs)}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+#### Given an input format I have, what outputs can it produce?
+
+<CodeGroup>
+
+```javascript test=false
+import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+
+// I have a landscape 16:9 video — what can I transform it into?
+const result = await testAgent.listCreativeFormats({
+  input_format_ids: [
+    { agent_url: 'https://creative.adcontextprotocol.org', id: 'video_16x9_30s' }
+  ]
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+validated.formats.forEach(format => {
+  const outputs = format.output_format_ids?.map(f => f.id) ?? [];
+  console.log(`${format.name} → ${outputs.join(', ')}`);
+});
+```
+
+```python test=false
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import ListCreativeFormatsRequest, FormatId
+
+async def main():
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(
+            input_format_ids=[
+                FormatId(agent_url='https://creative.adcontextprotocol.org', id='video_16x9_30s')
+            ]
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
+
+    for fmt in result.formats:
+        outputs = [f.id for f in fmt.output_format_ids] if fmt.output_format_ids else []
+        print(f"{fmt.name} → {', '.join(outputs)}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Format Structure
+
+Each format includes:
+
+| Field | Description |
+|-------|-------------|
+| `format_id` | Structured identifier with agent_url and id |
+| `name` | Human-readable format name |
+| `type` | *(deprecated)* Format type (audio, video, display, dooh). Use `asset_types` filter instead. |
+| `assets` | Array of all assets with `required` boolean indicating mandatory vs optional |
+| `renders` | Array of rendered output pieces (dimensions, role) |
+| `input_format_ids` | Creative formats this format accepts as input manifests (omitted for formats that work from raw assets) |
+| `output_format_ids` | Output formats this format can produce (omitted for formats that produce a single fixed output) |
+
+### Asset Roles
+
+Common asset roles help identify asset purposes:
+
+- **`hero_image`** - Primary visual
+- **`hero_video`** - Primary video content
+- **`logo`** - Brand logo
+- **`headline`** - Primary text
+- **`body_text`** - Secondary text
+- **`call_to_action`** - CTA button text
+
+## Asset Types Filter Logic
+
+The `asset_types` parameter uses **OR logic** - formats matching ANY specified asset type are returned.
+
+**Example**: `asset_types: ['html', 'javascript', 'image']`
+- Returns formats accepting html OR javascript OR image
+- Use case: "Show me formats I can use with any of my available asset types"
+
+**To find formats requiring specific combinations**, filter results after retrieval:
+
+```javascript test=false
+// Find formats requiring BOTH image AND text
+const result = await agent.listCreativeFormats();
+const imageAndText = result.formats.filter(format => {
+  const assetTypes = format.assets.map(a => a.asset_type);
+  return assetTypes.includes('image') && assetTypes.includes('text');
+});
+```
+
+## Dimension Filtering for Multi-Render Formats
+
+Some formats produce multiple rendered pieces:
+- **Video with companion banner** - Primary video (1920×1080) + banner (300×250)
+- **Adaptive displays** - Desktop (728×90) + mobile (320×50)
+- **DOOH installations** - Multiple screens with different dimensions
+
+Dimension filters match if **at least one render** fits:
+
+```javascript test=false
+// Find formats with ANY render ≤ 300×250
+const result = await agent.listCreativeFormats({
+  max_width: 300,
+  max_height: 250
+});
+
+// Returns formats where at least one render fits 300×250 slot
+// May also include larger companion pieces
+```
+
+## Implementation Requirements
+
+When implementing `list_creative_formats` for a creative agent:
+
+1. **Return authoritative formats** - Include full specifications for formats you define
+2. **Reference other agents** - Use `creative_agents` to delegate to other creative agents
+3. **Include capabilities** - Indicate what operations you support (validation, assembly, generation, preview)
+4. **Support filtering** - Implement filter parameters (type, asset_types, dimensions, etc.)
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `FORMAT_NOT_FOUND` | Requested format_id doesn't exist | Verify format_id from get_products response |
+| `INVALID_REQUEST` | Invalid filter parameters | Check parameter types and values |
+| `AGENT_NOT_FOUND` | Referenced creative agent unavailable | Format may be from deprecated agent |
+
+## Best Practices
+
+**1. Use format_ids Parameter**
+Most efficient way to get specs for formats returned by `get_products`.
+
+**2. Cache Format Specifications**
+Format specs rarely change - cache by format_id to reduce API calls.
+
+**3. Filter by Asset Types for Third-Party Tags**
+Search for `asset_types: ['html']` or `['javascript']` to find tag-accepting formats.
+
+**4. Consider Multi-Render Formats**
+Check `renders` array length - some formats produce multiple pieces requiring multiple placements.
+
+**5. Validate Asset Requirements**
+Ensure your creative assets match format specifications before building creatives.
+
+## Next Steps
+
+After discovering formats:
+
+1. **Build Creatives**: Use [`build_creative`](/dist/docs/3.0.0-rc.1/creative/task-reference/build_creative) to assemble assets into format
+2. **Preview**: Use [`preview_creative`](/dist/docs/3.0.0-rc.1/creative/task-reference/preview_creative) to see visual output
+3. **Validate**: Use [`sync_creatives`](/dist/docs/3.0.0-rc.1/media-buy/task-reference/sync_creatives) with `dry_run: true`
+4. **Upload**: Use [`sync_creatives`](/dist/docs/3.0.0-rc.1/media-buy/task-reference/sync_creatives) to upload to media buy
+
+## Learn More
+
+- [Format Schema](https://adcontextprotocol.org/schemas/v2/core/format.json) - Complete format structure
+- [Asset Types](/dist/docs/3.0.0-rc.1/creative/asset-types) - Asset specification details
+- [Standard Formats](/dist/docs/3.0.0-rc.1/media-buy/capability-discovery/implementing-standard-formats) - IAB-compatible reference formats

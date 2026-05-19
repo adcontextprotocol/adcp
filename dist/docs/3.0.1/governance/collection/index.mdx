@@ -1,0 +1,166 @@
+---
+title: Collection Governance
+description: "AdCP Collection Governance enables program-level brand safety through collection lists — managed exclusion and inclusion lists for shows, series, and other content programs independent of which properties carry them."
+"og:title": "AdCP — Collection Governance"
+"og:image": /images/walkthrough/collection-gov-01-spreadsheet.png
+sidebarTitle: Overview
+---
+
+<img src="/images/walkthrough/collection-gov-01-spreadsheet.png" alt="Jordan sits at her desk studying a dense brand safety spreadsheet on her monitor — rows of partner names and excluded programs that need to become machine-readable" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+Jordan is staring at a spreadsheet. A holding company just sent Nova Motors' CTV "do not air" list — 200+ programs organized by network, a mix of specific shows, entire genres, and content ratings. Some entries are app-level exclusions. Some are individual programs that air on five different platforms. One section says "ALWAYS EXCLUDE kids programming" and three rows later says "animation rated G or PG is permitted."
+
+This spreadsheet makes sense to a human trafficking linear TV. It does not make sense to an AI agent managing programmatic CTV across a dozen sellers.
+
+Jordan needs to turn this into something machines can enforce. Property lists handle the app-level exclusions — she's done that before. But the program-level exclusions? A show doesn't belong to a single app. It airs everywhere. She needs a construct that identifies *the program itself*, independent of where it runs.
+
+That's what collection lists are for.
+
+## The gap in brand safety
+
+<img src="/images/walkthrough/collection-gov-02-three-layers.png" alt="Three-layer brand safety diagram — properties on top, collections in the middle, content standards at the bottom — Jordan points at the collection layer she is building" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Before collection lists, AdCP had two brand safety layers:
+
+- **Property lists** control *where* ads run — which apps, sites, and platforms. Jordan can say "not on this news app" and every seller enforces it.
+- **Content standards** control *what content* is adjacent to an ad — per-impression evaluation against a natural language policy. They handle nuance like "exclude kids content except G/PG animation."
+
+The missing layer is *what program* the ad runs in. A specific crime drama airs on three streaming platforms and cable syndication. Excluding it from one property doesn't exclude it from the others. Jordan needs to say "not in this program, anywhere" — and have every seller understand what she means.
+
+Collection lists fill this gap. Together with property lists and content standards, they form three composable layers:
+
+| Layer | Construct | What it controls | When |
+|---|---|---|---|
+| Property | Property list | Where ads run (apps, sites) | Setup |
+| Collection | **Collection list** | What content ads run in (shows, series) | Setup |
+| Content | Content standards | Specific content adjacent to the ad | Per-impression |
+
+Most buyers use one or two layers. A buyer who only needs to exclude specific programs uses a collection list alone. The three-layer model is a composition framework, not a requirement.
+
+## Resolving program identifiers
+
+<img src="/images/walkthrough/collection-gov-03-resolving.png" alt="Jordan maps program names to distribution identifiers at a display — green lines connect resolved programs, amber lines show unresolved ones she marks for follow-up" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+The spreadsheet lists programs by name. Machines need identifiers. Jordan's buyer agent resolves each program name to a platform-independent [distribution identifier](/dist/docs/3.0.1/media-buy/product-discovery/collections-and-installments) — an IMDb ID, Gracenote ID, or EIDR ID that uniquely identifies the program regardless of which CTV platform carries it.
+
+Most programs resolve immediately. A few don't — the agent flags these for Jordan to confirm manually. This is the translation step: human-readable names become machine-readable identifiers that every seller in the ecosystem understands.
+
+**Gracenote ID guidance:** Use root-level IDs — SH-prefixed for series, MV-prefixed for movies, SP-prefixed for sports programs. Episode-level IDs (EP-prefixed) don't belong in collection lists; episode-level evaluation is a content standards concern.
+
+## Building the collection list
+
+<img src="/images/walkthrough/collection-gov-04-filters.png" alt="A funnel filters collections through rating, genre, and explicit exclusion layers — Jordan reviews the clean resolved list emerging at the bottom" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Jordan's buyer agent creates a collection list on the governance agent, combining explicit program exclusions with structural filters:
+
+```json
+{
+  "tool": "create_collection_list",
+  "arguments": {
+    "name": "Nova Motors CTV Do Not Air — 2026",
+    "base_collections": [
+      {
+        "selection_type": "distribution_ids",
+        "identifiers": [
+          { "type": "imdb_id", "value": "tt9999901" },
+          { "type": "imdb_id", "value": "tt9999902" },
+          { "type": "gracenote_id", "value": "SH000003" }
+        ]
+      }
+    ],
+    "filters": {
+      "content_ratings_exclude": [
+        { "system": "tv_parental", "rating": "TV-MA" },
+        { "system": "bbfc", "rating": "18" }
+      ],
+      "genres_exclude": ["news"],
+      "genre_taxonomy": "iab_content_3.0"
+    },
+    "brand": { "domain": "novamotors.com" }
+  }
+}
+```
+
+The explicit entries handle the named programs. The filters handle the structural exclusions — no TV-MA content, no news genre. The filters are the safety net: any new TV-MA series on any platform is automatically excluded without Jordan updating the list.
+
+The "kids vs. G/PG animation" contradiction? That's not a collection list problem — it requires evaluating actual episode content, not metadata. Jordan puts that in [content standards](/dist/docs/3.0.1/governance/content-standards/index) where it belongs.
+
+### How filters compose
+
+Include filters are allowlists, exclude filters are blocklists. When both are present for the same dimension, include applies first, then exclude narrows further.
+
+**Example:** `genres_include: ["drama", "comedy"]` + `genres_exclude: ["crime"]` first includes only drama and comedy collections, then removes any also tagged as crime. A collection tagged `["drama", "crime"]` is excluded — the exclude filter wins.
+
+## Sellers match against their inventory
+
+<img src="/images/walkthrough/collection-gov-05-seller-matching.png" alt="Split scene — Jordan's governance agent sends the collection list to Priya at StreamHaus, whose inventory lights up showing matched exclusions" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+When Jordan's media buy references the collection list, Priya's sales agent at StreamHaus fetches it, matches entries against StreamHaus's collection inventory, and excludes matched programs from delivery. The matching uses distribution identifiers — StreamHaus declared Gracenote IDs on their collections in `adagents.json`, so the match is automatic.
+
+Priya's agent reports back: 47 of 200 excluded programs are in StreamHaus's library. 12 additional collections caught by the TV-MA filter. The rest aren't programs StreamHaus carries — acknowledged and ignored.
+
+The list is cached for a week (collection metadata changes less frequently than property metadata). When the governance agent re-resolves the list — a new season changes a show's content rating, or Jordan adds programs — sellers receive a webhook and refresh their cache.
+
+## Targeting integration
+
+Collection lists are referenced in targeting overlays alongside property lists:
+
+```json
+{
+  "targeting": {
+    "property_list": {
+      "agent_url": "https://governance.pinnacleagency.com",
+      "list_id": "pl_novamotors_approved_ctv"
+    },
+    "collection_list_exclude": {
+      "agent_url": "https://governance.pinnacleagency.com",
+      "list_id": "cl_novamotors_dna_2026"
+    }
+  }
+}
+```
+
+| Field | Semantics | Use case |
+|---|---|---|
+| `collection_list` | Inclusion — only run in these collections | "Only buy pre-roll on these three shows" |
+| `collection_list_exclude` | Exclusion — never run in these collections | Brand safety do-not-air lists |
+
+A media buy can reference both simultaneously — "run in these approved shows, but never in these specific programs even if they appear on the approved list." The exclude list always wins on overlap.
+
+<Info>
+**Why two fields for collections but one for properties?** Property lists predate the paired include/exclude pattern now used across other targeting dimensions (geo, audience, device). Collection lists follow the current pattern. A future evolution may add `property_list_exclude` for symmetry.
+</Info>
+
+## Jordan's three-layer configuration
+
+By the time Jordan is done, Nova Motors' CTV brand safety is expressed in three machine-readable artifacts:
+
+1. **Property list** — excluded apps and approved CTV platforms
+2. **Collection list** — excluded programs by distribution identifier + TV-MA and news genre filters
+3. **Content standards** — the nuanced kids/animation policy that requires per-episode judgment
+
+Each layer is independently managed, independently cacheable, and independently enforceable. When the holding company sends an updated do-not-air list next quarter, Jordan's agent diffs it against the existing collection list and updates only what changed.
+
+No more spreadsheets. No more per-network manual trafficking. One list, enforced everywhere.
+
+## Relationship to property lists
+
+Property lists and collection lists are sibling constructs — both are inventory lists managed by governance agents with the same lifecycle pattern (create, get, update, list, delete, webhook). They differ in what they address:
+
+| Dimension | Property list | Collection list |
+|---|---|---|
+| What it identifies | Technical surfaces (domains, apps) | Content programs (shows, series) |
+| Primary identifier | Property identifiers (domain, bundle ID) | Distribution identifiers (IMDb, Gracenote, EIDR) |
+| Filters | Country, channel, property type, features | Content rating, genre, kind, production quality |
+| Cache default | 24 hours | 168 hours (one week) |
+| Cross-publisher | Via property registry (property_rid) | Via collection registry (collection_rid) |
+
+## Tasks
+
+### Collection list management
+
+- **[create_collection_list](/dist/docs/3.0.1/governance/collection/tasks/collection_lists#create_collection_list)**: Create a new collection list on a governance agent
+- **[get_collection_list](/dist/docs/3.0.1/governance/collection/tasks/collection_lists#get_collection_list)**: Retrieve resolved collections (with caching guidance)
+- **[update_collection_list](/dist/docs/3.0.1/governance/collection/tasks/collection_lists#update_collection_list)**: Modify filters or base collections
+- **[list_collection_lists](/dist/docs/3.0.1/governance/collection/tasks/collection_lists#list_collection_lists)**: List collection lists for an account
+- **[delete_collection_list](/dist/docs/3.0.1/governance/collection/tasks/collection_lists#delete_collection_list)**: Remove a collection list

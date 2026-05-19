@@ -1,0 +1,63 @@
+---
+title: Building with AdCP
+sidebarTitle: Overview
+description: Complete guide to integrating and building with the Ad Context Protocol
+---
+
+This section provides everything you need to understand, integrate, and build robust systems with AdCP.
+
+## Learning Path
+
+<CardGroup cols={3}>
+  <Card title="Understanding AdCP" icon="lightbulb" href="/dist/docs/3.0.0-rc.1/building/understanding">
+    Why AdCP exists, the problems it solves, and protocol comparison. Start here if you're new.
+  </Card>
+  <Card title="Foundations" icon="cubes" href="/dist/docs/3.0.0-rc.1/building/integration">
+    Technical building blocks: MCP or A2A protocols, capability discovery, authentication, and data models.
+  </Card>
+  <Card title="Implementation Patterns" icon="gears" href="/dist/docs/3.0.0-rc.1/building/implementation">
+    Build production-ready systems with async operations, webhooks, error handling, and orchestrator patterns.
+  </Card>
+</CardGroup>
+
+## Quick Start
+
+**Already know which protocol you're using?**
+
+- [MCP Integration Guide](/dist/docs/3.0.0-rc.1/building/integration/mcp-guide) - For Claude, AI assistants, and MCP-compatible tools
+- [A2A Integration Guide](/dist/docs/3.0.0-rc.1/building/integration/a2a-guide) - For Google AI agents and A2A-compatible workflows
+
+**Need to choose a protocol?**
+
+See [Protocol Comparison](/dist/docs/3.0.0-rc.1/building/understanding/protocol-comparison) for a detailed comparison.
+
+## Section Overview
+
+### Understanding AdCP
+
+Conceptual foundation for everyone working with AdCP:
+
+- **[Why AdCP](/dist/docs/3.0.0-rc.1/building/understanding)** - The strategic vision: unifying buying paradigms and enabling AI surfaces
+- **[Protocol Comparison](/dist/docs/3.0.0-rc.1/building/understanding/protocol-comparison)** - MCP vs A2A at a glance
+
+### Foundations
+
+Technical building blocks for any AdCP implementation:
+
+- **[MCP Guide](/dist/docs/3.0.0-rc.1/building/integration/mcp-guide)** - Tool calls, context, and examples
+- **[A2A Guide](/dist/docs/3.0.0-rc.1/building/integration/a2a-guide)** - Tasks, streaming, and artifacts
+- **[Capability Discovery](/dist/docs/3.0.0-rc.1/protocol/get_adcp_capabilities)** - Discover what an agent supports
+- **[Authentication](/dist/docs/3.0.0-rc.1/building/integration/authentication)** - Credentials and permissions
+- **[Context & Sessions](/dist/docs/3.0.0-rc.1/building/integration/context-sessions)** - Managing state across requests
+- **[Schemas and SDKs](/dist/docs/3.0.0-rc.1/building/schemas-and-sdks)** - Access schemas and official client libraries
+
+### Implementation Patterns
+
+For building robust, production-ready systems:
+
+- **[Task Lifecycle](/dist/docs/3.0.0-rc.1/building/implementation/task-lifecycle)** - Status values, transitions, and polling
+- **[Async Operations](/dist/docs/3.0.0-rc.1/building/implementation/async-operations)** - Handling sync, async, and interactive tasks
+- **[Webhooks](/dist/docs/3.0.0-rc.1/building/implementation/webhooks)** - Push notifications and reliability patterns
+- **[Error Handling](/dist/docs/3.0.0-rc.1/building/implementation/error-handling)** - Error categories, codes, and recovery
+- **[Security](/dist/docs/3.0.0-rc.1/building/implementation/security)** - Security considerations and best practices
+- **[Orchestrator Design](/dist/docs/3.0.0-rc.1/building/implementation/orchestrator-design)** - State machines and system architecture
