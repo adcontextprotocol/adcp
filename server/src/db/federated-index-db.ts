@@ -293,6 +293,14 @@ export class FederatedIndexDatabase {
          -- both in the SELECT and WHERE. Avoids triple-walking the JSONB
          -- (signing_keys_pinned + status CASE + WHERE NOT EXISTS) per row,
          -- which dominates the query plan at managed-network fan-outs.
+         --
+         -- For fan-out children (publishers.adagents_json IS NULL, with
+         -- manager_domain set), revocation must consult the MANAGER's
+         -- blob — that's where revoked_publisher_domains[] lives for a
+         -- managed-network parent file. Without the manager-side check
+         -- the spec's "Revocation under inline resolution" rule (adagents
+         -- .mdx §Resolution paths) is unenforceable for the canonical
+         -- cafemedia case.
          SELECT
            d.publisher_domain,
            d.source,
@@ -311,15 +319,25 @@ export class FederatedIndexDatabase {
               WHERE LOWER(RTRIM(BTRIM(agent->>'url'), '/'))
                   = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
            ), false) AS signing_keys_pinned,
-           EXISTS (
-             SELECT 1
-               FROM jsonb_array_elements(
-                 COALESCE(pub.adagents_json->'revoked_publisher_domains', '[]'::jsonb)
-               ) AS rpd
-              WHERE rpd->>'publisher_domain' = d.publisher_domain
+           (
+             EXISTS (
+               SELECT 1
+                 FROM jsonb_array_elements(
+                   COALESCE(pub.adagents_json->'revoked_publisher_domains', '[]'::jsonb)
+                 ) AS rpd
+                WHERE rpd->>'publisher_domain' = d.publisher_domain
+             )
+             OR EXISTS (
+               SELECT 1
+                 FROM jsonb_array_elements(
+                   COALESCE(mgr.adagents_json->'revoked_publisher_domains', '[]'::jsonb)
+                 ) AS rpd
+                WHERE rpd->>'publisher_domain' = d.publisher_domain
+             )
            ) AS is_revoked
          FROM dedup d
          LEFT JOIN publishers pub ON pub.domain = d.publisher_domain
+         LEFT JOIN publishers mgr ON mgr.domain = pub.manager_domain
        )
        SELECT
          e.publisher_domain,

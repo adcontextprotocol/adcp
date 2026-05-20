@@ -1021,16 +1021,35 @@ export class CrawlerService {
     const childDomains = new Set<string>();
     for (const selector of authorizedAgent.publisher_properties) {
       if (!selector || typeof selector !== 'object') continue;
-      // `by_id` selectors can only be singular-form. The compact
-      // `publisher_domains[]` is rejected for `by_id` by the schema, so
-      // we trust the validator and treat any domain we find as fan-out
-      // material — schema-level enforcement keeps the cross-publisher
-      // ID-collision attack out before this code runs.
-      if (typeof selector.publisher_domain === 'string') {
-        childDomains.add(selector.publisher_domain);
+
+      const hasSingular = typeof selector.publisher_domain === 'string';
+      const hasPlural = Array.isArray(selector.publisher_domains)
+        && selector.publisher_domains.length > 0;
+
+      // XOR enforcement: schema requires exactly one of publisher_domain /
+      // publisher_domains[]. Both-present is malformed; mirrors the catalog
+      // projection's refuse-both invariant. Skip the whole selector entry
+      // rather than synthesize a hybrid fan-out from an ambiguous shape.
+      if (hasSingular && hasPlural) continue;
+      if (!hasSingular && !hasPlural) continue;
+
+      if (hasSingular) {
+        childDomains.add(selector.publisher_domain as string);
       }
-      if (Array.isArray(selector.publisher_domains)) {
-        for (const d of selector.publisher_domains) {
+
+      // Defense-in-depth against a malformed manager file: the schema
+      // rejects `by_id` with the compact `publisher_domains[]` form
+      // (property IDs are publisher-scoped, so fanning a fixed ID set
+      // across N publishers silently cross-authorizes whichever inventory
+      // shares an ID — the cross-publisher ID-collision attack). The
+      // hand-rolled validator in adagents-manager.ts does not yet enforce
+      // this; refuse to fan out `by_id` + `publisher_domains[]` here so a
+      // malformed file slipping past upstream validation can't synthesize
+      // wrong authz rows. The singular `publisher_domain` form on `by_id`
+      // stays honored above — that's the schema-conformant shape.
+      if (selector.selection_type === 'by_id') continue;
+      if (hasPlural) {
+        for (const d of selector.publisher_domains as string[]) {
           if (typeof d === 'string') childDomains.add(d);
         }
       }

@@ -18,6 +18,15 @@
 -- The fourth value was specced in adcp#4823 / PR #4828's response schema
 -- and the adagents resolution rule in adcp#4825 / PR #4827. This migration
 -- enables the crawler to actually write it.
+--
+-- Wrapped in BEGIN/COMMIT so the DROP and ADD share one transaction and
+-- one lock window. Without the wrap, concurrent writers could insert a
+-- row with an arbitrary discovery_method value during the brief moment
+-- between the two ALTERs. The ADD CONSTRAINT does a single scan of the
+-- publishers table (no row rewrite) so the lock duration is acceptable
+-- even at production scale.
+
+BEGIN;
 
 ALTER TABLE publishers DROP CONSTRAINT publishers_discovery_method_check;
 ALTER TABLE publishers
@@ -35,6 +44,9 @@ COMMENT ON COLUMN publishers.discovery_method IS
   '''authoritative_location'': publisher''s stub redirected to a third-party canonical URL. '
   '''ads_txt_managerdomain'': discovery fell back to a manager domain via ads.txt MANAGERDOMAIN delegation. '
   '''adagents_authoritative'': child publisher synthesized from a manager file''s '
-  'publisher_properties[].publisher_domains[] fan-out — the manager file inlines the publisher with explicit '
-  'publisher_domain on each property; the child''s own origin was never fetched. Backfilled to ''direct'' for '
-  'previously-validated rows.';
+  'publisher_properties[].publisher_domains[] fan-out — the manager file names the publisher in its selector '
+  '(and, in the inline-resolution case, in properties[].publisher_domain). The child''s own origin was NEVER '
+  'fetched. Trust profile: low-medium — manager-asserted, no bilateral confirmation from the publisher''s own '
+  'origin; honor the manager''s revoked_publisher_domains[] for revocation propagation.';
+
+COMMIT;

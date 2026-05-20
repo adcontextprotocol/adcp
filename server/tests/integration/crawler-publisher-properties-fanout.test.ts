@@ -270,6 +270,84 @@ describe('crawler publisher_properties fan-out (integration)', () => {
       expect(auths.rows.map(r => r.publisher_domain)).toEqual([CHILD_A]);
     });
 
+    it('refuses by_id selectors with publisher_domains[] (schema XOR enforcement)', async () => {
+      // Malformed shape: by_id with the compact publisher_domains[]. Schema
+      // rejects this (property IDs are publisher-scoped) but the hand-rolled
+      // validator does not — defense-in-depth must hold in the fan-out.
+      await fanOut({
+        agentUrl: AGENT,
+        managerDomain: MANAGER,
+        publisher_properties: [
+          {
+            selection_type: 'by_id',
+            property_ids: ['shared_id_1', 'shared_id_2'],
+            publisher_domains: [CHILD_A, CHILD_B],
+          },
+        ],
+      });
+      const auths = await query<{ count: string }>(
+        'SELECT COUNT(*)::text AS count FROM agent_publisher_authorizations WHERE agent_url = $1',
+        [AGENT],
+      );
+      // No fan-out — the malformed selector is skipped entirely.
+      expect(auths.rows[0]?.count).toBe('0');
+    });
+
+    it('honors singular publisher_domain on by_id (schema-conformant shape)', async () => {
+      await fanOut({
+        agentUrl: AGENT,
+        managerDomain: MANAGER,
+        publisher_properties: [
+          {
+            selection_type: 'by_id',
+            property_ids: ['p1'],
+            publisher_domain: CHILD_A,
+          },
+        ],
+      });
+      const auths = await query<{ publisher_domain: string }>(
+        'SELECT publisher_domain FROM agent_publisher_authorizations WHERE agent_url = $1',
+        [AGENT],
+      );
+      expect(auths.rows.map(r => r.publisher_domain)).toEqual([CHILD_A]);
+    });
+
+    it('refuses selectors with both publisher_domain and publisher_domains[] populated (XOR)', async () => {
+      await fanOut({
+        agentUrl: AGENT,
+        managerDomain: MANAGER,
+        publisher_properties: [
+          {
+            selection_type: 'by_tag',
+            property_tags: ['managed'],
+            publisher_domain: CHILD_A,
+            publisher_domains: [CHILD_B, CHILD_C],
+          },
+        ],
+      });
+      const auths = await query<{ count: string }>(
+        'SELECT COUNT(*)::text AS count FROM agent_publisher_authorizations WHERE agent_url = $1',
+        [AGENT],
+      );
+      // Malformed XOR — skip the whole entry rather than synthesize a hybrid.
+      expect(auths.rows[0]?.count).toBe('0');
+    });
+
+    it('refuses selectors with neither publisher_domain nor publisher_domains[] (XOR)', async () => {
+      await fanOut({
+        agentUrl: AGENT,
+        managerDomain: MANAGER,
+        publisher_properties: [
+          { selection_type: 'all' },
+        ],
+      });
+      const auths = await query<{ count: string }>(
+        'SELECT COUNT(*)::text AS count FROM agent_publisher_authorizations WHERE agent_url = $1',
+        [AGENT],
+      );
+      expect(auths.rows[0]?.count).toBe('0');
+    });
+
     it('is idempotent — re-running does not duplicate rows', async () => {
       const call = () => fanOut({
         agentUrl: AGENT,
