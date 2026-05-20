@@ -479,10 +479,18 @@ export class CrawlerService {
               // (adcp#4823) returns one row per represented publisher
               // instead of one row for the manager. See adcp#4825 for the
               // inline-resolution rule this implements.
-              await this.fanOutPublisherPropertiesAuthorizations(
-                authorizedAgent,
-                pubConfig.domain,
-              );
+              //
+              // Skip when the crawl source is a delegating child (the
+              // file lives at the manager via ads.txt MANAGERDOMAIN). In
+              // that case the manager's own crawl handles fan-out with
+              // correct attribution; firing fan-out here would overwrite
+              // siblings' manager_domain with the delegating child's name.
+              if (validation.discovery_method !== 'ads_txt_managerdomain') {
+                await this.fanOutPublisherPropertiesAuthorizations(
+                  authorizedAgent,
+                  pubConfig.domain,
+                );
+              }
             }
             await this.reconcileLegacyAdagentsAgents(pubConfig.domain, validation.raw_data as AdagentsManifest);
           } else {
@@ -559,7 +567,11 @@ export class CrawlerService {
                 authorizedAgent.property_ids
               );
 
-              await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+              // Skip fan-out when the source publisher delegates via
+              // ads.txt MANAGERDOMAIN — see L482 for rationale.
+              if (validation.discovery_method !== 'ads_txt_managerdomain') {
+                await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+              }
             }
             await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
           }
@@ -1344,7 +1356,11 @@ export class CrawlerService {
           authorizedAgent.property_ids
         );
 
-        await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+        // Skip fan-out when the source publisher delegates via ads.txt
+        // MANAGERDOMAIN — the manager's own crawl handles the fan-out.
+        if (validation.discovery_method !== 'ads_txt_managerdomain') {
+          await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+        }
       }
       await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 
@@ -1621,7 +1637,11 @@ export class CrawlerService {
         authorizedAgent.property_ids
       );
 
-      await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+      // Skip fan-out when the source publisher delegates via ads.txt
+      // MANAGERDOMAIN — the manager's own crawl handles the fan-out.
+      if (validation.discovery_method !== 'ads_txt_managerdomain') {
+        await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+      }
     }
     await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 
