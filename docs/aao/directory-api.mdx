@@ -80,7 +80,7 @@ GET https://{aao_directory}/v1/agents/{agent_url}/publishers
 | Field | Required | Notes |
 |---|---|---|
 | `agent_url` | yes | Canonicalized echo of the lookup key. |
-| `directory_indexed_at` | yes | Most recent per-publisher refresh in the result set. Provenance for the consumer's own cache. |
+| `directory_indexed_at` | yes | Most recent per-publisher refresh in the result set. Provenance for the consumer's own cache. **NULL on empty pages** — there's no anchor to report; consumers SHOULD NOT advance cache freshness from a null value. |
 | `publishers` | yes | Array. Empty array is a valid response — the directory has indexed this agent but no current authorizations resolve. |
 | `next_cursor` | optional | Opaque pagination cursor; absent or null on the terminal page. |
 

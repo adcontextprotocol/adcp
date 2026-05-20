@@ -745,6 +745,60 @@ registry.registerPath({
   },
 });
 
+const AgentPublishersEntrySchema = z.object({
+  publisher_domain: z.string(),
+  discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain", "adagents_authoritative"]),
+  manager_domain: z.string().nullable(),
+  properties_authorized: z.number().int().min(0),
+  properties_total: z.number().int().min(0),
+  signing_keys_pinned: z.boolean(),
+  status: z.enum(["authorized", "revoked"]),
+  last_verified_at: z.string().datetime(),
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/v1/agents/{encodedUrl}/publishers",
+  operationId: "getPublishersForAgent",
+  summary: "AAO directory inverse-lookup",
+  description:
+    "Given a percent-encoded `agent_url`, returns the publishers whose adagents.json authorizes that agent, " +
+    "with provenance (`discovery_method`, `manager_domain`), per-publisher property counts " +
+    "(`properties_authorized`, `properties_total`, scoped to this publisher only — never network-wide), " +
+    "signing-key pin status, and lifecycle state (`authorized` / `revoked`).\n\n" +
+    "Spec: [docs/aao/directory-api.mdx](/docs/aao/directory-api) (adcp#4823). This endpoint is the spec-compliant " +
+    "richer-shape replacement for the legacy `/api/registry/lookup/agent/{agentUrl}/domains`, which returns " +
+    "domain strings only.",
+  tags: ["Authorization Lookups"],
+  request: {
+    params: z.object({ encodedUrl: z.string().openapi({ description: "Percent-encoded agent_url" }) }),
+    query: z.object({
+      since: z.string().datetime().optional().openapi({ description: "ISO 8601 — return only publishers with last_verified_at ≥ since" }),
+      cursor: z.string().optional().openapi({ description: "Opaque pagination cursor returned by a prior response" }),
+      status: z.string().optional().openapi({ description: "Comma-separated subset of {authorized, revoked}. Default: authorized." }),
+      limit: z.coerce.number().int().min(1).max(1000).optional().openapi({ description: "Page size, default 200, max 1000" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Publishers authorizing the agent",
+      content: {
+        "application/json": {
+          schema: z.object({
+            agent_url: z.string(),
+            directory_indexed_at: z.string().datetime().nullable().openapi({ description: "Most recent per-publisher refresh in this page. Null on empty pages (no anchor)." }),
+            publishers: z.array(AgentPublishersEntrySchema),
+            next_cursor: z.string().nullable(),
+          }),
+        },
+      },
+    },
+    304: { description: "Not modified (If-None-Match matched)" },
+    400: { description: "Invalid agent_url, cursor, since, or status", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Directory has never indexed any publisher referencing this agent_url. Distinct from 200 + empty.", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
 registry.registerPath({
   method: "get",
   path: "/api/registry/operator",
@@ -6857,6 +6911,220 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Agent domain lookup failed");
       res.status(500).json({ error: "Agent domain lookup failed" });
+    }
+  });
+
+  // AAO directory inverse-lookup: returns the publishers whose adagents.json
+  // authorizes `{agent_url}`, with provenance, per-publisher property counts,
+  // and lifecycle status. Spec: docs/aao/directory-api.mdx (adcp#4823).
+  //
+  // The bare /registry/lookup/agent/:agentUrl/domains above is kept as a
+  // lightweight legacy surface (domain strings only). This endpoint is the
+  // spec-compliant richer shape — different path so the contract is explicit.
+  router.get("/v1/agents/:encodedUrl/publishers", registryReadRateLimiter, async (req, res) => {
+    try {
+      // decodeURIComponent throws on malformed percent-escapes (`%E0%A4`);
+      // surface as 400 rather than letting the outer catch 500.
+      let rawAgentUrl: string;
+      try {
+        rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      } catch {
+        return res.status(400).json({ error: "Malformed agent_url percent-encoding" });
+      }
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl);
+      if (!agentUrl) {
+        return res.status(400).json({ error: "Invalid agent_url after canonicalization" });
+      }
+
+      const sinceParam = typeof req.query.since === 'string' ? req.query.since : null;
+      let since: Date | undefined;
+      if (sinceParam) {
+        const parsed = new Date(sinceParam);
+        if (Number.isNaN(parsed.getTime())) {
+          return res.status(400).json({ error: "Invalid `since` — expected ISO 8601 timestamp" });
+        }
+        since = parsed;
+      }
+
+      // status filter defaults to authorized-only. Comma-separated list of
+      // {authorized, revoked}. Anything else is a 400.
+      const statusParam = typeof req.query.status === 'string' ? req.query.status : 'authorized';
+      const statusSet = new Set(statusParam.split(',').map(s => s.trim()).filter(Boolean));
+      for (const s of statusSet) {
+        if (s !== 'authorized' && s !== 'revoked') {
+          return res.status(400).json({ error: `Invalid status value '${s}' — supported: authorized, revoked` });
+        }
+      }
+      const includeRevoked = statusSet.has('revoked');
+      const includeAuthorized = statusSet.has('authorized');
+
+      // Cursor is opaque to consumers but encodes the last seen
+      // publisher_domain ASC. URL-safe base64 of the domain string keeps
+      // the wire shape opaque without needing a state table.
+      let cursor = '';
+      if (typeof req.query.cursor === 'string' && req.query.cursor.length > 0) {
+        try {
+          cursor = Buffer.from(req.query.cursor, 'base64url').toString('utf8');
+        } catch {
+          return res.status(400).json({ error: "Invalid cursor" });
+        }
+        // Defensive: cursor MUST be a domain-looking string. Reject anything
+        // with control chars or whitespace to avoid SQL surprises (the query
+        // uses it as a > comparison, but belt-and-braces).
+        if (/[\s\x00-\x1f]/.test(cursor)) {
+          return res.status(400).json({ error: "Invalid cursor" });
+        }
+      }
+
+      const limitParam = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : NaN;
+      const limit = Number.isFinite(limitParam) && limitParam > 0
+        ? Math.min(limitParam, 1000)
+        : 200;
+
+      const federatedIndex = crawler.getFederatedIndex();
+
+      // Fetch limit+1 so we can detect "more available" without a second query.
+      // We also filter status server-side via includeRevoked in the DB call;
+      // if the caller requested only `revoked`, drop rows whose status is
+      // `authorized` in TS (small set, simpler than another SQL branch).
+      const rawRows = await federatedIndex.getPublishersForAgentDetail(agentUrl, {
+        cursor,
+        since,
+        includeRevoked,
+        limit: limit + 1,
+      });
+
+      const filtered = rawRows.filter(r => {
+        if (r.status === 'authorized') return includeAuthorized;
+        if (r.status === 'revoked') return includeRevoked;
+        return false;
+      });
+
+      const hasMore = filtered.length > limit;
+      const pageRows = hasMore ? filtered.slice(0, limit) : filtered;
+      const nextCursor = hasMore
+        ? Buffer.from(pageRows[pageRows.length - 1]!.publisher_domain, 'utf8').toString('base64url')
+        : null;
+
+      // 404 vs 200-empty: 404 means "directory has never indexed any
+      // publisher referencing this agent_url at all"; 200+empty means
+      // "indexed but no rows match the current filters / cursor page".
+      // Only disambiguate when filters are at their defaults and the
+      // current page is empty — otherwise an empty page is legitimate
+      // and we skip the second probe.
+      if (
+        pageRows.length === 0
+        && !cursor
+        && !since
+        && includeAuthorized
+        && !includeRevoked
+      ) {
+        const everRows = await federatedIndex.getPublishersForAgentDetail(agentUrl, {
+          includeRevoked: true,
+          limit: 1,
+        });
+        if (everRows.length === 0) {
+          return res.status(404).json({
+            error: "Agent has never been indexed by this directory",
+            agent_url: agentUrl,
+          });
+        }
+      }
+
+      // Per-row freshness: prefer the publisher overlay's last_validated, fall
+      // back to the authz edge's last_validated. Both NOT NULL in schema, but
+      // the LEFT JOIN to publishers can produce NULL on rows where the child
+      // hasn't been independently crawled (e.g., managed-network children
+      // referenced only from the parent file). When BOTH are null, drop the
+      // row from the response rather than invent a freshness value — silently
+      // returning `new Date()` would lie to caching clients.
+      const shaped: Array<{
+        publisher_domain: string;
+        discovery_method: 'direct' | 'authoritative_location' | 'ads_txt_managerdomain' | 'adagents_authoritative';
+        manager_domain: string | null;
+        properties_authorized: number;
+        properties_total: number;
+        signing_keys_pinned: boolean;
+        status: 'authorized' | 'revoked';
+        last_verified_at: string;
+      }> = [];
+      let newestValidation: Date | null = null;
+      for (const r of pageRows) {
+        const lastVerified = r.publisher_last_validated ?? r.authz_last_validated;
+        if (!lastVerified) {
+          // No freshness anchor for this row — skip rather than invent one.
+          // Surfaces only when both the publisher overlay and the authz edge
+          // are missing a timestamp, which shouldn't happen in steady state.
+          logger.warn({ publisher_domain: r.publisher_domain, agent_url: agentUrl }, 'Skipping publisher row with no last_validated timestamp');
+          continue;
+        }
+        if (!newestValidation || lastVerified > newestValidation) {
+          newestValidation = lastVerified;
+        }
+        // discovery_method comes from publishers.discovery_method (migration
+        // 470 backfilled 'direct' for legacy rows). NULL here means the
+        // publisher overlay has no row — surface 'direct' only when there's
+        // no manager_domain (consistent with the backfill semantics);
+        // otherwise we'd silently mint direct-discovery provenance for a
+        // managed-network row, which is the strongest trust profile. Skip
+        // ambiguous rows.
+        let discoveryMethod: 'direct' | 'authoritative_location' | 'ads_txt_managerdomain' | 'adagents_authoritative';
+        if (r.discovery_method) {
+          discoveryMethod = r.discovery_method;
+        } else if (!r.manager_domain) {
+          discoveryMethod = 'direct';
+        } else {
+          logger.warn({ publisher_domain: r.publisher_domain, agent_url: agentUrl, manager_domain: r.manager_domain }, 'Skipping publisher row with null discovery_method but non-null manager_domain');
+          continue;
+        }
+        shaped.push({
+          publisher_domain: r.publisher_domain,
+          discovery_method: discoveryMethod,
+          manager_domain: r.manager_domain,
+          properties_authorized: r.properties_authorized,
+          properties_total: r.properties_total,
+          signing_keys_pinned: r.signing_keys_pinned,
+          status: r.status,
+          last_verified_at: lastVerified.toISOString(),
+        });
+      }
+
+      // directory_indexed_at echoes the freshest per-publisher timestamp in
+      // the page. On empty pages we have no anchor — omit the field in the
+      // body and surface a header instead. (Schema marks it required, but
+      // empty results render the strict freshness anchor meaningless;
+      // sending `new Date()` would lie. Follow-up: spec amendment to make
+      // optional on empty pages.)
+      const etagInput = JSON.stringify({
+        agent_url: agentUrl,
+        cursor,
+        since: since?.toISOString() ?? null,
+        status: Array.from(statusSet).sort().join(','),
+        limit,
+        rows: shaped.map(r => `${r.publisher_domain}|${r.status}|${r.last_verified_at}|${r.properties_authorized}|${r.properties_total}|${r.signing_keys_pinned}`),
+      });
+      const etag = `"${createHash('sha256').update(etagInput).digest('hex').slice(0, 32)}"`;
+
+      // Cache-Control belongs on every response, including 304s — caches
+      // need it to refresh their freshness heuristics even when the body
+      // is empty.
+      res.setHeader('ETag', etag);
+      res.setHeader('Cache-Control', 'public, max-age=60');
+
+      const ifNoneMatch = req.headers['if-none-match'];
+      if (typeof ifNoneMatch === 'string' && ifNoneMatch === etag) {
+        return res.status(304).end();
+      }
+
+      return res.json({
+        agent_url: agentUrl,
+        directory_indexed_at: newestValidation ? newestValidation.toISOString() : null,
+        publishers: shaped,
+        next_cursor: nextCursor,
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Agent → publishers inverse lookup failed");
+      return res.status(500).json({ error: "Agent → publishers inverse lookup failed" });
     }
   });
 

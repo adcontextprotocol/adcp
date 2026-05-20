@@ -16,9 +16,9 @@
       "description": "Canonicalized echo of the agent_url that was looked up. Lowercase host, default port stripped, trailing slash on path component normalized — matches the canonicalization the SDK applies in `verify_agent_authorization`."
     },
     "directory_indexed_at": {
-      "type": "string",
+      "type": ["string", "null"],
       "format": "date-time",
-      "description": "When the directory last completed a refresh of any publisher in this result. Provenance anchor for the consumer's own cache."
+      "description": "When the directory last completed a refresh of any publisher in this result. Provenance anchor for the consumer's own cache. NULL on empty pages — there's no per-publisher anchor to report; consumers SHOULD treat a null value as 'no freshness assertion for this response' and not advance their own cache freshness."
     },
     "publishers": {
       "type": "array",

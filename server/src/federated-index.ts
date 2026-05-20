@@ -1,4 +1,4 @@
-import { FederatedIndexDatabase, type AgentPublisherAuthorization, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
+import { FederatedIndexDatabase, type AgentPublisherAuthorization, type AgentPublisherDetailRow, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
 import { MemberDatabase } from './db/member-db.js';
 import { canonicalizeAgentUrl } from './db/publisher-db.js';
 import type { FederatedAgent, FederatedPublisher, DomainLookupResult, AgentType } from './types.js';
@@ -181,6 +181,19 @@ export class FederatedIndexService {
    */
   async getAuthorizationsForAgent(agentUrl: string): Promise<AgentPublisherAuthorization[]> {
     return this.db.getDomainsForAgent(agentUrl);
+  }
+
+  /**
+   * Inverse-lookup detail rows for the AAO directory endpoint (adcp#4823).
+   * Returns one row per publisher_domain authorizing the agent, with
+   * provenance, per-publisher counts, and lifecycle status. The DB layer
+   * does all the JSONB walking; the route handler shapes the response.
+   */
+  async getPublishersForAgentDetail(
+    agentUrl: string,
+    opts: { cursor?: string; since?: Date; includeRevoked?: boolean; limit: number },
+  ): Promise<AgentPublisherDetailRow[]> {
+    return this.db.getPublishersForAgentDetail(agentUrl, opts);
   }
 
   /**
