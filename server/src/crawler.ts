@@ -2,6 +2,7 @@ import type { Agent } from "./types.js";
 import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/sdk";
 import { sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
 import { FederatedIndexService } from "./federated-index.js";
+import type { DiscoveredAgent } from "./db/federated-index-db.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { BrandManager } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
@@ -132,8 +133,24 @@ export class CrawlerService {
       publisher_domain: this.extractDomain(agent.url),
     }));
 
+    // Fetch sales_candidate agents discovered via publisher_properties fan-out.
+    // These get included in the same crawlAgents call so the SDK probes their
+    // list_authorized_properties alongside registered agents.
+    const salesCandidates = await this.federatedIndex.getSalesCandidatesForProbe();
+    const registeredUrls = new Set(activeAgents.map(a => a.url));
+    const candidateInfos: AgentInfo[] = salesCandidates
+      .filter(c => !registeredUrls.has(c.agent_url)) // avoid double-probing confirmed agents
+      .map(c => ({
+        agent_url: c.agent_url,
+        protocol: (c.protocol as 'mcp' | 'a2a') || 'mcp',
+        publisher_domain: this.extractDomain(c.agent_url),
+      }));
+    if (candidateInfos.length > 0) {
+      log.debug({ count: candidateInfos.length }, 'Including sales_candidate agents in crawl');
+    }
+
     try {
-      const result = await this.crawler.crawlAgents(agentInfos);
+      const result = await this.crawler.crawlAgents([...agentInfos, ...candidateInfos]);
 
       this.lastCrawl = new Date();
       this.lastResult = result;
@@ -165,8 +182,32 @@ export class CrawlerService {
       // Snapshot pre-crawl state for diffing
       const preCrawlAgents = await this.snapshotAgentState();
 
-      // Populate federated index from PropertyIndex and adagents.json files
-      const crawledDomains = await this.populateFederatedIndex(agents);
+      // Populate federated index from PropertyIndex and adagents.json files,
+      // and process any publisher-properties discovered via sales_candidate probes.
+      const crawledDomains = await this.populateFederatedIndex(agents, salesCandidates);
+
+      // Promote or back-off sales_candidates based on positive PropertyIndex evidence.
+      // Absence of an error is not sufficient — the agent must have returned publisher-domain
+      // authorizations (non-empty publisher_domains) to earn promotion to 'sales'.
+      if (salesCandidates.length > 0) {
+        const index = getPropertyIndex();
+        for (const candidate of salesCandidates) {
+          const auth = index.getAgentAuthorizations(candidate.agent_url);
+          try {
+            if (auth && auth.publisher_domains.length > 0) {
+              await this.federatedIndex.promoteSalesCandidateToSales(candidate.agent_url);
+              log.debug({ agentUrl: candidate.agent_url }, 'sales_candidate promoted to sales');
+            } else {
+              await this.federatedIndex.recordSalesCandidateProbeFailure(candidate.agent_url);
+            }
+          } catch (err) {
+            log.warn(
+              { agentUrl: candidate.agent_url, err: err instanceof Error ? err.message : err },
+              'sales_candidate probe outcome recording failed',
+            );
+          }
+        }
+      }
 
       // Build and upsert inventory profiles
       const builtProfiles = await this.buildInventoryProfiles();
@@ -405,8 +446,14 @@ export class CrawlerService {
    * Populate the federated index with discovered agents and publishers.
    * This is called after the PropertyCrawler finishes to persist data to PostgreSQL.
    * Returns the set of domains that were crawled (for brand scanning).
+   *
+   * `salesCandidates` are agents discovered via publisher_properties that were
+   * included in the crawl — their PropertyIndex entries are processed in loop #2.5.
    */
-  private async populateFederatedIndex(agents: Agent[]): Promise<Set<string>> {
+  private async populateFederatedIndex(
+    agents: Agent[],
+    salesCandidates: DiscoveredAgent[] = []
+  ): Promise<Set<string>> {
     log.debug('Populating federated index');
     const index = getPropertyIndex();
 
@@ -565,6 +612,66 @@ export class CrawlerService {
           }
         } catch (err) {
           log.error({ domain, err }, 'Failed to process domain');
+        }
+      }
+    }
+
+    // 2.5. Process publishers discovered from sales_candidate probes.
+    // The PropertyCrawler already called list_authorized_properties on each candidate;
+    // here we persist whatever publisher-domain claims landed in the PropertyIndex.
+    if (salesCandidates.length > 0) {
+      log.debug({ count: salesCandidates.length }, 'Processing sales_candidate probe results');
+      for (const candidate of salesCandidates) {
+        const auth = index.getAgentAuthorizations(candidate.agent_url);
+        if (!auth || auth.publisher_domains.length === 0) continue;
+
+        for (const domain of auth.publisher_domains) {
+          try {
+            const validation = await this.adAgentsManager.validateDomain(domain);
+            await this.federatedIndex.recordPublisherFromAgent(
+              domain,
+              candidate.agent_url,
+              validation.valid
+            );
+
+            if (validation.valid && validation.raw_data?.authorized_agents && !processedDomains.has(domain)) {
+              await this.federatedIndex.markPublisherHasValidAdagents(domain);
+              processedDomains.add(domain);
+
+              await this.cacheAdagentsManifest(
+                domain,
+                validation.raw_data as AdagentsManifest,
+                {
+                  statusCode: validation.status_code,
+                  responseBytes: validation.response_bytes,
+                  resolvedUrl: validation.resolved_url,
+                  discoveryMethod: validation.discovery_method,
+                  managerDomain: validation.manager_domain,
+                },
+              );
+
+              for (const authorizedAgent of validation.raw_data.authorized_agents) {
+                if (!authorizedAgent.url) continue;
+                await this.federatedIndex.recordAgentFromAdagentsJson(
+                  authorizedAgent.url,
+                  domain,
+                  authorizedAgent.authorized_for,
+                  authorizedAgent.property_ids
+                );
+                await this.recordPropertiesForAgent(
+                  validation.raw_data.properties || [],
+                  domain,
+                  authorizedAgent.url,
+                  authorizedAgent.authorized_for,
+                  authorizedAgent.property_ids
+                );
+                await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+              }
+              await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
+            }
+          } catch (err) {
+            log.error({ domain, agentUrl: candidate.agent_url, err }, 'Failed to process sales_candidate domain');
+          }
         }
       }
     }
@@ -1083,6 +1190,21 @@ export class CrawlerService {
         );
       }
     }
+
+    // Register the declaring agent as a sales_candidate so the next periodic
+    // crawl probes it via list_authorized_properties. Only takes effect when
+    // the agent has no confirmed type yet — upsertSalesCandidate will not
+    // downgrade a row already classified as 'sales', 'creative', etc.
+    if (childDomains.size > 0) {
+      try {
+        await this.federatedIndex.upsertSalesCandidate(agentUrl, managerCanonical);
+      } catch (err) {
+        log.warn(
+          { agentUrl, managerDomain: managerCanonical, err: err instanceof Error ? err.message : err },
+          'publisher_properties fan-out: sales_candidate registration failed',
+        );
+      }
+    }
   }
 
   private async recordPropertiesForAgent(
@@ -1343,6 +1465,8 @@ export class CrawlerService {
           authorizedAgent.authorized_for,
           authorizedAgent.property_ids
         );
+
+        await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
       }
       await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 
