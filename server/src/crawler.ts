@@ -1343,6 +1343,8 @@ export class CrawlerService {
           authorizedAgent.authorized_for,
           authorizedAgent.property_ids
         );
+
+        await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
       }
       await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 
@@ -1618,6 +1620,8 @@ export class CrawlerService {
         authorizedAgent.authorized_for,
         authorizedAgent.property_ids
       );
+
+      await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
     }
     await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 
