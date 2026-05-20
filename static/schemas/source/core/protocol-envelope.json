@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/protocol-envelope.json",
   "title": "Protocol Envelope",
-  "description": "Canonical envelope field-set for AdCP task responses, normalized across transports. Defines the protocol-layer fields (status, context_id, context, task_id, timestamp, replayed, adcp_error, push_notification_config, governance_context) and the conceptual `payload` grouping for task-specific response data. The serialization rules — whether envelope fields appear as siblings of payload fields, as a nested `payload` object, or via transport-native containers — are transport-specific and normative per transport (see Transport serialization below).",
+  "description": "Canonical envelope field-set for AdCP task responses, normalized across transports. Defines the protocol-layer fields (status, context_id, context, task_id, timestamp, replayed, adcp_error, push_notification_config, governance_context) and the conceptual `payload` grouping for task-specific response data. The serialization rules — whether envelope fields appear as siblings of payload fields, as a nested `payload` object, or via transport-native containers — are transport-specific and normative per transport (see Transport serialization below). The `status` field is REQUIRED on every task response envelope, including synchronous metadata responses (e.g., `get_adcp_capabilities`) where the value is `completed`. Agents shipping responses without a top-level `status` are non-conformant regardless of whether the task body schema would otherwise validate.",
   "type": "object",
   "properties": {
     "context_id": {
@@ -20,7 +20,7 @@
     },
     "status": {
       "$ref": "/schemas/enums/task-status.json",
-      "description": "Current task execution state. Indicates whether the task is completed, in progress (working), submitted for async processing, failed, or requires user input. Managed by the protocol layer. Agents MUST NOT emit the legacy task_status or response_status fields alongside this field — the status field is the single authoritative task state."
+      "description": "Current task execution state. Indicates whether the task is completed, in progress (working), submitted for async processing, failed, or requires user input. REQUIRED on every task response envelope. Synchronous tasks (including read-only metadata calls like `get_adcp_capabilities`) MUST emit `status: \"completed\"`; async tasks emit `submitted`, `working`, `input-required`, etc. per their lifecycle. Agents MUST NOT emit the legacy task_status or response_status fields alongside this field — the status field is the single authoritative task state."
     },
     "message": {
       "type": "string",
@@ -57,6 +57,9 @@
       "additionalProperties": true
     }
   },
+  "required": [
+    "status"
+  ],
   "additionalProperties": true,
   "not": {
     "anyOf": [
