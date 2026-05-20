@@ -402,11 +402,11 @@
                   "authorization_type": {
                     "type": "string",
                     "const": "inline_properties",
-                    "description": "Discriminator indicating authorization by inline property definitions"
+                    "description": "Discriminator indicating authorization by inline property definitions. Companion field is `properties` (not `inline_properties`) — the only authorization_type whose companion field name does not mirror the discriminator value."
                   },
                   "properties": {
                     "type": "array",
-                    "description": "Specific properties this agent is authorized for (alternative to property_ids/property_tags)",
+                    "description": "Specific properties this agent is authorized for, defined inline on the agent entry (alternative to property_ids/property_tags). Note: this is the companion field for `authorization_type: \"inline_properties\"` — the field is named `properties`, not `inline_properties`.",
                     "items": {
                       "$ref": "/schemas/core/property.json"
                     },
