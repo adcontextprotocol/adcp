@@ -9,7 +9,7 @@
   "properties": {
     "capability_id": {
       "type": "string",
-      "description": "Optional stable identifier for this format declaration. REQUIRED when the parent product's `format_options` contains multiple declarations sharing the same `format_kind` (so buyers can disambiguate which option a manifest targets via `manifest.capability_id`). Recommended for any declaration that may be referenced by capability_id over time. Format-internal (not a URI). Examples: 'flashtalking_image_300x250', 'pmax_responsive_search'."
+      "description": "Stable identifier for this format declaration. REQUIRED when the parent product's `format_options` contains multiple declarations sharing the same `format_kind` (so buyers can disambiguate which option a manifest targets via `manifest.capability_id`). SHOULD be set on EVERY `format_options[]` entry — not just when structurally required to break a `format_kind` collision — so V2-mental-model buyers can use the V2 authoring path (`PackageRequest.capability_ids[]`, `creative-manifest.capability_id`) against the product. A product that ships without `capability_id` on its `format_options[]` entries is structurally 3.1-conformant but is not V2-authorable: buyers fall back to v1 `format_ids[]` and lose the cross-publisher-stable naming the V2 path was designed to provide. Sellers MUST reject V2 authoring against such products with `UNSUPPORTED_FEATURE` and `error.details.reason` set to `capability_ids_not_published` per `package-request.json`. The 4.0 cutover will tighten this from SHOULD to MUST (see #4857). Format-internal (not a URI). Examples: 'flashtalking_image_300x250', 'pmax_responsive_search', 'nytimes_homepage_image'."
     },
     "display_name": {
       "type": "string",
