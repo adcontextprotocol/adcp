@@ -334,6 +334,99 @@ describe("AgentValidator", () => {
     expect(result.source).toBe("https://cdn.example.com/adagents/v2/adagents.json");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  describe("force_refresh", () => {
+    function authorizedResponse() {
+      return jsonResponse({
+        authorized_agents: [
+          {
+            url: "https://sales.example.com",
+            authorized_for: "Direct",
+          },
+        ],
+      });
+    }
+
+    it("bypasses the cache on first force_refresh call", async () => {
+      fetchMock.mockResolvedValue(authorizedResponse());
+
+      await validator.validate("example.com", "https://sales.example.com");
+      await validator.validate(
+        "example.com",
+        "https://sales.example.com",
+        undefined,
+        true
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("falls back to cache when force_refresh is called again within the cooldown", async () => {
+      fetchMock.mockResolvedValue(authorizedResponse());
+
+      await validator.validate(
+        "example.com",
+        "https://sales.example.com",
+        undefined,
+        true
+      );
+      await validator.validate(
+        "example.com",
+        "https://sales.example.com",
+        undefined,
+        true
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("re-fetches when force_refresh is called after the cooldown elapses", async () => {
+      vi.useFakeTimers();
+      try {
+        fetchMock.mockResolvedValue(authorizedResponse());
+
+        await validator.validate(
+          "example.com",
+          "https://sales.example.com",
+          undefined,
+          true
+        );
+        vi.advanceTimersByTime(30_001);
+        await validator.validate(
+          "example.com",
+          "https://sales.example.com",
+          undefined,
+          true
+        );
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("scopes the cooldown per domain", async () => {
+      vi.spyOn(dns, "lookup").mockResolvedValue([
+        { address: "203.0.113.5", family: 4 },
+      ] as unknown as Awaited<ReturnType<typeof dns.lookup>>);
+      fetchMock.mockResolvedValue(authorizedResponse());
+
+      await validator.validate(
+        "example.com",
+        "https://sales.example.com",
+        undefined,
+        true
+      );
+      await validator.validate(
+        "other.example",
+        "https://sales.example.com",
+        undefined,
+        true
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
 });
 
 function jsonResponse(data: unknown): Response {
