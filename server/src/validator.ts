@@ -33,6 +33,8 @@ interface NormalizedScope {
 
 export class AgentValidator {
   private cache: Cache<AuthorizationResult>;
+  private lastForceRefreshAt: Map<string, number> = new Map();
+  private static readonly FORCE_REFRESH_COOLDOWN_MS = 30_000;
 
   constructor(cacheTtlMinutes: number = 15) {
     this.cache = new Cache<AuthorizationResult>(cacheTtlMinutes);
@@ -64,7 +66,20 @@ export class AgentValidator {
       agent_url: normalizedAgentUrl,
       scope: normalizedScope,
     });
-    if (!skipCache) {
+    // Per-domain cooldown bounds upstream adagents.json fetches when callers
+    // repeatedly pass force_refresh. Within the cooldown, fall back to cache:
+    // the previous live fetch's result is fresher than the cooldown window,
+    // so the caller still gets a current view without hammering the publisher.
+    let effectiveSkipCache = skipCache === true;
+    if (effectiveSkipCache) {
+      const lastAt = this.lastForceRefreshAt.get(normalizedDomain) ?? 0;
+      if (Date.now() - lastAt < AgentValidator.FORCE_REFRESH_COOLDOWN_MS) {
+        effectiveSkipCache = false;
+      } else {
+        this.lastForceRefreshAt.set(normalizedDomain, Date.now());
+      }
+    }
+    if (!effectiveSkipCache) {
       const cached = this.cache.get(cacheKey);
       if (cached) {
         return cached;
