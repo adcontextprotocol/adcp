@@ -1085,6 +1085,14 @@ export class CrawlerService {
           authorizedAgent.authorized_for,
           undefined, // property_ids: managed-network children authorize via tags, not IDs
         );
+        // Catalog projection (#4841) — partner sync endpoints read
+        // catalog_agent_authorizations, not the legacy edge table.
+        // Without this row they miss the manager-asserted child.
+        await this.publisherDb.recordCatalogFanoutAuthorization({
+          agentUrl,
+          childDomain: childCanonical,
+          authorizedFor: authorizedAgent.authorized_for,
+        });
       } catch (err) {
         // Per-child failures must not abort the rest of the fan-out —
         // partial progress beats silent total failure on a 6,800-domain
