@@ -195,6 +195,45 @@ describe('FederatedIndexDatabase.getPublishersForAgentDetail (integration)', () 
     expect(rows[0]!.signing_keys_pinned).toBe(false);
   });
 
+  it('status is revoked when the MANAGER file (parent) lists the child in revoked_publisher_domains', async () => {
+    // The fan-out shape: child publisher has no blob of its own, just
+    // manager_domain pointing at the parent. Revocation must propagate
+    // from the manager's blob — without this, manager-side revocation of
+    // a managed-network child is silently ignored by the directory.
+    await pool.query(
+      `INSERT INTO publishers (domain, adagents_json, source_type, domain_verified, last_validated, discovery_method)
+       VALUES ($1, $2::jsonb, 'adagents_json', true, NOW(), 'direct')`,
+      [
+        PUB_MANAGER,
+        JSON.stringify({
+          authorized_agents: [{ url: AGENT_URL, authorization_type: 'all' }],
+          revoked_publisher_domains: [
+            { publisher_domain: PUB_MANAGED, revoked_at: '2026-05-01T00:00:00Z' },
+          ],
+        }),
+      ],
+    );
+    // Child row with no blob, manager_domain pointing at PUB_MANAGER —
+    // this is exactly what recordChildPublisherFromManager produces.
+    await pool.query(
+      `INSERT INTO publishers (domain, source_type, domain_verified, last_validated, discovery_method, manager_domain)
+       VALUES ($1, 'community', true, NOW(), 'adagents_authoritative', $2)`,
+      [PUB_MANAGED, PUB_MANAGER],
+    );
+    await insertAuthz({ agent_url: AGENT_URL, publisher_domain: PUB_MANAGED });
+
+    const defaultRows = await fedDb.getPublishersForAgentDetail(AGENT_URL, { limit: 100 });
+    // Manager itself isn't in the result (no authz for it from AGENT_URL),
+    // but the managed child should be filtered out because the manager
+    // revoked it.
+    expect(defaultRows.map(r => r.publisher_domain)).not.toContain(PUB_MANAGED);
+
+    const allRows = await fedDb.getPublishersForAgentDetail(AGENT_URL, { limit: 100, includeRevoked: true });
+    const child = allRows.find(r => r.publisher_domain === PUB_MANAGED);
+    expect(child).toBeDefined();
+    expect(child!.status).toBe('revoked');
+  });
+
   it('status is revoked when parent file lists the publisher_domain in revoked_publisher_domains', async () => {
     await insertPublisher({
       domain: PUB_REVOKED,

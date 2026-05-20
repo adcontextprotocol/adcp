@@ -5,7 +5,8 @@ import { FederatedIndexService } from "./federated-index.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { BrandManager } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
-import { PublisherDatabase, canonicalizeAgentUrl, type AdagentsManifest } from "./db/publisher-db.js";
+import { PublisherDatabase, canonicalizeAgentUrl, type AdagentsManifest, type AdagentsAuthorizedAgent } from "./db/publisher-db.js";
+import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { HealthChecker } from "./health.js";
@@ -472,6 +473,16 @@ export class CrawlerService {
                 authorizedAgent.authorized_for,
                 authorizedAgent.property_ids
               );
+
+              // Fan out publisher_properties[].publisher_domains[] into
+              // per-child rows so the AAO directory inverse-lookup
+              // (adcp#4823) returns one row per represented publisher
+              // instead of one row for the manager. See adcp#4825 for the
+              // inline-resolution rule this implements.
+              await this.fanOutPublisherPropertiesAuthorizations(
+                authorizedAgent,
+                pubConfig.domain,
+              );
             }
             await this.reconcileLegacyAdagentsAgents(pubConfig.domain, validation.raw_data as AdagentsManifest);
           } else {
@@ -547,6 +558,8 @@ export class CrawlerService {
                 authorizedAgent.authorized_for,
                 authorizedAgent.property_ids
               );
+
+              await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
             }
             await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
           }
@@ -971,6 +984,107 @@ export class CrawlerService {
    * Record properties from adagents.json and link them to an agent.
    * If the agent has property_ids specified, only record those specific properties.
    */
+  /**
+   * Fan publisher_properties[].publisher_domains[] out into per-child
+   * rows so the AAO directory inverse-lookup endpoint
+   * (GET /v1/agents/{agent_url}/publishers, adcp#4823) returns one row
+   * per represented publisher, not one row per manager file.
+   *
+   * For a manager file like cafemedia's 6,800-publisher network, the
+   * `authorized_agents[*].publisher_properties[*]` selector lists every
+   * represented publisher. Without this fan-out the manager-only row in
+   * `agent_publisher_authorizations` is the only edge the directory sees,
+   * and `properties_total / properties_authorized` come out as 0 because
+   * the cafemedia properties carry child `publisher_domain` values.
+   *
+   * Writes:
+   *   - one `agent_publisher_authorizations` row per child publisher
+   *     (source='adagents_json' — the manager file IS the authoritative
+   *     declaration per adcp#4825 inline resolution rule)
+   *   - one `publishers` row per child with discovery_method=
+   *     'adagents_authoritative' and manager_domain=<host>. NO blob
+   *     cached — the child's own origin was never fetched.
+   *
+   * Idempotent. The `by_id` selector form is intentionally excluded
+   * (property IDs are publisher-scoped, so the compact `publisher_domains[]`
+   * form is invalid for it per the publisher-property-selector schema).
+   */
+  private async fanOutPublisherPropertiesAuthorizations(
+    authorizedAgent: AdagentsAuthorizedAgent,
+    managerDomain: string,
+  ): Promise<void> {
+    if (authorizedAgent.authorization_type !== 'publisher_properties') return;
+    if (!Array.isArray(authorizedAgent.publisher_properties)) return;
+    const agentUrl = authorizedAgent.url;
+    if (!agentUrl) return;
+
+    const childDomains = new Set<string>();
+    for (const selector of authorizedAgent.publisher_properties) {
+      if (!selector || typeof selector !== 'object') continue;
+
+      const hasSingular = typeof selector.publisher_domain === 'string';
+      const hasPlural = Array.isArray(selector.publisher_domains)
+        && selector.publisher_domains.length > 0;
+
+      // XOR enforcement: schema requires exactly one of publisher_domain /
+      // publisher_domains[]. Both-present is malformed; mirrors the catalog
+      // projection's refuse-both invariant. Skip the whole selector entry
+      // rather than synthesize a hybrid fan-out from an ambiguous shape.
+      if (hasSingular && hasPlural) continue;
+      if (!hasSingular && !hasPlural) continue;
+
+      if (hasSingular) {
+        childDomains.add(selector.publisher_domain as string);
+      }
+
+      // Defense-in-depth against a malformed manager file: the schema
+      // rejects `by_id` with the compact `publisher_domains[]` form
+      // (property IDs are publisher-scoped, so fanning a fixed ID set
+      // across N publishers silently cross-authorizes whichever inventory
+      // shares an ID — the cross-publisher ID-collision attack). The
+      // hand-rolled validator in adagents-manager.ts does not yet enforce
+      // this; refuse to fan out `by_id` + `publisher_domains[]` here so a
+      // malformed file slipping past upstream validation can't synthesize
+      // wrong authz rows. The singular `publisher_domain` form on `by_id`
+      // stays honored above — that's the schema-conformant shape.
+      if (selector.selection_type === 'by_id') continue;
+      if (hasPlural) {
+        for (const d of selector.publisher_domains as string[]) {
+          if (typeof d === 'string') childDomains.add(d);
+        }
+      }
+    }
+
+    // Drop the manager domain from the child set — a manager that lists
+    // itself in publisher_domains[] is just declaring its own inventory
+    // (covered by the host-level authz row already written above).
+    const managerCanonical = canonicalizePublisherDomain(managerDomain);
+    for (const child of childDomains) {
+      const childCanonical = canonicalizePublisherDomain(child);
+      if (childCanonical === managerCanonical) continue;
+      try {
+        await this.publisherDb.recordChildPublisherFromManager({
+          childDomain: childCanonical,
+          managerDomain: managerCanonical,
+        });
+        await this.federatedIndex.recordAgentFromAdagentsJson(
+          agentUrl,
+          childCanonical,
+          authorizedAgent.authorized_for,
+          undefined, // property_ids: managed-network children authorize via tags, not IDs
+        );
+      } catch (err) {
+        // Per-child failures must not abort the rest of the fan-out —
+        // partial progress beats silent total failure on a 6,800-domain
+        // network. Logged so a poisoned row doesn't get lost.
+        log.warn(
+          { managerDomain, childDomain: childCanonical, agentUrl, err: err instanceof Error ? err.message : err },
+          'publisher_properties fan-out: per-child write failed',
+        );
+      }
+    }
+  }
+
   private async recordPropertiesForAgent(
     properties: Array<{
       property_id?: string;
