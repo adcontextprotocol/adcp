@@ -9,7 +9,7 @@
   "properties": {
     "capability_id": {
       "type": "string",
-      "description": "Optional stable identifier for this format declaration. REQUIRED when the parent product's `format_options` contains multiple declarations sharing the same `format_kind` (so buyers can disambiguate which option a manifest targets via `manifest.capability_id`). Recommended for any declaration that may be referenced by capability_id over time. Format-internal (not a URI). Examples: 'flashtalking_image_300x250', 'pmax_responsive_search'."
+      "description": "Optional stable identifier for this format declaration. REQUIRED when the parent product's `format_options` contains multiple declarations sharing the same `format_kind` (so buyers can disambiguate which option a manifest targets via `manifest.capability_id`). Sellers SHOULD publish a stable `capability_id` on every `format_options[]` entry — not just when structurally required to disambiguate — so that buyers using the v2 authoring path (`PackageRequest.capability_ids[]`) can target this product's format declarations directly. This is not a conformance gate: products without `capability_id` values remain valid, and v2 buyers that encounter a product with no published `capability_id` values may receive `UNSUPPORTED_FEATURE` with `reason: capability_ids_not_published` and SHOULD fall back to `format_ids[]`. Sellers SHOULD NOT change a published `capability_id`. Format-internal (not a URI). Examples: 'flashtalking_image_300x250', 'pmax_responsive_search'."
     },
     "display_name": {
       "type": "string",
