@@ -1,5 +1,121 @@
 # Changelog
 
+## 3.1.0-beta.2
+
+### Minor Changes
+
+- 95bc69c: spec: webhook token round-trip + storyboard `required_any_of_tools` (closes #4339, #4325)
+
+  Two additive 3.1.0-beta.2 blockers bundled. Both are non-breaking — existing senders and receivers continue to interoperate.
+
+  **#4339 — webhook authentication `token` round-trip (`static/schemas/source/core/`)**
+
+  - `mcp-webhook-payload.json` — promote the echoed authentication `token` to a typed optional property (`minLength: 16`, `maxLength: 4096`). The field previously traveled on the wire under `additionalProperties: true`; this is purely a typed surface on an existing implicit contract. Schema-driven SDK clients can now access `payload.token` without falling through an extras path. Receivers that configured a token MUST compare it to this value to validate request authenticity, and SHOULD use a constant-time equality check to mitigate timing attacks. The length-check fast-path is forbidden — receivers MAY range-check token length only after subscription lookup and never as a short-circuit on equal-length inputs.
+  - `push-notification-config.json` — add `maxLength: 4096` to the existing `token` field (was previously only `minLength: 16`); this is a constraint addition on the upper bound, not a tightening of the lower bound that would reject existing-conformant configs. Cross-reference the payload-side validation obligation. Add downgrade-defense sentence: receivers that registered both an RFC 9421 signing key and a `token` MUST NOT treat a valid token echo as authorization to skip signature verification. Clarify that `token` is NOT on the 4.0 removal track (only the legacy `authentication` block is being removed in favor of RFC 9421).
+
+  **#4325 — storyboard `required_any_of_tools` declarative one-of-N gate (`static/compliance/source/universal/`)**
+
+  - `storyboard-schema.yaml` — add `required_any_of_tools` as a top-level optional storyboard field. Each entry is an OR-family `{ tools: string[] (minItems: 2), rationale?: string }`. Multiple entries AND-combine. Distinct from `required_tools` (lenient any-of coverage skip) and `provides_state_for` (step-scope state substitution).
+  - `runner-output-contract.yaml` — extend `requirement_unmet` with the canonical `detail` sub-reason prefix `missing_required_tool_family:` plus the literal wire shape for separators (`" or "` between family members, `"; "` between multi-gate aggregations). No new top-level `skip_result.reason` enum value — the contract version stays at 2.2.0. Aggregator guidance is human-display only; automated consumers SHOULD parse only the first sub-reason from aggregated `detail` and surface multi-gate state separately.
+  - `scripts/build-compliance.cjs` — validate the field on specialism `index.yaml` files (filter+trim `tools[]` before `minItems:2` enforcement; reject non-string `rationale`; drop empty `rationale` after trim) and hoist into `compliance/<version>/index.json` for downstream SDK consumption.
+
+  **Downstream pickups (tracked separately):**
+
+  - `adcontextprotocol/adcp-client-python#638` — drops the `extra='allow'` token round-trip path once types regenerate against this schema.
+  - `adcontextprotocol/adcp-client#1481` — drops `examples/hello_si_adapter_brand.ts` top-level `offering_id` mirror once the 3.1.0-beta.2 dist publishes (the SI capture-path fix shipped in #3937 / dist 3.1.0-beta.1).
+  - `adcontextprotocol/adcp-client#1642` — migrates the runner-level account-discovery conformance gate (#1624) to per-storyboard `required_any_of_tools` consumption.
+
+  **Known follow-ups (filed as issues, non-blocking on this beta):**
+
+  - `minLength: 16` on both `token` fields permits ~96-bit base64url credentials, below the 128-bit entropy SHOULD in the description. Raising the floor to 22 would tighten an existing field; the gap is intentional for backward compatibility and re-evaluated in 4.0.
+  - `docs/building/by-layer/L3/webhooks.mdx` token-echo subsection and `whats-new-in-3-1.mdx` / `migration/prerelease-upgrades.mdx` entries are pending. Schema descriptions carry normative weight; the docs page catches up in a follow-up PR.
+
+- 41fce13: spec(envelope): `status` is REQUIRED on every task response envelope.
+
+  The protocol envelope (`core/protocol-envelope.json`) now declares `status` in its `required` array, formalizing the wire contract the docs and conformance storyboards already assume. Every task response — including synchronous read-only metadata calls like `get_adcp_capabilities` — MUST carry a top-level `status` field. Synchronous calls emit `status: "completed"`; async calls emit `submitted`, `working`, `input-required`, etc. per the task-status enum.
+
+  **Why this is a wire-shape clarification, not a new requirement.** The docs (`sdk-stack.mdx`, `mcp-response-extraction.mdx`, `webhooks.mdx`, `error-handling.mdx`) already treat envelope `status` as a canonical protocol-layer field. The `v3_envelope_integrity` conformance storyboard already asserts presence via `envelope_field_present`. The schema design just left `status` declared but not required on the envelope, which let SDKs ship without emitting it on some sync responses. This change closes that ambiguity.
+
+  **Resolves #4832** — adopter (`@adcp/sdk@7.7.0`, production seller) hit `v3_envelope_integrity/no_legacy_status_fields` failure because the SDK's auto-registered `get_adcp_capabilities` handler builds the response payload without setting `status`. The storyboard was correct; the envelope contract just wasn't formalized in schema.
+
+  **Adopter impact.** Agents shipping responses without top-level envelope `status` are now non-conformant per the schema. The single broadly-distributed gap is `@adcp/client`'s auto-registered `get_adcp_capabilities` (tracked separately); other tools that go through the v6 handler pipeline already carry `status` because the SDK threads the envelope around typed platform returns. Adopters using raw-handler patterns (deprecated v5) should audit their responses and add `status: "completed"` to any sync response missing it.
+
+  **Phased follow-ups (not in this PR):**
+
+  - SDK companion in `adcp-client`: emit `status: "completed"` on the auto-registered `get_adcp_capabilities` handler (and audit any other sync helper that builds responses without the v6 pipeline).
+  - Per-task schema fold: extend each of the 64+ task response schemas (`create-media-buy-response.json`, `sync-creatives-response.json`, etc.) to `$ref` `protocol-envelope.json` in addition to `version-envelope.json`. Mechanical cleanup that lets per-task `response_schema` validators catch envelope omissions directly, without relying on the separate `envelope_field_present` storyboard check. Targeted for the 3.1 cycle ahead of GA.
+
+- aa58c94: Add `capability_ids[]` to `PackageRequest` (the `packages[]` item shape on `create_media_buy`) as a V2 path equivalent to `format_ids[]`. Lets buyers reading the V2 mental model (`Product.format_options[]`) author a `create_media_buy` call without translating back through `v1_format_ref[]`.
+
+  Symmetric with the V2 path that `creative-manifest` already exposes (manifest carries a single `capability_id`; package-side carries an array since one package may activate multiple `format_options` entries).
+
+  Additive optional field. When both `capability_ids` and `format_ids` are sent, `capability_ids` wins and the seller routes by it; the resolving seller ignores `format_ids` (V2-native buyer SDKs SHOULD still emit it as a v1-compat hint for v1-only sellers further down the wire). When neither is sent, the package defaults to all formats supported by the product (unchanged from v1 behavior). Sellers MUST reject with `UNSUPPORTED_FEATURE` when an entry doesn't match a `format_options[]` entry, when the product is v1-only (no `format_options[]` at all), or when the product's `format_options[]` entries don't publish `capability_id` values.
+
+  Closes #4842.
+
+### Patch Changes
+
+- ff53133: docs(adagents): add `authorization_type` → companion-field quick-reference table at the top of the Authorization Patterns section, plus a `<Warning>` callout on the `inline_properties` naming exception (companion field is `properties`, not `inline_properties`). Schema `description` strings on the `inline_properties` `oneOf` branch updated to surface the same exception where IDEs and linters display it. "Four patterns" count corrected to "six authorization types" (the two signal-side values were absent from the prose count). Non-normative — no fields, enums, or `required` arrays change.
+
+  Closes #4776.
+
+- 079c25c: Mark `data-provider-signal-selector.json` with `x-adcp-hoist: true` so the schema bundler deduplicates it via root `$defs` instead of inlining it N times.
+
+  In 3.1.0-beta.x, the `tasks-get-response.json` `result` field references `async-response-data.json` — a union of all task response schemas. When bundled, shared sub-schemas get inlined once per referencing response schema. The duplicate `data-provider-signal-selector` instances (a discriminated `oneOf` with `selection_type` values `all`, `by_id`, `by_tag`) caused `datamodel-code-generator` to fabricate a `Literal['reuse']` discriminator value, raising `TypeError: Value 'reuse' for discriminator 'selection_type' mapped to multiple choices` and blocking the entire Python SDK from importing.
+
+  The bundler already has `hoistMarkedSchemas()` for exactly this case. The `x-adcp-hoist: true` directive is build-time only and is stripped from the emitted bundled schemas — the normative wire contract is unchanged.
+
+- c232af3: Fix phantom `FORMAT_INCOMPATIBLE` error code on `create_media_buy` docs. The code was referenced in the error table and two response examples on `docs/media-buy/task-reference/create_media_buy.mdx` but was never defined in `static/schemas/source/enums/error-code.json`. SDKs that validate `errors[].code` against the published enum would reject responses built from the docs literally.
+
+  Migrated all three references to `UNSUPPORTED_FEATURE` — the enum value whose semantics ("a requested feature or field is not supported by this seller") match the "format not in the product's accepted set" case exactly. The error-table row was also merged with the sibling `UNSUPPORTED_FEATURE` row added in #4845 (which covered the v2 `capability_ids[]` failure modes), so a single row now spans both v1 (`format_ids[]`) and v2 (`capability_ids[]`) format-mismatch cases.
+
+  Closes #4852.
+
+- e2c3635: fix(schema): reconcile $ref sandbox host in product-format-declaration (closes #4862)
+
+  `core/product-format-declaration.json#format_schema.description` contained two conflicting normative statements: the `v1_format_ref` mirror-domain migration block (labeled "3.1") says `creative.adcontextprotocol.org/translated/` is the canonical AAO mirror host and that adopters MUST migrate away from the legacy host; the `$ref` sandboxing clause in the same description still named `mirror.adcontextprotocol.org` as the allowed non-same-origin anchor, causing strict implementations of the sandbox to silently reject `$ref`s hosted under the correct domain.
+
+  **Changes:**
+
+  - `core/product-format-declaration.json` `format_schema.description` — two edits:
+    1. **Sandboxing of `$ref` bullet:** `(b) hosted under the AAO mirror namespace (\`https://mirror.adcontextprotocol.org/...\`)` → `(b) hosted under the AAO catalog domain (\`https://creative.adcontextprotocol.org/...\`)`
+    2. **AAO mirror trust bullet (end of description):** rename to "AAO catalog trust", replace `mirror.adcontextprotocol.org/*` with `creative.adcontextprotocol.org/*`, update surrounding prose to match.
+  - `docs/creative/canonical-formats.mdx` `$ref` sandboxing rule (item b) and "AAO mirror" trust anchor note updated to name `creative.adcontextprotocol.org` and use "AAO catalog domain" terminology.
+
+  No structural schema changes. No new fields, enum values, or MUST requirements — this is a normative-text consistency repair. `mirror.adcontextprotocol.org` was never provisioned; `@adcp/sdk` 7.10 already ships both hosts in `DEFAULT_MIRROR_HOSTS` as a transitional posture and can drop the legacy entry on next release.
+
+  Closes #4862.
+
+- ef9946c: fix(compliance): replace phantom_unit with devices in reach_buy_flow rejection step
+
+  The rejection_unsupported_reach_unit phase was using reach_unit: "phantom_unit", which
+  is not a valid reach-unit.json enum value. Because the step carries negative_path:
+  payload_well_formed, the payload must be schema-valid — but phantom_unit caused schema
+  rejection before the seller's capability-checking logic ran, so the test was passing for
+  the wrong reason.
+
+  Fix: add metric_optimization.supported_metrics: ["reach"] and
+  supported_reach_units: ["households", "individuals"] to the reach_ctv_q2 product fixture,
+  replace phantom_unit with "devices" (a valid enum value deliberately absent from the
+  fixture's declared units), and rename the step id from
+  create_media_buy_with_phantom_reach_unit to create_media_buy_with_unsupported_reach_unit.
+  The rejection now comes from the seller's business-logic capability check, which is the
+  contract the scenario is designed to exercise.
+
+  Closes #4819.
+
+- 118d760: spec(preview_creative): allow non-expiring preview URLs by making `expires_at` optional
+
+  `preview_creative` responses previously required `expires_at` for single previews and successful batch results, but the spec did not define how agents should represent preview URLs that do not expire. The response schema now allows omitting `expires_at`; documentation clarifies that a present timestamp marks the time after which consumers should treat preview URLs as invalid, while an omitted timestamp means the preview URLs do not expire.
+
+  This relaxes validation for existing non-expiring implementations without changing the meaning of responses that already include `expires_at`. Closes #4453.
+
+- 210b8a7: Add SHOULD on `product-format-declaration.json`: sellers SHOULD publish `capability_id` on every `format_options[]` entry — not just when structurally required to break a `format_kind` collision. Without it, V2-mental-model buyers using the `PackageRequest.capability_ids[]` path added in #4845 (and the long-standing `creative-manifest.capability_id`) can't address the entry, fall back to v1 `format_ids[]`, and lose the cross-publisher-stable naming the V2 authoring path was designed to provide.
+
+  Co-located with #4845's buyer-side change so 3.1 release-notes readers see the buyer capability and the seller obligation together. No structural change — capability_id remains optional at the schema level; this is description-text only. The 4.0 cutover will tighten SHOULD → MUST (tracked in #4857).
+
+  Closes #4856.
+
 ## 3.1.0-beta.1
 
 ### Minor Changes
