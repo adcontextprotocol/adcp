@@ -3470,10 +3470,15 @@ paths:
           name: cursor
           in: query
         - schema:
-            type: string
-            description: "Comma-separated subset of {authorized, revoked}. Default: authorized."
+            type: array
+            items:
+              type: string
+              enum:
+                - authorized
+                - revoked
+            description: "Lifecycle status filter — repeat the key once per value (?status=authorized&status=revoked). Default: authorized. The comma-separated single-value form is rejected with 400."
           required: false
-          description: "Comma-separated subset of {authorized, revoked}. Default: authorized."
+          description: "Lifecycle status filter — repeat the key once per value (?status=authorized&status=revoked). Default: authorized. The comma-separated single-value form is rejected with 400."
           name: status
           in: query
         - schema:
