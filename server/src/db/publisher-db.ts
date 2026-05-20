@@ -227,6 +227,52 @@ export class PublisherDatabase {
    * Does not touch adagents_json (preserves the last successful body
    * if one exists) and does not bump source_type.
    */
+  /**
+   * Record a child publisher synthesized from a manager file's
+   * publisher_properties[].publisher_domains[] fan-out (adcp#4825 inline
+   * resolution). The child has not been independently crawled — the
+   * manager file IS the authorization. Stamp discovery_method
+   * 'adagents_authoritative' and manager_domain on the publishers row
+   * without writing adagents_json (we never fetched the child's origin).
+   *
+   * If a stronger row already exists (the child WAS independently
+   * crawled and has adagents_json cached), don't overwrite its
+   * provenance — direct crawl wins over manager-file attribution.
+   */
+  async recordChildPublisherFromManager(input: {
+    childDomain: string;
+    managerDomain: string;
+  }): Promise<void> {
+    const childDomain = canonicalizePublisherDomain(input.childDomain);
+    const managerDomain = canonicalizePublisherDomain(input.managerDomain);
+    if (childDomain === managerDomain) return; // never self-attribute
+    const client = await getClient();
+    try {
+      await client.query(
+        `INSERT INTO publishers
+           (domain, source_type, discovery_method, manager_domain, last_validated)
+         VALUES ($1, 'community', 'adagents_authoritative', $2, NOW())
+         ON CONFLICT (domain) DO UPDATE SET
+           discovery_method = CASE
+             WHEN publishers.adagents_json IS NULL THEN EXCLUDED.discovery_method
+             ELSE publishers.discovery_method
+           END,
+           manager_domain = CASE
+             WHEN publishers.adagents_json IS NULL THEN EXCLUDED.manager_domain
+             ELSE publishers.manager_domain
+           END,
+           last_validated = CASE
+             WHEN publishers.adagents_json IS NULL THEN NOW()
+             ELSE publishers.last_validated
+           END,
+           updated_at = NOW()`,
+        [childDomain, managerDomain],
+      );
+    } finally {
+      client.release();
+    }
+  }
+
   async recordFailedAdagentsFetch(input: {
     domain: string;
     statusCode?: number;

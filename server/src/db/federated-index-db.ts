@@ -69,7 +69,7 @@ export interface AgentPublisherDetailRow {
   source: 'adagents_json' | 'agent_claim';
   authz_last_validated: Date | null;
   publisher_last_validated: Date | null;
-  discovery_method: 'direct' | 'authoritative_location' | 'ads_txt_managerdomain' | null;
+  discovery_method: 'direct' | 'authoritative_location' | 'ads_txt_managerdomain' | 'adagents_authoritative' | null;
   manager_domain: string | null;
   properties_total: number;
   properties_authorized: number;

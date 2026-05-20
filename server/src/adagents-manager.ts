@@ -15,7 +15,7 @@ export interface ValidationWarning {
   suggestion?: string;
 }
 
-export type DiscoveryMethod = 'direct' | 'authoritative_location' | 'ads_txt_managerdomain';
+export type DiscoveryMethod = 'direct' | 'authoritative_location' | 'ads_txt_managerdomain' | 'adagents_authoritative';
 
 export interface AdAgentsValidationResult {
   valid: boolean;
