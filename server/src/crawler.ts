@@ -616,7 +616,13 @@ export class CrawlerService {
   private async refreshAgentSnapshots(agents: Agent[]): Promise<void> {
     log.debug('Refreshing agent health + capability snapshots');
 
-    const allAgents = await this.federatedIndex.listAllAgents();
+    // listAllProbeableAgents unions member-profile registrations with
+    // adagents_json-sourced discovered_agents so manager-file-only agents
+    // (e.g., interchange.io, named only in cafemedia.com's selector with
+    // no seed-set registration of its own) still get periodic probes.
+    // Excludes agent_claim (list_authorized_properties) discoveries
+    // intentionally — those are unverified peer claims. (adcp#4849)
+    const allAgents = await this.federatedIndex.listAllProbeableAgents();
     const knownTypes = new Map<string, string>();
     for (const a of allAgents) {
       if (a.type && a.type !== 'unknown') {
