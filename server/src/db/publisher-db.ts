@@ -268,6 +268,21 @@ export class PublisherDatabase {
            updated_at = NOW()`,
         [childDomain, managerDomain],
       );
+
+      // Enqueue the child for delayed periodic re-validation (#4850) so a
+      // manager-asserted child eventually gets bilateral confirmation
+      // (or a 404 backoff). Initial delay of 24h prevents 6,800 fan-out
+      // children from immediately storming the crawler — they spread
+      // across the next day's drain ticks. ON CONFLICT DO NOTHING
+      // preserves any existing backoff window (avoid resetting if the
+      // child already 404'd recently).
+      await client.query(
+        `INSERT INTO manager_revalidation_queue
+           (publisher_domain, manager_domain, enqueued_at, next_attempt_after, attempts, last_attempted_at, last_error)
+         VALUES ($1, $2, NOW(), NOW() + INTERVAL '24 hours', 0, NULL, NULL)
+         ON CONFLICT (publisher_domain) DO NOTHING`,
+        [childDomain, managerDomain],
+      );
     } finally {
       client.release();
     }
