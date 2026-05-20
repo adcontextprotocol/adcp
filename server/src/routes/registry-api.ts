@@ -6860,6 +6860,167 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  // AAO directory inverse-lookup: returns the publishers whose adagents.json
+  // authorizes `{agent_url}`, with provenance, per-publisher property counts,
+  // and lifecycle status. Spec: docs/aao/directory-api.mdx (adcp#4823).
+  //
+  // The bare /registry/lookup/agent/:agentUrl/domains above is kept as a
+  // lightweight legacy surface (domain strings only). This endpoint is the
+  // spec-compliant richer shape — different path so the contract is explicit.
+  router.get("/v1/agents/:encodedUrl/publishers", registryReadRateLimiter, async (req, res) => {
+    try {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl);
+      if (!agentUrl) {
+        return res.status(400).json({ error: "Invalid agent_url after canonicalization" });
+      }
+
+      const sinceParam = typeof req.query.since === 'string' ? req.query.since : null;
+      let since: Date | undefined;
+      if (sinceParam) {
+        const parsed = new Date(sinceParam);
+        if (Number.isNaN(parsed.getTime())) {
+          return res.status(400).json({ error: "Invalid `since` — expected ISO 8601 timestamp" });
+        }
+        since = parsed;
+      }
+
+      // status filter defaults to authorized-only. Comma-separated list of
+      // {authorized, revoked}. Anything else is a 400.
+      const statusParam = typeof req.query.status === 'string' ? req.query.status : 'authorized';
+      const statusSet = new Set(statusParam.split(',').map(s => s.trim()).filter(Boolean));
+      for (const s of statusSet) {
+        if (s !== 'authorized' && s !== 'revoked') {
+          return res.status(400).json({ error: `Invalid status value '${s}' — supported: authorized, revoked` });
+        }
+      }
+      const includeRevoked = statusSet.has('revoked');
+      const includeAuthorized = statusSet.has('authorized');
+
+      // Cursor is opaque to consumers but encodes the last seen
+      // publisher_domain ASC. URL-safe base64 of the domain string keeps
+      // the wire shape opaque without needing a state table.
+      let cursor = '';
+      if (typeof req.query.cursor === 'string' && req.query.cursor.length > 0) {
+        try {
+          cursor = Buffer.from(req.query.cursor, 'base64url').toString('utf8');
+        } catch {
+          return res.status(400).json({ error: "Invalid cursor" });
+        }
+        // Defensive: cursor MUST be a domain-looking string. Reject anything
+        // with control chars or whitespace to avoid SQL surprises (the query
+        // uses it as a > comparison, but belt-and-braces).
+        if (/[\s\x00-\x1f]/.test(cursor)) {
+          return res.status(400).json({ error: "Invalid cursor" });
+        }
+      }
+
+      const limitParam = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : NaN;
+      const limit = Number.isFinite(limitParam) && limitParam > 0
+        ? Math.min(limitParam, 1000)
+        : 200;
+
+      const federatedIndex = crawler.getFederatedIndex();
+
+      // Fetch limit+1 so we can detect "more available" without a second query.
+      // We also filter status server-side via includeRevoked in the DB call;
+      // if the caller requested only `revoked`, drop rows whose status is
+      // `authorized` in TS (small set, simpler than another SQL branch).
+      const rawRows = await federatedIndex.getPublishersForAgentDetail(agentUrl, {
+        cursor,
+        since,
+        includeRevoked,
+        limit: limit + 1,
+      });
+
+      const filtered = rawRows.filter(r => {
+        if (r.status === 'authorized') return includeAuthorized;
+        if (r.status === 'revoked') return includeRevoked;
+        return false;
+      });
+
+      const hasMore = filtered.length > limit;
+      const pageRows = hasMore ? filtered.slice(0, limit) : filtered;
+      const nextCursor = hasMore
+        ? Buffer.from(pageRows[pageRows.length - 1]!.publisher_domain, 'utf8').toString('base64url')
+        : null;
+
+      // 404 vs 200-empty: 404 means "directory has never indexed any
+      // publisher referencing this agent_url at all"; 200+empty means
+      // "indexed but no rows match the current filters / cursor page".
+      // Only disambiguate when filters are at their defaults and the
+      // current page is empty — otherwise an empty page is legitimate
+      // and we skip the second probe.
+      if (
+        pageRows.length === 0
+        && !cursor
+        && !since
+        && includeAuthorized
+        && !includeRevoked
+      ) {
+        const everRows = await federatedIndex.getPublishersForAgentDetail(agentUrl, {
+          includeRevoked: true,
+          limit: 1,
+        });
+        if (everRows.length === 0) {
+          return res.status(404).json({
+            error: "Agent has never been indexed by this directory",
+            agent_url: agentUrl,
+          });
+        }
+      }
+
+      // directory_indexed_at = most recent publisher_last_validated in the
+      // page (or now if the page is empty — gives caller a stable freshness
+      // anchor even on empty responses).
+      const newestValidation = pageRows.reduce<Date | null>((acc, r) => {
+        const ts = r.publisher_last_validated ?? r.authz_last_validated ?? null;
+        if (!ts) return acc;
+        if (!acc || ts > acc) return ts;
+        return acc;
+      }, null);
+      const directoryIndexedAt = (newestValidation ?? new Date()).toISOString();
+
+      // ETag covers cursor + filter + content fingerprint so a re-fetch
+      // with the same params returns 304 when nothing changed.
+      const etagInput = JSON.stringify({
+        agent_url: agentUrl,
+        cursor,
+        since: since?.toISOString() ?? null,
+        status: Array.from(statusSet).sort().join(','),
+        limit,
+        rows: pageRows.map(r => `${r.publisher_domain}|${r.status}|${r.publisher_last_validated?.toISOString() ?? ''}|${r.properties_authorized}|${r.properties_total}|${r.signing_keys_pinned}`),
+      });
+      const etag = `"${createHash('sha256').update(etagInput).digest('hex').slice(0, 32)}"`;
+      const ifNoneMatch = req.headers['if-none-match'];
+      if (typeof ifNoneMatch === 'string' && ifNoneMatch === etag) {
+        res.setHeader('ETag', etag);
+        return res.status(304).end();
+      }
+      res.setHeader('ETag', etag);
+      res.setHeader('Cache-Control', 'public, max-age=60');
+
+      return res.json({
+        agent_url: agentUrl,
+        directory_indexed_at: directoryIndexedAt,
+        publishers: pageRows.map(r => ({
+          publisher_domain: r.publisher_domain,
+          discovery_method: r.discovery_method ?? 'direct',
+          manager_domain: r.manager_domain,
+          properties_authorized: r.properties_authorized,
+          properties_total: r.properties_total,
+          signing_keys_pinned: r.signing_keys_pinned,
+          status: r.status,
+          last_verified_at: (r.publisher_last_validated ?? r.authz_last_validated ?? new Date()).toISOString(),
+        })),
+        next_cursor: nextCursor,
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Agent → publishers inverse lookup failed");
+      return res.status(500).json({ error: "Agent → publishers inverse lookup failed" });
+    }
+  });
+
   router.post("/registry/validate/product-authorization", async (req, res) => {
     try {
       const federatedIndex = crawler.getFederatedIndex();

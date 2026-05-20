@@ -59,6 +59,25 @@ export interface AgentPublisherAuthorization {
 }
 
 /**
+ * Detailed agent → publisher row for the AAO directory inverse-lookup
+ * endpoint (adcp#4823). Layered on top of AgentPublisherAuthorization
+ * with provenance, per-publisher counts, and lifecycle status — all
+ * computed from the cached publishers.adagents_json blob.
+ */
+export interface AgentPublisherDetailRow {
+  publisher_domain: string;
+  source: 'adagents_json' | 'agent_claim';
+  authz_last_validated: Date | null;
+  publisher_last_validated: Date | null;
+  discovery_method: 'direct' | 'authoritative_location' | 'ads_txt_managerdomain' | null;
+  manager_domain: string | null;
+  properties_total: number;
+  properties_authorized: number;
+  signing_keys_pinned: boolean;
+  status: 'authorized' | 'revoked';
+}
+
+/**
  * Property identifier from adagents.json
  */
 export interface PropertyIdentifier {
@@ -208,6 +227,125 @@ export class FederatedIndexDatabase {
        )
        SELECT * FROM deduped ORDER BY source, publisher_domain`,
       [agentUrl]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Detailed publisher row for the AAO directory inverse-lookup endpoint
+   * (adcp#4823 / GET /v1/agents/{agent_url}/publishers). Layered on top of
+   * the existing publisher → agent authorization edge with provenance
+   * (discovery_method, manager_domain), per-publisher property counts,
+   * signing-key pin status, and revocation lifecycle.
+   *
+   * Computed at query time from the cached `publishers.adagents_json`
+   * JSONB blob — no per-row HTTP fetches. The endpoint is hot-path read
+   * for sync clients, so all derivations live in SQL.
+   */
+  async getPublishersForAgentDetail(
+    agentUrl: string,
+    opts: {
+      cursor?: string;
+      since?: Date;
+      includeRevoked?: boolean;
+      limit: number;
+    },
+  ): Promise<AgentPublisherDetailRow[]> {
+    const since = opts.since ?? null;
+    const cursor = opts.cursor ?? '';
+    // Fetch limit+1 so callers can detect a next page without a second query.
+    const limit = Math.max(1, Math.min(opts.limit, 1001));
+    const includeRevoked = opts.includeRevoked ?? false;
+
+    // Canonical form for matching the agent inside JSONB `authorized_agents[].url`.
+    // Mirrors LOWER(RTRIM(BTRIM(...), '/')) which is the writer's
+    // canonicalizer (publisher-db.ts) — keeps cross-form lookups consistent.
+    const result = await query<AgentPublisherDetailRow>(
+      `WITH authz AS (
+         SELECT publisher_domain, source, last_validated AS authz_last_validated
+           FROM agent_publisher_authorizations
+          WHERE agent_url = $1
+         UNION
+         SELECT
+           v.publisher_domain,
+           CASE v.evidence
+             WHEN 'adagents_json' THEN 'adagents_json'
+             WHEN 'agent_claim'   THEN 'agent_claim'
+             WHEN 'override'      THEN 'adagents_json'
+             WHEN 'community'     THEN 'agent_claim'
+           END AS source,
+           v.updated_at AS authz_last_validated
+           FROM v_effective_agent_authorizations v
+          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+            AND v.property_rid IS NULL
+            AND v.property_id_slug IS NULL
+       ), dedup AS (
+         SELECT DISTINCT ON (publisher_domain)
+                publisher_domain, source, authz_last_validated
+           FROM authz
+          ORDER BY publisher_domain, source
+       )
+       SELECT
+         d.publisher_domain,
+         d.source,
+         d.authz_last_validated,
+         pub.last_validated AS publisher_last_validated,
+         pub.discovery_method,
+         pub.manager_domain,
+         -- properties_total: count of properties under THIS publisher_domain in
+         -- discovered_properties. Per-publisher scope; never network-wide.
+         COALESCE((
+           SELECT COUNT(*)::int
+             FROM discovered_properties dp
+            WHERE dp.publisher_domain = d.publisher_domain
+         ), 0) AS properties_total,
+         -- properties_authorized: count of properties under THIS publisher_domain
+         -- the agent is authorized for, via agent_property_authorizations.
+         COALESCE((
+           SELECT COUNT(DISTINCT apa.property_id)::int
+             FROM agent_property_authorizations apa
+             JOIN discovered_properties dp ON dp.id = apa.property_id
+            WHERE apa.agent_url = $1
+              AND dp.publisher_domain = d.publisher_domain
+         ), 0) AS properties_authorized,
+         -- signing_keys_pinned: does the publisher's authorized_agents[] entry
+         -- for this agent carry a non-empty signing_keys[]? Walk the cached
+         -- adagents_json blob; canonicalize the entry's url the same way
+         -- the writer canonicalizes inputs.
+         COALESCE((
+           SELECT bool_or(
+             jsonb_typeof(agent->'signing_keys') = 'array'
+             AND jsonb_array_length(agent->'signing_keys') > 0
+           )
+             FROM jsonb_array_elements(
+               COALESCE(pub.adagents_json->'authorized_agents', '[]'::jsonb)
+             ) AS agent
+            WHERE LOWER(RTRIM(BTRIM(agent->>'url'), '/'))
+                = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+         ), false) AS signing_keys_pinned,
+         -- status = revoked when the parent file lists this publisher_domain
+         -- in revoked_publisher_domains[]. Otherwise authorized.
+         CASE WHEN EXISTS (
+           SELECT 1
+             FROM jsonb_array_elements(
+               COALESCE(pub.adagents_json->'revoked_publisher_domains', '[]'::jsonb)
+             ) AS rpd
+            WHERE rpd->>'publisher_domain' = d.publisher_domain
+         ) THEN 'revoked' ELSE 'authorized' END AS status
+       FROM dedup d
+       LEFT JOIN publishers pub ON pub.domain = d.publisher_domain
+       WHERE d.publisher_domain > $2
+         AND ($3::timestamptz IS NULL OR COALESCE(pub.last_validated, d.authz_last_validated) >= $3)
+         AND ($4::boolean OR NOT EXISTS (
+           SELECT 1
+             FROM jsonb_array_elements(
+               COALESCE(pub.adagents_json->'revoked_publisher_domains', '[]'::jsonb)
+             ) AS rpd
+            WHERE rpd->>'publisher_domain' = d.publisher_domain
+         ))
+       ORDER BY d.publisher_domain
+       LIMIT $5`,
+      [agentUrl, cursor, since, includeRevoked, limit],
     );
     return result.rows;
   }
