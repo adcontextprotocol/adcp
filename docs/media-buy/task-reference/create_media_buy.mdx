@@ -185,7 +185,8 @@ npx @adcp/sdk@latest \
 |-----------|------|----------|-------------|
 | `product_id` | string | Yes | Product ID from `get_products` |
 | `pricing_option_id` | string | Yes | Pricing option ID from product's `pricing_options` array |
-| `format_ids` | FormatID[] | Yes | Format IDs that will be used - must be supported by product |
+| `format_ids` | FormatID[] | No† | v1 path: format IDs that will be used — must be supported by the product. Omit to activate all formats, or use `capability_id` (v2 path) instead. |
+| `capability_id` | string | No† | v2 path: stable identifier matching a `format_options[]` entry on the product (from `ProductFormatDeclaration.capability_id`). Symmetric with the v2 path on creative manifests. See [v2 format selection](#v2-format-selection-capability_id) below. |
 | `budget` | number | Yes | Budget in currency specified by pricing option |
 | `impressions` | number | No | Impression goal for this package |
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
@@ -201,6 +202,36 @@ npx @adcp/sdk@latest \
 | `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `measurement_terms` apply. |
 | `performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed performance standards (viewability, IVT, completion rate, brand safety, attention score). Overrides product defaults. Seller accepts, rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `performance_standards` apply. |
 | `committed_metrics` | object[] | No | Buyer's proposed reporting contract — metrics the buyer wants the seller to commit to populating in delivery reports. Same negotiation pattern as `measurement_terms`/`performance_standards`: each entry tags `scope: "standard"` (with `metric_id` from the closed enum) or `scope: "vendor"` (with `vendor` BrandRef + vendor's `metric_id`). Request-side entries do NOT carry `committed_at` — that timestamp is stamped by the seller on accept. Seller accepts (echoes on response with `committed_at`), rejects with `TERMS_REJECTED`, or normalizes (echoes a different but compatible list). When omitted, the seller decides what to commit based on the product's `available_metrics` plus any `required_metrics` filter the buyer passed at discovery. |
+
+† `format_ids` and `capability_id` are mutually optional but complementary. When neither is present, all formats supported by the product are active.
+
+### v2 format selection — `capability_id`
+
+Products that publish `format_options[]` (the v2 path) give each format declaration an optional `capability_id` — a stable, publisher-scoped string like `"streamhaus_homepage_takeover_premium"` or `"pinnacle_reels_vertical"`. `PackageRequest.capability_id` is the write-path mirror: it lets a buyer who discovered a product via `get_products` and read a `capability_id` off a `format_options` entry use that same value at buy time, without having to translate back through `v1_format_ref[]`.
+
+**Resolution rules:**
+
+| Request state | Seller behavior |
+|---|---|
+| `capability_id` only | Look up `format_options[]` by `capability_id`; use the matching entry's `v1_format_ref[]` as the effective format set. Echo `capability_id` on the confirmed package. |
+| Both `capability_id` + `format_ids` | `capability_id` wins for routing. `format_ids` is a v1-compat hint. SHOULD validate each `format_id` is in the resolved entry's `v1_format_ref[]`; MUST reject with `UNSUPPORTED_FEATURE` (`packages[N].format_ids`) on a contradicting format_id. Echo `capability_id` on the confirmed package. |
+| `format_ids` only | Existing v1 behavior; unchanged. |
+| Neither | All formats for the product are active; unchanged. |
+
+**Error on miss:** If `capability_id` is not present in the product's `format_options[]`, the seller MUST reject with `UNSUPPORTED_FEATURE` and set `error.field` to `packages[N].capability_id`.
+
+**Example — v2-native package:**
+
+```json
+{
+  "product_id": "prod_homepage_takeover",
+  "capability_id": "streamhaus_homepage_takeover_premium",
+  "pricing_option_id": "fixed_cpm_usd",
+  "budget": 50000
+}
+```
+
+The seller looks up `format_options[]` for `streamhaus_homepage_takeover_premium`, resolves the format set, and echoes `capability_id: "streamhaus_homepage_takeover_premium"` on the confirmed package. The buyer's creative manifest targets the same `capability_id` at `sync_creatives` time — no v1 vocabulary needed anywhere in the flow.
 
 ## Response
 
@@ -941,7 +972,7 @@ Example error response:
 
 ### Format Specification
 
-Format IDs are **required** for each package because:
+Format specification (`format_ids` or `capability_id`) tells the publisher which creative formats the package will run, enabling them to:
 - Publishers create placeholder creatives in ad servers
 - Both parties know exactly what creative assets are needed
 - Validation ensures products support requested formats
@@ -1001,7 +1032,7 @@ When creating a media buy, format specification enables:
 1. list_creative_formats → Get available format specifications
 2. get_products → Find products (returns format_ids they support)
 3. Validate compatibility → Ensure products support desired formats
-4. create_media_buy → Specify formats (REQUIRED)
+4. create_media_buy → Specify formats (format_ids or capability_id)
    └── Publisher creates placeholders
    └── Clear creative requirements established
 5. sync_creatives → Upload actual files matching formats

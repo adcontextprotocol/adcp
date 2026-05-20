@@ -24,6 +24,7 @@
     },
     "capability_id": {
       "type": "string",
+      "x-entity": "product_format_declaration",
       "description": "v2 path, optional. Stable identifier matching one of the seller's product `format_options[i].capability_id` values. REQUIRED only when the target product has multiple `format_options` entries sharing the same `format_kind`."
     },
     "assets": {

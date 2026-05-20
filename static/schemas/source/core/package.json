@@ -56,6 +56,11 @@
         "$ref": "/schemas/core/format-id.json"
       }
     },
+    "capability_id": {
+      "type": "string",
+      "x-entity": "product_format_declaration",
+      "description": "v2 path: the `capability_id` from the request's `PackageRequest`, echoed on the confirmed package when the buyer supplied it. Presence confirms the seller routed the package via the v2 format-selection path. Absent when the package was booked via the v1 `format_ids` path."
+    },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },

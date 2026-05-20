@@ -35,7 +35,8 @@
     "task",
     "si_session",
     "offering",
-    "vendor_metric"
+    "vendor_metric",
+    "product_format_declaration"
   ],
   "x-entity-definitions": {
     "advertiser_brand": "A brand in an advertiser's house portfolio. Identified by the advertiser — e.g., the `brand_id` on get_brand_identity, the `brand_id` inside core/brand-ref.json (buyer_brand, buyer), and core/account.json `brand`. If you `$ref` core/brand-id.json you are asserting advertiser scope; talent-roster ids must use a separate type even if the string shape is identical.",
@@ -68,6 +69,7 @@
     "task": "An async task handle (governance check, validation result). `task_id` across core/tasks-* schemas.",
     "si_session": "A sponsored-intelligence conversation session. `session_id` in sponsored-intelligence/* schemas.",
     "offering": "A brand-published offering (campaign, promotion, product set, service) promoted via traditional creatives or SI conversations. `offering_id` in core/offering.json, sponsored-intelligence/si-get-offering-*, and sponsored-intelligence/si-initiate-session-request. Also appears as a catalog item-type id when `core/catalog.json::type` is `offering`.",
-    "vendor_metric": "A vendor-defined metric within a measurement vendor's vocabulary. `metric_id` in core/vendor-metric-id.json — used by reporting-capabilities.vendor_metrics declarations, delivery-metrics.vendor_metric_values emissions, and required_vendor_metrics filters. Identity is the tuple `(vendor.domain, vendor.brand_id, metric_id)` — the identifier is namespaced by the vendor's BrandRef, not globally unique. Vendor catalog (category, methodology, standard alignment) lives at the vendor's brand.json `agents[type='measurement']`."
+    "vendor_metric": "A vendor-defined metric within a measurement vendor's vocabulary. `metric_id` in core/vendor-metric-id.json — used by reporting-capabilities.vendor_metrics declarations, delivery-metrics.vendor_metric_values emissions, and required_vendor_metrics filters. Identity is the tuple `(vendor.domain, vendor.brand_id, metric_id)` — the identifier is namespaced by the vendor's BrandRef, not globally unique. Vendor catalog (category, methodology, standard alignment) lives at the vendor's brand.json `agents[type='measurement']`.",
+    "product_format_declaration": "A stable discriminator identifying one `format_options[]` entry within a seller's product. `capability_id` on core/product-format-declaration.json (discovery), media-buy/package-request.json (buy creation), and core/package.json (confirmed-package echo). Scoped to the product — the same string on two different products refers to two different declarations. Cross-storyboard flow: get_products captures capability_id → create_media_buy consumes it → confirmed package echoes it → sync_creatives may also reference it."
   }
 }

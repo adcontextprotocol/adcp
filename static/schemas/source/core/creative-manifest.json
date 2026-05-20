@@ -15,6 +15,7 @@
     },
     "capability_id": {
       "type": "string",
+      "x-entity": "product_format_declaration",
       "description": "v2 path, optional. Stable identifier matching one of the seller's product `format_options[i].capability_id` values. REQUIRED when the target product carries multiple `format_options` entries sharing the same `format_kind` (the buyer must disambiguate which option this manifest matches). When the product's `format_options` has a single entry — or multiple entries with distinct `format_kind` values — `capability_id` is OPTIONAL because `format_kind` alone routes the manifest to the right declaration."
     },
     "assets": {

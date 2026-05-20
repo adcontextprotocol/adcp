@@ -17,11 +17,16 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Array of format IDs that will be used for this package - must be supported by the product. If omitted, defaults to all formats supported by the product.",
+      "description": "v1 path: array of format IDs that will be used for this package — must be supported by the product. If omitted (and `capability_id` is also absent), defaults to all formats supported by the product. When `capability_id` is present, `format_ids` MAY be sent as a v1-compat hint; the seller routes by `capability_id` and SHOULD validate that each supplied format_id appears in the resolved entry's `v1_format_ref[]`, rejecting with `UNSUPPORTED_FEATURE` on mismatch.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       },
       "minItems": 1
+    },
+    "capability_id": {
+      "type": "string",
+      "x-entity": "product_format_declaration",
+      "description": "v2 path: stable identifier for the specific `format_options[]` entry on the product that this package targets. Symmetric with `capability_id` on `ProductFormatDeclaration` (discovery) and on creative manifests (fulfillment). When present, the seller looks up the product's `format_options[]` by this value and uses the matching entry's `v1_format_ref[]` to resolve the effective format set.\n\n**Resolution rules (normative):**\n- **`capability_id` present, `format_ids` absent.** Seller looks up the product's `format_options[]` by `capability_id`; resolves the matching entry's `v1_format_ref[]` as the effective format set. Sellers MUST echo `capability_id` on the confirmed package.\n- **Both present.** `capability_id` wins for routing. `format_ids[]` is a v1-compat hint only. Seller SHOULD validate that each supplied `format_id` appears in the resolved entry's `v1_format_ref[]` and MUST reject with `UNSUPPORTED_FEATURE` (path: `packages[N].format_ids`) on a substantive mismatch (a format_id that contradicts the resolved format set, not merely an entry the product also supports via a separate format_options entry).\n- **`format_ids` present, `capability_id` absent.** Existing v1 behavior; unchanged.\n- **Neither present.** Existing default — all formats supported by the product are active.\n\n**Error on miss:** If `capability_id` references a value not present in the product's `format_options[]`, the seller MUST reject with `UNSUPPORTED_FEATURE` and set `error.field` to `packages[N].capability_id`.\n\n**Singular by design.** `capability_id` is a single discriminator — one package targets one format declaration. A package needing multiple simultaneous format declarations (e.g., a multi-placement takeover) models that at the `format_options[i].params` level inside a single `custom` declaration, not via multiple `capability_id` values."
     },
     "budget": {
       "type": "number",
