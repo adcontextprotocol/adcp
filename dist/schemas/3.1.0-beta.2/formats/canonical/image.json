@@ -1,0 +1,174 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.2/formats/canonical/image.json",
+  "title": "Canonical Format: Image",
+  "description": "Static image creative format. Slots: `image_main` (image asset, file or hosted URL), optional `headline` (text), `body_text` (text), `cta` (text/enum), `landing_page_url` (url). Tracking model: impression pixel + click URL via universal_macros, with optional viewability pixel. Distinct from `html5` (interactive bundles) and `display_tag` (third-party served). AR/dimensions narrow to specific sizes via product parameters — covers IAB display sizes (300x250, 728x90, 970x250, etc.) without a separate iab_size enum.",
+  "allOf": [
+    { "$ref": "/schemas/3.1.0-beta.2/formats/canonical/_base.json" },
+    {
+      "title": "Size-mode mutex",
+      "description": "Exactly one of: (a) fixed (`width` + `height` both set), (b) multi-size (`sizes` set), (c) responsive (any of `min_width`/`max_width`/`min_height`/`max_height` set), (d) none (no size constraint declared — accepts any dimensions). Combining modes (e.g., `width` + `sizes`) is rejected at schema layer; same rule on `html5` and `display_tag` canonicals.",
+      "oneOf": [
+        {
+          "title": "fixed",
+          "required": ["width", "height"],
+          "not": {
+            "anyOf": [
+              { "required": ["sizes"] },
+              { "required": ["min_width"] },
+              { "required": ["max_width"] },
+              { "required": ["min_height"] },
+              { "required": ["max_height"] }
+            ]
+          }
+        },
+        {
+          "title": "multi-size",
+          "required": ["sizes"],
+          "not": {
+            "anyOf": [
+              { "required": ["width"] },
+              { "required": ["height"] },
+              { "required": ["min_width"] },
+              { "required": ["max_width"] },
+              { "required": ["min_height"] },
+              { "required": ["max_height"] }
+            ]
+          }
+        },
+        {
+          "title": "responsive",
+          "anyOf": [
+            { "required": ["min_width"] },
+            { "required": ["max_width"] },
+            { "required": ["min_height"] },
+            { "required": ["max_height"] }
+          ],
+          "not": {
+            "anyOf": [
+              { "required": ["width"] },
+              { "required": ["height"] },
+              { "required": ["sizes"] }
+            ]
+          }
+        },
+        {
+          "title": "none",
+          "not": {
+            "anyOf": [
+              { "required": ["width"] },
+              { "required": ["height"] },
+              { "required": ["sizes"] },
+              { "required": ["min_width"] },
+              { "required": ["max_width"] },
+              { "required": ["min_height"] },
+              { "required": ["max_height"] }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "image_main", "asset_type": "image", "required": true },
+        { "asset_group_id": "headline", "asset_type": "text", "required": false },
+        { "asset_group_id": "body_text", "asset_type": "text", "required": false },
+        { "asset_group_id": "primary_text", "asset_type": "text", "required": false },
+        { "asset_group_id": "cta", "asset_type": "text", "required": false },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      ],
+      "description": "Default slots for image canonical. Buyer ships an image asset (file or hosted URL) plus optional headline, body text, primary text (long-form caption), CTA (typically constrained to an enum via `cta_values`), and clickthrough URL. Products MAY override the default — make `headline` required, narrow `cta` to a value enum, or remove slots the surface doesn't consume."
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required image width in pixels — use for fixed-size slots (e.g., a 300×250 IAB MREC). For multi-size flexible slots (publisher MREC slot that accepts 300×250 OR 728×90 OR 970×250), use `sizes[]` instead; for responsive slots that adapt to viewport, use `min_width`/`max_width`/`min_height`/`max_height`. The three modes are mutually exclusive — set exactly one of `(width+height)`, `sizes[]`, or `min/max_width` + `min/max_height` ranges."
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required image height in pixels. See `width` for size-mode mutual exclusion."
+    },
+    "sizes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["width", "height"],
+        "properties": {
+          "width": { "type": "integer", "minimum": 1 },
+          "height": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      },
+      "description": "List of accepted (width, height) pairs for a multi-size flexible slot. Buyer ships an asset matching one of the listed sizes; SDK validates `assets.image_main.{width,height}` against the list (any-match). Mirrors OpenRTB `banner.format[]` semantics — one declaration with N accepted sizes is cleaner than N format_options entries. Mutually exclusive with `(width, height)` and with `min/max_width` + `min/max_height` ranges."
+    },
+    "min_width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum accepted width in pixels for responsive slots that adapt within a range (e.g., 'any width from 300 to 970'). Use with `max_width` (and optionally `min_height`/`max_height`). Mutually exclusive with `(width, height)` and `sizes[]`."
+    },
+    "max_width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum accepted width in pixels for responsive slots. Pair with `min_width`. See `min_width` for size-mode mutual exclusion."
+    },
+    "min_height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum accepted height in pixels for responsive slots. Pair with `max_height`."
+    },
+    "max_height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum accepted height in pixels for responsive slots. Pair with `min_height`."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+      "description": "Optional aspect ratio constraint (e.g., '1.91:1', '1:1'). When provided alongside `width`/`height`, must agree. When used with `sizes[]` or responsive ranges, narrows accepted entries to those matching the aspect ratio."
+    },
+    "max_file_size_kb": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum file size in kilobytes."
+    },
+    "image_formats": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["jpg", "jpeg", "png", "gif", "webp", "svg"] },
+      "description": "Permitted image file formats."
+    },
+    "ssl_required": {
+      "type": "boolean",
+      "description": "Whether the image and its trackers must be served over HTTPS."
+    },
+    "headline_max_chars": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "body_text_max_chars": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "cta_values": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Permitted CTA values for this product (e.g., ['LEARN_MORE', 'SHOP_NOW'])."
+    },
+    "asset_source": {
+      "type": "string",
+      "enum": ["buyer_uploaded", "publisher_host_recorded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized"],
+      "default": "buyer_uploaded",
+      "description": "Where the rendered asset bytes come from. Single shared enum across all canonicals (`image`, `video_hosted`, `audio_hosted` — replaces the earlier per-canonical `image_source` / `video_source` / `audio_source` fields). `buyer_uploaded` (default): buyer ships a pre-rendered asset. `publisher_host_recorded`: publisher's host records the asset (audio-specific; podcast host-read pattern). `seller_pre_rendered_from_brief`: buyer ships a brief plus structured copy; seller renders ONE asset at sync_creatives or build_creative time (generative-DSP pattern). `seller_human_designed`: seller's design team renders manually from a brief. `agent_synthesized`: AI synthesis pipeline; pair with `synthesis_nondeterministic: true` when the platform cannot guarantee in-spec output (Veo/Sora/Imagen-class).\n\nNot every value is meaningful on every canonical — `publisher_host_recorded` is audio-specific; on `image` or `video_hosted` it has no defined behavior. Adopters MUST select a value appropriate to the canonical's asset type. The `slots` declaration is the binding contract for what the buyer ships; `asset_source` is informational and lets buyers understand the production model when picking products."
+    },
+    "buyer_asset_acceptance": {
+      "type": "string",
+      "enum": ["accepted", "rejected"],
+      "default": "accepted",
+      "description": "Whether the product accepts buyer-uploaded assets. When `rejected`, the buyer cannot ship pre-rendered bytes directly — they must use build_creative (or sync_creatives with brief inputs) so the seller produces the asset. Combined with `asset_source`, lets a product declare 'I produce assets from briefs and refuse buyer uploads' (asset_source=`seller_pre_rendered_from_brief`, buyer_asset_acceptance=`rejected`)."
+    }
+  },
+  "additionalProperties": true
+}
