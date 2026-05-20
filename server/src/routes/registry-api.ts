@@ -775,7 +775,7 @@ registry.registerPath({
     query: z.object({
       since: z.string().datetime().optional().openapi({ description: "ISO 8601 — return only publishers with last_verified_at ≥ since" }),
       cursor: z.string().optional().openapi({ description: "Opaque pagination cursor returned by a prior response" }),
-      status: z.string().optional().openapi({ description: "Comma-separated subset of {authorized, revoked}. Default: authorized." }),
+      status: z.array(z.enum(["authorized", "revoked"])).optional().openapi({ description: "Lifecycle status filter. Normative form: repeated key (?status=authorized&status=revoked). Comma-separated form also accepted. Default: authorized." }),
       limit: z.coerce.number().int().min(1).max(1000).optional().openapi({ description: "Page size, default 200, max 1000" }),
     }),
   },
@@ -6946,9 +6946,19 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         since = parsed;
       }
 
-      // status filter defaults to authorized-only. Comma-separated list of
-      // {authorized, revoked}. Anything else is a 400.
-      const statusParam = typeof req.query.status === 'string' ? req.query.status : 'authorized';
+      // status filter defaults to authorized-only. Normative form is repeated-key
+      // (?status=authorized&status=revoked, produces string[] in Express); comma-separated
+      // form is also accepted for backward compat. Arrays arrive when a client sends repeated
+      // keys; the string guard would silently default to authorized-only without this coercion.
+      const rawStatus = req.query.status;
+      if (Array.isArray(rawStatus) && rawStatus.some(s => typeof s !== 'string')) {
+        return res.status(400).json({ error: "Invalid status parameter — nested objects not allowed" });
+      }
+      const statusParam = Array.isArray(rawStatus)
+        ? (rawStatus as string[]).join(',')
+        : typeof rawStatus === 'string'
+        ? rawStatus
+        : 'authorized';
       const statusSet = new Set(statusParam.split(',').map(s => s.trim()).filter(Boolean));
       for (const s of statusSet) {
         if (s !== 'authorized' && s !== 'revoked') {

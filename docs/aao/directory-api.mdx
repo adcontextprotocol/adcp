@@ -28,7 +28,7 @@ GET https://{aao_directory}/v1/agents/{agent_url}/publishers
 |---|---|---|---|
 | `since` | ISO 8601 | unset | Return only publishers whose `last_verified_at` ≥ `since`. Enables incremental sync. |
 | `cursor` | opaque string | unset | Pagination cursor returned by a prior response. Stable across the directory's refresh cycle for the lifetime of the cursor. |
-| `status` | comma-separated | `authorized` | Filter by lifecycle status. v1: `authorized`, `revoked`. |
+| `status` | repeated key | `authorized` | Filter by lifecycle status. v1: `authorized`, `revoked`. Repeat the key to request multiple values: `?status=authorized&status=revoked`. The comma-separated form (`?status=authorized,revoked`) is also accepted. |
 | `limit` | int (1–1000) | 200 | Max publishers per page. |
 
 ### Response

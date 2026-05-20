@@ -198,5 +198,13 @@ describe('GET /api/v1/agents/{agent_url}/publishers (HTTP)', () => {
     expect(bothRes.status).toBe(200);
     const domains = bothRes.body.publishers.map((p: { publisher_domain: string }) => p.publisher_domain).sort();
     expect(domains).toEqual([PUB_A, PUB_REVOKED].sort());
+
+    // Repeated-key form (?status=authorized&status=revoked) is the normative encoding
+    // and MUST produce the same result. Express delivers repeated keys as string[]; the
+    // route must coerce the array rather than silently defaulting to authorized-only.
+    const repeatedKeyRes = await request(app).get(url(AGENT_URL, '?status=authorized&status=revoked'));
+    expect(repeatedKeyRes.status).toBe(200);
+    const repeatedDomains = repeatedKeyRes.body.publishers.map((p: { publisher_domain: string }) => p.publisher_domain).sort();
+    expect(repeatedDomains).toEqual([PUB_A, PUB_REVOKED].sort());
   });
 });
