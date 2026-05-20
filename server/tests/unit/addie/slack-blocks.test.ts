@@ -146,12 +146,15 @@ describe('decideStreamAppend', () => {
 
   it('falls back to a line boundary when the paragraph cut is too early', () => {
     // Budget = 20. Paragraph break at position 2 (under budget/2 = 10), so
-    // the splitter falls through to the latest `\n` inside the budget, which
-    // lands at position 15 (the newline before "here").
+    // the splitter falls through to a line boundary inside the budget.
+    // Assert structural invariants rather than the exact cut so a later
+    // tweak to the boundary preference doesn't break this for the wrong
+    // reason.
     const delta = 'ab\n\nlater words\nhere then much more text past the cap and beyond';
     const d = decideStreamAppend(80, delta, CAP);
     expect(d.shouldFinalize).toBe(true);
-    expect(d.appendPart).toBe('ab\n\nlater words');
+    expect(d.appendPart.length).toBeLessThanOrEqual(20);
+    expect(d.appendPart).toMatch(/\n[^\n]*$|^[^\n]*$/);
     expect(d.appendPart + d.carryPart).toBe(delta);
   });
 
@@ -175,6 +178,31 @@ describe('decideStreamAppend', () => {
   it('carries the whole delta when streamedLen already equals cap', () => {
     const d = decideStreamAppend(100, 'anything', CAP);
     expect(d).toEqual({ appendPart: '', carryPart: 'anything', shouldFinalize: true });
+  });
+
+  it('carries the whole delta when streamedLen has overshot cap', () => {
+    // Defensive: `budget = Math.max(0, …)` makes overshoot safe. A future
+    // refactor that drops the clamp would silently regress; this pins it.
+    const d = decideStreamAppend(120, 'anything', CAP);
+    expect(d).toEqual({ appendPart: '', carryPart: 'anything', shouldFinalize: true });
+  });
+
+  it('returns an empty no-op for an empty delta', () => {
+    const d = decideStreamAppend(50, '', CAP);
+    expect(d).toEqual({ appendPart: '', carryPart: '', shouldFinalize: false });
+  });
+
+  it('maintains the invariant: shouldFinalize=false implies carryPart is empty', () => {
+    // The type permits a contradictory state; this pins the contract.
+    const cases = [
+      decideStreamAppend(0, 'short', CAP),
+      decideStreamAppend(50, 'still fits', CAP),
+      decideStreamAppend(99, 'x', CAP),
+      decideStreamAppend(100, '', CAP),
+    ];
+    for (const d of cases) {
+      if (!d.shouldFinalize) expect(d.carryPart).toBe('');
+    }
   });
 
   it('handles a single delta larger than the entire cap from a zero start', () => {

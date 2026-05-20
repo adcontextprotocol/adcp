@@ -124,6 +124,10 @@ const STREAM_SOFT_CAP = (() => {
   if (!raw) return DEFAULT_STREAM_SOFT_CAP;
   const parsed = parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed < 1000 || parsed > 11000) {
+    logger.warn(
+      { raw, default: DEFAULT_STREAM_SOFT_CAP },
+      'Addie Bolt: ADDIE_STREAM_SOFT_CAP invalid — using default. Must parse as int in [1000, 11000].',
+    );
     return DEFAULT_STREAM_SOFT_CAP;
   }
   return parsed;
@@ -1867,6 +1871,11 @@ async function handleUserMessage({
       // continuation buffer as a follow-up message in the same thread.
       // Images are extracted from the full text so they appear with the
       // continuation (which carries the feedback block).
+      //
+      // Note: if a late `stream_error` flips `streamWasInterrupted` after
+      // we've already shipped the first chunk, the downstream persistence
+      // logic still discards the turn. The user sees both messages but
+      // the next turn starts fresh — matching #4797's contract.
       if (streamFinalizedEarly) {
         try {
           const guarded = guardBareJsonEnvelope(continuationBuffer, { pathTag: 'dm-streaming-continuation' });
@@ -1890,6 +1899,36 @@ async function handleUserMessage({
           }
         } catch (continuationError) {
           logger.warn({ continuationError, continuationLen: continuationBuffer.length }, 'Addie Bolt: Continuation post failed');
+        }
+      } else if (!streamWriteable) {
+        // Stream was closed mid-flow (length-cap stop failed, or upstream
+        // interruption with a successful recovery banner). Skip the second
+        // stop attempt — it would throw and we'd just land in the same
+        // chunked-say fallback. Ship the full reply directly here unless
+        // the stream_error branch already posted a recovery banner.
+        if (!streamWasInterrupted) {
+          try {
+            const guarded = guardBareJsonEnvelope(fullText, { pathTag: 'dm-streaming-stop-failed' });
+            const fallbackValidation = validateOutput(guarded.text);
+            const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
+            const slackText = wrapUrlsForSlack(fallbackText);
+            if (slackText.trim()) {
+              await say({
+                text: truncateNotificationText(slackText),
+                blocks: [
+                  ...splitMrkdwnIntoSections(slackText),
+                  ...fallbackImages.slice(0, 3).map(img => ({
+                    type: 'image' as const,
+                    image_url: img.url,
+                    alt_text: img.alt,
+                  })),
+                  buildFeedbackBlock(),
+                ],
+              });
+            }
+          } catch (fallbackError) {
+            logger.error({ fallbackError, fullTextLen: fullText.length }, 'Addie Bolt: Stop-failed fallback say() also failed');
+          }
         }
       } else {
         // Stop the stream with feedback buttons and any inline images.
