@@ -253,19 +253,21 @@ export class FederatedIndexDatabase {
   ): Promise<AgentPublisherDetailRow[]> {
     const since = opts.since ?? null;
     const cursor = opts.cursor ?? '';
-    // Fetch limit+1 so callers can detect a next page without a second query.
-    const limit = Math.max(1, Math.min(opts.limit, 1001));
+    const limit = opts.limit;
     const includeRevoked = opts.includeRevoked ?? false;
 
-    // Canonical form for matching the agent inside JSONB `authorized_agents[].url`.
-    // Mirrors LOWER(RTRIM(BTRIM(...), '/')) which is the writer's
-    // canonicalizer (publisher-db.ts) — keeps cross-form lookups consistent.
+    // Dual-read pattern matches getDomainsForAgent / getAgentsForDomain:
+    // UNION ALL with explicit src_priority (legacy=0 wins on collision) +
+    // DISTINCT ON ordered by (publisher_domain, src_priority,
+    // authz_last_validated DESC) so the surviving row is deterministic and
+    // freshest. Canonical form for the agent (LOWER+RTRIM(/)+BTRIM) mirrors
+    // the writer's canonicalizer in publisher-db.ts.
     const result = await query<AgentPublisherDetailRow>(
-      `WITH authz AS (
-         SELECT publisher_domain, source, last_validated AS authz_last_validated
+      `WITH authz_unioned AS (
+         SELECT publisher_domain, source, last_validated AS authz_last_validated, 0 AS src_priority
            FROM agent_publisher_authorizations
           WHERE agent_url = $1
-         UNION
+         UNION ALL
          SELECT
            v.publisher_domain,
            CASE v.evidence
@@ -274,7 +276,8 @@ export class FederatedIndexDatabase {
              WHEN 'override'      THEN 'adagents_json'
              WHEN 'community'     THEN 'agent_claim'
            END AS source,
-           v.updated_at AS authz_last_validated
+           v.updated_at AS authz_last_validated,
+           1 AS src_priority
            FROM v_effective_agent_authorizations v
           WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
             AND v.property_rid IS NULL
@@ -282,22 +285,55 @@ export class FederatedIndexDatabase {
        ), dedup AS (
          SELECT DISTINCT ON (publisher_domain)
                 publisher_domain, source, authz_last_validated
-           FROM authz
-          ORDER BY publisher_domain, source
+           FROM authz_unioned
+          ORDER BY publisher_domain, src_priority, authz_last_validated DESC NULLS LAST
+       ), enriched AS (
+         -- Walk the publishers.adagents_json blob ONCE per row to derive
+         -- signing_keys_pinned and is_revoked in a single CTE, then reuse
+         -- both in the SELECT and WHERE. Avoids triple-walking the JSONB
+         -- (signing_keys_pinned + status CASE + WHERE NOT EXISTS) per row,
+         -- which dominates the query plan at managed-network fan-outs.
+         SELECT
+           d.publisher_domain,
+           d.source,
+           d.authz_last_validated,
+           pub.last_validated AS publisher_last_validated,
+           pub.discovery_method,
+           pub.manager_domain,
+           COALESCE((
+             SELECT bool_or(
+               jsonb_typeof(agent->'signing_keys') = 'array'
+               AND jsonb_array_length(agent->'signing_keys') > 0
+             )
+               FROM jsonb_array_elements(
+                 COALESCE(pub.adagents_json->'authorized_agents', '[]'::jsonb)
+               ) AS agent
+              WHERE LOWER(RTRIM(BTRIM(agent->>'url'), '/'))
+                  = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+           ), false) AS signing_keys_pinned,
+           EXISTS (
+             SELECT 1
+               FROM jsonb_array_elements(
+                 COALESCE(pub.adagents_json->'revoked_publisher_domains', '[]'::jsonb)
+               ) AS rpd
+              WHERE rpd->>'publisher_domain' = d.publisher_domain
+           ) AS is_revoked
+         FROM dedup d
+         LEFT JOIN publishers pub ON pub.domain = d.publisher_domain
        )
        SELECT
-         d.publisher_domain,
-         d.source,
-         d.authz_last_validated,
-         pub.last_validated AS publisher_last_validated,
-         pub.discovery_method,
-         pub.manager_domain,
-         -- properties_total: count of properties under THIS publisher_domain in
-         -- discovered_properties. Per-publisher scope; never network-wide.
+         e.publisher_domain,
+         e.source,
+         e.authz_last_validated,
+         e.publisher_last_validated,
+         e.discovery_method,
+         e.manager_domain,
+         -- properties_total: count of properties under THIS publisher_domain
+         -- in discovered_properties. Per-publisher scope; never network-wide.
          COALESCE((
            SELECT COUNT(*)::int
              FROM discovered_properties dp
-            WHERE dp.publisher_domain = d.publisher_domain
+            WHERE dp.publisher_domain = e.publisher_domain
          ), 0) AS properties_total,
          -- properties_authorized: count of properties under THIS publisher_domain
          -- the agent is authorized for, via agent_property_authorizations.
@@ -306,44 +342,15 @@ export class FederatedIndexDatabase {
              FROM agent_property_authorizations apa
              JOIN discovered_properties dp ON dp.id = apa.property_id
             WHERE apa.agent_url = $1
-              AND dp.publisher_domain = d.publisher_domain
+              AND dp.publisher_domain = e.publisher_domain
          ), 0) AS properties_authorized,
-         -- signing_keys_pinned: does the publisher's authorized_agents[] entry
-         -- for this agent carry a non-empty signing_keys[]? Walk the cached
-         -- adagents_json blob; canonicalize the entry's url the same way
-         -- the writer canonicalizes inputs.
-         COALESCE((
-           SELECT bool_or(
-             jsonb_typeof(agent->'signing_keys') = 'array'
-             AND jsonb_array_length(agent->'signing_keys') > 0
-           )
-             FROM jsonb_array_elements(
-               COALESCE(pub.adagents_json->'authorized_agents', '[]'::jsonb)
-             ) AS agent
-            WHERE LOWER(RTRIM(BTRIM(agent->>'url'), '/'))
-                = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
-         ), false) AS signing_keys_pinned,
-         -- status = revoked when the parent file lists this publisher_domain
-         -- in revoked_publisher_domains[]. Otherwise authorized.
-         CASE WHEN EXISTS (
-           SELECT 1
-             FROM jsonb_array_elements(
-               COALESCE(pub.adagents_json->'revoked_publisher_domains', '[]'::jsonb)
-             ) AS rpd
-            WHERE rpd->>'publisher_domain' = d.publisher_domain
-         ) THEN 'revoked' ELSE 'authorized' END AS status
-       FROM dedup d
-       LEFT JOIN publishers pub ON pub.domain = d.publisher_domain
-       WHERE d.publisher_domain > $2
-         AND ($3::timestamptz IS NULL OR COALESCE(pub.last_validated, d.authz_last_validated) >= $3)
-         AND ($4::boolean OR NOT EXISTS (
-           SELECT 1
-             FROM jsonb_array_elements(
-               COALESCE(pub.adagents_json->'revoked_publisher_domains', '[]'::jsonb)
-             ) AS rpd
-            WHERE rpd->>'publisher_domain' = d.publisher_domain
-         ))
-       ORDER BY d.publisher_domain
+         e.signing_keys_pinned,
+         CASE WHEN e.is_revoked THEN 'revoked' ELSE 'authorized' END AS status
+       FROM enriched e
+       WHERE e.publisher_domain > $2
+         AND ($3::timestamptz IS NULL OR COALESCE(e.publisher_last_validated, e.authz_last_validated) >= $3)
+         AND ($4::boolean OR NOT e.is_revoked)
+       ORDER BY e.publisher_domain
        LIMIT $5`,
       [agentUrl, cursor, since, includeRevoked, limit],
     );
