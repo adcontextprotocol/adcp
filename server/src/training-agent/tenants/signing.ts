@@ -17,8 +17,9 @@
 
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import type { TenantSigningKey } from '@adcp/sdk/server';
-import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
+import type { AdcpJsonWebKey, SignerKey } from '@adcp/sdk/signing';
 import { createLogger } from '../../logger.js';
+import { getGovernanceSigningPublicJwk } from '../governance-signing.js';
 
 const logger = createLogger('training-agent-tenant-signing');
 
@@ -27,44 +28,61 @@ interface TenantMaterial {
   publicJwk: AdcpJsonWebKey;
 }
 
-const materials: Map<string, TenantMaterial> = new Map();
+/** Response-signing material is distinct from webhook-signing material per
+ *  the `adcp_use` distinct-keys-per-purpose invariant — the SDK's
+ *  `signResponse` verifies that the supplied key carries
+ *  `adcp_use: "response-signing"` before signing. */
+interface TenantResponseSigningMaterial {
+  signerKey: SignerKey;
+  publicJwk: AdcpJsonWebKey;
+}
 
-/**
- * Generate an ephemeral Ed25519 keypair for a tenant. KID = `training-${tenantId}-${random}`.
- * Stable for the process lifetime; regenerates on restart.
- */
-function generateEphemeralKey(tenantId: string): TenantMaterial {
+const materials: Map<string, TenantMaterial> = new Map();
+const responseSigningMaterials: Map<string, TenantResponseSigningMaterial> = new Map();
+
+type AdcpKeyPurpose = 'webhook-signing' | 'response-signing';
+
+interface EphemeralEd25519 {
+  kid: string;
+  privateJwk: Record<string, unknown>;
+  publicJwk: Record<string, unknown>;
+  brandJwk: AdcpJsonWebKey;
+}
+
+/** Generate an ephemeral Ed25519 keypair for a tenant + purpose. Distinct
+ *  `adcp_use` per purpose enforces the SDK's distinct-keys-per-purpose
+ *  invariant: signResponse / signWebhook each reject a key minted for the
+ *  wrong purpose at sign-time. */
+function generateEphemeralEd25519(tenantId: string, purpose: AdcpKeyPurpose, kidSuffix: string): EphemeralEd25519 {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
-  // node:crypto JWK export is plain Record<string, unknown>; use a permissive
-  // shape that satisfies both AdcpJsonWebKey and TenantSigningKey's
-  // JsonWebKey expectation.
   const privateJwk = privateKey.export({ format: 'jwk' }) as Record<string, unknown>;
   const publicJwk = publicKey.export({ format: 'jwk' }) as Record<string, unknown>;
-  const kid = `training-${tenantId}-${randomBytes(4).toString('hex')}`;
-
-  const signingKey: TenantSigningKey = {
-    keyId: kid,
-    publicJwk: { ...publicJwk, kid },
-    privateJwk: { ...privateJwk, kid },
-  };
-
-  // brand.json's jwks.keys[] entries are AdcpJsonWebKey shape — adcp_use,
-  // key_ops, alg, use are all required by the SDK validator.
+  const kid = `training-${tenantId}-${kidSuffix}${randomBytes(4).toString('hex')}`;
   const brandJwk: AdcpJsonWebKey = {
     ...publicJwk,
     kid,
     alg: 'EdDSA',
-    adcp_use: 'webhook-signing',
+    adcp_use: purpose,
     key_ops: ['verify'],
     use: 'sig',
   } as AdcpJsonWebKey;
-
   logger.warn(
-    { tenantId, kid },
-    'Tenant signing key generated ephemerally. Provision GCP KMS keys for stable kids.',
+    { tenantId, kid, purpose },
+    'Tenant signing key generated ephemerally. Provision KMS-backed keys for stable kids.',
   );
+  return { kid, privateJwk, publicJwk, brandJwk };
+}
 
-  return { signingKey, publicJwk: brandJwk };
+function generateEphemeralKey(tenantId: string): TenantMaterial {
+  const e = generateEphemeralEd25519(tenantId, 'webhook-signing', '');
+  return {
+    signingKey: {
+      keyId: e.kid,
+      publicJwk: { ...e.publicJwk, kid: e.kid },
+      privateJwk: { ...e.privateJwk, kid: e.kid },
+    },
+    publicJwk: e.brandJwk,
+  };
 }
 
 /**
@@ -79,16 +97,59 @@ export function getTenantSigningMaterial(tenantId: string): TenantMaterial {
   return m;
 }
 
+function generateResponseSigningKey(tenantId: string): TenantResponseSigningMaterial {
+  const e = generateEphemeralEd25519(tenantId, 'response-signing', 'resp-');
+  const privateAdcpJwk: AdcpJsonWebKey = {
+    ...e.privateJwk,
+    kid: e.kid,
+    alg: 'EdDSA',
+    adcp_use: 'response-signing',
+    key_ops: ['sign'],
+    use: 'sig',
+  } as AdcpJsonWebKey;
+  return {
+    signerKey: { keyid: e.kid, alg: 'ed25519', privateKey: privateAdcpJwk },
+    publicJwk: e.brandJwk,
+  };
+}
+
+/**
+ * Get-or-create response-signing material for a tenant. Memoizes per process.
+ * The SDK's signResponse will reject this key if its adcp_use isn't
+ * "response-signing", which is why this is generated separately from
+ * `getTenantSigningMaterial`'s webhook-scoped keys.
+ */
+export function getTenantResponseSigningMaterial(tenantId: string): TenantResponseSigningMaterial {
+  let m = responseSigningMaterials.get(tenantId);
+  if (!m) {
+    m = generateResponseSigningKey(tenantId);
+    responseSigningMaterials.set(tenantId, m);
+  }
+  return m;
+}
+
 /**
  * Aggregate public JWKs across all registered tenants. Served at the host's
  * `/.well-known/brand.json` so the SDK validator finds each tenant's kid in
  * one shared discovery document.
+ *
+ * Includes the governance-signing key alongside per-tenant transport keys.
+ * The JWS profile requires governance keys to be discoverable on the
+ * issuer's published JWKS but to occupy a distinct `kid` and `adcp_use`
+ * from transport-signing material.
  */
 export function getAggregatedPublicJwks(): { keys: AdcpJsonWebKey[] } {
-  return { keys: Array.from(materials.values()).map(m => m.publicJwk) };
+  return {
+    keys: [
+      ...Array.from(materials.values()).map(m => m.publicJwk),
+      ...Array.from(responseSigningMaterials.values()).map(m => m.publicJwk),
+      getGovernanceSigningPublicJwk(),
+    ],
+  };
 }
 
 /** Reset state — tests only. */
 export function resetTenantSigning(): void {
   materials.clear();
+  responseSigningMaterials.clear();
 }

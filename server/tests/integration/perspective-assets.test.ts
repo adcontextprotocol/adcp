@@ -30,8 +30,9 @@ vi.mock('../../src/middleware/auth.js', () => {
     };
   };
   const passthrough = (_req: any, _res: any, next: any) => next();
+  const requireAuthMock = (req: any, _res: any, next: any) => { setTestUser(req); next(); };
   return {
-    requireAuth: (req: any, _res: any, next: any) => { setTestUser(req); next(); },
+    requireAuth: requireAuthMock,
     requireAdmin: passthrough,
     optionalAuth: (req: any, _res: any, next: any) => { setTestUser(req); next(); },
     requireCompanyAccess: passthrough,
@@ -40,8 +41,12 @@ vi.mock('../../src/middleware/auth.js', () => {
     requireRole: () => passthrough,
     createRequireWorkingGroupLeader: () => passthrough,
     createRequireWorkingGroupMember: () => passthrough,
+    refuseCrossTenantAdminApiKey: () => false,
+    refuseAnyApiKeyOnGlobalAdmin: () => false,
+    requireGlobalAdmin: [requireAuthMock, passthrough, passthrough],
     invalidateSessionCache: vi.fn(),
     invalidateBanCache: vi.fn(),
+    invalidateSessionsForUsers: vi.fn(),
     isDevModeEnabled: () => false,
     getDevUser: () => null,
     getAvailableDevUsers: () => ({}),

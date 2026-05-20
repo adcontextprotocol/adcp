@@ -75,6 +75,23 @@
       "default": false,
       "description": "Include pricing_options on each creative. Requires account to be provided. When false or omitted, pricing is not computed."
     },
+    "include_purged": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include soft-purged creative tombstones in the result set. When true, creatives destroyed via `creative.purged` with `purge_kind: soft` surface as tombstone records carrying `purged: true`, `purged_at`, and the purge reason — within the seller's webhook activity retention window (30 days from `purged_at`, MUST match `webhook-activity-record` retention). Hard-purged creatives MUST NOT appear regardless of this flag. When false or omitted, the result set excludes all purged creatives — same default as today."
+    },
+    "include_webhook_activity": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include recent webhook activity per creative. When true, each returned creative carries a `webhook_activity[]` array of the most recent fires scoped to that creative — `creative.status_changed` and `creative.purged` deliveries. Adoption of the `webhook_activity[]` pattern per `snapshot-and-log.mdx § Webhook activity log pattern`. Retention is 30 days from `completed_at` (MUST). Three-state presence applies: omitted = seller does not surface; `[]` = persists but no recent fires; non-empty = actual records."
+    },
+    "webhook_activity_limit": {
+      "type": "integer",
+      "default": 50,
+      "minimum": 1,
+      "maximum": 200,
+      "description": "Maximum number of `webhook_activity[]` records to return per creative. Only meaningful when `include_webhook_activity: true`. Sellers MUST respect the cap; structural enforcement is provided by the response schema's `maxItems: 200` on the array."
+    },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
       "description": "Account reference for pricing and access. When provided with include_pricing, the agent returns pricing_options from this account's rate card on each creative."
@@ -175,6 +192,19 @@
             "approved"
           ]
         }
+      }
+    },
+    {
+      "description": "List approved creatives plus recent webhook activity, including purged tombstones",
+      "data": {
+        "filters": {
+          "statuses": [
+            "approved"
+          ]
+        },
+        "include_purged": true,
+        "include_webhook_activity": true,
+        "webhook_activity_limit": 25
       }
     }
   ]

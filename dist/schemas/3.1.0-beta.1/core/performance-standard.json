@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.1/core/performance-standard.json",
+  "title": "Performance Standard",
+  "description": "A rate threshold for a performance metric, measured by a specified vendor. The threshold is a floor or ceiling depending on the metric: viewability, completion_rate, brand_safety, and attention_score are floors (must exceed); ivt is a ceiling (must not exceed).",
+  "type": "object",
+  "properties": {
+    "metric": {
+      "$ref": "/schemas/3.1.0-beta.1/enums/performance-standard-metric.json",
+      "description": "The performance metric this standard applies to."
+    },
+    "threshold": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Rate threshold as a decimal (e.g., 0.70 for 70%). Whether this is a floor or ceiling depends on the metric: for viewability, completion_rate, brand_safety, attention_score the actual rate must be >= threshold; for ivt the actual rate must be <= threshold."
+    },
+    "standard": {
+      "$ref": "/schemas/3.1.0-beta.1/enums/viewability-standard.json",
+      "description": "Measurement standard. Required when metric is 'viewability' (MRC and GroupM define materially different thresholds). Omit for other metrics."
+    },
+    "vendor": {
+      "$ref": "/schemas/3.1.0-beta.1/core/brand-ref.json",
+      "description": "Vendor measuring this metric (e.g., { domain: 'doubleverify.com' }). The vendor's brand.json agents array (type: 'measurement') is the discovery point for their measurement agent. When specified on a confirmed package, creatives MUST include tracker_script or tracker_pixel assets from this vendor."
+    }
+  },
+  "required": ["metric", "threshold", "vendor"],
+  "additionalProperties": true
+}

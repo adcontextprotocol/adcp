@@ -83,6 +83,44 @@ function readYamlFrontmatter(filePath) {
     }
     out.required_tools = doc.required_tools.map(t => String(t).trim()).filter(Boolean);
   }
+  if (doc.required_any_of_tools != null) {
+    if (!Array.isArray(doc.required_any_of_tools) || doc.required_any_of_tools.length === 0) {
+      throw new Error(
+        `required_any_of_tools in ${filePath} must be a non-empty YAML list of OR-family objects`
+      );
+    }
+    out.required_any_of_tools = doc.required_any_of_tools.map((entry, i) => {
+      if (entry == null || typeof entry !== 'object' || Array.isArray(entry)) {
+        throw new Error(
+          `required_any_of_tools[${i}] in ${filePath} must be an object with a 'tools' list`
+        );
+      }
+      if (!Array.isArray(entry.tools)) {
+        throw new Error(
+          `required_any_of_tools[${i}].tools in ${filePath} must be a YAML list`
+        );
+      }
+      const tools = entry.tools.map(t => String(t).trim()).filter(Boolean);
+      if (tools.length < 2) {
+        throw new Error(
+          `required_any_of_tools[${i}].tools in ${filePath} must contain at least 2 non-empty tool names ` +
+          `after trimming (single-tool families collapse to required_tools)`
+        );
+      }
+      const outEntry = { tools };
+      if (entry.rationale != null) {
+        if (typeof entry.rationale !== 'string') {
+          throw new Error(
+            `required_any_of_tools[${i}].rationale in ${filePath} must be a string, ` +
+            `got ${typeof entry.rationale}`
+          );
+        }
+        const rationale = entry.rationale.trim();
+        if (rationale) outEntry.rationale = rationale;
+      }
+      return outEntry;
+    });
+  }
   return out;
 }
 
@@ -126,6 +164,7 @@ function discoverSpecialisms(sourceDir) {
       title: fm.title || null,
       status,
       required_tools,
+      ...(fm.required_any_of_tools ? { required_any_of_tools: fm.required_any_of_tools } : {}),
       path: `specialisms/${entry.name}/`
     });
   }
@@ -397,6 +436,7 @@ function generateIndex(version, sourceDir) {
       title: s.title,
       status: s.status,
       required_tools: s.required_tools,
+      ...(s.required_any_of_tools ? { required_any_of_tools: s.required_any_of_tools } : {}),
       path: s.path
     }))
   };

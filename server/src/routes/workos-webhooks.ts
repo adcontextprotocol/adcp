@@ -21,6 +21,8 @@
 import { Router, Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
+import { invalidateSessionsForUsers } from '../middleware/auth.js';
+import { promoteSecondaryIfPrimaryDeleted } from '../db/identity-db.js';
 import {
   upsertWorkosDomain,
   autoPromotePrimaryIfNone,
@@ -30,13 +32,17 @@ import { BrandDatabase } from '../db/brand-db.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
+import { resolveUserNameWithFallbacks } from '../utils/resolve-user-name.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain, trackBackground } from '../services/brand-enrichment.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
+import { notifyBrandClaimOpportunity } from '../notifications/registry.js';
+import { getNudgeDismissal, recordNudgeDismissal } from '../db/user-nudges-db.js';
+import { getCompanyDomain } from '../utils/email-domain.js';
 import { canonicalizeBrandDomain, assertClaimableBrandDomain } from '../services/identifier-normalization.js';
 import { resolvePreferredOrganization, backfillPrimaryOrganization } from '../db/users-db.js';
 import { notifySystemError } from '../addie/error-notifier.js';
-import { canAddSeat, type SeatType } from '../db/organization-db.js';
+import { canAddSeat, type SeatType, OrganizationDatabase } from '../db/organization-db.js';
 import { sendToOrgAdmins, escapeSlackMrkdwn } from '../slack/org-group-dm.js';
 import {
   upsertOrganizationMembership,
@@ -368,43 +374,9 @@ async function deleteMembership(membership: OrganizationMembershipData): Promise
 async function upsertUser(user: UserData): Promise<void> {
   const pool = getPool();
 
-  // Resolve names: prefer WorkOS values, but when WorkOS sends empty names,
-  // preserve existing DB values or backfill from Slack mapping
-  let firstName = user.first_name;
-  let lastName = user.last_name;
-
-  if (!firstName?.trim() || !lastName?.trim()) {
-    const existing = await pool.query<{
-      first_name: string | null;
-      last_name: string | null;
-      slack_real_name: string | null;
-      slack_display_name: string | null;
-    }>(
-      `SELECT u.first_name, u.last_name, sm.slack_real_name, sm.slack_display_name
-       FROM users u
-       LEFT JOIN slack_user_mappings sm ON sm.slack_user_id = u.primary_slack_user_id
-       WHERE u.workos_user_id = $1`,
-      [user.id]
-    );
-
-    if (existing.rows.length > 0) {
-      const row = existing.rows[0];
-
-      // Keep existing DB names if WorkOS sends empty
-      if (!firstName?.trim()) firstName = row.first_name;
-      if (!lastName?.trim()) lastName = row.last_name;
-
-      // Backfill from Slack if still empty
-      if (!firstName?.trim() && !lastName?.trim()) {
-        const slackName = row.slack_real_name || row.slack_display_name;
-        if (slackName) {
-          const parts = slackName.trim().split(/\s+/);
-          firstName = parts[0];
-          lastName = parts.length > 1 ? parts.slice(1).join(' ') : null;
-        }
-      }
-    }
-  }
+  const { firstName, lastName } = await resolveUserNameWithFallbacks(
+    pool, user.id, user.first_name, user.last_name,
+  );
 
   await pool.query(
     `INSERT INTO users (
@@ -1018,15 +990,75 @@ export function createWorkOSWebhooksRouter(): Router {
                     })
                   );
                 }
-                // Classify brand hierarchy before the user finishes onboarding
-                const isValidDomain = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)
+                // Classify brand hierarchy before the user finishes onboarding.
+                // Use getCompanyDomain rather than the local isFreeEmailDomain
+                // check so the predicate matches what the in-app suggestion
+                // service uses (#4744) — drift between the two would produce
+                // "ops got pinged but no banner shows" or vice versa.
+                const business = getCompanyDomain(user.email);
+                const isValidDomain = business
+                  && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)
                   && !(/^\d+\.\d+\.\d+\.\d+$/.test(domain));
-                if (isValidDomain && !isFreeEmailDomain(domain)) {
+                if (isValidDomain) {
                   trackBackground(
                     researchDomain(domain).catch(err => {
                       logger.warn({ err, domain }, 'Background domain research failed for new user');
                     })
                   );
+                  // KYC nudge (#4744): if the signup domain maps to a brand
+                  // in the registry, notify ops in Slack so we can watch
+                  // who's signing up at known brands. The in-app banner +
+                  // viewer JIT prompt drive the user-side flow; this is the
+                  // ops-side visibility signal. At today's volume we notify
+                  // on every match regardless of brand verification state.
+                  //
+                  // Idempotent on WorkOS retries: user.created is at-least-
+                  // once, so we record a per-(user, domain) marker in
+                  // user_dismissed_nudges after sending and skip if present.
+                  // Reusing the dismissals table keeps the schema lean — see
+                  // user-nudges-db.ts for the dual-use convention.
+                  if (user.email_verified) {
+                    trackBackground(
+                      (async () => {
+                        try {
+                          const canonicalDomain = canonicalizeBrandDomain(domain);
+                          const notifyKey = `signup_notified:${canonicalDomain}`;
+                          const prior = await getNudgeDismissal(user.id, notifyKey);
+                          if (prior) return;
+                          const brandDb = new BrandDatabase();
+                          const brand = await brandDb.getDiscoveredBrandByDomain(canonicalDomain);
+                          if (!brand) return;
+                          let ownerName: string | null = null;
+                          if (brand.domain_verified && brand.workos_organization_id) {
+                            try {
+                              const orgDb = new OrganizationDatabase();
+                              const ownerOrg = await orgDb.getOrganization(brand.workos_organization_id);
+                              ownerName = ownerOrg?.name ?? null;
+                            } catch (orgErr) {
+                              logger.debug({ orgErr, domain }, 'failed to resolve verified-owner org name for signup notify');
+                            }
+                          }
+                          await notifyBrandClaimOpportunity({
+                            user_email: user.email,
+                            user_first_name: user.first_name ?? undefined,
+                            user_last_name: user.last_name ?? undefined,
+                            domain: canonicalDomain,
+                            brand_name: brand.brand_name ?? null,
+                            brand_view_url: `/brand/view/${encodeURIComponent(canonicalDomain)}`,
+                            brand_already_verified: !!brand.domain_verified && !!brand.workos_organization_id,
+                            verified_owner_org_name: ownerName,
+                          });
+                          // Record the marker AFTER successful send so a
+                          // retry following a Slack 5xx will still get
+                          // through (the WorkOS retry is exactly the cover
+                          // we want for transient failures).
+                          await recordNudgeDismissal(user.id, notifyKey);
+                        } catch (notifyErr) {
+                          logger.warn({ err: notifyErr, domain }, 'brand-claim opportunity notify failed');
+                        }
+                      })()
+                    );
+                  }
                 }
               }
             }
@@ -1044,8 +1076,21 @@ export function createWorkOSWebhooksRouter(): Router {
 
           case 'user.deleted': {
             const user = event.data as unknown as UserData;
+            // Promote a surviving secondary BEFORE the CASCADE on
+            // identity_workos_users.workos_user_id fires (via deleteUser).
+            // Without this, the identity is left with zero primaries and the
+            // surviving secondary signs in to an empty workspace — a DoS
+            // vector reachable via GDPR/CCPA-driven WorkOS deletions.
+            const promoted = await promoteSecondaryIfPrimaryDeleted(user.id);
             await deleteUser(user.id);
             await deleteUserMemberships(user.id);
+            // Close the 60-second session/JWT cache window where a cached
+            // pre-deletion swap would still route reads to the dead binding.
+            // Invalidate both the deleted user and the promoted successor so
+            // the next request re-resolves identity from the DB.
+            const sessionsToInvalidate = [user.id];
+            if (promoted) sessionsToInvalidate.push(promoted.promotedUserId);
+            invalidateSessionsForUsers(sessionsToInvalidate);
             invalidateUnifiedUsersCache();
             break;
           }

@@ -14,10 +14,10 @@
  * every admin removal carries a written justification.
  */
 
-import { Router, type Request } from 'express';
+import { Router } from 'express';
 import { getPool } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin, type ValidatedApiKey } from '../../middleware/auth.js';
+import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import { invalidateMemberContextCache } from '../../addie/index.js';
 import type { AgentConfig } from '../../types.js';
 
@@ -25,21 +25,6 @@ const logger = createLogger('admin-agents');
 
 const MIN_REASON_LENGTH = 5;
 const MAX_REASON_LENGTH = 500;
-
-/**
- * Defense-in-depth gate against tenant-scoped WorkOS API keys with `admin:*`
- * being used cross-org. `requireAdmin` accepts any key holding the
- * permission regardless of which org issued it; this route would otherwise
- * let one org's owner mutate a different org's `member_profiles.agents`.
- * Static `admin_api_key` and SSO admin users are not tenant-scoped and
- * pass through.
- */
-function refuseCrossTenantApiKey(req: Request, orgId: string): string | null {
-  const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
-  if (!apiKey?.organizationId) return null;
-  if (apiKey.organizationId === orgId) return null;
-  return apiKey.organizationId;
-}
 
 /**
  * Decode `member_profiles.agents`. The column is typed `jsonb` but the pg
@@ -85,14 +70,6 @@ export function setupAdminAgentsRoutes(apiRouter: Router): void {
     async (req, res) => {
       const { orgId } = req.params;
 
-      const crossTenantOrg = refuseCrossTenantApiKey(req, orgId);
-      if (crossTenantOrg) {
-        return res.status(403).json({
-          error: 'cross_tenant_api_key',
-          message: `API key issued by ${crossTenantOrg} cannot read agents on ${orgId}`,
-        });
-      }
-
       try {
         const pool = getPool();
         const row = await pool.query<{ agents: unknown }>(
@@ -136,14 +113,6 @@ export function setupAdminAgentsRoutes(apiRouter: Router): void {
     async (req, res) => {
       const { orgId } = req.params;
       const targetUrl = req.params.url;
-
-      const crossTenantOrg = refuseCrossTenantApiKey(req, orgId);
-      if (crossTenantOrg) {
-        return res.status(403).json({
-          error: 'cross_tenant_api_key',
-          message: `API key issued by ${crossTenantOrg} cannot remove agents from ${orgId}`,
-        });
-      }
 
       const reasonParam = req.query.reason;
       const reason =

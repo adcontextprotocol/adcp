@@ -32,6 +32,22 @@
           "status": {
             "$ref": "/schemas/enums/media-buy-status.json"
           },
+          "health": {
+            "allOf": [{ "$ref": "/schemas/enums/media-buy-health.json" }],
+            "default": "ok",
+            "description": "Dependency health of the media buy, orthogonal to `status`. `ok` (default) when no upstream resource that this buy depends on is in an offline state. `impaired` when at least one such resource (audience, creative, catalog_item, event_source, property) is offline and affects delivery for one or more packages — `impairments[]` MUST be non-empty in that case. On terminal-status buys, the seller MAY leave this field in whatever state held at the terminal transition. See lifecycle.mdx § Compliance and the impairment.coherence assertion."
+          },
+          "impairments": {
+            "type": "array",
+            "description": "Open impairments — upstream dependency state changes that affect delivery for at least one package on this buy. Empty when `health` is `ok`; non-empty iff `health` is `impaired` (health-iff rule on non-terminal buys). Sellers MUST add an entry on the next read after a referenced resource transitions to an offline state, and MUST remove the entry when the resource returns to a serviceable state or stops being a dependency (e.g., via assignment swap via update_media_buy). Staleness budget: the snapshot MUST reflect the impairment within 5 minutes of `impairment.observed_at` regardless of buyer poll cadence — sellers cannot rely on rare buyer polls to defer write propagation. See impairment.coherence assertion for the cross-resource invariant.",
+            "items": {
+              "$ref": "/schemas/core/impairment.json"
+            }
+          },
+          "rejection_reason": {
+            "type": "string",
+            "description": "Reason provided by the seller when status is 'rejected'. Present only when status is 'rejected'."
+          },
           "currency": {
             "type": "string",
             "description": "ISO 4217 currency code (e.g., USD, EUR, GBP) for monetary values at this media buy level. total_budget is always denominated in this currency. Package-level fields may override with package.currency.",
@@ -116,6 +132,14 @@
               "$ref": "/schemas/core/media-buy-available-action.json"
             },
             "uniqueItems": true
+          },
+          "webhook_activity": {
+            "type": "array",
+            "description": "Recent reporting and health webhook fires for the calling principal, most-recent first. Present only when `include_webhook_activity` was true in the request AND the seller surfaces this debug capability for this buy. Three-state semantics: (a) field omitted — seller does not surface webhook activity (either does not persist fire history, or `capabilities.media_buy.propagation_surfaces` excludes webhook surfaces, or the buy has no registered `push_notification_config` for this principal); (b) empty array `[]` — seller persists fire history but has fired nothing recent for this principal; (c) non-empty array — actual fire records. Sellers whose declared `propagation_surfaces` does not include `webhook` MUST omit the field. **Retention (normative):** sellers that surface this field MUST retain records for at least 30 days from each record's `completed_at` (for records still in `pending` status the clock runs from `fired_at` until the attempt terminates, then resets to 30 days from `completed_at` — so retry trails do not age out mid-flight). Sellers that cannot honor the 30-day floor MUST omit the field entirely rather than return a shorter window. Sellers MAY return fewer than `webhook_activity_limit` records when fewer fire records exist within the retention window. Sellers MUST emit one record per attempt — single-attempt successes appear as a single record with `attempt: 1`. Record shape is canonical across resources: see [`/schemas/core/webhook-activity-record.json`](/schemas/v3/core/webhook-activity-record.json) and snapshot-and-log.mdx § Webhook activity log pattern.",
+            "items": {
+              "$ref": "/schemas/core/webhook-activity-record.json"
+            },
+            "maxItems": 200
           },
           "history": {
             "type": "array",

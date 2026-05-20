@@ -3436,6 +3436,137 @@ paths:
                   - agent_url
                   - domains
                   - count
+  /api/v1/agents/{encodedUrl}/publishers:
+    get:
+      operationId: getPublishersForAgent
+      summary: AAO directory inverse-lookup
+      description: |-
+        Given a percent-encoded `agent_url`, returns the publishers whose adagents.json authorizes that agent, with provenance (`discovery_method`, `manager_domain`), per-publisher property counts (`properties_authorized`, `properties_total`, scoped to this publisher only — never network-wide), signing-key pin status, and lifecycle state (`authorized` / `revoked`).
+
+        Spec: [docs/aao/directory-api.mdx](/docs/aao/directory-api) (adcp#4823). This endpoint is the spec-compliant richer-shape replacement for the legacy `/api/registry/lookup/agent/{agentUrl}/domains`, which returns domain strings only.
+      tags:
+        - Authorization Lookups
+      parameters:
+        - schema:
+            type: string
+            description: Percent-encoded agent_url
+          required: true
+          description: Percent-encoded agent_url
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+            format: date-time
+            description: ISO 8601 — return only publishers with last_verified_at ≥ since
+          required: false
+          description: ISO 8601 — return only publishers with last_verified_at ≥ since
+          name: since
+          in: query
+        - schema:
+            type: string
+            description: Opaque pagination cursor returned by a prior response
+          required: false
+          description: Opaque pagination cursor returned by a prior response
+          name: cursor
+          in: query
+        - schema:
+            type: string
+            description: "Comma-separated subset of {authorized, revoked}. Default: authorized."
+          required: false
+          description: "Comma-separated subset of {authorized, revoked}. Default: authorized."
+          name: status
+          in: query
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            description: Page size, default 200, max 1000
+          required: false
+          description: Page size, default 200, max 1000
+          name: limit
+          in: query
+      responses:
+        "200":
+          description: Publishers authorizing the agent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_url:
+                    type: string
+                  directory_indexed_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                    description: Most recent per-publisher refresh in this page. Null on empty pages (no anchor).
+                  publishers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        publisher_domain:
+                          type: string
+                        discovery_method:
+                          type: string
+                          enum:
+                            - direct
+                            - authoritative_location
+                            - ads_txt_managerdomain
+                            - adagents_authoritative
+                        manager_domain:
+                          type:
+                            - string
+                            - "null"
+                        properties_authorized:
+                          type: integer
+                          minimum: 0
+                        properties_total:
+                          type: integer
+                          minimum: 0
+                        signing_keys_pinned:
+                          type: boolean
+                        status:
+                          type: string
+                          enum:
+                            - authorized
+                            - revoked
+                        last_verified_at:
+                          type: string
+                          format: date-time
+                      required:
+                        - publisher_domain
+                        - discovery_method
+                        - manager_domain
+                        - properties_authorized
+                        - properties_total
+                        - signing_keys_pinned
+                        - status
+                        - last_verified_at
+                  next_cursor:
+                    type:
+                      - string
+                      - "null"
+                required:
+                  - agent_url
+                  - directory_indexed_at
+                  - publishers
+                  - next_cursor
+        "304":
+          description: Not modified (If-None-Match matched)
+        "400":
+          description: Invalid agent_url, cursor, since, or status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Directory has never indexed any publisher referencing this agent_url. Distinct from 200 + empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/operator:
     get:
       operationId: lookupOperator

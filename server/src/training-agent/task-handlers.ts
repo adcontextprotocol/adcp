@@ -229,7 +229,13 @@ import {
   handleSyncEventSources,
   handleLogEvent,
   handleProvidePerformanceFeedback,
+  findEventSourceInSession,
 } from './catalog-event-handlers.js';
+import {
+  AUDIENCE_TOOLS,
+  handleSyncAudiences,
+  findAudienceInSession,
+} from './audience-handlers.js';
 import {
   COMPLY_TEST_CONTROLLER_TOOL,
   handleComplyTestController,
@@ -1326,6 +1332,7 @@ const TOOLS = [
   },
   ...ACCOUNT_TOOLS,
   ...CATALOG_EVENT_TOOLS,
+  ...AUDIENCE_TOOLS,
   ...GOVERNANCE_TOOLS,
   ...PROPERTY_TOOLS,
   ...COLLECTION_LIST_TOOLS,
@@ -1823,9 +1830,135 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     }
   }
 
+  // Validate event-kind optimization_goals reference a previously-registered
+  // event_source_id. Silent acceptance of phantom ids is a façade — the
+  // seller cannot optimize against a source it doesn't know about. The
+  // performance_buy_flow storyboard asserts this rejection with an error
+  // .field set to the offending JSONPath-lite path.
+  const sessionKeyForEventSources = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  if (Array.isArray(req.packages)) {
+    for (let i = 0; i < req.packages.length; i++) {
+      const pkg = req.packages[i] as { optimization_goals?: unknown };
+      const goals = pkg?.optimization_goals;
+      if (!Array.isArray(goals)) continue;
+      for (let j = 0; j < goals.length; j++) {
+        const goal = goals[j] as { kind?: string; event_sources?: unknown };
+        if (goal?.kind !== 'event') continue;
+        const eventSources = goal.event_sources;
+        if (!Array.isArray(eventSources)) continue;
+        for (let k = 0; k < eventSources.length; k++) {
+          const entry = eventSources[k] as { event_source_id?: string };
+          const id = entry?.event_source_id;
+          if (typeof id !== 'string' || id.length === 0) continue;
+          if (!findEventSourceInSession(sessionKeyForEventSources, id)) {
+            return {
+              errors: [{
+                code: 'INVALID_REQUEST',
+                message: `event_source_id "${id}" was not registered via sync_event_sources`,
+                field: `packages[${i}].optimization_goals[${j}].event_sources[${k}].event_source_id`,
+              }] as TaskError[],
+            };
+          }
+        }
+      }
+    }
+  }
+
+  // Validate targeting_overlay.audience_include / audience_exclude entries
+  // reference an audience_id previously registered via sync_audiences. Silent
+  // acceptance of phantom ids is a façade — the seller cannot target an
+  // audience it doesn't know about. Sibling contract to the event_source_id
+  // check above. error.field is a literal JSONPath-lite per core/error.json
+  // so audience_buy_flow can assert equality, not regex.
+  const sessionKeyForAudiences = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  if (Array.isArray(req.packages)) {
+    for (let i = 0; i < req.packages.length; i++) {
+      const pkg = req.packages[i] as { targeting_overlay?: unknown; targeting?: unknown };
+      const overlay = (pkg?.targeting_overlay ?? pkg?.targeting) as
+        | { audience_include?: unknown; audience_exclude?: unknown }
+        | undefined;
+      if (!overlay || typeof overlay !== 'object') continue;
+      for (const field of ['audience_include', 'audience_exclude'] as const) {
+        const list = overlay[field];
+        if (!Array.isArray(list)) continue;
+        for (let k = 0; k < list.length; k++) {
+          const id = list[k];
+          if (typeof id !== 'string' || id.length === 0) continue;
+          if (!findAudienceInSession(sessionKeyForAudiences, id)) {
+            return {
+              errors: [{
+                code: 'INVALID_REQUEST',
+                message: `audience_id "${id}" was not registered via sync_audiences`,
+                field: `packages[${i}].targeting_overlay.${field}[${k}]`,
+              }] as TaskError[],
+            };
+          }
+        }
+      }
+    }
+  }
+
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
   overlaySeededProducts(session, productMap);
+
+  // Validate metric-kind optimization_goals against the package's product
+  // metric_optimization declarations. reach goals must declare a reach_unit
+  // present in supported_reach_units; completed_views goals must declare a
+  // view_duration_seconds present in supported_view_durations. Silent
+  // acceptance is a façade (the seller would either coerce the unit or run
+  // without one) — the reach_buy_flow / completed_views_buy_flow storyboards
+  // assert this rejection with error.field set to the offending JSONPath-lite
+  // path. Mirrors the event_source / audience_id checks above.
+  if (Array.isArray(req.packages)) {
+    for (let i = 0; i < req.packages.length; i++) {
+      const pkg = req.packages[i] as { product_id?: string; optimization_goals?: unknown };
+      const goals = pkg?.optimization_goals;
+      if (!Array.isArray(goals)) continue;
+      const product = pkg.product_id ? productMap.get(pkg.product_id) : undefined;
+      for (let j = 0; j < goals.length; j++) {
+        const goal = goals[j] as {
+          kind?: string;
+          metric?: string;
+          reach_unit?: string;
+          view_duration_seconds?: number;
+        };
+        if (goal?.kind !== 'metric') continue;
+        if (goal.metric === 'reach' && typeof goal.reach_unit === 'string' && goal.reach_unit.length > 0) {
+          const supported = product?.metric_optimization?.supported_reach_units;
+          // Reach is honest-bounded by reach-unit.json enum; reject when the
+          // product declares a narrower set OR when no declaration exists and
+          // the value isn't a spec-defined reach unit.
+          const allowed: readonly string[] = supported ?? ['individuals', 'households', 'devices', 'accounts', 'cookies', 'custom'];
+          if (!allowed.includes(goal.reach_unit)) {
+            return {
+              errors: [{
+                code: 'INVALID_REQUEST',
+                message: `reach_unit "${goal.reach_unit}" not in product's supported_reach_units`,
+                field: `packages[${i}].optimization_goals[${j}].reach_unit`,
+              }] as TaskError[],
+            };
+          }
+        }
+        if (goal.metric === 'completed_views' && typeof goal.view_duration_seconds === 'number') {
+          const supported = product?.metric_optimization?.supported_view_durations;
+          // No spec-bound enum on view_duration; fall back to industry-default
+          // durations when the product omits the declaration (matches the
+          // product-factory default 2/6/15/30).
+          const allowed: readonly number[] = supported ?? [2, 6, 15, 30];
+          if (!allowed.includes(goal.view_duration_seconds)) {
+            return {
+              errors: [{
+                code: 'INVALID_REQUEST',
+                message: `view_duration_seconds ${goal.view_duration_seconds} not in product's supported_view_durations`,
+                field: `packages[${i}].optimization_goals[${j}].view_duration_seconds`,
+              }] as TaskError[],
+            };
+          }
+        }
+      }
+    }
+  }
 
   // Proposal-based creation: expand proposal allocations into packages
   if (req.proposal_id && !req.packages?.length) {
@@ -2057,6 +2190,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
     const resolvedStart = startTime === 'asap' ? new Date().toISOString() : startTime;
 
+    const rawGoals = (pkg as unknown as { optimization_goals?: unknown }).optimization_goals;
+    const optimizationGoals = Array.isArray(rawGoals)
+      ? (rawGoals as unknown[]).filter((g): g is Record<string, unknown> => typeof g === 'object' && g !== null)
+      : undefined;
+
     createdPackages.push({
       packageId: `pkg-${i}`,
       productId: pkg.product_id,
@@ -2070,6 +2208,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       formatIds: pkg.format_ids,
       creativeAssignments: [],
       targeting: targetingResult.targeting,
+      ...(optimizationGoals && optimizationGoals.length > 0 && { optimizationGoals }),
     });
   }
 
@@ -2196,6 +2335,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
     media_buys: pageBuys.map(mb => {
       const status = deriveStatus(mb);
       const totalBudget = mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
+      const openImpairments = mb.impairments ?? [];
       const buy = {
         media_buy_id: mb.mediaBuyId,
         status,
@@ -2208,6 +2348,18 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
         total_budget: totalBudget,
         start_time: mb.startTime,
         end_time: mb.endTime,
+        health: (openImpairments.length > 0 ? 'impaired' : 'ok') as 'ok' | 'impaired',
+        impairments: openImpairments.map(i => ({
+          impairment_id: i.impairmentId,
+          resource_type: i.resourceType,
+          resource_id: i.resourceId,
+          package_ids: i.packageIds,
+          transition: i.transition,
+          reason_code: i.reasonCode,
+          observed_at: i.observedAt,
+          ...(i.reason !== undefined && { reason: i.reason }),
+          ...(i.remediation !== undefined && { remediation: i.remediation }),
+        })),
         ...(mb.creativeDeadline && { creative_deadline: mb.creativeDeadline }),
         ...(mb.governanceContext && { governance_context: mb.governanceContext }),
         ...(mb.canceledAt && {
@@ -2402,6 +2554,81 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     totalSpend += simDelivery.reportedSpend.amount;
   }
 
+  // Conversion-attributed totals. Only surface when simulate_delivery
+  // injected conversion data — sellers that don't optimize toward events
+  // (pure brand/audience sellers) omit these fields entirely.
+  const totalConversions = simDelivery?.conversions ?? 0;
+  const roundedSpend = Math.round(totalSpend * 100) / 100;
+  const conversionTotals = totalConversions > 0 && roundedSpend > 0
+    ? {
+      conversions: totalConversions,
+      cost_per_acquisition: Math.round((roundedSpend / totalConversions) * 100) / 100,
+    }
+    : totalConversions > 0
+      ? { conversions: totalConversions }
+      : {};
+
+  // Click-attributed total. cost_per_click is defined as spend / clicks in
+  // delivery-metrics.json. Always surface when both are positive — this
+  // doesn't need a goal-kind gate because every buy emits clicks (the
+  // default totals.clicks already does) and the derived metric is the
+  // discriminating field for click-optimized buys (clicks_buy_flow).
+  const clickTotals = totalClicks > 0 && roundedSpend > 0
+    ? { cost_per_click: Math.round((roundedSpend / totalClicks) * 100) / 100 }
+    : {};
+
+  // Metric-goal-gated emission. Reach + frequency are surfaced when at
+  // least one package was created with a reach goal; completed_views +
+  // completion_rate when at least one package was created with a
+  // completed_views goal. Without the gate the seller would blanket-emit
+  // these fields on every buy (a brand-only seller would emit completion
+  // metrics on a click-only buy — confuses buyers and runs against the
+  // discriminating-field contract in the storyboards).
+  //
+  // Placeholder ratios: reach = floor(impressions / 3) with frequency = 3
+  // (industry-typical for mixed-channel campaigns); completed_views =
+  // floor(impressions * 0.7) (70% completion rate is a common video
+  // platform default). Documented as placeholders because the
+  // get_media_buy_delivery contract requires field_present, not specific
+  // numeric values, on the gating scenarios.
+  const hasReachGoal = mb.packages.some(pkg =>
+    pkg.optimizationGoals?.some(g => g?.kind === 'metric' && g?.metric === 'reach'),
+  );
+  const hasCompletedViewsGoal = mb.packages.some(pkg =>
+    pkg.optimizationGoals?.some(g => g?.kind === 'metric' && g?.metric === 'completed_views'),
+  );
+  // Resolve reach_unit from the first reach goal that declared one — buyers
+  // bind reach measurement to the unit (households vs cookies are not
+  // comparable). When goals omitted the unit, fall back to the existing
+  // channel-derived unit (totalReachUnit) computed above.
+  let derivedReachUnit: string | undefined = totalReachUnit !== 'mixed' ? totalReachUnit : undefined;
+  if (!derivedReachUnit && hasReachGoal) {
+    for (const pkg of mb.packages) {
+      const goal = pkg.optimizationGoals?.find(g => g?.kind === 'metric' && g?.metric === 'reach' && typeof g?.reach_unit === 'string');
+      if (goal && typeof goal.reach_unit === 'string') {
+        derivedReachUnit = goal.reach_unit;
+        break;
+      }
+    }
+  }
+
+  const goalDerivedReach = hasReachGoal && totalImpressions > 0 && totalReach === 0
+    ? {
+      reach: Math.max(1, Math.floor(totalImpressions / 3)),
+      ...(derivedReachUnit && { reach_unit: derivedReachUnit }),
+      frequency: +(totalImpressions / Math.max(1, Math.floor(totalImpressions / 3))).toFixed(1),
+    }
+    : {};
+  const goalDerivedCompletedViews = hasCompletedViewsGoal && totalImpressions > 0 && totalCompletedViews === 0
+    ? (() => {
+      const completed = Math.floor(totalImpressions * 0.7);
+      return {
+        completed_views: completed,
+        completion_rate: +(completed / totalImpressions).toFixed(3),
+      };
+    })()
+    : {};
+
   return {
     reporting_period: {
       start: mb.startTime,
@@ -2413,18 +2640,22 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       status: deriveStatus(mb),
       totals: {
         impressions: totalImpressions,
-        spend: Math.round(totalSpend * 100) / 100,
+        spend: roundedSpend,
         clicks: totalClicks,
+        ...clickTotals,
         ...(totalCompletedViews > 0 ? {
           views: totalViews,
           completed_views: totalCompletedViews,
           completion_rate: +(totalCompletedViews / totalImpressions).toFixed(3),
         } : {}),
+        ...goalDerivedCompletedViews,
         ...(totalReach > 0 && totalReachUnit && totalReachUnit !== 'mixed' ? {
           reach: totalReach,
           reach_unit: totalReachUnit,
           frequency: +(totalImpressions / totalReach).toFixed(1),
         } : {}),
+        ...goalDerivedReach,
+        ...conversionTotals,
       },
       by_package: byPackage,
     }],
@@ -2860,6 +3091,25 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'creative_assignments_updated', summary: `Package ${pkgId} creative assignments replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
     }
+
+    // Recompute open impairments: a creative-impairment is cleared when no
+    // package on the buy still references it. Recovery via assignment swap
+    // is the canonical clearing path (the buyer replaces a rejected creative
+    // with an approved sibling), so the same-buy union of all package
+    // creativeAssignments is the authoritative dependency set.
+    if (mb.impairments?.length) {
+      const stillReferenced = new Set<string>();
+      for (const pkg of mb.packages) {
+        for (const cid of pkg.creativeAssignments) stillReferenced.add(cid);
+      }
+      const before = mb.impairments.length;
+      mb.impairments = mb.impairments.filter(
+        i => i.resourceType !== 'creative' || stillReferenced.has(i.resourceId),
+      );
+      if (mb.impairments.length !== before) {
+        mb.updatedAt = now;
+      }
+    }
   }
 
   // Add new packages
@@ -3001,6 +3251,15 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
         supported_hashed_identifiers: ['hashed_email'],
         supported_action_sources: ['website', 'app'],
       },
+      // Seller-level rollup of metric-optimization capabilities. Honest
+      // union across catalog products (product-factory.ts assigns these
+      // by channel mix). Gate scenarios — clicks_buy_flow / reach_buy_flow
+      // / completed_views_buy_flow — read this field and grade
+      // not_applicable when missing. adcp-client#1818 will auto-derive
+      // from product-level metric_optimization.supported_metrics once
+      // the SDK ships the seller-level field; until then this is a
+      // manual declaration.
+      supported_optimization_metrics: ['clicks', 'views', 'completed_views', 'engagements', 'reach'],
       execution: {
         targeting: {
           geo_countries: true,
@@ -4060,6 +4319,7 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   sync_governance: handleSyncGovernance,
   sync_catalogs: handleSyncCatalogs,
   sync_event_sources: handleSyncEventSources,
+  sync_audiences: handleSyncAudiences,
   log_event: handleLogEvent,
   provide_performance_feedback: handleProvidePerformanceFeedback,
   sync_plans: handleSyncPlans,

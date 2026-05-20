@@ -271,12 +271,12 @@
     },
     {
       "title": "BuildCreativeError",
-      "description": "Error response - creative generation failed",
+      "description": "Error response — creative generation failed. Multi-format requests (`target_format_ids[]`) are atomic per `BuildCreativeMultiSuccess` semantics: a single format failing means the entire batch returns an error response, not a partial success. Buyers diagnose per-format failures by reading the `errors[]` array's per-format attribution (see the `errors` field description).",
       "type": "object",
       "properties": {
         "errors": {
           "type": "array",
-          "description": "Array of errors explaining why creative generation failed",
+          "description": "Array of errors explaining why creative generation failed.\n\n**Per-format attribution on multi-format requests.** When the request used `target_format_ids[]` (a batch request), sellers MUST attribute each failure to the specific format(s) that caused it so buyers can correct and retry the failing subset rather than re-running the entire batch. Two attribution surfaces, populated together:\n\n1. **`error.field`** — set to `target_format_ids[N]` where `N` is the zero-based index of the failing format in the request's `target_format_ids[]` array (e.g., `target_format_ids[1]` for the second requested format). Mirrors the JSONPath-lite convention `error.field` uses elsewhere. Required when the error is format-scoped.\n2. **`error.details.format_id`** — the resolved `format_id` value (e.g., `\"meta-reels-9x16\"`). Required when the error is format-scoped. Lets buyers dispatch on the format identity without re-parsing `error.field`.\n\nErrors not attributable to a specific format (whole-batch failures: authentication, governance denial, transport-level errors) MAY omit `field` and `details.format_id`. Buyers MUST treat per-format errors as scoped to the named format only — a `correctable` error on `target_format_ids[1]` does NOT mean the buyer must reshape the entire batch; they may retry just that format with corrected input. Sellers SHOULD emit one error per failing format (rather than collapsing multiple format failures into a single error entry) so per-format recovery routing is unambiguous.",
           "items": {
             "$ref": "/schemas/core/error.json"
           },

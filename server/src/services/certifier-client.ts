@@ -18,6 +18,23 @@ export interface CertifierRecipient {
   email: string;
 }
 
+/**
+ * Build a Certifier recipient name from possibly-missing user fields.
+ * Returns "first last" trimmed, or the email when neither name field is set.
+ * Guards against the "undefined undefined" literal that plain interpolation
+ * produces when first_name and last_name are null/undefined.
+ */
+export function buildRecipientName(user: {
+  first_name?: string | null;
+  last_name?: string | null;
+  email: string;
+}): string {
+  const first = (user.first_name ?? '').trim();
+  const last = (user.last_name ?? '').trim();
+  const name = `${first} ${last}`.trim();
+  return name || user.email;
+}
+
 export interface CertifierCredential {
   id: string;
   publicId: string;
@@ -79,6 +96,32 @@ export async function issueCredential(options: IssueCredentialOptions): Promise<
 export async function getCredential(credentialId: string): Promise<CertifierCredential> {
   const client = getClient();
   const response = await client.get<CertifierCredential>(`/credentials/${credentialId}`);
+  return response.data;
+}
+
+export interface UpdateCredentialOptions {
+  recipient?: CertifierRecipient;
+  customAttributes?: Record<string, string>;
+}
+
+/**
+ * Update a previously-issued credential — typically used to correct the
+ * recipient name on a credential that was issued before the user's profile
+ * populated (see escalation #382). Certifier re-renders the certificate
+ * artifacts after a successful PATCH.
+ */
+export async function updateCredential(
+  credentialId: string,
+  options: UpdateCredentialOptions,
+): Promise<CertifierCredential> {
+  const client = getClient();
+  const body: Record<string, unknown> = {};
+  if (options.recipient) body.recipient = options.recipient;
+  if (options.customAttributes) body.customAttributes = options.customAttributes;
+
+  logger.info({ credentialId, recipientEmail: options.recipient?.email }, 'Updating credential');
+  const response = await client.patch<CertifierCredential>(`/credentials/${credentialId}`, body);
+  logger.info({ credentialId: response.data.id }, 'Credential updated');
   return response.data;
 }
 

@@ -1,0 +1,153 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/account/sync-governance-request.json",
+  "title": "Sync Governance Request",
+  "description": "Sync the governance agent endpoint against specific accounts. The seller persists the governance agent and calls it for approval during media buy lifecycle events via check_governance. Uses replace semantics: each call replaces any previously synced agent on the specified accounts. The seller MUST verify that the authenticated agent has authority over each referenced account before persisting the governance agent.\n\nThe binding is **account-scoped, not plan-scoped**. Each account binds to exactly one governance agent, and that agent owns the lifecycle for every plan on the account — `plan_id` is threaded through `check_governance` calls so the agent can route internally, but governance registration does not vary per plan. Senders MUST NOT attempt to bind different governance agents to different plans on the same account; the wire offers no field for it and brand/seller implementations resolve the bound agent from the account alone.\n\nA plan is unitary — budget authority, delivery monitoring, and regulatory compliance are phases of the same evaluation (`purchase` / `modification` / `delivery` on check_governance), not specialisms held by different agents — so a single agent owns the full lifecycle. Buyers that need internal specialist review (e.g., a separate legal reviewer) compose that inside the governance agent, not at the registration layer. `governance_agents` is an array (not a scalar) because that is the shape 3.0 shipped with and existing senders MUST continue to work; the `maxItems: 1` constraint is load-bearing and not anticipated to relax. The single-agent rule is also baked into the wire below this layer (`protocol-envelope.governance_context` is singular), so loosening `maxItems` here would require a coordinated change across the envelope and every task that threads the context.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-beta.0/core/version-envelope.json"
+    }
+  ],
+  "x-mutates-state": true,
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. `account` gives resource-level dedup, but governance changes emit audit events and can trigger reapproval flows — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "accounts": {
+      "type": "array",
+      "description": "Per-account governance agent configuration. Each entry pairs an account reference with the governance agents for that account.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "$ref": "/schemas/3.1.0-beta.0/core/account-ref.json",
+            "description": "Account to sync governance agents for. Use account_id for explicit accounts or brand + operator for implicit accounts."
+          },
+          "governance_agents": {
+            "type": "array",
+            "description": "Governance agent endpoint for this account. Exactly one entry — the single agent that owns the account's full governance lifecycle. The seller calls this agent via check_governance during media buy lifecycle events. The array shape is preserved for wire compatibility with 3.0 senders; `maxItems: 1` is load-bearing and mirrors the singular `governance_context` on the protocol envelope.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "pattern": "^https://",
+                  "description": "Governance agent endpoint URL. Must use HTTPS."
+                },
+                "authentication": {
+                  "type": "object",
+                  "description": "Authentication the seller presents when calling this governance agent.",
+                  "properties": {
+                    "schemes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "/schemas/3.1.0-beta.0/enums/auth-scheme.json"
+                      },
+                      "minItems": 1,
+                      "maxItems": 1
+                    },
+                    "credentials": {
+                      "type": "string",
+                      "description": "Authentication credential (e.g., Bearer token).",
+                      "minLength": 32
+                    }
+                  },
+                  "required": [
+                    "schemes",
+                    "credentials"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "url",
+                "authentication"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 1
+          }
+        },
+        "required": [
+          "account",
+          "governance_agents"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "accounts"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Sync the governance agent on an explicit account (by account_id)",
+      "data": {
+        "idempotency_key": "e1b3a6c8-5678-489a-bcde-f01234567891",
+        "accounts": [
+          {
+            "account": {
+              "account_id": "acct-social-001"
+            },
+            "governance_agents": [
+              {
+                "url": "https://governance.pinnacle-media.com",
+                "authentication": {
+                  "schemes": [
+                    "Bearer"
+                  ],
+                  "credentials": "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Sync the governance agent on an implicit account (by brand + operator)",
+      "data": {
+        "idempotency_key": "f2c4b7d9-6789-489b-cdef-012345678902",
+        "accounts": [
+          {
+            "account": {
+              "brand": {
+                "domain": "nova-brands.com",
+                "brand_id": "spark"
+              },
+              "operator": "pinnacle-media.com"
+            },
+            "governance_agents": [
+              {
+                "url": "https://governance.pinnacle-media.com",
+                "authentication": {
+                  "schemes": [
+                    "Bearer"
+                  ],
+                  "credentials": "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

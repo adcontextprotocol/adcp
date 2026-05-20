@@ -16,6 +16,9 @@ import {
   type DecisioningPlatform,
   type SalesPlatform,
   type AccountStore,
+  type AudiencePlatform,
+  type SyncAudiencesRow,
+  type AudienceStatus,
 } from '@adcp/sdk/server';
 import {
   handleGetProducts,
@@ -27,7 +30,12 @@ import {
   handleListCreatives,
   handleListCreativeFormats,
 } from './task-handlers.js';
-import { handleProvidePerformanceFeedback } from './catalog-event-handlers.js';
+import {
+  handleProvidePerformanceFeedback,
+  handleSyncEventSources,
+  handleLogEvent,
+} from './catalog-event-handlers.js';
+import { handleSyncAudiences } from './audience-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
@@ -165,6 +173,14 @@ export class TrainingSalesPlatform
       supported_hashed_identifiers: ['hashed_email' as const],
       supported_action_sources: ['website' as const, 'app' as const],
     },
+    // Seller-level rollup of metric-optimization capabilities. Honest
+    // union across catalog products (product-factory.ts assigns these
+    // by channel mix). Mirrors the same declaration on the legacy /mcp
+    // route (task-handlers.ts handleGetAdcpCapabilities). adcp-client#1818
+    // will auto-derive this from product-level supported_metrics once
+    // the SDK ships the seller-level field; until then both surfaces
+    // declare it manually for parity.
+    supported_optimization_metrics: ['clicks' as const, 'views' as const, 'completed_views' as const, 'engagements' as const, 'reach' as const],
     supportedBillings: ['agent', 'operator'] as const,
     // Auto-derives `compliance_testing.scenarios[]` from the adapters
     // wired in `serverOptions.complyTest`. Empty block opts in; the
@@ -278,6 +294,58 @@ export class TrainingSalesPlatform
     providePerformanceFeedback: async (req, ctx) => {
       const result = await handleProvidePerformanceFeedback(req as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
+    },
+
+    // sync_event_sources and log_event are required for event-kind
+    // optimization goals (performance_buy_flow, event_dedup_flow). v5
+    // handlers session-key off `account.brand.domain`; the v6 framework
+    // strips account from req against the published schema, so thread
+    // brand_domain back in from ctx.account.ctx_metadata.
+    syncEventSources: async (req, ctx) => {
+      const brandDomain = brandDomainFromCtx(ctx.account);
+      const args = brandDomain
+        ? { ...(req as unknown as Record<string, unknown>), account: { brand: { domain: brandDomain } }, brand: { domain: brandDomain } }
+        : req;
+      const result = await handleSyncEventSources(args as ToolArgs, buildTrainingCtx(ctx.account));
+      return translateV5Result(result);
+    },
+
+    logEvent: async (req, ctx) => {
+      const brandDomain = brandDomainFromCtx(ctx.account);
+      const args = brandDomain
+        ? { ...(req as unknown as Record<string, unknown>), account: { brand: { domain: brandDomain } }, brand: { domain: brandDomain } }
+        : req;
+      const result = await handleLogEvent(args as ToolArgs, buildTrainingCtx(ctx.account));
+      return translateV5Result(result);
+    },
+  };
+
+  // Audience-targeting capability is declared above; expose sync_audiences
+  // so audience_buy_flow can register audiences before referencing them in
+  // targeting_overlay. The training agent does not claim the audience-sync
+  // specialism — this is the buy-side sibling, gated on audience_targeting
+  // capability rather than on the audience-sync storyboard.
+  audiences: AudiencePlatform<TrainingSalesMeta> = {
+    syncAudiences: async (audienceList, ctx) => {
+      const brandDomain = brandDomainFromCtx(ctx.account);
+      // sync_audiences requires idempotency_key per schema. The framework
+      // strips it from per-row params; synthesise one so the v5 handler's
+      // shape validation passes. The v5 handler doesn't enforce uniqueness
+      // here — the framework already handled idempotency upstream.
+      const args = {
+        audiences: audienceList,
+        idempotency_key: `framework-projected-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        ...(brandDomain && { account: { brand: { domain: brandDomain } }, brand: { domain: brandDomain } }),
+      };
+      const result = await handleSyncAudiences(args as unknown as ToolArgs, buildTrainingCtx(ctx.account));
+      const wrapped = translateV5Result<{ audiences?: SyncAudiencesRow[] }>(result);
+      return (wrapped.audiences ?? []) as SyncAudiencesRow[];
+    },
+    pollAudienceStatuses: async (_audienceIds, _ctx) => {
+      // The training agent doesn't model long-running matching — every
+      // audience resolves synchronously in syncAudiences. Return empty so
+      // callers treat ids as not-yet-resolved; never throw here.
+      return new Map<string, AudienceStatus>();
     },
   };
 }

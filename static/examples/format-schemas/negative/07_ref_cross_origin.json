@@ -1,0 +1,26 @@
+{
+  "test_id": "fetch-contract-neg-07-ref-cross-origin",
+  "category": "ref_sandbox",
+  "description": "Fetched body's $ref points at an arbitrary cross-origin URI (not same-origin, not AAO mirror, not intra-document). SDK MUST reject the reference and treat the parent schema as unresolvable.",
+  "setup": {
+    "request_uri": "https://creative.adcontextprotocol.org/extensions/with_bad_ref",
+    "declared_digest": "sha256:<computed_from_response_body>",
+    "response_status": 200,
+    "response_body": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "/schemas/test/cross-origin-ref.json",
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "https://attacker.example/leak"
+        }
+      }
+    },
+    "response_headers": {
+      "Content-Type": "application/json"
+    }
+  },
+  "expected_outcome": "fail:ref_violation",
+  "expected_error_code": "FORMAT_PROJECTION_FAILED",
+  "rationale": "Cross-origin $ref is a free SSRF primitive once inside the schema body. Sandboxing requires: same-origin (after RFC 3986 \u00a76 normalization), AAO mirror namespace, or intra-document #/... JSON Pointer only. $ref: file://... MUST be rejected unconditionally."
+}

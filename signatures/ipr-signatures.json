@@ -339,6 +339,16 @@
       "pullRequestNo": 4551,
       "comment_id": 4454210066,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/4551#issuecomment-4454210066"
+    },
+    {
+      "name": "gate3",
+      "id": 3597437,
+      "created_at": "2026-05-18T21:34:47Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 4758,
+      "comment_id": 4482446913,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/4758#issuecomment-4482446913"
     }
   ]
 }

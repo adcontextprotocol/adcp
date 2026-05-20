@@ -1,0 +1,219 @@
+name: AI PR Review (Argus)
+
+# Argus is an LLM PR reviewer that posts an `--approve`, `--comment`, or
+# `--request-changes` review on every non-dependabot PR. It reads the diff,
+# delegates to AdCP subagents when relevant (ad-tech-protocol-expert,
+# security-reviewer, code-reviewer, etc.), and writes the review in
+# bokelley's voice.
+#
+# Reviews are posted as the AAO release/triage GitHub App, so they count
+# toward the "1 review required" branch-protection check the same way a
+# human approval does. The same App is used for changeset releases — its
+# pull_requests:write scope already exists.
+#
+# Required secrets:
+#   RELEASE_APP_ID           — GitHub App ID (already configured)
+#   RELEASE_APP_PRIVATE_KEY  — GitHub App private key PEM (already configured)
+#   ANTHROPIC_API_KEY        — Anthropic API key for claude-code-action
+#
+# Adapted from scope3data/agentic-api's Argus workflow.
+
+on:
+  pull_request:
+    types:
+      - opened
+      - labeled
+      - ready_for_review
+      - synchronize
+    paths-ignore:
+      - '.github/workflows/ai-review.yml'
+      - '.github/ai-review/**'
+
+jobs:
+  code_review:
+    if: github.actor != 'dependabot[bot]' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ─────────────────────────────────────────────────────────────────────
+      # Mint an installation token from the AAO release/triage GitHub App.
+      # Reviews posted with this token appear as the App's bot user and
+      # count toward branch-protection's required-approvals check.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Mint App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      # ─────────────────────────────────────────────────────────────────────
+      # Skip re-runs on `synchronize` when the last bot review on this PR
+      # was APPROVED and the new commits only touch trivial paths (docs,
+      # changesets, tests, generated files). Cuts thrash on rebases and
+      # docs/test follow-up pushes. Force-pushes fall back to full review
+      # because the prior SHA may be unreachable.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Check for skippable re-run
+        id: skip-check
+        if: github.event.action == 'synchronize'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          LATEST_APPROVED="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
+            --jq '[.[] | select(.user.type == "Bot" and .state == "APPROVED")] | sort_by(.submitted_at) | last // {}')"
+          PRIOR_SHA="$(echo "$LATEST_APPROVED" | jq -r '.commit_id // ""')"
+          if [ -z "$PRIOR_SHA" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "No prior bot APPROVED review — running full review."
+            exit 0
+          fi
+          if ! git cat-file -e "$PRIOR_SHA" 2>/dev/null; then
+            git fetch --quiet origin "$PRIOR_SHA" 2>/dev/null || true
+          fi
+          if ! git cat-file -e "$PRIOR_SHA" 2>/dev/null; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Prior review SHA $PRIOR_SHA unreachable (likely force-pushed) — running full review."
+            exit 0
+          fi
+          CHANGED="$(git diff --name-only "$PRIOR_SHA" "$HEAD_SHA")"
+          if [ -z "$CHANGED" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No file changes since prior approval at $PRIOR_SHA — skipping."
+            exit 0
+          fi
+          # Trivial paths in AdCP — re-pushes touching only these skip re-review.
+          # Schemas (static/schemas/source/**) and server source are NEVER trivial.
+          is_trivial() {
+            case "$1" in
+              .changeset/*) return 0 ;;
+              *.md|*.mdx) return 0 ;;
+              mintlify-docs/*) return 0 ;;
+              static/schemas/cache/*) return 0 ;;
+              *__tests__/*) return 0 ;;
+              *.test.ts|*.test.tsx|*.test.js|*.test.cjs|*.test.mjs) return 0 ;;
+              *.spec.ts|*.spec.tsx|*.spec.js) return 0 ;;
+              server/tests/*) return 0 ;;
+              tests/*) return 0 ;;
+              package-lock.json) return 0 ;;
+            esac
+            return 1
+          }
+          NON_TRIVIAL=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            if ! is_trivial "$f"; then
+              NON_TRIVIAL="${NON_TRIVIAL}${f}"$'\n'
+            fi
+          done <<< "$CHANGED"
+          if [ -z "$NON_TRIVIAL" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "All changes since $PRIOR_SHA are trivial — skipping re-review. Changed files:"
+            echo "$CHANGED"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Non-trivial changes since $PRIOR_SHA — running full review:"
+            echo "$NON_TRIVIAL"
+          fi
+
+      - name: Build Argus review prompt
+        if: steps.skip-check.outputs.skip != 'true'
+        id: build-prompt
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          PROMPT_BODY="$(cat .github/ai-review/expert-adcp-reviewer.md)"
+          {
+            echo 'ARGUS_PROMPT<<ARGUS_EOF'
+            echo "$PROMPT_BODY"
+            echo ''
+            echo '---'
+            echo ''
+            echo '## Pre-computed inputs for this PR'
+            echo ''
+            echo "- PR_NUMBER: $PR_NUMBER"
+            echo "- REPO: $REPO"
+            echo "- PR_BASE_REF: $PR_BASE_REF"
+            echo 'ARGUS_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run Argus PR Review
+        id: ai-review
+        if: steps.skip-check.outputs.skip != 'true'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          prompt: ${{ steps.build-prompt.outputs.ARGUS_PROMPT }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ steps.app-token.outputs.token }}
+          use_sticky_comment: false
+          track_progress: false
+          claude_args: |
+            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Bash(gh api:*),Read,Glob,Grep,Task"
+            --max-turns 60
+            --model claude-opus-4-7
+
+      - name: Verify Argus posted a review
+        id: verify
+        if: always() && steps.app-token.outcome == 'success' && steps.skip-check.outputs.skip != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          LATEST="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
+            --jq '[.[] | select(.user.type == "Bot")] | sort_by(.submitted_at) | last // {}')"
+          STATE="$(echo "$LATEST" | jq -r '.state // ""')"
+          AUTHOR="$(echo "$LATEST" | jq -r '.user.login // ""')"
+          SUBMITTED="$(echo "$LATEST" | jq -r '.submitted_at // ""')"
+          echo "Latest bot review — author: $AUTHOR, state: $STATE, submitted: $SUBMITTED"
+          if [ -z "$STATE" ]; then
+            echo "review_posted=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No bot review found on PR #$PR_NUMBER"
+            exit 0
+          fi
+          SUBMITTED_TS="$(date -u -d "$SUBMITTED" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$SUBMITTED" +%s)"
+          NOW_TS="$(date -u +%s)"
+          if [ $((NOW_TS - SUBMITTED_TS)) -gt 600 ]; then
+            echo "review_posted=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Latest bot review is older than 10 minutes — Argus didn't post in this run"
+            exit 0
+          fi
+          echo "review_posted=true" >> "$GITHUB_OUTPUT"
+          echo "review_state=$STATE" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR if Argus review failed
+        if: steps.skip-check.outputs.skip != 'true' && (steps.ai-review.outcome == 'failure' || steps.verify.outputs.review_posted != 'true')
+        uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const runUrl = process.env.RUN_URL;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `⚠️ **Argus review could not complete**\n\nThe automated review encountered an issue (possibly reached max turns, timed out, or failed to post the final \`gh pr review\`). A human reviewer should take this PR.\n\n[View workflow run](${runUrl})\n\n<sub>This is an automated message from the Argus AI review workflow.</sub>`
+            })

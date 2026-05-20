@@ -25,7 +25,7 @@
     },
     "refine": {
       "type": "array",
-      "description": "Array of change requests for iterating on products and proposals from a previous get_products response. Each entry declares a scope (request, product, or proposal) and what the buyer is asking for. Only valid when buying_mode is 'refine'. The seller responds to each entry via refinement_applied in the response, matched by position.",
+      "description": "Array of change requests for iterating on products and proposals from a previous get_products response. Each entry declares a scope (request, product, or proposal) and what the buyer is asking for. Only valid when buying_mode is 'refine'. The seller responds to each entry via refinement_applied in the response, matched by position.\n\nFinalize-exclusivity rule: if any entry has `action: 'finalize'`, ALL entries in the array MUST be proposal-scoped with `action: 'finalize'` — mixing finalize entries with `include`/`omit` entries or with request- / product-scoped entries MUST be rejected by the seller with `INVALID_REQUEST`. Finalize is a commit, not a refinement; the buyer expressing intent to commit means refinements have already converged. Buyers needing to refine AND commit in close succession sequence the calls: first a refine call (no finalize), then a finalize call against the resulting `proposal_id`(s).\n\nMulti-finalize semantics: multiple finalize entries against different `proposal_id` values in a single call are allowed and MUST be **atomic at the observation point** — sellers MUST NOT return a success response unless every named proposal has both completed and been persisted as committed. Pre-commit validation runs before any side-effects (inventory pull, terms lock, governance attestation); if any proposal fails validation, the seller MUST reject the entire call without committing any of the named proposals. There is no rollback operation in the spec — an `unfinalize` would itself be a new mutation surface; the atomicity guarantee runs entirely on the seller's pre-commit validation gate, not on post-commit reversal. Sellers that cannot guarantee atomic pre-commit validation MUST reject multi-finalize arrays with `MULTI_FINALIZE_UNSUPPORTED` (preferred — distinguishes seller-side capability gap from a malformed request) or `INVALID_REQUEST` (acceptable fallback for sellers on a pre-3.1 error catalog). If a mid-commit failure occurs *after* validation passed but before all proposals persist (e.g., a downstream ad server fails between commits one and two), the seller MUST return `INTERNAL_ERROR` with `refinement_applied[]` carrying per-position outcomes — the spec does NOT define a recovery path for this case, and buyers SHOULD treat the resulting state as undefined and re-read via `get_media_buys` / equivalent before retrying. Buyers MUST NOT assume multi-finalize support without a successful first attempt — there is no capability flag for this; the failure response is the discovery surface. Buyers whose intent specifically requires atomic commit (e.g., budget-shared proposals where one finalizing without the other is incoherent) MUST be prepared to abandon the intent if the seller returns `MULTI_FINALIZE_UNSUPPORTED` — there is no recovery for that loss of buyer intent beyond sequencing single-finalize calls and accepting the looser commit guarantee.",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -106,7 +106,7 @@
                   "finalize"
                 ],
                 "default": "include",
-                "description": "'include' (default): return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response. 'finalize': request firm pricing and inventory hold — transitions a draft proposal to committed with an expires_at hold window. May trigger seller-side approval (HITL). The buyer should not set a time_budget for finalize requests — they represent a commitment to wait for the result. Optional — when omitted, the seller treats the entry as action: 'include'."
+                "description": "'include' (default): return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response. 'finalize': request firm pricing and inventory hold — transitions a draft proposal to committed with an expires_at hold window. May trigger seller-side approval (HITL). The buyer should not set a time_budget for finalize requests — they represent a commitment to wait for the result. Optional — when omitted, the seller treats the entry as action: 'include'.\n\nFinalize is exclusive within the parent `refine[]` array: see the array-level description for the finalize-exclusivity rule (mixing finalize with non-finalize entries is rejected) and multi-finalize atomicity contract."
               },
               "ask": {
                 "type": "string",
@@ -202,6 +202,14 @@
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"
     },
+    "if_catalog_version": {
+      "type": "string",
+      "description": "Opaque catalog_version token returned by a prior get_products response from this agent. When provided, the seller compares against its current catalog version for the buyer's cache_scope and MAY return an unchanged: true response (with products omitted) if nothing has changed. The token is scope-keyed: buyers cache `(cache_scope, catalog_version)` pairs. Scoping dimensions: (agent, buying_mode, filters, property_list, catalog) for cache_scope: 'public'; that tuple plus account_id for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. Backward-compatible: pre-v3.1 agents that ignore this field simply return the full payload, same as the unchanged-server path. See specs/catalog-change-feed.md for the full sync pattern."
+    },
+    "if_pricing_version": {
+      "type": "string",
+      "description": "Opaque pricing_version token from a prior get_products response. MUST only be sent together with if_catalog_version — pricing version has no structural baseline to compare against on its own. Evaluation order: (1) if_catalog_version mismatch → seller returns the full payload (pricing is implicitly stale); (2) if_catalog_version matches but if_pricing_version mismatches → seller returns the full payload so the buyer sees updated pricing_options; (3) both match → seller MAY return unchanged: true. Agents that don't track pricing separately ignore if_pricing_version and fall back to if_catalog_version semantics. Useful for storefronts that re-price compositions far more often than they re-render catalogs."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -222,6 +230,9 @@
   "dependencies": {
     "catalog": [
       "brand"
+    ],
+    "if_pricing_version": [
+      "if_catalog_version"
     ]
   },
   "additionalProperties": true

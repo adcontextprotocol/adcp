@@ -24,7 +24,7 @@ import {
 } from "../billing/stripe-client.js";
 import { isStripeNotFound } from "../audit/integrity/stripe-helpers.js";
 import * as referralDb from "../db/referral-codes-db.js";
-import { sanitizeBillingAddress } from "../billing/billing-address.js";
+import { validateBillingAddress } from "../billing/billing-address.js";
 import {
   blockIfActiveSubscription,
   type ActiveSubscriptionBlock,
@@ -221,13 +221,14 @@ export function createPublicBillingRouter(): Router {
         });
       }
 
-      const sanitizedAddress = sanitizeBillingAddress(billingAddress);
-      if (!sanitizedAddress) {
+      const addressResult = validateBillingAddress(billingAddress);
+      if (!addressResult.ok) {
         return res.status(400).json({
-          error: "Incomplete billing address",
-          message: "Please provide line1, city, state, postal_code, and country (each ≤ 200 chars)",
+          error: "Invalid billing address",
+          message: addressResult.error,
         });
       }
+      const sanitizedAddress = addressResult.address;
 
       if (!lookupKey.startsWith("aao_")) {
         logger.warn({ lookupKey }, 'Invoice request rejected: invalid lookup key prefix');
@@ -736,21 +737,14 @@ export function createPublicBillingRouter(): Router {
               message: "The requested organization does not exist in local database",
             });
           }
-          // Organization not in local DB - try to sync from WorkOS on-demand
+          // Organization not in local DB — sync from WorkOS on-demand.
+          // ensureOrganizationExists mirrors the WorkOS domain list into
+          // organization_domains + email_domain so downstream auto-link /
+          // claim lookups can find the row; an earlier inline shim here
+          // populated email_domain but not organization_domains, leaving
+          // the row partially invisible to findPayingOrgForDomain.
           try {
-            const workosOrg = await workos!.organizations.getOrganization(orgId);
-            if (workosOrg) {
-              const primaryDomain = workosOrg.domains?.[0]?.domain;
-              org = await orgDb.createOrganization({
-                workos_organization_id: workosOrg.id,
-                name: workosOrg.name,
-                email_domain: primaryDomain,
-              });
-              logger.info(
-                { orgId, name: workosOrg.name, email_domain: primaryDomain },
-                "On-demand synced organization from WorkOS"
-              );
-            }
+            org = await orgDb.ensureOrganizationExists(workos!, orgId);
           } catch (syncError) {
             logger.warn(
               { orgId, err: syncError },
@@ -990,14 +984,14 @@ export function createPublicBillingRouter(): Router {
       try {
         const user = req.user!;
         const { orgId } = req.params;
-        const sanitized = sanitizeBillingAddress(req.body);
-        if (!sanitized) {
+        const addressResult = validateBillingAddress(req.body);
+        if (!addressResult.ok) {
           return res.status(400).json({
-            error: "Incomplete billing address",
-            message:
-              "Please provide line1, city, state, postal_code, and country (each ≤ 200 chars)",
+            error: "Invalid billing address",
+            message: addressResult.error,
           });
         }
+        const sanitized = addressResult.address;
 
         const org = await orgDb.getOrganization(orgId);
         if (!org) {

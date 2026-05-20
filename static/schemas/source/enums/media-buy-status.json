@@ -14,7 +14,7 @@
     "canceled"
   ],
   "enumDescriptions": {
-    "pending_creatives": "Media buy is approved but has no creatives assigned. The buyer must attach creatives via sync_creatives before the buy can serve.",
+    "pending_creatives": "**Buyer-side action required.** The media buy is approved by the seller and has no creatives assigned — the buyer must attach creatives via `sync_creatives` before the buy can serve. Not to be confused with a publisher-side or governance-side approval queue: the seller has already accepted the buy; only the buyer's creative submission is missing. Naming convention: `pending_X` names the lifecycle phase that is next required (here, `creatives`), not a state of waiting on seller/operator approval — consistent with `pending_start` (waiting for the flight date to begin).",
     "pending_start": "Media buy is ready to serve and waiting for its flight date to begin.",
     "active": "Media buy is currently running",
     "paused": "Media buy is temporarily paused",

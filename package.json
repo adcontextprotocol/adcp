@@ -1,6 +1,6 @@
 {
   "name": "adcontextprotocol",
-  "version": "3.0.3",
+  "version": "3.1.0-beta.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,7 +11,7 @@
     "start:stripe": "bash -c 'source <(grep CONDUCTOR_PORT .env.local | sed \"s/^/export /\") && PORT=${CONDUCTOR_PORT:-3000} && stripe listen --forward-to localhost:$PORT/api/webhooks/stripe'",
     "dev": "echo 'Use docker compose up --build for local development' && exit 1",
     "db:migrate": "DOTENV_CONFIG_PATH=.env.local tsx --import dotenv/config server/src/db/migrate.ts",
-    "build": "tsc --project server/tsconfig.json && mkdir -p dist/addie/rules && cp server/src/addie/rules/*.md dist/addie/rules/ && npm run build:schemas && npm run build:compliance && npm run build:protocol-tarball",
+    "build": "tsc --project server/tsconfig.json && node scripts/copy-server-assets.cjs && npm run build:schemas && npm run build:compliance && npm run build:protocol-tarball",
     "build:openapi": "tsx scripts/generate-openapi.ts",
     "build:addie-tools": "tsx scripts/build-addie-tool-reference.ts",
     "test:addie-tools": "tsx scripts/build-addie-tool-reference.ts --check",
@@ -27,6 +27,9 @@
     "test:extension-schemas": "node tests/extension-schemas.test.cjs",
     "test:snippets": "node tests/snippet-validation.test.cjs",
     "test:json-schema": "node tests/json-schema-validation.test.cjs",
+    "test:canonical-fixtures": "node tests/canonical-fixture-validation.test.cjs",
+    "test:canonical-negative": "node tests/canonical-negative-fixtures.test.cjs",
+    "test:canonical-conventions": "node tests/canonical-format-conventions.test.cjs",
     "test:error-handling": "node tests/check-error-handling.cjs",
     "test:composed": "node tests/composed-schema-validation.test.cjs",
     "test:rejection-arm-mutex": "node tests/rejection-arm-mutual-exclusion.test.cjs",
@@ -55,6 +58,7 @@
     "test:test-dynamic-imports": "node --test --test-force-exit --test-timeout=30000 tests/lint-test-dynamic-imports.test.cjs",
     "test:callapi-state-change": "node --test --test-force-exit --test-timeout=30000 tests/lint-callapi-state-change.test.cjs",
     "test:build-schemas-hoist-enums": "node --test --test-force-exit --test-timeout=30000 tests/build-schemas-hoist-enums.test.cjs",
+    "test:build-schemas-hoist-marked": "node --test --test-force-exit --test-timeout=30000 tests/build-schemas-hoist-marked.test.cjs",
     "test:error-codes": "node scripts/lint-error-codes.cjs",
     "test:error-code-drift": "node scripts/lint-error-code-drift.cjs",
     "test:substitution-vector-names": "node scripts/lint-substitution-vector-names.cjs",
@@ -70,7 +74,7 @@
     "test:platform-agnostic": "node tests/check-platform-agnostic.cjs",
     "test:oneof-discriminators": "node scripts/audit-oneof.mjs --check",
     "audit:oneof": "node scripts/audit-oneof.mjs",
-    "test": "npm run test:docs-nav && npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:extension-schemas && npm run test:error-handling && npm run test:json-schema && npm run test:composed && npm run test:rejection-arm-mutex && npm run test:migrations && npm run test:hmac-vectors && npm run test:hmac-signer-conformance && npm run test:transport-errors && npm run test:targeting-overlay-vectors && npm run test:storyboard-scoping && npm run test:storyboard-branch-sets && npm run test:storyboard-provides-state-for && npm run test:storyboard-contradictions && npm run test:storyboard-context-entity && npm run test:storyboard-auth-shape && npm run test:storyboard-test-kits && npm run test:storyboard-sample-request-schema && npm run test:storyboard-response-schema && npm run test:storyboard-context-output-paths && npm run test:storyboard-validations-paths && npm run test:storyboard-check-enum && npm run test:storyboard-advisory-expiry && npm run test:storyboard-raw-mode-required && npm run test:storyboard-doc-parity && npm run test:pagination-invariant && npm run test:version-envelope && npm run test:test-dynamic-imports && npm run test:callapi-state-change && npm run test:build-schemas-hoist-enums && npm run test:error-codes && npm run test:substitution-vector-names && npm run test:platform-agnostic && npm run test:oneof-discriminators && npm run test:unit && npm run test:server-unit && npm run test:openapi && npm run typecheck",
+    "test": "npm run test:docs-nav && npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:extension-schemas && npm run test:error-handling && npm run test:json-schema && npm run test:composed && npm run test:rejection-arm-mutex && npm run test:migrations && npm run test:hmac-vectors && npm run test:hmac-signer-conformance && npm run test:transport-errors && npm run test:targeting-overlay-vectors && npm run test:storyboard-scoping && npm run test:storyboard-branch-sets && npm run test:storyboard-provides-state-for && npm run test:storyboard-contradictions && npm run test:storyboard-context-entity && npm run test:storyboard-auth-shape && npm run test:storyboard-test-kits && npm run test:storyboard-sample-request-schema && npm run test:storyboard-response-schema && npm run test:storyboard-context-output-paths && npm run test:storyboard-validations-paths && npm run test:storyboard-check-enum && npm run test:storyboard-advisory-expiry && npm run test:storyboard-raw-mode-required && npm run test:storyboard-doc-parity && npm run test:pagination-invariant && npm run test:version-envelope && npm run test:test-dynamic-imports && npm run test:callapi-state-change && npm run test:build-schemas-hoist-enums && npm run test:build-schemas-hoist-marked && npm run test:error-codes && npm run test:substitution-vector-names && npm run test:platform-agnostic && npm run test:oneof-discriminators && npm run test:unit && npm run test:server-unit && npm run test:openapi && npm run typecheck",
     "test:all": "npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:error-handling && npm run test:snippets && npm run typecheck",
     "precommit": "bash scripts/with-timeout.sh 60 npm run test:unit && npm run test:test-dynamic-imports && npm run test:callapi-state-change && npm run typecheck",
     "test:storyboards": "bash scripts/run-storyboards-matrix.sh",
@@ -92,7 +96,7 @@
     "dev:docs": "node scripts/dev-docs.mjs"
   },
   "dependencies": {
-    "@adcp/sdk": "^7.3.0",
+    "@adcp/sdk": "^7.7.0",
     "@anthropic-ai/sdk": "^0.96.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.5.4",

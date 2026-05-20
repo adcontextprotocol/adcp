@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/format-shape-vocabulary.json",
+  "title": "AdCP Format Shape Vocabulary Registry",
+  "description": "Canonical registry of `format_shape` values used on `ProductFormatDeclaration` when `format_kind: \"custom\"`. Captures recognized creative-structure patterns that are NOT yet first-class canonical formats — composed/coordinated/sponsorship shapes that high-end publishers and broadcast networks sell as headline products. Each registry entry names a global shape; the seller's actual structure lives in `format_schema` (URI+digest reference to the seller-hosted or AAO-mirrored schema) so buyer agents can fetch and validate against a real schema rather than reasoning over an opaque ext blob.\n\n**Two-layer extensibility:**\n- **Canonical** (`format_kind: image`, `video_vast`, etc.): full spec coverage, stable contract.\n- **Custom + format_shape + format_schema** (`format_kind: \"custom\"`): recognized pattern, classified against this vocabulary, but the params/slots structure is supplied by a fetchable schema rather than baked into AdCP.\n\nNon-canonical `format_shape` values remain valid (validators MAY soft-warn) so adopters CAN ship a shape that isn't yet in the registry — adding entries is a vocabulary PR, not a major-version bump. Once a `format_shape` entry sees 2+ adopters with substantively similar `format_schema` content for 90+ days, the working group promotes it to a first-class canonical (creates `/schemas/formats/canonical/<name>.json`, adds the value to `canonical-format-kind.json`, retires the registry entry). See [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666) for the promotion queue.\n\n**Promotion migration contract (normative).** Promotion is a wire-shape change for any consumer code branching on `format_kind == \"custom\"` — the same publisher's product now ships under `format_kind: \"<promoted_name>\"`. To avoid silent breakage:\n\n1. **Transition window.** When the working group promotes a `format_shape` to a first-class `format_kind`, sellers MAY ship a product under BOTH shapes during the transition window — two declarations on the same product's `format_options` array, one `format_kind: \"custom\"` + `format_shape: \"<name>\"` and one `format_kind: \"<promoted_name>\"`. Transition window is at minimum 90 days; the promotion PR sets the calendar.\n2. **Consumer-SDK deprecation warning.** SDKs encountering a `format_kind: \"custom\"` declaration whose `format_shape` matches an entry promoted to a first-class canonical SHOULD emit a structured deprecation warning via their lint channel (same pattern as `FORMAT_PROJECTION_FAILED` cross-boundary visibility) carrying `{ format_shape, promoted_to: format_kind, promotion_release, transition_end }`. Adopters branching on `format_kind == \"custom\"` past `transition_end` silently lose that publisher's inventory; the deprecation warning is the early signal.\n3. **`promotion_status` lifecycle.** When promotion is scheduled, the entry's `promotion_status` SHOULD update from `tracking — see adcp#3666` to `promoted to <format_kind> in <version>; transition ends <date>`. SDKs MAY read the registry at codegen / runtime to populate the deprecation warning's `transition_end`.\n4. **Producer-side hygiene.** After the transition window closes, sellers SHOULD drop the legacy `format_kind: \"custom\"` declaration and ship only the first-class canonical. Buyers MAY then assume `format_kind == \"custom\"` + `format_shape: \"<name>\"` is a long-tail / non-promoted shape, not a promoted-canonical-shipped-under-the-old-name.\n\nWithout this contract, every promotion event silently breaks adopter code branching on `format_kind == \"custom\"`. With it, the breakage surfaces as a structured warning during the transition window and adopters can update their branching ahead of the cutover.",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-30",
+  "vocabulary": {
+    "multi_placement_takeover": {
+      "description": "Coordinated buy targeting several placements at once on a single page or content unit, sold as a unit (homepage skin + banner + preroll + sponsorship lockup, all firing for the same advertiser concurrently). Used by NYTimes, WSJ, Hulu, premium publishers. Multi-canonical composition — the format_schema enumerates each component placement and its own format constraints.",
+      "typical_use": "Premium publisher homepage takeovers, day-part broadcast takeovers, content-section sponsorships",
+      "tracking_model_hint": "Per-component impressions plus a takeover-level engagement metric (time-on-page, scroll depth)",
+      "promotion_status": "tracking — see adcp#3666"
+    },
+    "roadblock": {
+      "description": "Single advertiser owns all spots in a content unit (every commercial break in a half-hour show, every banner on a section page, every preroll for a content category). Linear-TV-shaped but applies to digital too. Distinct from `multi_placement_takeover` because all spots share the SAME format (ten preroll videos), not different formats coordinated together.",
+      "typical_use": "Linear TV roadblocks, podcast network sponsorships of a content category, all-spots-on-section",
+      "tracking_model_hint": "Per-spot impressions plus exclusivity attestation",
+      "promotion_status": "tracking — see adcp#3666"
+    },
+    "branded_content": {
+      "description": "Publisher-produced editorial sponsorship (advertorial, sponsored articles, paid features, branded videos). Shape doesn't compose from canonicals — it's its own creative production model where the publisher's editorial team produces the asset from a buyer brief. Distinct from `agent_placement` (AI-surface composition) and `audio_hosted` host-read (shorter-form, scripted-from-buyer).",
+      "typical_use": "NYT T Brand Studio, WSJ Custom Content, Vox Creative",
+      "tracking_model_hint": "Engagement-keyed (time-on-page, scroll depth, video completion) rather than impression-keyed",
+      "promotion_status": "tracking — see adcp#3666"
+    },
+    "cross_screen_sponsorship": {
+      "description": "Synchronized buys across linear TV / CTV / display / audio. Frequency-capped at the user, not the screen. Concurrent-session-keyed tracking that ties impressions across devices to the same household / individual.",
+      "typical_use": "Live sports sponsorship spanning broadcast + streaming + social, multi-screen reach campaigns",
+      "tracking_model_hint": "Cross-device impression dedup; household-level reach measurement",
+      "promotion_status": "tracking — see adcp#3666"
+    },
+    "sponsorship_lockup": {
+      "description": "Persistent brand presence over a content window (Hulu's 'commercial-free experience presented by Brand X', podcast network sponsorship lockups, newsletter section sponsorships, Spotify-shaped audio-on-demand sponsorships). Long-duration, low-impression count, premium pricing. Structure: a brand reference + a duration window + (optionally) a small lockup creative (logo, tagline) that persists.",
+      "typical_use": "Premium streaming sponsorships, podcast network presenting sponsorships",
+      "tracking_model_hint": "Window-duration impressions plus a single lockup-creative-view event",
+      "promotion_status": "tracking — see adcp#3666"
+    },
+    "newsletter_sponsorship": {
+      "description": "Email-embedded creative with newsletter-issue-keyed measurement. Distinct from display because the impression event is open-tracking-pixel-shaped, not page-view-shaped. Distinct from email marketing because the surface is a third-party newsletter (the publisher's), not a brand-owned send.",
+      "typical_use": "Substack newsletter sponsorships, Morning Brew, Axios, The Skimm",
+      "tracking_model_hint": "Open-pixel impressions (proxied via the newsletter's email service); CTR via redirect URLs",
+      "promotion_status": "tracking — see adcp#3666"
+    },
+    "ar_lens": {
+      "description": "Interactive AR creative (Snap lens, Meta camera filter, TikTok effect). SDK-specific composition model; doesn't fit `html5` because the engagement shape is fundamentally different — face/world tracking, gesture interactions, share-out mechanics, rendered-on-device.",
+      "typical_use": "Snap branded lenses, Meta camera filters, TikTok branded effects",
+      "tracking_model_hint": "Lens-specific events (open, capture, share, time-played) tied to lens_id",
+      "promotion_status": "tracking — see adcp#3666"
+    },
+    "playable": {
+      "description": "Interactive HTML5 mini-game or experience (Unity playable, IAB MRAID 3.0 playable). Distinct from `html5` banner because engagement is the primary impression event, not view-through.",
+      "typical_use": "Mobile game ads, branded mini-experiences (IKEA Place-shaped AR-lite)",
+      "tracking_model_hint": "Engagement-event-keyed (game start, level complete, completion)",
+      "promotion_status": "tracking — see adcp#3666"
+    },
+    "live_event_sponsorship": {
+      "description": "Sponsorship attached to a specific live broadcast (sports, concert, breaking-news window). Concurrent-impression and stream-state tracking — the impression is bounded by the event's start/end times and may include during-event creative variants.",
+      "typical_use": "Super Bowl pregame sponsorship, live concert streaming sponsorships, breaking-news sponsorship windows",
+      "tracking_model_hint": "Event-window-bounded impressions; stream-state correlation (live vs replay vs ended)",
+      "promotion_status": "tracking — see adcp#3666"
+    }
+  }
+}

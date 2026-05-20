@@ -17,6 +17,11 @@ const logger = createLogger('addie-member-tools');
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
 import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
+import {
+  verifyAgentHostname,
+  buildUnverifiedHostnameMessage,
+  isHostnameOwnershipRejection,
+} from '../../services/agent-hostname-verification.js';
 import { PUBLIC_TEST_AGENT, PUBLIC_TEST_AGENT_URLS, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
@@ -349,9 +354,29 @@ function validateAgentUrl(agentUrl: string): string | null {
 }
 
 /**
- * Build auth options for the SDK from resolved auth.
+ * Normalize a Basic auth_token submitted to `save_agent` into the base64
+ * `user:password` form that gets persisted. Accepts either raw `user:password`
+ * or the already-base64-encoded form; the `:` character is not in the base64
+ * alphabet, so its presence unambiguously identifies the raw form. Returns
+ * `{ ok: true, stored }` on success and `{ ok: false }` when the value is
+ * neither shape (used to reject at the save_agent boundary so a malformed
+ * credential never lands in the DB).
+ *
+ * Exported for unit testing.
  */
-function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined {
+export function normalizeBasicAuthForStorage(token: string): { ok: true; stored: string } | { ok: false } {
+  if (token.includes(':')) {
+    return { ok: true, stored: Buffer.from(token, 'utf8').toString('base64') };
+  }
+  const decoded = Buffer.from(token, 'base64').toString('utf8');
+  if (!decoded.includes(':')) return { ok: false };
+  return { ok: true, stored: token };
+}
+
+/**
+ * Build auth options for the SDK from resolved auth. Exported for unit testing.
+ */
+export function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined {
   if (!resolved.authToken) return undefined;
 
   if (resolved.authType === 'basic') {
@@ -360,6 +385,16 @@ function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: 
     if (colonIndex >= 0) {
       return { type: 'basic', username: decoded.slice(0, colonIndex), password: decoded.slice(colonIndex + 1) };
     }
+    // Stored basic credential is malformed — likely a legacy row saved
+    // before save_agent normalized raw user:pass to base64. Re-classifying
+    // as bearer would send "Authorization: Bearer user:pass" on the wire;
+    // the agent rejects, and the user sees a misleading "agent didn't
+    // declare capabilities" error. Send the request unauthenticated
+    // instead so the auth-failure diagnostic in recommend_storyboards
+    // (which fires on empty capabilities + source=saved) correctly points
+    // the user at re-saving credentials.
+    logger.warn({ source: resolved.source, resolvedUrl: resolved.resolvedUrl }, 'addie: stored basic credential failed to decode as base64 user:pass; sending request unauthenticated');
+    return undefined;
   }
 
   return { type: 'bearer', token: resolved.authToken };
@@ -650,9 +685,23 @@ export const MEMBER_TOOLS: AddieTool[] = [
     },
   },
   {
+    name: 'set_my_name',
+    description:
+      "Set the current user's first name and (optionally) last name. Writes through to the local DB, organization memberships, and back to WorkOS. Use this when a credential check tells you the user has no name on file, or whenever the user explicitly asks to set or correct their name.",
+    usage_hints: 'use when check_credentials returns NAME_REQUIRED, or the user says "my name is X" / "set my name to X". For full names like "Tom Hespos" split into first_name="Tom" + last_name="Hespos". Do NOT call this for an admin renaming someone else — that\'s update_user_name (admin only).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        first_name: { type: 'string', description: 'First name (required, 1-255 chars)' },
+        last_name: { type: 'string', description: 'Last name (optional, up to 255 chars). Pass empty string or omit to leave blank.' },
+      },
+      required: ['first_name'],
+    },
+  },
+  {
     name: 'update_my_profile',
     description:
-      "Update the current user's personal profile — who they are as a person. Can update headline, bio, expertise, interests, location, and social links. Only updates fields that are provided.",
+      "Update the current user's personal profile — who they are as a person. Can update headline, bio, expertise, interests, location, and social links. Only updates fields that are provided. Does NOT update first/last name — use set_my_name for that.",
     usage_hints: 'use when user wants to update their personal info, headline, bio, or expertise',
     input_schema: {
       type: 'object',
@@ -1214,7 +1263,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
           description: 'What kind of agent this is. Required — ask the owner; do not guess. `brand` (brand-side intent), `rights` (rights/clearance), `measurement` (verification/attribution), `governance` (policy/compliance), `creative` (creative production/format), `sales` (publisher/sell-side inventory), `buying` (DSP/buy-side execution), `signals` (audience/signal provider).',
         },
         auth_token: { type: 'string', description: 'Static auth token (stored encrypted). Mutually exclusive with oauth_client_credentials on any given save call.' },
-        auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the auth_token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token must be the base64-encoded "user:password" string, sent as Authorization: Basic <token>' },
+        auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the auth_token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token is "user:password" (the tool also accepts the base64-encoded form); stored base64-encoded and sent as Authorization: Basic <token>.' },
         oauth_client_credentials: {
           type: 'object',
           description: 'OAuth 2.0 client-credentials configuration for machine-to-machine auth (RFC 6749 §4.4). The SDK exchanges at the token endpoint before every call and refreshes on 401. Use this when the agent requires a bearer token minted from a client_id/client_secret pair, not a human authorization flow.',
@@ -1861,6 +1910,60 @@ export function createMemberToolHandlers(
   // ============================================
   // PERSONAL PROFILE (the person)
   // ============================================
+  handlers.set('set_my_name', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to set your name. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+    // Bounded — writes to users + organization_memberships + WorkOS on every
+    // call. Default cap (60/10min/user) is plenty for legitimate use.
+    const rate = await checkToolRateLimit('set_my_name', memberContext.workos_user.workos_user_id);
+    if (!rate.ok) {
+      const retrySeconds = Math.max(1, Math.ceil((rate.retryAfterMs ?? 60000) / 1000));
+      return `Rate limit exceeded on set_my_name. Try again in ~${retrySeconds} seconds.`;
+    }
+    if (typeof input.first_name !== 'string') {
+      throw new ToolError('first_name is required.');
+    }
+
+    const { sanitizeName } = await import('../../utils/resolve-user-name.js');
+    const rawFirst = input.first_name;
+    const rawLast = typeof input.last_name === 'string' ? input.last_name : '';
+    if (rawFirst.length > 255) throw new ToolError('first_name must be 255 characters or fewer.');
+    if (rawLast.length > 255) throw new ToolError('last_name must be 255 characters or fewer.');
+
+    const firstName = sanitizeName(rawFirst);
+    const lastName = sanitizeName(rawLast) || null;
+    if (!firstName) throw new ToolError('first_name cannot be empty after trimming.');
+
+    const userId = memberContext.workos_user.workos_user_id;
+    const pool = getPool();
+    await pool.query(
+      `UPDATE users SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+      [firstName, lastName, userId]
+    );
+    await pool.query(
+      `UPDATE organization_memberships SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+      [firstName, lastName, userId]
+    );
+
+    try {
+      await getWorkos().userManagement.updateUser({
+        userId,
+        firstName,
+        lastName: lastName ?? undefined,
+      });
+    } catch (workosError) {
+      logger.warn({ err: workosError, userId }, 'set_my_name: WorkOS push failed (local update applied)');
+    }
+
+    const { invalidateMemberContextCache } = await import('../member-context.js');
+    invalidateMemberContextCache();
+    logger.info({ userId }, 'set_my_name: user name updated');
+
+    const display = lastName ? `${firstName} ${lastName}` : firstName;
+    return `Your name is set to **${display}**. Anything that uses your name (credentials, member announcements, Addie's greetings) will now use this.`;
+  });
+
   handlers.set('get_my_profile', async () => {
     if (!memberContext?.workos_user?.workos_user_id) {
       return 'You need to be logged in to see your profile. Please log in at https://agenticadvertising.org/dashboard first.';
@@ -3916,10 +4019,44 @@ export function createMemberToolHandlers(
 
     let output = '';
     if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
+    else if (resolved.source === 'oauth') output += '_Using saved OAuth credentials._\n\n';
     output += `## Agent: ${safeAgentName || resolved.resolvedUrl}\n\n`;
 
-    // No capabilities declared → coach the developer on how to fix it.
+    // No capabilities declared — disambiguate: auth failure vs. genuinely
+    // undeployed agent. When Addie used saved or OAuth credentials, an empty
+    // response most likely means auth didn't reach the agent (malformed
+    // credential, header silently dropped by the SDK, agent degraded to anon).
+    // Blaming the agent owner is wrong in this case; emit an auth diagnosis
+    // instead. Fall through to the developer-coaching path only when no
+    // credentials were expected.
     if (supportedProtocols.length === 0 && specialisms.length === 0) {
+      if (resolved.source === 'saved' || resolved.source === 'oauth' || resolved.source === 'explicit') {
+        // 'explicit' is a test/internal codepath (caller passed a raw token directly);
+        // label and remediation match `saved` since the diagnosis steps are identical.
+        // The four ResolvedAgentAuth.source variants ('explicit'|'saved'|'oauth'|'public'|'none')
+        // are an exhaustive enum from line 223; if a new variant is added, extend this branch.
+        const authLabel = resolved.source === 'oauth' ? 'OAuth token' : resolved.source === 'explicit' ? 'the provided token' : 'saved credentials';
+        const reSaveStep = resolved.source === 'oauth'
+          ? 'reconnect the OAuth provider — the access token may have expired or had its scope revoked'
+          : 'run `save_agent` again with the correct credentials';
+        // Render the agent URL inside inline-code backticks rather than
+        // interpolating into a copy-pasteable `curl "..."` example.
+        // sanitizeAgentField strips control chars and backticks but does not
+        // escape shell metacharacters (`"`, `$`, `\``), so an in-prose URL
+        // with crafted content would be a copy-paste foot-gun.
+        const safeUrl = sanitizeAgentField(resolved.resolvedUrl, 300);
+        output += `I tested your agent using your ${authLabel}, but got back an empty capabilities response — no \`supported_protocols\` and no \`specialisms\`.\n\n`;
+        if (probeError) {
+          const safeProbeErr = fenceAgentValue(probeError, 300);
+          output += `The agent reported: ${safeProbeErr || '(no detail)'}\n\n`;
+        }
+        output += `This usually means the credentials didn't reach the agent:\n\n`;
+        output += `1. **Verify the credentials work:** call \`${safeUrl}\` directly with your credentials (e.g. via curl or Postman) and confirm \`supported_protocols\` appears in the response.\n`;
+        output += `2. **Re-save if needed:** ${reSaveStep}.\n`;
+        output += `3. **Check the SDK version:** if you're using \`@adcp/sdk\`, make sure it's up to date — older versions have a known issue that drops the auth header on the capabilities precheck path.\n\n`;
+        output += `If credentials look correct and the SDK is current, the agent may be returning an anonymous-shaped response for unrecognized auth rather than a 401. Confirm the agent accepts the auth scheme and credential format you saved.\n`;
+        return output;
+      }
       output += `Your agent didn't tell us what it does yet.\n\n`;
       if (probeError) {
         const safeProbeErr = fenceAgentValue(probeError, 300);
@@ -5705,6 +5842,20 @@ export function createMemberToolHandlers(
     // rather than `string | null` — TS can't carry the narrowing across the
     // function boundary.
     const agentUrl: string = canonical;
+
+    // Hostname ownership check (#4499 MVP). Mirrors the REST POST
+    // /api/me/agents gate. See `agent-hostname-verification.ts` for the
+    // full rationale — short version: the agent hostname must be on
+    // (or a subdomain of) an `organization_domains` row with
+    // `verified = true` for the registering org. Orgs without verified
+    // domains hard-reject (`no_verified_domains`) — `email_domain` is
+    // not consulted, since it can be written from an unverified WorkOS
+    // domain via the brand-claim issue flow.
+    const hostnameVerification = await verifyAgentHostname(saveOrgId, agentUrl);
+    if (isHostnameOwnershipRejection(hostnameVerification)) {
+      return buildUnverifiedHostnameMessage(hostnameVerification);
+    }
+
     const agentName = input.agent_name as string | undefined;
     const authToken = input.auth_token as string | undefined;
     if (authToken !== undefined) {
@@ -5713,6 +5864,23 @@ export function createMemberToolHandlers(
     }
     const rawAuthType = input.auth_type as string | undefined;
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
+
+    // For Basic auth, accept either raw "user:password" or the base64-encoded
+    // form and normalize to base64 for storage. Aligns with CLI
+    // (--auth user:pass), SDK (createTestClient with {username, password}),
+    // and the dashboard's connect form — all of which accept raw input.
+    // Without normalization, save_agent was the ecosystem outlier requiring
+    // users to pre-encode; a raw value silently landed in the DB and got
+    // re-classified as Bearer at request time.
+    let storedAuthToken = authToken;
+    if (authToken && authType === 'basic') {
+      const normalized = normalizeBasicAuthForStorage(authToken);
+      if (!normalized.ok) {
+        return `**Error:** Basic auth_token must be "user:password" (or the base64-encoded form of it). The value you provided doesn't decode to a user:password pair.`;
+      }
+      storedAuthToken = normalized.stored;
+    }
+
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
 
     // Caller-declared agent type. Required at the schema level — the JSON-RPC
@@ -5853,8 +6021,8 @@ export function createMemberToolHandlers(
         if (agentName) {
           await agentContextDb.update(context.id, { agent_name: agentName, protocol });
         }
-        if (authToken) {
-          await agentContextDb.saveAuthToken(context.id, authToken, authType);
+        if (storedAuthToken) {
+          await agentContextDb.saveAuthToken(context.id, storedAuthToken, authType);
         }
         if (clientCredentials) {
           await agentContextDb.saveOAuthClientCredentials(context.id, clientCredentials);
@@ -5888,13 +6056,13 @@ export function createMemberToolHandlers(
         created_by: memberContext.workos_user.workos_user_id,
       });
 
-      if (authToken) {
-        await agentContextDb.saveAuthToken(context.id, authToken, authType);
+      if (storedAuthToken) {
+        await agentContextDb.saveAuthToken(context.id, storedAuthToken, authType);
       }
       if (clientCredentials) {
         await agentContextDb.saveOAuthClientCredentials(context.id, clientCredentials);
       }
-      if (authToken || clientCredentials) {
+      if (storedAuthToken || clientCredentials) {
         context = await agentContextDb.getById(context.id);
       }
 

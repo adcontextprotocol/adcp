@@ -29,6 +29,36 @@ The Creative Protocol provides 4 standardized tasks for building and previewing 
 
 ---
 
+## Canonical formats (AdCP 3.1+)
+
+Products and manifests use the **canonical-formats** vocabulary — 11 canonical `format_kind` values that name the underlying creative shape (image / html5 / display_tag / video_hosted / video_vast / audio_hosted / audio_daast / image_carousel / responsive_creative / sponsored_placement / agent_placement / custom).
+
+A `ProductFormatDeclaration` carries:
+
+- `format_kind`: the canonical (discriminator)
+- `params`: per-canonical parameters narrowing the format (dimensions, durations, codecs, char limits, CTA enums, sizes[], etc.)
+- Optional `capability_id`: stable identifier for routing when a product carries multiple declarations of the same kind
+- Optional `v1_format_ref: [{agent_url, id}]`: **always an array** — links this v2 declaration to one or more v1 named formats. Multi-size declarations should carry one ref per size in `sizes[]`.
+- Optional `seller_preference: "preferred" | "accepted" | "discouraged"`: soft routing hint when a product carries multiple format_options
+
+**Where to declare a format:**
+
+| Where | When to use |
+|---|---|
+| `adagents.json` top-level `formats[]` (publisher catalog) | Format shared across many sellers of the same publisher inventory; declares the publisher-authoritative shape once |
+| `Product.format_options[]` (inline on a product) | Seller-specific narrowing, custom format, or one-off pricing variant. Reference a publisher catalog entry by `capability_id` when applicable |
+| `Placement.format_options[]` (capability_id reference OR inline) | Tying a publisher placement to one or more accepted formats |
+
+**Size flexibility (image / html5 / display_tag):** exactly one of three modes — `width`+`height` (fixed), `sizes: [{w,h}]` (multi-size, mirrors OpenRTB `banner.format[]`), or `min_width`/`max_width`/`min_height`/`max_height` (responsive).
+
+**Community mirror for unadopted platforms:** the AAO publishes adagents.json files for unadopted platforms (Meta, TikTok, etc.) at `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json`. When the request asks "what formats does meta.com support?" the SDK fetches the platform's hosted file first, falls back to the AAO mirror, and surfaces which tier produced the result via the response's `source` field.
+
+**Conversion tracking is NOT a creative-format concern.** Pixel-firing, conversion events, and attribution belong on `sync_event_sources` / `event_log` (campaign-scoped). Don't stuff `pixel_id` into `platform_extensions` on a format declaration.
+
+See `docs/creative/canonical-formats.mdx` for the full vocabulary, narrowing rules, error-code surface, and worked examples (Meta Reels, IAB display, host-read podcast, generative DSP).
+
+---
+
 ## Task Reference
 
 ### list_creative_formats

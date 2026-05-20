@@ -74,7 +74,6 @@ export const ADCP_TASK_REGISTRY: Record<string, AdcpTaskMeta> = {
   },
   sync_catalogs: { area: 'media-buy', description: 'Sync product catalogs, store locations, job postings, and other structured feeds to a seller account' },
   list_creative_formats: { area: 'media-buy', description: 'View supported creative specifications from a sales or creative agent' },
-  list_authorized_properties: { area: 'media-buy', description: 'Get the list of publisher properties this sales agent can sell' },
   get_media_buys: { area: 'media-buy', description: 'Retrieve media buy state: status, valid_actions, creative approvals, pending formats' },
   get_media_buy_delivery: { area: 'media-buy', description: 'Retrieve performance metrics for a campaign' },
   update_media_buy: {

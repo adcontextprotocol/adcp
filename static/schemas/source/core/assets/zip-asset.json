@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/assets/zip-asset.json",
+  "title": "Zip Asset",
+  "description": "Bundled creative asset delivered as a zip archive — typically an HTML5 banner with index.html plus supporting CSS, JS, images, and fonts. Receivers unpack the zip, validate internal structure, and serve contents from CDN. Distinct from inline HTML (html asset) and from third-party tag URLs (url asset with url_type tracker_script).",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "zip",
+      "description": "Discriminator identifying this as a zip-bundled asset. See /schemas/creative/asset-types for the registry."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL where the zip archive is hosted. Must be HTTPS."
+    },
+    "max_file_size_kb": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum file size in kilobytes. Receivers should reject zips exceeding this."
+    },
+    "entry_point": {
+      "type": "string",
+      "description": "Relative path to the entry file within the zip (typically 'index.html'). Receivers default to 'index.html' if absent."
+    },
+    "allowed_inner_extensions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "File extensions permitted inside the zip (e.g., ['html', 'css', 'js', 'png', 'jpg', 'svg', 'webp', 'json', 'woff2']). Receivers may reject zips containing other extensions."
+    },
+    "backup_image_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Fallback image URL for environments that cannot render the bundled creative (e.g., non-HTML5 endpoints, ad blockers). Recommended for HTML5 banners."
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Optional SHA-256 content digest of the zip archive (sha256:<hex>) for integrity verification. Lets receivers detect tampered or stale archives."
+    },
+    "accessibility": {
+      "type": "object",
+      "description": "Self-declared accessibility properties for this opaque creative",
+      "x-accessibility": true,
+      "properties": {
+        "alt_text": {
+          "type": "string",
+          "description": "Text alternative describing the creative content"
+        },
+        "keyboard_navigable": {
+          "type": "boolean",
+          "description": "Whether the creative can be fully operated via keyboard"
+        },
+        "motion_control": {
+          "type": "boolean",
+          "description": "Whether the creative respects prefers-reduced-motion or provides pause/stop controls"
+        },
+        "screen_reader_tested": {
+          "type": "boolean",
+          "description": "Whether the creative has been tested with screen readers"
+        }
+      }
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+    }
+  },
+  "required": [
+    "asset_type",
+    "url"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "HTML5 banner bundle with backup image",
+      "data": {
+        "asset_type": "zip",
+        "url": "https://cdn.acme.example/creatives/spring-300x250-html5.zip",
+        "max_file_size_kb": 200,
+        "entry_point": "index.html",
+        "allowed_inner_extensions": ["html", "css", "js", "png", "jpg", "svg", "json"],
+        "backup_image_url": "https://cdn.acme.example/creatives/spring-300x250-backup.jpg",
+        "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ]
+}

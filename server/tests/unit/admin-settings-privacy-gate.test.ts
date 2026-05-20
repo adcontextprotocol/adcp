@@ -44,13 +44,21 @@ vi.mock('../../src/slack/client.js', () => ({
   getSlackChannels: (...args: unknown[]) => mockGetSlackChannels(...args),
 }));
 
-vi.mock('../../src/middleware/auth.js', () => ({
-  requireAuth: (req: any, _res: any, next: any) => {
+vi.mock('../../src/middleware/auth.js', () => {
+  const requireAuthMock = (req: any, _res: any, next: any) => {
     req.user = { id: 'user_admin_01', email: 'admin@test', is_admin: true };
     next();
-  },
-  requireAdmin: (_req: any, _res: any, next: any) => next(),
-}));
+  };
+  const passthrough = (_req: any, _res: any, next: any) => next();
+  return {
+    requireAuth: requireAuthMock,
+    requireAdmin: passthrough,
+    // settings.ts uses `...requireGlobalAdmin` after #4684. The array
+    // captures references at module-load time, so the per-export mocks
+    // above don't propagate into it — re-build it here.
+    requireGlobalAdmin: [requireAuthMock, passthrough, passthrough],
+  };
+});
 
 vi.mock('../../src/db/system-settings-db.js', () => ({
   getAllSettings: vi.fn().mockResolvedValue([]),

@@ -31,6 +31,148 @@ The typical optimization cycle follows this pattern:
 4. **Track Changes**: Monitor impact of optimizations
 5. **Iterate**: Continuous improvement through regular analysis
 
+## Metric lifecycle
+
+Every optimization metric in AdCP — whether seller-native (clicks, views, reach), graduated vendor-attested (viewability), or vendor-defined (attention, brand lift, emissions) — flows through the same set of surfaces. Buyers reason about a metric by asking three questions in order:
+
+- **Can you?** — Is the product capable of optimizing for this metric? *(Discovery)*
+- **Will you?** — For this package, are you committing to optimize and report it? *(Commitment)*
+- **Did you?** — In delivery, what was the value, and did you meet the commitment? *(Reporting)*
+
+Each question maps to a specific protocol surface. The same `metric_id` (or `(vendor, metric_id)` tuple for vendor-attested metrics) flows through every layer — discovery, capability declarations, package commitments, and delivery — so buyers reconciling delivery against a goal never need a translation table.
+
+### Standard metric flow (e.g., `clicks`, `viewable_rate`)
+
+| Question | Surface | Field |
+|---|---|---|
+| Can the product report it? | Product capability | `reporting_capabilities.available_metrics` |
+| Can the product optimize for it? | Product capability | `metric_optimization.supported_metrics` |
+| Will the seller commit to reporting it? | Package | `committed_metrics[]` (scope: `standard`) |
+| Does the buyer want it optimized? | Package | `optimization_goals[]` (kind: `metric`) |
+| Does the buyer want accountability? | Package | `performance_standards[]` |
+| What was the value? | Delivery | Standard scalar (e.g., `clicks`, `viewability.viewable_rate`) |
+| Did the seller fail to deliver a committed metric? | Delivery | `missing_metrics[]` (scope: `standard`) |
+
+### Vendor-attested metric flow (e.g., Adelaide attention, Scope3 emissions, Kantar brand lift)
+
+Same lifecycle, with the `(vendor, metric_id)` tuple replacing the plain `metric_id` everywhere:
+
+| Question | Surface | Field |
+|---|---|---|
+| Does the vendor define this metric? | Vendor's capabilities | `get_adcp_capabilities.measurement.metrics[]` |
+| Can the product report this vendor metric? | Product capability | `reporting_capabilities.vendor_metrics[]` |
+| Can the product optimize for this vendor metric? | Product capability | `vendor_metric_optimization.supported_metrics[]` |
+| Will the seller commit to reporting it? | Package | `committed_metrics[]` (scope: `vendor`) |
+| Does the buyer want it optimized? | Package | `optimization_goals[]` (kind: `vendor_metric`) |
+| Does the buyer want accountability? | Package | `performance_standards[]` (with `vendor` field) |
+| What was the value? | Delivery | `vendor_metric_values[]` |
+| Did the seller fail to deliver a committed metric? | Delivery | `missing_metrics[]` (scope: `vendor`) |
+
+### Why both flows matter
+
+The two flows aren't a duplication — they encode the difference between *standardized* and *vendor-specific* measurement. Clicks mean the same thing across every seller; attention does not. Vendor binding is the wire-level evidence that the buyer and seller agreed on *which* attention model is being optimized and reported. See [`measurement/taxonomy.mdx`](/docs/measurement/taxonomy) for the Tier 0 → Tier 1 graduation policy that decides which flow a given metric uses.
+
+### Required coherence between layers
+
+Three rules connect the layers and prevent orphaned goals:
+
+1. **Optimization requires capability.** A package's `optimization_goals[]` entry MUST match a product capability — `metric_optimization.supported_metrics` for `kind: "metric"`, or `vendor_metric_optimization.supported_metrics` for `kind: "vendor_metric"`. Sellers reject mismatches with `TERMS_REJECTED`.
+
+2. **Optimization requires reporting commitment.** For `kind: "vendor_metric"` goals, the matching `(vendor, metric_id)` MUST also appear in the package's `committed_metrics[]`. Optimizing for a metric the seller isn't committed to reporting is unverifiable — the buyer has no way to grade the goal. Sellers reject uncommitted vendor_metric goals with `TERMS_REJECTED`. (This rule is normative for vendor metrics specifically; for seller-native `metric` goals, the metric is usually always reported by virtue of being seller-native, so the coherence is implicit.) A third precondition — discovery, that `metric_id` appears in the vendor's published `measurement.metrics[]` catalog — is SHOULD this minor and tightens to MUST at the next minor while measurement-vendor adoption of AdCP-conformant capability publication catches up.
+
+3. **Performance accountability is independent.** `performance_standards[]` lives in parallel — buyers MAY add a threshold commitment on any metric the seller commits to reporting, regardless of whether they also set an optimization goal on it. The three surfaces (goal / commitment / standard) compose:
+   - Goal only — "push toward this," no accountability floor
+   - Standard only — "you owe me ≥ X," seller decides how to hit it
+   - Both — optimization steers; standard backstops
+
+### Worked example: Adelaide attention end-to-end
+
+A buyer wants to optimize against Adelaide's `attention_score` with a threshold of 70. Here's how the four surfaces line up:
+
+**1. Product capability** (discovered via `get_products`):
+
+```json
+{
+  "product_id": "premium_ctv_video",
+  "vendor_metric_optimization": {
+    "supported_metrics": [
+      {
+        "vendor": { "domain": "adelaidemetrics.com" },
+        "metric_id": "attention_score",
+        "supported_targets": ["cost_per", "threshold_rate"]
+      }
+    ]
+  },
+  "reporting_capabilities": {
+    "vendor_metrics": [
+      { "vendor": { "domain": "adelaidemetrics.com" }, "metric_id": "attention_score" }
+    ]
+  }
+}
+```
+
+**2. Package proposal on `create_media_buy`** — the buyer commits to reporting AND sets the optimization goal (both required by the reporting-coherence rule):
+
+```json
+{
+  "product_id": "premium_ctv_video",
+  "committed_metrics": [
+    {
+      "scope": "vendor",
+      "vendor": { "domain": "adelaidemetrics.com" },
+      "metric_id": "attention_score"
+    }
+  ],
+  "optimization_goals": [
+    {
+      "kind": "vendor_metric",
+      "vendor": { "domain": "adelaidemetrics.com" },
+      "metric_id": "attention_score",
+      "target": { "kind": "threshold_rate", "value": 70 },
+      "priority": 1
+    }
+  ]
+}
+```
+
+A `performance_standard` MAY be layered on top if the buyer wants a contractual floor — e.g., `{ "metric": "attention_score", "vendor": { "domain": "adelaidemetrics.com" }, "threshold": 65 }` — but it's independent of the goal.
+
+**3. Delivery** (`get_media_buy_delivery` response):
+
+```json
+{
+  "vendor_metric_values": [
+    {
+      "vendor": { "domain": "adelaidemetrics.com" },
+      "metric_id": "attention_score",
+      "value": 73.2,
+      "measurable_impressions": 420000
+    }
+  ]
+}
+```
+
+The seller's bidding stack steered toward higher Adelaide attention scores; the reported value `73.2` is above the threshold `70`, so the goal is met. The `measurable_impressions` denominator (`420000` out of, say, 1M delivered impressions) is the coverage figure for Adelaide's measurement — vendor SDKs rarely fire on 100% of delivered impressions, and attention-vendor coverage on CTV today is typically 30–60% depending on app-SDK presence. Always compute coverage from `measurable_impressions / impressions` before reasoning about the reported value.
+
+**4. Accountability gap reporting** (also in the `get_media_buy_delivery` response, when commitment isn't met):
+
+```json
+{
+  "by_package": [{
+    "package_id": "...",
+    "missing_metrics": [
+      {
+        "scope": "vendor",
+        "vendor": { "domain": "adelaidemetrics.com" },
+        "metric_id": "attention_score"
+      }
+    ]
+  }]
+}
+```
+
+If Adelaide's coverage on the inventory dropped below the seller's confidence threshold and they couldn't populate `vendor_metric_values` for this period, the same `(vendor, metric_id)` shows up in `missing_metrics` — same key across the entire lifecycle, so buyer reconciliation is a row-level join.
+
 ## Performance Monitoring
 
 ### Real-Time Metrics
@@ -142,15 +284,16 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`cost_per_acquisition`**: Cost per conversion
 - **`new_to_brand_rate`**: Fraction of conversions from first-time brand buyers
 - **`leads`**: Leads generated
-- **`reach`**: Unique reach (paired with `reach_unit`)
-- **`frequency`**: Average frequency per reach unit
+- **`reach`**: Unique reach (paired with `reach_unit`). Measurement window declared via `reach_window` (`cumulative` / `period` / `rolling`). When `reach_window` is omitted, the window is unspecified — buyers MUST NOT sum reach across rows.
+- **`reach_window`**: Window semantics for reach/frequency — object with `kind` (`cumulative` since campaign start, `period` for non-overlapping snapshot, `rolling` for trailing window) and `period: Duration` (required for `period` and `rolling`)
+- **`frequency`**: Average frequency per reach unit, measured over `reach_window`
 - **`grps`**: Gross Rating Points (for CPP billing)
 - **`engagements`**: Direct ad interactions beyond viewing (reactions, taps, opens)
 - **`engagement_rate`**: Platform-specific engagement rate
 - **`follows`**: New followers/subscribes attributed to delivery
 - **`saves`**: Saves, bookmarks, playlist adds attributed to delivery (platforms vary in name — Pinterest "repins", TikTok "video_saves" — all report under this canonical key)
 - **`profile_visits`**: Visits to the brand's in-platform page
-- **`viewability`**: Viewability data (measurable_impressions, viewable_impressions, viewable_rate, standard, vendor). Separates MRC and GroupM standards. The optional `vendor` field carries a `BrandRef` so the row is self-describing — buyer agents reading delivery in isolation can attribute the numbers to a measurement vendor without joining back to `package.committed_metrics` or `package.performance_standards`.
+- **`viewability`**: Viewability data (measurable_impressions, viewable_impressions, viewable_rate, viewed_seconds, standard, vendor). Separates MRC and GroupM standards. `viewed_seconds` is the average in-view duration per measurable impression — reporting-side counterpart to the `viewed_seconds` optimization goal, governed by the same `standard` threshold as `viewable_rate`. The optional `vendor` field carries a `BrandRef` so the row is self-describing — buyer agents reading delivery in isolation can attribute the numbers to a measurement vendor without joining back to `package.committed_metrics` or `package.performance_standards`.
 - **`quartile_data`**: Video quartile completion data (q1-q4)
 - **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
 - **`cost_per_click`**: Cost per click (`spend / clicks`)
@@ -753,7 +896,7 @@ Row-oriented format with embedded schema. Self-describing — readers don't need
 {
   "type": "record",
   "name": "MediaBuyDelivery",
-  "namespace": "org.adcp.reporting",
+  "namespace": "org.example.reporting",
   "fields": [
     {"name": "notification_type", "type": "string"},
     {"name": "sequence_number", "type": "int"},

@@ -38,6 +38,8 @@ import type { TrainingContext } from './types.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
+import { getAggregatedPublicJwks, getTenantResponseSigningMaterial } from './tenants/signing.js';
+import { WALKTHROUGH_FIXTURES } from './fixtures/verification-walkthrough/index.js';
 import {
   buildRequestSigningAuthenticator,
   buildStrictRequestSigningAuthenticator,
@@ -306,6 +308,28 @@ const TENANT_SPECIALISMS: Record<typeof TENANT_IDS[number], readonly string[]> =
   brand: ['brand-rights'],
 };
 
+/** Maps each tenant to its brand-agent type for brand.json `agents[]`.
+ *  Values must be valid per `static/schemas/source/enums/brand-agent-type.json`.
+ *  `creative-builder` collapses to `creative` — the enum has no separate
+ *  template/generative type and the description distinguishes them. */
+const TENANT_BRAND_AGENT_TYPE: Record<typeof TENANT_IDS[number], 'sales' | 'signals' | 'governance' | 'creative' | 'brand'> = {
+  sales: 'sales',
+  signals: 'signals',
+  governance: 'governance',
+  creative: 'creative',
+  'creative-builder': 'creative',
+  brand: 'brand',
+};
+
+const TENANT_BRAND_AGENT_DESCRIPTION: Record<typeof TENANT_IDS[number], string> = {
+  sales: 'Training-agent sales tenant — non-guaranteed + guaranteed inventory across simulated publishers',
+  signals: 'Training-agent signals tenant — signal marketplace + owned signals across simulated providers',
+  governance: 'Training-agent governance tenant — spend authority, delivery monitoring, property/collection lists, content standards',
+  creative: 'Training-agent creative tenant — creative ad server',
+  'creative-builder': 'Training-agent creative-builder tenant — creative template + generative',
+  brand: 'Training-agent brand tenant — brand rights and discovery',
+};
+
 export function createTrainingAgentRouter(): Router {
   const router = Router();
 
@@ -328,6 +352,14 @@ export function createTrainingAgentRouter(): Router {
       });
     },
   });
+
+  // Pre-warm per-tenant response-signing material so each tenant's
+  // response-signing JWK appears in /.well-known/jwks.json from the first
+  // request — buyer verifiers fetching the JWKS before any tenant has been
+  // touched would otherwise see only the shared webhook key.
+  for (const tenantId of TENANT_IDS) {
+    getTenantResponseSigningMaterial(tenantId);
+  }
 
   // Per-tenant MCP routes — each tenant gets POST /<tenant>/mcp with bearer
   // auth + rate limiting. The tenant registry handles dispatch via
@@ -538,10 +570,117 @@ export function createTrainingAgentRouter(): Router {
 
   // JWKS for webhook-signature verification by buyers (RFC 7517).
   // Public keys only — the emitter holds the private half.
+  // JWKS aggregates every signing purpose the training agent publishes:
+  //   - shared webhook-delivery key (adcp_use: 'webhook-signing')
+  //   - per-tenant response-signing keys (adcp_use: 'response-signing')
+  //   - per-tenant webhook-signing keys (adcp_use: 'webhook-signing')
+  //   - governance signing key (adcp_use: 'governance-signing')
+  // Buyer verifiers filter by adcp_use + kid to find the right one.
   router.get('/.well-known/jwks.json', (_req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'public, max-age=300');
-    res.json(getPublicJwks());
+    const aggregated = getAggregatedPublicJwks();
+    // Dedupe by kid — the shared webhook key and per-tenant keys are
+    // minted with disjoint kid namespaces, but a future config that
+    // collides them would otherwise publish two entries with the same
+    // kid and different keys (verifiers pick at random).
+    const seen = new Set<string>();
+    const keys = [...getPublicJwks().keys, ...aggregated.keys].filter(k => {
+      const kid = typeof k.kid === 'string' ? k.kid : undefined;
+      if (!kid) return true; // un-kid'd keys can't dedupe; pass through
+      if (seen.has(kid)) {
+        logger.warn({ kid }, 'duplicate kid in aggregated JWKS; dropping later occurrence');
+        return false;
+      }
+      seen.add(kid);
+      return true;
+    });
+    res.json({ keys });
   });
+
+  // brand.json discovery — house portfolio variant per
+  // `static/schemas/source/brand.json` oneOf[3]. Declares AAO as the house
+  // operating the training agent and lists each tenant's MCP endpoint as a
+  // typed brand_agent_entry. Buyer-side verifiers fetching brand.json from
+  // a deployment of this agent get a schema-conformant single-tier document
+  // suitable for end-to-end verification storyboards.
+  //
+  // Single-tier (no `brand_refs[]`, no `house_domain`). Per-publisher /
+  // multi-tier fixtures (Sportshaus / StreamHaus / Northwind from the
+  // verification walkthrough) come in a follow-up PR.
+  router.get('/.well-known/brand.json', (req: Request, res: Response) => {
+    const baseUrl = getBaseUrl(req);
+    const agentBase = `${baseUrl}${req.baseUrl}`;
+    const jwksUri = `${agentBase}/.well-known/jwks.json`;
+
+    // Vary on the forwarding headers `getBaseUrl(req)` reads — a shared cache
+    // that keyed only on path would otherwise serve a poisoned host back to
+    // every subsequent caller (every agents[].url, jwks_uri, brands[0].url is
+    // derived from these headers). Same defense applies to `adagents.json`
+    // below.
+    res.setHeader('Vary', 'X-Forwarded-Host, X-Forwarded-Proto, Host');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json({
+      $schema: '/schemas/brand.json',
+      version: '1.0',
+      house: {
+        domain: 'adcontextprotocol.org',
+        name: 'Ad Context Protocol',
+        architecture: 'branded_house',
+        agents: TENANT_IDS.map(tenantId => ({
+          type: TENANT_BRAND_AGENT_TYPE[tenantId],
+          id: `aao_training_agent_${tenantId.replace(/-/g, '_')}`,
+          url: `${agentBase}/${tenantId}/mcp`,
+          jwks_uri: jwksUri,
+          description: TENANT_BRAND_AGENT_DESCRIPTION[tenantId],
+        })),
+      },
+      brands: [
+        {
+          id: 'adcp_training_agent',
+          names: [{ en_US: 'AdCP Training Agent' }],
+          url: agentBase,
+          keller_type: 'master',
+          industries: ['advertising'],
+          description: 'Reference sandbox for AdCP — multi-tenant agent simulating sales, signals, governance, creative, and brand specialisms for conformance testing and education.',
+        },
+      ],
+      contact: {
+        name: 'AdCP Training Agent',
+        email: 'hello@agenticadvertising.org',
+      },
+      last_updated: STARTUP_TIME,
+    });
+  });
+
+  // Verification-walkthrough fixtures — schema-conformant brand.json /
+  // adagents.json documents simulating the multi-tier chain from
+  // docs/verification/overview (Northwind / StreamHaus / Sportshaus Holdings).
+  // Mounted at /fixtures/walkthrough/<role>/.well-known/<doc> so a buyer
+  // agent can be pointed at the training agent's host and walk the chain
+  // end-to-end against simulated publisher / sub-brand / parent-house
+  // surfaces.
+  //
+  // `X-Robots-Tag: noindex` so search engines don't index these as if the
+  // fictional publishers were real. The fixtures' `description` fields and
+  // `*.example` domains carry the "test artifact" framing in-body — adding
+  // a top-level `x_test_fixture` flag would fail brand.json oneOf[3]'s
+  // `additionalProperties: false`.
+  for (const [role, docs] of Object.entries(WALKTHROUGH_FIXTURES)) {
+    for (const [filename, body] of Object.entries(docs)) {
+      const path = `/fixtures/walkthrough/${role}/.well-known/${filename}`;
+      router.options(path, (_req: Request, res: Response) => {
+        setLegacyCORS(res);
+        res.status(204).end();
+      });
+      router.get(path, (_req: Request, res: Response) => {
+        setLegacyCORS(res);
+        res.setHeader('X-Robots-Tag', 'noindex');
+        res.setHeader('Vary', 'X-Forwarded-Host, X-Forwarded-Proto, Host');
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.json(body);
+      });
+    }
+  }
 
   // adagents.json discovery. Schema-conformant per
   // `static/schemas/source/adagents.json`:

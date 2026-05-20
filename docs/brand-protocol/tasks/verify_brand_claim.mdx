@@ -344,7 +344,11 @@ Applicable statuses: `owned`, `licensed_in`, `licensed_out`, `transferring`, `di
 
 ## Trust model
 
-The agent's response is signed under the brand's `adcp_use: "response-signing"` JWK. The trust model is **direction-asymmetric**:
+The agent's response is signed under the brand's `adcp_use: "response-signing"` JWK. This is a payload-envelope JWS — the signature lives inside the response body, distinct from RFC 9421 §2.2.9 transport response signing (which AdCP 3.x does not define). `verify_brand_claim` is on the spec's [designated-task response-signing list](/docs/building/by-layer/L1/security#designated-task-response-signing); response signing on tasks outside that list is forbidden.
+
+The signature attests authorship of the response payload under the brand's published key at signing time; it is not a non-repudiation receipt and does not bind the brand to assertions beyond the direction-asymmetric semantics below. Replay protection ([#4716](https://github.com/adcontextprotocol/adcp/issues/4716)), per-brand JWK uniqueness ([#4717](https://github.com/adcontextprotocol/adcp/issues/4717)), and tenant binding on the envelope ([#4718](https://github.com/adcontextprotocol/adcp/issues/4718)) are tracked for 3.2 hardening — until then, verifiers SHOULD treat captured signed responses as freshness-unbound.
+
+The trust model is **direction-asymmetric**:
 
 - **Rejection direction** (agent says `disputed` / `not_ours`) is authoritative. A brand can refuse association unilaterally; no mutual reciprocation required.
 - **Assertion direction** (agent says `owned` / `pending_review` / `transferring` / `licensed_*`) is informative but NOT trust-extending on its own. The reciprocating side must still confirm before trust extends.

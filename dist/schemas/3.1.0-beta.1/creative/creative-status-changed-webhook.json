@@ -1,0 +1,174 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.1/creative/creative-status-changed-webhook.json",
+  "title": "Creative Status Changed Webhook",
+  "description": "Account-level push notification fired when a creative in the library transitions status by seller or system initiative. Fires per registered subscriber against each `notification_configs[]` entry whose `event_types` includes `creative.status_changed`. Buyer-initiated transitions (archive, unarchive, resubmit) do NOT fire — those are acknowledged on the `sync_creatives` response path. Receivers MUST verify signing per the registered scheme (RFC 9421 webhook profile by default; legacy Bearer / HMAC-SHA256 when `authentication` was supplied at registration) and dedupe by `idempotency_key`. See docs/protocol/snapshot-and-log.mdx for the snapshot/log duality rules — the current status is always authoritative on `list_creatives`.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated key stable across retries of the same fire. Sellers MUST generate a cryptographically random value (UUID v4 recommended) per distinct fire and reuse it on every retry of the same fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity. Distinct from `notification_id` — same `notification_id` under two different `idempotency_key` values is a re-emission signal (snapshot-and-log Rule 1).",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "notification_id": {
+      "type": "string",
+      "description": "Stable identifier for this logical transition event, used by buyers to correlate fires to current snapshot state. Stable across re-emissions of the same transition (e.g., the seller re-fires after the buyer's endpoint was unreachable); a fresh transition on the same creative receives a new id. Charset matches `idempotency_key` so the value is safe to log, embed in dashboard URLs, and pass into LLM prompts without escaping.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "creative.status_changed",
+      "description": "Fixed notification type discriminator. Matches the value registered on the subscriber's `event_types`."
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller initiated this fire. Distinct from when the transition was observed (`transition.observed_at`) — fires MAY be coalesced or delayed up to the seller's declared coalescence window for `creative.status_changed`."
+    },
+    "subscriber_id": {
+      "type": "string",
+      "description": "Identifies which `notification_configs[]` entry on the recipient account is receiving this fire. Echoed verbatim from the entry's `subscriber_id`. Required so multi-subscriber accounts can route by endpoint.",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Seller's identifier for the account this creative belongs to. Echoed so multi-account buyers can route without re-resolving via `list_accounts`.",
+      "x-entity": "account"
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "Seller's identifier for the creative whose status changed. References the same id space as `list_creatives` / `sync_creatives` responses.",
+      "x-entity": "creative"
+    },
+    "transition": {
+      "type": "object",
+      "description": "The status transition that triggered this fire. Valid `from` values are restricted to the prior states from which a seller/system-initiated transition can fire (`processing` for processing outcomes, `pending_review` for initial review outcomes, `approved` for re-review/revocation/seller-archive). The post-terminal states `rejected` and `archived` MUST NOT appear as `from` — those would require a buyer-initiated unblock (`sync_creatives` resubmit / unarchive), which does not fire this event.",
+      "properties": {
+        "from": {
+          "type": "string",
+          "enum": [
+            "processing",
+            "pending_review",
+            "approved"
+          ],
+          "description": "Prior status — restricted to the states from which a seller/system-initiated transition can fire. For initial review outcomes the prior status is `pending_review`; for processing outcomes it is `processing`; for seller re-review, post-approval revocation, and seller-initiated archive it is `approved`."
+        },
+        "to": {
+          "$ref": "/schemas/3.1.0-beta.1/enums/creative-status.json",
+          "description": "New status."
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the seller observed the transition. Distinct from `fired_at` — `fired_at` reflects when the webhook was emitted, which may lag `observed_at` by up to the seller's coalescence window. **Ordering with `media-buy.impairment`:** when a creative transition also causes a media-buy impairment (e.g., `approved → rejected` while assignments exist), the `creative.status_changed` and `impairment` fires are not ordered — buyers MUST NOT assume one arrives before the other. Reconcile via the snapshot (`list_creatives` and `get_media_buys`) when the two fires reference the same `creative_id`."
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "observed_at"
+      ],
+      "additionalProperties": false
+    },
+    "reason_code": {
+      "$ref": "/schemas/3.1.0-beta.1/enums/creative-event-reason-code.json",
+      "description": "Categorical reason for the transition. Per-transition valid subsets are constrained by impairment.coherence-style narrative rules — see docs/creative/creative-lifecycle-webhooks.mdx. Receivers MUST treat unknown reason codes as forward-compatible additions and not reject the fire."
+    },
+    "reason_detail": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Human-readable supplement to `reason_code`. Free text from the seller. Sellers MUST NOT include third-party PII in this field."
+    },
+    "initiator": {
+      "type": "string",
+      "enum": [
+        "seller",
+        "system"
+      ],
+      "description": "Who initiated the transition. `seller` — explicit decision by the seller (human reviewer, policy operator, takedown handler). `system` — automated seller-side process (processing pipeline, retention sweep, inactivity scan). `buyer` never appears on this event — buyer-initiated transitions are acknowledged on the `sync_creatives` response path and MUST NOT fire `creative.status_changed`."
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.1/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_id",
+    "notification_type",
+    "fired_at",
+    "subscriber_id",
+    "account_id",
+    "creative_id",
+    "transition",
+    "reason_code",
+    "initiator"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Approved → rejected post-approval revocation (paired with a media-buy impairment)",
+      "data": {
+        "idempotency_key": "whk_01HW9D2T3VXQ5M7K9N1P3R5S7U",
+        "notification_id": "cs_ft88201_2026_05_18a",
+        "notification_type": "creative.status_changed",
+        "fired_at": "2026-05-18T14:20:00Z",
+        "subscriber_id": "buyer-primary",
+        "account_id": "acc_acme_pinnacle",
+        "creative_id": "ft_88201",
+        "transition": {
+          "from": "approved",
+          "to": "rejected",
+          "observed_at": "2026-05-18T14:18:42Z"
+        },
+        "reason_code": "policy_revocation",
+        "reason_detail": "Landing page now references competitor brand; violates seller content policy.",
+        "initiator": "seller"
+      }
+    },
+    {
+      "description": "Approved → pending_review (seller pulled back for re-review)",
+      "data": {
+        "idempotency_key": "whk_01HW9F2V3XYR6P8L0M2Q4S6T8V",
+        "notification_id": "cs_ft88202_2026_05_18b",
+        "notification_type": "creative.status_changed",
+        "fired_at": "2026-05-18T15:00:00Z",
+        "subscriber_id": "buyer-primary",
+        "account_id": "acc_acme_pinnacle",
+        "creative_id": "ft_88202",
+        "transition": {
+          "from": "approved",
+          "to": "pending_review",
+          "observed_at": "2026-05-18T14:55:10Z"
+        },
+        "reason_code": "seller_rereview",
+        "initiator": "seller"
+      }
+    },
+    {
+      "description": "System-initiated rejection on processing failure",
+      "data": {
+        "idempotency_key": "whk_01HW9G3W4YSP7Q9N1O3R5T7U9W",
+        "notification_id": "cs_ft88203_proc_fail",
+        "notification_type": "creative.status_changed",
+        "fired_at": "2026-05-18T15:02:11Z",
+        "subscriber_id": "buyer-primary",
+        "account_id": "acc_acme_pinnacle",
+        "creative_id": "ft_88203",
+        "transition": {
+          "from": "processing",
+          "to": "rejected",
+          "observed_at": "2026-05-18T15:02:09Z"
+        },
+        "reason_code": "processing_failure",
+        "reason_detail": "Video transcode failed: unsupported codec 'av1' for VAST 4.2.",
+        "initiator": "system"
+      }
+    }
+  ]
+}

@@ -8,12 +8,20 @@
     "url": {
       "type": "string",
       "format": "uri",
-      "description": "Webhook endpoint URL for task status notifications"
+      "description": "Webhook endpoint URL for task status notifications. The wire contract is unconstrained beyond `format: \"uri\"` — in particular, publishers SHOULD NOT enforce a destination-port allowlist by default, since buyers legitimately host receivers on non-standard TLS ports (`:9443`, `:4443`, path-routed multi-tenant gateways). The SSRF guard the protocol relies on is the IP-range check + DNS-rebinding-resistant connect pin defined in [Webhook URL validation (SSRF)](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf), not port filtering. Operators who want a hardened destination-port allowlist as defense-in-depth (e.g., locked-down enterprise egress) opt in explicitly — see [Destination port: permissive by default](/docs/building/by-layer/L1/security#destination-port-permissive-by-default)."
+    },
+    "operation_id": {
+      "type": "string",
+      "description": "Buyer-supplied correlation identifier for the operation that will produce webhooks against this registration. The seller MUST echo this value verbatim into every webhook payload's `operation_id` field (see [`mcp-webhook-payload.json`](/schemas/core/mcp-webhook-payload.json) and [Webhooks — Operation IDs](/docs/building/by-layer/L3/webhooks#operation-ids-and-url-templates)). Buyers SHOULD generate a unique value per task invocation (UUID recommended). This field is the canonical registration channel for `operation_id`; buyers MAY additionally embed the same value in the URL path or query as a routing aid for their own HTTP server, but the URL is opaque to the seller and the wire-level source of truth is this field. Sellers MUST NOT parse the URL to recover `operation_id`. Sellers that receive a webhook registration without `operation_id` MAY reject the task with `INVALID_REQUEST`.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
     },
     "token": {
       "type": "string",
-      "description": "Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
-      "minLength": 16
+      "description": "Optional client-provided token for webhook validation. The seller MUST echo this value verbatim in every webhook payload's `token` field (see [`mcp-webhook-payload.json`](/schemas/core/mcp-webhook-payload.json) for the receiver-side validation obligation). Length bounds give receivers a defensive range check on the echoed value; senders SHOULD generate tokens with at least 128 bits of entropy (≥22 base64url characters). This is a complementary authenticity mechanism that can layer on top of the RFC 9421 webhook signature — unlike the `authentication` block below, it is not on the 4.0 removal track. Receivers that registered both a signing key (RFC 9421) and a `token` MUST NOT treat a valid token echo as authorization to skip signature verification; both checks remain independent obligations.",
+      "minLength": 16,
+      "maxLength": 4096
     },
     "authentication": {
       "type": "object",

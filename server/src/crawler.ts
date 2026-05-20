@@ -10,6 +10,7 @@ import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { HealthChecker } from "./health.js";
 import { AgentSnapshotDatabase } from "./db/agent-snapshot-db.js";
+import { AgentContextDatabase } from "./db/agent-context-db.js";
 import { AAO_HOST } from "./config/aao.js";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { createLogger } from "./logger.js";
@@ -17,7 +18,8 @@ import type { CatalogEventsDatabase, WriteEventInput } from "./db/catalog-events
 import type { AgentInventoryProfilesDatabase, ProfileUpsertInput } from "./db/agent-inventory-profiles-db.js";
 import { query } from "./db/client.js";
 import { insertTypeReclassification } from "./db/type-reclassification-log-db.js";
-import type { SdkAuth } from "./services/sdk-auth-adapter.js";
+import { resolveUserAgentAuth } from "./routes/helpers/resolve-user-agent-auth.js";
+import { adaptAuthForSdk, type SdkAuth } from "./services/sdk-auth-adapter.js";
 
 const log = createLogger('crawler');
 
@@ -66,6 +68,7 @@ export class CrawlerService {
   private capabilityDiscovery: CapabilityDiscovery;
   private healthChecker: HealthChecker;
   private snapshotDb: AgentSnapshotDatabase;
+  private agentContextDb: AgentContextDatabase;
   private eventsDb?: CatalogEventsDatabase;
   private profilesDb?: AgentInventoryProfilesDatabase;
 
@@ -80,8 +83,29 @@ export class CrawlerService {
     this.capabilityDiscovery = new CapabilityDiscovery();
     this.healthChecker = new HealthChecker();
     this.snapshotDb = new AgentSnapshotDatabase();
+    this.agentContextDb = new AgentContextDatabase();
     this.eventsDb = options?.eventsDb;
     this.profilesDb = options?.profilesDb;
+  }
+
+  /**
+   * Resolve any saved owner auth for an agent URL so probes don't get 401'd
+   * by agents that gate discovery/health behind authentication. Returns
+   * `undefined` when no org has registered credentials for the URL, which
+   * preserves the historical anonymous-probe behavior for purely external
+   * agents. Errors are swallowed and logged: a credential lookup failure
+   * must never block a heartbeat.
+   */
+  private async resolveProbeAuth(agentUrl: string): Promise<SdkAuth | undefined> {
+    try {
+      const ownerOrgId = await this.agentContextDb.findOrgWithSavedAuth(agentUrl);
+      if (!ownerOrgId) return undefined;
+      const auth = await resolveUserAgentAuth(this.agentContextDb, ownerOrgId, agentUrl, log);
+      return await adaptAuthForSdk(auth, { tokenEndpointLabel: `crawler:${agentUrl}` });
+    } catch (err) {
+      log.warn({ err, agentUrl }, 'Failed to resolve owner auth for periodic probe; falling back to anonymous');
+      return undefined;
+    }
   }
 
   async crawlAllAgents(agents: Agent[]): Promise<CrawlResult> {
@@ -610,8 +634,15 @@ export class CrawlerService {
       const batch = toProbe.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(
         batch.map(async (agent) => {
+          // Use saved owner credentials when the agent has any — keeps the
+          // snapshot's `oauth_required` consistent with what the owner sees
+          // after /connect, instead of clobbering it back to `true` on every
+          // anonymous heartbeat. Falls back to anonymous for purely external
+          // agents with no registered credentials.
+          const auth = await this.resolveProbeAuth(agent.url);
+
           const profile = await Promise.race([
-            this.capabilityDiscovery.discoverCapabilities(agent),
+            this.capabilityDiscovery.discoverCapabilities(agent, auth),
             new Promise<never>((_, reject) =>
               setTimeout(() => reject(new Error('Probe timeout')), PROBE_TIMEOUT_MS)
             ),
@@ -623,7 +654,7 @@ export class CrawlerService {
 
           const [health, stats] = await Promise.all([
             Promise.race([
-              this.healthChecker.checkHealth(agentForHealth),
+              this.healthChecker.checkHealth(agentForHealth, auth),
               new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error('Health timeout')), PROBE_TIMEOUT_MS)
               ),
@@ -633,7 +664,7 @@ export class CrawlerService {
               error: err instanceof Error ? err.message : 'health check failed',
             })),
             Promise.race([
-              this.healthChecker.getStats(agentForHealth),
+              this.healthChecker.getStats(agentForHealth, auth),
               new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error('Stats timeout')), PROBE_TIMEOUT_MS)
               ),

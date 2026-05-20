@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/enums/performance-standard-metric.json",
+  "title": "Performance Standard Metric",
+  "description": "Performance metrics that support rate thresholds on media buys — the verification subset of the broader metric vocabulary. Each metric specifies whether its threshold is a floor (must exceed) or ceiling (must not exceed). Shared values with `available-metric.json` mirror the delivery vocabulary (`viewability` → `viewable_rate` family, `completion_rate` → same name); verification-only values (`ivt`, `brand_safety`, `attention_score`) are typically vendor-attested and do not appear in `available-metric.json` because they're not seller-reportable scalars — they flow through `vendor_metric_values` or vendor-scope `committed_metrics` entries with the matching `performance_standard.vendor` BrandRef anchoring identity.",
+  "type": "string",
+  "enum": [
+    "viewability",
+    "ivt",
+    "completion_rate",
+    "brand_safety",
+    "attention_score"
+  ],
+  "enumDescriptions": {
+    "viewability": "Viewable impression rate (floor — must exceed threshold). Requires viewability_standard. Denominator: measurable_impressions.",
+    "ivt": "Invalid Traffic rate (ceiling — must not exceed threshold). Denominator: total_impressions.",
+    "completion_rate": "Video or audio completion rate (floor — must exceed threshold). Denominator: total_impressions.",
+    "brand_safety": "Brand-safe impression rate (floor — must exceed threshold). Denominator: total_impressions.",
+    "attention_score": "Attention score rate (floor — must exceed threshold). Denominator: measurable_impressions."
+  }
+}

@@ -248,28 +248,23 @@ return { status: response.status };
 
 A2A defines push notifications natively via `PushNotificationConfig`. When you configure a webhook URL, the server will POST task updates directly to your endpoint instead of requiring you to poll.
 
-### Best Practice: URL-Based Routing
+### Correlation: payload field, not URL
 
-**Recommended:** Encode routing information (`task_type`, `operation_id`) in the webhook URL, not the payload.
+Correlate incoming notifications using `operation_id` (and `task_type`) from the payload body — **never** by parsing `pushNotificationConfig.url`. The URL is opaque to the server; the wire-level source of truth for correlation is the payload field. See [Webhooks — Operation IDs and URL templates](/docs/building/by-layer/L3/webhooks#operation-ids-and-url-templates) for the full normative wire contract (it applies to both MCP and A2A — every comparable async-notification protocol in ad tech makes the URL opaque to the firing entity).
 
-**Why this approach?**
-- ✅ **Industry standard pattern** - Widely adopted for webhook routing across major APIs
-- ✅ **Separation of concerns** - URLs handle routing, payloads contain data
-- ✅ **Protocol-agnostic** - Same pattern works for MCP, A2A, REST, future protocols
-- ✅ **Cleaner handlers** - Route with URL framework, not payload parsing
+Buyers MAY encode `operation_id` in the URL path or query as a routing aid for their own HTTP server — many web frameworks dispatch on path segments before parsing the body — but that's a buyer-side server design choice, not part of the wire contract. A buyer's server-routing template is not visible to the seller; the seller reads `operation_id` only from the buyer-supplied `pushNotificationConfig.operation_id` field and echoes it verbatim in the payload.
 
-**URL Pattern Options:**
+**URL templates (buyer-side server routing only):**
 
 ```javascript
-// Option 1: Path parameters (recommended)
+// Path parameters
 url: `https://buyer.com/webhooks/a2a/${taskType}/${operationId}`
-// Example: /webhooks/a2a/create_media_buy/op_nike_q1_2025
 
-// Option 2: Query parameters
+// Query parameters
 url: `https://buyer.com/webhooks/a2a?task=${taskType}&op=${operationId}`
 
-// Option 3: Subdomain routing
-url: `https://${taskType}.webhooks.buyer.com/${operationId}`
+// Or fully opaque — the seller doesn't care about URL shape
+url: `https://buyer.com/webhooks/${randomToken}`
 ```
 
 **Example Configuration:**
@@ -290,6 +285,7 @@ await a2a.send({
   },
   pushNotificationConfig: {
     url: `https://buyer.com/webhooks/a2a/${taskType}/${operationId}`,
+    operation_id: operationId,  // canonical correlation channel — seller echoes verbatim
     token: "client-validation-token",  // Optional: for client-side validation
     authentication: {
       schemes: ["bearer"],
@@ -913,7 +909,7 @@ if (adcpExt) {
 **Extension Params**: The `adcp-extension.json` schema was used in v2 to describe these params, but was removed in v3. For v3+ agents, use the `get_adcp_capabilities` task for runtime capability discovery instead. The extension `params` object above shows the typical structure.
 
 :::note
-The `adcp_version` field in agent card metadata is a v2 convention and is not part of the v3 spec. For version negotiation, use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#version-negotiation) with the `adcp_major_version` field.
+The `adcp_version` field in agent card metadata is a v2 convention and is not part of the v3 spec. For v3 version negotiation, the buyer sends release-precision `adcp_version` (e.g., `"3.1"`) on every request, and the seller advertises supported releases via `adcp.supported_versions` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) and echoes `adcp_version` at the envelope root on every response. The legacy integer-only `adcp_major_version` field is still accepted for backwards compatibility. See [versioning.mdx § Version negotiation](/docs/reference/versioning#version-negotiation) for the full contract.
 :::
 
 **Benefits**:

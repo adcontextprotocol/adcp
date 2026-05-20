@@ -349,6 +349,16 @@ export type StreamEvent =
   | { type: 'tool_start'; tool_name: string; parameters: Record<string, unknown> }
   | { type: 'tool_end'; tool_name: string; result: string; is_error: boolean }
   | { type: 'retry'; attempt: number; maxRetries: number; delayMs: number; reason: string }
+  | {
+      // Mid-stream upstream failure after deltas were already yielded. Anthropic
+      // streaming has no resumption token and prompt cache only dedupes input —
+      // retrying produces a fresh sample, so we cannot stitch attempts together.
+      // Consumers should render a recovery banner and drop the partial assistant
+      // turn from conversation history (see issue #4797).
+      type: 'stream_error';
+      reason: string;
+      deltasBeforeError: number;
+    }
   | { type: 'done'; response: AddieResponse }
   | { type: 'error'; error: string };
 
@@ -1355,6 +1365,23 @@ export class AddieClaudeClient {
                                   streamRetryCount > maxStreamRetries;
               if (isExhausted) {
                 throw new RetriesExhaustedError(streamError, streamRetryCount);
+              }
+              // Mid-stream failure: deltas already shipped to the user, retry
+              // is impossible (no resumption token, prompt cache only dedupes
+              // input). Yield a stream_error so consumers can render a recovery
+              // banner and drop the partial assistant turn from conversation
+              // history. Then rethrow for the outer error path (#4797).
+              if (hasYieldedContent && isRetryableError(streamError)) {
+                const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
+                const reason = errorMsg.includes('overloaded') ? 'API is busy' :
+                              errorMsg.includes('rate') ? 'Rate limited' :
+                              errorMsg.includes('timeout') ? 'Request timed out' :
+                              'Connection broke mid-reply';
+                yield {
+                  type: 'stream_error',
+                  reason,
+                  deltasBeforeError: textChunks.length,
+                };
               }
               // Not retryable or already yielded content - rethrow original error
               throw streamError;

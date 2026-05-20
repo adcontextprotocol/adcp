@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
   "banner": {
-    "content": "🎉 AdCP 3.0 is now GA — [see what's new](/docs/reference/whats-new-in-v3)",
+    "content": "🚀 AdCP 3.1 beta is now available — [see what's new](/docs/reference/whats-new-in-3-1)",
     "dismissible": true
   },
   "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
@@ -85,6 +85,7 @@
                     "expanded": false,
                     "pages": [
                       "docs/reference/whats-new-in-v3",
+                      "docs/reference/whats-new-in-3-1",
                       "docs/reference/migration/v3-readiness",
                       "docs/reference/migration/index",
                       "docs/reference/migration/prerelease-upgrades",
@@ -259,7 +260,8 @@
                           "docs/media-buy/conversion-tracking/index",
                           "docs/media-buy/advanced-topics/pricing-models",
                           "docs/media-buy/advanced-topics/targeting",
-                          "docs/media-buy/advanced-topics/accountability"
+                          "docs/media-buy/advanced-topics/accountability",
+                          "docs/media-buy/advanced-topics/billing-authority"
                         ]
                       },
                       {
@@ -372,6 +374,7 @@
                       "docs/governance/embedded-human-judgment",
                       "docs/governance/policy-registry",
                       "docs/governance/policy-registry-sync",
+                      "docs/governance/policy-attribution",
                       "docs/governance/annex-iii-obligations",
                       "docs/governance/working-group-charter",
                       {
@@ -558,8 +561,17 @@
                 ]
               },
               "docs/faq",
-              "docs/ai-disclosure",
-              "docs/trust",
+              {
+                "group": "Trust & Security",
+                "expanded": false,
+                "pages": [
+                  "docs/trust",
+                  "docs/verification/overview",
+                  "docs/ai-disclosure",
+                  "docs/reference/privacy-considerations",
+                  "docs/reference/known-limitations"
+                ]
+              },
               {
                 "group": "Reference",
                 "expanded": false,
@@ -588,8 +600,6 @@
                   "docs/reference/experimental-status",
                   "docs/reference/schema-extensions",
                   "docs/reference/v2-sunset",
-                  "docs/reference/known-limitations",
-                  "docs/reference/privacy-considerations",
                   "docs/reference/release-notes",
                   "docs/reference/changelog",
                   "docs/reference/implementor-faq",
@@ -672,6 +682,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/reference/whats-new-in-v3",
+                  "docs/reference/whats-new-in-3-1",
                   "docs/reference/migration/v3-readiness",
                   "docs/reference/migration/index",
                   "docs/reference/migration/prerelease-upgrades",
@@ -839,7 +850,8 @@
                       "docs/media-buy/conversion-tracking/index",
                       "docs/media-buy/advanced-topics/pricing-models",
                       "docs/media-buy/advanced-topics/targeting",
-                      "docs/media-buy/advanced-topics/accountability"
+                      "docs/media-buy/advanced-topics/accountability",
+                      "docs/media-buy/advanced-topics/billing-authority"
                     ]
                   },
                   {
@@ -952,6 +964,7 @@
                   "docs/governance/embedded-human-judgment",
                   "docs/governance/policy-registry",
                   "docs/governance/policy-registry-sync",
+                  "docs/governance/policy-attribution",
                   "docs/governance/working-group-charter",
                   {
                     "group": "Property Governance",
@@ -1109,15 +1122,25 @@
               "docs/aao/connect-addie",
               "docs/aao/users",
               "docs/aao/org-admins",
-              "docs/aao/addie-tools"
+              "docs/aao/addie-tools",
+              "docs/aao/directory-api"
             ]
           },
           {
             "group": "FAQ",
             "pages": [
-              "docs/faq",
+              "docs/faq"
+            ]
+          },
+          {
+            "group": "Trust & Security",
+            "expanded": false,
+            "pages": [
+              "docs/trust",
+              "docs/verification/overview",
               "docs/ai-disclosure",
-              "docs/trust"
+              "docs/reference/privacy-considerations",
+              "docs/reference/known-limitations"
             ]
           },
           {
@@ -1143,8 +1166,6 @@
               "docs/reference/versioning",
               "docs/reference/url-canonicalization",
               "docs/reference/verifying-protocol-tarballs",
-              "docs/reference/known-limitations",
-              "docs/reference/privacy-considerations",
               "docs/reference/experimental-status",
               "docs/reference/schema-extensions",
               "docs/reference/release-notes",

@@ -38,8 +38,8 @@
           },
           "policy_id": {
             "type": "string",
-            "description": "Registry policy ID that triggered this result. Enables programmatic routing by looking up the policy in the registry.",
-            "x-entity": "governance_registry_policy"
+            "description": "Optional attribution — when this feature was evaluated for the purpose of a specific policy, policy_id references the authorizing PolicyEntry. Property-list agents populate when the validation was motivated by a specific policy. See /docs/governance/policy-attribution.",
+            "$comment": "x-entity deliberately omitted — a PolicyEntry reference can resolve to either a governance_registry_policy or a governance_inline_policy depending on the authorizing entry's source. See issue #2685."
           },
           "explanation": {
             "type": "string",
