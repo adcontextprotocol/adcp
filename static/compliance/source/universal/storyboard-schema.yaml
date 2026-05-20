@@ -49,6 +49,13 @@
 #   core | products | media_buy | creative | reporting | governance |
 #   campaign_governance | signals | si | audiences | error_handling | brand | security)
 # required_tools: string[] (optional — tool names the storyboard uses; empty for protocol-level tests)
+# required_any_of_tools: array of OR-family objects (optional — declarative one-of-N
+#   tool-advertisement gate. Each entry is { tools: string[], rationale?: string };
+#   at least one tool in each family MUST be advertised by the agent under test.
+#   Multiple entries are AND-combined: every family must be satisfied independently.
+#   Distinct from `required_tools` (which is the lenient any-of for storyboard
+#   applicability — missing all listed tools triggers a coverage-gap skip).
+#   See the dedicated `required_any_of_tools` block below for full semantics.
 # narrative: string (paragraph explaining the overall flow)
 #
 # requires_scenarios: string[] (optional — scenario IDs from storyboards/scenarios/ that must pass alongside this storyboard.
@@ -219,6 +226,71 @@
 #   requires gates the whole storyboard at load time; requires_tool gates
 #   individual steps at execution time. Both may be declared on the same
 #   storyboard.)
+#
+# required_any_of_tools: array (optional — declarative one-of-N tool-advertisement
+#   gate at storyboard load time. Each array entry is an OR-family object:
+#
+#     required_any_of_tools:
+#       - tools: [list_accounts, sync_accounts]
+#         rationale: "AdCP 3.0.9 §accounts/overview"
+#
+#   Per-entry object shape:
+#     tools: string[] — tool names; at least one MUST be advertised by the agent
+#                       under test. minItems: 2 (a single-tool family collapses
+#                       to `required_tools`; encode it there instead).
+#     rationale: string (optional) — human-readable spec citation surfaced in
+#                       skip messages so dashboards can attribute the gate to
+#                       the underlying normative requirement.
+#
+#   Multiple entries are AND-combined: every family in the array MUST be
+#   satisfied independently. Empty array is fail-load — omit the field entirely
+#   for "no requirement" (same posture as `requires`).
+#
+#   Distinct from `required_tools`. `required_tools` is the lenient any-of for
+#   storyboard applicability — missing all listed tools triggers a coverage-gap
+#   skip. `required_any_of_tools` is the strict variant: missing the family is
+#   still a skip (not a fail-load — see "Runner behavior" below), but with
+#   distinct `detail` attribution so the skip aggregates against the spec rule
+#   rather than the storyboard scope. The two compose cleanly on the same
+#   storyboard.
+#
+#   Runner behavior. When an agent advertises NONE of the tools in any family,
+#   the runner MUST emit at storyboard scope:
+#
+#     skip_result.reason  = requirement_unmet
+#     skip_result.detail  = "missing_required_tool_family: needs <tool_a> or
+#                            <tool_b>[ or <tool_c>...] (<rationale>)"
+#
+#   The `missing_required_tool_family:` sub-reason prefix in `detail` is the
+#   canonical attribution string (see runner-output-contract.yaml >
+#   `requirement_unmet` for the full enumeration of recognized detail
+#   sub-reasons). This matches the same `requirement_unmet`-with-detail pattern
+#   already used for `requires:` gates — no new top-level reason enum is added
+#   to `runner-output-contract.yaml`, so this field ships without bumping the
+#   contract version.
+#
+#   Per-family OR semantics. A family is satisfied as soon as the agent
+#   advertises ANY tool in `tools[]`. The runner MUST NOT additionally require
+#   that the named tools are exercised by storyboard steps — this field gates
+#   on tool *advertisement*, not on step execution. Per-step gating remains
+#   the job of `requires_tool` on individual steps.
+#
+#   Forward compatibility. Runners encountering this field on a storyboard
+#   they otherwise support MUST honor it. Runners that pre-date this field
+#   will load and execute the storyboard as if the field were absent; this
+#   is acceptable because the universal account-discovery rule (the first
+#   use case) is also enforced by the SDK's runner-level conformance gate,
+#   which fires independently of per-storyboard tagging. Future runners that
+#   migrate to per-storyboard attribution (see adcp-client#1642) consume this
+#   field for richer skip-cause aggregation.
+#
+#   Composition with other gates. `required_any_of_tools` is evaluated at
+#   load time alongside `requires`. Either gate failing produces
+#   skip_result.reason: requirement_unmet at storyboard scope; the runner
+#   MAY emit a single skip carrying detail for the first failing gate it
+#   evaluates, or aggregate multiple unmet reasons in detail — implementations
+#   SHOULD prefer aggregation when more than one gate fails, so operators see
+#   the full set of unmet preconditions on one screen.)
 #
 # agent:
 #   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller | marketplace_catalog | owned_signals | si_platform | brand_rights_holder | governance_agent)

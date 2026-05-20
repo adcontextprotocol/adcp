@@ -53,6 +53,12 @@
       "type": "string",
       "description": "Session/conversation identifier. Use this to continue the conversation if input-required status needs clarification or additional parameters."
     },
+    "token": {
+      "type": "string",
+      "description": "Authentication token echoed verbatim from `PushNotificationConfig.token`. Receivers that configured a token MUST compare it to this value to validate request authenticity, and SHOULD use a constant-time equality check to mitigate timing attacks. Absent when no token was configured at registration. Length bounds mirror the config-side field — receivers MAY reject payloads whose token length falls outside the configured range as a defensive check, but MUST NOT treat absence as an authenticity failure when no token was configured.",
+      "minLength": 16,
+      "maxLength": 4096
+    },
     "result": {
       "$ref": "/schemas/core/async-response-data.json",
       "description": "Task-specific payload matching the status. For completed/failed, contains the full task response. For working/input-required/submitted, contains status-specific data. This is the data layer that AdCP specs - same structure used in A2A status.message.parts[].data."
