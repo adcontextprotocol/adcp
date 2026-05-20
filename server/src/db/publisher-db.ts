@@ -288,6 +288,59 @@ export class PublisherDatabase {
     }
   }
 
+  /**
+   * Project a fan-out authorization edge into the catalog
+   * (`catalog_agent_authorizations`) so the partner-sync endpoints
+   * (`/registry/authorizations`, `/registry/authorizations/snapshot`)
+   * — which read the catalog only — see the same edge the legacy
+   * `agent_publisher_authorizations` arm carries. Adcp#4841.
+   *
+   * The catalog's `cacheAdagentsManifest` projection deliberately
+   * refuses cross-publisher claims (publisher-db.ts ~L968: a manager
+   * file cannot land authoritative rows for another publisher's
+   * properties without out-of-band corroboration). For the fan-out
+   * shape — where the manager file names the child publisher in its
+   * `publisher_properties[].publisher_domains[]` selector — the
+   * out-of-band corroboration is the inline-resolution rule itself
+   * (#4825). Evidence value `'adagents_authoritative'` (migration 488)
+   * carries the lower trust profile so consumers can filter when
+   * bilateral verification matters.
+   *
+   * Called from the crawler's fan-out helper per (agent, child) pair.
+   * The companion `recordChildPublisherFromManager` writes the
+   * publishers row (per-child, agent-independent); this writes the
+   * catalog row (per agent × child).
+   */
+  async recordCatalogFanoutAuthorization(input: {
+    agentUrl: string;
+    childDomain: string;
+    authorizedFor?: string;
+  }): Promise<void> {
+    const childDomain = canonicalizePublisherDomain(input.childDomain);
+    const agentCanonical = canonicalizeAgentUrl(input.agentUrl);
+    if (!agentCanonical) return; // canonicalizer rejected — invalid URL, skip
+    const client = await getClient();
+    try {
+      await client.query(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, property_rid, property_id_slug,
+            publisher_domain, authorized_for, evidence, created_by)
+         VALUES ($1, $2, NULL, NULL, $3, $4, 'adagents_authoritative', 'system')
+         ON CONFLICT (agent_url_canonical,
+                      (COALESCE(property_rid::text, '')),
+                      (COALESCE(publisher_domain, '')),
+                      evidence)
+                WHERE deleted_at IS NULL
+         DO UPDATE SET
+           authorized_for = EXCLUDED.authorized_for,
+           updated_at = NOW()`,
+        [input.agentUrl, agentCanonical, childDomain, input.authorizedFor ?? null],
+      );
+    } finally {
+      client.release();
+    }
+  }
+
   async recordFailedAdagentsFetch(input: {
     domain: string;
     statusCode?: number;
