@@ -58,7 +58,7 @@ export interface VisibilityWarning {
   agent_url: string;
   requested: 'public';
   applied: 'members_only';
-  reason: 'tier_required';
+  reason: 'tier_required' | 'role_required';
   message: string;
 }
 
