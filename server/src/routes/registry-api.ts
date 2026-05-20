@@ -775,7 +775,9 @@ registry.registerPath({
     query: z.object({
       since: z.string().datetime().optional().openapi({ description: "ISO 8601 — return only publishers with last_verified_at ≥ since" }),
       cursor: z.string().optional().openapi({ description: "Opaque pagination cursor returned by a prior response" }),
-      status: z.string().optional().openapi({ description: "Comma-separated subset of {authorized, revoked}. Default: authorized." }),
+      status: z.array(z.enum(["authorized", "revoked"])).optional().openapi({
+        description: "Lifecycle status filter — repeat the key once per value (?status=authorized&status=revoked). Default: authorized. The comma-separated single-value form is rejected with 400.",
+      }),
       limit: z.coerce.number().int().min(1).max(1000).optional().openapi({ description: "Page size, default 200, max 1000" }),
     }),
   },
@@ -6946,10 +6948,28 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         since = parsed;
       }
 
-      // status filter defaults to authorized-only. Comma-separated list of
-      // {authorized, revoked}. Anything else is a 400.
-      const statusParam = typeof req.query.status === 'string' ? req.query.status : 'authorized';
-      const statusSet = new Set(statusParam.split(',').map(s => s.trim()).filter(Boolean));
+      // status filter: repeated-key form per spec
+      // (docs/aao/directory-api.mdx — `?status=authorized&status=revoked`).
+      // The comma-separated single-value form is explicitly rejected with
+      // 400 so callers don't silently get unexpected filter behavior when
+      // a future enum value contains a comma. v1 enum: {authorized, revoked}.
+      const rawStatus = req.query.status;
+      let statusValues: string[];
+      if (rawStatus === undefined) {
+        statusValues = ['authorized'];
+      } else if (Array.isArray(rawStatus)) {
+        statusValues = rawStatus.filter((v): v is string => typeof v === 'string');
+      } else if (typeof rawStatus === 'string') {
+        if (rawStatus.includes(',')) {
+          return res.status(400).json({
+            error: "Invalid `status` encoding — repeat the key once per value (?status=authorized&status=revoked). The comma-separated form is not accepted.",
+          });
+        }
+        statusValues = [rawStatus];
+      } else {
+        return res.status(400).json({ error: "Invalid `status` query parameter" });
+      }
+      const statusSet = new Set(statusValues.map(s => s.trim()).filter(Boolean));
       for (const s of statusSet) {
         if (s !== 'authorized' && s !== 'revoked') {
           return res.status(400).json({ error: `Invalid status value '${s}' — supported: authorized, revoked` });
