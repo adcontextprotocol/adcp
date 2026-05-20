@@ -4,7 +4,7 @@
 
 feat(adagents): permit parent-file inline resolution of `publisher_properties` selectors when matched top-level properties carry a `publisher_domain` matching the selector's addressed domains.
 
-Federated per-child resolution remains the default and the trust root. Inline is a per-domain optimization: consumers SHOULD prefer it when the parent file's `properties[]` contains entries whose `publisher_domain` matches the selector's `publisher_domains[]` and whose tags satisfy the predicate. The production reference for the managed-network pattern (cafemedia.com, ~6,800 represented domains) inlines properties — strict federation requires N HTTP fetches per authorization check, infeasible at managed-network scale.
+Federated per-child resolution remains the default and the trust root. Inline is a per-domain optimization: consumers SHOULD prefer it when the parent file's `properties[]` contains entries whose `publisher_domain` matches the selector's `publisher_domains[]` and whose tags satisfy the predicate. Production managed-network deployments inline properties (~6,800 represented domains in a single authoritative file) — strict federation requires N HTTP fetches per authorization check, infeasible at scale.
 
 `by_id` selectors remain federated-only. Property IDs are publisher-scoped; fanning a fixed ID set across multiple publishers would silently authorize inventory at unintended publishers.
 
