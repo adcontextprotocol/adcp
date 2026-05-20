@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   splitMrkdwnIntoSections,
   truncateNotificationText,
+  decideStreamAppend,
   SLACK_SECTION_MRKDWN_LIMIT,
   SLACK_SECTION_HARD_LIMIT,
   SLACK_MAX_SECTION_BLOCKS,
@@ -115,6 +116,109 @@ describe('splitMrkdwnIntoSections', () => {
     const sections = splitMrkdwnIntoSections(oversized);
     expect(sections.length).toBe(SLACK_MAX_SECTION_BLOCKS);
     expect(sections[sections.length - 1].text.text).toMatch(/_\(response truncated\)_/);
+  });
+});
+
+describe('decideStreamAppend', () => {
+  const CAP = 100;
+
+  it('appends the full delta when under cap', () => {
+    const d = decideStreamAppend(50, 'hello world', CAP);
+    expect(d).toEqual({ appendPart: 'hello world', carryPart: '', shouldFinalize: false });
+  });
+
+  it('appends the full delta when exactly at cap', () => {
+    const d = decideStreamAppend(90, '1234567890', CAP);
+    expect(d.appendPart).toBe('1234567890');
+    expect(d.carryPart).toBe('');
+    expect(d.shouldFinalize).toBe(false);
+  });
+
+  it('splits the delta at a paragraph boundary when one exists in the budget', () => {
+    // Cap = 100, streamed = 80, budget = 20. `\n\n` lands at position 14 — well
+    // past budget/2, so the splitter takes it.
+    const delta = 'starting words\n\nthen new para and more text past cap';
+    const d = decideStreamAppend(80, delta, CAP);
+    expect(d.shouldFinalize).toBe(true);
+    expect(d.appendPart).toBe('starting words');
+    expect(d.appendPart + d.carryPart).toBe(delta);
+  });
+
+  it('falls back to a line boundary when the paragraph cut is too early', () => {
+    // Budget = 20. Paragraph break at position 2 (under budget/2 = 10), so
+    // the splitter falls through to a line boundary inside the budget.
+    // Assert structural invariants rather than the exact cut so a later
+    // tweak to the boundary preference doesn't break this for the wrong
+    // reason.
+    const delta = 'ab\n\nlater words\nhere then much more text past the cap and beyond';
+    const d = decideStreamAppend(80, delta, CAP);
+    expect(d.shouldFinalize).toBe(true);
+    expect(d.appendPart.length).toBeLessThanOrEqual(20);
+    expect(d.appendPart).toMatch(/\n[^\n]*$|^[^\n]*$/);
+    expect(d.appendPart + d.carryPart).toBe(delta);
+  });
+
+  it('falls back to a word boundary when no newlines exist', () => {
+    const delta = 'word word word word word word word word word word word';
+    const d = decideStreamAppend(80, delta, CAP);
+    expect(d.shouldFinalize).toBe(true);
+    expect(d.appendPart.endsWith(' ') || d.appendPart.endsWith('d')).toBe(true);
+    expect(d.appendPart + d.carryPart).toBe(delta);
+  });
+
+  it('hard-cuts a whitespace-free token at the budget', () => {
+    const delta = 'x'.repeat(50);
+    const d = decideStreamAppend(80, delta, CAP);
+    expect(d.shouldFinalize).toBe(true);
+    expect(d.appendPart.length).toBe(20);
+    expect(d.carryPart.length).toBe(30);
+    expect(d.appendPart + d.carryPart).toBe(delta);
+  });
+
+  it('carries the whole delta when streamedLen already equals cap', () => {
+    const d = decideStreamAppend(100, 'anything', CAP);
+    expect(d).toEqual({ appendPart: '', carryPart: 'anything', shouldFinalize: true });
+  });
+
+  it('carries the whole delta when streamedLen has overshot cap', () => {
+    // Defensive: `budget = Math.max(0, …)` makes overshoot safe. A future
+    // refactor that drops the clamp would silently regress; this pins it.
+    const d = decideStreamAppend(120, 'anything', CAP);
+    expect(d).toEqual({ appendPart: '', carryPart: 'anything', shouldFinalize: true });
+  });
+
+  it('returns an empty no-op for an empty delta', () => {
+    const d = decideStreamAppend(50, '', CAP);
+    expect(d).toEqual({ appendPart: '', carryPart: '', shouldFinalize: false });
+  });
+
+  it('maintains the invariant: shouldFinalize=false implies carryPart is empty', () => {
+    // The type permits a contradictory state; this pins the contract.
+    const cases = [
+      decideStreamAppend(0, 'short', CAP),
+      decideStreamAppend(50, 'still fits', CAP),
+      decideStreamAppend(99, 'x', CAP),
+      decideStreamAppend(100, '', CAP),
+    ];
+    for (const d of cases) {
+      if (!d.shouldFinalize) expect(d.carryPart).toBe('');
+    }
+  });
+
+  it('handles a single delta larger than the entire cap from a zero start', () => {
+    const delta = 'a'.repeat(CAP * 3);
+    const d = decideStreamAppend(0, delta, CAP);
+    expect(d.shouldFinalize).toBe(true);
+    expect(d.appendPart.length).toBe(CAP);
+    expect(d.carryPart.length).toBe(CAP * 2);
+    expect(d.appendPart + d.carryPart).toBe(delta);
+  });
+
+  it('preserves the full delta across appendPart + carryPart', () => {
+    // Cross-boundary text with mixed structure.
+    const delta = 'sentence one. sentence two.\n\nparagraph two starts here and continues.';
+    const d = decideStreamAppend(50, delta, CAP);
+    expect(d.appendPart + d.carryPart).toBe(delta);
   });
 });
 
