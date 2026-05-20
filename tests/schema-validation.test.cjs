@@ -337,7 +337,56 @@ async function runTests() {
     return true;
   });
 
-  // Test 7: Validate schema examples against their schemas
+  // Test 7: Validate preview_creative supports non-expiring preview URLs
+  await test('preview_creative responses may omit expires_at for non-expiring preview URLs', async () => {
+    const previewResponseSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/preview-creative-response.json'));
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validate = await testAjv.compileAsync(previewResponseSchema);
+    const render = {
+      render_id: 'render_1',
+      output_format: 'url',
+      preview_url: 'https://creative-agent.example.com/preview/static',
+      role: 'primary'
+    };
+    const preview = {
+      preview_id: 'prev_static',
+      renders: [render],
+      input: { name: 'Default' }
+    };
+    const cases = [
+      {
+        response_type: 'single',
+        previews: [preview]
+      },
+      {
+        response_type: 'batch',
+        results: [
+          {
+            success: true,
+            creative_id: 'creative_static',
+            response: { previews: [preview] }
+          }
+        ]
+      }
+    ];
+
+    for (const example of cases) {
+      if (!validate(example)) {
+        return validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
+      }
+    }
+    return true;
+  });
+
+  // Test 8: Validate schema examples against their schemas
   await test('Schema examples validate against their own schemas', async () => {
     // Skip schemas that require format-aware validation (creative manifests need format context)
     const FORMAT_AWARE_SCHEMAS = ['sync-creatives-request.json', 'list-creatives-response.json'];
