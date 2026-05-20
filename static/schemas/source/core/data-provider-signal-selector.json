@@ -3,6 +3,7 @@
   "$id": "/schemas/core/data-provider-signal-selector.json",
   "title": "Data Provider Signal Selector",
   "description": "Selects signals from a data provider's adagents.json catalog. Used for product definitions and agent authorization. Supports three selection patterns: all signals, specific IDs, or by tags.",
+  "x-adcp-hoist": true,
   "discriminator": {
     "propertyName": "selection_type"
   },
