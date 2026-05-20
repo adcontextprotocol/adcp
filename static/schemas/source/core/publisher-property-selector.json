@@ -9,7 +9,7 @@
   "oneOf": [
     {
       "type": "object",
-      "description": "Select all properties from one publisher domain, or from each publisher domain when `publisher_domains` is used.",
+      "description": "Select all properties from one publisher domain, or from each publisher domain when `publisher_domains` is used. Resolves against each publisher's own adagents.json (federated path) or against matching entries in the parent file's top-level `properties[]` whose `publisher_domain` matches the selector's addressed domains (inline optimization — see adagents.json fan-out resolution semantics).",
       "properties": {
         "publisher_domain": {
           "type": "string",
@@ -76,7 +76,7 @@
     },
     {
       "type": "object",
-      "description": "Select properties by tag membership. With `publisher_domains`, the same `property_tags` predicate is resolved against each listed publisher's adagents.json — the common managed-network case where every represented site tags inventory with a shared label.",
+      "description": "Select properties by tag membership. With `publisher_domains`, the same `property_tags` predicate is resolved against each listed publisher's adagents.json (federated path) or against matching entries in the parent file's top-level `properties[]` whose `publisher_domain` matches the selector's addressed domains and whose `tags[]` contains at least one of the selector's `property_tags[]` (inline optimization — see adagents.json fan-out resolution semantics).",
       "properties": {
         "publisher_domain": {
           "type": "string",
