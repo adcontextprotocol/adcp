@@ -9,7 +9,7 @@
   "oneOf": [
     {
       "type": "object",
-      "description": "Select all properties from one publisher domain, or from each publisher domain when `publisher_domains` is used.",
+      "description": "Select all properties from one publisher domain, or from each publisher domain when `publisher_domains` is used. Consumers MAY satisfy the selector from the parent file's top-level `properties[]` when those properties carry a `publisher_domain` matching one of the listed domains (see Resolution paths in the spec).",
       "properties": {
         "publisher_domain": {
           "type": "string",
@@ -76,7 +76,7 @@
     },
     {
       "type": "object",
-      "description": "Select properties by tag membership. With `publisher_domains`, the same `property_tags` predicate is resolved against each listed publisher's adagents.json — the common managed-network case where every represented site tags inventory with a shared label.",
+      "description": "Select properties by tag membership. With `publisher_domains`, the same `property_tags` predicate is resolved against each listed publisher's adagents.json — the common managed-network case where every represented site tags inventory with a shared label. Consumers MAY also satisfy the predicate from the parent file's top-level `properties[]` when those properties carry a `publisher_domain` matching one of the selector's `publisher_domains[]` (see Resolution paths in the spec).",
       "properties": {
         "publisher_domain": {
           "type": "string",
@@ -100,7 +100,7 @@
         },
         "property_tags": {
           "type": "array",
-          "description": "Property tags resolved against each addressed publisher's adagents.json. Selector covers all properties carrying any of these tags.",
+          "description": "Property tags resolved against each addressed publisher's adagents.json, OR against the parent file's top-level `properties[]` when those properties carry a `publisher_domain` matching the selector. Selector covers all properties carrying any of these tags.",
           "items": {
             "$ref": "/schemas/core/property-tag.json"
           },
