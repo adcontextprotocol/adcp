@@ -95,20 +95,30 @@ function readYamlFrontmatter(filePath) {
           `required_any_of_tools[${i}] in ${filePath} must be an object with a 'tools' list`
         );
       }
-      const tools = entry.tools;
-      if (!Array.isArray(tools) || tools.length < 2) {
+      if (!Array.isArray(entry.tools)) {
         throw new Error(
-          `required_any_of_tools[${i}].tools in ${filePath} must be a list of at least 2 tool names ` +
-          `(single-tool families collapse to required_tools)`
+          `required_any_of_tools[${i}].tools in ${filePath} must be a YAML list`
         );
       }
-      const out_entry = {
-        tools: tools.map(t => String(t).trim()).filter(Boolean)
-      };
-      if (entry.rationale != null) {
-        out_entry.rationale = String(entry.rationale).trim();
+      const tools = entry.tools.map(t => String(t).trim()).filter(Boolean);
+      if (tools.length < 2) {
+        throw new Error(
+          `required_any_of_tools[${i}].tools in ${filePath} must contain at least 2 non-empty tool names ` +
+          `after trimming (single-tool families collapse to required_tools)`
+        );
       }
-      return out_entry;
+      const outEntry = { tools };
+      if (entry.rationale != null) {
+        if (typeof entry.rationale !== 'string') {
+          throw new Error(
+            `required_any_of_tools[${i}].rationale in ${filePath} must be a string, ` +
+            `got ${typeof entry.rationale}`
+          );
+        }
+        const rationale = entry.rationale.trim();
+        if (rationale) outEntry.rationale = rationale;
+      }
+      return outEntry;
     });
   }
   return out;

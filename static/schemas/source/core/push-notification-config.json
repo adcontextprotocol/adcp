@@ -19,7 +19,7 @@
     },
     "token": {
       "type": "string",
-      "description": "Optional client-provided token for webhook validation. The seller MUST echo this value verbatim in every webhook payload's `token` field (see [`mcp-webhook-payload.json`](/schemas/core/mcp-webhook-payload.json) for the receiver-side validation obligation). Length bounds give receivers a defensive range check on the echoed value; senders SHOULD generate tokens with at least 128 bits of entropy. This is a complementary authenticity mechanism that can layer on top of the RFC 9421 webhook signature — unlike the `authentication` block below, it is not on the 4.0 removal track.",
+      "description": "Optional client-provided token for webhook validation. The seller MUST echo this value verbatim in every webhook payload's `token` field (see [`mcp-webhook-payload.json`](/schemas/core/mcp-webhook-payload.json) for the receiver-side validation obligation). Length bounds give receivers a defensive range check on the echoed value; senders SHOULD generate tokens with at least 128 bits of entropy (≥22 base64url characters). This is a complementary authenticity mechanism that can layer on top of the RFC 9421 webhook signature — unlike the `authentication` block below, it is not on the 4.0 removal track. Receivers that registered both a signing key (RFC 9421) and a `token` MUST NOT treat a valid token echo as authorization to skip signature verification; both checks remain independent obligations.",
       "minLength": 16,
       "maxLength": 4096
     },
