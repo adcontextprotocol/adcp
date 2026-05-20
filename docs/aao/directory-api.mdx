@@ -28,8 +28,49 @@ GET https://{aao_directory}/v1/agents/{agent_url}/publishers
 |---|---|---|---|
 | `since` | ISO 8601 | unset | Return only publishers whose `last_verified_at` ≥ `since`. Enables incremental sync. |
 | `cursor` | opaque string | unset | Pagination cursor returned by a prior response. Stable across the directory's refresh cycle for the lifetime of the cursor. |
-| `status` | comma-separated | `authorized` | Filter by lifecycle status. v1: `authorized`, `revoked`. |
+| `status` | string, repeated | `authorized` | Filter by lifecycle status. v1: `authorized`, `revoked`. Repeat the key once per value (OpenAPI `style: form, explode: true`). Comma-separated single-value form (`status=authorized,revoked`) is **not** accepted; directories MUST return `400` with an explanation pointing to the repeated-key form. |
 | `limit` | int (1–1000) | 200 | Max publishers per page. |
+
+#### Worked example: filtering by multiple status values
+
+```
+GET /v1/agents/https%3A%2F%2Fsales-agent.example.com%2F/publishers?status=authorized&status=revoked&limit=500
+```
+
+Equivalent in TypeScript:
+
+```ts
+const url = new URL(`${directory}/v1/agents/${encodeURIComponent(agentUrl)}/publishers`);
+url.searchParams.append("status", "authorized");
+url.searchParams.append("status", "revoked");
+url.searchParams.set("limit", "500");
+```
+
+Equivalent in Python (`requests`):
+
+```python
+requests.get(
+    f"{directory}/v1/agents/{quote(agent_url, safe='')}/publishers",
+    params=[("status", "authorized"), ("status", "revoked"), ("limit", "500")],
+)
+```
+
+The OpenAPI fragment for the `status` parameter:
+
+```yaml
+- in: query
+  name: status
+  schema:
+    type: array
+    items:
+      type: string
+      enum: [authorized, revoked]
+  style: form
+  explode: true
+  required: false
+```
+
+Repeated-key was chosen because (a) it is what `URLSearchParams.append()` and OpenAPI's default `explode: true` produce, (b) it composes cleanly with future values that might contain a comma, and (c) it leaves no parser ambiguity at the directory.
 
 ### Response
 
@@ -122,7 +163,7 @@ The directory verifies the `managerdomain` safety rule before returning a row wi
 | Status | Meaning |
 |---|---|
 | `200 OK` | Lookup succeeded. Body MAY have empty `publishers[]`. |
-| `400 Bad Request` | Malformed `agent_url`, invalid cursor, or unknown `status` value. |
+| `400 Bad Request` | Malformed `agent_url`, invalid cursor, unknown `status` value, or `status` supplied as a comma-separated list rather than repeated keys. |
 | `404 Not Found` | Directory has never indexed any publisher referencing this `agent_url`. **Distinct from `200` + empty** (which means the directory has indexed this agent, but no current authorizations resolve). |
 | `429 Too Many Requests` | Rate limit. `Retry-After` header set. Bucket key: `agent_url` (anonymous) plus IP (defense-in-depth). |
 | `5xx` | Directory error. Consumer SHOULD retry with backoff. |
