@@ -1719,6 +1719,77 @@ components:
         - monitoring_paused
         - check_interval_hours
         - monitoring_paused_at
+    ComplianceStepDiagnostic:
+      type: object
+      properties:
+        id:
+          anyOf:
+            - type: number
+            - type: string
+        run_id:
+          type: string
+        agent_url:
+          type: string
+        storyboard_id:
+          type: string
+        phase_id:
+          type: string
+        step_id:
+          type: string
+        task:
+          type: string
+        step_passed:
+          type: boolean
+        duration_ms:
+          type:
+            - number
+            - "null"
+        request_url:
+          type:
+            - string
+            - "null"
+        request_jsonb: {}
+        response_status:
+          type:
+            - number
+            - "null"
+        response_headers_jsonb:
+          type:
+            - object
+            - "null"
+          additionalProperties:
+            type: string
+        response_jsonb: {}
+        extraction_path:
+          type:
+            - string
+            - "null"
+        extraction_note:
+          type:
+            - string
+            - "null"
+        error_text:
+          type:
+            - string
+            - "null"
+        adcp_error_jsonb: {}
+        failed_validations_jsonb: {}
+        served_by_agent_url:
+          type:
+            - string
+            - "null"
+        captured_at:
+          type: string
+      required:
+        - id
+        - run_id
+        - agent_url
+        - storyboard_id
+        - phase_id
+        - step_id
+        - task
+        - step_passed
+        - captured_at
     OutboundRequest:
       type: object
       properties:
@@ -6367,6 +6438,90 @@ paths:
                 $ref: "#/components/schemas/Error"
         "429":
           description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/compliance/diagnostics:
+    get:
+      operationId: getAgentComplianceStepDiagnostics
+      summary: Get per-step diagnostics for a compliance run
+      description: |-
+        Returns the exact request and response payloads the runner captured for failing storyboard steps on a single compliance run.
+
+        Lets agent owners diff what the runner sent against their own probes without re-running the storyboard. Owner-only — payloads echo seller-side account/brand identifiers and may carry sensitive descriptive fields. If `run_id` is omitted, resolves to the latest run for the agent.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+            description: Specific compliance run UUID. Defaults to latest.
+          required: false
+          description: Specific compliance run UUID. Defaults to latest.
+          name: run_id
+          in: query
+        - schema:
+            type: string
+            description: Max rows (default 500, max 1000)
+          required: false
+          description: Max rows (default 500, max 1000)
+          name: limit
+          in: query
+      responses:
+        "200":
+          description: Per-step diagnostics for the requested run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_url:
+                    type: string
+                  run_id:
+                    type:
+                      - string
+                      - "null"
+                  count:
+                    type: integer
+                  diagnostics:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ComplianceStepDiagnostic"
+                required:
+                  - agent_url
+                  - run_id
+                  - count
+                  - diagnostics
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
           content:
             application/json:
               schema:
