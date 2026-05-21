@@ -624,7 +624,7 @@ Cancel an entire media buy:
 }
 ```
 
-The body-level `media_buy_status` is the canonical 3.1 field for the buy's lifecycle state. The legacy top-level `status: MediaBuyStatus` form (e.g., `"status": "canceled"`) is deprecated and removed in 4.0 — it collided with the envelope task-status at the same root key. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status) for the migration.
+The body-level `media_buy_status` is the canonical 3.1 field for the buy's lifecycle state. The legacy top-level `status: MediaBuyStatus` form (e.g., `"status": "canceled"`) is deprecated and removed in 3.2 ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)) — it collided with the envelope task-status at the same root key. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status) for the migration.
 
 **`NOT_CANCELLABLE` error response:**
 ```json
