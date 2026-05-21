@@ -170,6 +170,44 @@ export interface StoryboardStatusEntry {
   steps_total: number;
 }
 
+/**
+ * Per-step wire capture for a failing compliance step. Persisted into
+ * `agent_compliance_step_diagnostics` so sellers can diff the runner's
+ * actual request/response against their own probe without re-running the
+ * storyboard themselves. adcp#4738.
+ *
+ * All fields except the identifying tuple are optional because the SDK
+ * does not guarantee every field on every transport (e.g. stdio MCP omits
+ * `request_url`, error-path responses have no body). Persist what's there;
+ * leave the rest null.
+ */
+export interface StepDiagnosticEntry {
+  storyboard_id: string;
+  phase_id: string;
+  step_id: string;
+  task: string;
+  step_passed: boolean;
+  duration_ms?: number;
+  request_url?: string;
+  request_jsonb?: unknown;
+  response_status?: number;
+  response_headers_jsonb?: Record<string, string>;
+  response_jsonb?: unknown;
+  extraction_path?: string;
+  extraction_note?: string;
+  error_text?: string;
+  adcp_error_jsonb?: unknown;
+  failed_validations_jsonb?: unknown;
+  served_by_agent_url?: string;
+}
+
+export interface ComplianceStepDiagnosticRow extends StepDiagnosticEntry {
+  id: number;
+  run_id: string;
+  agent_url: string;
+  captured_at: Date;
+}
+
 export interface RecordComplianceRunInput {
   agent_url: string;
   lifecycle_stage: LifecycleStage;
@@ -186,6 +224,7 @@ export interface RecordComplianceRunInput {
   triggered_by?: TriggeredBy;
   dry_run?: boolean;
   storyboard_statuses?: StoryboardStatusEntry[];
+  step_diagnostics?: StepDiagnosticEntry[];
 }
 
 // =====================================================
@@ -409,6 +448,81 @@ export class ComplianceDatabase {
         }
       }
 
+      // 6. Batch insert per-step diagnostics (failing steps only).
+      // SAVEPOINT-wrapped so a missing table (pre-migration 489) or a
+      // payload that fails column-level constraints doesn't roll back the
+      // compliance run itself. Diagnostics are an aid, not the verdict.
+      if (input.step_diagnostics?.length) {
+        await client.query('SAVEPOINT step_diag_insert');
+        try {
+          const diag = input.step_diagnostics;
+          await client.query(
+            `INSERT INTO agent_compliance_step_diagnostics (
+              run_id, agent_url, storyboard_id, phase_id, step_id, task,
+              step_passed, duration_ms,
+              request_url, request_jsonb,
+              response_status, response_headers_jsonb, response_jsonb,
+              extraction_path, extraction_note,
+              error_text, adcp_error_jsonb, failed_validations_jsonb,
+              served_by_agent_url
+            )
+            SELECT
+              $1, $2, sb_id, ph_id, st_id, tk,
+              passed, dur,
+              req_url, req_body::jsonb,
+              resp_status, resp_headers::jsonb, resp_body::jsonb,
+              ext_path, ext_note,
+              err_text, adcp_err::jsonb, failed_v::jsonb,
+              served_by
+            FROM unnest(
+              $3::text[], $4::text[], $5::text[], $6::text[],
+              $7::bool[], $8::int[],
+              $9::text[], $10::text[],
+              $11::int[], $12::text[], $13::text[],
+              $14::text[], $15::text[],
+              $16::text[], $17::text[], $18::text[],
+              $19::text[]
+            ) AS t(
+              sb_id, ph_id, st_id, tk,
+              passed, dur,
+              req_url, req_body,
+              resp_status, resp_headers, resp_body,
+              ext_path, ext_note,
+              err_text, adcp_err, failed_v,
+              served_by
+            )`,
+            [
+              run.id,
+              input.agent_url,
+              diag.map(d => d.storyboard_id),
+              diag.map(d => d.phase_id),
+              diag.map(d => d.step_id),
+              diag.map(d => d.task),
+              diag.map(d => d.step_passed),
+              diag.map(d => d.duration_ms ?? null),
+              diag.map(d => d.request_url ?? null),
+              diag.map(d => d.request_jsonb !== undefined ? JSON.stringify(d.request_jsonb) : null),
+              diag.map(d => d.response_status ?? null),
+              diag.map(d => d.response_headers_jsonb ? JSON.stringify(d.response_headers_jsonb) : null),
+              diag.map(d => d.response_jsonb !== undefined ? JSON.stringify(d.response_jsonb) : null),
+              diag.map(d => d.extraction_path ?? null),
+              diag.map(d => d.extraction_note ?? null),
+              diag.map(d => d.error_text ?? null),
+              diag.map(d => d.adcp_error_jsonb !== undefined ? JSON.stringify(d.adcp_error_jsonb) : null),
+              diag.map(d => d.failed_validations_jsonb !== undefined ? JSON.stringify(d.failed_validations_jsonb) : null),
+              diag.map(d => d.served_by_agent_url ?? null),
+            ],
+          );
+          await client.query('RELEASE SAVEPOINT step_diag_insert');
+        } catch (diagErr) {
+          await client.query('ROLLBACK TO SAVEPOINT step_diag_insert');
+          logger.warn(
+            { err: diagErr, agentUrl: input.agent_url, count: input.step_diagnostics.length },
+            'Step diagnostics insert failed (table may not exist yet)',
+          );
+        }
+      }
+
       await client.query('COMMIT');
 
       const row = statusResult.rows[0];
@@ -488,6 +602,63 @@ export class ComplianceDatabase {
       `SELECT * FROM agent_compliance_runs
        WHERE agent_url = $1
        ORDER BY tested_at DESC
+       LIMIT $2`,
+      [agentUrl, limit],
+    );
+    return result.rows;
+  }
+
+  /**
+   * Fetch per-step diagnostics for a single compliance run.
+   *
+   * If `runId` is omitted, resolves to the latest run for the agent. Returns
+   * an empty array when no run exists or no failing steps were captured.
+   * Diagnostics are owner-only PII (request bodies can contain seller-side
+   * account identifiers, brand domains, etc.) — callers are responsible for
+   * gating with the appropriate ownership middleware.
+   */
+  async getStepDiagnostics(
+    agentUrl: string,
+    opts: { runId?: string; limit?: number } = {},
+  ): Promise<ComplianceStepDiagnosticRow[]> {
+    const limit = Math.min(opts.limit ?? 500, 1000);
+    if (opts.runId) {
+      const result = await query(
+        `SELECT id, run_id, agent_url, storyboard_id, phase_id, step_id, task,
+                step_passed, duration_ms,
+                request_url, request_jsonb,
+                response_status, response_headers_jsonb, response_jsonb,
+                extraction_path, extraction_note,
+                error_text, adcp_error_jsonb, failed_validations_jsonb,
+                served_by_agent_url, captured_at
+         FROM agent_compliance_step_diagnostics
+         WHERE run_id = $1 AND agent_url = $2
+         ORDER BY storyboard_id, phase_id, step_id
+         LIMIT $3`,
+        [opts.runId, agentUrl, limit],
+      );
+      return result.rows;
+    }
+
+    // Latest run by tested_at — diagnostics are joined via run_id.
+    const result = await query(
+      `WITH latest AS (
+         SELECT id FROM agent_compliance_runs
+         WHERE agent_url = $1
+         ORDER BY tested_at DESC
+         LIMIT 1
+       )
+       SELECT d.id, d.run_id, d.agent_url, d.storyboard_id, d.phase_id, d.step_id, d.task,
+              d.step_passed, d.duration_ms,
+              d.request_url, d.request_jsonb,
+              d.response_status, d.response_headers_jsonb, d.response_jsonb,
+              d.extraction_path, d.extraction_note,
+              d.error_text, d.adcp_error_jsonb, d.failed_validations_jsonb,
+              d.served_by_agent_url, d.captured_at
+       FROM agent_compliance_step_diagnostics d
+       JOIN latest l ON d.run_id = l.id
+       WHERE d.agent_url = $1
+       ORDER BY d.storyboard_id, d.phase_id, d.step_id
        LIMIT $2`,
       [agentUrl, limit],
     );

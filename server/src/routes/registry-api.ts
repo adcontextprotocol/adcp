@@ -5302,6 +5302,50 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  // ── Per-step compliance diagnostics (owner-only, adcp#4738) ──────
+  //
+  // Returns the exact request/response payloads the runner captured for
+  // failing storyboard steps on a single compliance run. Lets owners diff
+  // what the runner sent against their own probes without re-running.
+  // Owner-only because payloads echo seller-side account/brand identifiers
+  // and may contain sensitive descriptive fields.
+  router.get(
+    "/registry/agents/:encodedUrl/compliance/diagnostics",
+    ...complianceWriteMiddleware,
+    async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(agentUrl)) {
+          return res.status(400).json({ error: "Invalid agent URL" });
+        }
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+        if (!isOwner) {
+          return res.status(403).json({ error: "You do not have permission to view this agent" });
+        }
+
+        const runId = typeof req.query.run_id === "string" ? req.query.run_id : undefined;
+        const limit = req.query.limit !== undefined
+          ? Math.min(parseInt(req.query.limit as string) || 500, 1000)
+          : undefined;
+
+        const rows = await complianceDb.getStepDiagnostics(agentUrl, { runId, limit });
+
+        res.json({
+          agent_url: agentUrl,
+          run_id: runId ?? (rows[0]?.run_id ?? null),
+          count: rows.length,
+          diagnostics: rows,
+        });
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to get compliance diagnostics");
+        res.status(500).json({ error: "Failed to get compliance diagnostics" });
+      }
+    },
+  );
+
   router.get("/registry/agents/:encodedUrl/monitoring/requests", ...complianceWriteMiddleware, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
