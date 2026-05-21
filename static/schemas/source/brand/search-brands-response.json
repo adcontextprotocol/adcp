@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/brand/search-brands-response.json",
   "title": "Search Brands Response",
-  "description": "Brand stubs matching the search query. Each stub carries the public identity tier — enough to evaluate a brand and follow up with get_brand_identity (for full identity) or get_rights (for pricing). Rich authorized data (voice synthesis, high-res assets, tone guidelines) is not included.",
+  "description": "Brand stubs matching the search query. Each stub carries the public identity tier \u2014 enough to evaluate a brand and follow up with get_brand_identity (for full identity) or get_rights (for pricing). Rich authorized data (voice synthesis, high-res assets, tone guidelines) is not included.",
   "x-status": "experimental",
   "definitions": {
     "SearchBrandResult": {
@@ -27,7 +27,10 @@
               "description": "House display name"
             }
           },
-          "required": ["domain", "name"],
+          "required": [
+            "domain",
+            "name"
+          ],
           "additionalProperties": true
         },
         "names": {
@@ -47,13 +50,20 @@
         },
         "industries": {
           "type": "array",
-          "items": { "$ref": "/schemas/enums/advertiser-industry.json" },
+          "items": {
+            "$ref": "/schemas/enums/advertiser-industry.json"
+          },
           "minItems": 1,
           "description": "Brand industries, following the advertiser-industry taxonomy"
         },
         "keller_type": {
           "type": "string",
-          "enum": ["master", "sub_brand", "endorsed", "independent"],
+          "enum": [
+            "master",
+            "sub_brand",
+            "endorsed",
+            "independent"
+          ],
           "description": "Brand architecture type: master (primary brand of house), sub_brand (carries parent name), endorsed (independent identity backed by parent), independent (operates separately)"
         },
         "logos": {
@@ -62,24 +72,45 @@
           "items": {
             "type": "object",
             "properties": {
-              "url": { "type": "string", "format": "uri", "description": "URL to the logo asset" },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to the logo asset"
+              },
               "orientation": {
                 "type": "string",
-                "enum": ["square", "horizontal", "vertical", "stacked"],
+                "enum": [
+                  "square",
+                  "horizontal",
+                  "vertical",
+                  "stacked"
+                ],
                 "description": "Logo aspect ratio orientation"
               },
               "background": {
                 "type": "string",
-                "enum": ["dark-bg", "light-bg", "transparent-bg"],
+                "enum": [
+                  "dark-bg",
+                  "light-bg",
+                  "transparent-bg"
+                ],
                 "description": "Background compatibility"
               },
               "variant": {
                 "type": "string",
-                "enum": ["primary", "secondary", "icon", "wordmark", "full-lockup"],
+                "enum": [
+                  "primary",
+                  "secondary",
+                  "icon",
+                  "wordmark",
+                  "full-lockup"
+                ],
                 "description": "Logo variant type"
               }
             },
-            "required": ["url"],
+            "required": [
+              "url"
+            ],
             "additionalProperties": true
           }
         },
@@ -89,7 +120,9 @@
           "properties": {
             "available_uses": {
               "type": "array",
-              "items": { "$ref": "/schemas/enums/right-use.json" }
+              "items": {
+                "$ref": "/schemas/enums/right-use.json"
+              }
             },
             "countries": {
               "type": "array",
@@ -111,7 +144,11 @@
           "additionalProperties": true
         }
       },
-      "required": ["brand_id", "house", "names"],
+      "required": [
+        "brand_id",
+        "house",
+        "names"
+      ],
       "additionalProperties": true
     }
   },
@@ -138,16 +175,24 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["brands"],
+      "required": [
+        "brands"
+      ],
       "additionalProperties": true,
-      "not": { "required": ["errors"] }
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
     },
     {
       "title": "SearchBrandsError",
       "properties": {
         "errors": {
           "type": "array",
-          "items": { "$ref": "/schemas/core/error.json" },
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
           "minItems": 1
         },
         "context": {
@@ -157,9 +202,23 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": true,
-      "not": { "required": ["brands"] }
+      "not": {
+        "required": [
+          "brands"
+        ]
+      }
+    }
+  ],
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ]
 }

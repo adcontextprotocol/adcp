@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "properties": {
@@ -19,8 +22,12 @@
     },
     "source": {
       "type": "string",
-      "enum": ["publisher", "aao_mirror", "agent_derived"],
-      "description": "Which tier of the resolution order produced this `formats[]` list when the request carried a `publisher_domain` filter. `publisher`: agent fetched `<publisher_domain>/.well-known/adagents.json` and returned its `formats[]` directly (publisher-authoritative). `aao_mirror`: publisher's hosted file was 404 / lacked `formats[]`, agent fell back to `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json` (community-curated; lower authority — buyer SHOULD treat as advisory until platform adopts). `agent_derived`: neither tier 1 nor tier 2 returned a catalog, so the agent synthesized `formats[]` from the union of its own products' `format_options[]` for products selling the publisher's inventory (lowest authority — agent's view of what it sells, not the publisher's catalog). When two SDKs query the same agent for the same publisher and the agent-derived tier is in play, results may diverge by product set; buyers SHOULD record `source` for telemetry. When the request did NOT carry `publisher_domain`, this field MAY be omitted."
+      "enum": [
+        "publisher",
+        "aao_mirror",
+        "agent_derived"
+      ],
+      "description": "Which tier of the resolution order produced this `formats[]` list when the request carried a `publisher_domain` filter. `publisher`: agent fetched `<publisher_domain>/.well-known/adagents.json` and returned its `formats[]` directly (publisher-authoritative). `aao_mirror`: publisher's hosted file was 404 / lacked `formats[]`, agent fell back to `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json` (community-curated; lower authority \u2014 buyer SHOULD treat as advisory until platform adopts). `agent_derived`: neither tier 1 nor tier 2 returned a catalog, so the agent synthesized `formats[]` from the union of its own products' `format_options[]` for products selling the publisher's inventory (lowest authority \u2014 agent's view of what it sells, not the publisher's catalog). When two SDKs query the same agent for the same publisher and the agent-derived tier is in play, results may diverge by product set; buyers SHOULD record `source` for telemetry. When the request did NOT carry `publisher_domain`, this field MAY be omitted."
     },
     "creative_agents": {
       "type": "array",

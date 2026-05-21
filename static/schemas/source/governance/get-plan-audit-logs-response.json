@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "x-status": "experimental",
@@ -269,7 +272,7 @@
                 },
                 "mode": {
                   "$ref": "/schemas/enums/governance-mode.json",
-                  "description": "Governance mode active at the moment this specific check was evaluated. Governance agents SHOULD populate this field on check entries, recording the mode from their runtime configuration at the moment check_governance was processed — not derived from a plan field. This is a per-check value: if the operator changes mode between checks for the same governed action, each entry records the mode active for that entry. A future `governed_actions[].mode` field would describe the action's current mode, which may differ from the most recent entry's `mode` if the plan has since been re-synced. Absent for outcome entries and for pre-3.1 governance agents that do not surface mode on audit responses."
+                  "description": "Governance mode active at the moment this specific check was evaluated. Governance agents SHOULD populate this field on check entries, recording the mode from their runtime configuration at the moment check_governance was processed \u2014 not derived from a plan field. This is a per-check value: if the operator changes mode between checks for the same governed action, each entry records the mode active for that entry. A future `governed_actions[].mode` field would describe the action's current mode, which may differ from the most recent entry's `mode` if the plan has since been re-synced. Absent for outcome entries and for pre-3.1 governance agents that do not surface mode on audit responses."
                 },
                 "explanation": {
                   "type": "string",
@@ -300,7 +303,7 @@
                       },
                       "policy_id": {
                         "type": "string",
-                        "$comment": "x-entity deliberately omitted — audit log findings mirror check_governance findings and can reference either a governance_registry_policy or a governance_inline_policy (see #2685)."
+                        "$comment": "x-entity deliberately omitted \u2014 audit log findings mirror check_governance findings and can reference either a governance_registry_policy or a governance_inline_policy (see #2685)."
                       },
                       "severity": {
                         "$ref": "/schemas/enums/escalation-severity.json"
@@ -337,7 +340,7 @@
                 "plan_hash": {
                   "type": "string",
                   "pattern": "^[A-Za-z0-9_-]{43}$",
-                  "description": "Audit-layer binding to the plan revision this attestation was evaluated over — base64url_no_pad(SHA-256(JCS(plan_payload))) per Plan binding and audit in the campaign-governance specification. Present on check entries. Auditors and buyer-side compliance verify by recomputing over the retained plan revision and byte-comparing the decoded 32-byte digests."
+                  "description": "Audit-layer binding to the plan revision this attestation was evaluated over \u2014 base64url_no_pad(SHA-256(JCS(plan_payload))) per Plan binding and audit in the campaign-governance specification. Present on check entries. Auditors and buyer-side compliance verify by recomputing over the retained plan revision and byte-comparing the decoded 32-byte digests."
                 },
                 "purchase_type": {
                   "$ref": "/schemas/enums/purchase-type.json",

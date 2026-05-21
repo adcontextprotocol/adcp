@@ -2,11 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/sync-audiences-response.json",
   "title": "Sync Audiences Response",
-  "description": "Response from audience sync operation. Exactly one of three shapes: (1) synchronous success — per-audience results in the audiences array (best-effort processing with per-item status/failures); (2) terminal failure — errors array with no audiences processed; (3) submitted task envelope — status 'submitted' with task_id when the whole operation is queued (batch ingestion, governance-gated upload, or any flow where the seller cannot return per-audience results before the response is emitted). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. Final per-audience results land on the task completion artifact, not this envelope. Per-audience asynchronous matching (an audience reported with status 'processing' while the rest of the sync resolves synchronously) belongs on the synchronous success branch via audience-status, NOT here — operation-level async is for when the seller has no per-item results to return yet. These three shapes are mutually exclusive — a response has exactly one.",
+  "description": "Response from audience sync operation. Exactly one of three shapes: (1) synchronous success \u2014 per-audience results in the audiences array (best-effort processing with per-item status/failures); (2) terminal failure \u2014 errors array with no audiences processed; (3) submitted task envelope \u2014 status 'submitted' with task_id when the whole operation is queued (batch ingestion, governance-gated upload, or any flow where the seller cannot return per-audience results before the response is emitted). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. Final per-audience results land on the task completion artifact, not this envelope. Per-audience asynchronous matching (an audience reported with status 'processing' while the rest of the sync resolves synchronously) belongs on the synchronous success branch via audience-status, NOT here \u2014 operation-level async is for when the seller has no per-item results to return yet. These three shapes are mutually exclusive \u2014 a response has exactly one.",
   "type": "object",
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "oneOf": [
@@ -92,7 +95,7 @@
                     },
                     "match_rate": {
                       "type": "number",
-                      "description": "Match rate for this identifier type (matched / submitted). Server-authoritative — consumers should prefer this value over computing their own.",
+                      "description": "Match rate for this identifier type (matched / submitted). Server-authoritative \u2014 consumers should prefer this value over computing their own.",
                       "minimum": 0,
                       "maximum": 1
                     }
@@ -228,7 +231,7 @@
     },
     {
       "title": "SyncAudiencesSubmitted",
-      "description": "Async task envelope returned when the whole sync operation cannot be confirmed before the response is emitted — for example, when the seller batches ingestion, when governance review gates the upload before matching can start, or when an upstream clean-room flow needs to settle before any per-audience result can be issued. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the audiences array with per-item action/status lands on the completion artifact, not this envelope. Per-audience asynchronous matching (one audience in 'processing' while the rest of the sync resolves synchronously) belongs on the SyncAudiencesSuccess branch with status: processing on that item, not here. Matching latency on the per-audience status enum (processing → ready / too_small) is the common case; this envelope is the less-common operation-level case.",
+      "description": "Async task envelope returned when the whole sync operation cannot be confirmed before the response is emitted \u2014 for example, when the seller batches ingestion, when governance review gates the upload before matching can start, or when an upstream clean-room flow needs to settle before any per-audience result can be issued. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the audiences array with per-item action/status lands on the completion artifact, not this envelope. Per-audience asynchronous matching (one audience in 'processing' while the rest of the sync resolves synchronously) belongs on the SyncAudiencesSuccess branch with status: processing on that item, not here. Matching latency on the per-audience status enum (processing \u2192 ready / too_small) is the common case; this envelope is the less-common operation-level case.",
       "type": "object",
       "properties": {
         "status": {
@@ -244,7 +247,7 @@
         "message": {
           "type": "string",
           "maxLength": 2000,
-          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Batch ingestion queued; typical turnaround 15-30 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
+          "description": "Optional human-readable explanation of why the task is submitted \u2014 e.g., 'Batch ingestion queued; typical turnaround 15-30 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context \u2014 a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
         },
         "errors": {
           "type": "array",

@@ -2,11 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/update-media-buy-response.json",
   "title": "Update Media Buy Response",
-  "description": "Response payload for update_media_buy task. Exactly one of three shapes: (1) synchronous success — media_buy_id and updated state are issued in-line; (2) terminal failure — an errors array with no changes applied; (3) submitted task envelope — status 'submitted' with task_id when the update is queued for async processing (e.g., awaiting operator re-approval for mid-flight changes). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive — a response has exactly one.",
+  "description": "Response payload for update_media_buy task. Exactly one of three shapes: (1) synchronous success \u2014 media_buy_id and updated state are issued in-line; (2) terminal failure \u2014 an errors array with no changes applied; (3) submitted task envelope \u2014 status 'submitted' with task_id when the update is queued for async processing (e.g., awaiting operator re-approval for mid-flight changes). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive \u2014 a response has exactly one.",
   "type": "object",
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "oneOf": [
@@ -67,7 +70,7 @@
         },
         "available_actions": {
           "type": "array",
-          "description": "Structured per-buy resolution of actions available after this update. Authoritative — see `get-media-buys-response.json` for full semantics.",
+          "description": "Structured per-buy resolution of actions available after this update. Authoritative \u2014 see `get-media-buys-response.json` for full semantics.",
           "items": {
             "$ref": "/schemas/core/media-buy-available-action.json"
           },
@@ -150,7 +153,7 @@
     },
     {
       "title": "UpdateMediaBuySubmitted",
-      "description": "Async task envelope returned when update_media_buy cannot be confirmed before the response — for example, when operator re-approval is required for mid-flight changes. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the updated media buy state lands on the completion artifact, not this envelope.",
+      "description": "Async task envelope returned when update_media_buy cannot be confirmed before the response \u2014 for example, when operator re-approval is required for mid-flight changes. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the updated media buy state lands on the completion artifact, not this envelope.",
       "type": "object",
       "properties": {
         "status": {
@@ -166,7 +169,7 @@
         "message": {
           "type": "string",
           "maxLength": 2000,
-          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Awaiting operator re-approval; typical turnaround 2–4 hours.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
+          "description": "Optional human-readable explanation of why the task is submitted \u2014 e.g., 'Awaiting operator re-approval; typical turnaround 2\u20134 hours.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context \u2014 a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
         },
         "errors": {
           "type": "array",

@@ -2,11 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/sync-catalogs-response.json",
   "title": "Sync Catalogs Response",
-  "description": "Response from catalog sync operation. Exactly one of three shapes: (1) synchronous success — per-catalog results in the catalogs array (best-effort processing, may include per-catalog failures); (2) terminal failure — errors array with no catalogs processed; (3) submitted task envelope — status 'submitted' with task_id when the whole operation is queued (e.g., batch catalog ingestion and deduplication). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive — a response has exactly one. Platforms may approve, reject, or flag individual items within each catalog (similar to Google Merchant Center product review).",
+  "description": "Response from catalog sync operation. Exactly one of three shapes: (1) synchronous success \u2014 per-catalog results in the catalogs array (best-effort processing, may include per-catalog failures); (2) terminal failure \u2014 errors array with no catalogs processed; (3) submitted task envelope \u2014 status 'submitted' with task_id when the whole operation is queued (e.g., batch catalog ingestion and deduplication). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive \u2014 a response has exactly one. Platforms may approve, reject, or flag individual items within each catalog (similar to Google Merchant Center product review).",
   "type": "object",
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "oneOf": [
@@ -226,7 +229,7 @@
     },
     {
       "title": "SyncCatalogsSubmitted",
-      "description": "Async task envelope returned when sync_catalogs cannot be confirmed before the response — for example, when catalog ingestion and deduplication are queued for batch processing. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the per-catalog results land on the completion artifact, not this envelope.",
+      "description": "Async task envelope returned when sync_catalogs cannot be confirmed before the response \u2014 for example, when catalog ingestion and deduplication are queued for batch processing. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the per-catalog results land on the completion artifact, not this envelope.",
       "type": "object",
       "properties": {
         "status": {
@@ -242,7 +245,7 @@
         "message": {
           "type": "string",
           "maxLength": 2000,
-          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Catalog ingestion queued; typical turnaround 5–15 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
+          "description": "Optional human-readable explanation of why the task is submitted \u2014 e.g., 'Catalog ingestion queued; typical turnaround 5\u201315 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context \u2014 a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
         },
         "errors": {
           "type": "array",

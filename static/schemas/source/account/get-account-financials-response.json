@@ -2,11 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/get-account-financials-response.json",
   "title": "Get Account Financials Response",
-  "description": "Financial status for an operator-billed account. Returns spend summary, credit/balance status, payment status, and invoice history. The level of detail varies by seller — only account, currency, and period are guaranteed on success.",
+  "description": "Financial status for an operator-billed account. Returns spend summary, credit/balance status, payment status, and invoice history. The level of detail varies by seller \u2014 only account, currency, and period are guaranteed on success.",
   "type": "object",
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "oneOf": [
@@ -30,7 +33,7 @@
         },
         "timezone": {
           "type": "string",
-          "description": "IANA timezone of the seller's billing day boundaries (e.g., 'America/New_York'). All dates in this response — period, invoice periods, due dates — are calendar dates in this timezone. Buyers in a different timezone should expect spend boundaries to differ from their own calendar day."
+          "description": "IANA timezone of the seller's billing day boundaries (e.g., 'America/New_York'). All dates in this response \u2014 period, invoice periods, due dates \u2014 are calendar dates in this timezone. Buyers in a different timezone should expect spend boundaries to differ from their own calendar day."
         },
         "spend": {
           "type": "object",
@@ -193,7 +196,7 @@
     },
     {
       "title": "GetAccountFinancialsError",
-      "description": "Operation failed — financials not available",
+      "description": "Operation failed \u2014 financials not available",
       "type": "object",
       "properties": {
         "errors": {
@@ -243,8 +246,9 @@
   ],
   "examples": [
     {
-      "description": "Credit account — current, with invoice history",
+      "description": "Credit account \u2014 current, with invoice history",
       "data": {
+        "status": "completed",
         "account": {
           "account_id": "acc_acme_001"
         },
@@ -283,6 +287,7 @@
     {
       "description": "Prepay account with low balance",
       "data": {
+        "status": "completed",
         "account": {
           "brand": {
             "domain": "acme-corp.com"
@@ -311,8 +316,9 @@
       }
     },
     {
-      "description": "Agent-billed account — not supported",
+      "description": "Agent-billed account \u2014 not supported",
       "data": {
+        "status": "completed",
         "errors": [
           {
             "code": "UNSUPPORTED_FEATURE",

@@ -7,12 +7,15 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "oneOf": [
     {
       "title": "SyncGovernanceSuccess",
-      "description": "Sync processed — individual accounts may have errors",
+      "description": "Sync processed \u2014 individual accounts may have errors",
       "type": "object",
       "properties": {
         "accounts": {
@@ -121,6 +124,7 @@
     {
       "description": "Governance agents synced on two accounts",
       "data": {
+        "status": "completed",
         "accounts": [
           {
             "account": {
@@ -148,8 +152,9 @@
       }
     },
     {
-      "description": "Partial failure — one account not found",
+      "description": "Partial failure \u2014 one account not found",
       "data": {
+        "status": "completed",
         "accounts": [
           {
             "account": {

@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "properties": {
@@ -133,7 +136,7 @@
         },
         "reach": {
           "type": "number",
-          "description": "Deduplicated reach across all media buys (if the seller can deduplicate across buys; otherwise sum of per-buy reach). Only present when all media buys share the same reach_unit. Omitted when reach units are heterogeneous — use per-buy reach values instead.",
+          "description": "Deduplicated reach across all media buys (if the seller can deduplicate across buys; otherwise sum of per-buy reach). Only present when all media buys share the same reach_unit. Omitted when reach units are heterogeneous \u2014 use per-buy reach values instead.",
           "minimum": 0
         },
         "reach_unit": {
@@ -156,7 +159,7 @@
         },
         "metric_aggregates": {
           "type": "array",
-          "description": "Cross-buy delivery aggregates partitioned by qualifier. Row-symmetric with `package.committed_metrics` and `by_package[].missing_metrics` — same atomic unit `(scope, metric_id, qualifier)` — so reconciliation collapses to a row-level join on the tuple. Granularity rule: one row per `(metric_id, full-qualifier-set)`, reported at the finest available granularity; buyers re-aggregate up if they want a coarser view. Used only for metrics with non-empty qualifier sets — unqualified metrics (`impressions`, `spend`, `media_buy_count`, etc.) remain at the top of `aggregated_totals`. **Mutual exclusion MUST**: for any `metric_id` appearing in `metric_aggregates`, the corresponding top-level scalar in `aggregated_totals` MUST be omitted (not zeroed) — avoids duplicate sources of truth. The qualifier vocabulary on this delivery surface is closed today (`additionalProperties: false`, same content as `committed_metrics.qualifier`) but is expected to **diverge from contract qualifier in future minors** as transparency disclosures buyers don't commit to ship delivery-only (e.g., `tracker_firing` pending #3832 resolution). Each row carries a `value` plus inlined per-metric component fields (e.g., `measurable_impressions` and `viewable_impressions` for `viewable_rate`; `spend` and `conversions` for `cost_per_acquisition`). Per-buy `totals` keeps its flat shape — each buy is single-qualifier by definition; only the aggregate spans qualifiers. **Qualifier-set drift across reports**: when a campaign gains a new qualifier mid-flight (e.g., adds `tracker_firing` partitioning in week 2), prior periods' rows remain valid at their original granularity; buyers SHOULD NOT retroactively repartition.",
+          "description": "Cross-buy delivery aggregates partitioned by qualifier. Row-symmetric with `package.committed_metrics` and `by_package[].missing_metrics` \u2014 same atomic unit `(scope, metric_id, qualifier)` \u2014 so reconciliation collapses to a row-level join on the tuple. Granularity rule: one row per `(metric_id, full-qualifier-set)`, reported at the finest available granularity; buyers re-aggregate up if they want a coarser view. Used only for metrics with non-empty qualifier sets \u2014 unqualified metrics (`impressions`, `spend`, `media_buy_count`, etc.) remain at the top of `aggregated_totals`. **Mutual exclusion MUST**: for any `metric_id` appearing in `metric_aggregates`, the corresponding top-level scalar in `aggregated_totals` MUST be omitted (not zeroed) \u2014 avoids duplicate sources of truth. The qualifier vocabulary on this delivery surface is closed today (`additionalProperties: false`, same content as `committed_metrics.qualifier`) but is expected to **diverge from contract qualifier in future minors** as transparency disclosures buyers don't commit to ship delivery-only (e.g., `tracker_firing` pending #3832 resolution). Each row carries a `value` plus inlined per-metric component fields (e.g., `measurable_impressions` and `viewable_impressions` for `viewable_rate`; `spend` and `conversions` for `cost_per_acquisition`). Per-buy `totals` keeps its flat shape \u2014 each buy is single-qualifier by definition; only the aggregate spans qualifiers. **Qualifier-set drift across reports**: when a campaign gains a new qualifier mid-flight (e.g., adds `tracker_firing` partitioning in week 2), prior periods' rows remain valid at their original granularity; buyers SHOULD NOT retroactively repartition.",
           "items": {
             "type": "object",
             "discriminator": {
@@ -176,7 +179,7 @@
                   },
                   "qualifier": {
                     "type": "object",
-                    "description": "Qualifier keys disambiguating this row from sibling rows under the same `metric_id`. Symmetric with `committed_metrics.qualifier` today; expected to diverge in future minors as transparency disclosures buyers don't commit to ship delivery-only. Closed (`additionalProperties: false`) — new qualifier keys ship explicitly.",
+                    "description": "Qualifier keys disambiguating this row from sibling rows under the same `metric_id`. Symmetric with `committed_metrics.qualifier` today; expected to diverge in future minors as transparency disclosures buyers don't commit to ship delivery-only. Closed (`additionalProperties: false`) \u2014 new qualifier keys ship explicitly.",
                     "properties": {
                       "viewability_standard": {
                         "$ref": "/schemas/enums/viewability-standard.json",
@@ -184,7 +187,7 @@
                       },
                       "completion_source": {
                         "$ref": "/schemas/enums/completion-source.json",
-                        "description": "Source of `completion_rate` attestation for this row — `seller_attested` from player/ad server, `vendor_attested` from a third-party measurement vendor. The two paths can yield different rates; never sum across sources."
+                        "description": "Source of `completion_rate` attestation for this row \u2014 `seller_attested` from player/ad server, `vendor_attested` from a third-party measurement vendor. The two paths can yield different rates; never sum across sources."
                       },
                       "attribution_methodology": {
                         "$ref": "/schemas/enums/attribution-methodology.json",
@@ -203,7 +206,7 @@
                   },
                   "value": {
                     "type": "number",
-                    "description": "Aggregated metric value for this `(metric_id, qualifier)` partition. Heterogeneous by `metric_id` — rate metrics (`viewable_rate`, `completion_rate`) are 0.0–1.0; cost-per metrics (`cost_per_acquisition`, `cost_per_completed_view`) are currency amounts; count metrics (`impressions`, `clicks`) are non-negative integers as numbers; ratio metrics (`roas`) are non-negative numbers. Buyer agents MUST inspect `metric_id` before doing arithmetic — same dispatch convention as `committed_metrics`."
+                    "description": "Aggregated metric value for this `(metric_id, qualifier)` partition. Heterogeneous by `metric_id` \u2014 rate metrics (`viewable_rate`, `completion_rate`) are 0.0\u20131.0; cost-per metrics (`cost_per_acquisition`, `cost_per_completed_view`) are currency amounts; count metrics (`impressions`, `clicks`) are non-negative integers as numbers; ratio metrics (`roas`) are non-negative numbers. Buyer agents MUST inspect `metric_id` before doing arithmetic \u2014 same dispatch convention as `committed_metrics`."
                   },
                   "measurable_impressions": {
                     "type": "number",
@@ -246,24 +249,72 @@
                     "minimum": 0
                   }
                 },
-                "required": ["scope", "metric_id", "value"],
+                "required": [
+                  "scope",
+                  "metric_id",
+                  "value"
+                ],
                 "additionalProperties": false,
                 "allOf": [
                   {
-                    "if": { "properties": { "metric_id": { "const": "viewable_rate" } } },
-                    "then": { "required": ["measurable_impressions", "viewable_impressions"] }
+                    "if": {
+                      "properties": {
+                        "metric_id": {
+                          "const": "viewable_rate"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "measurable_impressions",
+                        "viewable_impressions"
+                      ]
+                    }
                   },
                   {
-                    "if": { "properties": { "metric_id": { "const": "completion_rate" } } },
-                    "then": { "required": ["impressions", "completed_views"] }
+                    "if": {
+                      "properties": {
+                        "metric_id": {
+                          "const": "completion_rate"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "impressions",
+                        "completed_views"
+                      ]
+                    }
                   },
                   {
-                    "if": { "properties": { "metric_id": { "const": "cost_per_acquisition" } } },
-                    "then": { "required": ["spend", "conversions"] }
+                    "if": {
+                      "properties": {
+                        "metric_id": {
+                          "const": "cost_per_acquisition"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "spend",
+                        "conversions"
+                      ]
+                    }
                   },
                   {
-                    "if": { "properties": { "metric_id": { "const": "roas" } } },
-                    "then": { "required": ["spend", "conversion_value"] }
+                    "if": {
+                      "properties": {
+                        "metric_id": {
+                          "const": "roas"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "spend",
+                        "conversion_value"
+                      ]
+                    }
                   }
                 ]
               },
@@ -284,20 +335,25 @@
                   },
                   "qualifier": {
                     "type": "object",
-                    "description": "Optional qualifier keys for vendor metrics that need disambiguation (rare today — most vendor methodologies are intrinsic to the metric definition).",
+                    "description": "Optional qualifier keys for vendor metrics that need disambiguation (rare today \u2014 most vendor methodologies are intrinsic to the metric definition).",
                     "additionalProperties": false
                   },
                   "value": {
                     "type": "number",
-                    "description": "Aggregated vendor-attested value. Unit semantics defined by the vendor — see the vendor's measurement-agent metric definition."
+                    "description": "Aggregated vendor-attested value. Unit semantics defined by the vendor \u2014 see the vendor's measurement-agent metric definition."
                   },
                   "measurable_impressions": {
                     "type": "number",
-                    "description": "Coverage denominator — vendor measurement is rarely 100% of delivery (only impressions where the vendor's SDK fired or panel matched). Buyers compute coverage as `measurable_impressions / impressions`. Same convention as `vendor_metric_value.measurable_impressions`.",
+                    "description": "Coverage denominator \u2014 vendor measurement is rarely 100% of delivery (only impressions where the vendor's SDK fired or panel matched). Buyers compute coverage as `measurable_impressions / impressions`. Same convention as `vendor_metric_value.measurable_impressions`.",
                     "minimum": 0
                   }
                 },
-                "required": ["scope", "vendor", "metric_id", "value"],
+                "required": [
+                  "scope",
+                  "vendor",
+                  "metric_id",
+                  "value"
+                ],
                 "additionalProperties": false
               }
             ]
@@ -307,7 +363,9 @@
               {
                 "scope": "standard",
                 "metric_id": "viewable_rate",
-                "qualifier": { "viewability_standard": "mrc" },
+                "qualifier": {
+                  "viewability_standard": "mrc"
+                },
                 "value": 0.7286,
                 "measurable_impressions": 700000,
                 "viewable_impressions": 510000
@@ -315,14 +373,18 @@
               {
                 "scope": "standard",
                 "metric_id": "viewable_rate",
-                "qualifier": { "viewability_standard": "groupm" },
+                "qualifier": {
+                  "viewability_standard": "groupm"
+                },
                 "value": 0.55,
                 "measurable_impressions": 180000,
                 "viewable_impressions": 99000
               },
               {
                 "scope": "vendor",
-                "vendor": { "domain": "attentionvendor.example" },
+                "vendor": {
+                  "domain": "attentionvendor.example"
+                },
                 "metric_id": "attention_units",
                 "qualifier": {},
                 "value": 4.2,
@@ -377,7 +439,7 @@
           },
           "is_final": {
             "type": "boolean",
-            "description": "Whether this row's delivery data is final for the reporting period. The row does not carry its own `measurement_window` — that lives on each `by_package[*]` entry. Reconciliation joins on per-package `measurement_window`; this row-level flag is a convenience roll-up. Sellers MUST NOT emit `is_final: true` at the row level unless every entry in `by_package` has `is_final: true` for the same `measurement_window` as the buy's `measurement_terms.billing_measurement.measurement_window` (or for the row's natural window when no `billing_measurement.measurement_window` is set). On any disagreement between row-level and package-level finality, package-level is authoritative. When true, the seller considers these numbers closed and is willing to invoice on them subject to `measurement_terms.billing_measurement`. When false, numbers may still move as measurement matures (broadcast C3 → C7) or processing completes (IVT scrubbing, dedup). When absent, the seller does not distinguish provisional from final at the row level — consult per-package `is_final`."
+            "description": "Whether this row's delivery data is final for the reporting period. The row does not carry its own `measurement_window` \u2014 that lives on each `by_package[*]` entry. Reconciliation joins on per-package `measurement_window`; this row-level flag is a convenience roll-up. Sellers MUST NOT emit `is_final: true` at the row level unless every entry in `by_package` has `is_final: true` for the same `measurement_window` as the buy's `measurement_terms.billing_measurement.measurement_window` (or for the row's natural window when no `billing_measurement.measurement_window` is set). On any disagreement between row-level and package-level finality, package-level is authoritative. When true, the seller considers these numbers closed and is willing to invoice on them subject to `measurement_terms.billing_measurement`. When false, numbers may still move as measurement matures (broadcast C3 \u2192 C7) or processing completes (IVT scrubbing, dedup). When absent, the seller does not distinguish provisional from final at the row level \u2014 consult per-package `is_final`."
           },
           "finalized_at": {
             "type": "string",
@@ -461,7 +523,7 @@
                     },
                     "is_final": {
                       "type": "boolean",
-                      "description": "Whether this delivery data is final for the reporting period. When false, the data may be updated as measurement matures (e.g., broadcast C7 window accumulating DVR playback) or as processing completes (e.g., IVT filtering, deduplication). When true, the seller considers this data closed — no further updates for this period — and is willing to invoice on it subject to the buy's `measurement_terms.billing_measurement`. Absent means the seller does not distinguish provisional from final data."
+                      "description": "Whether this delivery data is final for the reporting period. When false, the data may be updated as measurement matures (e.g., broadcast C7 window accumulating DVR playback) or as processing completes (e.g., IVT filtering, deduplication). When true, the seller considers this data closed \u2014 no further updates for this period \u2014 and is willing to invoice on it subject to the buy's `measurement_terms.billing_measurement`. Absent means the seller does not distinguish provisional from final data."
                     },
                     "finalized_at": {
                       "type": "string",
@@ -489,7 +551,7 @@
                     },
                     "missing_metrics": {
                       "type": "array",
-                      "description": "Metrics that the binding reporting contract declared but that are NOT populated in this report. Reconciliation source: when `package.committed_metrics` is present, `missing_metrics` is computed against entries where `committed_at < reporting_period.end` — independent of subsequent product mutations and respecting the commitment timestamp on each entry (a metric committed mid-flight is only flagged missing in reports for periods after its commitment). When `package.committed_metrics` is absent, fall back to the product's current `reporting_capabilities.available_metrics` (no timestamp filter). Empty array (or absent) indicates clean delivery against the contract. Non-empty signals an accountability breach — the seller committed to the metric but did not produce the value here. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`. Each entry uses an explicit `scope` discriminator: `standard` for entries from the closed `available-metric.json` enum, `vendor` for vendor-defined metrics anchored on a BrandRef. Symmetric with `committed_metrics`.",
+                      "description": "Metrics that the binding reporting contract declared but that are NOT populated in this report. Reconciliation source: when `package.committed_metrics` is present, `missing_metrics` is computed against entries where `committed_at < reporting_period.end` \u2014 independent of subsequent product mutations and respecting the commitment timestamp on each entry (a metric committed mid-flight is only flagged missing in reports for periods after its commitment). When `package.committed_metrics` is absent, fall back to the product's current `reporting_capabilities.available_metrics` (no timestamp filter). Empty array (or absent) indicates clean delivery against the contract. Non-empty signals an accountability breach \u2014 the seller committed to the metric but did not produce the value here. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) \u2014 those will appear (or not) when a wider window supersedes this report via `supersedes_window`. Each entry uses an explicit `scope` discriminator: `standard` for entries from the closed `available-metric.json` enum, `vendor` for vendor-defined metrics anchored on a BrandRef. Symmetric with `committed_metrics`.",
                       "items": {
                         "type": "object",
                         "discriminator": {
@@ -528,7 +590,10 @@
                                 "additionalProperties": false
                               }
                             },
-                            "required": ["scope", "metric_id"],
+                            "required": [
+                              "scope",
+                              "metric_id"
+                            ],
                             "additionalProperties": false
                           },
                           {
@@ -544,7 +609,11 @@
                                 "$ref": "/schemas/core/vendor-metric-id.json"
                               }
                             },
-                            "required": ["scope", "vendor", "metric_id"],
+                            "required": [
+                              "scope",
+                              "vendor",
+                              "metric_id"
+                            ],
                             "additionalProperties": false
                           }
                         ]
@@ -552,11 +621,23 @@
                       "examples": [
                         [],
                         [
-                          { "scope": "standard", "metric_id": "completed_views" }
+                          {
+                            "scope": "standard",
+                            "metric_id": "completed_views"
+                          }
                         ],
                         [
-                          { "scope": "standard", "metric_id": "completed_views" },
-                          { "scope": "vendor", "vendor": { "domain": "attentionvendor.example" }, "metric_id": "attention_units" }
+                          {
+                            "scope": "standard",
+                            "metric_id": "completed_views"
+                          },
+                          {
+                            "scope": "vendor",
+                            "vendor": {
+                              "domain": "attentionvendor.example"
+                            },
+                            "metric_id": "attention_units"
+                          }
                         ]
                       ]
                     },
@@ -623,7 +704,7 @@
                     },
                     "by_keyword": {
                       "type": "array",
-                      "description": "Metrics broken down by keyword within this package. One row per (keyword, match_type) pair — the same keyword with different match types appears as separate rows. Keyword-grain only: rows reflect aggregate performance of each targeted keyword, not individual search queries. Rows may not sum to package totals when a single impression is attributed to the triggering keyword only. Available for search and retail media packages when the seller supports keyword-level reporting.",
+                      "description": "Metrics broken down by keyword within this package. One row per (keyword, match_type) pair \u2014 the same keyword with different match types appears as separate rows. Keyword-grain only: rows reflect aggregate performance of each targeted keyword, not individual search queries. Rows may not sum to package totals when a single impression is attributed to the triggering keyword only. Available for search and retail media packages when the seller supports keyword-level reporting.",
                       "items": {
                         "allOf": [
                           {
@@ -887,7 +968,7 @@
           },
           "windows": {
             "type": "array",
-            "description": "Per-window delivery slices over the reporting period at the requested time_granularity. Only present when the request set time_granularity and include_window_breakdown: true. Each slice mirrors what reporting_webhook would have delivered for the same window — buyers who missed webhook fires can reconstruct identical data by reading this array. Slice rows are ordered by window_start ascending; consecutive rows are contiguous (each row's window_end equals the next row's window_start) and partition the requested date range at the chosen granularity. Sellers MUST exclude this field when time_granularity is omitted; when set, sellers MUST honor pulls at any granularity in reporting_capabilities.windowed_pull_granularities (otherwise return UNSUPPORTED_GRANULARITY). See snapshot-and-log Rule 4 for the two-paths-parity contract this surface anchors.",
+            "description": "Per-window delivery slices over the reporting period at the requested time_granularity. Only present when the request set time_granularity and include_window_breakdown: true. Each slice mirrors what reporting_webhook would have delivered for the same window \u2014 buyers who missed webhook fires can reconstruct identical data by reading this array. Slice rows are ordered by window_start ascending; consecutive rows are contiguous (each row's window_end equals the next row's window_start) and partition the requested date range at the chosen granularity. Sellers MUST exclude this field when time_granularity is omitted; when set, sellers MUST honor pulls at any granularity in reporting_capabilities.windowed_pull_granularities (otherwise return UNSUPPORTED_GRANULARITY). See snapshot-and-log Rule 4 for the two-paths-parity contract this surface anchors.",
             "items": {
               "type": "object",
               "properties": {
@@ -935,7 +1016,7 @@
                 },
                 "is_final": {
                   "type": "boolean",
-                  "description": "Whether the slice data is final for this window. Same semantics as the per-package is_final flag — when false, a later read may return revised numbers for the same window as measurement matures (broadcast C3 → C7, post-IVT filtering, etc.)."
+                  "description": "Whether the slice data is final for this window. Same semantics as the per-package is_final flag \u2014 when false, a later read may return revised numbers for the same window as measurement matures (broadcast C3 \u2192 C7, post-IVT filtering, etc.)."
                 },
                 "measurement_window": {
                   "type": "string",

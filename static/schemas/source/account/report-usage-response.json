@@ -2,11 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/report-usage-response.json",
   "title": "Report Usage Response",
-  "description": "Response from report_usage. Partial acceptance is valid — records that pass validation are stored even when others fail.",
+  "description": "Response from report_usage. Partial acceptance is valid \u2014 records that pass validation are stored even when others fail.",
   "type": "object",
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "properties": {
@@ -41,12 +44,14 @@
     {
       "description": "All records accepted",
       "data": {
+        "status": "completed",
         "accepted": 2
       }
     },
     {
-      "description": "Partial acceptance — one record failed validation",
+      "description": "Partial acceptance \u2014 one record failed validation",
       "data": {
+        "status": "completed",
         "accepted": 1,
         "errors": [
           {

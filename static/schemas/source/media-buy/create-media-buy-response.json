@@ -2,11 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/create-media-buy-response.json",
   "title": "Create Media Buy Response",
-  "description": "Response payload for create_media_buy. Exactly one of three shapes: (1) synchronous success — media_buy_id and packages are issued in-line, no status or a MediaBuyStatus value (pending_creatives / pending_start / active); (2) terminal failure — an errors array with no media-buy artifact and status != 'submitted'; (3) submitted task envelope — status 'submitted' with task_id, the media buy is queued or awaiting a human decision (e.g., IO signing), and media_buy_id / packages land on the task's completion artifact, not this response. The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive — a response has exactly one.",
+  "description": "Response payload for create_media_buy. Exactly one of three shapes: (1) synchronous success \u2014 media_buy_id and packages are issued in-line, no status or a MediaBuyStatus value (pending_creatives / pending_start / active); (2) terminal failure \u2014 an errors array with no media-buy artifact and status != 'submitted'; (3) submitted task envelope \u2014 status 'submitted' with task_id, the media buy is queued or awaiting a human decision (e.g., IO signing), and media_buy_id / packages land on the task's completion artifact, not this response. The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive \u2014 a response has exactly one.",
   "type": "object",
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "oneOf": [
@@ -54,7 +57,7 @@
         },
         "total_budget": {
           "type": "number",
-          "description": "Total budget amount across all packages, denominated in currency. Note: the create_media_buy request encodes total_budget as an object {amount, currency} (proposal mode only); this response field is the flattened scalar amount, with currency promoted to the sibling currency field. Present when the seller can compute a deterministic aggregate — always in proposal mode, conditionally in manual mode when all packages share a currency. Matches the total_budget field in subsequent get_media_buys responses.",
+          "description": "Total budget amount across all packages, denominated in currency. Note: the create_media_buy request encodes total_budget as an object {amount, currency} (proposal mode only); this response field is the flattened scalar amount, with currency promoted to the sibling currency field. Present when the seller can compute a deterministic aggregate \u2014 always in proposal mode, conditionally in manual mode when all packages share a currency. Matches the total_budget field in subsequent get_media_buys responses.",
           "minimum": 0
         },
         "valid_actions": {
@@ -66,7 +69,7 @@
         },
         "available_actions": {
           "type": "array",
-          "description": "Structured per-buy resolution of actions available immediately after creation. Authoritative — see `get-media-buys-response.json` for full semantics.",
+          "description": "Structured per-buy resolution of actions available immediately after creation. Authoritative \u2014 see `get-media-buys-response.json` for full semantics.",
           "items": {
             "$ref": "/schemas/core/media-buy-available-action.json"
           },
@@ -161,7 +164,7 @@
     },
     {
       "title": "CreateMediaBuySubmitted",
-      "description": "Async task envelope returned when the media buy cannot be confirmed before the response is emitted — for example, when a guaranteed buy requires IO signing, when governance review is outstanding, or when the seller has queued the request for batch processing. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the media_buy_id and packages land on the completion artifact, not this envelope. Do not use a 'pending_approval' MediaBuy.status for this case — that value is not in MediaBuyStatus; IO review and similar pre-issuance workflows are modeled at the task layer only.",
+      "description": "Async task envelope returned when the media buy cannot be confirmed before the response is emitted \u2014 for example, when a guaranteed buy requires IO signing, when governance review is outstanding, or when the seller has queued the request for batch processing. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the media_buy_id and packages land on the completion artifact, not this envelope. Do not use a 'pending_approval' MediaBuy.status for this case \u2014 that value is not in MediaBuyStatus; IO review and similar pre-issuance workflows are modeled at the task layer only.",
       "type": "object",
       "properties": {
         "status": {
@@ -177,7 +180,7 @@
         "message": {
           "type": "string",
           "maxLength": 2000,
-          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Awaiting IO signature from sales team; typical turnaround 2–4 hours.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
+          "description": "Optional human-readable explanation of why the task is submitted \u2014 e.g., 'Awaiting IO signature from sales team; typical turnaround 2\u20134 hours.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context \u2014 a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
         },
         "errors": {
           "type": "array",

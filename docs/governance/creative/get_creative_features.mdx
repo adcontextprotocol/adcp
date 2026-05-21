@@ -53,6 +53,7 @@ Evaluates a creative manifest and returns feature values from a creative governa
 ```json Security scanner (clean)
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",
+  "status": "completed",
   "results": [
     { "feature_id": "auto_redirect", "value": false },
     { "feature_id": "credential_harvest", "value": false },
@@ -65,6 +66,7 @@ Evaluates a creative manifest and returns feature values from a creative governa
 ```json Security scanner (threat detected)
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",
+  "status": "completed",
   "results": [
     { "feature_id": "auto_redirect", "value": true, "confidence": 0.97 },
     { "feature_id": "credential_harvest", "value": true, "confidence": 0.91 },
@@ -77,6 +79,7 @@ Evaluates a creative manifest and returns feature values from a creative governa
 ```json Creative quality platform
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",
+  "status": "completed",
   "results": [
     { "feature_id": "brand_consistency", "value": 87, "unit": "percentage" },
     { "feature_id": "platform_optimized", "value": true },
@@ -89,6 +92,7 @@ Evaluates a creative manifest and returns feature values from a creative governa
 ```json Content categorizer
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",
+  "status": "completed",
   "results": [
     { "feature_id": "iab_casinos_gambling", "value": true, "confidence": 0.95 },
     { "feature_id": "iab_automotive", "value": false, "confidence": 0.12 }

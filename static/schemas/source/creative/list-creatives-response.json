@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "properties": {
@@ -96,10 +99,14 @@
             "patternProperties": {
               "^[a-z0-9_]+$": {
                 "oneOf": [
-                  { "$ref": "/schemas/core/assets/asset-union.json" },
+                  {
+                    "$ref": "/schemas/core/assets/asset-union.json"
+                  },
                   {
                     "type": "array",
-                    "items": { "$ref": "/schemas/core/assets/asset-union.json" },
+                    "items": {
+                      "$ref": "/schemas/core/assets/asset-union.json"
+                    },
                     "minItems": 1
                   }
                 ]
@@ -221,14 +228,14 @@
           },
           "purge": {
             "type": "object",
-            "description": "Tombstone block — present only when this record is a soft-purged creative surfaced via `include_purged: true`. The record's `status` field reflects the last status before purge (frozen — buyers MUST treat the creative as gone; assignments, snapshot, and serving operations no longer apply). Tombstones surface for the seller's webhook activity retention window (30 days from `purge.at`). Hard purges (`purge_kind: hard` on the webhook) do not surface on this read — the [`creative.purged`](https://adcontextprotocol.org/schemas/v3/creative/creative-purged-webhook.json) webhook is the only signal.",
+            "description": "Tombstone block \u2014 present only when this record is a soft-purged creative surfaced via `include_purged: true`. The record's `status` field reflects the last status before purge (frozen \u2014 buyers MUST treat the creative as gone; assignments, snapshot, and serving operations no longer apply). Tombstones surface for the seller's webhook activity retention window (30 days from `purge.at`). Hard purges (`purge_kind: hard` on the webhook) do not surface on this read \u2014 the [`creative.purged`](https://adcontextprotocol.org/schemas/v3/creative/creative-purged-webhook.json) webhook is the only signal.",
             "properties": {
               "kind": {
                 "type": "string",
                 "enum": [
                   "soft"
                 ],
-                "description": "Always `soft` on tombstones — hard purges do not surface on this read."
+                "description": "Always `soft` on tombstones \u2014 hard purges do not surface on this read."
               },
               "at": {
                 "type": "string",
@@ -249,7 +256,7 @@
           },
           "webhook_activity": {
             "type": "array",
-            "description": "Recent webhook fires scoped to this creative — `creative.status_changed` and `creative.purged` deliveries. Present only when the request set `include_webhook_activity: true`. Each item is a `webhook-activity-record`; the `notification_type` field discriminates between status changes and purges. The `ext.creative_id` slot MAY be populated on records nested inside larger reads where the parent does not already key the array; on `list_creatives` the parent creative_id is unambiguous and `ext.creative_id` MAY be omitted. Retention: 30 days from `completed_at` (MUST). See `snapshot-and-log.mdx § Webhook activity log pattern` for the full normative contract.",
+            "description": "Recent webhook fires scoped to this creative \u2014 `creative.status_changed` and `creative.purged` deliveries. Present only when the request set `include_webhook_activity: true`. Each item is a `webhook-activity-record`; the `notification_type` field discriminates between status changes and purges. The `ext.creative_id` slot MAY be populated on records nested inside larger reads where the parent does not already key the array; on `list_creatives` the parent creative_id is unambiguous and `ext.creative_id` MAY be omitted. Retention: 30 days from `completed_at` (MUST). See `snapshot-and-log.mdx \u00a7 Webhook activity log pattern` for the full normative contract.",
             "items": {
               "$ref": "/schemas/core/webhook-activity-record.json"
             },
@@ -269,7 +276,7 @@
     },
     "format_summary": {
       "type": "object",
-      "description": "Breakdown of creatives by format. Keys are agent-defined format identifiers, optionally including dimensions (e.g., 'display_static_300x250', 'video_30s_vast'). Key construction is platform-specific — there is no required format.",
+      "description": "Breakdown of creatives by format. Keys are agent-defined format identifiers, optionally including dimensions (e.g., 'display_static_300x250', 'video_30s_vast'). Key construction is platform-specific \u2014 there is no required format.",
       "patternProperties": {
         "^[a-zA-Z0-9_-]+$": {
           "type": "integer",
@@ -339,6 +346,7 @@
     {
       "description": "Library query with creatives and variables",
       "data": {
+        "status": "completed",
         "query_summary": {
           "total_matching": 2,
           "returned": 2,
@@ -446,6 +454,7 @@
     {
       "description": "Library query with webhook_activity and a purged tombstone",
       "data": {
+        "status": "completed",
         "query_summary": {
           "total_matching": 2,
           "returned": 2,

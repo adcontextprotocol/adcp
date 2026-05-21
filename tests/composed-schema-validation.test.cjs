@@ -278,6 +278,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/get-media-buy-delivery-response.json',
     {
+      status: 'completed',
       reporting_period: {
         start: '2024-06-01T00:00:00Z',
         end: '2024-06-15T23:59:59Z'
@@ -315,6 +316,7 @@ async function runTests() {
   log('Get AdCP Capabilities Response (adcp.idempotency oneOf discriminator):', 'info');
 
   const capabilitiesBase = {
+    status: 'completed',
     adcp: { major_versions: [3] },
     supported_protocols: ['media_buy'],
     account: { supported_billing: ['operator', 'agent'] }
@@ -471,20 +473,21 @@ async function runTests() {
     {
       list: propertyListBody,
       auth_token: 'secret_token_at_least_32_chars_long__________',
-      replayed: true
+      replayed: true,
+      status: 'completed'
     },
     'create_property_list accepts replayed on envelope'
   );
 
   await testSchemaValidation(
     '/schemas/property/update-property-list-response.json',
-    { list: propertyListBody, replayed: false },
+    { list: propertyListBody, replayed: false, status: 'completed' },
     'update_property_list accepts replayed on envelope'
   );
 
   await testSchemaValidation(
     '/schemas/property/delete-property-list-response.json',
-    { deleted: true, list_id: 'pl_01HW7J8K9P0Q1R2S3T4U5V6W7X', replayed: true },
+    { deleted: true, list_id: 'pl_01HW7J8K9P0Q1R2S3T4U5V6W7X', replayed: true, status: 'completed' },
     'delete_property_list accepts replayed on envelope'
   );
 
@@ -493,20 +496,21 @@ async function runTests() {
     {
       list: collectionListBody,
       auth_token: 'secret_token_at_least_32_chars_long__________',
-      replayed: true
+      replayed: true,
+      status: 'completed'
     },
     'create_collection_list accepts replayed on envelope'
   );
 
   await testSchemaValidation(
     '/schemas/collection/update-collection-list-response.json',
-    { list: collectionListBody, replayed: false },
+    { list: collectionListBody, replayed: false, status: 'completed' },
     'update_collection_list accepts replayed on envelope'
   );
 
   await testSchemaValidation(
     '/schemas/collection/delete-collection-list-response.json',
-    { deleted: true, list_id: 'cl_01HW7J8K9P0Q1R2S3T4U5V6W7X', replayed: true },
+    { deleted: true, list_id: 'cl_01HW7J8K9P0Q1R2S3T4U5V6W7X', replayed: true, status: 'completed' },
     'delete_collection_list accepts replayed on envelope'
   );
 
@@ -520,7 +524,8 @@ async function runTests() {
     '/schemas/governance/sync-plans-response.json',
     {
       plans: [{ plan_id: 'plan_abc123', status: 'active', version: 1 }],
-      replayed: false
+      replayed: false,
+      status: 'completed'
     },
     'sync_plans accepts replayed on envelope'
   );
@@ -762,6 +767,7 @@ async function runTests() {
       await testBundledSchemaValidation(
         path.join(bundledPath, 'media-buy/get-products-response.json'),
         {
+          status: 'completed',
           cache_scope: 'public',
           products: [
             {
