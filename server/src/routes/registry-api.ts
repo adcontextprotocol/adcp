@@ -2267,7 +2267,7 @@ registry.registerPath({
   operationId: "refreshAgent",
   summary: "Refresh agent snapshot",
   description:
-    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms) and capability snapshot (inferred type, discovered tools). Use after fixing your agent so the registry shows fresh data without waiting for the periodic crawl.\n\n**Auth:** owner of the agent or AAO admin.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
+    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~12h).\n\n**Compliance re-run:** when the caller owns the agent and the capability probe succeeds, the full storyboard suite runs (~30–90s) and `agent_storyboard_status` is updated under `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent or AAO admin.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -2289,6 +2289,13 @@ registry.registerPath({
             oauth_required: z.boolean(),
             checked_at: z.string(),
             error: z.string().optional(),
+            compliance: z.object({
+              ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed." }),
+              overall_status: z.string().optional().openapi({ description: "Aggregate verdict from the run (passing / failing / partial / unknown). Only present when `ran` is true." }),
+              storyboards_passing: z.number().int().optional().openapi({ description: "Number of storyboards passing on this run." }),
+              storyboards_total: z.number().int().optional().openapi({ description: "Number of storyboards evaluated on this run." }),
+              error: z.string().optional().openapi({ description: "Reason compliance didn't run when `ran` is false." }),
+            }).openapi({ description: "Compliance re-run summary. The capability/health portion of the response is independent of this block — a failed compliance run still returns the rest of the snapshot." }),
           }),
         },
       },
@@ -5325,9 +5332,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `refresh:${agentUrl}` });
       }
 
+      let probeResult: Awaited<ReturnType<typeof crawler.refreshSingleAgent>>;
       try {
-        const result = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
-        return res.json(result);
+        probeResult = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Probe failed';
         if (/Monitoring paused/i.test(message)) {
@@ -5336,6 +5343,72 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         logger.warn({ agentUrl, err }, 'Manual agent refresh probe failed');
         return res.status(502).json({ error: `Probe failed: ${message}` });
       }
+
+      // Also re-run compliance so the dashboard verdict updates alongside the
+      // capability/health probe. Prior to #4886, /refresh probed capabilities
+      // and health but left agent_storyboard_status untouched, leaving owners
+      // to stare at a stale verdict for up to a full heartbeat cycle after
+      // deploying a fix. The full storyboard suite can run 30–90s; the
+      // per-agent 60s rate limit above bounds repeat-clicks. comply() failure
+      // is a soft-fail — we still return the capability/health refresh so a
+      // partially-working agent still moves the snapshot forward.
+      let complianceSummary: {
+        ran: boolean;
+        overall_status?: string;
+        storyboards_passing?: number;
+        storyboards_total?: number;
+        error?: string;
+      } = { ran: false };
+
+      if (ownerOrgId && !probeResult.error && !probeResult.oauth_required) {
+        try {
+          const complyResult = await comply(agentUrl, {
+            timeout_ms: 90_000,
+            ...(resolvedAuth && { auth: resolvedAuth }),
+          });
+          if (complyResult.overall_status === 'auth_required') {
+            complianceSummary = { ran: false, error: 'Agent requires OAuth authorization' };
+          } else {
+            const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+            const dbInput = complianceResultToDbInput(
+              complyResult,
+              agentUrl,
+              metadata?.lifecycle_stage || 'production',
+              'manual',
+            );
+            dbInput.dry_run = false;
+            const { storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+            const passing = storyboardStatuses.filter(s => s.status === 'passing').length;
+            complianceSummary = {
+              ran: true,
+              overall_status: dbInput.overall_status,
+              storyboards_passing: passing,
+              storyboards_total: storyboardStatuses.length,
+            };
+
+            // Fan out badge issuance so verification badges reflect the new
+            // verdict immediately. Matches the per-storyboard owner-test path.
+            const declaredSpecialisms = complyResult.agent_profile?.specialisms ?? [];
+            if (declaredSpecialisms.length > 0) {
+              try {
+                await runBadgeFanOut({
+                  complianceDb,
+                  agentUrl,
+                  declaredSpecialisms,
+                });
+              } catch (badgeError) {
+                logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after manual refresh');
+              }
+            }
+          }
+        } catch (complyErr) {
+          const msg = complyErr instanceof Error ? complyErr.message : 'compliance run failed';
+          logger.warn({ agentUrl, err: complyErr }, 'Compliance re-run failed during manual refresh');
+          complianceSummary = { ran: false, error: msg };
+        }
+      }
+
+      return res.json({ ...probeResult, compliance: complianceSummary });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to refresh agent");
       res.status(500).json({ error: "Failed to refresh agent" });
