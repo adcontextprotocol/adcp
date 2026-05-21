@@ -66,6 +66,7 @@ import {
   RegistryMetadataSchema,
   MonitoringSettingsSchema,
   ComplianceRunSchema,
+  ComplianceStepDiagnosticSchema,
   OutboundRequestSchema,
   AgentAuthStatusSchema,
   CredentialSaveValidationErrorSchema,
@@ -2178,6 +2179,45 @@ registry.registerPath({
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
     429: { description: "Rate limited", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/compliance/diagnostics",
+  operationId: "getAgentComplianceStepDiagnostics",
+  summary: "Get per-step diagnostics for a compliance run",
+  description:
+    "Returns the exact request and response payloads the runner captured for failing storyboard steps on a single compliance run.\n\nLets agent owners diff what the runner sent against their own probes without re-running the storyboard. Owner-only — payloads echo seller-side account/brand identifiers and may carry sensitive descriptive fields. If `run_id` is omitted, resolves to the latest run for the agent.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+    query: z.object({
+      run_id: z.string().optional().openapi({ description: "Specific compliance run UUID. Defaults to latest." }),
+      limit: z.string().optional().openapi({ description: "Max rows (default 500, max 1000)" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Per-step diagnostics for the requested run",
+      content: {
+        "application/json": {
+          schema: z.object({
+            agent_url: z.string(),
+            run_id: z.string().nullable(),
+            count: z.number().int(),
+            diagnostics: z.array(ComplianceStepDiagnosticSchema),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -5326,16 +5366,25 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return res.status(403).json({ error: "You do not have permission to view this agent" });
         }
 
-        const runId = typeof req.query.run_id === "string" ? req.query.run_id : undefined;
-        const limit = req.query.limit !== undefined
-          ? Math.min(parseInt(req.query.limit as string) || 500, 1000)
-          : undefined;
+        const runIdRaw = typeof req.query.run_id === "string" ? req.query.run_id : undefined;
+        if (runIdRaw !== undefined && !isUuid(runIdRaw)) {
+          return res.status(400).json({ error: "Invalid run_id (expected UUID)" });
+        }
 
-        const rows = await complianceDb.getStepDiagnostics(agentUrl, { runId, limit });
+        let limit: number | undefined;
+        if (typeof req.query.limit === "string") {
+          const parsed = Number(req.query.limit);
+          if (!Number.isFinite(parsed) || parsed <= 0) {
+            return res.status(400).json({ error: "Invalid limit (expected positive integer)" });
+          }
+          limit = Math.min(Math.floor(parsed), 1000);
+        }
+
+        const rows = await complianceDb.getStepDiagnostics(agentUrl, { runId: runIdRaw, limit });
 
         res.json({
           agent_url: agentUrl,
-          run_id: runId ?? (rows[0]?.run_id ?? null),
+          run_id: runIdRaw ?? (rows[0]?.run_id ?? null),
           count: rows.length,
           diagnostics: rows,
         });

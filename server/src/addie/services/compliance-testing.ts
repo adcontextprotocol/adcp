@@ -612,7 +612,8 @@ function sanitizeHeaders(headers: Record<string, string> | undefined): Record<st
   if (!headers) return undefined;
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(headers)) {
-    if (ALLOWED_RESPONSE_HEADERS.has(k.toLowerCase())) out[k] = v;
+    const lower = k.toLowerCase();
+    if (ALLOWED_RESPONSE_HEADERS.has(lower)) out[lower] = v;
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }

@@ -503,7 +503,7 @@ export class ComplianceDatabase {
               diag.map(d => d.request_url ?? null),
               diag.map(d => d.request_jsonb !== undefined ? JSON.stringify(d.request_jsonb) : null),
               diag.map(d => d.response_status ?? null),
-              diag.map(d => d.response_headers_jsonb ? JSON.stringify(d.response_headers_jsonb) : null),
+              diag.map(d => d.response_headers_jsonb !== undefined ? JSON.stringify(d.response_headers_jsonb) : null),
               diag.map(d => d.response_jsonb !== undefined ? JSON.stringify(d.response_jsonb) : null),
               diag.map(d => d.extraction_path ?? null),
               diag.map(d => d.extraction_note ?? null),
