@@ -250,7 +250,8 @@ Configure automated delivery reporting for this media buy:
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
-| `status` | Media buy status after the update (present when status changes, e.g., cancellation) |
+| `media_buy_status` | Media buy lifecycle status after the update (present when status changes, e.g., cancellation). Canonical 3.1 field. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status). |
+| `status` | **Deprecated in 3.1, removed in 3.2** ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)). Use `media_buy_status` instead. Top-level `status` collides with the envelope task-status on flat-serialized MCP wire. |
 | `revision` | Revision number after this update. Use in subsequent requests for optimistic concurrency. |
 | `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
 | `invoice_recipient` | Updated invoice recipient, echoed from request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
@@ -616,12 +617,14 @@ Cancel an entire media buy:
 ```json
 {
   "media_buy_id": "mb_12345",
-  "status": "canceled",
+  "media_buy_status": "canceled",
   "revision": 4,
   "implementation_date": "2025-06-15T10:00:00Z",
   "affected_packages": []
 }
 ```
+
+The body-level `media_buy_status` is the canonical 3.1 field for the buy's lifecycle state. The legacy top-level `status: MediaBuyStatus` form (e.g., `"status": "canceled"`) is deprecated and removed in 4.0 — it collided with the envelope task-status at the same root key. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status) for the migration.
 
 **`NOT_CANCELLABLE` error response:**
 ```json

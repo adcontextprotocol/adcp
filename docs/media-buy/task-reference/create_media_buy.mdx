@@ -1123,6 +1123,7 @@ const response = await session.call('create_media_buy', {
 {
   "status": "completed",
   "media_buy_id": "mb_12345",
+  "media_buy_status": "active",
   "confirmed_at": "2025-06-01T10:00:00Z",
   "creative_deadline": "2025-06-15T23:59:59Z",
   "revision": 1,
@@ -1134,6 +1135,8 @@ const response = await session.call('create_media_buy', {
   ]
 }
 ```
+
+The top-level `status` is the envelope task-status (TaskStatus) — `completed` on synchronous success. The body-level `media_buy_status` carries the buy's lifecycle state (`pending_creatives`, `pending_start`, or `active`). A 3.0-style response would have collided these two enums at the same root key; in 3.1 they are distinct fields. Sellers MAY continue to emit a deprecated top-level `status: MediaBuyStatus` during the 3.1 deprecation window for back-compat with 3.0 buyers, but 3.1 buyers MUST prefer `media_buy_status`. See [Media-buy status field (3.1 migration)](#media-buy-status-field-3-1-migration) below.
 
 ### Long-Running (`submitted`)
 
@@ -1477,6 +1480,14 @@ After creating a media buy:
 2. **Monitor Status**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 3. **Optimize**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback)
 4. **Update**: Use [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) to modify campaign
+
+## Media-buy status field (3.1 migration)
+
+3.1 splits two enums that 3.0 collided at the same root key — envelope `status` (TaskStatus) at the top of every response, and body `media_buy_status` (MediaBuyStatus, **new in 3.1**) carrying the buy's lifecycle state alongside. The legacy top-level `status: MediaBuyStatus` form is `deprecated: true` in 3.1 and removed in 3.2 ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)); nested `status` on `get_media_buys`, `get_media_buy_delivery`, and `core/media-buy.json` follow in 4.0 ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)).
+
+3.1 buyers MUST prefer `media_buy_status` when present. 3.1 compliance storyboards assert `path: "media_buy_status"` — a 3.1 seller emitting only the legacy `status` is schema-valid but fails certification; the storyboard is the binding conformance check.
+
+Full migration: [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status).
 
 ## Learn More
 
