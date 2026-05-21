@@ -2251,6 +2251,7 @@ registry.registerPath({
             oauth_required: z.boolean(),
             checked_at: z.string(),
             error: z.string().optional(),
+            compliance_check_queued: z.boolean().openapi({ description: "True when a background compliance re-run was triggered alongside the capability probe. False when the agent has opted out of compliance monitoring." }),
           }),
         },
       },
