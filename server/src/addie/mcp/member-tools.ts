@@ -862,7 +862,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'propose_content',
     description:
       'Submit a draft (article or link) for editorial review. Content lands in pending_review; a committee lead or admin approves it to publish. Default committee is "editorial" (site-wide Perspectives). Only `title` is required.',
-    usage_hints: 'use for "publish this post", "write a perspective", "post to the sustainability group", "share my thoughts on X"',
+    usage_hints: 'use for "publish this post", "write a perspective", "post to the sustainability group", "share my thoughts on X", "post as AgenticAdvertising.org Team", "publish under the team name", "post as [org name]"',
     input_schema: {
       type: 'object',
       properties: {
@@ -873,9 +873,10 @@ export const MEMBER_TOOLS: AddieTool[] = [
         external_url: { type: 'string', description: 'URL for link type' },
         excerpt: { type: 'string', description: 'Short excerpt/summary' },
         category: { type: 'string', description: 'Category (e.g., Op-Ed, Interview, Ecosystem, White Paper, Press Release)' },
-        author_title: { type: 'string', description: 'Author title/role (e.g., CEO, JourneySpark Consulting)' },
+        author_title: { type: 'string', description: 'Author credential line shown under the byline (e.g., "VP Media Operations, Pinnacle Agency"). Distinct from the byline name — do not use for org names.' },
+        byline: { type: 'string', description: 'Display name for the author byline. Set when the user explicitly asks to post as a team or org name (e.g., "AgenticAdvertising.org Team"). Omit to show the user\'s profile name.' },
         featured_image_url: { type: 'string', description: 'Optional URL for cover image. Omit if the author did not provide one. Do not fabricate or search for a URL.' },
-        content_origin: { type: 'string', enum: ['official', 'member'], description: 'Content origin: official (AAO reports, press releases) or member (member perspectives). Default: member' },
+        content_origin: { type: 'string', enum: ['official', 'member'], description: 'Content origin: official (AgenticAdvertising.org reports, press releases) or member (member perspectives). Default: member' },
         committee_slug: { type: 'string', description: 'Target committee slug (default: editorial for Perspectives). Use list_working_groups to see options.' },
         co_author_emails: { type: 'array', items: { type: 'string' }, description: 'Co-author emails' },
       },
@@ -2629,6 +2630,7 @@ export function createMemberToolHandlers(
     const excerpt = input.excerpt as string | undefined;
     const category = input.category as string | undefined;
     const authorTitle = input.author_title as string | undefined;
+    const byline = input.byline as string | undefined;
     const featuredImageUrl = input.featured_image_url as string | undefined;
     const contentOrigin = (input.content_origin as string | undefined) || 'member';
     const coAuthorEmails = input.co_author_emails as string[] | undefined;
@@ -2671,6 +2673,7 @@ export function createMemberToolHandlers(
         excerpt,
         category,
         author_title: authorTitle,
+        byline,
         featured_image_url: featuredImageUrl,
         content_origin: contentOrigin as 'official' | 'member',
         collection: { committee_slug: committeeSlug },
