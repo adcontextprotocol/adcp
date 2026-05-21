@@ -83,6 +83,8 @@ import type { CrawlerService } from "../crawler.js";
 import type { CapabilityDiscovery } from "../capabilities.js";
 import { aaoHostedBrandJsonUrl, aaoHostedAdagentsJsonUrl, expectedAdagentsJsonUrl } from "../config/aao.js";
 import { canonicalTargetUri } from "@adcp/sdk/signing";
+import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
+import { notifyComplianceChange } from "../notifications/compliance.js";
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "../services/brandfetch.js";
 import { extractPublisherPropertiesFromBrandJson } from "../services/brand-json-properties.js";
 import { syncHostedPropertyToFederatedIndex } from "../services/hosted-property-sync.js";
@@ -5287,7 +5289,66 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
       try {
         const result = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
-        return res.json(result);
+        // Fire a full compliance re-run async so the dashboard verdict
+        // reflects the owner's latest deploy rather than waiting up to 12h
+        // for the next heartbeat. The 60s/agent rate limit above bounds
+        // frequency. Concurrent runs are possible if comply() runs past the
+        // 60s window; recordComplianceRun() uses UPSERT so the last write wins.
+        // Pre-fetch metadata synchronously so we can (a) skip opted-out agents
+        // before launching the async block, and (b) emit compliance_check_queued
+        // only when a run is actually starting.
+        const agentMetadata = await complianceDb.getRegistryMetadata(agentUrl);
+        const complianceRunQueued = !agentMetadata?.compliance_opt_out;
+        if (complianceRunQueued) {
+          void (async () => {
+            try {
+              // Always use stored owner credentials for the compliance run,
+              // even when an AAO admin triggered the probe anonymously. The
+              // capability probe is intentionally unauthenticated for admins;
+              // the compliance run must use owner creds to avoid recording a
+              // false auth_required failure against the agent.
+              const ownerAuth = await complianceDb.resolveOwnerAuth(agentUrl);
+              const complianceAuth = await adaptAuthForSdk(ownerAuth, {
+                tokenEndpointLabel: `refresh-comply:${agentUrl}`,
+              });
+              const complyResult = await comply(agentUrl, {
+                test_session_id: `refresh-${Date.now()}`,
+                timeout_ms: 60_000,
+                auth: complianceAuth,
+                userAgent: AAO_UA_COMPLIANCE,
+              });
+              const dbInput = complianceResultToDbInput(
+                complyResult,
+                agentUrl,
+                agentMetadata?.lifecycle_stage || 'production',
+                'owner_test',
+              );
+              dbInput.dry_run = false;
+              const { statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+              if (statusTransition) {
+                try {
+                  await notifyComplianceChange({
+                    agentUrl,
+                    previousStatus: statusTransition.previous,
+                    currentStatus: statusTransition.current,
+                    headline: complyResult.summary.headline,
+                    tracksJson: dbInput.tracks_json,
+                    storyboardStatuses,
+                  });
+                } catch (notifyErr) {
+                  logger.warn({ agentUrl, err: notifyErr }, 'Compliance notification failed after refresh-triggered run');
+                }
+              }
+              const specialisms = complyResult.agent_profile?.specialisms ?? [];
+              if (specialisms.length > 0) {
+                await runBadgeFanOut({ complianceDb, agentUrl, declaredSpecialisms: specialisms });
+              }
+            } catch (err) {
+              logger.warn({ agentUrl, err }, 'Background compliance re-run after refresh failed');
+            }
+          })();
+        }
+        return res.json({ ...result, compliance_check_queued: complianceRunQueued });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Probe failed';
         if (/Monitoring paused/i.test(message)) {
