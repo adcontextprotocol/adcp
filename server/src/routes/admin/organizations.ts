@@ -1157,16 +1157,47 @@ export function setupOrganizationRoutes(
               continue;
             }
 
-            // Add membership to the new org
+            // WorkOS-first: create the membership in WorkOS before mirroring
+            // locally so the two never disagree on existence. Earlier versions
+            // of this handler skipped the WorkOS write entirely — local got a
+            // row, WorkOS didn't, and the rest of the app (which reads WorkOS)
+            // treated the user as a non-member.
+            if (!workos) {
+              errors.push(`User ${userId}: WorkOS client unavailable`);
+              continue;
+            }
+
+            let newMembership;
+            try {
+              newMembership = await workos.userManagement.createOrganizationMembership({
+                userId,
+                organizationId: orgId,
+                roleSlug: 'member',
+              });
+            } catch (workosErr) {
+              const message = workosErr instanceof Error ? workosErr.message : String(workosErr);
+              logger.error(
+                { err: workosErr, userId, orgId },
+                "Failed to create WorkOS membership during admin add-users",
+              );
+              errors.push(`User ${userId}: ${message}`);
+              continue;
+            }
+
+            // Mirror locally now that WorkOS has the row.
             await pool.query(
               `INSERT INTO organization_memberships
-               (workos_user_id, workos_organization_id, email, first_name, last_name)
-               VALUES ($1, $2, $3, $4, $5)
+               (workos_user_id, workos_organization_id, workos_membership_id, email, first_name, last_name, role, synced_at)
+               VALUES ($1, $2, $3, $4, $5, $6, 'member', NOW())
                ON CONFLICT (workos_user_id, workos_organization_id)
-               DO UPDATE SET email = EXCLUDED.email,
+               DO UPDATE SET workos_membership_id = EXCLUDED.workos_membership_id,
+                 email = EXCLUDED.email,
                  first_name = COALESCE(NULLIF(TRIM(organization_memberships.first_name), ''), EXCLUDED.first_name),
-                 last_name = COALESCE(NULLIF(TRIM(organization_memberships.last_name), ''), EXCLUDED.last_name)`,
-              [userId, orgId, user.email, user.first_name, user.last_name]
+                 last_name = COALESCE(NULLIF(TRIM(organization_memberships.last_name), ''), EXCLUDED.last_name),
+                 role = EXCLUDED.role,
+                 synced_at = NOW(),
+                 updated_at = NOW()`,
+              [userId, orgId, newMembership.id, user.email, user.first_name, user.last_name]
             );
 
             addedCount++;
