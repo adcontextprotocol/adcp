@@ -46,7 +46,7 @@ The table below classifies every field in the [`get_plan_audit_logs`](/docs/gove
 | `plans[].entries[].id`, `type`, `timestamp` | yes | yes (own context only) | yes |
 | `plans[].entries[].caller` | yes | yes (own context only) | yes |
 | `plans[].entries[].tool` | yes | yes (own context only) | yes |
-| `plans[].entries[].check_type`, `status` | yes | yes (own context only) | yes |
+| `plans[].entries[].check_type`, `verdict` | yes | yes (own context only) | yes |
 | `plans[].entries[].mode` | yes | yes (own context only) | yes — distinguishes a `denied` from an `approved`-with-finding under `audit` |
 | `plans[].entries[].explanation` | yes | yes (own context only) | yes |
 | `plans[].entries[].categories_evaluated` | yes | yes (own context only) | yes |
@@ -84,7 +84,7 @@ For counterparties who only need proof that a buy was governed — not the full 
 ```json
 {
   "governance_context": "gc_mb_seller_456",
-  "status": "approved",
+  "verdict": "approved",
   "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
   "policies_evaluated": ["us_coppa", "alcohol_advertising"]
 }
@@ -146,7 +146,7 @@ A plan with $500K authorized for an OLV/display campaign. The orchestrator runs 
           "mode": "enforce",
           "purchase_type": "media_buy",
           "governance_context": "11ab64d0-2e20-4b62-8964-b024cfc98d36",
-          "status": "approved",
+          "verdict": "approved",
           "explanation": "All governance checks passed.",
           "policies_evaluated": [],
           "categories_evaluated": ["delegation_authority"],
@@ -182,7 +182,7 @@ The plan declares `approved_sellers: ["https://ads.seller-approved.example"]`. A
   "$schema": "/schemas/governance/check-governance-response.json",
   "check_id": "chk_0ac8d7de",
   "plan_id": "plan_2027_apex_athletic",
-  "status": "denied",
+  "verdict": "denied",
   "explanation": "Denied: Caller https://ads.seller-rogue.example is not in the plan's approved sellers list.",
   "categories_evaluated": ["delegation_authority", "seller_compliance"],
   "policies_evaluated": [],
@@ -207,7 +207,7 @@ A plan with `policy_categories: ["fair_lending"]` (mortgage, consumer credit, et
   "$schema": "/schemas/governance/check-governance-response.json",
   "check_id": "chk_8360a36d",
   "plan_id": "plan_2027_nova_mortgage",
-  "status": "denied",
+  "verdict": "denied",
   "explanation": "Denied: Plan requires human review (Annex III / Art 22) but brand does not expose data_subject_contestation. Art 22(3) requires a discoverable contact point for the data subject to request human intervention, express their view, and contest the decision. Set brand.data_subject_contestation in brand.json.",
   "categories_evaluated": ["data_subject_contestation", "delegation_authority"],
   "policies_evaluated": [],
@@ -234,7 +234,7 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
   "$schema": "/schemas/governance/check-governance-response.json",
   "check_id": "chk_enforce_001",
   "plan_id": "plan_mode_enforce",
-  "status": "denied",
+  "verdict": "denied",
   "explanation": "Denied: Caller https://ads.seller-rogue.example is not in the plan's approved sellers list.",
   "categories_evaluated": ["delegation_authority", "seller_compliance"],
   "policies_evaluated": [],
@@ -255,7 +255,7 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
   "$schema": "/schemas/governance/check-governance-response.json",
   "check_id": "chk_advisory_001",
   "plan_id": "plan_mode_advisory",
-  "status": "approved",
+  "verdict": "approved",
   "explanation": "Approved with 1 advisory finding(s).",
   "expires_at": "2027-01-15T15:32:41Z",
   "categories_evaluated": ["delegation_authority", "seller_compliance"],
@@ -277,7 +277,7 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
   "$schema": "/schemas/governance/check-governance-response.json",
   "check_id": "chk_audit_001",
   "plan_id": "plan_mode_audit",
-  "status": "approved",
+  "verdict": "approved",
   "explanation": "All governance checks passed.",
   "expires_at": "2027-01-15T15:32:41Z",
   "categories_evaluated": ["delegation_authority", "seller_compliance"],

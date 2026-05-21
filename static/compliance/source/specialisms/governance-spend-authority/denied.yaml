@@ -202,12 +202,12 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "status"
-            description: "Response contains a governance decision"
+            path: "verdict"
+            description: "Response contains a governance verdict"
           - check: field_value
-            path: "status"
+            path: "verdict"
             value: "denied"
-            description: "Decision is denied"
+            description: "Verdict is denied"
           - check: field_present
             path: "findings"
             description: "Response contains findings explaining the denial"

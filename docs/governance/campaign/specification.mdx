@@ -916,7 +916,7 @@ The governance agent controls the reporting cadence through `next_check`. It can
 ```json
 {
   "check_id": "auth_001",
-  "status": "approved",
+  "verdict": "approved",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Planned delivery is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
   "expires_at": "2026-03-15T01:00:00Z",
@@ -931,7 +931,7 @@ The `next_check` field signals that the governance agent expects delivery report
 ```json
 {
   "check_id": "auth_002",
-  "status": "denied",
+  "verdict": "denied",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Planned delivery targets CA (Canada) which is not an authorized market for this plan.",
   "findings": [
@@ -953,7 +953,7 @@ The `next_check` field signals that the governance agent expects delivery report
 ```json
 {
   "check_id": "auth_004",
-  "status": "approved",
+  "verdict": "approved",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Delivery on track. Week 1 spend: $12,500 of $150,000 (8.3%). Pacing is on target for 13-week flight.",
   "next_check": "2026-03-29T00:00:00Z"

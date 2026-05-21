@@ -409,8 +409,8 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "status"
-            description: "Response contains a governance decision"
+            path: "verdict"
+            description: "Response contains a governance verdict"
           - check: field_present
             path: "findings"
             description: "Response contains findings explaining the denial"
@@ -487,8 +487,8 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "status"
-            description: "Response contains an approved governance decision"
+            path: "verdict"
+            description: "Response contains an approved governance verdict"
           - check: field_present
             path: "conditions"
             description: "Approval includes conditions"
@@ -598,7 +598,7 @@ phases:
           - plan_id: the governance plan
           - media_buy_id: the buy that was created
           - governance_context: the approval that authorized it
-          - status: recorded
+          - outcome_state: accepted
 
         sample_request:
           plan_id: "$context.plan_id"
