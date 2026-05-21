@@ -30,6 +30,7 @@ GET https://{aao_directory}/v1/agents/{agent_url}/publishers
 | `cursor` | opaque string | unset | Pagination cursor returned by a prior response. Stable across the directory's refresh cycle for the lifetime of the cursor. |
 | `status` | string, repeated | `authorized` | Filter by lifecycle status. v1: `authorized`, `revoked`. Repeat the key once per value (OpenAPI `style: form, explode: true`). Comma-separated single-value form (`status=authorized,revoked`) is **not** accepted; directories MUST return `400` with an explanation pointing to the repeated-key form. |
 | `limit` | int (1–1000) | 200 | Max publishers per page. |
+| `include` | string, repeated | unset | Opt-in field expansion. v1 value: `properties`. When set, each `PublisherEntry` carries a `property_ids` array (see below). Operators using divergence detection SHOULD pass `include=properties` to enable full set-diff instead of count-only comparison. |
 
 #### Worked example: filtering by multiple status values
 
@@ -137,6 +138,54 @@ Repeated-key was chosen because (a) it is what `URLSearchParams.append()` and Op
 | `signing_keys_pinned` | optional | Whether the publisher pins `signing_keys[]` on this agent. When `true`, agent's signed responses MUST verify against the pinned set regardless of the agent's own JWKS. |
 | `status` | yes | `authorized` or `revoked`. See below. |
 | `last_verified_at` | yes | When the directory last fetched and validated this publisher's `adagents.json`. |
+| `property_ids` | conditional | Present only when `?include=properties` was set. Array of `property_id` strings the agent's selectors resolve to under this publisher. Length MUST equal `properties_authorized`. See [Property ID expansion](#property-id-expansion). |
+
+### Property ID expansion
+
+Adding `?include=properties` to the request expands each `PublisherEntry` with a `property_ids` array — the canonical list of `property_id` strings the agent's selectors resolve to under that publisher:
+
+```
+GET /v1/agents/https%3A%2F%2Fsales-agent.example.com%2F/publishers?include=properties
+```
+
+```json
+{
+  "publishers": [
+    {
+      "publisher_domain": "recipeswithessentialoils.com",
+      "discovery_method": "ads_txt_managerdomain",
+      "manager_domain": "cafemedia.com",
+      "properties_authorized": 3,
+      "properties_total": 3,
+      "property_ids": ["homepage", "mobile_ios", "amp"],
+      "signing_keys_pinned": false,
+      "status": "authorized",
+      "last_verified_at": "2026-05-19T08:00:00Z"
+    }
+  ]
+}
+```
+
+`property_ids` is **absent by default** — the `?include=properties` flag opts in. This preserves the existing response envelope for callers that do not need the expanded form.
+
+**Why `?include=properties` matters for divergence detection.** Count-equality does not imply set-equality. A publisher that rotates three properties (`{p-001, p-002, p-003}` → `{p-004, p-005, p-006}`) leaves `properties_authorized` unchanged at 3, so a count-only comparison returns "no divergence" even though the entire authorized set changed. Set-diff on `property_ids` catches this. The SDK divergence detector (`detect_publisher_properties_divergence`) uses `property_ids` for a full set-diff when available; operators using the detector SHOULD pass `include=properties`.
+
+When `property_ids` is present, its length MUST equal `properties_authorized` — both are derived from the same selector-predicate resolution at index time.
+
+The OpenAPI fragment for `include`:
+
+```yaml
+- in: query
+  name: include
+  schema:
+    type: array
+    items:
+      type: string
+      enum: [properties]
+  style: form
+  explode: true
+  required: false
+```
 
 ### `discovery_method` values
 
@@ -207,7 +256,7 @@ On managed-network-shape parent files (per [adcp#4825 inline resolution rule](/d
 - **Authentication.** Public endpoint, anonymous rate limiting. Identity-bound limits arrive in a separate RFC if needed.
 - **Cross-directory federation.** Single directory. The endpoint shape is defined such that multiple AAO-compatible directories could implement it; discovery of which directory to query is configuration today.
 - **Push notification of new authorizations.** Poll-based v1.
-- **Inline property detail.** `properties_authorized` / `properties_total` are counts only; full property lists arrive via a future `?include=properties` if operators ask.
+- **Full property objects.** `?include=properties` returns `property_id` strings only; full property detail (name, domain, format capabilities) is available via existing per-domain primitives and is out of scope for the directory response.
 
 ## See also
 

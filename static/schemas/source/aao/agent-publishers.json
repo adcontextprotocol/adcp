@@ -88,6 +88,13 @@
           "type": "string",
           "format": "date-time",
           "description": "When the directory last fetched and validated this publisher's adagents.json. Distinct from the envelope's `directory_indexed_at` — `last_verified_at` is per-publisher freshness, the envelope value is the most recent refresh in the result set."
+        },
+        "property_ids": {
+          "type": "array",
+          "description": "Canonical list of property_ids the agent's selectors resolve to under this publisher. Present only when `?include=properties` was set on the request; absent otherwise. When present, length MUST equal `properties_authorized` — both are derived from the same selector-predicate resolution at index time. Operators using divergence detection SHOULD prefer set-diff on `property_ids` over count-only comparison: count-equality does not imply set-equality when a publisher rotates properties (same count, entirely different set).",
+          "items": {
+            "$ref": "/schemas/core/property-id.json"
+          }
         }
       },
       "allOf": [
