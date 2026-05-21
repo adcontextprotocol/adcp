@@ -6461,7 +6461,9 @@ paths:
       operationId: refreshAgent
       summary: Refresh agent snapshot
       description: |-
-        Re-probe the agent and update its registry health (online, tools_count, response_time_ms) and capability snapshot (inferred type, discovered tools). Use after fixing your agent so the registry shows fresh data without waiting for the periodic crawl.
+        Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~12h).
+
+        **Compliance re-run:** when the caller owns the agent and the capability probe succeeds, the full storyboard suite runs (~30–90s) and `agent_storyboard_status` is updated under `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.
 
         **Auth:** owner of the agent or AAO admin.
 
@@ -6510,6 +6512,27 @@ paths:
                     type: string
                   error:
                     type: string
+                  compliance:
+                    type: object
+                    properties:
+                      ran:
+                        type: boolean
+                        description: True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed.
+                      overall_status:
+                        type: string
+                        description: Aggregate verdict from the run (passing / failing / partial / unknown). Only present when `ran` is true.
+                      storyboards_passing:
+                        type: integer
+                        description: Number of storyboards passing on this run.
+                      storyboards_total:
+                        type: integer
+                        description: Number of storyboards evaluated on this run.
+                      error:
+                        type: string
+                        description: Reason compliance didn't run when `ran` is false.
+                    required:
+                      - ran
+                    description: Compliance re-run summary. The capability/health portion of the response is independent of this block — a failed compliance run still returns the rest of the snapshot.
                 required:
                   - online
                   - tools_count
@@ -6518,6 +6541,7 @@ paths:
                   - type_promoted
                   - oauth_required
                   - checked_at
+                  - compliance
         "400":
           description: Invalid agent URL
           content:
