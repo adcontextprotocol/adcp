@@ -452,10 +452,10 @@ export async function autoLinkByVerifiedDomain(
   );
 
   // Always create as member. Auto-promotion to owner for ownerless orgs is
-  // handled atomically by upsertOrganizationMembership when the
-  // organization_membership.created webhook fires — that path uses a NOT EXISTS
-  // subquery against the live membership table, which is race-safe and not
-  // vulnerable to the local-cache skew that a `has_admin` lookup here would be.
+  // handled by resolveRoleWithWorkosFirstPromote when the
+  // organization_membership.created webhook fires — that path pages WorkOS for
+  // existing admin/owner memberships before promoting, so it reflects live state
+  // rather than the local cache.
   try {
     await workos.userManagement.createOrganizationMembership({
       userId,

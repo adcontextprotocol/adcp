@@ -1074,7 +1074,6 @@ export function createWorkOSWebhooksRouter(): Router {
                           let ownerName: string | null = null;
                           if (brand.domain_verified && brand.workos_organization_id) {
                             try {
-                              const orgDb = new OrganizationDatabase();
                               const ownerOrg = await orgDb.getOrganization(brand.workos_organization_id);
                               ownerName = ownerOrg?.name ?? null;
                             } catch (orgErr) {
