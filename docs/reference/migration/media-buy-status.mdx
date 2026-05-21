@@ -55,6 +55,7 @@ Two distinct fields. Envelope `status` carries the task-lifecycle state at the r
 - **Buyers** MUST prefer `media_buy_status` when present. MAY fall back to legacy `status` for compatibility with sellers still on the legacy form.
 - **3.0 sellers and buyers** continue to work unchanged. No `required[]` swap, no rename, no breakage.
 - **Compliance storyboards** assert `path: "media_buy_status"`. A 3.1 seller emitting only the legacy `status` is schema-valid but fails 3.1 storyboard certification. The storyboard is the binding conformance check; the schema `deprecated: true` marker is advisory.
+- **Sellers emitting both fields** MUST emit identical values for `media_buy_status` and the deprecated `status`. Divergent emission (e.g., `status: "active", media_buy_status: "paused"`) passes JSON Schema validation but is a conformance violation — 3.1 storyboards enforce equality via `field_value_or_absent` assertions on `status` alongside the canonical `media_buy_status` checks. The `if/then` JSON Schema constraint was evaluated and deferred: the migration window is short, codegen toolchain compat is uncertain, and the storyboard gate is sufficient. See [#4908](https://github.com/adcontextprotocol/adcp/issues/4908).
 
 ## SDK behavior
 
