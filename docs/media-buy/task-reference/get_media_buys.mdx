@@ -50,11 +50,15 @@ Returns an array of media buys with current status, creative approval state, and
 
 ### Media Buy Object
 
+<Note>
+**3.1 vocabulary note.** `get_media_buys` returns the lifecycle state on a nested `media_buys[].status` field (no envelope collision — nested at depth 1). `create_media_buy` and `update_media_buy` success responses return the same state on a top-level **`media_buy_status`** field (added in 3.1 to avoid colliding with the envelope task-status `status`). Same enum, two field names in 3.1 — the cascade unifies in 4.0 ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)). Buyers maintaining cross-call state should treat the two as the same logical value. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status) for the full picture.
+</Note>
+
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Seller's media buy identifier |
 | `invoice_recipient` | Per-buy invoice recipient when provided at creation. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
-| `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`) |
+| `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). Maps to `media_buy_status` on `create_media_buy` / `update_media_buy` success responses (3.1 vocabulary note above). |
 | `currency` | ISO 4217 currency for media-buy-level monetary values |
 | `total_budget` | Total campaign budget (in `currency`) |
 | `creative_deadline` | Creative upload deadline (ISO 8601) |
