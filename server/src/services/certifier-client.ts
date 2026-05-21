@@ -40,9 +40,29 @@ export interface CertifierCredential {
   publicId: string;
   groupId: string;
   status: string;
+  /**
+   * Denormalized snapshot of the recipient resource at issuance time. The
+   * recipient is a separate resource with its own ID (`recipient.id`).
+   * **This snapshot is NOT what drives certificate rendering** — Certifier's
+   * design template resolves `{recipient.name}` placeholders against the
+   * `attributes` map below (an override layer), falling back to the
+   * snapshot only when the attribute is absent. To update the rendered
+   * name post-issuance, PATCH `/credentials/{id}` with
+   * `{ recipient: { name, email } }` — Certifier writes the new value into
+   * `attributes['recipient.name']`. The snapshot field stays stale; the
+   * cert re-renders from the attribute override.
+   */
   recipient: CertifierRecipient;
   issueDate: string;
   expiryDate: string | null;
+  /**
+   * Render-time override map. Keys are dotted paths matching design-template
+   * placeholders (e.g., `recipient.name`); values override the corresponding
+   * resource snapshot at render time. Populated by PATCH /credentials/{id}
+   * post-issuance — that's how the recipient-name repair workflow lands a
+   * corrected name on already-issued certs.
+   */
+  attributes?: Record<string, string>;
   customAttributes: Record<string, string>;
   createdAt: string;
   updatedAt: string;
@@ -107,8 +127,14 @@ export interface UpdateCredentialOptions {
 /**
  * Update a previously-issued credential — typically used to correct the
  * recipient name on a credential that was issued before the user's profile
- * populated (see escalation #382). Certifier re-renders the certificate
- * artifacts after a successful PATCH.
+ * populated (see escalation #382). PATCHing `recipient: { name, email }`
+ * does NOT mutate the recipient resource snapshot on the credential;
+ * Certifier instead writes the new value into the credential's `attributes`
+ * map (e.g., `attributes['recipient.name']`). That override is what the
+ * design template reads at render time, so the corrected name appears on
+ * the cert even though the snapshot field stays stale. Verification of a
+ * successful repair MUST read `attributes['recipient.name']`, not
+ * `recipient.name`.
  */
 export async function updateCredential(
   credentialId: string,
