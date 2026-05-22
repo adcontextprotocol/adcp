@@ -15,6 +15,8 @@ export interface DiscoveredAgent {
   discovered_at?: Date;
   last_validated?: Date;
   expires_at?: Date;
+  probe_failure_count?: number;
+  next_probe_after?: Date;
 }
 
 /**
@@ -576,7 +578,8 @@ export class FederatedIndexDatabase {
   async getAllDiscoveredAgents(agentType?: string): Promise<DiscoveredAgent[]> {
     let sql = `
       SELECT id, agent_url, source_type, source_domain, name, agent_type, protocol,
-             discovered_at, last_validated, expires_at
+             discovered_at, last_validated, expires_at,
+             probe_failure_count, next_probe_after
       FROM discovered_agents
     `;
     const params: unknown[] = [];
@@ -757,6 +760,76 @@ export class FederatedIndexDatabase {
            last_validated = NOW()
        WHERE agent_url = $1`,
       [agentUrl, metadata.name || null, metadata.agent_type || null, metadata.protocol || null]
+    );
+  }
+
+  /**
+   * Register an agent discovered via publisher_properties as a sales_candidate.
+   * Only writes sales_candidate when the existing agent_type is NULL or 'unknown' —
+   * never downgrades a confirmed type (sales, creative, signals, buyer).
+   */
+  async upsertSalesCandidate(agentUrl: string, sourceDomain: string): Promise<void> {
+    await query(
+      `INSERT INTO discovered_agents (agent_url, source_type, source_domain, agent_type)
+       VALUES ($1, 'adagents_json', $2, 'sales_candidate')
+       ON CONFLICT (agent_url) DO UPDATE SET
+         agent_type = CASE
+           WHEN discovered_agents.agent_type IS NULL OR discovered_agents.agent_type = 'unknown'
+           THEN 'sales_candidate'
+           ELSE discovered_agents.agent_type
+         END,
+         last_validated = NOW()`,
+      [agentUrl, sourceDomain]
+    );
+  }
+
+  /**
+   * Return sales_candidate agents that are due for probing (backoff window has expired).
+   */
+  async getSalesCandidatesForProbe(): Promise<DiscoveredAgent[]> {
+    const result = await query<DiscoveredAgent>(
+      `SELECT id, agent_url, source_type, source_domain, name, agent_type, protocol,
+              discovered_at, last_validated, expires_at,
+              probe_failure_count, next_probe_after
+       FROM discovered_agents
+       WHERE agent_type = 'sales_candidate'
+         AND (next_probe_after IS NULL OR next_probe_after <= NOW())`,
+      []
+    );
+    return result.rows;
+  }
+
+  /**
+   * Promote a sales_candidate to a confirmed sales agent and reset backoff.
+   */
+  async promoteSalesCandidateToSales(agentUrl: string): Promise<void> {
+    await query(
+      `UPDATE discovered_agents
+       SET agent_type = 'sales',
+           probe_failure_count = 0,
+           next_probe_after = NULL,
+           last_validated = NOW()
+       WHERE agent_url = $1 AND agent_type = 'sales_candidate'`,
+      [agentUrl]
+    );
+  }
+
+  /**
+   * Record a failed probe for a sales_candidate and advance the backoff window.
+   * Schedule: first failure → 1 day, 1–2 failures → 7 days, 3+ → 30 days.
+   */
+  async recordSalesCandidateProbeFailure(agentUrl: string): Promise<void> {
+    await query(
+      `UPDATE discovered_agents
+       SET probe_failure_count = probe_failure_count + 1,
+           next_probe_after = NOW() + CASE
+             WHEN probe_failure_count = 0 THEN INTERVAL '1 day'
+             WHEN probe_failure_count < 3  THEN INTERVAL '7 days'
+             ELSE INTERVAL '30 days'
+           END,
+           last_validated = NOW()
+       WHERE agent_url = $1 AND agent_type = 'sales_candidate'`,
+      [agentUrl]
     );
   }
 

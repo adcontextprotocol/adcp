@@ -1,6 +1,6 @@
 /**
  * Integration tests for the crawler's publisher_properties fan-out
- * (adcp#4836 follow-up). When a manager file (cafemedia-shape) declares
+ * (adcp#4836 follow-up). When a manager file (managed-network shape) declares
  * `authorization_type: 'publisher_properties'` with `publisher_domains[]`,
  * the crawler synthesizes:
  *   - one `agent_publisher_authorizations` row per listed child publisher
@@ -18,6 +18,7 @@ import type { Pool } from 'pg';
 import { initializeDatabase, closeDatabase, query } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { PublisherDatabase } from '../../src/db/publisher-db.js';
+import { FederatedIndexDatabase } from '../../src/db/federated-index-db.js';
 
 const RUN_SUFFIX = Math.random().toString(36).slice(2, 8);
 const MANAGER = `mgr-${RUN_SUFFIX}.fanout.example`;
@@ -444,6 +445,130 @@ describe('crawler publisher_properties fan-out (integration)', () => {
         [MANAGER],
       );
       expect(pubs.rows[0]?.count).toBe('2');
+    });
+  });
+
+  describe('FederatedIndexDatabase — sales_candidate probe lifecycle', () => {
+    let db: FederatedIndexDatabase;
+
+    beforeAll(() => {
+      db = new FederatedIndexDatabase();
+    });
+
+    async function clearCandidateFixture(agentUrl: string) {
+      await query('DELETE FROM discovered_agents WHERE agent_url = $1', [agentUrl]);
+    }
+
+    it('upsertSalesCandidate inserts a new row with agent_type=sales_candidate', async () => {
+      const url = `https://candidate-${RUN_SUFFIX}.example`;
+      await clearCandidateFixture(url);
+      try {
+        await db.upsertSalesCandidate(url, MANAGER);
+        const rows = await query<{ agent_type: string; probe_failure_count: number }>(
+          'SELECT agent_type, probe_failure_count FROM discovered_agents WHERE agent_url = $1',
+          [url],
+        );
+        expect(rows.rows[0]?.agent_type).toBe('sales_candidate');
+        expect(rows.rows[0]?.probe_failure_count).toBe(0);
+      } finally {
+        await clearCandidateFixture(url);
+      }
+    });
+
+    it('upsertSalesCandidate does not downgrade a confirmed type', async () => {
+      const url = `https://confirmed-sales-${RUN_SUFFIX}.example`;
+      await clearCandidateFixture(url);
+      try {
+        // Insert with a confirmed type first
+        await db.upsertAgent({ agent_url: url, source_type: 'adagents_json', source_domain: MANAGER, agent_type: 'sales' });
+        // Attempt to downgrade
+        await db.upsertSalesCandidate(url, MANAGER);
+        const rows = await query<{ agent_type: string }>(
+          'SELECT agent_type FROM discovered_agents WHERE agent_url = $1',
+          [url],
+        );
+        expect(rows.rows[0]?.agent_type).toBe('sales');
+      } finally {
+        await clearCandidateFixture(url);
+      }
+    });
+
+    it('getSalesCandidatesForProbe returns rows with null or past next_probe_after', async () => {
+      const url = `https://probe-ready-${RUN_SUFFIX}.example`;
+      const urlBackoff = `https://probe-backoff-${RUN_SUFFIX}.example`;
+      await clearCandidateFixture(url);
+      await clearCandidateFixture(urlBackoff);
+      try {
+        await db.upsertSalesCandidate(url, MANAGER);
+        await db.upsertSalesCandidate(urlBackoff, MANAGER);
+        // Set future backoff on urlBackoff
+        await query(
+          `UPDATE discovered_agents SET next_probe_after = NOW() + INTERVAL '1 day' WHERE agent_url = $1`,
+          [urlBackoff],
+        );
+        const candidates = await db.getSalesCandidatesForProbe();
+        const urls = candidates.map(c => c.agent_url);
+        expect(urls).toContain(url);
+        expect(urls).not.toContain(urlBackoff);
+      } finally {
+        await clearCandidateFixture(url);
+        await clearCandidateFixture(urlBackoff);
+      }
+    });
+
+    it('promoteSalesCandidateToSales promotes and resets backoff', async () => {
+      const url = `https://promote-${RUN_SUFFIX}.example`;
+      await clearCandidateFixture(url);
+      try {
+        await db.upsertSalesCandidate(url, MANAGER);
+        await db.recordSalesCandidateProbeFailure(url); // set some failure state first
+        await db.promoteSalesCandidateToSales(url);
+        const rows = await query<{ agent_type: string; probe_failure_count: number; next_probe_after: Date | null }>(
+          'SELECT agent_type, probe_failure_count, next_probe_after FROM discovered_agents WHERE agent_url = $1',
+          [url],
+        );
+        expect(rows.rows[0]?.agent_type).toBe('sales');
+        expect(rows.rows[0]?.probe_failure_count).toBe(0);
+        expect(rows.rows[0]?.next_probe_after).toBeNull();
+      } finally {
+        await clearCandidateFixture(url);
+      }
+    });
+
+    it('recordSalesCandidateProbeFailure increments count and sets future next_probe_after', async () => {
+      const url = `https://failure-${RUN_SUFFIX}.example`;
+      await clearCandidateFixture(url);
+      try {
+        await db.upsertSalesCandidate(url, MANAGER);
+        await db.recordSalesCandidateProbeFailure(url);
+        const rows = await query<{ probe_failure_count: number; next_probe_after: Date | null }>(
+          'SELECT probe_failure_count, next_probe_after FROM discovered_agents WHERE agent_url = $1',
+          [url],
+        );
+        expect(rows.rows[0]?.probe_failure_count).toBe(1);
+        expect(rows.rows[0]?.next_probe_after).not.toBeNull();
+        // Backoff must be in the future
+        expect(new Date(rows.rows[0]!.next_probe_after!).getTime()).toBeGreaterThan(Date.now());
+      } finally {
+        await clearCandidateFixture(url);
+      }
+    });
+
+    it('managed-network regression: upsertSalesCandidate is idempotent across fan-out calls', async () => {
+      const url = `https://pinnacle-network-${RUN_SUFFIX}.example`;
+      await clearCandidateFixture(url);
+      try {
+        // Simulate two consecutive fan-out passes for the same manager → agent pair
+        await db.upsertSalesCandidate(url, MANAGER);
+        await db.upsertSalesCandidate(url, MANAGER);
+        const rows = await query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM discovered_agents WHERE agent_url = $1',
+          [url],
+        );
+        expect(rows.rows[0]?.count).toBe('1');
+      } finally {
+        await clearCandidateFixture(url);
+      }
     });
   });
 });

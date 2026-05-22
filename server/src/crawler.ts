@@ -2,6 +2,7 @@ import type { Agent } from "./types.js";
 import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/sdk";
 import { sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
 import { FederatedIndexService } from "./federated-index.js";
+import type { DiscoveredAgent } from "./db/federated-index-db.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { BrandManager } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
@@ -154,6 +155,29 @@ export class CrawlerService {
       log.warn({ err }, 'Failed to fetch discovered sales agents; proceeding with config agents only');
     }
 
+    // Fetch sales_candidate agents discovered via publisher_properties fan-out.
+    // These get included in the same crawlAgents call so the SDK probes their
+    // list_authorized_properties alongside registered and confirmed sales agents.
+    let salesCandidates: DiscoveredAgent[] = [];
+    try {
+      salesCandidates = await this.federatedIndex.getSalesCandidatesForProbe();
+      let added = 0;
+      for (const candidate of salesCandidates) {
+        if (seenAgentUrls.has(candidate.agent_url) || pausedUrls.has(candidate.agent_url)) continue;
+        seenAgentUrls.add(candidate.agent_url);
+        agentInfos.push({
+          agent_url: candidate.agent_url,
+          protocol: (candidate.protocol as 'mcp' | 'a2a') || 'mcp',
+        });
+        added++;
+      }
+      if (added > 0) {
+        log.debug({ count: added }, 'Including sales_candidate agents in PropertyCrawler pass');
+      }
+    } catch (err) {
+      log.warn({ err }, 'Failed to fetch sales_candidate agents; proceeding without candidate probes');
+    }
+
     try {
       const result = await this.crawler.crawlAgents(agentInfos);
 
@@ -187,8 +211,32 @@ export class CrawlerService {
       // Snapshot pre-crawl state for diffing
       const preCrawlAgents = await this.snapshotAgentState();
 
-      // Populate federated index from PropertyIndex and adagents.json files
+      // Populate federated index from PropertyIndex and adagents.json files,
+      // including any publisher-domain claims returned by sales_candidate probes.
       const crawledDomains = await this.populateFederatedIndex(agents);
+
+      // Promote or back off sales_candidates based on positive PropertyIndex evidence.
+      // Absence of an error is not sufficient — the agent must have returned publisher-domain
+      // authorizations (non-empty publisher_domains) to earn promotion to 'sales'.
+      if (salesCandidates.length > 0) {
+        const index = getPropertyIndex();
+        for (const candidate of salesCandidates) {
+          const auth = index.getAgentAuthorizations(candidate.agent_url);
+          try {
+            if (auth && auth.publisher_domains.length > 0) {
+              await this.federatedIndex.promoteSalesCandidateToSales(candidate.agent_url);
+              log.debug({ agentUrl: candidate.agent_url }, 'sales_candidate promoted to sales');
+            } else {
+              await this.federatedIndex.recordSalesCandidateProbeFailure(candidate.agent_url);
+            }
+          } catch (err) {
+            log.warn(
+              { agentUrl: candidate.agent_url, err: err instanceof Error ? err.message : err },
+              'sales_candidate probe outcome recording failed',
+            );
+          }
+        }
+      }
 
       // Build and upsert inventory profiles
       const builtProfiles = await this.buildInventoryProfiles();
@@ -603,13 +651,10 @@ export class CrawlerService {
       }
     }
 
-    // 2b. Walk all DB-discovered agents through the PropertyIndex. The type filter
+    // 2b. Walk DB-discovered agents through the PropertyIndex. The type filter
     //     is intentionally absent — `index.getAgentAuthorizations` acts as the gate:
-    //     only agents included in the PropertyCrawler pass (those with agent_type='sales'
-    //     at the START of this cycle, promoted by refreshAgentSnapshots in a prior cycle)
-    //     will have non-empty publisher_domains. Agents discovered for the first time
-    //     this cycle have no PropertyIndex entry and are silently skipped; they will
-    //     appear here on the next cycle (adcp#4849).
+    //     confirmed sales agents and due sales_candidates included in the
+    //     PropertyCrawler pass have publisher_domains; others are skipped.
     log.debug('Processing DB-discovered agents via PropertyIndex');
     try {
       const discoveredSalesAgents = await this.federatedIndex.listDiscoveredAgents();
@@ -1191,6 +1236,21 @@ export class CrawlerService {
         log.warn(
           { managerDomain, childDomain: childCanonical, agentUrl, err: err instanceof Error ? err.message : err },
           'publisher_properties fan-out: per-child write failed',
+        );
+      }
+    }
+
+    // Register the declaring agent as a sales_candidate so the next periodic
+    // crawl probes it via list_authorized_properties. Only takes effect when
+    // the agent has no confirmed type yet — upsertSalesCandidate will not
+    // downgrade a row already classified as 'sales', 'creative', etc.
+    if (childDomains.size > 0) {
+      try {
+        await this.federatedIndex.upsertSalesCandidate(agentUrl, managerCanonical);
+      } catch (err) {
+        log.warn(
+          { agentUrl, managerDomain: managerCanonical, err: err instanceof Error ? err.message : err },
+          'publisher_properties fan-out: sales_candidate registration failed',
         );
       }
     }

@@ -372,6 +372,26 @@ export class FederatedIndexService {
   }
 
   // ============================================
+  // Sales-candidate probe lifecycle
+  // ============================================
+
+  async upsertSalesCandidate(agentUrl: string, sourceDomain: string): Promise<void> {
+    await this.db.upsertSalesCandidate(agentUrl, sourceDomain);
+  }
+
+  async getSalesCandidatesForProbe(): Promise<DiscoveredAgent[]> {
+    return this.db.getSalesCandidatesForProbe();
+  }
+
+  async promoteSalesCandidateToSales(agentUrl: string): Promise<void> {
+    await this.db.promoteSalesCandidateToSales(agentUrl);
+  }
+
+  async recordSalesCandidateProbeFailure(agentUrl: string): Promise<void> {
+    await this.db.recordSalesCandidateProbeFailure(agentUrl);
+  }
+
+  // ============================================
   // Property Recording (for crawler)
   // ============================================
 
