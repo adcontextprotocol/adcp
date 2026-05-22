@@ -363,10 +363,12 @@ async function runTests() {
     };
     const cases = [
       {
+        status: 'completed',
         response_type: 'single',
         previews: [preview]
       },
       {
+        status: 'completed',
         response_type: 'batch',
         results: [
           {

@@ -66,6 +66,7 @@ import {
   RegistryMetadataSchema,
   MonitoringSettingsSchema,
   ComplianceRunSchema,
+  ComplianceStepDiagnosticSchema,
   OutboundRequestSchema,
   AgentAuthStatusSchema,
   CredentialSaveValidationErrorSchema,
@@ -775,7 +776,9 @@ registry.registerPath({
     query: z.object({
       since: z.string().datetime().optional().openapi({ description: "ISO 8601 — return only publishers with last_verified_at ≥ since" }),
       cursor: z.string().optional().openapi({ description: "Opaque pagination cursor returned by a prior response" }),
-      status: z.string().optional().openapi({ description: "Comma-separated subset of {authorized, revoked}. Default: authorized." }),
+      status: z.array(z.enum(["authorized", "revoked"])).optional().openapi({
+        description: "Lifecycle status filter — repeat the key once per value (?status=authorized&status=revoked). Default: authorized. The comma-separated single-value form is rejected with 400.",
+      }),
       limit: z.coerce.number().int().min(1).max(1000).optional().openapi({ description: "Page size, default 200, max 1000" }),
     }),
   },
@@ -2182,6 +2185,45 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
+  path: "/api/registry/agents/{encodedUrl}/compliance/diagnostics",
+  operationId: "getAgentComplianceStepDiagnostics",
+  summary: "Get per-step diagnostics for a compliance run",
+  description:
+    "Returns the exact request and response payloads the runner captured for failing storyboard steps on a single compliance run.\n\nLets agent owners diff what the runner sent against their own probes without re-running the storyboard. Owner-only — payloads echo seller-side account/brand identifiers and may carry sensitive descriptive fields. If `run_id` is omitted, resolves to the latest run for the agent.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+    query: z.object({
+      run_id: z.string().optional().openapi({ description: "Specific compliance run UUID. Defaults to latest." }),
+      limit: z.string().optional().openapi({ description: "Max rows (default 500, max 1000)" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Per-step diagnostics for the requested run",
+      content: {
+        "application/json": {
+          schema: z.object({
+            agent_url: z.string(),
+            run_id: z.string().nullable(),
+            count: z.number().int(),
+            diagnostics: z.array(ComplianceStepDiagnosticSchema),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
   path: "/api/registry/agents/{encodedUrl}/monitoring/requests",
   operationId: "getAgentMonitoringRequests",
   summary: "Get outbound request log",
@@ -2225,7 +2267,7 @@ registry.registerPath({
   operationId: "refreshAgent",
   summary: "Refresh agent snapshot",
   description:
-    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms) and capability snapshot (inferred type, discovered tools). Use after fixing your agent so the registry shows fresh data without waiting for the periodic crawl.\n\n**Auth:** owner of the agent or AAO admin.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
+    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~12h).\n\n**Compliance re-run:** when the caller owns the agent and the capability probe succeeds, the full storyboard suite runs (~30–90s) and `agent_storyboard_status` is updated under `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent or AAO admin.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -2247,6 +2289,13 @@ registry.registerPath({
             oauth_required: z.boolean(),
             checked_at: z.string(),
             error: z.string().optional(),
+            compliance: z.object({
+              ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed." }),
+              overall_status: z.string().optional().openapi({ description: "Aggregate verdict from the run (passing / failing / partial / unknown). Only present when `ran` is true." }),
+              storyboards_passing: z.number().int().optional().openapi({ description: "Number of storyboards passing on this run." }),
+              storyboards_total: z.number().int().optional().openapi({ description: "Number of storyboards evaluated on this run." }),
+              error: z.string().optional().openapi({ description: "Reason compliance didn't run when `ran` is false." }),
+            }).openapi({ description: "Compliance re-run summary. The capability/health portion of the response is independent of this block — a failed compliance run still returns the rest of the snapshot." }),
           }),
         },
       },
@@ -5283,9 +5332,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `refresh:${agentUrl}` });
       }
 
+      let probeResult: Awaited<ReturnType<typeof crawler.refreshSingleAgent>>;
       try {
-        const result = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
-        return res.json(result);
+        probeResult = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Probe failed';
         if (/Monitoring paused/i.test(message)) {
@@ -5294,11 +5343,130 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         logger.warn({ agentUrl, err }, 'Manual agent refresh probe failed');
         return res.status(502).json({ error: `Probe failed: ${message}` });
       }
+
+      // Also re-run compliance so the dashboard verdict updates alongside the
+      // capability/health probe. Prior to #4886, /refresh probed capabilities
+      // and health but left agent_storyboard_status untouched, leaving owners
+      // to stare at a stale verdict for up to a full heartbeat cycle after
+      // deploying a fix. The full storyboard suite can run 30–90s; the
+      // per-agent 60s rate limit above bounds repeat-clicks. comply() failure
+      // is a soft-fail — we still return the capability/health refresh so a
+      // partially-working agent still moves the snapshot forward.
+      let complianceSummary: {
+        ran: boolean;
+        overall_status?: string;
+        storyboards_passing?: number;
+        storyboards_total?: number;
+        error?: string;
+      } = { ran: false };
+
+      if (ownerOrgId && !probeResult.error && !probeResult.oauth_required) {
+        try {
+          const complyResult = await comply(agentUrl, {
+            timeout_ms: 90_000,
+            ...(resolvedAuth && { auth: resolvedAuth }),
+          });
+          if (complyResult.overall_status === 'auth_required') {
+            complianceSummary = { ran: false, error: 'Agent requires OAuth authorization' };
+          } else {
+            const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+            const dbInput = complianceResultToDbInput(
+              complyResult,
+              agentUrl,
+              metadata?.lifecycle_stage || 'production',
+              'manual',
+            );
+            dbInput.dry_run = false;
+            const { storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+            const passing = storyboardStatuses.filter(s => s.status === 'passing').length;
+            complianceSummary = {
+              ran: true,
+              overall_status: dbInput.overall_status,
+              storyboards_passing: passing,
+              storyboards_total: storyboardStatuses.length,
+            };
+
+            // Fan out badge issuance so verification badges reflect the new
+            // verdict immediately. Matches the per-storyboard owner-test path.
+            const declaredSpecialisms = complyResult.agent_profile?.specialisms ?? [];
+            if (declaredSpecialisms.length > 0) {
+              try {
+                await runBadgeFanOut({
+                  complianceDb,
+                  agentUrl,
+                  declaredSpecialisms,
+                });
+              } catch (badgeError) {
+                logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after manual refresh');
+              }
+            }
+          }
+        } catch (complyErr) {
+          const msg = complyErr instanceof Error ? complyErr.message : 'compliance run failed';
+          logger.warn({ agentUrl, err: complyErr }, 'Compliance re-run failed during manual refresh');
+          complianceSummary = { ran: false, error: msg };
+        }
+      }
+
+      return res.json({ ...probeResult, compliance: complianceSummary });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to refresh agent");
       res.status(500).json({ error: "Failed to refresh agent" });
     }
   });
+
+  // ── Per-step compliance diagnostics (owner-only, adcp#4738) ──────
+  //
+  // Returns the exact request/response payloads the runner captured for
+  // failing storyboard steps on a single compliance run. Lets owners diff
+  // what the runner sent against their own probes without re-running.
+  // Owner-only because payloads echo seller-side account/brand identifiers
+  // and may contain sensitive descriptive fields.
+  router.get(
+    "/registry/agents/:encodedUrl/compliance/diagnostics",
+    ...complianceWriteMiddleware,
+    async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(agentUrl)) {
+          return res.status(400).json({ error: "Invalid agent URL" });
+        }
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+        if (!isOwner) {
+          return res.status(403).json({ error: "You do not have permission to view this agent" });
+        }
+
+        const runIdRaw = typeof req.query.run_id === "string" ? req.query.run_id : undefined;
+        if (runIdRaw !== undefined && !isUuid(runIdRaw)) {
+          return res.status(400).json({ error: "Invalid run_id (expected UUID)" });
+        }
+
+        let limit: number | undefined;
+        if (typeof req.query.limit === "string") {
+          const parsed = Number(req.query.limit);
+          if (!Number.isFinite(parsed) || parsed <= 0) {
+            return res.status(400).json({ error: "Invalid limit (expected positive integer)" });
+          }
+          limit = Math.min(Math.floor(parsed), 1000);
+        }
+
+        const rows = await complianceDb.getStepDiagnostics(agentUrl, { runId: runIdRaw, limit });
+
+        res.json({
+          agent_url: agentUrl,
+          run_id: runIdRaw ?? (rows[0]?.run_id ?? null),
+          count: rows.length,
+          diagnostics: rows,
+        });
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to get compliance diagnostics");
+        res.status(500).json({ error: "Failed to get compliance diagnostics" });
+      }
+    },
+  );
 
   router.get("/registry/agents/:encodedUrl/monitoring/requests", ...complianceWriteMiddleware, async (req, res) => {
     try {
@@ -6946,10 +7114,28 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         since = parsed;
       }
 
-      // status filter defaults to authorized-only. Comma-separated list of
-      // {authorized, revoked}. Anything else is a 400.
-      const statusParam = typeof req.query.status === 'string' ? req.query.status : 'authorized';
-      const statusSet = new Set(statusParam.split(',').map(s => s.trim()).filter(Boolean));
+      // status filter: repeated-key form per spec
+      // (docs/aao/directory-api.mdx — `?status=authorized&status=revoked`).
+      // The comma-separated single-value form is explicitly rejected with
+      // 400 so callers don't silently get unexpected filter behavior when
+      // a future enum value contains a comma. v1 enum: {authorized, revoked}.
+      const rawStatus = req.query.status;
+      let statusValues: string[];
+      if (rawStatus === undefined) {
+        statusValues = ['authorized'];
+      } else if (Array.isArray(rawStatus)) {
+        statusValues = rawStatus.filter((v): v is string => typeof v === 'string');
+      } else if (typeof rawStatus === 'string') {
+        if (rawStatus.includes(',')) {
+          return res.status(400).json({
+            error: "Invalid `status` encoding — repeat the key once per value (?status=authorized&status=revoked). The comma-separated form is not accepted.",
+          });
+        }
+        statusValues = [rawStatus];
+      } else {
+        return res.status(400).json({ error: "Invalid `status` query parameter" });
+      }
+      const statusSet = new Set(statusValues.map(s => s.trim()).filter(Boolean));
       for (const s of statusSet) {
         if (s !== 'authorized' && s !== 'revoked') {
           return res.status(400).json({ error: `Invalid status value '${s}' — supported: authorized, revoked` });

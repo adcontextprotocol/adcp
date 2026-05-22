@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "properties": {
@@ -33,7 +36,11 @@
             "$ref": "/schemas/enums/media-buy-status.json"
           },
           "health": {
-            "allOf": [{ "$ref": "/schemas/enums/media-buy-health.json" }],
+            "allOf": [
+              {
+                "$ref": "/schemas/enums/media-buy-health.json"
+              }
+            ],
             "default": "ok",
             "description": "Dependency health of the media buy, orthogonal to `status`. `ok` (default) when no upstream resource that this buy depends on is in an offline state. `impaired` when at least one such resource (audience, creative, catalog_item, event_source, property) is offline and affects delivery for one or more packages — `impairments[]` MUST be non-empty in that case. On terminal-status buys, the seller MAY leave this field in whatever state held at the terminal transition. See lifecycle.mdx § Compliance and the impairment.coherence assertion."
           },

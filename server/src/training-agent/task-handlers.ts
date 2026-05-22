@@ -2250,9 +2250,14 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
   const status = deriveStatus(mediaBuy);
+  // Emit `media_buy_status` (canonical 3.1 field per #4895). Body-level
+  // `status` carrying MediaBuyStatus is deprecated and removed in 3.2
+  // (#4906) — emitting it here would collide with envelope `status`
+  // (TaskStatus), which the envelope-fold (#4878) now requires to validate
+  // against the per-task response schema.
   return {
     media_buy_id: mediaBuyId,
-    status,
+    media_buy_status: status,
     revision: mediaBuy.revision,
     confirmed_at: mediaBuy.confirmedAt,
     valid_actions: validActionsForStatus(status),
@@ -2964,9 +2969,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     mb.updatedAt = now;
 
     const status = deriveStatus(mb);
+    // `media_buy_status` is the canonical 3.1 body field (#4895); legacy
+    // body `status: MediaBuyStatus` removed in 3.2 (#4906).
     return {
       media_buy_id: mb.mediaBuyId,
-      status,
+      media_buy_status: status,
       revision: mb.revision,
       valid_actions: validActionsForStatus(status),
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
@@ -3159,9 +3166,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   mb.updatedAt = now;
 
   const status = deriveStatus(mb);
+  // `media_buy_status` is the canonical 3.1 body field (#4895); legacy
+  // body `status: MediaBuyStatus` removed in 3.2 (#4906).
   const result = {
     media_buy_id: mb.mediaBuyId,
-    status,
+    media_buy_status: status,
     revision: mb.revision,
     valid_actions: validActionsForStatus(status),
     ...(mb.canceledAt && {
@@ -4545,10 +4554,16 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         };
       }
       if (outcome.kind === 'replay') {
-        // Cached inner response; envelope fields (`replayed`, `context`) are
-        // produced fresh on every response per security.mdx. Replayed
-        // responses bypass the handler entirely — no mutations, no flush.
+        // Cached inner response; envelope fields (`replayed`, `context`,
+        // `status`) are produced fresh on every response per security.mdx.
+        // Replayed responses bypass the handler entirely — no mutations, no
+        // flush. We stamp envelope `status: 'completed'` defensively in case
+        // the cached inner doesn't carry one (older cache entries written
+        // before the envelope-fold landed, or handlers that emitted bodies
+        // without status). Per #4878, every per-task response schema now
+        // requires envelope `status`.
         const body: Record<string, unknown> = { ...(outcome.response as Record<string, unknown>), replayed: true };
+        if (body.status === undefined) body.status = 'completed';
         if (callerContext !== undefined) body.context = callerContext;
         toolResult = {
           content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -4580,7 +4595,12 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // post-dispatch gate below never inserts this into the replay cache.
         const firstError = resultObj.errors![0];
         if (ERROR_IN_BODY_TOOLS.has(name)) {
-          const body: Record<string, unknown> = { errors: resultObj.errors };
+          // Envelope `status` is required per protocol-envelope.json (#4876)
+          // and now folded into every per-task response schema (#4896). The
+          // task itself completed successfully and produced a response that
+          // happens to describe application-level errors — `completed` is
+          // the correct TaskStatus regardless of body shape.
+          const body: Record<string, unknown> = { status: 'completed', errors: resultObj.errors };
           if (callerContext !== undefined) body.context = callerContext;
           toolResult = {
             content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -4609,10 +4629,15 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // schemas are not passthrough and reject the extra key).
         const inner = result as Record<string, unknown>;
         cachableResponse = inner;
-        const envelope: Record<string, unknown> = {};
-        if (name === 'create_media_buy') envelope.replayed = false;
-        if (callerContext !== undefined) envelope.context = callerContext;
-        const response = { ...inner, ...envelope };
+        // Envelope `status` is required per protocol-envelope.json (#4876) and
+        // now folded into every per-task response schema (#4896). Default to
+        // `completed` on synchronous success — handlers that emit a different
+        // TaskStatus (e.g., `submitted` for async-task envelopes) set it on
+        // `inner` and we honor that value.
+        const response: Record<string, unknown> = { ...inner };
+        if (response.status === undefined) response.status = 'completed';
+        if (name === 'create_media_buy') response.replayed = false;
+        if (callerContext !== undefined) response.context = callerContext;
         // `structuredContent` is authoritative on success so raw-probe
         // callers (storyboard runner's rawMcpProbe) can validate envelope
         // fields. `content` stays empty: the SDK unwrapper folds text

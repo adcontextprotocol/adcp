@@ -1357,7 +1357,7 @@ describe('create_media_buy handler', () => {
     expect(Array.isArray(result.packages)).toBe(true);
     expect((result.packages as unknown[]).length).toBe(1);
     // No creatives synced → pending_creatives regardless of dates
-    expect(result.status).toBe('pending_creatives');
+    expect(result.media_buy_status).toBe('pending_creatives');
     // Error field should not be present on success
     expect(result.errors).toBeUndefined();
   });
@@ -1375,7 +1375,7 @@ describe('create_media_buy handler', () => {
       end_time: '2020-01-31T23:59:59Z',
       packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget: 50000 }],
     });
-    expect(past.status).toBe('pending_creatives');
+    expect(past.media_buy_status).toBe('pending_creatives');
 
     // With creatives assigned, date-based derivation applies
     const now = new Date();
@@ -1676,7 +1676,7 @@ describe('create_media_buy handler', () => {
       }],
     });
     // No creatives synced → pending_creatives regardless of dates
-    expect(result.status).toBe('pending_creatives');
+    expect(result.media_buy_status).toBe('pending_creatives');
   });
 
   it('rejects event-kind optimization_goal with unregistered event_source_id', async () => {
@@ -3086,7 +3086,7 @@ describe('update_media_buy handler', () => {
       }],
     });
 
-    expect(updateResult.status).toBe('pending_start');
+    expect(updateResult.media_buy_status).toBe('pending_start');
 
     const { result: postBuy } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
       account,
@@ -3275,7 +3275,7 @@ describe('update_media_buy handler', () => {
       packages: [{ package_id: pkgId, creative_assignments: [] }],
     });
     expect(updateResult.code).toBeUndefined();
-    expect(updateResult.status).toBe('pending_creatives');
+    expect(updateResult.media_buy_status).toBe('pending_creatives');
   });
 
   it('rejects all creative_assignments atomically when any creative_id is missing', async () => {

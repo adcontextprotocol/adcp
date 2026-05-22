@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "oneOf": [
@@ -20,9 +23,14 @@
           "description": "Seller's identifier for the media buy",
           "x-entity": "media_buy"
         },
+        "media_buy_status": {
+          "$ref": "/schemas/enums/media-buy-status.json",
+          "description": "Media buy status after the update. Present when the update changes the media buy's status (e.g., cancellation transitions to 'canceled', pause transitions to 'paused'). Added in 3.1: at the top level of flat-on-the-wire MCP responses, the `status` key is reserved for the envelope TaskStatus. Sellers SHOULD emit `media_buy_status` from 3.1 onward; the legacy top-level `status: MediaBuyStatus` form is deprecated and removed in 3.2 (#4906). When the deprecated `status` is also present during the 3.1 deprecation window, both MUST carry identical values — divergent emission is a conformance violation flagged by 3.1 compliance storyboards."
+        },
         "status": {
           "$ref": "/schemas/enums/media-buy-status.json",
-          "description": "Media buy status after the update. Present when the update changes the media buy's status (e.g., cancellation transitions to 'canceled', pause transitions to 'paused')."
+          "deprecated": true,
+          "description": "DEPRECATED in 3.1, removed in 3.2 (#4906). Use `media_buy_status` instead. During the 3.1 deprecation window, sellers emitting both `status` and `media_buy_status` MUST emit identical values — divergent emission is a conformance violation. See adcontextprotocol/adcp#4895."
         },
         "revision": {
           "type": "integer",

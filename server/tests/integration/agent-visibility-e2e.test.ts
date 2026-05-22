@@ -150,6 +150,18 @@ describe('Agent visibility E2E', () => {
     await closeDatabase();
   });
 
+  async function seedBrandPrimaryUnverified(orgId: string, domain: string) {
+    await pool.query(
+      `INSERT INTO organization_domains
+         (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, false, true, 'workos', NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET
+         workos_organization_id = EXCLUDED.workos_organization_id,
+         verified = false, is_primary = true, source = 'workos'`,
+      [orgId, domain],
+    );
+  }
+
   async function seedBrandPrimary(orgId: string, domain: string) {
     await pool.query(
       `INSERT INTO organization_domains
@@ -715,6 +727,79 @@ describe('Agent visibility E2E', () => {
         'tier_required',
         'brand_domain_required',
       ]);
+    });
+
+    it('Builder with unverified primary domain: brand_domain_unverified', async () => {
+      const orgId = `${TEST_PREFIX}_gate_unverified`;
+      const userId = `${TEST_PREFIX}_gate_unverified_user`;
+      await seedOrg(pool, orgId, 'company_standard');
+      await provisionUser(userId, orgId);
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'Unverified Domain Org',
+        slug: 'gateunverified',
+        is_public: true,
+        agents: [],
+      });
+      await seedBrandPrimaryUnverified(orgId, 'gateunverified.example');
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).get('/api/me/member-profile');
+
+      expect(res.status).toBe(200);
+      expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
+      expect(res.body.agent_visibility_gate.reasons).toContain('brand_domain_unverified');
+    });
+  });
+
+  // Unverified domain write-side enforcement (#4511).
+  // An org can have is_primary=true but verified=false (admin import, legacy
+  // seeding). All three write paths that can set visibility='public' must
+  // reject with brand_domain_unverified until the org completes DNS verification.
+  describe('Unverified domain write-side enforcement', () => {
+    async function setupUnverifiedOrg(suffix: string) {
+      const orgId = `${TEST_PREFIX}_unv_${suffix}`;
+      const userId = `${TEST_PREFIX}_unv_${suffix}_user`;
+      const domain = `unv${suffix}.example`;
+      await seedOrg(pool, orgId, 'individual_professional');
+      await provisionUser(userId, orgId);
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: `Unverified ${suffix}`,
+        slug: `unv${suffix}`,
+        is_public: true,
+        agents: [{ url: `https://agent.${domain}`, visibility: 'private' }],
+      });
+      await seedBrandPrimaryUnverified(orgId, domain);
+      return { orgId, userId, domain };
+    }
+
+    it('POST /publish returns 400 brand_domain_unverified when primary domain is not DNS-verified', async () => {
+      const { userId, orgId } = await setupUnverifiedOrg('pub');
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).post('/api/me/member-profile/agents/0/publish');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('brand_domain_unverified');
+    });
+
+    it('PATCH /visibility=public returns 400 brand_domain_unverified when primary domain is not DNS-verified', async () => {
+      const { userId, orgId } = await setupUnverifiedOrg('patch');
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app)
+        .patch('/api/me/member-profile/agents/0/visibility')
+        .send({ visibility: 'public' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('brand_domain_unverified');
+    });
+
+    it('PUT /member-profile: rejects visibility=public when primary domain is not DNS-verified', async () => {
+      const { userId, orgId, domain } = await setupUnverifiedOrg('put');
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app)
+        .put('/api/me/member-profile')
+        .send({ agents: [{ url: `https://agent.${domain}`, visibility: 'public' }] });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('brand_domain_unverified');
     });
   });
 

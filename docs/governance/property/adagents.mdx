@@ -324,7 +324,20 @@ Absolute cache caps and refresh floors for authoritative files live in [Managed 
 
 ## Authorization Patterns
 
-AdCP supports four authorization patterns, each optimized for different use cases:
+AdCP supports six `authorization_type` values, each optimized for different use cases. The table below maps each value to the companion field that carries the selector — useful as a quick reference when writing or validating `adagents.json`:
+
+| `authorization_type` | Companion field | Carries | Pattern |
+|---|---|---|---|
+| `property_ids` | `property_ids[]` | IDs into the top-level `properties[]` of the same file | [Pattern 1](#pattern-1-property-ids-direct-references) |
+| `property_tags` | `property_tags[]` | Tags into the top-level `properties[]` of the same file | [Pattern 2](#pattern-2-property-tags-efficient-grouping) |
+| `inline_properties` | `properties[]` *(see warning below)* | Property objects defined directly on the agent entry | [Pattern 3](#pattern-3-inline-properties) |
+| `publisher_properties` | `publisher_properties[]` | Per-publisher selectors that resolve against each listed publisher's `adagents.json` (or the parent file's inline `properties[]`) | [Pattern 4](#pattern-4-publisher-property-references) |
+| `signal_ids` | `signal_ids[]` | IDs into the top-level `signals[]` of the same file | Signal-provider entries (see `signals` schema) |
+| `signal_tags` | `signal_tags[]` | Tags into the top-level `signals[]` of the same file | Signal-provider entries (see `signals` schema) |
+
+<Warning>
+  **`inline_properties` companion field is `properties`, not `inline_properties`.** It is the only `authorization_type` whose companion field name does not mirror the discriminator value. Validators reject `inline_properties` entries that carry a top-level `inline_properties` array but no `properties`. See [Pattern 3](#pattern-3-inline-properties) for an example.
+</Warning>
 
 ### Pattern 1: Property IDs (Direct References)
 
@@ -523,7 +536,7 @@ Inline resolution is a **per-domain optimization**: a consumer MAY use inline re
 
 ## Authorization Qualifiers
 
-The four `authorization_type` patterns above answer **which inventory** an agent can sell. The optional qualifiers below answer **how** that inventory is being made available.
+The four property-side `authorization_type` patterns above answer **which inventory** an agent can sell; the two signal-side values (`signal_ids`, `signal_tags`) carry the same shape for `signals[]`. The optional qualifiers below answer **how** that inventory is being made available.
 
 ### `delegation_type`
 

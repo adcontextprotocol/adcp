@@ -17,9 +17,17 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Array of format IDs that will be used for this package - must be supported by the product. If omitted, defaults to all formats supported by the product.",
+      "description": "v1 path. Array of format IDs that will be used for this package - must be supported by the product. If omitted (and `capability_ids` is also omitted), defaults to all formats supported by the product.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "capability_ids": {
+      "type": "array",
+      "description": "v2 path. Array of `capability_id` values, each referencing one of the product's `format_options[i].capability_id` entries. Lets a buyer reading the V2 mental model (`Product.format_options[]`) author a `create_media_buy` call without translating back through `v1_format_ref[]` to construct `format_ids[]`. Symmetric with the V2 path exposed on `creative-manifest` (which carries a single `capability_id`) — a package may activate multiple `format_options` entries, so the package-side shape is an array.\n\n**Resolution rules (normative).**\n- **Both `capability_ids` and `format_ids` present.** `capability_ids` wins; the seller routes by `capability_ids` and MUST NOT validate `format_ids` for consistency with the resolved declarations. The `format_ids` value is a v1-compat hint for intermediaries on the wire path; the resolving seller ignores it.\n- **`capability_ids` only.** Seller looks up each entry against the product's `format_options[]` and uses the matching declaration (and that declaration's `v1_format_ref[]` when projecting to v1-wire surfaces). This is the V2-native authoring path.\n- **`format_ids` only.** Existing v1 behavior; unchanged.\n- **Neither.** Default — all formats supported by the product are active.\n\n**Failure modes (normative).** Sellers MUST reject with `UNSUPPORTED_FEATURE` (with `field` pointing at the failing package and entry, e.g. `packages[0].capability_ids[1]`) when:\n- Any entry references a `capability_id` not present in the target product's `format_options[]`, OR\n- The target product carries `format_ids` but no `format_options[]` (v1-only product — there is no closed set to resolve against), OR\n- The target product carries `format_options[]` but none of the entries publish a `capability_id` (the V2 path is unauthorable against that product). Sellers SHOULD set `error.details.reason` to `capability_ids_not_published` in this case so buyers can distinguish it from an outright mismatch and fall back to `format_ids[]`.\n\n**Seller obligation.** For buyers to use the V2 path against a product, the seller MUST publish a `capability_id` on each `format_options[]` entry it expects buyers to select (the field is currently optional on `product-format-declaration.json` and only structurally required when multiple entries share a `format_kind`). Sellers SHOULD assign a stable `capability_id` to every entry to keep the V2 authoring path usable.\n\n**Dual emission.** V2-native buyer SDKs targeting a heterogeneous seller population (mix of v1- and v2-capable sellers) SHOULD emit `format_ids` alongside `capability_ids` so v1-only sellers — which ignore the unknown `capability_ids` field per `additionalProperties: true` — still receive an explicit format set rather than silently defaulting to all formats supported by the product.\n\nBackward-compatible: additive optional field. v1-only sellers ignore it.",
+      "items": {
+        "type": "string"
       },
       "minItems": 1
     },

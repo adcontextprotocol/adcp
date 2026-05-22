@@ -173,6 +173,10 @@ export const TOOL_DEFINITIONS = [
           type: "string",
           description: "Optional ISO 8601 timestamp for evaluating time-bounded authorization",
         },
+        force_refresh: {
+          type: "boolean",
+          description: "Bypass cache and fetch the publisher's adagents.json live (default: false). Use when the file was recently updated and a fresh result is needed.",
+        },
       },
       required: ["domain", "agent_url"],
     },
@@ -800,6 +804,7 @@ export class MCPToolHandler {
       case "validate_agent": {
         const domain = args?.domain as string;
         const agentUrl = args?.agent_url as string;
+        const forceRefresh = !!args?.force_refresh;
         const result = await this.validator.validate(domain, agentUrl, {
           property_id: args?.property_id as string | undefined,
           property_tags: Array.isArray(args?.property_tags) ? args.property_tags as string[] : undefined,
@@ -808,7 +813,7 @@ export class MCPToolHandler {
           placement_tags: Array.isArray(args?.placement_tags) ? args.placement_tags as string[] : undefined,
           country: args?.country as string | undefined,
           at: args?.at as string | undefined,
-        });
+        }, forceRefresh);
         return {
           content: [
             {

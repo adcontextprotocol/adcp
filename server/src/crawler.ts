@@ -501,10 +501,18 @@ export class CrawlerService {
               // (adcp#4823) returns one row per represented publisher
               // instead of one row for the manager. See adcp#4825 for the
               // inline-resolution rule this implements.
-              await this.fanOutPublisherPropertiesAuthorizations(
-                authorizedAgent,
-                pubConfig.domain,
-              );
+              //
+              // Skip when the crawl source is a delegating child (the
+              // file lives at the manager via ads.txt MANAGERDOMAIN). In
+              // that case the manager's own crawl handles fan-out with
+              // correct attribution; firing fan-out here would overwrite
+              // siblings' manager_domain with the delegating child's name.
+              if (validation.discovery_method !== 'ads_txt_managerdomain') {
+                await this.fanOutPublisherPropertiesAuthorizations(
+                  authorizedAgent,
+                  pubConfig.domain,
+                );
+              }
             }
             await this.reconcileLegacyAdagentsAgents(pubConfig.domain, validation.raw_data as AdagentsManifest);
           } else {
@@ -581,7 +589,11 @@ export class CrawlerService {
                 authorizedAgent.property_ids
               );
 
-              await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+              // Skip fan-out when the source publisher delegates via
+              // ads.txt MANAGERDOMAIN — see L482 for rationale.
+              if (validation.discovery_method !== 'ads_txt_managerdomain') {
+                await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+              }
             }
             await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
           }
@@ -685,7 +697,13 @@ export class CrawlerService {
   private async refreshAgentSnapshots(agents: Agent[]): Promise<void> {
     log.debug('Refreshing agent health + capability snapshots');
 
-    const allAgents = await this.federatedIndex.listAllAgents();
+    // listAllProbeableAgents unions member-profile registrations with
+    // adagents_json-sourced discovered_agents so manager-file-only agents
+    // (e.g., interchange.io, named only in cafemedia.com's selector with
+    // no seed-set registration of its own) still get periodic probes.
+    // Excludes agent_claim (list_authorized_properties) discoveries
+    // intentionally — those are unverified peer claims. (adcp#4849)
+    const allAgents = await this.federatedIndex.listAllProbeableAgents();
     const knownTypes = new Map<string, string>();
     for (const a of allAgents) {
       if (a.type && a.type !== 'unknown') {
@@ -1154,6 +1172,14 @@ export class CrawlerService {
           authorizedAgent.authorized_for,
           undefined, // property_ids: managed-network children authorize via tags, not IDs
         );
+        // Catalog projection (#4841) — partner sync endpoints read
+        // catalog_agent_authorizations, not the legacy edge table.
+        // Without this row they miss the manager-asserted child.
+        await this.publisherDb.recordCatalogFanoutAuthorization({
+          agentUrl,
+          childDomain: childCanonical,
+          authorizedFor: authorizedAgent.authorized_for,
+        });
       } catch (err) {
         // Per-child failures must not abort the rest of the fan-out —
         // partial progress beats silent total failure on a 6,800-domain
@@ -1424,6 +1450,12 @@ export class CrawlerService {
           authorizedAgent.authorized_for,
           authorizedAgent.property_ids
         );
+
+        // Skip fan-out when the source publisher delegates via ads.txt
+        // MANAGERDOMAIN — the manager's own crawl handles the fan-out.
+        if (validation.discovery_method !== 'ads_txt_managerdomain') {
+          await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+        }
       }
       await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 
@@ -1699,6 +1731,12 @@ export class CrawlerService {
         authorizedAgent.authorized_for,
         authorizedAgent.property_ids
       );
+
+      // Skip fan-out when the source publisher delegates via ads.txt
+      // MANAGERDOMAIN — the manager's own crawl handles the fan-out.
+      if (validation.discovery_method !== 'ads_txt_managerdomain') {
+        await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+      }
     }
     await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 
