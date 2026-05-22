@@ -24,6 +24,7 @@ import type {
   OverallRunStatus,
   RecordComplianceRunInput,
   StoryboardStatusEntry,
+  StepDiagnosticEntry,
   LifecycleStage,
   TriggeredBy,
 } from '../../db/compliance-db.js';
@@ -575,5 +576,123 @@ export function complianceResultToDbInput(
     observations_json: result.observations,
     triggered_by: triggeredBy,
     storyboard_statuses: deriveStoryboardStatuses(result, storyboardIds),
+    step_diagnostics: extractFailingStepDiagnostics(result),
   };
+}
+
+// ── Step diagnostics extraction (adcp#4738) ─────────────────────────
+
+/**
+ * Per-step JSON payload cap. AdCP wire requests/responses are typically a
+ * few KB; the cap exists to bound the long tail (paginated lists with
+ * hundreds of entries, embedded base64 assets in error echos). 64KB lets a
+ * realistic page-of-160-creatives response through while preventing a
+ * pathological body from bloating the run insert. Truncated payloads are
+ * replaced with a marker object so downstream JSONB readers don't choke.
+ */
+const STEP_DIAGNOSTIC_PAYLOAD_BYTE_CAP = 64 * 1024;
+
+/**
+ * Headers we keep on response captures. AdCP MCP responses don't normally
+ * carry `Set-Cookie` or `Authorization` echoes, but defense-in-depth — the
+ * runner doesn't promise it'll never populate them, and once a JSONB blob
+ * lands in the DB we lose the ability to retroactively redact it.
+ */
+const ALLOWED_RESPONSE_HEADERS = new Set([
+  'content-type',
+  'content-length',
+  'cache-control',
+  'date',
+  'server',
+  'x-request-id',
+  'x-trace-id',
+]);
+
+function sanitizeHeaders(headers: Record<string, string> | undefined): Record<string, string> | undefined {
+  if (!headers) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    const lower = k.toLowerCase();
+    if (ALLOWED_RESPONSE_HEADERS.has(lower)) out[lower] = v;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function capPayload(value: unknown): unknown {
+  if (value === undefined || value === null) return value;
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    return { __truncated: true, reason: 'serialize_failed' };
+  }
+  if (serialized.length <= STEP_DIAGNOSTIC_PAYLOAD_BYTE_CAP) return value;
+  return {
+    __truncated: true,
+    reason: 'size_cap',
+    original_bytes: serialized.length,
+    cap_bytes: STEP_DIAGNOSTIC_PAYLOAD_BYTE_CAP,
+    preview: serialized.slice(0, 2048),
+  };
+}
+
+/**
+ * Walk a ComplianceResult and return one StepDiagnosticEntry per failing
+ * (non-skipped) step. The SDK populates `request` and `response_record` on
+ * every step where the call reached the wire; skipped steps and steps that
+ * never made it past local validation will have neither, and we still emit
+ * a row so the caller knows why the step failed even without payloads.
+ *
+ * `failed_validations_jsonb` only includes validations the runner marked
+ * not-passed — passing validations would be noise on a step that already
+ * failed for a different reason.
+ */
+export function extractFailingStepDiagnostics(result: ComplianceResult): StepDiagnosticEntry[] {
+  const out: StepDiagnosticEntry[] = [];
+  const tracks = result.tracks ?? [];
+  for (const track of tracks) {
+    for (const phase of track.scenarios) {
+      const sepIdx = typeof phase.scenario === 'string' ? phase.scenario.indexOf('/') : -1;
+      if (sepIdx <= 0) continue;
+      const storyboardId = phase.scenario.slice(0, sepIdx);
+      const phaseId = phase.scenario.slice(sepIdx + 1);
+      const steps = (phase as { steps?: any[] }).steps ?? [];
+      for (const step of steps) {
+        if (step.passed) continue;
+        if (step.skipped === true) continue;
+
+        const req = step.request as { url?: string; payload?: unknown } | undefined;
+        const resp = step.response_record as
+          | { status?: number; headers?: Record<string, string>; payload?: unknown }
+          | undefined;
+        const extraction = step.extraction as { path?: string; note?: string } | undefined;
+        const failedValidations = Array.isArray(step.validations)
+          ? step.validations.filter((v: { passed?: boolean }) => v?.passed === false)
+          : undefined;
+
+        out.push({
+          storyboard_id: step.storyboard_id ?? storyboardId,
+          phase_id: step.phase_id ?? phaseId,
+          step_id: step.step_id,
+          task: step.task,
+          step_passed: false,
+          duration_ms: typeof step.duration_ms === 'number' ? step.duration_ms : undefined,
+          request_url: req?.url,
+          request_jsonb: capPayload(req?.payload),
+          response_status: typeof resp?.status === 'number' ? resp.status : undefined,
+          response_headers_jsonb: sanitizeHeaders(resp?.headers),
+          response_jsonb: capPayload(resp?.payload),
+          extraction_path: extraction?.path,
+          extraction_note: extraction?.note,
+          error_text: typeof step.error === 'string' ? step.error : undefined,
+          adcp_error_jsonb: step.adcp_error,
+          failed_validations_jsonb: failedValidations && failedValidations.length > 0
+            ? capPayload(failedValidations)
+            : undefined,
+          served_by_agent_url: typeof step.agent_url === 'string' ? step.agent_url : undefined,
+        });
+      }
+    }
+  }
+  return out;
 }

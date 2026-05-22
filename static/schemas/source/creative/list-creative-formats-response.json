@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "properties": {
@@ -26,7 +29,7 @@
           "agent_url": {
             "type": "string",
             "format": "uri",
-            "description": "Base URL for the creative agent (e.g., 'https://reference.adcp.org', 'https://dco.example.com'). Call list_creative_formats on this URL to get its formats."
+            "description": "Base URL for the creative agent (e.g., 'https://reference.example.com', 'https://dco.example.com')."
           },
           "agent_name": {
             "type": "string",

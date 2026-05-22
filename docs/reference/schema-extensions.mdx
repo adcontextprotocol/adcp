@@ -69,7 +69,7 @@ The keyword is most useful for fields whose description currently carries a "MUS
 
 ### Current usage
 
-All within `static/schemas/source/protocol/get-adcp-capabilities-response.json`:
+Representative usage:
 
 | Field | Sub-keys used | Rule |
 |---|---|---|
@@ -78,6 +78,8 @@ All within `static/schemas/source/protocol/get-adcp-capabilities-response.json`:
 | `request_signing.required_for` | `subset_of` | Every operation listed MUST also appear in `supported_for` — an operation can't be required without being supported. |
 | `request_signing.warn_for` | `disjoint_with`, `subset_of` | An operation MUST NOT appear in both `warn_for` and `required_for`. Every operation listed MUST also appear in `supported_for`. |
 | `webhook_signing.supported` | `verifier_constraints` (`must_equal_when`) | When the seller advertises mutating-webhook emission (`media_buy.reporting_delivery_methods` includes `webhook` OR `media_buy.content_standards.supports_webhook_delivery: true`), `supported` MUST be `true`. Closes a downgrade vector. |
+| `wholesale_feed_webhooks.event_types` | `verifier_constraints` (`wholesale_feed_webhook_capability_consistency`) | `product.*` event types require wholesale `get_products`; `signal.*` event types require wholesale `get_signals`; `wholesale_feed.bulk_change` requires at least one declared wholesale repair path and must name only a repairable feed family. |
+| `get_products.wholesale_feed_version` / `get_signals.wholesale_feed_version` | `verifier_constraints` (`required_for_wholesale_request`) | Version tokens are required on wholesale read responses, but the shared response schemas cannot infer the request's `buying_mode` / `discovery_mode` from the response body alone. |
 
 Already enforced natively by JSON Schema and excluded from migration:
 - **`adcp.idempotency`** — the discriminated `oneOf` already requires `replay_ttl_seconds` in the supported branch and forbids it in the unsupported branch.

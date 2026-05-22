@@ -486,6 +486,13 @@
           <input type="text" id="tagsInput" placeholder="e.g., buy-side, protocol, agentic (comma-separated)">
         </div>
 
+        <!-- Author byline override (shown when editing) -->
+        <div class="form-group hidden" id="bylineGroup">
+          <label>Author byline</label>
+          <input type="text" id="authorNameInput" placeholder="Leave blank to use your profile name" maxlength="255">
+          <small>Override the displayed byline, e.g., "AgenticAdvertising.org Team" for org-wide posts.</small>
+        </div>
+
         <!-- Co-authors (shown when editing) -->
         <div class="coauthor-section hidden" id="coauthorSection">
           <label style="font-weight: var(--font-semibold); font-size: var(--text-sm); margin-bottom: var(--space-2); display: block;">Co-Authors</label>
@@ -1305,6 +1312,8 @@
       updateExcerptCount();
       updateStatusHint();
       document.getElementById('coauthorSection').classList.add('hidden');
+      document.getElementById('bylineGroup').classList.add('hidden');
+      document.getElementById('authorNameInput').value = '';
       document.getElementById('sectionGroup').classList.toggle('hidden', !isAdmin);
       document.getElementById('sectionSelect').value = 'member';
       document.getElementById('autoCoverToggle').checked = true;
@@ -1351,8 +1360,10 @@
       updatePreview();
       updateExcerptCount();
       updateStatusHint();
-      // Show co-authors when editing
+      // Show co-authors and byline override when editing
       document.getElementById('coauthorSection').classList.remove('hidden');
+      document.getElementById('bylineGroup').classList.remove('hidden');
+      document.getElementById('authorNameInput').value = item.author_name || '';
       loadCoauthors(item.id);
       document.getElementById('contentModal').style.display = 'flex';
     }
@@ -1629,6 +1640,11 @@
       };
       if (isAdmin) {
         data.content_origin = document.getElementById('sectionSelect').value;
+      }
+      // Include byline override only on edits (field is not shown on create)
+      if (id) {
+        const bylineVal = document.getElementById('authorNameInput').value.trim();
+        data.author_name = bylineVal || null;
       }
       const btn = document.getElementById('saveBtn');
       btn.disabled = true; const origText = btn.textContent; btn.textContent = 'Saving...';

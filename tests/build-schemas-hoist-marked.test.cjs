@@ -299,3 +299,48 @@ test('strips stray markers even when no hoistable markers exist outside $defs', 
   const json = JSON.stringify(result);
   assert.equal(json.includes('x-adcp-hoist'), false);
 });
+
+test('hoists a discriminated oneOf appearing twice — regression for issue #4859 codegen fabrication', () => {
+  // data-provider-signal-selector.json appears twice in the same bundled
+  // output. datamodel-code-generator fabricated a synthetic Literal['reuse']
+  // discriminator value when the same discriminated oneOf was inlined twice,
+  // raising TypeError at import time. Hoisting collapses both to a $ref.
+  const selector = {
+    'x-adcp-hoist': true,
+    title: 'SignalSelector',
+    discriminator: { propertyName: 'selection_type' },
+    oneOf: [
+      {
+        type: 'object',
+        properties: { selection_type: { type: 'string', const: 'all' } },
+        required: ['selection_type'],
+      },
+      {
+        type: 'object',
+        properties: {
+          selection_type: { type: 'string', const: 'by_id' },
+          signal_ids: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['selection_type', 'signal_ids'],
+      },
+    ],
+  };
+  const schema = {
+    type: 'object',
+    properties: {
+      first_use: JSON.parse(JSON.stringify(selector)),
+      second_use: JSON.parse(JSON.stringify(selector)),
+    },
+  };
+  const result = hoistMarkedSchemas(clone(schema));
+
+  // Both inline copies collapse to a single $ref.
+  assert.deepEqual(result.properties.first_use, { $ref: '#/$defs/SignalSelector' });
+  assert.deepEqual(result.properties.second_use, { $ref: '#/$defs/SignalSelector' });
+  // Exactly one $defs entry with discriminator intact.
+  assert.ok(result.$defs.SignalSelector);
+  assert.deepEqual(result.$defs.SignalSelector.discriminator, { propertyName: 'selection_type' });
+  assert.equal(result.$defs.SignalSelector.oneOf.length, 2);
+  // Directive stripped.
+  assert.equal(result.$defs.SignalSelector['x-adcp-hoist'], undefined);
+});

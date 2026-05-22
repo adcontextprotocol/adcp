@@ -24,6 +24,7 @@ import {
   handleSyncCreatives,
 } from './task-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
+import { pickFromInput } from './v6-input-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
@@ -154,7 +155,13 @@ export class TrainingCreativePlatform
       // aggregateCreativePolicy returns null — provenance enforcement
       // silently no-ops.
       const brandDomain = (ctx.account as { ctx_metadata?: { brand_domain?: string } } | undefined)?.ctx_metadata?.brand_domain;
-      const args = brandDomain ? { creatives, brand: { domain: brandDomain } } : { creatives };
+      // Lift `dry_run` and `assignments[]` off ctx.input (adcp-client#1842).
+      const fromInput = pickFromInput(ctx.input, ['assignments', 'dry_run'] as const);
+      const args = {
+        creatives,
+        ...fromInput,
+        ...(brandDomain && { brand: { domain: brandDomain } }),
+      };
       const result = await handleSyncCreatives(args as unknown as ToolArgs, buildTrainingCtx(ctx.account));
       // v5 returns wire-wrapped `{ creatives: [...] }`; v6 wants rows.
       const wrapped = translateV5Result<{ creatives?: unknown[] }>(result);

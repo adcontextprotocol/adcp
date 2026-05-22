@@ -75,6 +75,11 @@
           "minimum": 0,
           "description": "Count of properties under THIS `publisher_domain` only — total inventory the publisher's file declares. Never a network-wide count. On managed-network-shape parent files (per adcp#4825 inline resolution), this is the count of inline `properties[]` entries whose `publisher_domain` field matches this row's domain."
         },
+        "property_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Canonical list of `property_id`s under THIS `publisher_domain` that the agent's selectors resolve to. Present iff the request included `?include=properties`; absent otherwise. The set is the same population `properties_authorized` counts, surfaced as IDs so consumers can run full set-diff against a federated fetch (count-equality is not set-equality — a publisher rotating N properties leaves the count unchanged but the set entirely different). Per-publisher scope; never network-wide. Order is unspecified; consumers should treat as a set."
+        },
         "signing_keys_pinned": {
           "type": "boolean",
           "description": "Whether the publisher's adagents.json entry for this agent pins `signing_keys[]`. When true, the agent's signed responses MUST verify against the pinned key set regardless of the agent's own JWKS. Operators should treat true as a signal that their published JWKS must match the publisher's pin."

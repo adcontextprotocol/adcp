@@ -6,7 +6,7 @@ fix(editorial): add needs_revisions workflow so committee leads can request revi
 Closes #4868. The "Request Revisions" path in the editorial review queue was silently calling the permanent rejection endpoint, setting article status to `rejected` and removing the article from `list_pending_content`. Authors received no actionable path back into the review process.
 
 Changes:
-- DB migration 488: adds `needs_revisions` to the perspectives status CHECK constraint and a separate `revision_notes` column (keeps `rejection_reason` for terminal rejection only)
+- DB migration 491: adds `needs_revisions` to the perspectives status CHECK constraint and a separate `revision_notes` column (keeps `rejection_reason` for terminal rejection only)
 - `listPendingContentForUser`: now returns both `pending_review` and `needs_revisions` items; adds `status` and `revision_notes` to the result shape
 - New `requestRevisionsForUser` / `POST /api/content/:id/request-revisions`: sets status to `needs_revisions`, stores notes, keeps article visible in the reviewer queue
 - New `resubmitContentForUser` / `POST /api/content/:id/resubmit`: proposer-only action that moves `needs_revisions` back to `pending_review`

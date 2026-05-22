@@ -313,6 +313,44 @@ When AdCP validators encounter a URL reference:
 
 Validators MUST apply the fetch semantics, change-detection, and rollback protection rules in [Managed network security considerations](/docs/governance/property/managed-networks#security-considerations). That section is the canonical source for blast-radius guidance on the authoritative_location pattern.
 
+### Troubleshooting authoritative_location failures
+
+Publishers registering agents through a URL reference commonly encounter these failure modes. Use this checklist before contacting support.
+
+**Origin requires authentication or IP restriction**
+
+Validators fetch `authoritative_location` server-side — CORS response headers are not required for server-to-server requests. However, if your origin requires authentication (e.g., an S3 bucket with a restrictive bucket policy, a CDN with origin protection that blocks unknown IPs) the fetch will be rejected with a `403`. Verify the URL is publicly reachable without authentication.
+
+**Redirect at the authoritative URL**
+
+Validators reject any HTTP redirect on the `authoritative_location` URL. The URL must resolve directly to the JSON file with a `200` response — no `301`, `302`, or other redirect chain. If your CDN or hosting redirects the URL (HTTP→HTTPS canonicalization, `www` redirect, versioned-path redirect), update `authoritative_location` to point to the final destination URL directly.
+
+**Wrong Content-Type**
+
+The response must be served with `Content-Type: application/json`. Servers that return `text/html` or `text/plain` — even when the body contains valid JSON — will fail content-type validation. Check your CDN or origin response headers.
+
+**HTML error page with 200 status**
+
+Some CDNs return an HTML error page with `200 OK` instead of a `4xx` status. Validators check the `Content-Type` header and attempt JSON parsing; an HTML body will fail parsing even when the status is `200`. Look for a parse error alongside a `200` status in validator output.
+
+**Debugging checklist**
+
+Reproduce the validator's fetch from your terminal to diagnose these failures:
+
+```bash
+curl -v \
+  -H "Accept: application/json" \
+  "https://cdn.example.com/adagents.json"
+```
+
+Verify in the output:
+- Response status is `200` (not `301`, `302`, `403`, or `404`)
+- `Content-Type` header is `application/json`
+- Response body is valid JSON containing at least one of `properties`, `signals`, or `authorized_agents`
+- Body does **not** contain an `authoritative_location` field (nested references are rejected)
+
+If the crawler exposes a diagnostic endpoint, run your URL through it for structured error output.
+
 ### Caching Recommendations
 
 - Cache reference files for 24 hours minimum
@@ -324,7 +362,20 @@ Absolute cache caps and refresh floors for authoritative files live in [Managed 
 
 ## Authorization Patterns
 
-AdCP supports four authorization patterns, each optimized for different use cases:
+AdCP supports six `authorization_type` values, each optimized for different use cases. The table below maps each value to the companion field that carries the selector — useful as a quick reference when writing or validating `adagents.json`:
+
+| `authorization_type` | Companion field | Carries | Pattern |
+|---|---|---|---|
+| `property_ids` | `property_ids[]` | IDs into the top-level `properties[]` of the same file | [Pattern 1](#pattern-1-property-ids-direct-references) |
+| `property_tags` | `property_tags[]` | Tags into the top-level `properties[]` of the same file | [Pattern 2](#pattern-2-property-tags-efficient-grouping) |
+| `inline_properties` | `properties[]` *(see warning below)* | Property objects defined directly on the agent entry | [Pattern 3](#pattern-3-inline-properties) |
+| `publisher_properties` | `publisher_properties[]` | Per-publisher selectors that resolve against each listed publisher's `adagents.json` (or the parent file's inline `properties[]`) | [Pattern 4](#pattern-4-publisher-property-references) |
+| `signal_ids` | `signal_ids[]` | IDs into the top-level `signals[]` of the same file | Signal-provider entries (see `signals` schema) |
+| `signal_tags` | `signal_tags[]` | Tags into the top-level `signals[]` of the same file | Signal-provider entries (see `signals` schema) |
+
+<Warning>
+  **`inline_properties` companion field is `properties`, not `inline_properties`.** It is the only `authorization_type` whose companion field name does not mirror the discriminator value. Validators reject `inline_properties` entries that carry a top-level `inline_properties` array but no `properties`. See [Pattern 3](#pattern-3-inline-properties) for an example.
+</Warning>
 
 ### Pattern 1: Property IDs (Direct References)
 
@@ -523,7 +574,7 @@ Inline resolution is a **per-domain optimization**: a consumer MAY use inline re
 
 ## Authorization Qualifiers
 
-The four `authorization_type` patterns above answer **which inventory** an agent can sell. The optional qualifiers below answer **how** that inventory is being made available.
+The four property-side `authorization_type` patterns above answer **which inventory** an agent can sell; the two signal-side values (`signal_ids`, `signal_tags`) carry the same shape for `signals[]`. The optional qualifiers below answer **how** that inventory is being made available.
 
 ### `delegation_type`
 

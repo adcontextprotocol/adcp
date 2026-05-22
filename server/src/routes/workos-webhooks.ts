@@ -51,7 +51,10 @@ import {
   findSuccessorForPromotion,
   setMembershipRole,
   autoLinkByVerifiedDomain,
+  resolveRoleWithWorkosFirstPromote,
 } from '../db/membership-db.js';
+
+const orgDb = new OrganizationDatabase();
 
 const logger = createLogger('workos-webhooks');
 
@@ -219,7 +222,19 @@ async function upsertMembership(
     return;
   }
 
-  const role = membership.role?.slug || 'member';
+  const incomingRole = membership.role?.slug || 'member';
+
+  // Resolve final role against WorkOS BEFORE we touch local. If we need to
+  // auto-promote this user (ownerless-org safety net), push the change to
+  // WorkOS first and only then write the resolved role locally. WorkOS is
+  // the source of truth — local must never get ahead of it.
+  const resolution = await resolveRoleWithWorkosFirstPromote({
+    workos: getWorkos(),
+    membershipId: membership.id,
+    userId: membership.user_id,
+    organizationId: membership.organization_id,
+    incomingRole,
+  });
 
   // Consume any pending seat_type + provisioning_source staged by the
   // endpoint that triggered this membership creation. Falls back to defaults
@@ -258,38 +273,66 @@ async function upsertMembership(
     }
   }
 
-  const { assigned_role } = await upsertOrganizationMembership({
+  await upsertOrganizationMembership({
     user_id: membership.user_id,
     organization_id: membership.organization_id,
     membership_id: membership.id,
     email: userData.email,
     first_name: userData.first_name,
     last_name: userData.last_name,
-    role,
+    role: resolution.role,
     seat_type: seatType,
     has_explicit_seat_type: hasExplicitSeatType,
     provisioning_source: provisioningSource,
   });
 
-  // If the DB promoted this member to owner, sync the change to WorkOS
-  if (assigned_role === 'owner' && role === 'member') {
+  // Audit-log both outcomes of the ownerless-org auto-promote path so future
+  // role-drift questions have a paper trail in registry_audit_log (and we
+  // don't have to grep production logs to reconstruct what happened).
+  if (resolution.promoted) {
+    logger.info({
+      membershipId: membership.id,
+      userId: membership.user_id,
+      orgId: membership.organization_id,
+    }, 'Auto-promoted member to owner in WorkOS — org had no other admin/owner');
     try {
-      await getWorkos().userManagement.updateOrganizationMembership(membership.id, {
-        roleSlug: 'owner',
+      await orgDb.recordAuditLog({
+        workos_organization_id: membership.organization_id,
+        workos_user_id: membership.user_id,
+        action: 'membership_auto_promoted_to_owner',
+        resource_type: 'membership',
+        resource_id: membership.id,
+        details: {
+          email: userData.email,
+          previous_role: incomingRole,
+          new_role: 'owner',
+          reason: 'ownerless_org_safety_net',
+        },
       });
-      logger.info({
-        membershipId: membership.id,
-        userId: membership.user_id,
-        orgId: membership.organization_id,
-      }, 'Promoted member to owner — org had no admin');
-    } catch (err) {
-      // Roll back local promotion to stay in sync with WorkOS
-      await setMembershipRole(membership.user_id, membership.organization_id, 'member')
-        .catch((rollbackErr) => {
-          logger.error({ err: rollbackErr, orgId: membership.organization_id },
-            'Failed to roll back local owner promotion — local/WorkOS role divergence');
-        });
-      logger.warn({ err, orgId: membership.organization_id }, 'Failed to promote member to owner in WorkOS, rolled back local role');
+    } catch (auditErr) {
+      logger.warn({ err: auditErr, membershipId: membership.id },
+        'Failed to write audit log for auto-promotion');
+    }
+  } else if (resolution.promotionError !== undefined) {
+    const err = resolution.promotionError;
+    const errMessage = err instanceof Error ? err.message : String(err);
+    try {
+      await orgDb.recordAuditLog({
+        workos_organization_id: membership.organization_id,
+        workos_user_id: membership.user_id,
+        action: 'membership_auto_promote_failed',
+        resource_type: 'membership',
+        resource_id: membership.id,
+        details: {
+          email: userData.email,
+          attempted_role: 'owner',
+          fallback_role: resolution.role,
+          error: errMessage,
+        },
+      });
+    } catch (auditErr) {
+      logger.warn({ err: auditErr, membershipId: membership.id },
+        'Failed to write audit log for auto-promotion failure');
     }
   }
 
@@ -1031,7 +1074,6 @@ export function createWorkOSWebhooksRouter(): Router {
                           let ownerName: string | null = null;
                           if (brand.domain_verified && brand.workos_organization_id) {
                             try {
-                              const orgDb = new OrganizationDatabase();
                               const ownerOrg = await orgDb.getOrganization(brand.workos_organization_id);
                               ownerName = ownerOrg?.name ?? null;
                             } catch (orgErr) {

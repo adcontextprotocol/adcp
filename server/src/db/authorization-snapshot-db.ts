@@ -39,7 +39,12 @@ const log = createLogger('authorization-snapshot-db');
 /** Empty-feed sentinel — UUIDv7 with all-zero fields. */
 const EMPTY_CURSOR = '00000000-0000-7000-8000-000000000000';
 
-const VALID_EVIDENCE = new Set(['adagents_json', 'agent_claim', 'community', 'override']);
+// `adagents_authoritative` (added in migration 488 / #4841) is a valid
+// filter value but NOT in the default set — it's lower-trust (manager-
+// asserted, no bilateral confirmation), so partner consumers default to
+// the strict-bilateral `adagents_json` set and opt in to the weaker
+// evidence explicitly.
+const VALID_EVIDENCE = new Set(['adagents_json', 'agent_claim', 'community', 'override', 'adagents_authoritative']);
 const DEFAULT_EVIDENCE: ReadonlyArray<string> = ['adagents_json'];
 
 const VALID_INCLUDE = new Set(['raw', 'effective']);

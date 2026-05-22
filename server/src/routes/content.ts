@@ -92,6 +92,7 @@ interface ProposeContentRequest {
   category?: string;
   tags?: string[];
   author_title?: string;
+  byline?: string;
   featured_image_url?: string;
   content_origin?: 'official' | 'member' | 'external';
   collection: {
@@ -378,6 +379,7 @@ export async function proposeContentForUser(
     category,
     tags = [],
     author_title: requestAuthorTitle,
+    byline: requestByline,
     featured_image_url,
     content_origin = 'member',
     collection,
@@ -414,6 +416,9 @@ export async function proposeContentForUser(
   }
   if (requestAuthorTitle && requestAuthorTitle.length > 255) {
     return { success: false, error: `author_title is too long (max 255 characters; got ${requestAuthorTitle.length})` };
+  }
+  if (requestByline && requestByline.length > 255) {
+    return { success: false, error: `byline is too long (max 255 characters; got ${requestByline.length})` };
   }
   if (external_site_name && external_site_name.length > 255) {
     return { success: false, error: `external_site_name is too long (max 255 characters; got ${external_site_name.length})` };
@@ -505,9 +510,10 @@ export async function proposeContentForUser(
   const publishedAt = status === 'published' ? new Date().toISOString() : null;
   const proposedAt = new Date().toISOString();
 
-  // Get author info for display
+  // Get author info for display; byline overrides the profile name when provided
   const userInfo = await getUserInfo(user.id);
-  const authorName = userInfo?.name || user.email?.split('@')[0] || 'Unknown';
+  const profileName = userInfo?.name || user.email?.split('@')[0] || 'Unknown';
+  const authorName = requestByline?.trim() || profileName;
 
   // Insert the content
   const result = await pool.query(
@@ -1694,7 +1700,8 @@ export function createMyContentRouter(): Router {
         updates.push(`tags = $${paramIndex++}`);
         values.push(tags);
       }
-      if (author_name !== undefined) {
+      const authorNameUpdated = author_name !== undefined && (isProposer || contentItem.author_user_id === user.id || userIsAdmin);
+      if (authorNameUpdated) {
         updates.push(`author_name = $${paramIndex++}`);
         values.push(author_name);
       }
@@ -1770,6 +1777,15 @@ export function createMyContentRouter(): Router {
          RETURNING *`,
         values
       );
+
+      // Keep the primary author's content_authors display_name in sync when the byline changes
+      if (authorNameUpdated && author_name && contentItem.author_user_id) {
+        await pool.query(
+          `UPDATE content_authors SET display_name = $1
+           WHERE perspective_id = $2 AND user_id = $3 AND display_order = 0`,
+          [author_name, id, contentItem.author_user_id]
+        );
+      }
 
       logger.info({ contentId: id, userId: user.id }, 'Content updated');
 

@@ -1,6 +1,7 @@
 /**
- * HTTP-level integration tests for `GET /api/v1/agents/{agent_url}/publishers`,
- * the AAO directory inverse-lookup endpoint (adcp#4823).
+ * HTTP-level integration tests for the AAO directory inverse-lookup endpoint
+ * (adcp#4823), exposed at `/v1/agents/{agent_url}/publishers` with the
+ * legacy `/api/v1/agents/{agent_url}/publishers` path kept for compatibility.
  *
  * Focused on route-handler parsing logic (status / cursor / since / limit /
  * ETag / 404 vs 200-empty) that the DB-level integration test
@@ -23,7 +24,7 @@ const PUB_B = `route-b-${RUN_SUFFIX}.directorytest.example`;
 const PUB_REVOKED = `route-revoked-${RUN_SUFFIX}.directorytest.example`;
 const ALL_PUBS = [PUB_A, PUB_B, PUB_REVOKED];
 
-describe('GET /api/v1/agents/{agent_url}/publishers (HTTP)', () => {
+describe('GET /v1 and /api/v1 agents/{agent_url}/publishers (HTTP)', () => {
   let server: HTTPServer;
   let app: unknown;
   let pool: Pool;
@@ -100,6 +101,8 @@ describe('GET /api/v1/agents/{agent_url}/publishers (HTTP)', () => {
 
   const url = (agentUrl: string, qs = '') =>
     `/api/v1/agents/${encodeURIComponent(agentUrl)}/publishers${qs}`;
+  const specUrl = (agentUrl: string, qs = '') =>
+    `/v1/agents/${encodeURIComponent(agentUrl)}/publishers${qs}`;
 
   it('returns 404 for an agent never indexed', async () => {
     const res = await request(app).get(url(ABSENT_AGENT_URL));
@@ -123,6 +126,18 @@ describe('GET /api/v1/agents/{agent_url}/publishers (HTTP)', () => {
       ]),
       next_cursor: null,
     });
+  });
+
+  it('serves the spec-conformant /v1 path alias', async () => {
+    await seedAuthorized(PUB_A);
+    const res = await request(app).get(specUrl(AGENT_URL));
+    expect(res.status).toBe(200);
+    expect(res.body.publishers).toEqual([
+      expect.objectContaining({
+        publisher_domain: PUB_A,
+        status: 'authorized',
+      }),
+    ]);
   });
 
   it('returns 200 + empty (not 404) when filters exclude all rows', async () => {
@@ -186,7 +201,7 @@ describe('GET /api/v1/agents/{agent_url}/publishers (HTTP)', () => {
     expect(page2.body.next_cursor).toBeNull();
   });
 
-  it('surfaces revoked rows only when status=revoked is requested', async () => {
+  it('surfaces revoked rows when status=revoked is repeated alongside authorized', async () => {
     await seedRevoked(PUB_REVOKED);
     await seedAuthorized(PUB_A);
 
@@ -194,9 +209,15 @@ describe('GET /api/v1/agents/{agent_url}/publishers (HTTP)', () => {
     expect(defaultRes.status).toBe(200);
     expect(defaultRes.body.publishers.map((p: { publisher_domain: string }) => p.publisher_domain)).toEqual([PUB_A]);
 
-    const bothRes = await request(app).get(url(AGENT_URL, '?status=authorized,revoked'));
+    const bothRes = await request(app).get(url(AGENT_URL, '?status=authorized&status=revoked'));
     expect(bothRes.status).toBe(200);
     const domains = bothRes.body.publishers.map((p: { publisher_domain: string }) => p.publisher_domain).sort();
     expect(domains).toEqual([PUB_A, PUB_REVOKED].sort());
+  });
+
+  it('rejects the comma-separated status form with 400 (per #4858 spec)', async () => {
+    const res = await request(app).get(url(AGENT_URL, '?status=authorized,revoked'));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/repeat the key/i);
   });
 });

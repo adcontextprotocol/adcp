@@ -30,6 +30,7 @@ GET https://{aao_directory}/v1/agents/{agent_url}/publishers
 | `cursor` | opaque string | unset | Pagination cursor returned by a prior response. Stable across the directory's refresh cycle for the lifetime of the cursor. |
 | `status` | string, repeated | `authorized` | Filter by lifecycle status. v1: `authorized`, `revoked`. Repeat the key once per value (OpenAPI `style: form, explode: true`). Comma-separated single-value form (`status=authorized,revoked`) is **not** accepted; directories MUST return `400` with an explanation pointing to the repeated-key form. |
 | `limit` | int (1–1000) | 200 | Max publishers per page. |
+| `include` | string, repeated | unset | Opt into expanded per-row fields. v1: `properties` — each `PublisherEntry` carries the canonical `property_ids[]` list under that publisher (lets consumers run full set-diff against a federated fetch, not just count comparison). Repeated-key form, same encoding rule as `status`. Unknown values return `400`. |
 
 #### Worked example: filtering by multiple status values
 
@@ -71,6 +72,16 @@ The OpenAPI fragment for the `status` parameter:
 ```
 
 Repeated-key was chosen because (a) it is what `URLSearchParams.append()` and OpenAPI's default `explode: true` produce, (b) it composes cleanly with future values that might contain a comma, and (c) it leaves no parser ambiguity at the directory.
+
+#### Worked example: requesting `?include=properties` for full set-diff
+
+```
+GET /v1/agents/https%3A%2F%2Fsales-agent.example.com%2F/publishers?include=properties
+```
+
+The default response carries `properties_authorized` as a count only. Count-equality is **not** set-equality: a publisher rotating three properties leaves the count unchanged but the set entirely different, which a count-based divergence detector cannot see. `?include=properties` adds a `property_ids: list[string]` field per `PublisherEntry` — the canonical IDs the agent's selectors resolve to under that publisher — so consumers can run full set-diff against a federated `fetch_agent_authorizations` result and detect rotation, not just delta-in-magnitude.
+
+The flag is opt-in to keep the default page payload small. Inline IDs add roughly the per-publisher property count × ~16 bytes per ID; on a managed-network parent file (~6,800 publishers × avg 1 property each ≈ 7 KB of additional IDs), the overhead is small but non-zero. Pagination semantics are unchanged.
 
 ### Response
 
@@ -114,6 +125,22 @@ Repeated-key was chosen because (a) it is what `URLSearchParams.append()` and Op
 }
 ```
 
+With `?include=properties`, each `PublisherEntry` additionally carries `property_ids`:
+
+```json
+{
+  "publisher_domain": "recipeswithessentialoils.com",
+  "discovery_method": "ads_txt_managerdomain",
+  "manager_domain": "cafemedia.com",
+  "properties_authorized": 3,
+  "properties_total": 3,
+  "property_ids": ["p-001", "p-002", "p-003"],
+  "signing_keys_pinned": false,
+  "status": "authorized",
+  "last_verified_at": "2026-05-19T08:00:00Z"
+}
+```
+
 ## Field reference
 
 ### Envelope
@@ -134,6 +161,7 @@ Repeated-key was chosen because (a) it is what `URLSearchParams.append()` and Op
 | `manager_domain` | conditional | Required when `discovery_method` ≠ `direct`. Null otherwise. |
 | `properties_authorized` | yes | Count of properties under **this publisher_domain only** that the agent's selectors resolve to. Never a network-wide count. |
 | `properties_total` | yes | Count of properties under **this publisher_domain only** in the publisher's file (or parent file's inline subset for that domain). Never a network-wide count. |
+| `property_ids` | conditional | Present iff request included `?include=properties`. Canonical list of `property_id`s under this publisher that the agent's selectors resolve to — the same population `properties_authorized` counts, surfaced as IDs so consumers can run full set-diff (not just count comparison) against a federated fetch. Per-publisher scope; never network-wide. Treat as a set; order is unspecified. |
 | `signing_keys_pinned` | optional | Whether the publisher pins `signing_keys[]` on this agent. When `true`, agent's signed responses MUST verify against the pinned set regardless of the agent's own JWKS. |
 | `status` | yes | `authorized` or `revoked`. See below. |
 | `last_verified_at` | yes | When the directory last fetched and validated this publisher's `adagents.json`. |
@@ -197,6 +225,7 @@ The recommended workflow:
 1. Call `GET /v1/agents/{agent_url}/publishers` to discover the publisher set.
 2. For each `publisher_domain` in the response, the operator MAY call `verify_agent_authorization` against the publisher's own `adagents.json` to re-confirm against the trust root. The directory's `last_verified_at` reduces but does not eliminate the need for per-domain verification on critical paths.
 3. Use the response's `properties_authorized` / `properties_total` for operator-facing scope summaries, and the `signing_keys_pinned` flag to surface which agents must publish a JWKS matching the publisher's pin.
+4. Operators running a divergence detector (catching cases where the directory and the publisher's live `adagents.json` disagree) SHOULD request `?include=properties` and compare the directory's `property_ids[]` against a federated fetch as a set, not as a count. A publisher rotating N properties produces equal counts on both sides; only set-comparison catches it.
 
 ## Relationship to `publisher_properties` inline resolution
 
@@ -207,7 +236,7 @@ On managed-network-shape parent files (per [adcp#4825 inline resolution rule](/d
 - **Authentication.** Public endpoint, anonymous rate limiting. Identity-bound limits arrive in a separate RFC if needed.
 - **Cross-directory federation.** Single directory. The endpoint shape is defined such that multiple AAO-compatible directories could implement it; discovery of which directory to query is configuration today.
 - **Push notification of new authorizations.** Poll-based v1.
-- **Inline property detail.** `properties_authorized` / `properties_total` are counts only; full property lists arrive via a future `?include=properties` if operators ask.
+- **Full property objects inline.** `?include=properties` returns the resolved `property_ids[]` only — not the property objects themselves. Consumers with the IDs can fetch detail via existing per-domain primitives.
 
 ## See also
 

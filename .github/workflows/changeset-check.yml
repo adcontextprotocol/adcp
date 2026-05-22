@@ -18,7 +18,9 @@ jobs:
     #   .changeset/*.md files to explain them; the changes are explained by the
     #   3.0.x branch's CHANGELOG, not by a new changeset on main. Without this skip
     #   every forward-merge PR fails this check (see #4306, #4310).
-    if: ${{ !startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') }}
+    # - Release docs snapshot PRs (`auto/docs-v*`) — they freeze docs for an
+    #   already-published version and do not represent a new package release.
+    if: ${{ !startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') && !startsWith(github.head_ref, 'auto/docs-v') }}
     steps:
       - uses: actions/checkout@v6
         with:

@@ -862,7 +862,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'propose_content',
     description:
       'Submit a draft (article or link) for editorial review. Content lands in pending_review; a committee lead or admin approves it to publish. Default committee is "editorial" (site-wide Perspectives). Only `title` is required.',
-    usage_hints: 'use for "publish this post", "write a perspective", "post to the sustainability group", "share my thoughts on X"',
+    usage_hints: 'use for "publish this post", "write a perspective", "post to the sustainability group", "share my thoughts on X", "post as AgenticAdvertising.org Team", "publish under the team name", "post as [org name]"',
     input_schema: {
       type: 'object',
       properties: {
@@ -873,9 +873,10 @@ export const MEMBER_TOOLS: AddieTool[] = [
         external_url: { type: 'string', description: 'URL for link type' },
         excerpt: { type: 'string', description: 'Short excerpt/summary' },
         category: { type: 'string', description: 'Category (e.g., Op-Ed, Interview, Ecosystem, White Paper, Press Release)' },
-        author_title: { type: 'string', description: 'Author title/role (e.g., CEO, JourneySpark Consulting)' },
+        author_title: { type: 'string', description: 'Author credential line shown under the byline (e.g., "VP Media Operations, Pinnacle Agency"). Distinct from the byline name — do not use for org names.' },
+        byline: { type: 'string', description: 'Display name for the author byline. Set when the user explicitly asks to post as a team or org name (e.g., "AgenticAdvertising.org Team"). Omit to show the user\'s profile name.' },
         featured_image_url: { type: 'string', description: 'Optional URL for cover image. Omit if the author did not provide one. Do not fabricate or search for a URL.' },
-        content_origin: { type: 'string', enum: ['official', 'member'], description: 'Content origin: official (AAO reports, press releases) or member (member perspectives). Default: member' },
+        content_origin: { type: 'string', enum: ['official', 'member'], description: 'Content origin: official (AgenticAdvertising.org reports, press releases) or member (member perspectives). Default: member' },
         committee_slug: { type: 'string', description: 'Target committee slug (default: editorial for Perspectives). Use list_working_groups to see options.' },
         co_author_emails: { type: 'array', items: { type: 'string' }, description: 'Co-author emails' },
       },
@@ -2643,6 +2644,7 @@ export function createMemberToolHandlers(
     const excerpt = input.excerpt as string | undefined;
     const category = input.category as string | undefined;
     const authorTitle = input.author_title as string | undefined;
+    const byline = input.byline as string | undefined;
     const featuredImageUrl = input.featured_image_url as string | undefined;
     const contentOrigin = (input.content_origin as string | undefined) || 'member';
     const coAuthorEmails = input.co_author_emails as string[] | undefined;
@@ -2685,6 +2687,7 @@ export function createMemberToolHandlers(
         excerpt,
         category,
         author_title: authorTitle,
+        byline,
         featured_image_url: featuredImageUrl,
         content_origin: contentOrigin as 'official' | 'member',
         collection: { committee_slug: committeeSlug },
@@ -3780,12 +3783,11 @@ export function createMemberToolHandlers(
                 // Owner test runs are not dry runs — they update the live public record.
                 // (complianceResultToDbInput hard-codes dry_run: true; override here.)
                 dry_run: false,
-                // Known gap (deferred to follow-up): the canonical write doesn't
-                // carry the triggering org id. If two orgs both own the same
-                // agent URL (rare — staging vs prod orgs of one publisher), an
-                // owner_test from Org A surfaces in Org B's dashboard without
-                // attribution. Acceptable for the unblock; full fix adds
-                // `triggered_org_id` to agent_compliance_runs (#4247 PR 4).
+                // Org scope for the per-org `agent_context_with_latest_test` view.
+                // Without this, two orgs that own the same agent URL (staging vs
+                // prod orgs of one publisher) would conflate their test history.
+                // See migration 490.
+                triggered_org_id: organizationId,
               };
               await complianceDb.recordComplianceRun(dbInput);
               // notifyComplianceChange intentionally omitted: owner test runs are
@@ -3815,35 +3817,41 @@ export function createMemberToolHandlers(
           }
         }
 
-        // Legacy session-scoped audit trail. Retained until Emma's #4247 PR 3
-        // backfills + drops `agent_test_history`. NOT a public-state write —
-        // the previous dual-write to `recordComplianceRun(..., 'manual')` was
-        // dropped because (a) it was gated only on `agent_contexts` row
-        // existence (which `save_agent` lets any org create for any URL — no
-        // ownership check), so any user could publish a `manual` verdict on
-        // someone else's agent; and (b) the owner-test branch above already
-        // updates canonical state with proper ownership checking, so the
-        // legacy write has no remaining function for owners. Non-owner runs
-        // continue to land here in `agent_test_history` only.
-        try {
-          const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
-          if (context) {
-            await agentContextDb.recordTest({
-              agent_context_id: context.id,
-              scenario: 'quality_evaluation',
-              overall_passed: result.overall_status === 'passing',
-              steps_passed: result.summary.tracks_passed,
-              steps_failed: result.summary.tracks_failed,
-              total_duration_ms: result.total_duration_ms,
-              summary: result.summary.headline,
-              dry_run: true,
-              triggered_by: 'user',
-              user_id: memberContext?.workos_user?.workos_user_id,
-              agent_profile_json: result.agent_profile,
-            });
+        // Legacy write to agent_contexts + agent_test_history. Retained ONLY
+        // for non-owner runs so a third-party who runs evaluate_agent_quality
+        // against someone else's agent still has a session-scoped audit trail
+        // (their own org's agent_test_history). Owner runs already wrote
+        // canonical state above (PR #4250 / merged); writing twice for owners
+        // would split the audit and re-introduce the dual-write bug PR #4247
+        // is closing. The previous unconditional `recordComplianceRun(...,
+        // 'manual')` dual-write was already dropped on main because it had
+        // no ownership check; this PR completes the picture by gating the
+        // remaining recordTest call on `!isAgentOwner`.
+        //
+        // PR 4 of #4247 collapses agent_contexts.last_test_* into a derived
+        // view, after which this legacy block (and recordTest itself) drop
+        // entirely.
+        if (!isAgentOwner) {
+          try {
+            const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
+            if (context) {
+              await agentContextDb.recordTest({
+                agent_context_id: context.id,
+                scenario: 'quality_evaluation',
+                overall_passed: result.overall_status === 'passing',
+                steps_passed: result.summary.tracks_passed,
+                steps_failed: result.summary.tracks_failed,
+                total_duration_ms: result.total_duration_ms,
+                summary: result.summary.headline,
+                dry_run: true,
+                triggered_by: 'user',
+                user_id: memberContext?.workos_user?.workos_user_id,
+                agent_profile_json: result.agent_profile,
+              });
+            }
+          } catch (error) {
+            logger.debug({ error }, 'Could not record quality evaluation result');
           }
-        } catch (error) {
-          logger.debug({ error }, 'Could not record quality evaluation result');
         }
       }
 
