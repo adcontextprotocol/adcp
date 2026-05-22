@@ -369,16 +369,11 @@ export class AgentContextDatabase {
         FALSE as has_oauth_client,
         tools_discovered,
         last_discovered_at,
-        -- Derived from agent_compliance_runs via the view (canonical source).
-        -- The legacy agent_contexts.last_test_* columns stay for backward
-        -- compat with non-owner third-party writes through recordTest, but
-        -- reads come from the view so the unification is consistent. See
-        -- migration 490.
-        canonical_last_test_scenario AS last_test_scenario,
-        canonical_last_test_passed AS last_test_passed,
-        canonical_last_test_summary AS last_test_summary,
-        canonical_last_tested_at AS last_tested_at,
-        canonical_total_tests_run AS total_tests_run,
+        last_test_scenario,
+        last_test_passed,
+        last_test_summary,
+        last_tested_at,
+        total_tests_run,
         created_at,
         updated_at,
         created_by`,
