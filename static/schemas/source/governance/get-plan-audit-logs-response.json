@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "x-status": "experimental",
@@ -255,9 +258,9 @@
                   "type": "string",
                   "description": "The AdCP tool (present for check entries)."
                 },
-                "status": {
+                "verdict": {
                   "$ref": "/schemas/enums/governance-decision.json",
-                  "description": "Governance check status (present for check entries)."
+                  "description": "Governance verdict (present for check entries). Renamed from `status` in 3.1 alongside check-governance-response for vocabulary consistency."
                 },
                 "check_type": {
                   "type": "string",

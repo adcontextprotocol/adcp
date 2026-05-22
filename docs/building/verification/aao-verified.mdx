@@ -57,7 +57,7 @@ The seller-side gate is normative: every comply_test_controller request includes
 The (Sandbox) qualifier replaces the earlier draft's `Verified (Live)` framing. The change: instead of attesting "your real-money production code path delivers impressions correctly" (canonical campaigns running through your stack), (Sandbox) attests "your real production code path correctly handles sandbox-flagged traffic across the full storyboard suite." Both are real-prod-surface claims; the difference is what gets tested. (Sandbox) is universally achievable across specialisms with no new AAO operational infrastructure. See [#4379](https://github.com/adcontextprotocol/adcp/issues/4379) for the reframe verdict.
 
 <Note>
-**Re: `comply_test_controller`**: the controller is a **dev/staging-only** affordance for adopters' own integration testing. AAO's (Sandbox) grading does not require or use it. Sellers MAY implement controller endpoints in their dev environment to support deterministic local testing, but the production stack does not need to expose `comply_test_controller` to earn (Sandbox). The seller-side sandbox gate is what (Sandbox) attests — schema and lifecycle correctness under flagged traffic, on real prod.
+**Re: `comply_test_controller`**: the controller is a **dev/staging-only** affordance for adopters' own integration testing. AAO's (Sandbox) grading does not require or use it. Sellers MAY implement controller endpoints in their dev environment to support deterministic local testing, but the production stack does not need to expose `comply_test_controller` to earn (Sandbox). The seller-side sandbox gate is what (Sandbox) attests — schema and lifecycle correctness under flagged traffic, on real prod. How the dev-time test surface itself is stood up — DB-backed `seed_*` for state-local sellers vs the SDK's `TestControllerBridge` for upstream-proxy sellers — is covered in [Test surfaces and the storyboard loop](/docs/building/verification/conformance#test-surfaces-and-the-storyboard-loop).
 </Note>
 
 ## Naming history
@@ -124,101 +124,6 @@ A seller earns (Sandbox) by:
 That's it. The compliance heartbeat runs the same storyboards as (Spec), but targets the registered production URL with `account.sandbox: true` on every request. Pass → (Sandbox) qualifier issues.
 
 **Key requirement: sandbox-account isolation.** Sellers MUST persist a clear sandbox/live distinction at the account level. A request asserting `sandbox: true` against a live account MUST be refused with a structured error — see [#4028](https://github.com/adcontextprotocol/adcp/issues/4028) and the `comply-controller-mode-gate` storyboard for the canonical denial check. Cross-mode leakage is the failure mode (Sandbox) attests against.
-
-<Warning>
-**Sections below describe the deprecated canonical-campaign / (Live) observability model.** That model is superseded by the (Sandbox) framing decided in [#4379](https://github.com/adcontextprotocol/adcp/issues/4379) — no separate compliance account, no `attestation_verifier` scope, no eight-check observability infrastructure. (Sandbox) attests via the same storyboard heartbeat that drives (Spec), targeting the registered production URL with sandbox-flagged traffic. The deep technical content below remains for historical context only and will be removed in a follow-up sweep.
-</Warning>
-
-### Webhook ownership
-
-In AdCP 3.x, `reporting_webhook` is a single object on a media buy — `update_media_buy` with PATCH semantics replaces it wholesale. A compliance account MUST therefore be an account where AAO can safely take the webhook slot without interfering with a production buyer's reporting pipeline. In practice this means the compliance account is one of:
-
-- A dedicated test/compliance tenant the seller maintains for this purpose (containing real PSA, remnant, or house campaigns);
-- A production account whose live campaigns are seller-internal (e.g., the seller's own house ads) and do not have a third-party webhook subscriber;
-- Any account whose operator has recorded out-of-band consent to cede the `reporting_webhook` slot to AAO for the duration of the engagement.
-
-**Consent requirement.** Sellers MUST NOT honor an `attestation_verifier`-scoped webhook attachment on an account where another webhook subscriber is present unless the operator's consent to cede the slot has been recorded out-of-band (operator agreement, admin-portal opt-in, or equivalent audit-trailed record). The seller maintains the consent record; AAO MAY audit it as part of enrollment. Absent recorded consent, the seller MUST reject the webhook-attach `update_media_buy` with `PERMISSION_DENIED` and `error.details.reason` = `"compliance_webhook_consent_missing"`, or steer the account to polling-only Path B1. This closes the obvious loophole where a seller mis-enrolls a production buyer account and silently stomps the buyer's reporting.
-
-Multi-subscriber webhooks are tracked for AdCP 4.0 in [#3009](https://github.com/adcontextprotocol/adcp/issues/3009); once that lands, compliance subscribers coexist with a primary buyer webhook and the dedicated-tenant requirement can relax.
-
-The AAO compliance engine that performs (Live) observation is the same engine that runs storyboards for (Spec) — (Live) is an additional check set over a longer window, not a separate service.
-
-## Two discovery paths for (Live)
-
-Sellers MAY enable either path. Sellers SHOULD enable both; brownfield is the more diagnostic path because it proves AdCP is a protocol *onto* the ad server rather than a shadow ledger beside it.
-
-### Path A — Greenfield
-
-The compliance engine creates a real campaign through AdCP:
-
-1. `create_media_buy` — real order in the ad server
-2. `sync_creatives` — real assets attached
-3. Activation — ads actually serve
-4. `get_media_buy_delivery` + `reporting_webhook` — real numbers flow back
-
-Path A is an end-to-end validation of the AdCP surface from `get_products` through reporting. It is the default path the canonical-campaign runner (#3046) will use at the end-state.
-
-### Path B — Brownfield
-
-The compliance engine engages with campaigns the seller is already running on the dedicated compliance account. Path B has two forms — both are first-class qualifying paths for (Live):
-
-**Path B1 — Polling-only** (the baseline):
-
-1. [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) returns live campaigns in the compliance account — depends on `get_media_buys` returning buys regardless of creation surface ([account ownership scope](/docs/media-buy/specification#account-ownership-vs-creation-surface)).
-2. [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) polls delivery on a cadence the engine chooses.
-3. If the seller declares an offline reporting bucket, the engine additionally pulls from the bucket for cross-consistency.
-
-**Path B2 — Webhook-attached** (stronger signal):
-
-1. Same as step 1 above.
-2. [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) attaches a verification `reporting_webhook` to a live buy. This step requires the compliance account's webhook slot to be available to AAO — see [Webhook ownership](#webhook-ownership) — and requires operator consent when displacing an existing webhook.
-3. The engine consumes push delivery from the webhook, polling via `get_media_buy_delivery`, and (if declared) the offline bucket, and cross-compares all three.
-
-Path B in either form is the more valuable signal than Path A because it depends on the seller treating AdCP as an operation on the real ad server. A seller whose `get_media_buys` only returns AdCP-created buys cannot support Path B at all; see the normative tightening in [Account Ownership vs. Creation Surface](/docs/media-buy/specification#account-ownership-vs-creation-surface).
-
-Path B2 (webhook-attached) is preferred when available because it exercises push delivery in production, not just polling. But **B1 is not a fallback**: a seller whose architecture makes webhook ownership awkward can enroll in (Live) via B1 and earn the same qualifier. The check set adapts — check 5 (reporting-surface cross-consistency) degrades to comparing polling against the offline bucket under B1, or is skipped entirely when polling is the only declared surface. All other checks run unchanged.
-
-## What the compliance engine observes for (Live)
-
-The engine runs a **rolling 7–14 day window** of checks against the compliance account. Each check is observable from AdCP alone — no external ground truth is required.
-
-| # | Check | What it proves |
-|---|-------|---------------|
-| 1 | **Liveness** | At least one active buy exists in the compliance account across the rolling window, adjusted for any declared [maintenance windows](#maintenance-windows) and flight cadence. The window-normalized minimum is "active ≥ 80% of the rolling window" — sellers with known quiet periods declare them rather than being dinged. |
-| 2 | **Freshness** | The same `get_media_buy_delivery` query on day N and day N+1 returns different numbers for an active campaign — the ad server is actually incrementing counters. |
-| 3 | **Plausibility** | Impressions grow monotonically during flight; `by_package` sums correctly; non-zero metrics appear where expected; `pacing_index` reflects observed pacing. |
-| 4 | **Filter correctness** | `start_date` / `end_date` actually narrow results; package filters behave per spec — re-run against real data, not just storyboard fixtures. |
-| 5 | **Reporting-surface cross-consistency** | If the seller declares multiple reporting mechanisms (`reporting_delivery_methods` includes `webhook` and `offline`, plus polling via `get_media_buy_delivery`), all surfaces MUST agree for the same window within the seller's declared finalization tolerance. Skipped when polling is the only declared surface. |
-| 6 | **Lifecycle correctness** | Completed campaigns stop incrementing. Paused campaigns stop accruing. Canceled campaigns stop cleanly. Terminal-state buys surface the right `status` and `valid_actions`. |
-| 7 | **Introspection consistency** | The `authorization` object returned by [`sync_accounts`](/docs/accounts/tasks/sync_accounts) / [`list_accounts`](/docs/accounts/tasks/list_accounts) for the compliance engine's identity matches what the scope actually permits in practice — any mismatch (advertised task rejected with `SCOPE_INSUFFICIENT`, permitted field rejected with `FIELD_NOT_PERMITTED`, permitted field accepted but with hidden side-effect branching) is a failure. Probe cadence: at least once per rolling window, plus on every observed scope change. Mismatch tolerance per probe is zero; the engine allows at most one scope-change transition per window (the window truncates at the change so the probe is evaluated against the grant that was in force). |
-| 8 | **Seller-initiated state transition propagation** | A state change initiated outside AdCP — trafficker pauses a campaign in the ad server UI, finance cancels for non-payment, flight ends and the ad server closes the line — MUST surface in `get_media_buys` (status, `valid_actions`, and `history`) within the seller's declared status-freshness tolerance. Buyers rely on this for incident response; (Live) treats it as the same class of obligation as buyer-initiated transitions. |
-
-The engine chooses which dates, slices, packages, and campaigns to query, and when. Sellers SHOULD NOT condition behavior on the engine's `agent_id` beyond the normal `attestation_verifier` scope enforcement — identity-keyed branching to produce verification-only responses is grounds for mark revocation. Because a scope-filtered engine cannot by itself detect A/B branching, **AAO reserves the right to probe from secondary identities** (a paired identity running a subset of the same queries; an anonymized-origin probe) and compare responses byte-for-byte for identical queries. Persistent divergence between the declared engine and a secondary probe is a check-7 failure and — depending on shape — grounds for immediate qualifier revocation rather than window-end lapse.
-
-## Why continuous observability for (Live)
-
-(Live) is **continuous**, not **one-shot**. Four reasons:
-
-- **No new infrastructure.** The AAO compliance engine already runs. (Live) is additional checks over a longer window, not a separate service.
-- **Harder to game.** A stub that satisfies all eight checks across variation in dates, packages, campaigns, lifecycle transitions, seller-initiated state changes, and multi-surface cross-consistency over weeks — while also surviving secondary-identity probes — is basically a working ad server. Teach-to-test overfitting is infeasible at this surface area.
-- **Auto-expiring qualifier.** **(Live)** is not "passed on YYYY-MM-DD." It means "observed healthy for the last N days." Signal degrades → qualifier lapses. A seller cannot pass once and then revert to a stub.
-- **Zero seller friction after enrollment.** No report uploads, no admin credentials, no parallel verification campaigns. After enrollment, the seller's only obligation is to keep the compliance account live and continue serving real campaigns.
-
-Hard ground-truth reconciliation (AdCP output vs. the seller's internal ad-server dashboard) is **out of scope for v1**. It is deferrable to a future higher-trust qualifier — buyer attestation, or seller-exported reports as an opt-in upgrade. The eight observable checks above close the #2903 gap without requiring sellers to expose admin surfaces.
-
-## Anti-teach-to-test alignment
-
-Real impressions on real inventory over real time are not teachable:
-
-- The engine chooses which dates, slices, and packages to query, and when.
-- Data was not generated for the test — it is real delivery that continues whether the engine is watching or not.
-- Variation across the rolling window exposes any branch that depends on stable test fixtures.
-
-See [Anti-teach-to-test conformance](/docs/building/verification/conformance#anti-teach-to-test) for the broader posture; (Live) is the most direct instance.
-
-## Maintenance windows
-
-A seller with seasonal flights or scheduled quiet periods (e.g., dark-week between flights, end-of-quarter pauses) MAY declare expected gaps so check 1 (Liveness) does not flap during them. Maintenance windows are declared on the compliance account itself; the engine reads them as part of enrollment. Maintenance is bounded — a seller cannot declare a 30-day maintenance window to indefinitely avoid the liveness check. Per-window maximum is 14 days; cumulative maintenance per rolling 90-day window is 30 days.
 
 ## Decentralized verification
 
@@ -392,14 +297,9 @@ AAO Verified (Sandbox) rests on a small set of normative AdCP spec elements:
 
 The earlier (Live) framing's supporting issues (#2963, #2964, #2902 — `attestation_verifier` scope, `get_media_buys` ownership, behavioral filter assertions on real data) are deferred. They remain relevant if AAO ever returns to a canonical-campaign model, but are not load-bearing under (Sandbox).
 
-A fourth supporting issue tracks 4.0:
-
-- **[Multi-subscriber `reporting_webhook` (#3009)](https://github.com/adcontextprotocol/adcp/issues/3009)** — in 3.x, `reporting_webhook` is single-slot, which is why brownfield (Live) requires a dedicated compliance tenant. 4.0 relaxes this so the engine can attach without disturbing the seller's existing webhook subscriber.
-
 ## Relationship to other surfaces
 
 - [Conformance Specification](/docs/building/verification/conformance) — defines what *conformant* means via the storyboards. The (Spec) axis verifies your agent matches that specification.
 - [Compliance Catalog](/docs/building/verification/compliance-catalog) — indexes the protocols and specialisms an agent can claim. Each declared specialism is what the verification engine tests, on whichever axes are eligible.
 - [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) — where the agent declares its `supported_protocols` and `specialisms`. The declarations are the input to verification.
-- [`attestation_verifier` scope](/docs/accounts/overview#standard-named-scope-attestation_verifier) — the narrow scope the seller grants to the compliance engine for (Live) observation.
 - AAO membership — required for badge issuance. Membership lapse revokes the badge.

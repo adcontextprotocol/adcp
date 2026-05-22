@@ -1,0 +1,17 @@
+{
+  "test_id": "fetch-contract-neg-04-oversized-body",
+  "category": "transport",
+  "description": "Response body exceeds 1 MiB. SDK MUST enforce the cap during streaming (not after full buffer) \u2014 never load >1 MiB into memory just to fail.",
+  "setup": {
+    "request_uri": "https://creative.adcontextprotocol.org/extensions/oversized",
+    "declared_digest": "sha256:<irrelevant>",
+    "response_status": 200,
+    "response_body_size_bytes": 2097152,
+    "response_headers": {
+      "Content-Type": "application/json"
+    }
+  },
+  "expected_outcome": "fail:transport",
+  "expected_error_code": "FORMAT_PROJECTION_FAILED",
+  "rationale": "Streaming cap at 1 MiB. Over-cap hard-fails identically to digest mismatch. Cap before full buffering \u2014 a 1 GiB response should fail the connection at the 1 MiB mark, not after the full body is downloaded."
+}

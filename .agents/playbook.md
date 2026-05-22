@@ -11,6 +11,53 @@ This project uses **Mintlify** for documentation:
 - Use `<CodeGroup>` for multi-language examples (NOT Docusaurus `<Tabs>`)
 - Run with: `mintlify dev`
 
+## Worth The Tokens
+
+Every task costs context — your tokens, the model's compute, the user's
+attention, and the maintenance load of whatever you ship. Run every decision
+through this lens: **is this worth the tokens it will cost to complete?**
+
+### Signals it IS worth the tokens
+
+- **Prevents future pain.** Schema ambiguity that will cause integration
+  bugs. Spec contradiction that confuses implementers. Field-shape that's
+  cheaper to fix before GA than after. Conformance gap that lets
+  non-conformant agents pass. Trust-boundary tightening.
+- **Real customer pulling.** A specific member, contributor, or integrator
+  is blocked or actively asking.
+- **Closes a known footgun.** Code that already burned someone once and
+  will burn the next person without the fix.
+- **Active work with clear path.** Open PR, recent commits, scoped enough
+  to finish in a few sessions.
+
+### Signals it ISN'T worth the tokens
+
+- **Speculative.** No customer pull, no concrete failure mode — just
+  "this would be nice."
+- **Aged out.** No activity in 30+ days and no one has asked.
+- **Tracking-only.** Exists to "track" something but has no clear next
+  action and isn't blocking anyone.
+- **Polish on a sunset surface.** Improving something slated for
+  deprecation or supersedure.
+- **Fix is bigger than the bug.** Three-week refactor to eliminate a
+  papercut someone hits twice a year.
+
+### How to apply
+
+- **In triage:** default-close (or default-Evergreen) anything in the
+  ISN'T bucket. Re-opening a closed issue later is cheap; staring at
+  300 open issues is expensive. Don't punt for the sake of punting —
+  spec quality and pain-prevention are strong "keep" signals even
+  without an active PR.
+- **In implementation:** if a task touches three files when you scoped
+  it to one, stop. Either re-scope or defer.
+- **In scope decisions:** prefer the smallest change that closes the
+  loop. Spec quality wins ties over completeness; completeness wins
+  ties over aesthetics.
+
+The goal is to spend tokens on things that make the spec better and
+prevent pain later — and *not* spend tokens on things that don't.
+
 ## Critical Rules
 
 ### Organization Naming
@@ -693,11 +740,21 @@ issue payload. The routine itself does all the comment/label work.
 ## Cross-Agent Integration
 
 - **Role definitions** live in `.agents/roles/*.md` (markdown with frontmatter).
-  These are the canonical source for all subagent/role prompts.
+  This directory is the single source of truth for all subagent/role prompts.
+  Each role exists in one of two forms:
+  - `{name}.md` — **short triage checker.** Terse, structured, PR-bound. Used
+    by the triage routine's expert consultation step. Most roles have one.
+  - `{name}-deep.md` — **long design advisor.** Full domain reasoning for
+    open-ended work (MCP tool design, threat models, curriculum architecture).
+    Opt-in; not for triage. Nine roles have a `-deep` counterpart; the rest
+    are checker-only or advisor-only by intent.
 - **Prompt shortcuts** live in `.agents/shortcuts/`.
-- **Codex wiring** (`.codex/`) is generated from `.agents/roles/` via
-  `node scripts/import-claude-agents.mjs`. Don't edit `.codex/agents/` by hand.
-- **Claude Code** can read `.agents/roles/` directly as project-scoped agents.
+- **Generated outputs** (don't edit by hand) — `scripts/import-claude-agents.mjs`
+  syncs `.agents/roles/` to:
+  - `.claude/agents/*.md` — verbatim copies for Claude Code's agent loader.
+  - `.codex/agents/*.toml` — TOML form for Codex, plus a generated
+    `.codex/config.toml` that registers every role.
+  Run the script after editing any file in `.agents/roles/`.
 - `AGENTS.md` and `CLAUDE.md` are thin compatibility wrappers only.
 - Add or change shared repo behavior here first, then update wrappers only if
   the agent needs a pointer to the new location.

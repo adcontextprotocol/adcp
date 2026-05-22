@@ -26,6 +26,7 @@ import { createLogger } from '../../logger.js';
 import { notifySpecialistCredential } from '../jobs/credential-digest.js';
 import { TRAINING_AGENT_URL, tenantUrlsForModule, type ModuleTenantUrls } from '../../training-agent/config.js';
 import { ToolError } from '../tool-error.js';
+import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { stripe } from '../../billing/stripe-client.js';
 import { attemptStripeReconciliation } from '../../billing/lazy-reconcile.js';
 
@@ -268,6 +269,59 @@ async function countUserTurns(threadId: string | undefined, since?: Date): Promi
  * Validate scores against a module's assessment criteria.
  * Returns an error string if validation fails, or { weightedAvg } on success.
  */
+/**
+ * Sentinel prefix returned by every completion-gate rejection so Sage's
+ * prompt-level rule can distinguish "module recorded" from "tool rejected
+ * the call." See `addie/rules/constraints.md` — "Never Claim Unexecuted
+ * Actions: module completion." Both prefixes are pinned by the test at
+ * `server/tests/unit/cert-not-completed-sentinel.test.ts` — if you rename
+ * either one, update the constraints rule in the same PR.
+ */
+export const NOT_COMPLETED_SENTINEL = 'NOT COMPLETED';
+
+/** Success-line prefix for `complete_certification_module`. */
+export const MODULE_COMPLETED_PREFIX = 'Module {ID} completed!';
+
+/** Success-line prefix for `complete_certification_exam`. */
+export const CAPSTONE_COMPLETED_PREFIX = '# Congratulations! The learner passed the capstone!';
+
+/**
+ * Classification of why completion was rejected. Drives the learner-facing
+ * reframe Sage uses so a gate failure surfaces as formative feedback
+ * ("a little more practice and I can mark this") rather than a flat
+ * "system says no."
+ */
+export type CompletionGateClass = 'time' | 'evidence' | 'state' | 'score';
+
+const LEARNER_FRAMING_BY_GATE: Record<CompletionGateClass, string> = {
+  time: `Frame this to the learner as "we're close — a little more practice and I can mark this," not as a system rejection.`,
+  evidence: `Frame this to the learner as "before I close this out, I want to see [the missing demonstration / checkpoint material] one more time," not as a system rejection.`,
+  state: `Re-orient the learner — "let me check where we are with this module first" — then call the appropriate tool to recover the state.`,
+  score: `Frame this to the learner as "before I record final scores, let's revisit [the relevant dimension] once more," not as a system rejection.`,
+};
+
+export function notCompleted(moduleId: string, gate: CompletionGateClass, reason: string): string {
+  return `${NOT_COMPLETED_SENTINEL} — module ${moduleId} is not recorded as complete.
+
+${reason}
+
+Do not tell the learner the module is complete or use synonyms ("mastered", "locked in", "in the books", "you're through"). ${LEARNER_FRAMING_BY_GATE[gate]} Address the blocker above and retry when the gate is satisfied.`;
+}
+
+/**
+ * Shared directive used by both standard and capstone `start_certification_module`
+ * branches when one or more prerequisites are mid-flight. Routes Sage to
+ * surface the *reason* the prereq stalled and offer learner agency, rather
+ * than treating the in-progress module as a checkbox to clear.
+ */
+function inProgressPrereqDirective(inProgress: string[], targetModuleId: string): { directive: string; templateLine: string } {
+  const list = inProgress.join(' and ');
+  return {
+    directive: `The learner has ${list} in progress — they need to finish it before starting ${targetModuleId}. Do NOT offer a placement assessment; surface the reason the open module stalled (confusion, stuck on a concept) and offer to wrap or work through it.`,
+    templateLine: `You've got open work in ${list} — want to wrap that, or talk through where you're stuck? Once that's closed, ${targetModuleId} is next.`,
+  };
+}
+
 async function validateCompletionScores(
   scores: Record<string, number>,
   ac: certDb.AssessmentCriteria | null | undefined,
@@ -369,8 +423,29 @@ function validateDemonstrationIds(
 }
 
 /**
+ * Sentinel returned by `issueCertifierBadge` when issuance was blocked because
+ * the learner has no real name on file. The caller surfaces this as a
+ * `NAME_REQUIRED` line that Sage's prompt rules (see `buildCertificationContext`)
+ * know how to recover from: ask for first/last, call `set_my_name`, re-check.
+ *
+ * Exported so the prompt rule and the warning line and the tests all reference
+ * the same string — if the marker changes, every match site changes with it.
+ *
+ * The credential row is already awarded in `user_credentials`; only the
+ * Certifier-side issuance is deferred. `checkAndFormatCredentials` retries
+ * deferred issuances on its next call.
+ */
+export const NAME_REQUIRED_MARKER = 'NAME_REQUIRED';
+type IssueResult = string | null | 'NAME_REQUIRED';
+
+/**
  * Issue a Certifier badge for an awarded credential.
  * Handles expiry logic (tier 1 = no expiry, others = 2 years) and records the credential ID.
+ * Returns:
+ *   - the credential's publicId when issuance succeeded
+ *   - `NAME_REQUIRED` when the learner has no real name on file (gate fires
+ *     before any Certifier call — see escalation #382 and issue #4782)
+ *   - `null` on transient / configuration failures (logged for ops)
  */
 async function issueCertifierBadge(
   userId: string,
@@ -378,11 +453,25 @@ async function issueCertifierBadge(
   cred: { name: string; tier: number; certifier_group_id: string | null },
   memberContext: MemberContext | null,
   extraAttributes?: Record<string, string>,
-): Promise<string | null> {
+): Promise<IssueResult> {
   if (!cred.certifier_group_id || !memberContext?.workos_user) return null;
 
+  // Resolve the name from the freshest source available: the helper falls
+  // back to the DB when memberContext is stale (the closure-bound context
+  // doesn't see the row `set_my_name` just wrote), and to the Slack mapping
+  // when neither has a value.
+  const { resolveUserNameWithFallbacks } = await import('../../utils/resolve-user-name.js');
+  const wu = memberContext.workos_user;
+  const resolved = await resolveUserNameWithFallbacks(
+    getPool(), userId, wu.first_name, wu.last_name,
+  );
+  if (!(resolved.firstName ?? '').trim()) {
+    logger.info({ userId, credId, email: wu.email }, 'Credential issuance gated: no first_name on file');
+    return NAME_REQUIRED_MARKER;
+  }
+
   try {
-    const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl } = await import('../../services/certifier-client.js');
+    const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl, buildRecipientName } = await import('../../services/certifier-client.js');
     if (!isCertifierConfigured()) return null;
 
     const expiryDate = cred.tier === 1 ? undefined : (() => {
@@ -394,8 +483,12 @@ async function issueCertifierBadge(
     const credential = await issueCredential({
       groupId: cred.certifier_group_id,
       recipient: {
-        name: `${memberContext.workos_user.first_name} ${memberContext.workos_user.last_name}`,
-        email: memberContext.workos_user.email,
+        name: buildRecipientName({
+          first_name: resolved.firstName,
+          last_name: resolved.lastName,
+          email: wu.email,
+        }),
+        email: wu.email,
       },
       ...(expiryDate ? { expiryDate } : {}),
       ...(extraAttributes ? { customAttributes: extraAttributes } : {}),
@@ -450,22 +543,53 @@ function buildShareLinks(
 
 /**
  * Check for newly earned credentials, issue badges, and return formatted lines.
+ * Also retries any previously-awarded credentials whose Certifier issuance
+ * was deferred (typically gated by `NAME_REQUIRED` on a prior turn) — that's
+ * the recovery path after Sage calls `set_my_name`.
  */
 async function checkAndFormatCredentials(
   userId: string,
   memberContext: MemberContext | null,
 ): Promise<string[]> {
   const awarded = await certDb.checkAndAwardCredentials(userId);
-  if (awarded.length === 0) return [];
+
+  // Pick up the "awarded earlier, never issued to Certifier" backlog so a
+  // post-set_my_name retry actually finalizes the certificate. Bounded to a
+  // 24-hour window so we never accidentally re-issue a legitimately-issued
+  // older credential whose `certifier_credential_id` got nulled by an
+  // out-of-band operation (corrupt-row defense). The admin backfill route +
+  // repair script handle anything outside this window.
+  const RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const existing = await certDb.getUserCredentials(userId);
+  const deferred = existing
+    .filter(c =>
+      !c.certifier_credential_id &&
+      !awarded.includes(c.credential_id) &&
+      (now - new Date(c.awarded_at).getTime()) < RETRY_WINDOW_MS,
+    )
+    .map(c => c.credential_id);
+
+  const toProcess = [...new Set([...awarded, ...deferred])];
+  if (toProcess.length === 0) return [];
+
   const creds = await certDb.getCredentials();
   const credMap = new Map(creds.map(c => [c.id, c]));
   const lines: string[] = [''];
-  for (const credId of awarded) {
+  let nameRequired = false;
+  for (const credId of toProcess) {
     const cred = credMap.get(credId);
     if (cred) {
+      const result = await issueCertifierBadge(userId, credId, cred, memberContext);
+      if (result === NAME_REQUIRED_MARKER) {
+        nameRequired = true;
+        // Don't post "Credential earned!" or share links or specialist
+        // notifications until the credential is actually issued — those
+        // fire on the retry pass once `set_my_name` has been called.
+        continue;
+      }
       lines.push(`**Credential earned: ${cred.name}!**`);
-      const publicId = await issueCertifierBadge(userId, credId, cred, memberContext);
-      lines.push(...buildShareLinks(cred.name, publicId));
+      lines.push(...buildShareLinks(cred.name, result));
 
       // Post immediate Slack notification for Specialist (tier 3) credentials
       if (cred.tier === 3) {
@@ -476,6 +600,13 @@ async function checkAndFormatCredentials(
         });
       }
     }
+  }
+
+  if (nameRequired) {
+    // Sage rule (see buildCertificationContext) tells her to ask the learner
+    // for first + last, call set_my_name, then re-check credentials.
+    lines.push('');
+    lines.push(`⚠️ **${NAME_REQUIRED_MARKER}** — credential earned but not yet issued: we have no name on file for this learner. Ask them for the name they'd like on the certificate (first + last), then call \`set_my_name\` with both, then call \`check_credentials\` to finalize issuance.`);
   }
   return lines;
 }
@@ -520,6 +651,8 @@ export async function buildCertificationContext(
   lines.push('**Mastery fast-track (CHECK EVERY TURN after turn 3)**: Teaching and assessment serve different purposes. Teaching is for the learner; assessment is for the credential. After each learner response, ask: "Has this learner given correct, detailed answers to 3+ concepts without needing correction?" If YES: (1) STOP running demos — no more sandbox tool calls, (2) SAY SO: "You clearly know this material — I\'m going to skip the tutorial and have you demonstrate the remaining concepts directly," (3) for each remaining concept, ask ONE targeted demonstration question (scenario-based, teach-back, or "walk me through") that produces auditable evidence of competency. The conversation transcript is the audit trail — the learner\'s own words showing they understand each dimension. Same scoring rubric, same dimension requirements, same minimum engagement — just no unnecessary instruction. Continuing to teach or demo after someone has demonstrated mastery is the #1 learner complaint.');
 
   lines.push('**Protocol accuracy (non-negotiable)**: When a learner asks about protocol details (field definitions, message flows, terminology, agent roles), use search_docs or search_repos to verify before answering. Never construct protocol answers from general knowledge. If you cannot verify, say "I need to check that" and search. Teaching mode does not override accuracy — a wrong answer during certification is worse than saying "let me look that up."');
+  lines.push('');
+  lines.push(`**Credential name recovery**: If a tool result contains the marker \`${NAME_REQUIRED_MARKER}\`, the learner just earned a credential but has no name on file for the certificate. Ask them in one short turn for the name they'd like on it (first + last, last optional). Once they answer, call \`set_my_name\` with \`first_name\` and \`last_name\` from what they said. Do not announce the tool call. After it succeeds, call \`check_credentials\` once to finalize and post the share links. Never paste the literal \`${NAME_REQUIRED_MARKER}\` string into the learner-facing reply.`);
   lines.push('');
 
   // Inject training-agent URLs for demos. Pull the union of tenant_ids
@@ -749,6 +882,16 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
     name: 'get_learner_progress',
     description: 'Get the current learner\'s progress across all certification modules and tracks. Shows which modules are completed, in progress, or not started, plus any earned certificates.',
     usage_hints: 'use for "my progress", "certification status", "what have I completed"',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'check_credentials',
+    description: 'Award any newly-eligible credentials and finalize any previously-deferred Certifier issuances for the current learner. Returns share links for newly-issued credentials, or a NAME_REQUIRED marker when the learner has no name on file. Use this after `set_my_name` to finalize a credential that was gated on the missing name.',
+    usage_hints: 'call after `set_my_name` to finalize a deferred credential; safe to call any time the learner asks "did I earn anything new?"',
     input_schema: {
       type: 'object',
       properties: {},
@@ -993,6 +1136,7 @@ function getIllustrations(topics: string[]): { alt: string; url: string }[] {
 const MODULE_ILLUSTRATION_TOPICS: Record<string, string[]> = {
   A1: ['protocol-overview'],
   A2: ['media-buy', 'media-buy-lifecycle', 'get-products', 'create-media-buy'],
+  A2B: ['media-buy', 'media-buy-lifecycle', 'get-products', 'create-media-buy'],
   A3: ['protocol-overview', 'governance', 'creative-workflow', 'signals', 'trusted-match'],
   B2: ['creative-formats', 'creative-manifests', 'creative-workflow', 'sync-creatives'],
   B3: ['signals', 'governance', 'delivery', 'creative-delivery', 'trusted-match'],
@@ -1022,6 +1166,14 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'AdCP quickstart', url: `${DOCS_BASE}/docs/quickstart` },
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
+  ],
+  A2B: [
+    { label: 'A2B: Testing your first agent call', url: `${DOCS_BASE}/docs/learning/foundations/a2b-testing-your-first-agent` },
+    { label: 'Task lifecycle', url: `${DOCS_BASE}/docs/building/implementation/task-lifecycle` },
+    { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
+    { label: 'Sync creatives task', url: `${DOCS_BASE}/docs/creative/task-reference/sync_creatives` },
+    { label: 'Error handling', url: `${DOCS_BASE}/docs/building/implementation/error-handling` },
+    { label: 'MCP integration guide', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
   ],
   A3: [
     { label: 'AdCP protocol overview', url: `${DOCS_BASE}/docs/intro` },
@@ -1246,6 +1398,19 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
+/**
+ * Build the cert MCP handler set for a single user, single request.
+ *
+ * **MUST NOT be cached across users.** The returned handler set closes over a
+ * mutable `memberContext` so `ensureMembership()` can self-heal during the
+ * current turn. Reusing this handler set for a different user would serve
+ * their request under the original user's identity (`getUserId()` reads from
+ * the captured closure) and any DB write would land on the wrong account.
+ *
+ * The bound user is pinned at construction. Every `getUserId()` call asserts
+ * that the captured user is still the one we were built for — any in-closure
+ * mutation that swaps the user fails loud rather than silently leaking.
+ */
 export function createCertificationToolHandlers(
   initialMemberContext: MemberContext | null,
   options?: { threadId?: string },
@@ -1257,9 +1422,21 @@ export function createCertificationToolHandlers(
   // The next conversation turn rebuilds memberContext from the DB and
   // reflects any heals naturally.
   let memberContext = initialMemberContext;
+  // Pin the user this handler set was constructed for. If anything mutates
+  // `memberContext.workos_user` to a different id later (cross-tenant cache
+  // misuse, future ensureMembership refactor that swaps users), fail loud.
+  const boundUserId = initialMemberContext?.workos_user?.workos_user_id ?? null;
 
   const getUserId = (): string | null => {
-    return memberContext?.workos_user?.workos_user_id || null;
+    const currentUserId = memberContext?.workos_user?.workos_user_id || null;
+    if (boundUserId !== null && currentUserId !== null && currentUserId !== boundUserId) {
+      logger.error(
+        { boundUserId, currentUserId },
+        'createCertificationToolHandlers: bound user changed mid-lifetime — refusing to serve',
+      );
+      throw new ToolError('Internal error: certification handler user context inconsistent. Please retry.');
+    }
+    return currentUserId;
   };
 
   /**
@@ -1372,7 +1549,7 @@ export function createCertificationToolHandlers(
       }
 
       lines.push('---');
-      lines.push('Modules A1, A2, and A3 are free for everyone. Other modules require AgenticAdvertising.org membership.');
+      lines.push('Modules A1, A2, A2B, and A3 are free for everyone. Other modules require AgenticAdvertising.org membership.');
       lines.push('To start a module, say "start module [ID]" (e.g., "start module A1").');
       lines.push('To start a specialist deep dive, say "start capstone S1" (or S2/S3/S4/S5).');
       lines.push('Already familiar with AdCP? Say "assess my level" to take a placement assessment and skip modules you already know.');
@@ -1497,16 +1674,27 @@ export function createCertificationToolHandlers(
         // Extract key concept topics so Sage knows what mechanisms to reference
         const keyConcepts = (lp?.key_concepts as Array<{ topic: string; teaching_notes: string }> | undefined) || [];
         const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${c.teaching_notes.substring(0, 200)}`).join('\n');
-        // Frame as destination-first, not as a gate
+        const missingIds = prereqs.missing.map(m => m.moduleId).join(', ');
+        const inProgress = prereqs.missing.filter(m => m.status === 'in_progress').map(m => m.moduleId);
+        // Branch the directive: if any prereq is mid-flight, point Sage at finishing
+        // it (with learner agency over the reason it stalled) rather than offering
+        // a placement assessment to skip it.
+        const inProgressTemplate = inProgress.length > 0 ? inProgressPrereqDirective(inProgress, mod.id) : null;
+        const directive = inProgressTemplate
+          ? inProgressTemplate.directive
+          : `The learner needs ${missingIds} first. Offer placement assessment to skip.`;
+        const template = inProgressTemplate
+          ? `"[Answer the learner's question in 1-2 sentences using task names from key mechanisms above.] ${inProgressTemplate.templateLine} [Socratic question that resumes the open module]."`
+          : `"[Answer the learner's question in 1-2 sentences using task names from key mechanisms above.] ${missingIds} is assumed — want a placement assessment to skip it? [Socratic question about their domain]."`;
         const prereqLines = [
           `${mod.id} (${mod.title}) teaches:`,
           mod.description || '',
           conceptSummary ? `\nKey mechanisms:\n${conceptSummary}` : '',
           '',
-          `The learner needs ${prereqs.missing.join(', ')} first. Offer placement assessment to skip.`,
+          directive,
           '',
           `Your response MUST follow this template:`,
-          `"[Answer the learner's question in 1-2 sentences using task names from key mechanisms above.] ${prereqs.missing.join(', ')} is assumed — want a placement assessment to skip it? [Socratic question about their domain]."`,
+          template,
           `Under 100 words. No docs alternative.`,
         ];
         return prereqLines.join('\n');
@@ -1643,14 +1831,14 @@ export function createCertificationToolHandlers(
 
       // Validate scores against assessment criteria (range, dimensions, floor, threshold)
       const scoreResult = await validateCompletionScores(scores, ac);
-      if (typeof scoreResult === 'string') return scoreResult;
+      if (typeof scoreResult === 'string') return notCompleted(moduleId, 'score', scoreResult);
 
       // Verify module is in-progress before allowing completion
       const progress = await certDb.getProgress(userId);
       const moduleProgress = progress.find(p => p.module_id === moduleId);
       if (!moduleProgress || moduleProgress.status !== 'in_progress') {
         const status = moduleProgress?.status || 'not started';
-        return `Module ${moduleId} is ${status}. Only in-progress modules can be completed.`;
+        return notCompleted(moduleId, 'state', `Module is ${status}. Only in-progress modules can be completed. Start the module first via start_certification_module.`);
       }
 
       // Server-side minimum time check: module must have been started at least 5 minutes ago
@@ -1658,7 +1846,8 @@ export function createCertificationToolHandlers(
         const startedAt = new Date(moduleProgress.started_at);
         const elapsed = Date.now() - startedAt.getTime();
         if (elapsed < MIN_MODULE_TIME_MS) {
-          return `Module was started less than 5 minutes ago. A proper teaching session requires more time. Continue teaching and try again.`;
+          const remaining = Math.ceil((MIN_MODULE_TIME_MS - elapsed) / 1000);
+          return notCompleted(moduleId, 'time', `Module was started less than 5 minutes ago (${remaining}s remaining). A proper teaching session requires more time. Continue teaching and retry after the minimum has elapsed.`);
         }
       }
 
@@ -1666,18 +1855,18 @@ export function createCertificationToolHandlers(
       const moduleStartDate = moduleProgress?.started_at ? new Date(moduleProgress.started_at) : undefined;
       const serverTurns = await countUserTurns(options?.threadId, moduleStartDate);
       if (serverTurns < MIN_MODULE_TURNS) {
-        return `A teaching session requires at least 4 conversation exchanges since starting this module. Only ${serverTurns} detected. Continue teaching and assessing before completing.`;
+        return notCompleted(moduleId, 'time', `A teaching session requires at least ${MIN_MODULE_TURNS} conversation exchanges since starting this module. Only ${serverTurns} detected. Continue teaching and assessing before completing.`);
       }
 
       // Require at least one teaching checkpoint before completion
       const checkpoint = await certDb.getLatestCheckpoint(userId, moduleId);
       if (!checkpoint) {
-        return 'You must save at least one teaching checkpoint (checkpoint_teaching_progress) before completing a module. This ensures teaching progress is recorded. Save a checkpoint summarizing concepts covered and learner performance, then call complete_certification_module again.';
+        return notCompleted(moduleId, 'evidence', 'You must save at least one teaching checkpoint (checkpoint_teaching_progress) before completing a module. Save a checkpoint summarizing concepts covered and learner performance, then call complete_certification_module again.');
       }
 
       // Score consistency check: require preliminary_scores and reject >20pt jumps
       if (!checkpoint.preliminary_scores) {
-        return 'The latest checkpoint has no preliminary scores. Save a new checkpoint with preliminary_scores reflecting your current assessment of the learner, then try again.';
+        return notCompleted(moduleId, 'evidence', 'The latest checkpoint has no preliminary_scores. Save a new checkpoint with preliminary_scores reflecting your current assessment of the learner, then try again.');
       }
       const jumps = Object.entries(scores)
         .filter(([dim, score]) => {
@@ -1686,15 +1875,18 @@ export function createCertificationToolHandlers(
         })
         .map(([dim]) => dim.replace(/_/g, ' '));
       if (jumps.length > 0) {
-        return `Score inconsistency detected in: ${jumps.join(', ')}. These dimensions changed significantly from the last checkpoint. Save a new checkpoint with updated preliminary scores reflecting current assessment, then try again.`;
+        return notCompleted(moduleId, 'score', `Score inconsistency detected in: ${jumps.join(', ')}. These dimensions changed >20 points from the last checkpoint. Save a new checkpoint with updated preliminary_scores reflecting current assessment, then try again.`);
       }
 
       // Verify all required demonstrations from exercise success_criteria
       const demoError = checkDemonstrations(mod, checkpoint);
-      if (demoError) return demoError;
+      if (demoError) return notCompleted(moduleId, 'evidence', demoError);
 
       await certDb.completeModule(userId, moduleId, scores);
 
+      // SUCCESS LINE — pinned by `addie/rules/constraints.md` and by
+      // `cert-not-completed-sentinel.test.ts`. If you change the leading
+      // "Module {id} completed!" prefix here, update both.
       const lines = [
         `Module ${moduleId} completed! The learner has demonstrated mastery of all learning objectives.`,
         '',
@@ -1716,6 +1908,28 @@ export function createCertificationToolHandlers(
       logger.error({ error }, 'Failed to complete certification module');
       throw new ToolError('Failed to record module completion. Please try again.');
     }
+  });
+
+  // ----- check_credentials -----
+  // Trigger an award/issue pass without completing a module. The primary use
+  // is the post-`set_my_name` retry: when a previous turn returned
+  // NAME_REQUIRED, Sage calls set_my_name to capture the learner's name and
+  // then calls this to finalize the deferred Certifier issuance.
+  handlers.set('check_credentials', async () => {
+    const userId = getUserId();
+    if (!userId) return 'You need to be logged in to check your credentials.';
+    // Each call can fan out to N outbound Certifier calls (one per deferred
+    // credential); default cap (60/10min/user) bounds the blast radius.
+    const rate = await checkToolRateLimit('check_credentials', userId);
+    if (!rate.ok) {
+      const retrySeconds = Math.max(1, Math.ceil((rate.retryAfterMs ?? 60000) / 1000));
+      return `Rate limit exceeded on check_credentials. Try again in ~${retrySeconds} seconds.`;
+    }
+    const lines = await checkAndFormatCredentials(userId, memberContext);
+    if (lines.length === 0) {
+      return 'No new credentials to issue. Your existing credentials are unchanged.';
+    }
+    return lines.join('\n');
   });
 
   // ----- get_learner_progress -----
@@ -1904,16 +2118,24 @@ export function createCertificationToolHandlers(
         const objectives = lp?.objectives?.slice(0, 3).map(o => `- ${o}`).join('\n') || '';
         const keyConcepts = (lp?.key_concepts as Array<{ topic: string; teaching_notes: string }> | undefined) || [];
         const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${c.teaching_notes.substring(0, 200)}`).join('\n');
-        // Frame as destination-first with path, not as a gate
+        const missingIds = prereqs.missing.map(m => m.moduleId);
+        const inProgress = prereqs.missing.filter(m => m.status === 'in_progress').map(m => m.moduleId);
+        const inProgressTemplate = inProgress.length > 0 ? inProgressPrereqDirective(inProgress, mod.id) : null;
+        const directive = inProgressTemplate
+          ? inProgressTemplate.directive
+          : `The learner needs to complete ${missingIds.join(', ')} first. With their experience, placement assessments can fast-track this.`;
+        const template = inProgressTemplate
+          ? `"${mod.id} covers [2-3 mechanisms from key concepts above]. [One sentence connecting to their stated goal]. ${inProgressTemplate.templateLine} [Socratic question that resumes the open module]."`
+          : `"${mod.id} covers [2-3 mechanisms from key concepts above, using task names like check_governance, sync_plans]. [One sentence connecting to their stated goal]. The path there goes through ${missingIds.join(' → ')}, but placement assessments can fast-track based on what you already know. [Socratic question about their domain experience]."`;
         const prereqLines = [
           `${mod.id} (${mod.title}) teaches:`,
           mod.description || '',
           conceptSummary ? `\nKey mechanisms:\n${conceptSummary}` : '',
           '',
-          `The learner needs to complete ${prereqs.missing.join(', ')} first. With their experience, placement assessments can fast-track this.`,
+          directive,
           '',
           `Your response MUST follow this template:`,
-          `"${mod.id} covers [2-3 mechanisms from key concepts above, using task names like check_governance, sync_plans]. [One sentence connecting to their stated goal]. The path there goes through ${prereqs.missing.join(' → ')}, but placement assessments can fast-track based on what you already know. [Socratic question about their domain experience]."`,
+          template,
         ];
         return prereqLines.join('\n');
       }
@@ -2084,48 +2306,48 @@ export function createCertificationToolHandlers(
       }
       const examAc = capstoneMod.assessment_criteria as certDb.AssessmentCriteria | undefined;
 
+      const capstoneId = capstoneMod.id;
+
       // Validate scores against assessment criteria (range, dimensions, floor, threshold)
       const scoreResult = await validateCompletionScores(scores, examAc);
-      if (typeof scoreResult === 'string') return scoreResult;
+      if (typeof scoreResult === 'string') return notCompleted(capstoneId, 'score', scoreResult);
 
       // Server-side minimum time check: exam must have been started at least 10 minutes ago
       const startedAt = new Date(attempt.started_at);
       const elapsed = Date.now() - startedAt.getTime();
       if (elapsed < MIN_CAPSTONE_TIME_MS) {
-        return `Exam was started less than 10 minutes ago. A proper capstone assessment requires more time. Continue the lab and exam phases and try again.`;
+        const remaining = Math.ceil((MIN_CAPSTONE_TIME_MS - elapsed) / 1000);
+        return notCompleted(capstoneId, 'time', `Exam was started less than 10 minutes ago (${remaining}s remaining). A proper capstone assessment requires more time. Continue the lab and exam phases and retry after the minimum has elapsed.`);
       }
 
       // Server-side minimum conversation turn count for capstones (scoped to exam start)
       const examServerTurns = await countUserTurns(options?.threadId, startedAt);
       if (examServerTurns < MIN_CAPSTONE_TURNS) {
-        return `A capstone assessment requires at least 6 conversation exchanges since starting this exam. Only ${examServerTurns} detected. Continue the assessment and try again.`;
+        return notCompleted(capstoneId, 'time', `A capstone assessment requires at least ${MIN_CAPSTONE_TURNS} conversation exchanges since starting this exam. Only ${examServerTurns} detected. Continue the assessment and try again.`);
       }
 
       // Require at least one teaching checkpoint with preliminary scores before completion
-      let examCheckpoint: Awaited<ReturnType<typeof certDb.getLatestCheckpoint>> = null;
-      if (capstoneMod) {
-        examCheckpoint = await certDb.getLatestCheckpoint(userId, capstoneMod.id);
-        if (!examCheckpoint) {
-          return 'You must save at least one teaching checkpoint (checkpoint_teaching_progress) before completing the capstone. Save a checkpoint after the lab phase summarizing observations, then call complete_certification_exam again.';
-        }
-        if (!examCheckpoint.preliminary_scores) {
-          return 'The latest checkpoint has no preliminary scores. Save a new checkpoint with preliminary_scores reflecting your current assessment, then try again.';
-        }
-        // Score consistency check: reject >20pt jumps from checkpoint
-        const examJumps = Object.entries(scores)
-          .filter(([dim, score]) => {
-            const prelim = examCheckpoint!.preliminary_scores![dim];
-            return prelim !== undefined && score - prelim > 20;
-          })
-          .map(([dim]) => dim.replace(/_/g, ' '));
-        if (examJumps.length > 0) {
-          return `Score inconsistency detected in: ${examJumps.join(', ')}. These dimensions changed significantly from the last checkpoint. Save a new checkpoint with updated preliminary scores, then try again.`;
-        }
-
-        // Verify all required demonstrations from exercise success_criteria
-        const demoError = checkDemonstrations(capstoneMod, examCheckpoint);
-        if (demoError) return demoError;
+      const examCheckpoint = await certDb.getLatestCheckpoint(userId, capstoneId);
+      if (!examCheckpoint) {
+        return notCompleted(capstoneId, 'evidence', 'You must save at least one teaching checkpoint (checkpoint_teaching_progress) before completing the capstone. Save a checkpoint after the lab phase summarizing observations, then call complete_certification_exam again.');
       }
+      if (!examCheckpoint.preliminary_scores) {
+        return notCompleted(capstoneId, 'evidence', 'The latest checkpoint has no preliminary_scores. Save a new checkpoint with preliminary_scores reflecting your current assessment, then try again.');
+      }
+      // Score consistency check: reject >20pt jumps from checkpoint
+      const examJumps = Object.entries(scores)
+        .filter(([dim, score]) => {
+          const prelim = examCheckpoint.preliminary_scores![dim];
+          return prelim !== undefined && score - prelim > 20;
+        })
+        .map(([dim]) => dim.replace(/_/g, ' '));
+      if (examJumps.length > 0) {
+        return notCompleted(capstoneId, 'score', `Score inconsistency detected in: ${examJumps.join(', ')}. These dimensions changed >20 points from the last checkpoint. Save a new checkpoint with updated preliminary_scores, then try again.`);
+      }
+
+      // Verify all required demonstrations from exercise success_criteria
+      const demoError = checkDemonstrations(capstoneMod, examCheckpoint);
+      if (demoError) return notCompleted(capstoneId, 'evidence', demoError);
 
       const overallScore = Math.round(scoreResult.weightedAvg);
       const allAboveThreshold = Object.values(scores).every(s => s >= 70);
@@ -2139,6 +2361,10 @@ export function createCertificationToolHandlers(
       const lines: string[] = [];
 
       if (passing) {
+        // SUCCESS LINE — pinned by `addie/rules/constraints.md` and by
+        // `cert-not-completed-sentinel.test.ts`. If you change the
+        // "# Congratulations! The learner passed the capstone!" prefix,
+        // update both.
         lines.push('# Congratulations! The learner passed the capstone!');
         lines.push('');
         lines.push('Congratulate them warmly — they earned this. Do NOT share any scores or percentages.');

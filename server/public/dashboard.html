@@ -496,6 +496,49 @@
 
     <div id="content" style="display:none;">
 
+      <!-- Brand-claim suggestion banner (#4744) — fired when the user's
+           verified email domain matches a brand in the registry that they
+           haven't claimed yet. Soft, dismissible (30-day cooldown). -->
+      <div id="brand-claim-banner" class="hidden" style="
+          background: linear-gradient(135deg, var(--color-info-50, #eff6ff), var(--color-bg-card));
+          border: var(--border-1) solid var(--color-info-200, #bfdbfe);
+          border-left: var(--border-4) solid var(--color-info-500, #3b82f6);
+          border-radius: var(--radius-md);
+          padding: var(--space-4) var(--space-5);
+          margin-bottom: var(--space-6);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: var(--space-4);
+          flex-wrap: wrap;
+        ">
+        <div style="flex: 1; min-width: 280px;">
+          <strong id="brand-claim-banner-title" style="display: block; color: var(--color-text-heading); margin-bottom: 4px;"></strong>
+          <span id="brand-claim-banner-body" style="color: var(--color-text-secondary); font-size: var(--text-sm);"></span>
+        </div>
+        <div style="display: flex; gap: var(--space-2); align-items: center;">
+          <a id="brand-claim-banner-cta" class="btn btn-primary" href="#" style="
+              padding: 6px 14px;
+              font-size: var(--text-sm);
+              font-weight: var(--font-semibold);
+              background: var(--color-brand);
+              color: white;
+              border: none;
+              border-radius: var(--radius-md);
+              text-decoration: none;
+              white-space: nowrap;
+            ">Claim this brand</a>
+          <button id="brand-claim-banner-dismiss" type="button" style="
+              padding: 6px 12px;
+              font-size: var(--text-sm);
+              background: transparent;
+              color: var(--color-text-muted);
+              border: none;
+              cursor: pointer;
+            " title="Dismiss for 30 days">Dismiss</button>
+        </div>
+      </div>
+
       <!-- Dashboard section styles -->
       <style>
         .dashboard-section {
@@ -1944,6 +1987,11 @@
 
         if (!response.ok) {
           const error = await response.json();
+          if (response.status === 409 && error.customer_portal_url) {
+            btn.textContent = 'Opening billing portal...';
+            window.location.href = error.customer_portal_url;
+            return;
+          }
           throw new Error(error.message || 'Failed to create checkout session');
         }
 
@@ -2414,6 +2462,10 @@
 
         if (!response.ok) {
           const error = await response.json();
+          if (response.status === 409 && error.customer_portal_url) {
+            window.location.href = error.customer_portal_url;
+            return;
+          }
           throw new Error(error.message || 'Failed to create checkout session');
         }
 
@@ -4176,11 +4228,51 @@
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
 
+        // Fire-and-forget: brand-claim suggestion banner (#4744).
+        loadBrandClaimSuggestion();
+
       } catch (error) {
         console.error('Error loading user data:', error);
         document.getElementById('loading').innerHTML = `
           <p style="color: var(--color-error-600);">Failed to load dashboard. <a href="/auth/login">Try logging in again</a></p>
         `;
+      }
+    }
+
+    // ─── Brand-claim suggestion banner (#4744) ────────────────────────
+    async function loadBrandClaimSuggestion() {
+      const banner = document.getElementById('brand-claim-banner');
+      if (!banner) return;
+      try {
+        const resp = await fetch('/api/me/brand-claim-suggestion', { credentials: 'include' });
+        if (!resp.ok) return;
+        const { suggestion } = await resp.json();
+        if (!suggestion || !suggestion.active) return;
+
+        const brand = suggestion.brand_name || suggestion.domain;
+        document.getElementById('brand-claim-banner-title').textContent =
+          `Claim ${brand}?`;
+        document.getElementById('brand-claim-banner-body').textContent =
+          `You signed up from this domain. Verify ownership to manage the brand on AAO.`;
+        const cta = document.getElementById('brand-claim-banner-cta');
+        cta.setAttribute('href', suggestion.claim_url);
+        const dismiss = document.getElementById('brand-claim-banner-dismiss');
+        dismiss.onclick = async () => {
+          banner.classList.add('hidden');
+          try {
+            await fetch('/api/me/brand-claim-suggestion/dismiss', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ domain: suggestion.domain }),
+            });
+          } catch (err) {
+            // Non-critical — the banner is already hidden client-side.
+          }
+        };
+        banner.classList.remove('hidden');
+      } catch (err) {
+        // Non-fatal — leave the banner hidden.
       }
     }
 

@@ -66,6 +66,34 @@
         letter-spacing: var(--tracking-wide);
       }
 
+      .ownership-badge {
+        font-size: var(--text-xs);
+        padding: var(--space-1) var(--space-3);
+        border-radius: var(--radius-full);
+        font-weight: var(--font-semibold);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1_5);
+        line-height: 1;
+      }
+      .ownership-badge[data-status="verified"] {
+        background: var(--color-success-100, #d1fae5);
+        color: var(--color-success-700, #047857);
+      }
+      .ownership-badge[data-status="community"] {
+        background: var(--color-purple-100);
+        color: var(--color-purple-700);
+      }
+      .ownership-badge[data-status="orphaned"] {
+        background: var(--color-warning-100, #fef3c7);
+        color: var(--color-warning-700, #b45309);
+      }
+      .ownership-badge[data-status=""] {
+        display: none;
+      }
+
       /* Section headings */
       .section-heading {
         font-size: var(--text-xl);
@@ -1193,9 +1221,58 @@
         </div>
         <h1 id="hero-title">Brand Viewer</h1>
         <p class="hero-subtitle" id="hero-subtitle">Loading brand data...</p>
+        <div id="ownership-row" class="hidden" style="margin-top: var(--space-3); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);">
+          <span id="ownership-badge" class="ownership-badge" data-status=""></span>
+          <a id="claim-brand-btn" class="hidden btn btn-primary" href="#" style="padding: 4px 12px; font-size: var(--text-xs); font-weight: var(--font-semibold); border-radius: var(--radius-md);">Claim this brand</a>
+          <a id="manage-brand-btn" class="hidden btn btn-primary" href="#" style="padding: 4px 12px; font-size: var(--text-xs); font-weight: var(--font-semibold); border-radius: var(--radius-md);">Manage brand</a>
+          <a id="claim-signin-btn" class="hidden" href="#" style="padding: 4px 12px; font-size: var(--text-xs); font-weight: var(--font-semibold); background: var(--color-bg-subtle); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); text-decoration: none;">Sign in to claim</a>
+        </div>
         <button id="refresh-brand-btn" class="hidden" onclick="refreshBrand()" style="margin-top: var(--space-3); padding: 4px 12px; font-size: var(--text-xs); font-weight: var(--font-semibold); background: var(--color-bg-subtle); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-all);">Refresh from brand.json</button>
       </div>
     </section>
+
+    <!-- Just-in-time claim suggestion (#4744). Fires only when the
+         viewer's verified email domain matches this brand. -->
+    <div class="container" style="padding-top: var(--space-6); padding-bottom: 0;">
+      <div id="claim-suggestion-banner" class="hidden" style="
+          background: linear-gradient(135deg, var(--color-info-50, #eff6ff), var(--color-bg-card));
+          border: var(--border-1) solid var(--color-info-200, #bfdbfe);
+          border-left: var(--border-4) solid var(--color-info-500, #3b82f6);
+          border-radius: var(--radius-md);
+          padding: var(--space-4) var(--space-5);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: var(--space-4);
+          flex-wrap: wrap;
+        ">
+        <div style="flex: 1; min-width: 240px;">
+          <strong style="display: block; color: var(--color-text-heading); margin-bottom: 4px;">This looks like your brand</strong>
+          <span style="color: var(--color-text-secondary); font-size: var(--text-sm);">You signed up from this domain — verify ownership to manage the brand entry.</span>
+        </div>
+        <div style="display: flex; gap: var(--space-2); align-items: center;">
+          <a id="claim-suggestion-cta" class="btn btn-primary" href="#" style="
+              padding: 6px 14px;
+              font-size: var(--text-sm);
+              font-weight: var(--font-semibold);
+              background: var(--color-brand);
+              color: white;
+              border: none;
+              border-radius: var(--radius-md);
+              text-decoration: none;
+              white-space: nowrap;
+            ">Claim this brand</a>
+          <button id="claim-suggestion-dismiss" type="button" style="
+              padding: 6px 12px;
+              font-size: var(--text-sm);
+              background: transparent;
+              color: var(--color-text-muted);
+              border: none;
+              cursor: pointer;
+            " title="Dismiss for 30 days">Dismiss</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Main content -->
     <div class="container" style="padding-top: var(--space-8); padding-bottom: var(--space-16);">
@@ -2366,6 +2443,84 @@
         }
       }
 
+      // Just-in-time claim prompt (#4744). Fires on /brand/view/{domain}
+      // when the viewer's verified email domain equals {domain} AND the
+      // brand isn't already verified-owned. Highest-intent moment — the
+      // user is literally looking at "their" brand page.
+      async function loadClaimSuggestion(domain) {
+        const banner = document.getElementById('claim-suggestion-banner');
+        if (!banner) return;
+        try {
+          const resp = await fetch(
+            `/api/me/brand-claim-suggestion?domain=${encodeURIComponent(domain)}`,
+            { credentials: 'include' },
+          );
+          if (!resp.ok) return;
+          const { suggestion } = await resp.json();
+          if (!suggestion || !suggestion.active) return;
+          const cta = document.getElementById('claim-suggestion-cta');
+          if (cta && suggestion.claim_url) cta.setAttribute('href', suggestion.claim_url);
+          const dismiss = document.getElementById('claim-suggestion-dismiss');
+          if (dismiss) {
+            dismiss.onclick = async () => {
+              banner.classList.add('hidden');
+              try {
+                await fetch('/api/me/brand-claim-suggestion/dismiss', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ domain }),
+                });
+              } catch (err) { /* non-critical */ }
+            };
+          }
+          banner.classList.remove('hidden');
+        } catch (err) {
+          // Non-fatal.
+        }
+      }
+
+      async function loadOwnership(domain) {
+        const row = document.getElementById('ownership-row');
+        const badge = document.getElementById('ownership-badge');
+        const claimBtn = document.getElementById('claim-brand-btn');
+        const manageBtn = document.getElementById('manage-brand-btn');
+        const signinBtn = document.getElementById('claim-signin-btn');
+        if (!row || !badge) return;
+        try {
+          const resp = await fetch(`/api/brands/${encodeURIComponent(domain)}/ownership`);
+          if (!resp.ok) return;
+          const data = await resp.json();
+
+          const labels = {
+            verified: data.owner?.name ? `Verified — owned by ${data.owner.name}` : 'Verified',
+            orphaned: 'Awaiting adoption',
+            community: 'Community',
+          };
+          badge.textContent = labels[data.status] || '';
+          badge.setAttribute('data-status', data.status || '');
+
+          if (data.can_manage && data.manage_url) {
+            manageBtn.setAttribute('href', data.manage_url);
+            manageBtn.classList.remove('hidden');
+          }
+          if (data.can_claim && data.claim_url) {
+            claimBtn.setAttribute('href', data.claim_url);
+            claimBtn.classList.remove('hidden');
+          }
+          // Anonymous viewers who could claim if signed in: prompt them.
+          // Skip when the brand is already verified — they can't claim it anyway.
+          if (!data.authenticated && data.status !== 'verified') {
+            const returnTo = encodeURIComponent(window.location.pathname);
+            signinBtn.setAttribute('href', `/auth/login?return_to=${returnTo}`);
+            signinBtn.classList.remove('hidden');
+          }
+          row.classList.remove('hidden');
+        } catch (err) {
+          // Non-fatal — leave the row hidden.
+        }
+      }
+
       async function init() {
         const pathParts = window.location.pathname.split('/');
         // /brand/view/domain.com → domain is everything after /brand/view/
@@ -2379,6 +2534,17 @@
         document.getElementById('hero-subtitle').textContent = domain;
         currentDomain = domain;
         initUploadUI();
+
+        // Render the ownership badge + Claim/Manage CTA. Fire-and-forget so a
+        // slow lookup never blocks the rest of the page.
+        loadOwnership(domain);
+        // Just-in-time claim suggestion (#4744). Fires only when the
+        // viewer's verified email domain matches the brand they're
+        // looking at. Endpoint short-circuits to null otherwise so the
+        // call is safe to make unconditionally.
+        if (window.__APP_CONFIG__?.user) {
+          loadClaimSuggestion(domain);
+        }
 
         // Show refresh button for logged-in users
         if (window.__APP_CONFIG__?.user) {

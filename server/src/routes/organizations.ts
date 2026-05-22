@@ -18,7 +18,7 @@ import {
 import { invitationRateLimiter, orgCreationRateLimiter } from "../middleware/rate-limit.js";
 import { invalidateMembershipCache } from "../db/org-filters.js";
 import { validateOrganizationName, validateEmail } from "../middleware/validation.js";
-import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, getSeatUsage, getSeatLimits, canAddSeat, getUserSeatType, resolveMembershipTier, checkAndUpdateSeatWarning, resetSeatWarningIfNeeded, createSeatUpgradeRequest, getSeatUpgradeRequest, listSeatUpgradeRequests, resolveSeatUpgradeRequest, hasPendingSeatRequest } from "../db/organization-db.js";
+import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, getSeatUsage, getSeatLimits, canAddSeat, getUserSeatType, resolveMembershipTier, checkAndUpdateSeatWarning, resetSeatWarningIfNeeded, createSeatUpgradeRequest, getSeatUpgradeRequest, listSeatUpgradeRequests, resolveSeatUpgradeRequest, hasPendingSeatRequest, type Organization } from "../db/organization-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { VALID_ORGANIZATION_ROLES, VALID_ASSIGNABLE_ROLES } from "../types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
@@ -1765,6 +1765,21 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
+      // Reject forged/stale versions. Caller must echo back the version
+      // currently published by getCurrentAgreementByType — anything else and
+      // we'd stamp the org with a string we don't control as the contract of
+      // record (security review on PR for #4565/#4573).
+      const submittedVersion = String(agreement_version).trim();
+      const currentAgreement = await orgDb.getCurrentAgreementByType('membership');
+      if (!currentAgreement || submittedVersion !== currentAgreement.version) {
+        return res.status(400).json({
+          error: 'Agreement version mismatch',
+          message:
+            'The membership agreement has changed. Please reload and accept the current version.',
+          current_version: currentAgreement?.version ?? null,
+        });
+      }
+
       // Verify user is member of this organization
       const membership = await resolveUserOrgMembership(workos, user.id, orgId);
       if (!membership) {
@@ -1774,21 +1789,16 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Ensure organization exists in local DB (on-demand sync from WorkOS)
-      let org = await orgDb.getOrganization(orgId);
-      if (!org) {
-        try {
-          const workosOrg = await workos!.organizations.getOrganization(orgId);
-          if (workosOrg) {
-            org = await orgDb.createOrganization({
-              workos_organization_id: workosOrg.id,
-              name: workosOrg.name,
-            });
-            logger.info({ orgId, name: workosOrg.name }, 'On-demand synced organization from WorkOS for pending agreement');
-          }
-        } catch (syncError) {
-          logger.warn({ orgId, err: syncError }, 'Failed to sync organization from WorkOS');
-        }
+      // Ensure organization exists in local DB (on-demand sync from WorkOS).
+      // ensureOrganizationExists mirrors the WorkOS domain list into
+      // organization_domains + email_domain so the row is reachable by
+      // findPayingOrgForDomain / resolveOrgByDomain — otherwise this path
+      // produces the same orphan class the orphan-org audit catches.
+      let org: Organization | null = null;
+      try {
+        org = await orgDb.ensureOrganizationExists(workos!, orgId);
+      } catch (syncError) {
+        logger.warn({ orgId, err: syncError }, 'Failed to sync organization from WorkOS');
       }
 
       if (!org) {
@@ -1798,10 +1808,11 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Store pending agreement info in organization record
-      // This will be used by webhook when subscription is created
+      // Store pending agreement info in organization record using the
+      // server-validated version (not the raw client string) so the audit
+      // record is canonical.
       await orgDb.updateOrganization(orgId, {
-        pending_agreement_version: agreement_version,
+        pending_agreement_version: currentAgreement.version,
         pending_agreement_accepted_at: agreement_accepted_at ? new Date(agreement_accepted_at) : new Date(),
         pending_agreement_user_id: user.id,
       });
@@ -1809,12 +1820,12 @@ export function createOrganizationsRouter(): Router {
       logger.info({
         orgId,
         userId: user.id,
-        version: agreement_version
+        version: currentAgreement.version
       }, 'Pending agreement info stored (will be recorded on payment success)');
 
       res.json({
         success: true,
-        agreement_version,
+        agreement_version: currentAgreement.version,
         accepted_at: new Date().toISOString(),
       });
 

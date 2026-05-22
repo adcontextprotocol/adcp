@@ -1,11 +1,11 @@
 ---
 title: preview_creative
-description: "preview_creative generates visual previews of ad creative manifests in AdCP in single or batch mode returning URL, image, or HTML output."
+description: "preview_creative renders an existing creative manifest into viewable output in AdCP, in single or batch mode, returning URL, image, or HTML output."
 "og:title": "AdCP — preview_creative"
 ---
 
 
-Generate preview renderings of creative manifests. Supports both single creative preview and batch preview (5-10x faster for multiple creatives).
+`preview_creative` renders an existing creative manifest into viewable output. It does not generate or modify the input manifest — use [`build_creative`](/docs/creative/task-reference/build_creative) for that. Supports both single creative preview and batch preview (5-10x faster for multiple creatives).
 
 **Request Schema**: [`/schemas/v3/creative/preview-creative-request.json`](https://adcontextprotocol.org/schemas/v3/creative/preview-creative-request.json)
 **Response Schema**: [`/schemas/v3/creative/preview-creative-response.json`](https://adcontextprotocol.org/schemas/v3/creative/preview-creative-response.json)
@@ -218,7 +218,7 @@ Generate multiple preview variants by providing different contexts:
   response_type: "single";
   previews: Preview[];       // One per input (or one default)
   interactive_url?: string;  // Optional sandbox for interactive formats
-  expires_at: string;        // ISO 8601 expiration
+  expires_at?: string;       // Optional ISO 8601 expiration; omitted means no expiration
 }
 ```
 
@@ -230,7 +230,7 @@ Generate multiple preview variants by providing different contexts:
   results: Array<{
     success: boolean;
     creative_id: string;
-    response?: { previews: Preview[]; expires_at: string; };
+    response?: { previews: Preview[]; expires_at?: string; };
     errors?: Array<{ code: string; message: string; }>;
   }>;
 }
@@ -337,7 +337,7 @@ If the requested quality level is not supported, the agent renders at the best q
 
 ### Preview expiration and variant retention
 
-All previews have an `expires_at` timestamp. After expiration, preview URLs return errors and must be re-generated. For generative creative, re-generating a pre-flight preview may produce different output — the same brief and context can yield different creative each time.
+Preview responses may include an `expires_at` timestamp. When present, consumers should treat preview URLs as invalid after that time and re-generate them before reuse. When `expires_at` is omitted, the preview URLs do not expire. For generative creative, re-generating a pre-flight preview may produce different output — the same brief and context can yield different creative each time.
 
 Variant previews (post-flight) depend on the agent retaining variant data. Agents are not required to retain variant data indefinitely. If you request a variant preview for a variant the agent has purged, expect a standard error response. For long-running campaigns, retrieve and archive variant previews periodically rather than assuming they will remain available.
 
@@ -414,7 +414,7 @@ Preview multiple creatives for a grid layout:
 - Every render's `preview_url` returns an HTML page for iframe embedding
 - Use `output_format: "html"` for grids of 10+ previews (no iframe overhead)
 - Batch mode is 5-10x faster than individual requests
-- Preview URLs expire (check `expires_at`)
+- Preview URLs expire only when `expires_at` is present; omitted `expires_at` means no expiration
 - Handle partial batch failures by checking each result's `success` field
 
 ## Related Documentation

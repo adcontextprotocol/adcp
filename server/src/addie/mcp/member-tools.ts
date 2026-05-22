@@ -17,6 +17,11 @@ const logger = createLogger('addie-member-tools');
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
 import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
+import {
+  verifyAgentHostname,
+  buildUnverifiedHostnameMessage,
+  isHostnameOwnershipRejection,
+} from '../../services/agent-hostname-verification.js';
 import { PUBLIC_TEST_AGENT, PUBLIC_TEST_AGENT_URLS, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
@@ -69,6 +74,7 @@ import { canonicalizeBrandDomain } from '../../services/identifier-normalization
 import { isOrgOwnerOfAgent } from '../../services/agent-ownership.js';
 import { getBrandPrimaryDomain } from '../../services/brand-domain-resolver.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
+import { runBadgeFanOut } from '../../services/badge-issuance.js';
 import { AgentSnapshotDatabase } from '../../db/agent-snapshot-db.js';
 import { AgentValidator } from '../../validator.js';
 import {
@@ -107,6 +113,7 @@ import { issueDomainChallenge, verifyDomainChallenge } from '../../services/bran
 import { getWorkos } from '../../auth/workos-client.js';
 import { resolveUserRole } from '../../utils/resolve-user-role.js';
 import { recordAgentTestRun } from '../../db/agent-test-db.js';
+import { canonicalizeAgentUrl } from '../../db/publisher-db.js';
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
@@ -347,9 +354,29 @@ function validateAgentUrl(agentUrl: string): string | null {
 }
 
 /**
- * Build auth options for the SDK from resolved auth.
+ * Normalize a Basic auth_token submitted to `save_agent` into the base64
+ * `user:password` form that gets persisted. Accepts either raw `user:password`
+ * or the already-base64-encoded form; the `:` character is not in the base64
+ * alphabet, so its presence unambiguously identifies the raw form. Returns
+ * `{ ok: true, stored }` on success and `{ ok: false }` when the value is
+ * neither shape (used to reject at the save_agent boundary so a malformed
+ * credential never lands in the DB).
+ *
+ * Exported for unit testing.
  */
-function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined {
+export function normalizeBasicAuthForStorage(token: string): { ok: true; stored: string } | { ok: false } {
+  if (token.includes(':')) {
+    return { ok: true, stored: Buffer.from(token, 'utf8').toString('base64') };
+  }
+  const decoded = Buffer.from(token, 'base64').toString('utf8');
+  if (!decoded.includes(':')) return { ok: false };
+  return { ok: true, stored: token };
+}
+
+/**
+ * Build auth options for the SDK from resolved auth. Exported for unit testing.
+ */
+export function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined {
   if (!resolved.authToken) return undefined;
 
   if (resolved.authType === 'basic') {
@@ -358,6 +385,16 @@ function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: 
     if (colonIndex >= 0) {
       return { type: 'basic', username: decoded.slice(0, colonIndex), password: decoded.slice(colonIndex + 1) };
     }
+    // Stored basic credential is malformed — likely a legacy row saved
+    // before save_agent normalized raw user:pass to base64. Re-classifying
+    // as bearer would send "Authorization: Bearer user:pass" on the wire;
+    // the agent rejects, and the user sees a misleading "agent didn't
+    // declare capabilities" error. Send the request unauthenticated
+    // instead so the auth-failure diagnostic in recommend_storyboards
+    // (which fires on empty capabilities + source=saved) correctly points
+    // the user at re-saving credentials.
+    logger.warn({ source: resolved.source, resolvedUrl: resolved.resolvedUrl }, 'addie: stored basic credential failed to decode as base64 user:pass; sending request unauthenticated');
+    return undefined;
   }
 
   return { type: 'bearer', token: resolved.authToken };
@@ -648,9 +685,23 @@ export const MEMBER_TOOLS: AddieTool[] = [
     },
   },
   {
+    name: 'set_my_name',
+    description:
+      "Set the current user's first name and (optionally) last name. Writes through to the local DB, organization memberships, and back to WorkOS. Use this when a credential check tells you the user has no name on file, or whenever the user explicitly asks to set or correct their name.",
+    usage_hints: 'use when check_credentials returns NAME_REQUIRED, or the user says "my name is X" / "set my name to X". For full names like "Tom Hespos" split into first_name="Tom" + last_name="Hespos". Do NOT call this for an admin renaming someone else — that\'s update_user_name (admin only).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        first_name: { type: 'string', description: 'First name (required, 1-255 chars)' },
+        last_name: { type: 'string', description: 'Last name (optional, up to 255 chars). Pass empty string or omit to leave blank.' },
+      },
+      required: ['first_name'],
+    },
+  },
+  {
     name: 'update_my_profile',
     description:
-      "Update the current user's personal profile — who they are as a person. Can update headline, bio, expertise, interests, location, and social links. Only updates fields that are provided.",
+      "Update the current user's personal profile — who they are as a person. Can update headline, bio, expertise, interests, location, and social links. Only updates fields that are provided. Does NOT update first/last name — use set_my_name for that.",
     usage_hints: 'use when user wants to update their personal info, headline, bio, or expertise',
     input_schema: {
       type: 'object',
@@ -811,7 +862,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'propose_content',
     description:
       'Submit a draft (article or link) for editorial review. Content lands in pending_review; a committee lead or admin approves it to publish. Default committee is "editorial" (site-wide Perspectives). Only `title` is required.',
-    usage_hints: 'use for "publish this post", "write a perspective", "post to the sustainability group", "share my thoughts on X"',
+    usage_hints: 'use for "publish this post", "write a perspective", "post to the sustainability group", "share my thoughts on X", "post as AgenticAdvertising.org Team", "publish under the team name", "post as [org name]"',
     input_schema: {
       type: 'object',
       properties: {
@@ -822,9 +873,10 @@ export const MEMBER_TOOLS: AddieTool[] = [
         external_url: { type: 'string', description: 'URL for link type' },
         excerpt: { type: 'string', description: 'Short excerpt/summary' },
         category: { type: 'string', description: 'Category (e.g., Op-Ed, Interview, Ecosystem, White Paper, Press Release)' },
-        author_title: { type: 'string', description: 'Author title/role (e.g., CEO, JourneySpark Consulting)' },
+        author_title: { type: 'string', description: 'Author credential line shown under the byline (e.g., "VP Media Operations, Pinnacle Agency"). Distinct from the byline name — do not use for org names.' },
+        byline: { type: 'string', description: 'Display name for the author byline. Set when the user explicitly asks to post as a team or org name (e.g., "AgenticAdvertising.org Team"). Omit to show the user\'s profile name.' },
         featured_image_url: { type: 'string', description: 'Optional URL for cover image. Omit if the author did not provide one. Do not fabricate or search for a URL.' },
-        content_origin: { type: 'string', enum: ['official', 'member'], description: 'Content origin: official (AAO reports, press releases) or member (member perspectives). Default: member' },
+        content_origin: { type: 'string', enum: ['official', 'member'], description: 'Content origin: official (AgenticAdvertising.org reports, press releases) or member (member perspectives). Default: member' },
         committee_slug: { type: 'string', description: 'Target committee slug (default: editorial for Perspectives). Use list_working_groups to see options.' },
         co_author_emails: { type: 'array', items: { type: 'string' }, description: 'Co-author emails' },
       },
@@ -1212,7 +1264,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
           description: 'What kind of agent this is. Required — ask the owner; do not guess. `brand` (brand-side intent), `rights` (rights/clearance), `measurement` (verification/attribution), `governance` (policy/compliance), `creative` (creative production/format), `sales` (publisher/sell-side inventory), `buying` (DSP/buy-side execution), `signals` (audience/signal provider).',
         },
         auth_token: { type: 'string', description: 'Static auth token (stored encrypted). Mutually exclusive with oauth_client_credentials on any given save call.' },
-        auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the auth_token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token must be the base64-encoded "user:password" string, sent as Authorization: Basic <token>' },
+        auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the auth_token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token is "user:password" (the tool also accepts the base64-encoded form); stored base64-encoded and sent as Authorization: Basic <token>.' },
         oauth_client_credentials: {
           type: 'object',
           description: 'OAuth 2.0 client-credentials configuration for machine-to-machine auth (RFC 6749 §4.4). The SDK exchanges at the token endpoint before every call and refreshes on 401. Use this when the agent requires a bearer token minted from a client_id/client_secret pair, not a human authorization flow.',
@@ -1859,6 +1911,60 @@ export function createMemberToolHandlers(
   // ============================================
   // PERSONAL PROFILE (the person)
   // ============================================
+  handlers.set('set_my_name', async (input) => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to set your name. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+    // Bounded — writes to users + organization_memberships + WorkOS on every
+    // call. Default cap (60/10min/user) is plenty for legitimate use.
+    const rate = await checkToolRateLimit('set_my_name', memberContext.workos_user.workos_user_id);
+    if (!rate.ok) {
+      const retrySeconds = Math.max(1, Math.ceil((rate.retryAfterMs ?? 60000) / 1000));
+      return `Rate limit exceeded on set_my_name. Try again in ~${retrySeconds} seconds.`;
+    }
+    if (typeof input.first_name !== 'string') {
+      throw new ToolError('first_name is required.');
+    }
+
+    const { sanitizeName } = await import('../../utils/resolve-user-name.js');
+    const rawFirst = input.first_name;
+    const rawLast = typeof input.last_name === 'string' ? input.last_name : '';
+    if (rawFirst.length > 255) throw new ToolError('first_name must be 255 characters or fewer.');
+    if (rawLast.length > 255) throw new ToolError('last_name must be 255 characters or fewer.');
+
+    const firstName = sanitizeName(rawFirst);
+    const lastName = sanitizeName(rawLast) || null;
+    if (!firstName) throw new ToolError('first_name cannot be empty after trimming.');
+
+    const userId = memberContext.workos_user.workos_user_id;
+    const pool = getPool();
+    await pool.query(
+      `UPDATE users SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+      [firstName, lastName, userId]
+    );
+    await pool.query(
+      `UPDATE organization_memberships SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
+      [firstName, lastName, userId]
+    );
+
+    try {
+      await getWorkos().userManagement.updateUser({
+        userId,
+        firstName,
+        lastName: lastName ?? undefined,
+      });
+    } catch (workosError) {
+      logger.warn({ err: workosError, userId }, 'set_my_name: WorkOS push failed (local update applied)');
+    }
+
+    const { invalidateMemberContextCache } = await import('../member-context.js');
+    invalidateMemberContextCache();
+    logger.info({ userId }, 'set_my_name: user name updated');
+
+    const display = lastName ? `${firstName} ${lastName}` : firstName;
+    return `Your name is set to **${display}**. Anything that uses your name (credentials, member announcements, Addie's greetings) will now use this.`;
+  });
+
   handlers.set('get_my_profile', async () => {
     if (!memberContext?.workos_user?.workos_user_id) {
       return 'You need to be logged in to see your profile. Please log in at https://agenticadvertising.org/dashboard first.';
@@ -2317,6 +2423,11 @@ export function createMemberToolHandlers(
       if (result.code === 'invalid_domain') {
         return `<!-- STATUS: invalid_domain -->\n\nI can't claim that — ${result.message} Try a clean apex domain (e.g., "acme.com" rather than "acme.com/", "vercel.app", or "co.uk").`;
       }
+      if (result.code === 'workos_misconfigured') {
+        // Anti-loop: don't have the model offer to retry. The fix lives in
+        // the WorkOS dashboard, not in the user's flow.
+        return `<!-- STATUS: workos_misconfigured -->\n\nI can't issue a DNS challenge for ${rawDomain} right now — our identity provider isn't returning a DNS record prefix, which means I have nowhere to tell you to publish the TXT record. This is an operator-side issue (WorkOS DNS verification template), not something you can fix. **Stop here.** The AAO team has been alerted; ask them to set this up manually if you need to move forward today.`;
+      }
       return `<!-- STATUS: workos_error -->\n\nCouldn't issue the domain challenge: ${result.message}`;
     }
 
@@ -2324,8 +2435,12 @@ export function createMemberToolHandlers(
       return `<!-- STATUS: already_verified -->\n\n${result.domain} is already verified for your organization in WorkOS. The brand registry should already reflect that — call \`verify_brand_domain_challenge\` if you want to force a sync.`;
     }
 
+    // Defensive: the service should have returned workos_misconfigured before
+    // reaching here, but if WorkOS returns a token without a prefix and the
+    // service guard ever regresses, surface the same failure mode rather than
+    // handing the model a half-broken record to render.
     if (!result.verification_token || !result.verification_prefix) {
-      return `<!-- STATUS: workos_error -->\n\nIssued a challenge for ${result.domain} but WorkOS didn't return a DNS record to publish — that's unusual. Check the WorkOS dashboard or contact support.`;
+      return `<!-- STATUS: workos_misconfigured -->\n\nIssued a challenge for ${result.domain} but WorkOS didn't return a complete DNS record (missing prefix or token). This is an operator-side issue — ask the AAO team to verify ${result.domain} manually for you.`;
     }
 
     const recordName = `${result.verification_prefix}.${result.domain}`;
@@ -2515,6 +2630,7 @@ export function createMemberToolHandlers(
     const excerpt = input.excerpt as string | undefined;
     const category = input.category as string | undefined;
     const authorTitle = input.author_title as string | undefined;
+    const byline = input.byline as string | undefined;
     const featuredImageUrl = input.featured_image_url as string | undefined;
     const contentOrigin = (input.content_origin as string | undefined) || 'member';
     const coAuthorEmails = input.co_author_emails as string[] | undefined;
@@ -2557,6 +2673,7 @@ export function createMemberToolHandlers(
         excerpt,
         category,
         author_title: authorTitle,
+        byline,
         featured_image_url: featuredImageUrl,
         content_origin: contentOrigin as 'official' | 'member',
         collection: { committee_slug: committeeSlug },
@@ -3607,52 +3724,75 @@ export function createMemberToolHandlers(
                 // Owner test runs are not dry runs — they update the live public record.
                 // (complianceResultToDbInput hard-codes dry_run: true; override here.)
                 dry_run: false,
-                // Known gap (deferred to follow-up): the canonical write doesn't
-                // carry the triggering org id. If two orgs both own the same
-                // agent URL (rare — staging vs prod orgs of one publisher), an
-                // owner_test from Org A surfaces in Org B's dashboard without
-                // attribution. Acceptable for the unblock; full fix adds
-                // `triggered_org_id` to agent_compliance_runs (#4247 PR 4).
+                // Org scope for the per-org `agent_context_with_latest_test` view.
+                // Without this, two orgs that own the same agent URL (staging vs
+                // prod orgs of one publisher) would conflate their test history.
+                // See migration 490.
+                triggered_org_id: organizationId,
               };
               await complianceDb.recordComplianceRun(dbInput);
               // notifyComplianceChange intentionally omitted: owner test runs are
               // exploratory; compliance-change notifications fire on heartbeat
               // transitions only to prevent iteration-loop spam.
+
+              // Fire badge issuance off the canonical write so an owner who
+              // just fixed a compliance issue sees their badge update on the
+              // next page load instead of waiting up to a heartbeat cycle.
+              // Verification-change notifications are intentionally skipped —
+              // the owner already received the result in their chat response.
+              const declaredSpecialisms = result.agent_profile?.specialisms ?? [];
+              if (declaredSpecialisms.length > 0) {
+                try {
+                  await runBadgeFanOut({
+                    complianceDb,
+                    agentUrl: resolved.resolvedUrl,
+                    declaredSpecialisms,
+                  });
+                } catch (badgeError) {
+                  logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Badge fan-out failed after owner_test run');
+                }
+              }
             }
           } catch (error) {
             logger.warn({ error, agentUrl: resolved.resolvedUrl }, 'Could not write owner test result to canonical compliance state');
           }
         }
 
-        // Legacy session-scoped audit trail. Retained until Emma's #4247 PR 3
-        // backfills + drops `agent_test_history`. NOT a public-state write —
-        // the previous dual-write to `recordComplianceRun(..., 'manual')` was
-        // dropped because (a) it was gated only on `agent_contexts` row
-        // existence (which `save_agent` lets any org create for any URL — no
-        // ownership check), so any user could publish a `manual` verdict on
-        // someone else's agent; and (b) the owner-test branch above already
-        // updates canonical state with proper ownership checking, so the
-        // legacy write has no remaining function for owners. Non-owner runs
-        // continue to land here in `agent_test_history` only.
-        try {
-          const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
-          if (context) {
-            await agentContextDb.recordTest({
-              agent_context_id: context.id,
-              scenario: 'quality_evaluation',
-              overall_passed: result.overall_status === 'passing',
-              steps_passed: result.summary.tracks_passed,
-              steps_failed: result.summary.tracks_failed,
-              total_duration_ms: result.total_duration_ms,
-              summary: result.summary.headline,
-              dry_run: true,
-              triggered_by: 'user',
-              user_id: memberContext?.workos_user?.workos_user_id,
-              agent_profile_json: result.agent_profile,
-            });
+        // Legacy write to agent_contexts + agent_test_history. Retained ONLY
+        // for non-owner runs so a third-party who runs evaluate_agent_quality
+        // against someone else's agent still has a session-scoped audit trail
+        // (their own org's agent_test_history). Owner runs already wrote
+        // canonical state above (PR #4250 / merged); writing twice for owners
+        // would split the audit and re-introduce the dual-write bug PR #4247
+        // is closing. The previous unconditional `recordComplianceRun(...,
+        // 'manual')` dual-write was already dropped on main because it had
+        // no ownership check; this PR completes the picture by gating the
+        // remaining recordTest call on `!isAgentOwner`.
+        //
+        // PR 4 of #4247 collapses agent_contexts.last_test_* into a derived
+        // view, after which this legacy block (and recordTest itself) drop
+        // entirely.
+        if (!isAgentOwner) {
+          try {
+            const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
+            if (context) {
+              await agentContextDb.recordTest({
+                agent_context_id: context.id,
+                scenario: 'quality_evaluation',
+                overall_passed: result.overall_status === 'passing',
+                steps_passed: result.summary.tracks_passed,
+                steps_failed: result.summary.tracks_failed,
+                total_duration_ms: result.total_duration_ms,
+                summary: result.summary.headline,
+                dry_run: true,
+                triggered_by: 'user',
+                user_id: memberContext?.workos_user?.workos_user_id,
+                agent_profile_json: result.agent_profile,
+              });
+            }
+          } catch (error) {
+            logger.debug({ error }, 'Could not record quality evaluation result');
           }
-        } catch (error) {
-          logger.debug({ error }, 'Could not record quality evaluation result');
         }
       }
 
@@ -3887,10 +4027,44 @@ export function createMemberToolHandlers(
 
     let output = '';
     if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
+    else if (resolved.source === 'oauth') output += '_Using saved OAuth credentials._\n\n';
     output += `## Agent: ${safeAgentName || resolved.resolvedUrl}\n\n`;
 
-    // No capabilities declared → coach the developer on how to fix it.
+    // No capabilities declared — disambiguate: auth failure vs. genuinely
+    // undeployed agent. When Addie used saved or OAuth credentials, an empty
+    // response most likely means auth didn't reach the agent (malformed
+    // credential, header silently dropped by the SDK, agent degraded to anon).
+    // Blaming the agent owner is wrong in this case; emit an auth diagnosis
+    // instead. Fall through to the developer-coaching path only when no
+    // credentials were expected.
     if (supportedProtocols.length === 0 && specialisms.length === 0) {
+      if (resolved.source === 'saved' || resolved.source === 'oauth' || resolved.source === 'explicit') {
+        // 'explicit' is a test/internal codepath (caller passed a raw token directly);
+        // label and remediation match `saved` since the diagnosis steps are identical.
+        // The four ResolvedAgentAuth.source variants ('explicit'|'saved'|'oauth'|'public'|'none')
+        // are an exhaustive enum from line 223; if a new variant is added, extend this branch.
+        const authLabel = resolved.source === 'oauth' ? 'OAuth token' : resolved.source === 'explicit' ? 'the provided token' : 'saved credentials';
+        const reSaveStep = resolved.source === 'oauth'
+          ? 'reconnect the OAuth provider — the access token may have expired or had its scope revoked'
+          : 'run `save_agent` again with the correct credentials';
+        // Render the agent URL inside inline-code backticks rather than
+        // interpolating into a copy-pasteable `curl "..."` example.
+        // sanitizeAgentField strips control chars and backticks but does not
+        // escape shell metacharacters (`"`, `$`, `\``), so an in-prose URL
+        // with crafted content would be a copy-paste foot-gun.
+        const safeUrl = sanitizeAgentField(resolved.resolvedUrl, 300);
+        output += `I tested your agent using your ${authLabel}, but got back an empty capabilities response — no \`supported_protocols\` and no \`specialisms\`.\n\n`;
+        if (probeError) {
+          const safeProbeErr = fenceAgentValue(probeError, 300);
+          output += `The agent reported: ${safeProbeErr || '(no detail)'}\n\n`;
+        }
+        output += `This usually means the credentials didn't reach the agent:\n\n`;
+        output += `1. **Verify the credentials work:** call \`${safeUrl}\` directly with your credentials (e.g. via curl or Postman) and confirm \`supported_protocols\` appears in the response.\n`;
+        output += `2. **Re-save if needed:** ${reSaveStep}.\n`;
+        output += `3. **Check the SDK version:** if you're using \`@adcp/sdk\`, make sure it's up to date — older versions have a known issue that drops the auth header on the capabilities precheck path.\n\n`;
+        output += `If credentials look correct and the SDK is current, the agent may be returning an anonymous-shaped response for unrecognized auth rather than a 401. Confirm the agent accepts the auth scheme and credential format you saved.\n`;
+        return output;
+      }
       output += `Your agent didn't tell us what it does yet.\n\n`;
       if (probeError) {
         const safeProbeErr = fenceAgentValue(probeError, 300);
@@ -5653,15 +5827,43 @@ export function createMemberToolHandlers(
       return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `evaluate_agent_quality` without an organization.';
     }
 
-    const agentUrl = input.agent_url as string;
+    const rawAgentUrl = input.agent_url as string;
     try {
-      const parsed = new URL(agentUrl);
+      const parsed = new URL(rawAgentUrl);
       if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
         return 'Agent URL must use https:// or http:// protocol.';
       }
     } catch {
       return 'Invalid agent URL format. Please provide a full URL like https://your-agent.example.com';
     }
+    // Canonicalize so this writes the same row as the REST POST /api/me/agents
+    // path (issue #3573). Query strings and fragments are rejected at the
+    // boundary; canonicalizeAgentUrl itself preserves them.
+    if (rawAgentUrl.includes('?') || rawAgentUrl.includes('#')) {
+      return 'Agent URL must not contain query strings or fragments.';
+    }
+    const canonical = canonicalizeAgentUrl(rawAgentUrl);
+    if (!canonical) {
+      return 'Invalid agent URL format. Please provide a full URL like https://your-agent.example.com';
+    }
+    // Bind to a typed local so closures (ensureAgentInProfile) see `string`
+    // rather than `string | null` — TS can't carry the narrowing across the
+    // function boundary.
+    const agentUrl: string = canonical;
+
+    // Hostname ownership check (#4499 MVP). Mirrors the REST POST
+    // /api/me/agents gate. See `agent-hostname-verification.ts` for the
+    // full rationale — short version: the agent hostname must be on
+    // (or a subdomain of) an `organization_domains` row with
+    // `verified = true` for the registering org. Orgs without verified
+    // domains hard-reject (`no_verified_domains`) — `email_domain` is
+    // not consulted, since it can be written from an unverified WorkOS
+    // domain via the brand-claim issue flow.
+    const hostnameVerification = await verifyAgentHostname(saveOrgId, agentUrl);
+    if (isHostnameOwnershipRejection(hostnameVerification)) {
+      return buildUnverifiedHostnameMessage(hostnameVerification);
+    }
+
     const agentName = input.agent_name as string | undefined;
     const authToken = input.auth_token as string | undefined;
     if (authToken !== undefined) {
@@ -5670,6 +5872,23 @@ export function createMemberToolHandlers(
     }
     const rawAuthType = input.auth_type as string | undefined;
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
+
+    // For Basic auth, accept either raw "user:password" or the base64-encoded
+    // form and normalize to base64 for storage. Aligns with CLI
+    // (--auth user:pass), SDK (createTestClient with {username, password}),
+    // and the dashboard's connect form — all of which accept raw input.
+    // Without normalization, save_agent was the ecosystem outlier requiring
+    // users to pre-encode; a raw value silently landed in the DB and got
+    // re-classified as Bearer at request time.
+    let storedAuthToken = authToken;
+    if (authToken && authType === 'basic') {
+      const normalized = normalizeBasicAuthForStorage(authToken);
+      if (!normalized.ok) {
+        return `**Error:** Basic auth_token must be "user:password" (or the base64-encoded form of it). The value you provided doesn't decode to a user:password pair.`;
+      }
+      storedAuthToken = normalized.stored;
+    }
+
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
 
     // Caller-declared agent type. Required at the schema level — the JSON-RPC
@@ -5737,7 +5956,9 @@ export function createMemberToolHandlers(
         }
 
         const agents = profile.agents || [];
-        const existing = agents.find((a: any) => a.url === agentUrl);
+        // Match in canonical form so a legacy non-canonical row gets
+        // updated in place rather than duplicated (issue #3573).
+        const existing = agents.find((a: any) => (canonicalizeAgentUrl(a.url) ?? a.url) === agentUrl);
         if (!existing) {
           // Default to members_only, not public. The public directory
           // requires an API-access tier (Professional+); defaulting to
@@ -5808,8 +6029,8 @@ export function createMemberToolHandlers(
         if (agentName) {
           await agentContextDb.update(context.id, { agent_name: agentName, protocol });
         }
-        if (authToken) {
-          await agentContextDb.saveAuthToken(context.id, authToken, authType);
+        if (storedAuthToken) {
+          await agentContextDb.saveAuthToken(context.id, storedAuthToken, authType);
         }
         if (clientCredentials) {
           await agentContextDb.saveOAuthClientCredentials(context.id, clientCredentials);
@@ -5843,13 +6064,13 @@ export function createMemberToolHandlers(
         created_by: memberContext.workos_user.workos_user_id,
       });
 
-      if (authToken) {
-        await agentContextDb.saveAuthToken(context.id, authToken, authType);
+      if (storedAuthToken) {
+        await agentContextDb.saveAuthToken(context.id, storedAuthToken, authType);
       }
       if (clientCredentials) {
         await agentContextDb.saveOAuthClientCredentials(context.id, clientCredentials);
       }
-      if (authToken || clientCredentials) {
+      if (storedAuthToken || clientCredentials) {
         context = await agentContextDb.getById(context.id);
       }
 
@@ -5947,7 +6168,11 @@ export function createMemberToolHandlers(
       return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `evaluate_agent_quality` without an organization.';
     }
 
-    const agentUrl = input.agent_url as string;
+    const rawAgentUrl = input.agent_url as string;
+    // Canonicalize so this matches whatever shape save_agent / POST
+    // /api/me/agents wrote (issue #3573). A fallback to the raw URL keeps
+    // legacy non-canonical rows reachable for removal.
+    const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
     type ProfileRemoveStatus =
       | { ok: true; removedFromProfile: boolean; agentName: string | null }
@@ -5964,12 +6189,14 @@ export function createMemberToolHandlers(
         const profile = await memberDb.getProfileByOrgId(removeOrgId);
         if (!profile) return { ok: true, removedFromProfile: false, agentName: null };
         const agents = profile.agents || [];
-        const existing = agents.find((a: any) => a.url === agentUrl);
+        // Match existing rows in canonical form so a legacy non-canonical
+        // entry is reachable for removal (issue #3573).
+        const existing = agents.find((a: any) => (canonicalizeAgentUrl(a.url) ?? a.url) === agentUrl);
         if (!existing) return { ok: true, removedFromProfile: false, agentName: null };
         if ((existing as any).visibility === 'public') {
           return { ok: false, reason: 'public' };
         }
-        const next = agents.filter((a: any) => a.url !== agentUrl);
+        const next = agents.filter((a: any) => (canonicalizeAgentUrl(a.url) ?? a.url) !== agentUrl);
         await memberDb.updateProfile(profile.id, { agents: next });
         return { ok: true, removedFromProfile: true, agentName: (existing as any).name ?? null };
       } catch (err) {

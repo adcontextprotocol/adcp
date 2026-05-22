@@ -1,0 +1,209 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.3/media-buy/package-request.json",
+  "title": "Package Request",
+  "description": "Package configuration for media buy creation",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-beta.3/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "description": "Product ID for this package",
+      "x-entity": "product"
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "v1 path. Array of format IDs that will be used for this package - must be supported by the product. If omitted (and `capability_ids` is also omitted), defaults to all formats supported by the product.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.3/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "capability_ids": {
+      "type": "array",
+      "description": "v2 path. Array of `capability_id` values, each referencing one of the product's `format_options[i].capability_id` entries. Lets a buyer reading the V2 mental model (`Product.format_options[]`) author a `create_media_buy` call without translating back through `v1_format_ref[]` to construct `format_ids[]`. Symmetric with the V2 path exposed on `creative-manifest` (which carries a single `capability_id`) — a package may activate multiple `format_options` entries, so the package-side shape is an array.\n\n**Resolution rules (normative).**\n- **Both `capability_ids` and `format_ids` present.** `capability_ids` wins; the seller routes by `capability_ids` and MUST NOT validate `format_ids` for consistency with the resolved declarations. The `format_ids` value is a v1-compat hint for intermediaries on the wire path; the resolving seller ignores it.\n- **`capability_ids` only.** Seller looks up each entry against the product's `format_options[]` and uses the matching declaration (and that declaration's `v1_format_ref[]` when projecting to v1-wire surfaces). This is the V2-native authoring path.\n- **`format_ids` only.** Existing v1 behavior; unchanged.\n- **Neither.** Default — all formats supported by the product are active.\n\n**Failure modes (normative).** Sellers MUST reject with `UNSUPPORTED_FEATURE` (with `field` pointing at the failing package and entry, e.g. `packages[0].capability_ids[1]`) when:\n- Any entry references a `capability_id` not present in the target product's `format_options[]`, OR\n- The target product carries `format_ids` but no `format_options[]` (v1-only product — there is no closed set to resolve against), OR\n- The target product carries `format_options[]` but none of the entries publish a `capability_id` (the V2 path is unauthorable against that product). Sellers SHOULD set `error.details.reason` to `capability_ids_not_published` in this case so buyers can distinguish it from an outright mismatch and fall back to `format_ids[]`.\n\n**Seller obligation.** For buyers to use the V2 path against a product, the seller MUST publish a `capability_id` on each `format_options[]` entry it expects buyers to select (the field is currently optional on `product-format-declaration.json` and only structurally required when multiple entries share a `format_kind`). Sellers SHOULD assign a stable `capability_id` to every entry to keep the V2 authoring path usable.\n\n**Dual emission.** V2-native buyer SDKs targeting a heterogeneous seller population (mix of v1- and v2-capable sellers) SHOULD emit `format_ids` alongside `capability_ids` so v1-only sellers — which ignore the unknown `capability_ids` field per `additionalProperties: true` — still receive an explicit format set rather than silently defaulting to all formats supported by the product.\n\nBackward-compatible: additive optional field. v1-only sellers ignore it.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "budget": {
+      "type": "number",
+      "description": "Budget allocation for this package in the media buy's currency",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "/schemas/3.1.0-beta.3/enums/pacing.json"
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "ID of the selected pricing option from the product's pricing_options array",
+      "x-entity": "product_pricing_option"
+    },
+    "bid_price": {
+      "type": "number",
+      "description": "Bid price for auction-based pricing options. This is the exact bid/price to honor unless selected pricing_option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "minimum": 0
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Impression goal for this package",
+      "minimum": 0
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "not": {
+        "const": "asap"
+      },
+      "description": "Flight start date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's start_time. Must fall within the media buy's date range."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Flight end date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's end_time. Must fall within the media buy's date range."
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",
+      "default": false
+    },
+    "catalogs": {
+      "type": "array",
+      "description": "Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., one product catalog, one store catalog). This constraint is enforced at the application level — sellers MUST reject requests containing multiple catalogs of the same type with a validation_error. Makes the package catalog-driven: one budget envelope, platform optimizes across items.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.3/core/catalog.json"
+      }
+    },
+    "optimization_goals": {
+      "type": "array",
+      "description": "Optimization targets for this package. The seller optimizes delivery toward these goals in priority order. Common pattern: event goals (purchase, install) as primary targets at priority 1; metric goals (clicks, views) as secondary proxy signals at priority 2+.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.3/core/optimization-goal.json"
+      },
+      "minItems": 1
+    },
+    "targeting_overlay": {
+      "$ref": "/schemas/3.1.0-beta.3/core/targeting.json"
+    },
+    "measurement_terms": {
+      "$ref": "/schemas/3.1.0-beta.3/core/measurement-terms.json",
+      "description": "Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with TERMS_REJECTED, or adjusts. When absent, product's measurement_terms apply."
+    },
+    "performance_standards": {
+      "type": "array",
+      "description": "Buyer's proposed performance standards for this package. Overrides product defaults. Seller accepts, rejects with TERMS_REJECTED, or adjusts. When absent, product's performance_standards apply.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.3/core/performance-standard.json"
+      },
+      "minItems": 1
+    },
+    "committed_metrics": {
+      "type": "array",
+      "description": "Buyer's proposed reporting contract for this package — the metrics the buyer wants the seller to commit to populating in delivery reports. Same negotiation pattern as `measurement_terms` and `performance_standards`: seller accepts (echoes on confirmed package with `committed_at` stamped), rejects with `TERMS_REJECTED` (with explanation of which entries were unworkable), or normalizes (echoes a different but compatible list — buyer can accept by retrying with the normalized terms). When absent, the seller decides what to commit based on the product's `available_metrics` and the buyer's `required_metrics` filter on `get_products`. Each entry uses an explicit `scope` discriminator (`standard` or `vendor`) and identifies the metric — request-side entries do NOT carry `committed_at`; that timestamp is stamped by the seller on accept. Constraints on what the buyer MAY propose: each `scope: standard` entry's `metric_id` MUST be in the product's `available_metrics`, and each `scope: vendor` entry's `(vendor, metric_id)` MUST appear in the product's `vendor_metrics` — sellers SHOULD reject with `TERMS_REJECTED` and reference the offending entry when the proposal exceeds product capability.",
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "scope"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "standard",
+                "description": "Standard metric from the closed `available-metric.json` enum."
+              },
+              "metric_id": {
+                "$ref": "/schemas/3.1.0-beta.3/enums/available-metric.json",
+                "description": "Identifier for the standard metric. MUST be present in the product's `reporting_capabilities.available_metrics`."
+              },
+              "qualifier": {
+                "type": "object",
+                "description": "Disambiguator — same shape as on the response-side `committed_metrics`. Required when the buyer wants to pin a specific measurement path: `viewability_standard` for MRC vs GroupM viewability; `completion_source` for seller- vs vendor-attested `completion_rate`; `attribution_methodology` for how attribution was computed (deterministic_purchase, probabilistic, panel_based, modeled); `attribution_window` for the time window over which outcomes are attributed. See response-side description for full semantics.",
+                "properties": {
+                  "viewability_standard": {
+                    "$ref": "/schemas/3.1.0-beta.3/enums/viewability-standard.json"
+                  },
+                  "completion_source": {
+                    "$ref": "/schemas/3.1.0-beta.3/enums/completion-source.json"
+                  },
+                  "attribution_methodology": {
+                    "$ref": "/schemas/3.1.0-beta.3/enums/attribution-methodology.json"
+                  },
+                  "attribution_window": {
+                    "$ref": "/schemas/3.1.0-beta.3/core/duration.json"
+                  },
+                  "lift_dimension": {
+                    "$ref": "/schemas/3.1.0-beta.3/enums/lift-dimension.json"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": ["scope", "metric_id"],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "vendor",
+                "description": "Vendor-defined metric, identified by the tuple `(vendor, metric_id)`."
+              },
+              "vendor": {
+                "$ref": "/schemas/3.1.0-beta.3/core/brand-ref.json",
+                "description": "Vendor that defines and computes this metric. The vendor's `brand.json` `agents[type='measurement']` is the canonical anchor."
+              },
+              "metric_id": {
+                "$ref": "/schemas/3.1.0-beta.3/core/vendor-metric-id.json",
+                "description": "Identifier for the metric within the vendor's vocabulary. MUST be present in the product's `reporting_capabilities.vendor_metrics` for the same vendor."
+              }
+            },
+            "required": ["scope", "vendor", "metric_id"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "creative_assignments": {
+      "type": "array",
+      "description": "Assign existing library creatives to this package with optional weights and placement targeting",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.3/core/creative-assignment.json"
+      },
+      "minItems": 1
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Upload new creative assets and assign to this package (creatives will be added to library). Use creative_assignments instead for existing library creatives.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.3/core/creative-asset.json"
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Agency estimate or authorization number for this package. Overrides the media buy-level estimate number when different packages correspond to different agency estimates (e.g., different stations or flights within the same buy)."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "product_id",
+    "budget",
+    "pricing_option_id"
+  ],
+  "additionalProperties": true
+}

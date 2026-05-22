@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
   "banner": {
-    "content": "🎉 AdCP 3.0 is now GA — [see what's new](/docs/reference/whats-new-in-v3)",
+    "content": "🚀 AdCP 3.1 beta is now available — [see what's new](/docs/reference/whats-new-in-3-1)",
     "dismissible": true
   },
   "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
@@ -85,6 +85,7 @@
                     "expanded": false,
                     "pages": [
                       "docs/reference/whats-new-in-v3",
+                      "docs/reference/whats-new-in-3-1",
                       "docs/reference/migration/v3-readiness",
                       "docs/reference/migration/index",
                       "docs/reference/migration/prerelease-upgrades",
@@ -97,13 +98,18 @@
                       "docs/reference/migration/brand-identity",
                       "docs/reference/migration/signals",
                       "docs/reference/migration/audiences",
-                      "docs/reference/migration/attribution"
+                      "docs/reference/migration/attribution",
+                      "docs/reference/migration/media-buy-status"
                     ]
                   },
                   "docs/protocol/architecture",
+                  "docs/protocol/design-principles",
+                  "docs/protocol/capabilities-explorer",
+                  "docs/spec-guidelines",
                   "docs/protocol/required-tasks",
                   "docs/protocol/calling-an-agent",
                   "docs/protocol/format-references",
+                  "docs/protocol/snapshot-and-log",
                   {
                     "group": "Concepts",
                     "expanded": false,
@@ -196,6 +202,7 @@
                       "docs/building/verification/storyboards-vs-scenarios",
                       "docs/building/verification/how-grading-works",
                       "docs/building/verification/validate-your-agent",
+                      "docs/building/verification/validate-with-mock-fixtures",
                       "docs/building/verification/addie-socket-mode",
                       "docs/building/verification/grading",
                       "docs/building/verification/get-test-ready",
@@ -254,7 +261,8 @@
                           "docs/media-buy/conversion-tracking/index",
                           "docs/media-buy/advanced-topics/pricing-models",
                           "docs/media-buy/advanced-topics/targeting",
-                          "docs/media-buy/advanced-topics/accountability"
+                          "docs/media-buy/advanced-topics/accountability",
+                          "docs/media-buy/advanced-topics/billing-authority"
                         ]
                       },
                       {
@@ -363,9 +371,11 @@
                     "expanded": false,
                     "pages": [
                       "docs/governance/overview",
+                      "docs/governance/rfc-process",
                       "docs/governance/embedded-human-judgment",
                       "docs/governance/policy-registry",
                       "docs/governance/policy-registry-sync",
+                      "docs/governance/policy-attribution",
                       "docs/governance/annex-iii-obligations",
                       "docs/governance/working-group-charter",
                       {
@@ -490,10 +500,13 @@
                       "docs/brand-protocol/for-rights-holders",
                       "docs/brand-protocol/brand-json",
                       "docs/brand-protocol/building-a-brand-agent",
+                      "docs/brand-protocol/ui-guidance",
                       {
                         "group": "Tasks",
                         "pages": [
                           "docs/brand-protocol/tasks/get_brand_identity",
+                          "docs/brand-protocol/tasks/verify_brand_claim",
+                          "docs/brand-protocol/tasks/verify_brand_claims",
                           "docs/brand-protocol/tasks/get_rights",
                           "docs/brand-protocol/tasks/acquire_rights",
                           "docs/brand-protocol/tasks/update_rights"
@@ -532,6 +545,7 @@
                       "docs/trusted-match/specification",
                       "docs/trusted-match/router-architecture",
                       "docs/trusted-match/privacy-architecture",
+                      "docs/trusted-match/data-protection-roles",
                       "docs/trusted-match/migration-from-axe",
                       {
                         "group": "Surface Guides",
@@ -548,8 +562,17 @@
                 ]
               },
               "docs/faq",
-              "docs/ai-disclosure",
-              "docs/trust",
+              {
+                "group": "Trust & Security",
+                "expanded": false,
+                "pages": [
+                  "docs/trust",
+                  "docs/verification/overview",
+                  "docs/ai-disclosure",
+                  "docs/reference/privacy-considerations",
+                  "docs/reference/known-limitations"
+                ]
+              },
               {
                 "group": "Reference",
                 "expanded": false,
@@ -571,19 +594,19 @@
                   "docs/reference/roadmap",
                   "docs/reference/versions",
                   "docs/reference/versioning",
+                  "docs/reference/specification-lifecycle",
                   "docs/reference/url-canonicalization",
                   "docs/reference/verifying-protocol-tarballs",
                   "docs/reference/test-vectors/index",
                   "docs/reference/experimental-status",
                   "docs/reference/schema-extensions",
                   "docs/reference/v2-sunset",
-                  "docs/reference/known-limitations",
-                  "docs/reference/privacy-considerations",
                   "docs/reference/release-notes",
                   "docs/reference/changelog",
                   "docs/reference/implementor-faq",
                   "docs/reference/glossary",
-                  "docs/community/working-group"
+                  "docs/community/working-group",
+                  "docs/community/joining-slack"
                 ]
               },
               {
@@ -598,6 +621,7 @@
                     "pages": [
                       "docs/learning/foundations/a1-agentic-advertising",
                       "docs/learning/foundations/a2-protocol-architecture",
+                      "docs/learning/foundations/a2b-testing-your-first-agent",
                       "docs/learning/foundations/a3-ecosystem-governance"
                     ]
                   },
@@ -659,6 +683,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/reference/whats-new-in-v3",
+                  "docs/reference/whats-new-in-3-1",
                   "docs/reference/migration/v3-readiness",
                   "docs/reference/migration/index",
                   "docs/reference/migration/prerelease-upgrades",
@@ -769,6 +794,7 @@
                   "docs/building/verification/compliance-catalog",
                   "docs/building/verification/storyboards-vs-scenarios",
                   "docs/building/verification/validate-your-agent",
+                  "docs/building/verification/validate-with-mock-fixtures",
                   "docs/building/verification/grading",
                   "docs/building/verification/get-test-ready",
                   "docs/building/verification/aao-verified"
@@ -825,7 +851,8 @@
                       "docs/media-buy/conversion-tracking/index",
                       "docs/media-buy/advanced-topics/pricing-models",
                       "docs/media-buy/advanced-topics/targeting",
-                      "docs/media-buy/advanced-topics/accountability"
+                      "docs/media-buy/advanced-topics/accountability",
+                      "docs/media-buy/advanced-topics/billing-authority"
                     ]
                   },
                   {
@@ -934,9 +961,11 @@
                 "expanded": false,
                 "pages": [
                   "docs/governance/overview",
+                  "docs/governance/rfc-process",
                   "docs/governance/embedded-human-judgment",
                   "docs/governance/policy-registry",
                   "docs/governance/policy-registry-sync",
+                  "docs/governance/policy-attribution",
                   "docs/governance/working-group-charter",
                   {
                     "group": "Property Governance",
@@ -1053,10 +1082,13 @@
                   "docs/brand-protocol/for-rights-holders",
                   "docs/brand-protocol/brand-json",
                   "docs/brand-protocol/building-a-brand-agent",
+                  "docs/brand-protocol/ui-guidance",
                   {
                     "group": "Tasks",
                     "pages": [
                       "docs/brand-protocol/tasks/get_brand_identity",
+                      "docs/brand-protocol/tasks/verify_brand_claim",
+                      "docs/brand-protocol/tasks/verify_brand_claims",
                       "docs/brand-protocol/tasks/get_rights",
                       "docs/brand-protocol/tasks/acquire_rights",
                       "docs/brand-protocol/tasks/update_rights"
@@ -1091,15 +1123,25 @@
               "docs/aao/connect-addie",
               "docs/aao/users",
               "docs/aao/org-admins",
-              "docs/aao/addie-tools"
+              "docs/aao/addie-tools",
+              "docs/aao/directory-api"
             ]
           },
           {
             "group": "FAQ",
             "pages": [
-              "docs/faq",
+              "docs/faq"
+            ]
+          },
+          {
+            "group": "Trust & Security",
+            "expanded": false,
+            "pages": [
+              "docs/trust",
+              "docs/verification/overview",
               "docs/ai-disclosure",
-              "docs/trust"
+              "docs/reference/privacy-considerations",
+              "docs/reference/known-limitations"
             ]
           },
           {
@@ -1125,15 +1167,14 @@
               "docs/reference/versioning",
               "docs/reference/url-canonicalization",
               "docs/reference/verifying-protocol-tarballs",
-              "docs/reference/known-limitations",
-              "docs/reference/privacy-considerations",
               "docs/reference/experimental-status",
               "docs/reference/schema-extensions",
               "docs/reference/release-notes",
               "docs/reference/changelog",
               "docs/reference/implementor-faq",
               "docs/reference/glossary",
-              "docs/community/working-group"
+              "docs/community/working-group",
+              "docs/community/joining-slack"
             ]
           },
           {
@@ -1148,6 +1189,7 @@
                 "pages": [
                   "docs/learning/foundations/a1-agentic-advertising",
                   "docs/learning/foundations/a2-protocol-architecture",
+                  "docs/learning/foundations/a2b-testing-your-first-agent",
                   "docs/learning/foundations/a3-ecosystem-governance"
                 ]
               },

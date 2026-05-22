@@ -41,6 +41,11 @@
       "schema": "/schemas/core/assets/daast-tracker-asset.json",
       "typical_use": "Decomposed DAAST event trackers on audio formats"
     },
+    "pixel_tracker": {
+      "description": "Generic renderer-fired HTTP tracker URL — image pixel or JavaScript include — bound to a measurement event (impression, viewability, click, custom). Applies to any web-rendered canonical (image, html5, image_carousel, responsive_creative, sponsored_placement, native_*, plus non-VAST events on video_hosted/audio_hosted). Discriminated union shape with event/method enums formalized in IAB OpenRTB Native 1.2 (`imptrackers[]` / `jstracker` / `eventtrackers[]` / `link.clicktrackers[]`). Scope is RENDERER-FIRED trackers only — conversion pixels that fire on the advertiser's site post-click belong on `sync_event_sources` / `event_log`. Formats with format-specific tracker structures use `vast_tracker` (VAST `<TrackingEvents>`) or `daast_tracker` (DAAST parity) instead.",
+      "schema": "/schemas/core/assets/pixel-tracker-asset.json",
+      "typical_use": "Measurement-vendor trackers on web-rendered formats — impression/viewability/click pixels the seller's renderer fires at serve time. The bare `url` asset with `url_type: \"tracker_pixel\"` remains valid for VAST/DAAST impression URLs and for v1-compat manifests; new canonical-formats authoring SHOULD use `pixel_tracker` because it carries event + method semantics that bare URLs lose."
+    },
     "text": {
       "description": "Plain text content asset",
       "schema": "/schemas/core/assets/text-asset.json",
@@ -76,6 +81,11 @@
       "schema": "/schemas/core/assets/javascript-asset.json",
       "typical_use": "Third-party tags, custom interaction logic, analytics"
     },
+    "zip": {
+      "description": "Bundled creative archive (zip) containing index.html and supporting assets",
+      "schema": "/schemas/core/assets/zip-asset.json",
+      "typical_use": "HTML5 banner bundles with index.html + CSS + JS + images, MRAID-compatible interactive ads"
+    },
     "brief": {
       "description": "Campaign-level creative context (creative brief)",
       "schema": "/schemas/core/assets/brief-asset.json",
@@ -85,6 +95,11 @@
       "description": "Typed data feed (products, stores, jobs, etc.)",
       "schema": "/schemas/core/assets/catalog-asset.json",
       "typical_use": "Product catalogs, store locators, job feeds for dynamic creatives"
+    },
+    "card": {
+      "description": "Single card in a multi-card creative — image_carousel `cards` slot element",
+      "schema": "/schemas/core/assets/card-asset.json",
+      "typical_use": "Carousel cards (Meta-style mixed-media, Pinterest collections), Snap collection cards. Each card carries its own media (image OR video), optional headline, optional landing_page_url. The carousel format's `cards` slot is an array of card-asset values."
     }
   },
   "architecture": {
@@ -108,7 +123,7 @@
       ]
     },
     "nested_discriminator_pattern": {
-      "description": "Asset schemas with internal variants (e.g., VAST and DAAST support both URL-delivery and inline XML) use a two-level discriminator rather than splitting each variant into a separate top-level asset_type. The outer discriminator (`asset_type` on the composite map) selects the asset schema; an inner `oneOf` + `discriminator` inside that schema selects the variant. Future asset types with internal variants should follow this pattern \u2014 do not introduce sibling entries like `vast_url` and `vast_inline` at the registry level.",
+      "description": "Asset schemas with internal variants (e.g., VAST and DAAST support both URL-delivery and inline XML) use a two-level discriminator rather than splitting each variant into a separate top-level asset_type. The outer discriminator (`asset_type` on the composite map) selects the asset schema; an inner `oneOf` + `discriminator` inside that schema selects the variant. Future asset types with internal variants should follow this pattern — do not introduce sibling entries like `vast_url` and `vast_inline` at the registry level.",
       "examples": [
         "vast-asset.json: outer asset_type='vast', inner delivery_type='url'|'inline'",
         "daast-asset.json: outer asset_type='daast', inner delivery_type='url'|'inline'"
@@ -117,7 +132,7 @@
   },
   "usage_notes": {
     "format_specs": "Format specifications define what asset_ids are required (e.g., 'hero_image', 'logo'). Each defines its asset type and constraints (dimensions, file size, etc.).",
-    "creative_manifests": "Creative manifests provide actual asset content, keyed by asset_id from the format. Each asset value carries an `asset_type` discriminator (one of the registry keys) so validators can select the matching asset schema and report errors against only that branch. The format specification also defines what asset_type each asset_id should have \u2014 payload and format should agree.",
+    "creative_manifests": "Creative manifests provide actual asset content, keyed by asset_id from the format. Each asset value carries an `asset_type` discriminator (one of the registry keys) so validators can select the matching asset schema and report errors against only that branch. The format specification also defines what asset_type each asset_id should have — payload and format should agree.",
     "example_flow": "Format says 'hero_image' must be type 'image' with width 1200, height 627. Manifest provides hero_image: {url: '...', width: 1200, height: 627}. The format spec tells us it's an image type."
   }
 }

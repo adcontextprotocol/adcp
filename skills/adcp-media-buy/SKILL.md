@@ -16,7 +16,7 @@ The Media Buy Protocol provides 11 standardized tasks for managing advertising c
 | Task | Purpose | Response Time |
 |------|---------|---------------|
 | `get_products` | Discover inventory using natural language | ~60s |
-| `list_authorized_properties` | See publisher properties | ~1s |
+| `get_adcp_capabilities` | See agent capabilities, supported protocols, and publisher properties | ~1s |
 | `list_creative_formats` | View creative specifications | ~1s |
 | `create_media_buy` | Create campaigns | Minutes-Days |
 | `update_media_buy` | Modify campaigns | Minutes-Days |
@@ -34,6 +34,30 @@ The Media Buy Protocol provides 11 standardized tasks for managing advertising c
 3. **Create campaign**: `create_media_buy` with selected products and budget
 4. **Upload creatives**: `sync_creatives` to add creative assets
 5. **Monitor delivery**: `get_media_buy_delivery` to track performance
+
+---
+
+## Canonical formats (AdCP 3.1+)
+
+Products carry `format_options[]`: a list of `ProductFormatDeclaration` entries describing the creative shapes the product accepts. Each declaration carries:
+
+- `format_kind` — canonical type (image / html5 / display_tag / video_hosted / video_vast / audio_hosted / audio_daast / image_carousel / responsive_creative / sponsored_placement / agent_placement / custom)
+- `params` — per-canonical parameters narrowing the format (dimensions, durations, codecs, char limits, CTA enums)
+- Optional `capability_id` — disambiguates when a product carries multiple declarations of the same `format_kind`, and lets a placement reference a publisher-catalog declaration by ID rather than inlining
+- Optional `v1_format_ref: [{agent_url, id}]` — array linking this v2 declaration to one or more v1 named formats (for dual emission during the v1↔v2 migration). Multi-size declarations should carry one ref per size
+- Optional `seller_preference: "preferred" | "accepted" | "discouraged"` — soft routing hint when a multi-format product has several options at the same price
+
+**Multi-format products.** A flexible publisher slot is one product with N format_options entries — e.g., NYTimes Homepage accepts image OR html5 OR display_tag at multiple sizes via three format_options, one per type. Buyer picks the creative type they ship.
+
+**Size flexibility.** Display canonicals (image / html5 / display_tag) declare size in one of three modes: fixed (`width`+`height`), multi-size (`sizes: [{w,h}]` — mirrors OpenRTB `banner.format[]`), or responsive (`min_width`/`max_width`/`min_height`/`max_height`). Modes are mutually exclusive.
+
+**Discovering publisher catalogs.** `list_creative_formats(publisher_domain="meta.com")` returns the publisher's authoritative format list by reading `<publisher_domain>/.well-known/adagents.json` `formats[]`, falling back to the AAO community mirror at `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json`, then to agent-derived from own products. Response carries `source: "publisher" | "aao_mirror" | "agent_derived"` so buyers know which tier produced the list.
+
+**Conversion tracking lives elsewhere.** Pixel-firing, conversion events, and attribution belong on `sync_event_sources` / `event_log` (campaign-scoped), NOT on creative format declarations. Sending `pixel_id` in `platform_extensions` on a format is a category error.
+
+**Error codes specific to canonical formats.** `FORMAT_PROJECTION_FAILED`, `FORMAT_DECLARATION_DIVERGENT`, `FORMAT_DECLARATION_V1_AMBIGUOUS`, `FORMAT_CAPABILITY_UNRESOLVED`, `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE` — all non-fatal advisories surfaced via the response `errors[]` array. See `static/schemas/source/enums/error-code.json` for full recovery semantics.
+
+See `docs/creative/canonical-formats.mdx` for the full vocabulary, narrowing rules, and worked examples.
 
 ---
 
@@ -67,22 +91,6 @@ Discover advertising products using natural language briefs.
 **Response contains:**
 - `products`: Array of matching products with `product_id`, `name`, `description`, `pricing_options`
 - Each product includes `format_ids` (supported creative formats) and `targeting` (available targeting)
-
----
-
-### list_authorized_properties
-
-Get the list of publisher properties this agent can sell.
-
-**Request:**
-```json
-{}
-```
-
-No parameters required.
-
-**Response contains:**
-- `publisher_domains`: Array of domain strings the agent is authorized to sell
 
 ---
 
@@ -123,9 +131,7 @@ Create an advertising campaign from selected products.
       "budget": 10000
     }
   ],
-  "start_time": {
-    "type": "asap"
-  },
+  "start_time": "asap",
   "end_time": "2024-03-31T23:59:59Z"
 }
 ```
@@ -139,7 +145,7 @@ Create an advertising campaign from selected products.
   - `bid_price`: Required for auction pricing
   - `targeting_overlay`: Additional targeting constraints
   - `creative_ids` or `creatives`: Creative assignments
-- `start_time` (object, required): `{ "type": "asap" }` or `{ "type": "scheduled", "datetime": "..." }`
+- `start_time` (string, required): `"asap"` or an ISO 8601 datetime (e.g., `"2024-06-01T00:00:00Z"`)
 - `end_time` (string, required): ISO 8601 datetime
 
 **Response contains:**

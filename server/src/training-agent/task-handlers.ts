@@ -229,7 +229,13 @@ import {
   handleSyncEventSources,
   handleLogEvent,
   handleProvidePerformanceFeedback,
+  findEventSourceInSession,
 } from './catalog-event-handlers.js';
+import {
+  AUDIENCE_TOOLS,
+  handleSyncAudiences,
+  findAudienceInSession,
+} from './audience-handlers.js';
 import {
   COMPLY_TEST_CONTROLLER_TOOL,
   handleComplyTestController,
@@ -1314,20 +1320,19 @@ const TOOLS = [
       type: 'object' as const,
       properties: {
         signal_agent_segment_id: { type: 'string' },
-        signal_id: { type: 'string', description: 'Alias for signal_agent_segment_id (SDK compatibility)' },
+        idempotency_key: { type: 'string', description: 'UUID v4 for retry safety' },
         action: { type: 'string', enum: ['activate', 'deactivate'] },
         destinations: { type: 'array', items: { type: 'object' } },
-        destination: { type: 'object', description: 'Single destination (SDK compatibility)' },
-        options: { type: 'object', description: 'Activation options (SDK compatibility)' },
         pricing_option_id: { type: 'string' },
         governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from check_governance. Persisted on the activation.' },
         account: ACCOUNT_REF_SCHEMA,
       },
-      required: [] as const,
+      required: ['signal_agent_segment_id', 'destinations', 'idempotency_key'] as const,
     },
   },
   ...ACCOUNT_TOOLS,
   ...CATALOG_EVENT_TOOLS,
+  ...AUDIENCE_TOOLS,
   ...GOVERNANCE_TOOLS,
   ...PROPERTY_TOOLS,
   ...COLLECTION_LIST_TOOLS,
@@ -1825,9 +1830,135 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     }
   }
 
+  // Validate event-kind optimization_goals reference a previously-registered
+  // event_source_id. Silent acceptance of phantom ids is a façade — the
+  // seller cannot optimize against a source it doesn't know about. The
+  // performance_buy_flow storyboard asserts this rejection with an error
+  // .field set to the offending JSONPath-lite path.
+  const sessionKeyForEventSources = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  if (Array.isArray(req.packages)) {
+    for (let i = 0; i < req.packages.length; i++) {
+      const pkg = req.packages[i] as { optimization_goals?: unknown };
+      const goals = pkg?.optimization_goals;
+      if (!Array.isArray(goals)) continue;
+      for (let j = 0; j < goals.length; j++) {
+        const goal = goals[j] as { kind?: string; event_sources?: unknown };
+        if (goal?.kind !== 'event') continue;
+        const eventSources = goal.event_sources;
+        if (!Array.isArray(eventSources)) continue;
+        for (let k = 0; k < eventSources.length; k++) {
+          const entry = eventSources[k] as { event_source_id?: string };
+          const id = entry?.event_source_id;
+          if (typeof id !== 'string' || id.length === 0) continue;
+          if (!findEventSourceInSession(sessionKeyForEventSources, id)) {
+            return {
+              errors: [{
+                code: 'INVALID_REQUEST',
+                message: `event_source_id "${id}" was not registered via sync_event_sources`,
+                field: `packages[${i}].optimization_goals[${j}].event_sources[${k}].event_source_id`,
+              }] as TaskError[],
+            };
+          }
+        }
+      }
+    }
+  }
+
+  // Validate targeting_overlay.audience_include / audience_exclude entries
+  // reference an audience_id previously registered via sync_audiences. Silent
+  // acceptance of phantom ids is a façade — the seller cannot target an
+  // audience it doesn't know about. Sibling contract to the event_source_id
+  // check above. error.field is a literal JSONPath-lite per core/error.json
+  // so audience_buy_flow can assert equality, not regex.
+  const sessionKeyForAudiences = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  if (Array.isArray(req.packages)) {
+    for (let i = 0; i < req.packages.length; i++) {
+      const pkg = req.packages[i] as { targeting_overlay?: unknown; targeting?: unknown };
+      const overlay = (pkg?.targeting_overlay ?? pkg?.targeting) as
+        | { audience_include?: unknown; audience_exclude?: unknown }
+        | undefined;
+      if (!overlay || typeof overlay !== 'object') continue;
+      for (const field of ['audience_include', 'audience_exclude'] as const) {
+        const list = overlay[field];
+        if (!Array.isArray(list)) continue;
+        for (let k = 0; k < list.length; k++) {
+          const id = list[k];
+          if (typeof id !== 'string' || id.length === 0) continue;
+          if (!findAudienceInSession(sessionKeyForAudiences, id)) {
+            return {
+              errors: [{
+                code: 'INVALID_REQUEST',
+                message: `audience_id "${id}" was not registered via sync_audiences`,
+                field: `packages[${i}].targeting_overlay.${field}[${k}]`,
+              }] as TaskError[],
+            };
+          }
+        }
+      }
+    }
+  }
+
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
   overlaySeededProducts(session, productMap);
+
+  // Validate metric-kind optimization_goals against the package's product
+  // metric_optimization declarations. reach goals must declare a reach_unit
+  // present in supported_reach_units; completed_views goals must declare a
+  // view_duration_seconds present in supported_view_durations. Silent
+  // acceptance is a façade (the seller would either coerce the unit or run
+  // without one) — the reach_buy_flow / completed_views_buy_flow storyboards
+  // assert this rejection with error.field set to the offending JSONPath-lite
+  // path. Mirrors the event_source / audience_id checks above.
+  if (Array.isArray(req.packages)) {
+    for (let i = 0; i < req.packages.length; i++) {
+      const pkg = req.packages[i] as { product_id?: string; optimization_goals?: unknown };
+      const goals = pkg?.optimization_goals;
+      if (!Array.isArray(goals)) continue;
+      const product = pkg.product_id ? productMap.get(pkg.product_id) : undefined;
+      for (let j = 0; j < goals.length; j++) {
+        const goal = goals[j] as {
+          kind?: string;
+          metric?: string;
+          reach_unit?: string;
+          view_duration_seconds?: number;
+        };
+        if (goal?.kind !== 'metric') continue;
+        if (goal.metric === 'reach' && typeof goal.reach_unit === 'string' && goal.reach_unit.length > 0) {
+          const supported = product?.metric_optimization?.supported_reach_units;
+          // Reach is honest-bounded by reach-unit.json enum; reject when the
+          // product declares a narrower set OR when no declaration exists and
+          // the value isn't a spec-defined reach unit.
+          const allowed: readonly string[] = supported ?? ['individuals', 'households', 'devices', 'accounts', 'cookies', 'custom'];
+          if (!allowed.includes(goal.reach_unit)) {
+            return {
+              errors: [{
+                code: 'INVALID_REQUEST',
+                message: `reach_unit "${goal.reach_unit}" not in product's supported_reach_units`,
+                field: `packages[${i}].optimization_goals[${j}].reach_unit`,
+              }] as TaskError[],
+            };
+          }
+        }
+        if (goal.metric === 'completed_views' && typeof goal.view_duration_seconds === 'number') {
+          const supported = product?.metric_optimization?.supported_view_durations;
+          // No spec-bound enum on view_duration; fall back to industry-default
+          // durations when the product omits the declaration (matches the
+          // product-factory default 2/6/15/30).
+          const allowed: readonly number[] = supported ?? [2, 6, 15, 30];
+          if (!allowed.includes(goal.view_duration_seconds)) {
+            return {
+              errors: [{
+                code: 'INVALID_REQUEST',
+                message: `view_duration_seconds ${goal.view_duration_seconds} not in product's supported_view_durations`,
+                field: `packages[${i}].optimization_goals[${j}].view_duration_seconds`,
+              }] as TaskError[],
+            };
+          }
+        }
+      }
+    }
+  }
 
   // Proposal-based creation: expand proposal allocations into packages
   if (req.proposal_id && !req.packages?.length) {
@@ -2059,6 +2190,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
     const resolvedStart = startTime === 'asap' ? new Date().toISOString() : startTime;
 
+    const rawGoals = (pkg as unknown as { optimization_goals?: unknown }).optimization_goals;
+    const optimizationGoals = Array.isArray(rawGoals)
+      ? (rawGoals as unknown[]).filter((g): g is Record<string, unknown> => typeof g === 'object' && g !== null)
+      : undefined;
+
     createdPackages.push({
       packageId: `pkg-${i}`,
       productId: pkg.product_id,
@@ -2072,6 +2208,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       formatIds: pkg.format_ids,
       creativeAssignments: [],
       targeting: targetingResult.targeting,
+      ...(optimizationGoals && optimizationGoals.length > 0 && { optimizationGoals }),
     });
   }
 
@@ -2113,9 +2250,14 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
   const status = deriveStatus(mediaBuy);
+  // Emit `media_buy_status` (canonical 3.1 field per #4895). Body-level
+  // `status` carrying MediaBuyStatus is deprecated and removed in 3.2
+  // (#4906) — emitting it here would collide with envelope `status`
+  // (TaskStatus), which the envelope-fold (#4878) now requires to validate
+  // against the per-task response schema.
   return {
     media_buy_id: mediaBuyId,
-    status,
+    media_buy_status: status,
     revision: mediaBuy.revision,
     confirmed_at: mediaBuy.confirmedAt,
     valid_actions: validActionsForStatus(status),
@@ -2198,6 +2340,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
     media_buys: pageBuys.map(mb => {
       const status = deriveStatus(mb);
       const totalBudget = mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
+      const openImpairments = mb.impairments ?? [];
       const buy = {
         media_buy_id: mb.mediaBuyId,
         status,
@@ -2210,6 +2353,18 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
         total_budget: totalBudget,
         start_time: mb.startTime,
         end_time: mb.endTime,
+        health: (openImpairments.length > 0 ? 'impaired' : 'ok') as 'ok' | 'impaired',
+        impairments: openImpairments.map(i => ({
+          impairment_id: i.impairmentId,
+          resource_type: i.resourceType,
+          resource_id: i.resourceId,
+          package_ids: i.packageIds,
+          transition: i.transition,
+          reason_code: i.reasonCode,
+          observed_at: i.observedAt,
+          ...(i.reason !== undefined && { reason: i.reason }),
+          ...(i.remediation !== undefined && { remediation: i.remediation }),
+        })),
         ...(mb.creativeDeadline && { creative_deadline: mb.creativeDeadline }),
         ...(mb.governanceContext && { governance_context: mb.governanceContext }),
         ...(mb.canceledAt && {
@@ -2404,6 +2559,81 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     totalSpend += simDelivery.reportedSpend.amount;
   }
 
+  // Conversion-attributed totals. Only surface when simulate_delivery
+  // injected conversion data — sellers that don't optimize toward events
+  // (pure brand/audience sellers) omit these fields entirely.
+  const totalConversions = simDelivery?.conversions ?? 0;
+  const roundedSpend = Math.round(totalSpend * 100) / 100;
+  const conversionTotals = totalConversions > 0 && roundedSpend > 0
+    ? {
+      conversions: totalConversions,
+      cost_per_acquisition: Math.round((roundedSpend / totalConversions) * 100) / 100,
+    }
+    : totalConversions > 0
+      ? { conversions: totalConversions }
+      : {};
+
+  // Click-attributed total. cost_per_click is defined as spend / clicks in
+  // delivery-metrics.json. Always surface when both are positive — this
+  // doesn't need a goal-kind gate because every buy emits clicks (the
+  // default totals.clicks already does) and the derived metric is the
+  // discriminating field for click-optimized buys (clicks_buy_flow).
+  const clickTotals = totalClicks > 0 && roundedSpend > 0
+    ? { cost_per_click: Math.round((roundedSpend / totalClicks) * 100) / 100 }
+    : {};
+
+  // Metric-goal-gated emission. Reach + frequency are surfaced when at
+  // least one package was created with a reach goal; completed_views +
+  // completion_rate when at least one package was created with a
+  // completed_views goal. Without the gate the seller would blanket-emit
+  // these fields on every buy (a brand-only seller would emit completion
+  // metrics on a click-only buy — confuses buyers and runs against the
+  // discriminating-field contract in the storyboards).
+  //
+  // Placeholder ratios: reach = floor(impressions / 3) with frequency = 3
+  // (industry-typical for mixed-channel campaigns); completed_views =
+  // floor(impressions * 0.7) (70% completion rate is a common video
+  // platform default). Documented as placeholders because the
+  // get_media_buy_delivery contract requires field_present, not specific
+  // numeric values, on the gating scenarios.
+  const hasReachGoal = mb.packages.some(pkg =>
+    pkg.optimizationGoals?.some(g => g?.kind === 'metric' && g?.metric === 'reach'),
+  );
+  const hasCompletedViewsGoal = mb.packages.some(pkg =>
+    pkg.optimizationGoals?.some(g => g?.kind === 'metric' && g?.metric === 'completed_views'),
+  );
+  // Resolve reach_unit from the first reach goal that declared one — buyers
+  // bind reach measurement to the unit (households vs cookies are not
+  // comparable). When goals omitted the unit, fall back to the existing
+  // channel-derived unit (totalReachUnit) computed above.
+  let derivedReachUnit: string | undefined = totalReachUnit !== 'mixed' ? totalReachUnit : undefined;
+  if (!derivedReachUnit && hasReachGoal) {
+    for (const pkg of mb.packages) {
+      const goal = pkg.optimizationGoals?.find(g => g?.kind === 'metric' && g?.metric === 'reach' && typeof g?.reach_unit === 'string');
+      if (goal && typeof goal.reach_unit === 'string') {
+        derivedReachUnit = goal.reach_unit;
+        break;
+      }
+    }
+  }
+
+  const goalDerivedReach = hasReachGoal && totalImpressions > 0 && totalReach === 0
+    ? {
+      reach: Math.max(1, Math.floor(totalImpressions / 3)),
+      ...(derivedReachUnit && { reach_unit: derivedReachUnit }),
+      frequency: +(totalImpressions / Math.max(1, Math.floor(totalImpressions / 3))).toFixed(1),
+    }
+    : {};
+  const goalDerivedCompletedViews = hasCompletedViewsGoal && totalImpressions > 0 && totalCompletedViews === 0
+    ? (() => {
+      const completed = Math.floor(totalImpressions * 0.7);
+      return {
+        completed_views: completed,
+        completion_rate: +(completed / totalImpressions).toFixed(3),
+      };
+    })()
+    : {};
+
   return {
     reporting_period: {
       start: mb.startTime,
@@ -2415,18 +2645,22 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       status: deriveStatus(mb),
       totals: {
         impressions: totalImpressions,
-        spend: Math.round(totalSpend * 100) / 100,
+        spend: roundedSpend,
         clicks: totalClicks,
+        ...clickTotals,
         ...(totalCompletedViews > 0 ? {
           views: totalViews,
           completed_views: totalCompletedViews,
           completion_rate: +(totalCompletedViews / totalImpressions).toFixed(3),
         } : {}),
+        ...goalDerivedCompletedViews,
         ...(totalReach > 0 && totalReachUnit && totalReachUnit !== 'mixed' ? {
           reach: totalReach,
           reach_unit: totalReachUnit,
           frequency: +(totalImpressions / totalReach).toFixed(1),
         } : {}),
+        ...goalDerivedReach,
+        ...conversionTotals,
       },
       by_package: byPackage,
     }],
@@ -2735,9 +2969,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     mb.updatedAt = now;
 
     const status = deriveStatus(mb);
+    // `media_buy_status` is the canonical 3.1 body field (#4895); legacy
+    // body `status: MediaBuyStatus` removed in 3.2 (#4906).
     return {
       media_buy_id: mb.mediaBuyId,
-      status,
+      media_buy_status: status,
       revision: mb.revision,
       valid_actions: validActionsForStatus(status),
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
@@ -2862,6 +3098,25 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'creative_assignments_updated', summary: `Package ${pkgId} creative assignments replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
     }
+
+    // Recompute open impairments: a creative-impairment is cleared when no
+    // package on the buy still references it. Recovery via assignment swap
+    // is the canonical clearing path (the buyer replaces a rejected creative
+    // with an approved sibling), so the same-buy union of all package
+    // creativeAssignments is the authoritative dependency set.
+    if (mb.impairments?.length) {
+      const stillReferenced = new Set<string>();
+      for (const pkg of mb.packages) {
+        for (const cid of pkg.creativeAssignments) stillReferenced.add(cid);
+      }
+      const before = mb.impairments.length;
+      mb.impairments = mb.impairments.filter(
+        i => i.resourceType !== 'creative' || stillReferenced.has(i.resourceId),
+      );
+      if (mb.impairments.length !== before) {
+        mb.updatedAt = now;
+      }
+    }
   }
 
   // Add new packages
@@ -2911,9 +3166,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   mb.updatedAt = now;
 
   const status = deriveStatus(mb);
+  // `media_buy_status` is the canonical 3.1 body field (#4895); legacy
+  // body `status: MediaBuyStatus` removed in 3.2 (#4906).
   const result = {
     media_buy_id: mb.mediaBuyId,
-    status,
+    media_buy_status: status,
     revision: mb.revision,
     valid_actions: validActionsForStatus(status),
     ...(mb.canceledAt && {
@@ -3003,6 +3260,15 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
         supported_hashed_identifiers: ['hashed_email'],
         supported_action_sources: ['website', 'app'],
       },
+      // Seller-level rollup of metric-optimization capabilities. Honest
+      // union across catalog products (product-factory.ts assigns these
+      // by channel mix). Gate scenarios — clicks_buy_flow / reach_buy_flow
+      // / completed_views_buy_flow — read this field and grade
+      // not_applicable when missing. adcp-client#1818 will auto-derive
+      // from product-level metric_optimization.supported_metrics once
+      // the SDK ships the seller-level field; until then this is a
+      // manual declaration.
+      supported_optimization_metrics: ['clicks', 'views', 'completed_views', 'engagements', 'reach'],
       execution: {
         targeting: {
           geo_countries: true,
@@ -3230,24 +3496,10 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
 }
 
 export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as ActivateSignalRequest & ToolArgs & {
-    signal_id?: string;
-    destination?: { type?: string; platform?: string; account?: string; account_id?: string; agent_url?: string };
-  };
-  // Accept both signal_agent_segment_id (protocol) and signal_id (SDK test tool)
-  const segmentId = req.signal_agent_segment_id || req.signal_id || '';
+  const req = args as unknown as ActivateSignalRequest & ToolArgs;
+  const segmentId = req.signal_agent_segment_id || '';
   const action = req.action || 'activate';
-  // Accept both destinations (array, protocol) and destination (singular, SDK test tool)
-  let destinations: Destination[] = req.destinations || [];
-  if (!destinations.length && req.destination) {
-    const dest = req.destination;
-    // SDK sends platform + account_id; normalize to protocol format
-    if (dest.agent_url) {
-      destinations = [{ type: 'agent', agent_url: dest.agent_url, account: dest.account || dest.account_id }];
-    } else {
-      destinations = [{ type: 'platform', platform: dest.platform || '', account: dest.account || dest.account_id }];
-    }
-  }
+  const destinations: Destination[] = req.destinations || [];
   const pricingOptionId = req.pricing_option_id;
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
@@ -4076,6 +4328,7 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   sync_governance: handleSyncGovernance,
   sync_catalogs: handleSyncCatalogs,
   sync_event_sources: handleSyncEventSources,
+  sync_audiences: handleSyncAudiences,
   log_event: handleLogEvent,
   provide_performance_feedback: handleProvidePerformanceFeedback,
   sync_plans: handleSyncPlans,
@@ -4301,10 +4554,16 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         };
       }
       if (outcome.kind === 'replay') {
-        // Cached inner response; envelope fields (`replayed`, `context`) are
-        // produced fresh on every response per security.mdx. Replayed
-        // responses bypass the handler entirely — no mutations, no flush.
+        // Cached inner response; envelope fields (`replayed`, `context`,
+        // `status`) are produced fresh on every response per security.mdx.
+        // Replayed responses bypass the handler entirely — no mutations, no
+        // flush. We stamp envelope `status: 'completed'` defensively in case
+        // the cached inner doesn't carry one (older cache entries written
+        // before the envelope-fold landed, or handlers that emitted bodies
+        // without status). Per #4878, every per-task response schema now
+        // requires envelope `status`.
         const body: Record<string, unknown> = { ...(outcome.response as Record<string, unknown>), replayed: true };
+        if (body.status === undefined) body.status = 'completed';
         if (callerContext !== undefined) body.context = callerContext;
         toolResult = {
           content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -4336,7 +4595,12 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // post-dispatch gate below never inserts this into the replay cache.
         const firstError = resultObj.errors![0];
         if (ERROR_IN_BODY_TOOLS.has(name)) {
-          const body: Record<string, unknown> = { errors: resultObj.errors };
+          // Envelope `status` is required per protocol-envelope.json (#4876)
+          // and now folded into every per-task response schema (#4896). The
+          // task itself completed successfully and produced a response that
+          // happens to describe application-level errors — `completed` is
+          // the correct TaskStatus regardless of body shape.
+          const body: Record<string, unknown> = { status: 'completed', errors: resultObj.errors };
           if (callerContext !== undefined) body.context = callerContext;
           toolResult = {
             content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -4365,10 +4629,15 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // schemas are not passthrough and reject the extra key).
         const inner = result as Record<string, unknown>;
         cachableResponse = inner;
-        const envelope: Record<string, unknown> = {};
-        if (name === 'create_media_buy') envelope.replayed = false;
-        if (callerContext !== undefined) envelope.context = callerContext;
-        const response = { ...inner, ...envelope };
+        // Envelope `status` is required per protocol-envelope.json (#4876) and
+        // now folded into every per-task response schema (#4896). Default to
+        // `completed` on synchronous success — handlers that emit a different
+        // TaskStatus (e.g., `submitted` for async-task envelopes) set it on
+        // `inner` and we honor that value.
+        const response: Record<string, unknown> = { ...inner };
+        if (response.status === undefined) response.status = 'completed';
+        if (name === 'create_media_buy') response.replayed = false;
+        if (callerContext !== undefined) response.context = callerContext;
         // `structuredContent` is authoritative on success so raw-probe
         // callers (storyboard runner's rawMcpProbe) can validate envelope
         // fields. `content` stays empty: the SDK unwrapper folds text

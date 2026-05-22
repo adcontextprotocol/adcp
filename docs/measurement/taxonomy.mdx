@@ -21,7 +21,9 @@ The three layers — **metrics**, **verification**, and **attribution** — answ
 
 ### 1. Metrics — "did it happen?"
 
-Delivery facts: impressions, completes, quartiles, clicks, spend, reach, frequency.
+Delivery facts: impressions, completes, quartiles, clicks, spend, reach, frequency. Reach and frequency carry an explicit `reach_window` declaration (`cumulative` / `period` / `rolling`) so buyers know whether values can be summed across rows.
+
+For the full capability → commitment → optimization → delivery picture across both standard and vendor metric flows, see [Metric lifecycle](/docs/media-buy/media-buys/optimization-reporting#metric-lifecycle). The same `(vendor, metric_id)` key flows through every surface for vendor-attested metrics — discovery, optimization capability, reporting capability, package commitment, optimization goal, performance standard, and delivery value.
 
 The seller is the source of truth — the seller served the ad and counts the event. Industry counting conventions (MRC, IAB) define what qualifies as an impression, what completes a video view, how to deduplicate. AdCP standardizes how sellers expose these counts; it does not redefine what they count.
 
@@ -55,7 +57,7 @@ The vendor's full *dashboard* lives at the vendor (Moat, IAS, DV, HUMAN, etc.), 
 Verification metrics evolve at different rates of standardization, and the protocol gives them different levels of structural support based on where they sit in that gradient:
 
 - **Tier 1 — graduated.** Industry-published, MRC-or-equivalent accredited; multiple competing standards may exist. Gets a dedicated entry in the closed `available-metric.json` enum, a dedicated structured block in `delivery-metrics.json`, and (when standards are mutually incompatible) a `qualifier` slot on `committed_metrics` for disambiguation. **Viewability** is the canonical Tier 1 metric today — MRC and GroupM define materially different thresholds and require schema-enforced disambiguation via `qualifier.viewability_standard`.
-- **Tier 2 — vendor-extended.** Vendor-defined metrics with no industry-published standard. Sellers declare support via `reporting_capabilities.vendor_metrics`; values flow via `vendor_metric_values`; identity is anchored on the vendor's `BrandRef` and the catalog lives on the vendor's measurement-agent capabilities. **Attention scores, panel demographics, emissions per impression** sit here today.
+- **Tier 2 — vendor-extended.** Vendor-defined metrics with no industry-published standard. Sellers declare reporting support via `reporting_capabilities.vendor_metrics` and optimization support via `vendor_metric_optimization.supported_metrics`; values flow via `vendor_metric_values`; goals bind to the vendor via `optimization_goals` with `kind: "vendor_metric"`; identity is anchored on the vendor's `BrandRef` and the catalog lives on the vendor's measurement-agent capabilities. **Attention scores, panel-based brand lift, panel demographics, emissions per impression** sit here today.
 - **Tier 3 — asserted.** Free-form claims on products without structured vendor identity or standards-bearer attestation. Predates the BrandRef pattern and is being incrementally restructured upward.
 
 A metric graduates from Tier 2 to Tier 1 when an industry standards body publishes a measurement specification — anchored on standards-body publication, not vendor-count thresholds or informal convergence. The patterns that support Tier 1 (`qualifier` slot, dedicated delivery scalar, performance-standard binding) are reusable templates: viewability is the first instance, not a viewability-specific bespoke shape.

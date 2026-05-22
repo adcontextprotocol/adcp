@@ -278,6 +278,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/get-media-buy-delivery-response.json',
     {
+      status: 'completed',
       reporting_period: {
         start: '2024-06-01T00:00:00Z',
         end: '2024-06-15T23:59:59Z'
@@ -315,6 +316,7 @@ async function runTests() {
   log('Get AdCP Capabilities Response (adcp.idempotency oneOf discriminator):', 'info');
 
   const capabilitiesBase = {
+    status: 'completed',
     adcp: { major_versions: [3] },
     supported_protocols: ['media_buy'],
     account: { supported_billing: ['operator', 'agent'] }
@@ -471,20 +473,21 @@ async function runTests() {
     {
       list: propertyListBody,
       auth_token: 'secret_token_at_least_32_chars_long__________',
-      replayed: true
+      replayed: true,
+      status: 'completed'
     },
     'create_property_list accepts replayed on envelope'
   );
 
   await testSchemaValidation(
     '/schemas/property/update-property-list-response.json',
-    { list: propertyListBody, replayed: false },
+    { list: propertyListBody, replayed: false, status: 'completed' },
     'update_property_list accepts replayed on envelope'
   );
 
   await testSchemaValidation(
     '/schemas/property/delete-property-list-response.json',
-    { deleted: true, list_id: 'pl_01HW7J8K9P0Q1R2S3T4U5V6W7X', replayed: true },
+    { deleted: true, list_id: 'pl_01HW7J8K9P0Q1R2S3T4U5V6W7X', replayed: true, status: 'completed' },
     'delete_property_list accepts replayed on envelope'
   );
 
@@ -493,26 +496,27 @@ async function runTests() {
     {
       list: collectionListBody,
       auth_token: 'secret_token_at_least_32_chars_long__________',
-      replayed: true
+      replayed: true,
+      status: 'completed'
     },
     'create_collection_list accepts replayed on envelope'
   );
 
   await testSchemaValidation(
     '/schemas/collection/update-collection-list-response.json',
-    { list: collectionListBody, replayed: false },
+    { list: collectionListBody, replayed: false, status: 'completed' },
     'update_collection_list accepts replayed on envelope'
   );
 
   await testSchemaValidation(
     '/schemas/collection/delete-collection-list-response.json',
-    { deleted: true, list_id: 'cl_01HW7J8K9P0Q1R2S3T4U5V6W7X', replayed: true },
+    { deleted: true, list_id: 'cl_01HW7J8K9P0Q1R2S3T4U5V6W7X', replayed: true, status: 'completed' },
     'delete_collection_list accepts replayed on envelope'
   );
 
   await testSchemaValidation(
     '/schemas/governance/report-plan-outcome-response.json',
-    { outcome_id: 'outcome_abc123', status: 'accepted', replayed: true },
+    { outcome_id: 'outcome_abc123', outcome_state: 'accepted', replayed: true },
     'report_plan_outcome accepts replayed on envelope'
   );
 
@@ -520,7 +524,8 @@ async function runTests() {
     '/schemas/governance/sync-plans-response.json',
     {
       plans: [{ plan_id: 'plan_abc123', status: 'active', version: 1 }],
-      replayed: false
+      replayed: false,
+      status: 'completed'
     },
     'sync_plans accepts replayed on envelope'
   );
@@ -622,6 +627,89 @@ async function runTests() {
 
   log('');
 
+  // Product `publisher_properties` rejects `publisher_domains[]` compact form (#4508):
+  //
+  // What's being exercised: the rejection comes from the `allOf` clause in
+  // `core/product.json` (`{ not: { required: ['publisher_domains'] } }`),
+  // NOT from the selector schema's XOR. The selector itself accepts both
+  // singular and plural; product-side wraps the selector to forbid plural.
+  // If a future regression removes that `allOf+not` clause, these tests
+  // turn red — the compact form would silently pass through products.
+  log('product.publisher_properties rejects compact `publisher_domains[]` form (#4508):', 'info');
+  await testSchemaValidation(
+    '/schemas/core/product.json',
+    {
+      product_id: 'singular_ok',
+      name: 'Singular OK',
+      description: 'Test',
+      publisher_properties: [
+        { publisher_domain: 'example.com', selection_type: 'all' }
+      ],
+      format_ids: [{ agent_url: 'https://creative.example.com', id: 'video_30s' }],
+      delivery_type: 'guaranteed',
+      delivery_measurement: { provider: 'Test' },
+      pricing_options: [{ pricing_option_id: 'cpm', pricing_model: 'cpm', rate: 10, currency: 'USD', is_fixed: true }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions'],
+        date_range_support: 'date_range'
+      }
+    },
+    'Product with singular publisher_domain accepted'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      product_id: 'compact_rejected',
+      name: 'Compact rejected',
+      description: 'Test',
+      publisher_properties: [
+        { publisher_domains: ['example.com', 'other.example'], selection_type: 'by_tag', property_tags: ['t'] }
+      ],
+      format_ids: [{ agent_url: 'https://creative.example.com', id: 'video_30s' }],
+      delivery_type: 'guaranteed',
+      delivery_measurement: { provider: 'Test' },
+      pricing_options: [{ pricing_option_id: 'cpm', pricing_model: 'cpm', rate: 10, currency: 'USD', is_fixed: true }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions'],
+        date_range_support: 'date_range'
+      }
+    },
+    'Product with compact publisher_domains[] form rejected'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      product_id: 'compact_rejected_all',
+      name: 'Compact rejected on all',
+      description: 'Test',
+      publisher_properties: [
+        { publisher_domains: ['example.com'], selection_type: 'all' }
+      ],
+      format_ids: [{ agent_url: 'https://creative.example.com', id: 'video_30s' }],
+      delivery_type: 'guaranteed',
+      delivery_measurement: { provider: 'Test' },
+      pricing_options: [{ pricing_option_id: 'cpm', pricing_model: 'cpm', rate: 10, currency: 'USD', is_fixed: true }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions'],
+        date_range_support: 'date_range'
+      }
+    },
+    'Product with compact form on `all` selector rejected'
+  );
+  log('');
+
   // Test 6: Bundled schemas (no $ref resolution needed)
   // Only test against latest/ — versioned dirs in dist/ may be from a prior release
   // and are not updated on every source change.
@@ -679,6 +767,8 @@ async function runTests() {
       await testBundledSchemaValidation(
         path.join(bundledPath, 'media-buy/get-products-response.json'),
         {
+          status: 'completed',
+          cache_scope: 'public',
           products: [
             {
               product_id: 'test_product',

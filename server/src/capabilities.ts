@@ -369,7 +369,10 @@ export class CapabilityDiscovery {
         agent_uri: url,
         protocol: "mcp",
         ...agentConfigAuthFields(auth),
-      }], { userAgent: AAO_UA_DISCOVERY });
+      // TODO(adcp-client#1799): maxResponseBytes is currently dormant on
+      // getAgentInfo/listTools — the SDK doesn't yet wrap that path in
+      // withResponseSizeLimit. Re-verify when upstream lands.
+      }], { userAgent: AAO_UA_DISCOVERY, transport: { maxResponseBytes: 4 * 1024 * 1024 } });
       const client = multiClient.agent("discovery");
 
       const agentInfo = await client.getAgentInfo();
@@ -407,7 +410,8 @@ export class CapabilityDiscovery {
         agent_uri: url,
         protocol: "a2a",
         ...agentConfigAuthFields(auth),
-      }], { userAgent: AAO_UA_DISCOVERY });
+      // TODO(adcp-client#1799): cap dormant on A2AClient.fromCardUrl until upstream wraps it.
+      }], { userAgent: AAO_UA_DISCOVERY, transport: { maxResponseBytes: 4 * 1024 * 1024 } });
       const client = multiClient.agent("discovery");
 
       const agentInfo = await client.getAgentInfo();
@@ -532,7 +536,7 @@ export class CapabilityDiscovery {
         agent_uri: agent.url,
         protocol: agent.protocol || "mcp",
         ...agentConfigAuthFields(auth),
-      }], { userAgent: AAO_UA_DISCOVERY });
+      }], { userAgent: AAO_UA_DISCOVERY, transport: { maxResponseBytes: 1024 * 1024 } });
       const client = multiClient.agent("discovery");
 
       // 10s timeout matches the existing tools/list discovery budget.

@@ -12,6 +12,7 @@ import { createLogger } from '../logger.js';
 import { CompanyTypeValue } from '../config/company-types.js';
 import type { Agreement } from '../types.js';
 import { OrgKnowledgeDatabase } from './org-knowledge-db.js';
+import { upsertWorkosDomain } from './organization-domains-db.js';
 
 // Re-export Agreement for backwards compatibility
 export type { Agreement };
@@ -1679,7 +1680,15 @@ export class OrganizationDatabase {
 
   /**
    * Ensure a local organizations row exists for a WorkOS organization.
-   * Fetches the org from WorkOS (for its name) and creates the local row if missing.
+   * Fetches the org from WorkOS (for its name + domains) and creates the
+   * local row if missing, mirroring the WorkOS domain list into
+   * `organization_domains` and seeding `email_domain` from the primary.
+   *
+   * Without the domain mirror, this path would produce orphans invisible to
+   * findPayingOrgForDomain / findClaimableProspectOrgForDomain /
+   * resolveOrgByDomain — same class of bug as the pre-#4132 admin/domains.ts
+   * INSERT paths and Migration 481's Spotify case.
+   *
    * Safe to call on every login — cheap no-op when the row already exists.
    */
   async ensureOrganizationExists(
@@ -1690,16 +1699,49 @@ export class OrganizationDatabase {
     if (existing) return existing;
 
     const workosOrg = await workos.organizations.getOrganization(workos_organization_id);
+    const name = workosOrg.name.slice(0, 255);
+    // Only mirror DNS-verified WorkOS domains. Pending/failed domains carry no
+    // proof-of-control — a user can submit `gmail.com` as a pending domain on
+    // their own org and we'd otherwise plant a `gmail.com` row in
+    // organization_domains, stealing it from any later legit owner via
+    // upsertWorkosDomain's WorkOS-authoritative conflict semantics. The
+    // webhook-driven syncOrganizationDomains path will pick the pending
+    // domain up once WorkOS verifies it.
+    const verifiedDomains = (workosOrg.domains ?? []).filter((d) => d.state === 'verified');
+    const primaryDomain = verifiedDomains[0]?.domain;
+
     try {
-      const name = workosOrg.name.slice(0, 255);
       const created = await this.createOrganization({
         workos_organization_id,
         name,
+        email_domain: primaryDomain,
       });
       logger.info(
-        { orgId: workos_organization_id, name },
+        { orgId: workos_organization_id, name, primaryDomain, verifiedDomainCount: verifiedDomains.length },
         'Lazily created local organization row from WorkOS'
       );
+
+      // Mirror each verified WorkOS domain into organization_domains so the
+      // auto-link and claim lookups can find this org by domain. A mirror
+      // failure here re-opens the orphan class this PR fixes, so emit
+      // `logger.error` (auto-routed to #admin-errors) rather than .warn —
+      // we want immediate visibility, not a silent re-orphan.
+      for (const d of verifiedDomains) {
+        try {
+          await upsertWorkosDomain({
+            orgId: workos_organization_id,
+            domain: d.domain,
+            verified: true,
+            isPrimary: d.domain === primaryDomain,
+          });
+        } catch (domainErr) {
+          logger.error(
+            { err: domainErr, orgId: workos_organization_id, domain: d.domain },
+            'Failed to mirror WorkOS domain during ensureOrganizationExists — org may be partially orphaned'
+          );
+        }
+      }
+
       return created;
     } catch (error) {
       // Race: another request may have created it between our check and insert.

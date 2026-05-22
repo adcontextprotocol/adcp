@@ -1,0 +1,36 @@
+{
+  "test_id": "fetch-contract-neg-01-digest-mismatch",
+  "category": "digest_verification",
+  "description": "Body bytes parse as a valid JSON Schema, but sha256(body) != declared digest. Either a substitution attack or producer error \u2014 either way, MUST hard-fail.",
+  "setup": {
+    "request_uri": "https://creative.adcontextprotocol.org/extensions/mismatched",
+    "declared_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "response_status": 200,
+    "response_body": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "/schemas/test/format-shape-x.json",
+      "title": "Test Format Shape X",
+      "type": "object",
+      "properties": {
+        "headline": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "image_url": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "headline"
+      ]
+    },
+    "response_body_sha256": "sha256:<some_other_real_hash>",
+    "response_headers": {
+      "Content-Type": "application/json"
+    }
+  },
+  "expected_outcome": "fail:digest_mismatch",
+  "expected_error_code": "FORMAT_PROJECTION_FAILED",
+  "rationale": "Digest mismatch is a hard fail. SDK MUST treat the format declaration as unresolvable and MUST NOT validate manifests against the mismatched body. MUST NOT cache the mismatch as a negative result keyed on uri alone (defeats CDN-flap recovery)."
+}

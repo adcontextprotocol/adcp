@@ -5,7 +5,7 @@ description: "build_creative generates, transforms, or retrieves ad creative man
 ---
 
 
-Transform, generate, or retrieve a creative manifest for a specific format. Supports three modes:
+Transform, generate, or retrieve a creative manifest for a specific format. To render a visual preview of the resulting manifest, pass it to [`preview_creative`](/docs/creative/task-reference/preview_creative). Supports three modes:
 
 1. **Generation**: Create a manifest from a brief or seed assets (`message` + `creative_manifest`)
 2. **Transformation**: Adapt an existing manifest to a different format (`creative_manifest` + `target_format_id`)
@@ -181,6 +181,7 @@ Retrieve a creative from the agent's library and resolve it into a manifest with
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "completed",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.example.com",
@@ -347,6 +348,7 @@ When the creative agent charges and `account` is provided, the response includes
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "completed",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.example.com",
@@ -374,6 +376,7 @@ The `pricing_option_id` corresponds to one of the options from [`list_creatives`
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "completed",
   "creative_manifest": { "..." : "..." },
   "pricing_option_id": "po_video_cpm",
   "vendor_cost": 0,
@@ -390,6 +393,7 @@ When the request uses `target_format_id`, the response contains a single creativ
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "completed",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -457,6 +461,7 @@ If the manifest includes a brief asset with `compliance` requirements that the c
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "failed",
   "errors": [
     {
       "code": "COMPLIANCE_UNSATISFIED",
@@ -626,6 +631,7 @@ Generate a creative from scratch using a generative format:
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "completed",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -694,6 +700,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "completed",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -765,6 +772,7 @@ Adapt a creative for mobile with specific design changes:
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "completed",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -1028,6 +1036,7 @@ Build a creative and get preview renders in the same response:
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "completed",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -1128,6 +1137,7 @@ The catalog may contain hundreds of products, but `item_limit: 4` ensures only 4
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "completed",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",

@@ -611,6 +611,12 @@ State transition scenarios (`force_*`) are idempotent: forcing a status that mat
 
 Simulation scenarios (`simulate_*`) are NOT idempotent — `simulate_delivery` adds to existing totals, while `simulate_budget_spend` replaces the current spend level.
 
+## Test surfaces
+
+Where a seller's state-of-record lives determines how the storyboard test loop closes. State-local sellers (typically SSPs, creative agents) write to the seller's DB via the `seed_*` scenarios above; the seller's read handlers consume the same store, and the seed→read loop closes naturally. Upstream-proxy sellers (DSPs proxying to platforms, retail-media networks reading retailer catalogs, signals brokers) cannot close the loop that way because their read handlers reach a system the seller does not control; the TypeScript SDK ships a `TestControllerBridge` that runs the real adapter call first, then merges seeded fixtures into the response. Either path earns the wire-format pass that `AAO Verified (Spec)` attests. Neither path is what `(Sandbox)` attests — that's a separate axis covering whether the seller's production stack honors `account.sandbox: true` without real-world side effects.
+
+The cross-page framing for both implementations of this pattern, the SDK's `_bridge` advisory marker, and the runtime-signals disambiguation table all live in the Conformance Specification → [Test surfaces and the storyboard loop](/docs/building/verification/conformance#test-surfaces-and-the-storyboard-loop).
+
 ## Compliance testing modes
 
 The presence of `comply_test_controller` in a seller's tool list determines which mode a compliance tester uses:

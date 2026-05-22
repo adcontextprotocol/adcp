@@ -1793,19 +1793,25 @@ export async function getPendingInvoices(customerId: string): Promise<PendingInv
       limit: 10,
     });
 
-    // Fetch draft invoices (not yet sent)
+    // Fetch draft invoices (not yet sent). Drop empties — abandoned
+    // subscription attempts can leave $0 / no-line-item drafts on the
+    // customer that aren't actionable but light up "invoice pending" UX
+    // and confuse users (see issue #4564).
     const draftInvoices = await stripe.invoices.list({
       customer: customerId,
       status: 'draft',
       limit: 10,
     });
+    const actionableDrafts = draftInvoices.data.filter(
+      (inv) => (inv.amount_due ?? 0) > 0 && (inv.lines?.data?.length ?? 0) > 0,
+    );
 
     // Combine and deduplicate invoices by ID (in case an invoice appears in both lists)
     const invoiceMap = new Map<string, typeof openInvoices.data[0]>();
     for (const inv of openInvoices.data) {
       invoiceMap.set(inv.id, inv);
     }
-    for (const inv of draftInvoices.data) {
+    for (const inv of actionableDrafts) {
       if (!invoiceMap.has(inv.id)) {
         invoiceMap.set(inv.id, inv);
       }
@@ -2030,13 +2036,14 @@ export async function getAllOpenInvoices(limit: number = 50): Promise<OpenInvoic
     }
   }
 
-  // Also get draft invoices (not yet sent)
+  // Also get draft invoices (not yet sent). Skip empties — see issue #4564.
   if (invoiceMap.size < limit) {
     for await (const invoice of stripe.invoices.list({
       status: 'draft',
       limit: 100,
       expand: ['data.customer'],
     })) {
+      if ((invoice.amount_due ?? 0) <= 0 || (invoice.lines?.data?.length ?? 0) === 0) continue;
       const productName = await resolveInvoiceProductName(invoice, productCache);
       const parsed = parseStripeInvoice(invoice, productName);
       if (parsed && !invoiceMap.has(parsed.id)) {

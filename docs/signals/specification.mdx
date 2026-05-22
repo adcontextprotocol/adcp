@@ -40,6 +40,7 @@ Signal agents MUST declare Signals Protocol support via `get_adcp_capabilities`:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
+  "status": "completed",
   "adcp": {
     "major_versions": [2],
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
@@ -69,8 +70,8 @@ Every signal request involves two roles:
 - Signal agents MUST NOT expose private signals across accounts
 
 **Marketplace Signal Agents** — license signal data to multiple accounts:
-- Signal agents MUST support public catalog access without account registration
-- Signal agents SHOULD support personalized catalogs for registered accounts
+- Signal agents MUST support public wholesale feed access without account registration
+- Signal agents SHOULD support account-personalized wholesale feed views for registered accounts
 
 ### Identifiers
 

@@ -23,6 +23,25 @@ import { createLogger } from "../logger.js";
 
 const logger = createLogger("csrf");
 
+/**
+ * Training-agent per-tenant MCP routes mounted at root via host-based
+ * dispatch in `http.ts` — shape `/<tenant>/mcp[-strict[-required|-forbidden]]`.
+ * These routes authenticate via bearer token or RFC 9421 signature, never
+ * cookies, so CSRF doesn't apply.
+ *
+ * Pattern-matched (not hostname-matched) because `req.hostname` is derived
+ * from `X-Forwarded-Host` under `trust proxy`, and Fly's edge forwards that
+ * header as-received from the client — a hostname-based bypass would let an
+ * attacker spoof `X-Forwarded-Host: test-agent.adcontextprotocol.org` on a
+ * cookie-authenticated route and skip CSRF. Path shape isn't client-spoofable.
+ *
+ * Tenant segment is `[a-z][a-z0-9-]+` to match the live TENANT_IDS
+ * (`signals`, `sales`, `governance`, `creative`, `creative-builder`, `brand`)
+ * without requiring this file to import or stay in sync with that list.
+ * Suffix variants enumerate the four production route shapes.
+ */
+const PER_TENANT_MCP_PATH = /^\/[a-z][a-z0-9-]+\/mcp(-strict(-required|-forbidden)?)?$/;
+
 const CSRF_COOKIE = "csrf-token";
 const CSRF_HEADER = "x-csrf-token";
 const TOKEN_BYTES = 32;
@@ -57,7 +76,8 @@ const EXEMPT_EXACT = [
 
 function isExemptPath(path: string): boolean {
   return EXEMPT_EXACT.includes(path) ||
-    EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix));
+    EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix)) ||
+    PER_TENANT_MCP_PATH.test(path);
 }
 
 /**

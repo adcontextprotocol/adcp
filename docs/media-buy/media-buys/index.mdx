@@ -262,8 +262,10 @@ pending_start ──────▶ rejected (terminal)  — seller rejects duri
 Any non-terminal ──── update(canceled: true) ──▶ canceled (terminal)
 ```
 
-- **`pending_creatives`**: Approved but no creatives assigned
+- **`pending_creatives`**: Approved but no creatives assigned — **buyer-side action required** (call `sync_creatives`). Not a publisher- or governance-side approval queue: the seller has already accepted the buy; only the buyer's creative submission is missing.
 - **`pending_start`**: Ready to serve, waiting for flight date
+
+The `pending_X` naming convention names the lifecycle phase that is next required, NOT a state of waiting on seller/operator approval — `pending_creatives` means "creatives are the next phase," `pending_start` means "the flight date start is the next phase." Both are post-seller-acceptance states.
 - **`active`**: Running and delivering impressions
 - **`paused`**: Temporarily stopped by buyer or seller
 - **`completed`**: Finished — flight ended, goal met, or budget exhausted

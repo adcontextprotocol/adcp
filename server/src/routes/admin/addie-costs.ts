@@ -25,7 +25,7 @@
 
 import { Router } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin } from '../../middleware/auth.js';
+import { requireGlobalAdmin } from '../../middleware/auth.js';
 import { getPool } from '../../db/client.js';
 import { DAILY_BUDGET_USD } from '../../addie/claude-cost-tracker.js';
 import {
@@ -68,7 +68,7 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
   // Returns 24h + 7d totals plus a per-namespace breakdown so operators
   // can see at a glance whether a namespace is driving spend (e.g., a
   // runaway email loop dominating the `email:` bucket).
-  apiRouter.get('/addie-costs/summary', requireAuth, requireAdmin, async (_req, res) => {
+  apiRouter.get('/addie-costs/summary', ...requireGlobalAdmin, async (_req, res) => {
     try {
       const pool = getPool();
 
@@ -144,7 +144,7 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
   // Joins bare WorkOS scope keys back to users + orgs so operators can
   // tell at a glance which real members are approaching their cap; other
   // namespaces (email hash, mcp sub, tavus ip) stay opaque by design.
-  apiRouter.get('/addie-costs/leaderboard', requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get('/addie-costs/leaderboard', ...requireGlobalAdmin, async (req, res) => {
     try {
       const pool = getPool();
       const rawLimit = Number(req.query.limit);
@@ -260,7 +260,7 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
   // Returns recent events for a single scope so ops can see model mix,
   // spike timing, and token volume. Scope keys can contain `:` so the
   // param is URL-decoded by Express before we use it.
-  apiRouter.get('/addie-costs/scope/:scopeKey/events', requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get('/addie-costs/scope/:scopeKey/events', ...requireGlobalAdmin, async (req, res) => {
     try {
       const scopeKey = req.params.scopeKey;
       // Charset + length guard — accept any printable ASCII (no

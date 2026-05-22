@@ -1,0 +1,14 @@
+{
+  "test_id": "fetch-contract-pos-03-cached-after-404",
+  "category": "graceful_degradation",
+  "description": "SDK previously fetched and cached the schema by uri@digest. Subsequent fetch returns 404 (CDN flap / origin partition). SDK MUST serve the cached body \u2014 uri@digest is immutable per the contract.",
+  "setup": {
+    "request_uri": "https://creative.adcontextprotocol.org/extensions/previously_cached",
+    "declared_digest": "sha256:<computed_from_response_body>",
+    "cache_state": "uri_at_digest_present",
+    "response_status": 404,
+    "response_body": null
+  },
+  "expected_outcome": "pass",
+  "rationale": "Cache is keyed by uri@digest, treated as immutable per the contract. SDK MUST serve cached body on transient origin failure; degrading the entire session for a 404 punishes downstream buyers for a network blip."
+}

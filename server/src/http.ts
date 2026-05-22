@@ -12,7 +12,7 @@ import { WorkOS, DomainDataState } from "@workos-inc/node";
 import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
 import { configureMCPRoutes, isMCPServerReady, resolveMCPServerURL } from "./mcp/index.js";
-import { HealthChecker } from "./health.js";
+import { HealthChecker, classifyMCPError } from "./health.js";
 import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger, processRole } from "./logger.js";
@@ -53,6 +53,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { isUuid } from "./utils/uuid.js";
+import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
@@ -100,6 +101,7 @@ import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
+import { createBrandClaimSuggestionRouter } from "./routes/me-brand-claim-suggestion.js";
 import { createMemberAgentsRouter } from "./routes/member-agents.js";
 import { createMeOrganizationDomainsRouter } from "./routes/me-organization-domains.js";
 import { createPublicPortraitRouter, createPortraitRouter, createAdminPortraitRouter } from "./routes/portraits.js";
@@ -118,7 +120,7 @@ import {
   buildConformanceTokenRouter,
   conformanceSessions,
 } from "./conformance/index.js";
-import { createRegistryApiRouter } from "./routes/registry-api.js";
+import { createRegistryApiRouters } from "./routes/registry-api.js";
 import { getPublicJwks } from "./services/verification-token.js";
 import { createCatalogApiRouter } from "./routes/catalog-api.js";
 import { getLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
@@ -128,6 +130,7 @@ import { createAccountLinkingRouter, handleEmailLinkVerification } from "./route
 import { createNetworkHealthApiRouter } from "./routes/network-health.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
+import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED, TRAINING_AGENT_URL } from "./training-agent/config.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
@@ -1052,7 +1055,7 @@ export class HTTPServer {
     this.app.use('/api', createInvitesRouter());
 
     // Mount public Registry API routes (brands, properties, agents, search, validation)
-    const registryApiRouter = createRegistryApiRouter({
+    const { router: registryApiRouter, v1AgentsRouter } = createRegistryApiRouters({
       brandManager: this.brandManager,
       brandDb: this.brandDb,
       propertyDb: this.propertyDb,
@@ -1067,6 +1070,11 @@ export class HTTPServer {
       optionalAuth,
     });
     this.app.use('/api', registryApiRouter);
+    // adcp#4924: spec defines the AAO directory inverse-lookup path as
+    // /v1/agents/{url}/publishers (docs/aao/directory-api.mdx). Mount the
+    // v1AgentsRouter at /v1 so spec-conformant clients work without the /api
+    // prefix workaround. The /api/v1/agents/... path remains for backward compat.
+    this.app.use('/v1', v1AgentsRouter);
 
     // RFC 8615: serve JWKS at root /.well-known/ path for standard OIDC/JWT discovery
     this.app.get('/.well-known/jwks.json', (_req, res) => {
@@ -1090,11 +1098,27 @@ export class HTTPServer {
         const brand = await this.brandDb.getDiscoveredBrandByDomain(domain);
         if (!brand || brand.is_public === false) return res.status(404).json({ error: 'Brand not found' });
 
-        const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
-        const brandJson: Record<string, unknown> = {
-          name: brand.brand_name || domain,
-          ...manifest,
-        };
+        // Only serve brand_json and community source types. Enriched (Brandfetch) entries are
+        // not brand-attested — serving them under this URL would misrepresent third-party data
+        // as brand-authoritative. editDiscoveredBrand promotes enriched→community on first
+        // human edit, so curated rows land here under the community type.
+        if (brand.source_type !== 'brand_json' && brand.source_type !== 'community') {
+          return res.status(404).json({ error: 'Brand not found' });
+        }
+
+        const manifest = brand.brand_manifest as Record<string, unknown> | undefined;
+        if (!manifest) return res.status(404).json({ error: 'Brand not found' });
+
+        if (brand.source_type === 'community' && brand.review_status === 'pending') {
+          return res.status(404).json({ error: 'Brand not found' });
+        }
+
+        const schemaUrl = 'https://adcontextprotocol.org/schemas/v3/brand.json';
+        const brandJson: Record<string, unknown> =
+          typeof manifest.$schema === 'string' && manifest.$schema.startsWith('https://')
+            ? { ...manifest }
+            : { $schema: schemaUrl, ...manifest };
+
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Cache-Control', 'public, max-age=300');
         return res.json(brandJson);
@@ -1204,6 +1228,9 @@ export class HTTPServer {
     // Mount brand feed import routes (RSS, YouTube, Spotify + bulk property/collection merge)
     this.app.use('/api', createBrandFeedsRouter({ brandDb: this.brandDb }));
 
+    // Mount brand ownership status route (drives Claim/Manage CTAs on /brand/view)
+    this.app.use('/api', createBrandOwnershipRouter({ brandDb: this.brandDb }));
+
     // Mount member profile routes
     const memberDb = new MemberDatabase();
     const orgDb = new OrganizationDatabase();
@@ -1217,6 +1244,10 @@ export class HTTPServer {
     };
     const memberProfileRouter = createMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/me/member-profile', memberProfileRouter); // User profile routes: /api/me/member-profile/*
+
+    // Brand-claim suggestion endpoints — drives the signup-domain → claim
+    // nudge on the dashboard banner and brand-viewer JIT prompt (#4744).
+    this.app.use('/api/me', createBrandClaimSuggestionRouter({ brandDb: this.brandDb }));
     const adminMemberProfileRouter = createAdminMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/admin/member-profiles', adminMemberProfileRouter); // Admin profile routes: /api/admin/member-profiles/*
 
@@ -1940,14 +1971,11 @@ export class HTTPServer {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/account${query}`);
     });
-    this.app.get('/dashboard/membership', (req, res) => {
-      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      res.redirect(301, `/organization${query}#membership`);
-    });
-    // Redirect old billing path to new membership path
+    this.app.get('/dashboard/membership', (req, res) => serveDashboardPage(req, res, 'dashboard-membership.html'));
+    // Redirect old billing path to membership path
     this.app.get('/dashboard/billing', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      res.redirect(301, `/organization${query}#membership`);
+      res.redirect(301, `/dashboard/membership${query}`);
     });
     this.app.get('/dashboard/emails', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
@@ -4845,6 +4873,12 @@ export class HTTPServer {
       this.serveHtmlWithConfig(req, res, 'admin-geo.html'));
     this.app.get('/admin/brands', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-brands.html'));
+    // Brand-logo moderation queue: gated to authenticated users at the
+    // page layer; the underlying API enforces brand-registry-moderator
+    // membership so a non-moderator who navigates here sees an empty
+    // queue with a "not authorized" message rather than a hard 404.
+    this.app.get('/admin/brand-logos', requireAuth, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-brand-logos.html'));
 
     // Redirects from old /manage paths (preserve query strings)
     const manageRedirect = (target: string) => (req: express.Request, res: express.Response) => {
@@ -6479,10 +6513,14 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         logger.info({ userId: user.id }, 'User authenticated via OAuth callback');
 
         // Ensure user exists in local users table (webhooks may have been missed).
-        // On INSERT, use WorkOS values. On UPDATE, preserve user-set names:
-        // only fill in names that are currently empty in the DB.
+        // On INSERT, use WorkOS values — falling back to existing DB / Slack
+        // mapping when WorkOS itself has empty names. On UPDATE, preserve
+        // user-set names: only fill in names that are currently empty.
         try {
           const pool = getPool();
+          const { firstName, lastName } = await resolveUserNameWithFallbacks(
+            pool, user.id, user.firstName, user.lastName,
+          );
           await pool.query(
             `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
@@ -6493,7 +6531,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
                email_verified = EXCLUDED.email_verified,
                workos_updated_at = EXCLUDED.workos_updated_at,
                updated_at = NOW()`,
-            [user.id, user.email, user.firstName, user.lastName, user.emailVerified, user.createdAt, user.updatedAt]
+            [user.id, user.email, firstName, lastName, user.emailVerified, user.createdAt, user.updatedAt]
           );
         } catch (upsertError) {
           logger.error({ error: upsertError, userId: user.id }, 'Failed to upsert user on login');
@@ -7326,18 +7364,26 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           return res.status(400).json({ error: 'first_name must be a string' });
         }
 
-        const sanitize = (s: string) => s.trim().replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ');
-        const firstName = sanitize(req.body.first_name);
-        const lastName = typeof req.body.last_name === 'string' ? sanitize(req.body.last_name) || null : null;
+        // Reject overlong raw input *before* sanitizing so the user gets a
+        // clear 422 instead of silent truncation.
+        if (req.body.first_name.length > 255) {
+          return res.status(400).json({ error: 'first_name must be 255 characters or fewer' });
+        }
+        if (typeof req.body.last_name === 'string' && req.body.last_name.length > 255) {
+          return res.status(400).json({ error: 'last_name must be 255 characters or fewer' });
+        }
+
+        // sanitizeName strips C0/C1 controls + Unicode direction/format
+        // characters (RTL-override spoofing, ZWSP), collapses whitespace,
+        // trims, and caps at 255 chars — same guarantees as the Slack-source
+        // paths. It preserves multi-word names ("Mary Jane") intact.
+        const firstName = sanitizeName(req.body.first_name);
+        const lastName = typeof req.body.last_name === 'string'
+          ? (sanitizeName(req.body.last_name) || null)
+          : null;
 
         if (!firstName) {
           return res.status(400).json({ error: 'first_name is required' });
-        }
-        if (firstName.length > 255) {
-          return res.status(400).json({ error: 'first_name must be 255 characters or fewer' });
-        }
-        if (lastName && lastName.length > 255) {
-          return res.status(400).json({ error: 'last_name must be 255 characters or fewer' });
         }
 
         const pool = getPool();
@@ -7354,8 +7400,23 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           [firstName, lastName, user.id]
         );
 
+        // Push back to WorkOS so subsequent webhooks / SDK reads don't show
+        // empty names. Best-effort: a transient WorkOS failure shouldn't fail
+        // the user's local name update.
+        try {
+          if (workos) {
+            await workos.userManagement.updateUser({
+              userId: user.id,
+              firstName,
+              lastName: lastName ?? undefined,
+            });
+          }
+        } catch (workosError) {
+          logger.warn({ err: workosError, userId: user.id }, 'Failed to push name to WorkOS (local update applied)');
+        }
+
         invalidateMemberContextCache();
-        logger.info({ userId: user.id, firstName, lastName }, 'User updated their display name');
+        logger.info({ userId: user.id }, 'User updated their display name');
         res.json({ first_name: firstName, last_name: lastName });
       } catch (error) {
         logger.error({ err: error }, 'Update user name error');
@@ -8819,15 +8880,28 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           });
         }
 
-        logger.error({ err: error, url }, 'Agent discovery error');
-
         if (error instanceof Error && error.name === 'TimeoutError') {
+          logger.warn({ url }, 'Agent discovery timed out');
           return res.status(504).json({
             error: 'Connection timeout',
             message: 'Agent did not respond within 10 seconds',
           });
         }
 
+        // Classify so user-data failures (stale tunnel URLs, wrong path,
+        // unreachable hosts) don't page #admin-errors via logger.error.
+        // Only unknown kinds escalate.
+        const classified = classifyMCPError(error);
+        if (classified.kind === 'unreachable' || classified.kind === 'wrong_path') {
+          logger.warn({ url, kind: classified.kind, raw: classified.raw }, 'Agent discovery failed');
+          return res.status(502).json({
+            error: 'Agent discovery failed',
+            kind: classified.kind,
+            message: classified.message,
+          });
+        }
+
+        logger.error({ err: error, url }, 'Agent discovery error');
         return res.status(500).json({
           error: 'Agent discovery failed',
         });

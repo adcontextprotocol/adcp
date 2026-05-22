@@ -1,5 +1,6 @@
-import { FederatedIndexDatabase, type AgentPublisherAuthorization, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
+import { FederatedIndexDatabase, type AgentPublisherAuthorization, type AgentPublisherDetailRow, type DiscoveredAgent, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
 import { MemberDatabase } from './db/member-db.js';
+import { canonicalizeAgentUrl } from './db/publisher-db.js';
 import type { FederatedAgent, FederatedPublisher, DomainLookupResult, AgentType } from './types.js';
 
 /**
@@ -24,6 +25,45 @@ export class FederatedIndexService {
   // ============================================
   // List All (merged view)
   // ============================================
+
+  /**
+   * List all agents the crawler should periodically probe.
+   *
+   * Two sources, deduplicated by canonical URL:
+   *  - `listAllAgents()` — agents registered in member profiles (the
+   *    configured / seed set)
+   *  - `discovered_agents` where `source_type='adagents_json'` — agents
+   *    we learned about by parsing some publisher's `adagents.json`,
+   *    including manager-file-only agents like `interchange.io` that
+   *    are only ever named in cafemedia.com's selector and never appear
+   *    in any sales-agent's `list_authorized_properties` (adcp#4849).
+   *
+   * `source_type='list_authorized_properties'` (agent_claim) is
+   * intentionally excluded — those are unverified claims from other
+   * agents; probing them creates churn without confirmation.
+   */
+  async listAllProbeableAgents(): Promise<FederatedAgent[]> {
+    const registered = await this.listAllAgents();
+    const discovered = await this.db.getAllDiscoveredAgents();
+
+    const byKey = new Map<string, FederatedAgent>();
+    for (const agent of registered) {
+      const key = canonicalizeAgentUrl(agent.url) ?? agent.url;
+      byKey.set(key, agent);
+    }
+    for (const d of discovered) {
+      if (d.source_type !== 'adagents_json') continue;
+      const key = canonicalizeAgentUrl(d.agent_url) ?? d.agent_url;
+      if (byKey.has(key)) continue; // registered metadata wins
+      byKey.set(key, {
+        url: key,
+        name: d.name || key,
+        type: (d.agent_type as FederatedAgent['type']) || 'unknown',
+        protocol: (d.protocol as 'mcp' | 'a2a') || 'mcp',
+      });
+    }
+    return Array.from(byKey.values());
+  }
 
   /**
    * List all registered agents, optionally filtered by type.
@@ -55,8 +95,13 @@ export class FederatedIndexService {
         const agentType = agentConfig.type || 'unknown';
         if (type && agentType !== type) continue;
 
-        registeredAgents.set(agentConfig.url, {
-          url: agentConfig.url,
+        // Canonicalize the map key so two registrations differing only in
+        // case / trailing slash collapse to a single entry (issue #3573).
+        // Fall back to the raw url if canonicalization rejects (legacy
+        // whitespace etc.) so we never silently drop a stored agent.
+        const key = canonicalizeAgentUrl(agentConfig.url) ?? agentConfig.url;
+        registeredAgents.set(key, {
+          url: key,
           name: agentConfig.name || profile.display_name,
           type: agentType as FederatedAgent['type'],
           protocol: 'mcp',
@@ -100,6 +145,15 @@ export class FederatedIndexService {
     return Array.from(registeredPublishers.values());
   }
 
+  /**
+   * List agents from the discovered_agents table (populated by the crawler
+   * from adagents.json files), optionally filtered by agent type.
+   * Distinct from listAllAgents(), which returns only member-profile agents.
+   */
+  async listDiscoveredAgents(agentType?: string): Promise<DiscoveredAgent[]> {
+    return this.db.getAllDiscoveredAgents(agentType);
+  }
+
   // ============================================
   // Reverse Lookups
   // ============================================
@@ -114,10 +168,15 @@ export class FederatedIndexService {
     const profiles = await this.memberDb.listProfiles({});
     const registeredAgentUrls = new Map<string, { slug: string; display_name: string }>();
 
+    // Key the enrichment map on canonical form (issue #3573) so a registered
+    // `https://Example.com/` matches a discovered `https://example.com`.
+    // Fall back to the raw url if canonicalization rejects so legacy
+    // non-canonical rows still enrich.
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
         if (agentConfig.visibility === 'public') {
-          registeredAgentUrls.set(agentConfig.url, {
+          const key = canonicalizeAgentUrl(agentConfig.url) ?? agentConfig.url;
+          registeredAgentUrls.set(key, {
             slug: profile.slug,
             display_name: profile.display_name,
           });
@@ -130,7 +189,8 @@ export class FederatedIndexService {
     const authorizedAgents = authorizations
       .filter(auth => auth.source === 'adagents_json')
       .map(auth => {
-        const member = registeredAgentUrls.get(auth.agent_url);
+        const lookupKey = canonicalizeAgentUrl(auth.agent_url) ?? auth.agent_url;
+        const member = registeredAgentUrls.get(lookupKey);
         return {
           url: auth.agent_url,
           authorized_for: auth.authorized_for,
@@ -141,7 +201,8 @@ export class FederatedIndexService {
     // Get sales agents claiming this domain
     const claims = await this.db.getSalesAgentsClaimingDomain(domain);
     const salesAgentsClaiming = claims.map(claim => {
-      const member = registeredAgentUrls.get(claim.discovered_by_agent);
+      const lookupKey = canonicalizeAgentUrl(claim.discovered_by_agent) ?? claim.discovered_by_agent;
+      const member = registeredAgentUrls.get(lookupKey);
       return {
         url: claim.discovered_by_agent,
         ...(member ? { member } : {}),
@@ -171,6 +232,19 @@ export class FederatedIndexService {
   }
 
   /**
+   * Inverse-lookup detail rows for the AAO directory endpoint (adcp#4823).
+   * Returns one row per publisher_domain authorizing the agent, with
+   * provenance, per-publisher counts, and lifecycle status. The DB layer
+   * does all the JSONB walking; the route handler shapes the response.
+   */
+  async getPublishersForAgentDetail(
+    agentUrl: string,
+    opts: { cursor?: string; since?: Date; includeRevoked?: boolean; limit: number },
+  ): Promise<AgentPublisherDetailRow[]> {
+    return this.db.getPublishersForAgentDetail(agentUrl, opts);
+  }
+
+  /**
    * Get full authorization records for a domain (agent URL, source, authorized_for).
    */
   async getAuthorizationsForDomain(domain: string): Promise<AgentPublisherAuthorization[]> {
@@ -190,11 +264,15 @@ export class FederatedIndexService {
   async getAllAgentDomainPairs(): Promise<Map<string, Set<string>>> {
     const pairs = await this.db.getAllAgentDomainPairs();
     const result = new Map<string, Set<string>>();
+    // Canonicalize so legacy raw rows in the DB (the write path stores
+    // verbatim; SQL canonicalizes on read but not on bulk fetch) collapse
+    // into one key when a caller looks up by canonical form (issue #3573).
     for (const { agent_url, publisher_domain } of pairs) {
-      let domains = result.get(agent_url);
+      const key = canonicalizeAgentUrl(agent_url) ?? agent_url;
+      let domains = result.get(key);
       if (!domains) {
         domains = new Set();
-        result.set(agent_url, domains);
+        result.set(key, domains);
       }
       domains.add(publisher_domain);
     }

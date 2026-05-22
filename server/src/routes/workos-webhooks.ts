@@ -21,6 +21,8 @@
 import { Router, Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
+import { invalidateSessionsForUsers } from '../middleware/auth.js';
+import { promoteSecondaryIfPrimaryDeleted } from '../db/identity-db.js';
 import {
   upsertWorkosDomain,
   autoPromotePrimaryIfNone,
@@ -30,13 +32,17 @@ import { BrandDatabase } from '../db/brand-db.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
+import { resolveUserNameWithFallbacks } from '../utils/resolve-user-name.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain, trackBackground } from '../services/brand-enrichment.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
+import { notifyBrandClaimOpportunity } from '../notifications/registry.js';
+import { getNudgeDismissal, recordNudgeDismissal } from '../db/user-nudges-db.js';
+import { getCompanyDomain } from '../utils/email-domain.js';
 import { canonicalizeBrandDomain, assertClaimableBrandDomain } from '../services/identifier-normalization.js';
 import { resolvePreferredOrganization, backfillPrimaryOrganization } from '../db/users-db.js';
 import { notifySystemError } from '../addie/error-notifier.js';
-import { canAddSeat, type SeatType } from '../db/organization-db.js';
+import { canAddSeat, type SeatType, OrganizationDatabase } from '../db/organization-db.js';
 import { sendToOrgAdmins, escapeSlackMrkdwn } from '../slack/org-group-dm.js';
 import {
   upsertOrganizationMembership,
@@ -45,7 +51,10 @@ import {
   findSuccessorForPromotion,
   setMembershipRole,
   autoLinkByVerifiedDomain,
+  resolveRoleWithWorkosFirstPromote,
 } from '../db/membership-db.js';
+
+const orgDb = new OrganizationDatabase();
 
 const logger = createLogger('workos-webhooks');
 
@@ -213,7 +222,19 @@ async function upsertMembership(
     return;
   }
 
-  const role = membership.role?.slug || 'member';
+  const incomingRole = membership.role?.slug || 'member';
+
+  // Resolve final role against WorkOS BEFORE we touch local. If we need to
+  // auto-promote this user (ownerless-org safety net), push the change to
+  // WorkOS first and only then write the resolved role locally. WorkOS is
+  // the source of truth — local must never get ahead of it.
+  const resolution = await resolveRoleWithWorkosFirstPromote({
+    workos: getWorkos(),
+    membershipId: membership.id,
+    userId: membership.user_id,
+    organizationId: membership.organization_id,
+    incomingRole,
+  });
 
   // Consume any pending seat_type + provisioning_source staged by the
   // endpoint that triggered this membership creation. Falls back to defaults
@@ -252,38 +273,66 @@ async function upsertMembership(
     }
   }
 
-  const { assigned_role } = await upsertOrganizationMembership({
+  await upsertOrganizationMembership({
     user_id: membership.user_id,
     organization_id: membership.organization_id,
     membership_id: membership.id,
     email: userData.email,
     first_name: userData.first_name,
     last_name: userData.last_name,
-    role,
+    role: resolution.role,
     seat_type: seatType,
     has_explicit_seat_type: hasExplicitSeatType,
     provisioning_source: provisioningSource,
   });
 
-  // If the DB promoted this member to owner, sync the change to WorkOS
-  if (assigned_role === 'owner' && role === 'member') {
+  // Audit-log both outcomes of the ownerless-org auto-promote path so future
+  // role-drift questions have a paper trail in registry_audit_log (and we
+  // don't have to grep production logs to reconstruct what happened).
+  if (resolution.promoted) {
+    logger.info({
+      membershipId: membership.id,
+      userId: membership.user_id,
+      orgId: membership.organization_id,
+    }, 'Auto-promoted member to owner in WorkOS — org had no other admin/owner');
     try {
-      await getWorkos().userManagement.updateOrganizationMembership(membership.id, {
-        roleSlug: 'owner',
+      await orgDb.recordAuditLog({
+        workos_organization_id: membership.organization_id,
+        workos_user_id: membership.user_id,
+        action: 'membership_auto_promoted_to_owner',
+        resource_type: 'membership',
+        resource_id: membership.id,
+        details: {
+          email: userData.email,
+          previous_role: incomingRole,
+          new_role: 'owner',
+          reason: 'ownerless_org_safety_net',
+        },
       });
-      logger.info({
-        membershipId: membership.id,
-        userId: membership.user_id,
-        orgId: membership.organization_id,
-      }, 'Promoted member to owner — org had no admin');
-    } catch (err) {
-      // Roll back local promotion to stay in sync with WorkOS
-      await setMembershipRole(membership.user_id, membership.organization_id, 'member')
-        .catch((rollbackErr) => {
-          logger.error({ err: rollbackErr, orgId: membership.organization_id },
-            'Failed to roll back local owner promotion — local/WorkOS role divergence');
-        });
-      logger.warn({ err, orgId: membership.organization_id }, 'Failed to promote member to owner in WorkOS, rolled back local role');
+    } catch (auditErr) {
+      logger.warn({ err: auditErr, membershipId: membership.id },
+        'Failed to write audit log for auto-promotion');
+    }
+  } else if (resolution.promotionError !== undefined) {
+    const err = resolution.promotionError;
+    const errMessage = err instanceof Error ? err.message : String(err);
+    try {
+      await orgDb.recordAuditLog({
+        workos_organization_id: membership.organization_id,
+        workos_user_id: membership.user_id,
+        action: 'membership_auto_promote_failed',
+        resource_type: 'membership',
+        resource_id: membership.id,
+        details: {
+          email: userData.email,
+          attempted_role: 'owner',
+          fallback_role: resolution.role,
+          error: errMessage,
+        },
+      });
+    } catch (auditErr) {
+      logger.warn({ err: auditErr, membershipId: membership.id },
+        'Failed to write audit log for auto-promotion failure');
     }
   }
 
@@ -368,43 +417,9 @@ async function deleteMembership(membership: OrganizationMembershipData): Promise
 async function upsertUser(user: UserData): Promise<void> {
   const pool = getPool();
 
-  // Resolve names: prefer WorkOS values, but when WorkOS sends empty names,
-  // preserve existing DB values or backfill from Slack mapping
-  let firstName = user.first_name;
-  let lastName = user.last_name;
-
-  if (!firstName?.trim() || !lastName?.trim()) {
-    const existing = await pool.query<{
-      first_name: string | null;
-      last_name: string | null;
-      slack_real_name: string | null;
-      slack_display_name: string | null;
-    }>(
-      `SELECT u.first_name, u.last_name, sm.slack_real_name, sm.slack_display_name
-       FROM users u
-       LEFT JOIN slack_user_mappings sm ON sm.slack_user_id = u.primary_slack_user_id
-       WHERE u.workos_user_id = $1`,
-      [user.id]
-    );
-
-    if (existing.rows.length > 0) {
-      const row = existing.rows[0];
-
-      // Keep existing DB names if WorkOS sends empty
-      if (!firstName?.trim()) firstName = row.first_name;
-      if (!lastName?.trim()) lastName = row.last_name;
-
-      // Backfill from Slack if still empty
-      if (!firstName?.trim() && !lastName?.trim()) {
-        const slackName = row.slack_real_name || row.slack_display_name;
-        if (slackName) {
-          const parts = slackName.trim().split(/\s+/);
-          firstName = parts[0];
-          lastName = parts.length > 1 ? parts.slice(1).join(' ') : null;
-        }
-      }
-    }
-  }
+  const { firstName, lastName } = await resolveUserNameWithFallbacks(
+    pool, user.id, user.first_name, user.last_name,
+  );
 
   await pool.query(
     `INSERT INTO users (
@@ -1018,15 +1033,74 @@ export function createWorkOSWebhooksRouter(): Router {
                     })
                   );
                 }
-                // Classify brand hierarchy before the user finishes onboarding
-                const isValidDomain = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)
+                // Classify brand hierarchy before the user finishes onboarding.
+                // Use getCompanyDomain rather than the local isFreeEmailDomain
+                // check so the predicate matches what the in-app suggestion
+                // service uses (#4744) — drift between the two would produce
+                // "ops got pinged but no banner shows" or vice versa.
+                const business = getCompanyDomain(user.email);
+                const isValidDomain = business
+                  && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)
                   && !(/^\d+\.\d+\.\d+\.\d+$/.test(domain));
-                if (isValidDomain && !isFreeEmailDomain(domain)) {
+                if (isValidDomain) {
                   trackBackground(
                     researchDomain(domain).catch(err => {
                       logger.warn({ err, domain }, 'Background domain research failed for new user');
                     })
                   );
+                  // KYC nudge (#4744): if the signup domain maps to a brand
+                  // in the registry, notify ops in Slack so we can watch
+                  // who's signing up at known brands. The in-app banner +
+                  // viewer JIT prompt drive the user-side flow; this is the
+                  // ops-side visibility signal. At today's volume we notify
+                  // on every match regardless of brand verification state.
+                  //
+                  // Idempotent on WorkOS retries: user.created is at-least-
+                  // once, so we record a per-(user, domain) marker in
+                  // user_dismissed_nudges after sending and skip if present.
+                  // Reusing the dismissals table keeps the schema lean — see
+                  // user-nudges-db.ts for the dual-use convention.
+                  if (user.email_verified) {
+                    trackBackground(
+                      (async () => {
+                        try {
+                          const canonicalDomain = canonicalizeBrandDomain(domain);
+                          const notifyKey = `signup_notified:${canonicalDomain}`;
+                          const prior = await getNudgeDismissal(user.id, notifyKey);
+                          if (prior) return;
+                          const brandDb = new BrandDatabase();
+                          const brand = await brandDb.getDiscoveredBrandByDomain(canonicalDomain);
+                          if (!brand) return;
+                          let ownerName: string | null = null;
+                          if (brand.domain_verified && brand.workos_organization_id) {
+                            try {
+                              const ownerOrg = await orgDb.getOrganization(brand.workos_organization_id);
+                              ownerName = ownerOrg?.name ?? null;
+                            } catch (orgErr) {
+                              logger.debug({ orgErr, domain }, 'failed to resolve verified-owner org name for signup notify');
+                            }
+                          }
+                          await notifyBrandClaimOpportunity({
+                            user_email: user.email,
+                            user_first_name: user.first_name ?? undefined,
+                            user_last_name: user.last_name ?? undefined,
+                            domain: canonicalDomain,
+                            brand_name: brand.brand_name ?? null,
+                            brand_view_url: `/brand/view/${encodeURIComponent(canonicalDomain)}`,
+                            brand_already_verified: !!brand.domain_verified && !!brand.workos_organization_id,
+                            verified_owner_org_name: ownerName,
+                          });
+                          // Record the marker AFTER successful send so a
+                          // retry following a Slack 5xx will still get
+                          // through (the WorkOS retry is exactly the cover
+                          // we want for transient failures).
+                          await recordNudgeDismissal(user.id, notifyKey);
+                        } catch (notifyErr) {
+                          logger.warn({ err: notifyErr, domain }, 'brand-claim opportunity notify failed');
+                        }
+                      })()
+                    );
+                  }
                 }
               }
             }
@@ -1044,8 +1118,21 @@ export function createWorkOSWebhooksRouter(): Router {
 
           case 'user.deleted': {
             const user = event.data as unknown as UserData;
+            // Promote a surviving secondary BEFORE the CASCADE on
+            // identity_workos_users.workos_user_id fires (via deleteUser).
+            // Without this, the identity is left with zero primaries and the
+            // surviving secondary signs in to an empty workspace — a DoS
+            // vector reachable via GDPR/CCPA-driven WorkOS deletions.
+            const promoted = await promoteSecondaryIfPrimaryDeleted(user.id);
             await deleteUser(user.id);
             await deleteUserMemberships(user.id);
+            // Close the 60-second session/JWT cache window where a cached
+            // pre-deletion swap would still route reads to the dead binding.
+            // Invalidate both the deleted user and the promoted successor so
+            // the next request re-resolves identity from the DB.
+            const sessionsToInvalidate = [user.id];
+            if (promoted) sessionsToInvalidate.push(promoted.promotedUserId);
+            invalidateSessionsForUsers(sessionsToInvalidate);
             invalidateUnifiedUsersCache();
             break;
           }

@@ -120,11 +120,72 @@ if ((doc.components as any)?.parameters && Object.keys((doc.components as any).p
   delete (doc.components as any).parameters;
 }
 
+const outPath = path.join(__dirname, "..", "static", "openapi", "registry.yaml");
+
+// Merge-preserve hand-authored paths, components, and tag descriptors.
+// Some surfaces — notably the brand-registry (#4749) — are docs-only in
+// registry.yaml: routes exist in Express but were never given Zod schemas,
+// so the generator alone would drop them on every regen. Rather than force
+// every adopter to wire Zod schemas before they can ship a docs change,
+// the generator unions its tracked output with anything already on disk,
+// preserving fields the Zod registry doesn't own. Generator wins on
+// conflicts so Zod-backed paths remain the source of truth.
+// Read existing yaml in a single syscall — using existsSync followed by
+// readFileSync is a TOCTOU race CodeQL flags (the file could change between
+// the check and the read). ENOENT is the only error we treat as "no prior
+// yaml"; any other I/O error rethrows.
+let existingYaml: string | null = null;
+try {
+  existingYaml = fs.readFileSync(outPath, "utf-8");
+} catch (err) {
+  if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+    throw err;
+  }
+}
+if (existingYaml !== null) {
+  const existingDoc = YAML.parse(existingYaml) as any;
+
+  if (existingDoc?.paths) {
+    doc.paths = doc.paths ?? {};
+    for (const [pathKey, pathValue] of Object.entries(existingDoc.paths)) {
+      if (!(pathKey in doc.paths)) {
+        (doc.paths as any)[pathKey] = pathValue;
+      }
+    }
+  }
+
+  if (existingDoc?.components?.schemas) {
+    (doc.components as any) = (doc.components as any) ?? {};
+    (doc.components as any).schemas = (doc.components as any).schemas ?? {};
+    for (const [schemaKey, schemaValue] of Object.entries(existingDoc.components.schemas)) {
+      if (!(schemaKey in (doc.components as any).schemas)) {
+        (doc.components as any).schemas[schemaKey] = schemaValue;
+      }
+    }
+  }
+
+  if (Array.isArray(existingDoc?.tags)) {
+    const generatedTagNames = new Set((doc.tags ?? []).map((t: any) => t.name));
+    for (const tag of existingDoc.tags) {
+      if (tag?.name && !generatedTagNames.has(tag.name)) {
+        doc.tags = doc.tags ?? [];
+        doc.tags.push(tag);
+      }
+    }
+  }
+}
+
 const yamlStr = YAML.stringify(doc, {
   lineWidth: 0, // Don't wrap long strings
   aliasDuplicateObjects: false,
 });
 
-const outPath = path.join(__dirname, "..", "static", "openapi", "registry.yaml");
 fs.writeFileSync(outPath, yamlStr, "utf-8");
 console.log(`OpenAPI spec written to ${outPath}`);
+
+// Importing `server/src/routes/registry-api.js` pulls in auth middleware
+// and the pg rate-limit store, both of which arm module-level
+// `setInterval` timers for session-cache cleanup and rate-limit flushes.
+// Those keep the event loop alive after the yaml is written, so Node
+// will sit until the CI job timeout fires. Exit explicitly — we're done.
+process.exit(0);

@@ -13,6 +13,10 @@ Storyboards are available from the command line and interactively through [Addie
 The `@adcp/sdk` package also exports legacy TypeScript test runners under `testing/scenarios/*` (e.g. `media-buy.ts`, `signals.ts`). These predate `comply()` and are **not** the conformance specification. If you find yourself grepping those files to learn what AdCP requires, see [Storyboards vs. scenarios](/docs/building/verification/storyboards-vs-scenarios) for which surface is normative.
 </Note>
 
+<Info>
+**Wrapping an upstream platform** (DSP, SSP, retail data warehouse, creative server, signal marketplace)? Storyboards check your AdCP wire contract; they cannot tell whether the adapter behind the wire actually integrates with the upstream or returns shape-valid responses with synthetic data. See [Validate adapter agents with mock upstream fixtures](/docs/building/verification/validate-with-mock-fixtures) — published mock fixtures plus traffic counters give you façade-resistant compliance for adapters in any language.
+</Info>
+
 ## Storyboard taxonomy
 
 Storyboards are organized into three layers so agents declare only what they actually support:

@@ -419,12 +419,11 @@ For third-party ad servers:
   "assets": [
     {
       "asset_id": "vast_tag",
-      "asset_type": "url",
-      "asset_role": "vast_url",
+      "asset_type": "vast",
       "item_type": "individual",
       "required": true,
       "requirements": {
-        "vast_version": ["3.0", "4.0", "4.1", "4.2"]
+        "vast_version": "4.2"
       }
     }
   ]
@@ -445,13 +444,13 @@ For third-party ad servers:
   "assets": [
     {
       "asset_id": "vpaid_tag",
-      "asset_type": "url",
-      "asset_role": "vpaid_url",
+      "asset_type": "vast",
       "item_type": "individual",
       "required": true,
       "requirements": {
         "vpaid_version": ["2.0"],
-        "api_framework": "VPAID"
+        "api_framework": "VPAID",
+        "vpaid_enabled": true
       }
     }
   ]
@@ -762,13 +761,13 @@ VPAID (Video Player Ad-Serving Interface Definition) enables interactive video a
   "assets": [
     {
       "asset_id": "vpaid_tag",
-      "asset_type": "url",
-      "asset_role": "vpaid_url",
+      "asset_type": "vast",
       "item_type": "individual",
       "required": true,
       "requirements": {
         "vpaid_version": ["2.0"],
-        "api_framework": "VPAID"
+        "api_framework": "VPAID",
+        "vpaid_enabled": true
       }
     }
   ]

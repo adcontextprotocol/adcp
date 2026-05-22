@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/sync-accounts-request.json",
   "title": "Sync Accounts Request",
-  "description": "Sync advertiser accounts with a seller using upsert semantics. The agent declares which brands it represents, who operates on each brand's behalf, and the billing model. The seller provisions or links accounts accordingly, returning per-account status.",
+  "description": "Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account entry:\n\n- **Provisioning mode** (`brand` + `operator` + `billing` at the entry root): the agent declares which brands it represents, who operates on each brand's behalf, and the billing model. The seller provisions or links accounts via upsert. Used for implicit accounts (`require_operator_auth: false`).\n\n- **Settings-update mode** (`account` field carrying an [`AccountRef`](/schemas/core/account-ref.json)): targets an existing account by `account_id` (or by natural key for the implicit case). The seller updates the account's settable state (notification subscriptions, payment terms, billing entity refinements) — no provisioning side effects. Used for explicit accounts (`require_operator_auth: true`) where accounts are pre-provisioned out of band, and discovered via `list_accounts`. Implicit-account sellers MAY also accept this mode for settings updates against accounts they previously provisioned.\n\nExactly one of the two key shapes is allowed per entry. Sellers that do not implement settings-update mode MUST return `UNSUPPORTED_PROVISIONING` on entries keyed by `account.account_id`; sellers that do not provision MUST return `UNSUPPORTED_PROVISIONING` on entries keyed by the natural-key trio.",
   "type": "object",
   "allOf": [
     {
@@ -20,45 +20,98 @@
     },
     "accounts": {
       "type": "array",
-      "description": "Advertiser accounts to sync",
+      "description": "Per-account sync entries. Each entry uses one of two key shapes: the `account` field (AccountRef) for settings-update mode, or the flat `brand` + `operator` + `billing` trio for provisioning mode.",
       "items": {
         "type": "object",
-        "description": "An advertiser account the agent wants to operate on the seller",
+        "description": "An advertiser account entry — either provisions/upserts a new account (natural key) or updates an existing one (AccountRef key).",
         "properties": {
+          "account": {
+            "$ref": "/schemas/core/account-ref.json",
+            "description": "Settings-update key. When present, this entry targets an existing account by `account_id` (explicit) or natural key (implicit, settings-update against a previously-provisioned account). Mutually exclusive with the flat `brand` + `operator` + `billing` provisioning trio. When `account` is present, the seller MUST NOT create a new account — entries that would otherwise trigger provisioning are rejected with `UNSUPPORTED_PROVISIONING`."
+          },
           "brand": {
             "$ref": "/schemas/core/brand-ref.json",
-            "description": "Brand reference identifying the advertiser. Uses the brand's house domain and optional brand_id from brand.json."
+            "description": "Brand reference identifying the advertiser. Required for **provisioning mode**; MUST be absent in settings-update mode."
           },
           "operator": {
             "type": "string",
-            "description": "Domain of the entity operating on the brand's behalf (e.g., 'pinnacle-media.com'). When the brand operates directly, this is the brand's domain. Verified against the brand's authorized_operators in brand.json.",
+            "description": "Domain of the entity operating on the brand's behalf (e.g., 'pinnacle-media.com'). When the brand operates directly, this is the brand's domain. Verified against the brand's authorized_operators in brand.json. Required for **provisioning mode**; MUST be absent in settings-update mode.",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
           "billing": {
             "$ref": "/schemas/enums/billing-party.json",
-            "description": "Who should be invoiced. The seller must either accept this billing model or reject the request."
+            "description": "Who should be invoiced. Required for **provisioning mode**; MUST be absent in settings-update mode (billing is fixed at provisioning time and cannot be changed via settings-update)."
           },
           "billing_entity": {
             "$ref": "/schemas/core/business-entity.json",
-            "description": "Business entity details for the party responsible for payment. The agent provides this so the seller has the legal name, tax IDs, address, and bank details needed for formal B2B invoicing."
+            "description": "Business entity details for the party responsible for payment. The agent provides this so the seller has the legal name, tax IDs, address, and bank details needed for formal B2B invoicing. Permitted in both modes — sellers MAY accept refinements in settings-update mode (e.g., updated bank details)."
           },
           "payment_terms": {
             "$ref": "/schemas/enums/payment-terms.json",
-            "description": "Payment terms for this account. The seller must either accept these terms or reject the account — terms are never silently remapped. When omitted, the seller applies its default terms."
+            "description": "Payment terms for this account. The seller must either accept these terms or reject the account — terms are never silently remapped. When omitted, the seller applies its default terms. Permitted in both modes."
           },
           "sandbox": {
             "type": "boolean",
-            "description": "When true, provision this as a sandbox account with no real platform calls or billing. Only applicable to implicit accounts (require_operator_auth: false). For explicit accounts, sandbox accounts are pre-existing test accounts discovered via list_accounts."
+            "description": "When true, provision this as a sandbox account with no real platform calls or billing. Only applicable to implicit accounts (require_operator_auth: false) in provisioning mode. For explicit accounts, sandbox accounts are pre-existing test accounts discovered via list_accounts."
           },
           "preferred_reporting_protocol": {
             "$ref": "/schemas/enums/cloud-storage-protocol.json",
             "description": "Buyer's preferred cloud storage protocol for offline reporting delivery. The seller provisions the account's reporting_bucket using this protocol if supported. When omitted, the seller chooses from its supported offline_delivery_protocols. Only meaningful when the seller's reporting_delivery_methods includes 'offline'."
+          },
+          "notification_configs": {
+            "type": "array",
+            "description": "Account-level webhook subscriptions for notifications whose lifecycle outlives any single media buy (`creative.status_changed`, `creative.purged`, wholesale feed change payloads, future account-scoped events). Declarative replace semantics: the buyer sends the full desired array; the seller diffs against persisted state. Omit this field to leave existing subscribers unchanged; send `[]` to remove all subscribers. Permitted in both provisioning and settings-update modes. Each entry registers a URL, the event types the subscriber wants, and optional legacy auth — see [`notification-config.json`](/schemas/core/notification-config.json). The seller MUST echo applied state on the response and on `list_accounts` reads, with `authentication.credentials` omitted (write-only). Sellers MUST reject entries whose `event_types` include any type whose contract anchors at a media buy or below (today: `scheduled`, `final`, `delayed`, `adjusted`, `impairment`) as per-account validation failures with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at the invalid `event_types` entry — those events belong on a media buy's `push_notification_config`. Wholesale feed webhook registrations carry the actual change payload in `/schemas/core/wholesale-feed-webhook.json`; receivers use `get_products` / `get_signals` with `if_wholesale_feed_version` to repair or reconcile. This is distinct from sync_catalogs, which manages buyer-provided campaign input feeds on a seller account.\n\n**Cap rationale:** `maxItems: 16` is a practical fan-out cap (governance + buyer ingestion + audit bus + dx team + a few partner hooks). The cap exists to prevent unbounded subscriber arrays in storage and to bound the seller's per-event fan-out work. Sellers that hit the cap with legitimate subscribers should surface this on the protocol roadmap rather than work around it.",
+            "items": {
+              "$ref": "/schemas/core/notification-config.json"
+            },
+            "maxItems": 16
           }
         },
-        "required": [
-          "brand",
-          "operator",
-          "billing"
+        "oneOf": [
+          {
+            "title": "ProvisioningMode",
+            "description": "Provisioning-mode entry — natural-key trio is required, `account` is forbidden.",
+            "required": [
+              "brand",
+              "operator",
+              "billing"
+            ],
+            "not": {
+              "required": [
+                "account"
+              ]
+            }
+          },
+          {
+            "title": "SettingsUpdateMode",
+            "description": "Settings-update entry — `account` (AccountRef) is required, provisioning trio fields are forbidden.",
+            "required": [
+              "account"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "brand"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "operator"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "billing"
+                  ]
+                }
+              }
+            ]
+          }
         ],
         "additionalProperties": true
       },
@@ -192,6 +245,96 @@
               }
             },
             "payment_terms": "net_30"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Provisioning mode — register a creative-lifecycle webhook subscription alongside account provisioning",
+      "data": {
+        "idempotency_key": "e1b3a6c8-5678-49ab-cdef-1234567890ab",
+        "accounts": [
+          {
+            "brand": {
+              "domain": "acme-corp.com"
+            },
+            "operator": "acme-corp.com",
+            "billing": "operator",
+            "notification_configs": [
+              {
+                "subscriber_id": "buyer-primary",
+                "url": "https://buyer.example/webhooks/adcp/creative",
+                "event_types": [
+                  "creative.status_changed",
+                  "creative.purged"
+                ],
+                "active": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Settings-update mode — register webhook subscribers on an existing explicit account by account_id",
+      "data": {
+        "idempotency_key": "f2c4b7d9-6789-49bc-defa-2345678901bc",
+        "accounts": [
+          {
+            "account": {
+              "account_id": "acc_acme_pinnacle"
+            },
+            "notification_configs": [
+              {
+                "subscriber_id": "buyer-primary",
+                "url": "https://buyer.example/webhooks/adcp/creative",
+                "event_types": [
+                  "creative.status_changed",
+                  "creative.purged"
+                ],
+                "active": true
+              },
+              {
+                "subscriber_id": "audit-bus",
+                "url": "https://audit.buyer.example/adcp/ingest",
+                "event_types": [
+                  "creative.status_changed",
+                  "creative.purged"
+                ],
+                "active": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Settings-update mode — register a wholesale feed mirror webhook subscriber for wholesale product and signal changes",
+      "data": {
+        "idempotency_key": "a8af8cf1-89bd-41f3-b27d-7ee7e9f8d2e4",
+        "accounts": [
+          {
+            "account": {
+              "account_id": "acc_acme_pinnacle"
+            },
+            "notification_configs": [
+              {
+                "subscriber_id": "wholesale-feed-sync",
+                "url": "https://buyer.example/webhooks/adcp/wholesale-feed",
+                "event_types": [
+                  "product.created",
+                  "product.updated",
+                  "product.priced",
+                  "product.removed",
+                  "signal.created",
+                  "signal.updated",
+                  "signal.priced",
+                  "signal.removed",
+                  "wholesale_feed.bulk_change"
+                ],
+                "active": true
+              }
+            ]
           }
         ]
       }

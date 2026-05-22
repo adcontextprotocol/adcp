@@ -23,8 +23,12 @@
  * of package.json during the forward-merge window).
  *
  * Rules:
- *   1. published_version (when set) and adcp_version legacy alias MUST
- *      agree with each other when both are present.
+ *   1. adcp_version legacy alias must be >= published_version when both
+ *      are set. Same at-or-ahead-of semantic as Rule 2: the alias may
+ *      lead the canonical (forward-merge bumps adcp_version first), but
+ *      the alias must never go stale behind the canonical (which would
+ *      mean update-schema-versions bumped published_version without
+ *      keeping the legacy alias in sync).
  *   2. Each registry version (published_version when set, adcp_version
  *      always) must be >= package.json by semver compare.
  *   3. published_version may be unset on `main` until the next time
@@ -73,12 +77,17 @@ function semverCompare(a, b) {
 const errors = [];
 const warnings = [];
 
-// Rule 1: published_version and adcp_version must agree when both are set.
+// Rule 1: adcp_version legacy alias must not fall behind published_version.
+// The alias may legitimately lead (forward-merge bumps it first) but must
+// never lag (which would mean a published_version bump didn't carry through
+// to the legacy alias readers depend on).
 if (publishedVersion !== undefined && legacyAdcpVersion !== undefined &&
-    publishedVersion !== legacyAdcpVersion) {
+    semverCompare(legacyAdcpVersion, publishedVersion) < 0) {
   errors.push(
-    `published_version (${publishedVersion}) and adcp_version legacy alias ` +
-    `(${legacyAdcpVersion}) disagree — these MUST match each other.`
+    `adcp_version legacy alias (${legacyAdcpVersion}) is BEHIND ` +
+    `published_version (${publishedVersion}). The alias must be at-or-ahead-of ` +
+    `the canonical published_version — update-schema-versions likely bumped ` +
+    `published_version without keeping the legacy alias in sync.`
   );
 }
 

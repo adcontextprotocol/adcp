@@ -41,14 +41,28 @@ if echo "$CHANGED" | grep -Eq "$DOC_PATHS"; then
     fi
   done
 
+  # Restore moved dirs on ANY exit path (success, broken-links failure,
+  # SIGINT, kernel kill). Without the trap, an interrupted script left the
+  # temp dir orphaned in /tmp and broke the next run — or worse, the next
+  # `mv` re-landed it inside `dist/docs/` instead of as `dist/docs`. See
+  # `.gitignore` for the .prepush-*/ ignore that scoops up stragglers.
+  restore_moved() {
+    for pair in $MOVED; do
+      src=$(echo "$pair" | cut -d: -f2)
+      dst=$(echo "$pair" | cut -d: -f1)
+      # Only restore if source exists AND destination doesn't (don't overwrite).
+      if [ -d "$src" ] && [ ! -e "$dst" ]; then
+        mv "$src" "$dst"
+      fi
+    done
+  }
+  trap restore_moved EXIT INT TERM
+
   npx --no-install mintlify broken-links
   EXIT=$?
 
-  for pair in $MOVED; do
-    src=$(echo "$pair" | cut -d: -f2)
-    dst=$(echo "$pair" | cut -d: -f1)
-    mv "$src" "$dst"
-  done
+  restore_moved
+  trap - EXIT INT TERM
 
   if [ $EXIT -ne 0 ]; then
     exit 1

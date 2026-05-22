@@ -13,8 +13,10 @@ import { Router, type Request, type Response, type RequestHandler } from 'expres
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
-import { createRegistryHolder, resolveTenantHost, type RegistryHolder } from './registry.js';
-import { getAggregatedPublicJwks } from './signing.js';
+import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type RegistryHolder } from './registry.js';
+import { buildSignedRevocationList } from '../governance-revocations.js';
+import { getTenantResponseSigningMaterial } from './signing.js';
+import { wrapResponseForSigning } from '../response-signing.js';
 
 const logger = createLogger('training-agent-tenant-router');
 
@@ -87,6 +89,14 @@ function setCORSHeaders(res: Response): void {
 function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
   return async (req: Request, res: Response): Promise<void> => {
     setCORSHeaders(res);
+
+    // Wrap res with the response-signing middleware. Buffers writes from
+    // the MCP transport, signs the buffered body with the tenant's
+    // response-signing key, and writes back with RFC 9421 Signature /
+    // Signature-Input / Content-Digest headers. Non-2xx and non-JSON
+    // responses pass through unsigned.
+    const responseSigner = getTenantResponseSigningMaterial(tenantId);
+    wrapResponseForSigning(req, res, responseSigner.signerKey, tenantId);
 
     // Bridge `res.locals.trainingPrincipal` (set by the upstream
     // `requireAuth` middleware) onto `req.auth` so the framework's MCP
@@ -278,14 +288,27 @@ export function mountTenantRoutes(
     });
   }
 
-  // Aggregated brand.json — lists every tenant's public key with its kid.
-  // SDK validator calls `new URL('/.well-known/brand.json', agentUrl)` which
-  // resolves to host root. For our mount under `/api/training-agent`, the
-  // SDK's validator hits the host root path which is OUTSIDE our router —
-  // so the spike runs with `autoValidate: false` and we only serve this for
-  // discovery / debug introspection.
-  parent.get('/.well-known/brand.json', (_req, res) => {
-    res.setHeader('Cache-Control', 'public, max-age=300');
-    res.json({ jwks: getAggregatedPublicJwks() });
+  // brand.json discovery is mounted at the parent training-agent router in
+  // `../index.ts` (schema-conformant per `static/schemas/source/brand.json`
+  // oneOf[3]). `getAggregatedPublicJwks()` remains exported for direct
+  // callers (governance-signing tests) — buyer-side fetchers walk the
+  // chain via brand.json `agents[].jwks_uri` pointers instead of an
+  // aggregated top-level JWKS.
+
+  // Signed governance revocation list. Spec requires governance agents to
+  // publish this at `{origin of iss}/.well-known/governance-revocations.json`;
+  // sellers and auditors poll on the cadence declared in `next_update` and
+  // reject any token whose jti or kid appears in the list. The training
+  // agent's list is signed-empty by design — the sandbox does not exercise
+  // revocation but the endpoint must exist for the JWS profile's fetch-and-
+  // parse conformance tests to pass.
+  parent.get('/.well-known/governance-revocations.json', async (_req, res, next) => {
+    try {
+      const signed = await buildSignedRevocationList(`${getCanonicalBase()}/governance`);
+      res.setHeader('Cache-Control', 'public, max-age=60');
+      res.json(signed);
+    } catch (err) {
+      next(err);
+    }
   });
 }

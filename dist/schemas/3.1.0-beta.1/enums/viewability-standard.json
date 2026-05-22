@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.1/enums/viewability-standard.json",
+  "title": "Viewability Standard",
+  "description": "Viewability measurement standard applied to determine whether an impression qualifies as viewable. These are materially different thresholds and should not be compared across standards.",
+  "type": "string",
+  "enum": ["mrc", "groupm"],
+  "enumDescriptions": {
+    "mrc": "MRC/IAB standard: 50% of pixels in view for 1 continuous second (display) or 2 continuous seconds (video).",
+    "groupm": "GroupM standard: 100% of pixels in view for 1 continuous second (display) or 50% of video duration."
+  }
+}

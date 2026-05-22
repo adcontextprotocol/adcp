@@ -69,7 +69,7 @@ The keyword is most useful for fields whose description currently carries a "MUS
 
 ### Current usage
 
-All within `static/schemas/source/protocol/get-adcp-capabilities-response.json`:
+Representative usage:
 
 | Field | Sub-keys used | Rule |
 |---|---|---|
@@ -78,12 +78,57 @@ All within `static/schemas/source/protocol/get-adcp-capabilities-response.json`:
 | `request_signing.required_for` | `subset_of` | Every operation listed MUST also appear in `supported_for` — an operation can't be required without being supported. |
 | `request_signing.warn_for` | `disjoint_with`, `subset_of` | An operation MUST NOT appear in both `warn_for` and `required_for`. Every operation listed MUST also appear in `supported_for`. |
 | `webhook_signing.supported` | `verifier_constraints` (`must_equal_when`) | When the seller advertises mutating-webhook emission (`media_buy.reporting_delivery_methods` includes `webhook` OR `media_buy.content_standards.supports_webhook_delivery: true`), `supported` MUST be `true`. Closes a downgrade vector. |
+| `wholesale_feed_webhooks.event_types` | `verifier_constraints` (`wholesale_feed_webhook_capability_consistency`) | `product.*` event types require wholesale `get_products`; `signal.*` event types require wholesale `get_signals`; `wholesale_feed.bulk_change` requires at least one declared wholesale repair path and must name only a repairable feed family. |
+| `get_products.wholesale_feed_version` / `get_signals.wholesale_feed_version` | `verifier_constraints` (`required_for_wholesale_request`) | Version tokens are required on wholesale read responses, but the shared response schemas cannot infer the request's `buying_mode` / `discovery_mode` from the response body alone. |
 
 Already enforced natively by JSON Schema and excluded from migration:
 - **`adcp.idempotency`** — the discriminated `oneOf` already requires `replay_ttl_seconds` in the supported branch and forbids it in the unsupported branch.
 - **`webhook_signing.algorithms`** — the `enum: ["ed25519", "ecdsa-p256-sha256"]` on each item already enforces the allowlist.
 
 Migration history tracked at [adcontextprotocol/adcp#3827](https://github.com/adcontextprotocol/adcp/issues/3827).
+
+## `x-adcp-hoist`
+
+Build-time directive that marks a source schema as a canonically shared type. The schema bundler hoists every inline occurrence into a single root `$defs` entry and replaces inline copies with `$ref` pointers; the directive itself is stripped from bundled output. Wire-irrelevant — validators MUST ignore it (draft-07 §6 unknown-keyword semantics) and conforming consumers SHOULD NOT observe it on bundled artifacts.
+
+```jsonc
+{
+  "$id": "/schemas/core/price-block.json",
+  "title": "Price Block",
+  "x-adcp-hoist": true,
+  "type": "object",
+  "properties": {
+    "cpm": { "type": "number" },
+    "currency": { "type": "string" }
+  }
+}
+```
+
+### Why opt-in for complex objects
+
+Pure enums hoist automatically (see [`hoistDuplicateInlineEnums`](https://github.com/adcontextprotocol/adcp/pull/3170)) because merging two structurally-identical enums is semantics-preserving. Complex objects are different — structural identity ≠ semantic identity. `BriefAsset` (proposed creative spec) and `VASTAsset` (delivered video creative) currently share fields but represent different lifecycle concepts; auto-merging them would create cross-tool coupling the source schemas don't express, and would be hard to unwind once SDKs codegen against the merged type. `x-adcp-hoist` makes the share-or-split decision deliberate per schema.
+
+### Bundler behavior
+
+- **Hoists at any occurrence count (≥1).** The directive declares intent — "this is a canonical named type" — so adding a second reference later never changes the codegen surface.
+- **`title` is required.** Missing or empty title → build-time error. The directive is meant to be deliberate.
+- **Same title + different shape is a build-time error.** Two marked schemas authored with the same `title` but distinct fields would otherwise silently suffix one to `Foo2`, defeating the directive's "canonical name" guarantee.
+- **Collision with a pre-existing `$defs` key is suffixed** (`PriceBlock2`), matching the convention used by the pure-enum hoist.
+- **Stripped from bundled output** — both from the canonical `$defs` entry and from any stray marker that was authored inside a pre-existing `$defs` block.
+
+### SDK / codegen impact
+
+Adding `x-adcp-hoist` to a previously-inlined source schema is wire-compatible (the bundled schema still validates the same payloads) but is a codegen-shape change: TypeScript / Python / Go type generators that previously emitted an anonymous inline type (often `Foo1`, `Foo2`, …) will now emit a single named type. SDK adopters maintain rename aliases per their own deprecation policy — see [adcp-client#942](https://github.com/adcontextprotocol/adcp-client/issues/942) for the client-side rename/alias tracking.
+
+### Conformance
+
+- Validators MUST ignore `x-adcp-hoist` per draft-07 §6 (unknown keywords are tolerated). The directive has no wire semantics.
+- Source-tree consumers (third parties that dereference `static/schemas/source/...` directly rather than the bundled artifacts) MUST treat `x-adcp-hoist: true` as a no-op annotation. The schema's content is the contract.
+- Bundlers other than `scripts/build-schemas.cjs` MAY honor the directive or ignore it; a bundler that ignores it produces a wire-compatible bundle with un-deduped inline copies.
+
+### History
+
+- Introduced in [#4557](https://github.com/adcontextprotocol/adcp/issues/4557). Successor to [#3145](https://github.com/adcontextprotocol/adcp/issues/3145) phase 2.
 
 ## Future extensions
 

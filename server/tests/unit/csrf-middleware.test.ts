@@ -68,6 +68,59 @@ describe('csrfProtection', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
+  // --- Per-tenant MCP path bypass ---
+  //
+  // Per-tenant routes (`/<tenant>/mcp[-strict[-required|-forbidden]]`) live
+  // on the training-agent host where everything is bearer/RFC-9421 auth, not
+  // cookies. Pattern-matched on path shape (not hostname) so a spoofed
+  // X-Forwarded-Host can't bypass CSRF on cookie-authed routes.
+
+  const perTenantMcpPaths = [
+    '/sales/mcp',
+    '/sales/mcp-strict',
+    '/sales/mcp-strict-required',
+    '/sales/mcp-strict-forbidden',
+    '/governance/mcp-strict',
+    '/signals/mcp-strict-required',
+    '/brand/mcp-strict-forbidden',
+    '/creative/mcp',
+    '/creative-builder/mcp', // hyphenated tenant id
+  ];
+
+  it.each(perTenantMcpPaths)('allows POST to per-tenant MCP path %s without CSRF token', (path) => {
+    const req = mockReq({ method: 'POST', path });
+    const res = mockRes();
+    csrfProtection(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  // Guard against the regex over-matching shapes that aren't real MCP routes
+  // (and could collide with future cookie-authed routes).
+  const nearMissTenantPaths = [
+    '/sales/mcp-strict/extra',     // appended path segment
+    '/sales/mcp-strictly',          // strict-prefix-but-not-equal
+    '/sales/mcp-extra',             // not a known suffix
+    '/mcp-strict',                  // root-level (handled by EXEMPT_EXACT, not this rule)
+    '//mcp',                        // empty tenant segment
+    '/sales/sub/mcp',               // two-segment tenant prefix
+    '/Sales/mcp',                   // uppercase tenant — regex is lowercase-only
+  ];
+
+  it.each(nearMissTenantPaths)('rejects POST to %s — must NOT match per-tenant MCP pattern', (path) => {
+    if (path === '/mcp-strict') return; // exempt via EXEMPT_EXACT, skip
+    const token = 'a'.repeat(64);
+    const req = mockReq({
+      method: 'POST',
+      path,
+      cookies: { 'csrf-token': token },
+      headers: {} as Record<string, string>,
+    });
+    const res = mockRes();
+    csrfProtection(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res._status).toBe(403);
+  });
+
   // --- Authorization header bypass ---
 
   it('allows POST with Authorization header (API key auth)', () => {

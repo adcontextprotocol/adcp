@@ -1,0 +1,258 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/core/package.json",
+  "title": "Package",
+  "description": "A specific product within a media buy (line item)",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "Seller's unique identifier for the package",
+      "x-entity": "package"
+    },
+    "product_id": {
+      "type": "string",
+      "description": "ID of the product this package is based on",
+      "x-entity": "product"
+    },
+    "budget": {
+      "type": "number",
+      "description": "Budget allocation for this package in the currency specified by the pricing option",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "/schemas/3.1.0-beta.0/enums/pacing.json"
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "ID of the selected pricing option from the product's pricing_options array",
+      "x-entity": "product_pricing_option"
+    },
+    "bid_price": {
+      "type": "number",
+      "description": "Bid price for auction-based pricing. This is the exact bid/price to honor unless the selected pricing option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "minimum": 0
+    },
+    "price_breakdown": {
+      "description": "Breakdown of the effective price for this package. On fixed-price packages, echoes the pricing option's breakdown. On auction packages, shows the clearing price breakdown including any commission or settlement terms.",
+      "$ref": "/schemas/3.1.0-beta.0/pricing-options/price-breakdown.json"
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Impression goal for this package",
+      "minimum": 0
+    },
+    "catalogs": {
+      "type": "array",
+      "description": "Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., one product catalog, one store catalog). This constraint is enforced at the application level — sellers MUST reject requests containing multiple catalogs of the same type with a validation_error. Echoed from the create_media_buy request.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/catalog.json"
+      }
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Format IDs active for this package. Echoed from the create_media_buy request; omitted means all formats for the product are active.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/format-id.json"
+      }
+    },
+    "targeting_overlay": {
+      "$ref": "/schemas/3.1.0-beta.0/core/targeting.json"
+    },
+    "measurement_terms": {
+      "$ref": "/schemas/3.1.0-beta.0/core/measurement-terms.json",
+      "description": "Agreed billing measurement and makegood terms for this package. Reflects what was negotiated — may differ from the buyer's proposal or the product's defaults. When present, these terms are binding for the package's duration."
+    },
+    "performance_standards": {
+      "type": "array",
+      "description": "Agreed performance standards for this package. When any entry specifies a vendor, creatives assigned to this package MUST include corresponding tracker_script or tracker_pixel assets from that vendor.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/performance-standard.json"
+      },
+      "minItems": 1
+    },
+    "committed_metrics": {
+      "type": "array",
+      "description": "The binding reporting contract for this package — what the seller has agreed to populate in delivery reports. Each entry carries an explicit `committed_at` timestamp, so the array also serves as the contract amendment ledger: day-1 commitments share `committed_at = create_media_buy.confirmed_at`; mid-flight additions carry their own timestamps. The `missing_metrics` field on `get_media_buy_delivery` reconciles against this list, filtering to entries where `committed_at < reporting_period.end` (a metric committed mid-flight is only audited from its commitment timestamp forward). Sellers stamp the day-1 set on the `create_media_buy` response; mid-flight additions are appended via `update_media_buy` (append-only — sellers MUST reject attempts to modify or remove existing entries with `validation_error`, suggested code: `IMMUTABLE_FIELD`). Optional in v1; absence means the seller does not provide an audit-grade contract and `missing_metrics` falls back to the product's live `available_metrics` (a known audit gap — buyers SHOULD treat absence as 'no audit-grade contract' rather than 'clean delivery'). Each entry uses an explicit `scope` discriminator: `standard` for entries from the closed `available-metric.json` enum, `vendor` for vendor-defined metrics anchored on a BrandRef. The unified shape is symmetric with `missing_metrics` and `aggregated_totals.metric_aggregates` — same atomic unit `(scope, metric_id, qualifier)` across contract, diff, and delivery, so reconciliation collapses to a row-level join on the tuple. Replaces the parallel-array design that shipped briefly in #3510.",
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "scope"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "standard",
+                "description": "Standard metric from the closed `available-metric.json` enum."
+              },
+              "metric_id": {
+                "$ref": "/schemas/3.1.0-beta.0/enums/available-metric.json",
+                "description": "Identifier for the standard metric."
+              },
+              "qualifier": {
+                "type": "object",
+                "description": "Disambiguates metrics whose definition varies by qualifier. Today carries five keys — `viewability_standard` (MRC vs GroupM viewability), `completion_source` (seller- vs vendor-attested completion), `attribution_methodology` (how attribution was computed for outcome metrics), `attribution_window` (the time window over which outcomes were attributed), and `lift_dimension` (which dimension of brand_lift this row represents — awareness, consideration, etc.). Required when the underlying `metric_id` has multiple incompatible measurement paths AND the seller commits to a specific one. Symmetric on `missing_metrics`. Reserved for additive qualifiers in future minors — schema is closed (`additionalProperties: false`); new keys ship explicitly. **Heterogeneous value types**: qualifier values can be either string enums (`viewability_standard`, `completion_source`, `attribution_methodology`, `lift_dimension`) or structured objects (`attribution_window` is a duration `{interval, unit}`). Consumers MUST dispatch on key name to know value shape; structured-value qualifiers join on canonical (key-sorted) deep equality so `{interval: 14, unit: 'days'}` and `{unit: 'days', interval: 14}` resolve to the same partition. Rate-style metrics (`new_to_brand_rate`, `engagement_rate`, etc.) inherit the methodology of their numerator — when a rate carries `attribution_methodology` qualifier, it applies to the underlying conversions/events being rated.",
+                "properties": {
+                  "viewability_standard": {
+                    "$ref": "/schemas/3.1.0-beta.0/enums/viewability-standard.json",
+                    "description": "Viewability standard the seller commits to for this metric. MUST be set when `metric_id` ∈ {`viewable_impressions`, `viewable_rate`, `measurable_impressions`} and the seller commits to a specific standard; absence means the contract leaves the standard unspecified and reconciliation falls back to whatever standard the delivery report carries on its `viewability.standard` field."
+                  },
+                  "completion_source": {
+                    "$ref": "/schemas/3.1.0-beta.0/enums/completion-source.json",
+                    "description": "Source of `completion_rate` attestation. MUST be set when `metric_id` is `completion_rate` and the seller commits to a specific source — `seller_attested` when the player/ad server's own completion event is the contract, `vendor_attested` when a third-party measurement vendor (anchored on the matching `performance_standard.vendor` BrandRef) is the contract. Absence means the contract leaves the source unspecified and reconciliation falls back to whatever the delivery report happens to carry."
+                  },
+                  "attribution_methodology": {
+                    "$ref": "/schemas/3.1.0-beta.0/enums/attribution-methodology.json",
+                    "description": "How attribution between ad exposure and outcome events was computed. SHOULD be set when `metric_id` is an outcome metric (`conversions`, `conversion_value`, `roas`, `cost_per_acquisition`, `incremental_sales_lift`, `brand_lift`, `foot_traffic`, `conversion_lift`, `brand_search_lift`, `units_sold`, `new_to_brand_rate`, `new_to_brand_units`, `leads`) and the seller commits to a specific methodology. `deterministic_purchase` is the retail-media default; `modeled` covers MMM and clean-room outputs; `probabilistic` and `panel_based` cover their respective methodologies. Two outcome rows with the same `metric_id` and different `attribution_methodology` are not interchangeable and must not be summed."
+                  },
+                  "attribution_window": {
+                    "$ref": "/schemas/3.1.0-beta.0/core/duration.json",
+                    "description": "Time window over which outcome attribution is computed. **Object-valued, not string** — MUST be a structured duration object like `{interval: 14, unit: 'days'}`, NEVER a shorthand string like `'14d'`. SHOULD be set when `metric_id` is an outcome metric and the seller commits to a specific window. Common windows: `{interval: 7, unit: 'days'}`, `{interval: 14, unit: 'days'}`, `{interval: 30, unit: 'days'}`, `{interval: 90, unit: 'days'}`. Two outcome rows with the same `metric_id` and `attribution_methodology` but different `attribution_window` represent the same metric measured over different periods — the join on `(metric_id, qualifier)` keeps them as separate rows so buyers don't accidentally aggregate across windows."
+                  },
+                  "lift_dimension": {
+                    "$ref": "/schemas/3.1.0-beta.0/enums/lift-dimension.json",
+                    "description": "Which dimension of `brand_lift` this row represents — awareness, consideration, favorability, purchase intent, or ad recall. MUST be set when `metric_id` is `brand_lift` and the seller commits to (or is reporting) a specific dimension. Brand-lift vendors (Kantar, Upwave, Cint, DoubleVerify) report each dimension separately with its own sample size and confidence interval; combining them into a single number is a category error. Two `brand_lift` rows under different `lift_dimension` are different surveyed outcomes and must not be summed."
+                  }
+                },
+                "additionalProperties": false
+              },
+              "committed_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp when this metric became part of the contract. Day-1 commitments use `create_media_buy.confirmed_at`; mid-flight additions use the time the amendment was accepted."
+              }
+            },
+            "required": ["scope", "metric_id", "committed_at"],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "vendor",
+                "description": "Vendor-defined metric, identified by the tuple `(vendor, metric_id)`."
+              },
+              "vendor": {
+                "$ref": "/schemas/3.1.0-beta.0/core/brand-ref.json",
+                "description": "Vendor that defines and computes this metric. The vendor's `brand.json` `agents[type='measurement']` is the canonical anchor."
+              },
+              "metric_id": {
+                "$ref": "/schemas/3.1.0-beta.0/core/vendor-metric-id.json",
+                "description": "Identifier for the metric within the vendor's vocabulary."
+              },
+              "committed_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp when this vendor metric became part of the contract."
+              }
+            },
+            "required": ["scope", "vendor", "metric_id", "committed_at"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 1,
+      "examples": [
+        [
+          { "scope": "standard", "metric_id": "impressions",     "committed_at": "2026-04-29T10:53:00Z" },
+          { "scope": "standard", "metric_id": "spend",           "committed_at": "2026-04-29T10:53:00Z" },
+          { "scope": "standard", "metric_id": "completed_views", "committed_at": "2026-04-29T10:53:00Z" },
+          { "scope": "vendor",   "vendor": { "domain": "attentionvendor.example" }, "metric_id": "attention_units", "committed_at": "2026-04-29T10:53:00Z" },
+          { "scope": "standard", "metric_id": "viewable_rate",   "qualifier": { "viewability_standard": "mrc" }, "committed_at": "2026-05-30T14:22:00Z" }
+        ]
+      ]
+    },
+    "creative_assignments": {
+      "type": "array",
+      "description": "Creative assets assigned to this package",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/creative-assignment.json"
+      }
+    },
+    "format_ids_to_provide": {
+      "type": "array",
+      "description": "Format IDs that creative assets will be provided for this package",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/format-id.json"
+      }
+    },
+    "optimization_goals": {
+      "type": "array",
+      "description": "Optimization targets for this package. The seller optimizes delivery toward these goals in priority order. Common pattern: event goals (purchase, install) as primary targets at priority 1; metric goals (clicks, views) as secondary proxy signals at priority 2+.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/optimization-goal.json"
+      },
+      "minItems": 1
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "not": { "const": "asap" },
+      "description": "Flight start date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's start_time. Sellers SHOULD always include the resolved value in responses, even when inherited."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Flight end date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's end_time. Sellers SHOULD always include the resolved value in responses, even when inherited."
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Whether this package is paused by the buyer. Paused packages do not deliver impressions. Defaults to false.",
+      "default": false
+    },
+    "canceled": {
+      "type": "boolean",
+      "description": "Whether this package has been canceled. Canceled packages stop delivery and cannot be reactivated. Defaults to false.",
+      "default": false
+    },
+    "cancellation": {
+      "type": "object",
+      "description": "Cancellation metadata. Present only when canceled is true.",
+      "required": ["canceled_at", "canceled_by"],
+      "properties": {
+        "canceled_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this package was canceled."
+        },
+        "canceled_by": {
+          "$ref": "/schemas/3.1.0-beta.0/enums/canceled-by.json",
+          "description": "Which party initiated the package cancellation."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason the package was canceled.",
+          "maxLength": 500
+        },
+        "acknowledged_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the seller acknowledged the cancellation. Confirms inventory has been released and billing stopped. Absent until the seller processes the cancellation."
+        }
+      },
+      "additionalProperties": false
+    },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Agency estimate or authorization number for this package. Echoed from the buyer's request. When present on the package, takes precedence over the media buy-level estimate number."
+    },
+    "creative_deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp for creative upload or change deadline for this package. After this deadline, creative changes are rejected. When absent, the media buy's creative_deadline applies."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "package_id"
+  ],
+  "additionalProperties": true
+}

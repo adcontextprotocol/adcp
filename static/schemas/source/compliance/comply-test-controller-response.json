@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "oneOf": [
@@ -670,6 +673,7 @@
     {
       "description": "List scenarios response",
       "data": {
+        "status": "completed",
         "success": true,
         "scenarios": [
           "force_creative_status",
@@ -681,6 +685,7 @@
     {
       "description": "Successful state transition",
       "data": {
+        "status": "completed",
         "success": true,
         "previous_state": "processing",
         "current_state": "approved",
@@ -690,6 +695,7 @@
     {
       "description": "Delivery simulation with cumulative totals",
       "data": {
+        "status": "completed",
         "success": true,
         "simulated": {
           "impressions": 10000,
@@ -713,6 +719,7 @@
     {
       "description": "Budget spend simulation",
       "data": {
+        "status": "completed",
         "success": true,
         "simulated": {
           "spend_percentage": 95,
@@ -731,6 +738,7 @@
     {
       "description": "force_create_media_buy_arm directive registered",
       "data": {
+        "status": "completed",
         "success": true,
         "forced": {
           "arm": "submitted",
@@ -742,6 +750,7 @@
     {
       "description": "Invalid transition error",
       "data": {
+        "status": "completed",
         "success": false,
         "error": "INVALID_TRANSITION",
         "error_detail": "Cannot transition from archived to processing — archived is terminal",
@@ -751,6 +760,7 @@
     {
       "description": "Entity not found",
       "data": {
+        "status": "completed",
         "success": false,
         "error": "NOT_FOUND",
         "error_detail": "Creative cr-unknown not found",
@@ -760,6 +770,7 @@
     {
       "description": "Upstream traffic in raw attestation mode (default) — adapter forwarded synthetic hashed members to a hypothetical audience-upload endpoint, payload returned in full so the runner can apply payload_must_contain assertions.",
       "data": {
+        "status": "completed",
         "success": true,
         "since_timestamp": "2026-05-02T14:30:00Z",
         "total_count": 1,
@@ -798,6 +809,7 @@
     {
       "description": "Upstream traffic in digest attestation mode — privacy-conscious adopter returns payload_digest_sha256 + payload_length + identifier_match_proofs[] (per-digest echo verification matching the request's identifier_value_digests) instead of raw payload. Synthetic vectors only: digest mode reduces what the runner sees, but the controller must still operate on synthetic test data.",
       "data": {
+        "status": "completed",
         "success": true,
         "since_timestamp": "2026-05-02T14:30:00Z",
         "total_count": 1,

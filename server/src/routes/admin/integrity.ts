@@ -10,7 +10,7 @@
  */
 import type { Request, Router } from 'express';
 import type { WorkOS } from '@workos-inc/node';
-import { requireAuth, requireAdmin } from '../../middleware/auth.js';
+import { requireGlobalAdmin } from '../../middleware/auth.js';
 import { getPool } from '../../db/client.js';
 import { stripe } from '../../billing/stripe-client.js';
 import { createLogger } from '../../logger.js';
@@ -46,7 +46,7 @@ interface ParsedOptions {
 export function setupIntegrityRoutes(apiRouter: Router, config: IntegrityRoutesConfig): void {
   const { workos } = config;
 
-  apiRouter.get('/integrity/invariants', requireAuth, requireAdmin, (_req, res) => {
+  apiRouter.get('/integrity/invariants', ...requireGlobalAdmin, (_req, res) => {
     res.json({
       invariants: ALL_INVARIANTS.map((inv) => ({
         name: inv.name,
@@ -56,7 +56,7 @@ export function setupIntegrityRoutes(apiRouter: Router, config: IntegrityRoutesC
     });
   });
 
-  apiRouter.get('/integrity/check', requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get('/integrity/check', ...requireGlobalAdmin, async (req, res) => {
     const guard = guardPreconditions(req, workos);
     if (guard) return res.status(guard.status).json(guard.body);
 
@@ -91,7 +91,7 @@ export function setupIntegrityRoutes(apiRouter: Router, config: IntegrityRoutesC
     }
   });
 
-  apiRouter.get('/integrity/check/:name', requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get('/integrity/check/:name', ...requireGlobalAdmin, async (req, res) => {
     const guard = guardPreconditions(req, workos);
     if (guard) return res.status(guard.status).json(guard.body);
 

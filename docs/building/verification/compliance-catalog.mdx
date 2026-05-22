@@ -30,8 +30,9 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | `idempotency` | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
 | `security` | **Authentication baseline — unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding.** See [Authentication](/docs/building/by-layer/L2/authentication). |
 | `webhook-emission` | Outbound webhook conformance — stable `idempotency_key` across retries; RFC 9421 webhook signing (or HMAC fallback if the buyer opted in). Runs for any agent that accepts `push_notification_config` on any operation. |
+| `notification-config-event-scope` | `sync_accounts.accounts[].notification_configs[]` semantic validation — account-level subscribers reject media-buy-anchored notification types (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) even though they are valid values in the shared notification-type enum. |
 | `pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_creatives` response from a continuation page through to terminal. |
-| `get-signals-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `get_signals` response under a broad query — page 1 must be non-terminal against any non-trivial catalog, page 2 follows the cursor. |
+| `get-signals-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `get_signals` response under a broad query — page 1 must be non-terminal against any non-trivial signal set, page 2 follows the cursor. |
 | `pagination-integrity-list-accounts` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_accounts` response — storyboard bootstraps three accounts via `sync_accounts`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
 | `pagination-integrity-creative-formats` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_creative_formats` response — storyboard seeds two creative formats via `seed_creative_format`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
 | `get-media-buys-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `get_media_buys` response — storyboard seeds three media buys via `seed_media_buy`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
@@ -249,6 +250,17 @@ Three specialisms apply to specific delivery channels and have their own storybo
 |-----------|--------|---------|
 | `sponsored-intelligence` | preview | Agent claim for SDKs that dispatch on specialism ID. The graded storyboard is the `sponsored-intelligence` protocol baseline; this specialism reserves the wire ID and promotes to `stable` when the SI tools graduate from `x-status: experimental`. |
 
+## Cross-resource invariants
+
+In addition to per-step validations, specialisms declare cross-step and cross-resource **invariants** the runner observes across the full storyboard run. These catch state inconsistencies that no single response shape would surface.
+
+| Invariant | Scope | Specialisms |
+|-----------|-------|-------------|
+| `status.monotonic` | Single-resource — rejects status transitions observed across steps that aren't on the spec lifecycle graph. | All specialisms with a stateful resource lifecycle. |
+| `impairment.coherence` | Cross-resource — verifies that `media_buy.impairments[]` stays in sync with referenced resources. **Forward**: every entry references a currently-offline resource. **Inverse**: any offline resource referenced by a non-terminal buy appears in `impairments[]`. **Health-iff**: on a non-terminal buy, `health == "impaired"` iff `impairments[]` is non-empty (strict iff — stale drift fails). Out of scope: all three rules relax on terminal-status buys (sellers MAY leave `impairments[]` and `health` in whatever state held at the terminal transition); materiality is schema-enforced via `package_ids: minItems: 1`. | `audience-sync`, `creative-ad-server`, `creative-template`, `creative-generative`, `sales-catalog-driven`. Driven by the `media_buy_seller/dependency_impairment` scenario (creative-track via `force_creative_status`); audience-track and catalog-track follow once the compliance test controller adds `force_audience_status` / `force_catalog_item_status`. Grades `not_applicable` on storyboards that don't observe both a resource transition and a media-buy snapshot read. |
+
+Invariants are declared in the specialism YAML's `invariants:` array and documented inline with the rule they enforce. See [media-buy lifecycle § Compliance](/docs/media-buy/media-buys/lifecycle#compliance) for the full `impairment.coherence` contract.
+
 ## How to claim
 
 Declare your protocols and specialisms in `get_adcp_capabilities`:
@@ -336,3 +348,7 @@ The build pipeline verifies the specialism filesystem ↔ enum parity and that e
 <Note>
 The catalog on this page is maintained by hand to give human context. The authoritative enumeration is always `/compliance/{version}/index.json`.
 </Note>
+
+<Tip>
+**Building an agent that wraps an upstream platform?** Storyboards in this catalog grade the AdCP wire contract; they cannot detect adapters that return shape-valid responses without integrating with the upstream. See **[Validate adapter agents with mock upstream fixtures](/docs/building/verification/validate-with-mock-fixtures)** for the complementary pre-staging gate.
+</Tip>

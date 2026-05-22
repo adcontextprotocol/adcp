@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "oneOf": [

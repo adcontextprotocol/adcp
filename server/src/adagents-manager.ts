@@ -1,6 +1,7 @@
 import { PropertyDefinition, PlacementDefinition } from './types.js';
 import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 import { safeFetchAxiosLike, classifySafeFetchError } from './utils/url-security.js';
+import { canonicalizePublisherDomain } from './services/publisher-domain.js';
 
 export interface ValidationError {
   field: string;
@@ -14,7 +15,7 @@ export interface ValidationWarning {
   suggestion?: string;
 }
 
-export type DiscoveryMethod = 'direct' | 'authoritative_location' | 'ads_txt_managerdomain';
+export type DiscoveryMethod = 'direct' | 'authoritative_location' | 'ads_txt_managerdomain' | 'adagents_authoritative';
 
 export interface AdAgentsValidationResult {
   valid: boolean;
@@ -50,7 +51,8 @@ export interface AuthorizedAgent {
   property_tags?: string[];
   properties?: PropertyDefinition[];
   publisher_properties?: Array<{
-    publisher_domain: string;
+    publisher_domain?: string;
+    publisher_domains?: string[];
     selection_type: 'all' | 'by_id' | 'by_tag';
     property_ids?: string[];
     property_tags?: string[];
@@ -386,8 +388,10 @@ export class AdAgentsManager {
    * Two ways the manifest can express that scope:
    *
    * 1. **Per-agent paths.** An authorized_agents[] entry directly names
-   *    the publisher under publisher_properties[].publisher_domain or
-   *    collections[].publisher_domain.
+   *    the publisher under publisher_properties[].publisher_domain
+   *    (singular) or publisher_properties[].publisher_domains[] (compact
+   *    managed-network form — exactly equivalent to repeating the entry
+   *    once per listed domain) or collections[].publisher_domain.
    *
    * 2. **Property-level paths.** A top-level properties[] entry carries
    *    publisher_domain matching the source, AND at least one
@@ -407,7 +411,7 @@ export class AdAgentsManager {
     const data = rawData as AdAgentsJsonInline;
     const agents = Array.isArray(data.authorized_agents) ? data.authorized_agents : [];
     const properties = Array.isArray(data.properties) ? data.properties : [];
-    const normalizedPublisher = publisherDomain.toLowerCase();
+    const normalizedPublisher = canonicalizePublisherDomain(publisherDomain);
 
     // Index properties by id and by tag for the per-agent reference lookup.
     // Both indexes filter to properties whose publisher_domain matches the
@@ -417,7 +421,7 @@ export class AdAgentsManager {
     const matchingPropertyTags = new Set<string>();
     for (const prop of properties) {
       if (typeof prop?.publisher_domain !== 'string') continue;
-      if (prop.publisher_domain.toLowerCase() !== normalizedPublisher) continue;
+      if (canonicalizePublisherDomain(prop.publisher_domain) !== normalizedPublisher) continue;
       if (typeof prop.property_id === 'string' && prop.property_id.length > 0) {
         matchingPropertyIds.add(prop.property_id);
       }
@@ -430,9 +434,17 @@ export class AdAgentsManager {
 
     return agents.some((agent) => {
       const hasPublisherProperties = Array.isArray(agent.publisher_properties)
-        && agent.publisher_properties.some((p) => p.publisher_domain.toLowerCase() === normalizedPublisher);
+        && agent.publisher_properties.some((p) => {
+          if (typeof p.publisher_domain === 'string' && canonicalizePublisherDomain(p.publisher_domain) === normalizedPublisher) {
+            return true;
+          }
+          if (Array.isArray(p.publisher_domains)) {
+            return p.publisher_domains.some((d) => typeof d === 'string' && canonicalizePublisherDomain(d) === normalizedPublisher);
+          }
+          return false;
+        });
       const hasCollections = Array.isArray(agent.collections)
-        && agent.collections.some((c) => c.publisher_domain.toLowerCase() === normalizedPublisher);
+        && agent.collections.some((c) => canonicalizePublisherDomain(c.publisher_domain) === normalizedPublisher);
 
       // Property-level scoping: the agent reaches a property whose
       // publisher_domain matches the source. by_id walks property_ids;

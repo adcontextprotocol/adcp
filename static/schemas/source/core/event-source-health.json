@@ -7,7 +7,7 @@
   "properties": {
     "status": {
       "$ref": "/schemas/enums/assessment-status.json",
-      "description": "Overall health status. Use this for cross-seller decisions — do not rely on detail.score for comparability."
+      "description": "Overall health status. Use this for cross-seller decisions — do not rely on detail.score for comparability. 'insufficient' covers the source-offline case (zero events received over the seller's evaluation window) — disambiguate via `events_received_24h: 0` and a stale `last_event_at`. Sellers MUST surface a corresponding impairment (reason_code: source_offline) on any active media buy whose conversion goals depend on an event source that has gone offline."
     },
     "detail": {
       "type": "object",

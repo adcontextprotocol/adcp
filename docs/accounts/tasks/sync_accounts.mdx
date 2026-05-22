@@ -99,6 +99,7 @@ asyncio.run(main())
 | `billing_entity` | object | No | Structured business entity details for the party responsible for payment. Contains `legal_name` (required), plus optional `vat_id`, `tax_id`, `registration_number`, `address`, `contacts`, and `bank`. Bank details are write-only — included in requests but never echoed in responses. See [billing entity and invoice recipient](/docs/building/integration/accounts-and-agents#billing-entity-and-invoice-recipient). |
 | `payment_terms` | string | No | Payment terms for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. The seller must either accept these terms or reject the account — terms are never silently remapped. When omitted, the seller applies its default terms. |
 | `sandbox` | boolean | No | When true, set up a sandbox account with no real platform calls or billing. Only applicable to implicit accounts (`require_operator_auth: false`). For explicit accounts, sandbox accounts are pre-existing test accounts discovered via `list_accounts`. |
+| `notification_configs` | array | No | Account-level webhook subscribers for events that outlive any single media buy: creative lifecycle notifications and wholesale feed change webhooks. Omit to leave existing subscribers unchanged; send `[]` to remove all subscribers; send a full array to replace. |
 
 **Natural key**: The tuple `(brand, operator, sandbox)` uniquely identifies an account relationship. `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (via agency). Adding `sandbox: true` provisions a sandbox account for the same brand/operator pair — no real platform calls or billing.
 
@@ -162,6 +163,95 @@ The notification payload includes the `(brand, operator)` natural key so the buy
 ```
 
 If the buyer did not provide `push_notification_config`, poll [`list_accounts`](/docs/accounts/tasks/list_accounts) to check for status changes.
+
+## Two modes: provisioning vs. settings-update
+
+Each per-account entry uses one of two key shapes, never both:
+
+- **Provisioning mode** — flat `brand` + `operator` + `billing` at the entry root. The seller provisions or upserts accounts. Used for implicit accounts (`require_operator_auth: false`). This is the shape AdCP 3.0 shipped with.
+- **Settings-update mode** — `account` (an [AccountRef](/docs/building/integration/accounts-and-agents#account-references)) at the entry root, with `brand`/`operator`/`billing` absent. The seller updates the account's settable state — no provisioning side effects. Used for explicit accounts (`require_operator_auth: true`) where accounts are pre-provisioned and discovered via `list_accounts`. Implicit-account sellers MAY also accept this mode for settings updates against accounts they previously provisioned.
+
+Schema enforces the exclusivity via `oneOf` — sending both shapes on the same entry is a validation error. Sellers that don't implement settings-update mode reject `account`-keyed entries with `UNSUPPORTED_PROVISIONING`; sellers that don't provision (most explicit-account platforms) reject natural-key entries with the same code.
+
+## Account-level webhook subscriptions
+
+`notification_configs[]` carries account-level webhook subscribers for notifications whose lifecycle outlives any single media buy — `creative.status_changed`, `creative.purged`, wholesale feed change webhooks (`product.*`, `signal.*`, `wholesale_feed.bulk_change`), and future account-scoped events. Distinct from `push_notification_config` on this task (account-status webhook), which is one-shot transport for `sync_accounts`'s own async result.
+
+For these event types, "wholesale feed" means the seller's buyable wholesale product and signals feeds returned by `get_products` or `get_signals`; it is not the buyer-provided feeds managed by `sync_catalogs`.
+
+Permitted in **both** provisioning and settings-update modes. Declarative semantics: omit to leave existing subscribers unchanged; send `[]` to remove all subscribers; send a full array to replace.
+
+Each entry has:
+
+- `subscriber_id` — buyer-supplied identifier, unique within the account; echoed on every fire so multi-subscriber accounts can route by endpoint
+- `url` — HTTPS endpoint URL. For wholesale feed subscribers, sellers MUST complete an endpoint activation challenge or equivalent proof-of-control before treating the subscriber as active.
+- `event_types[]` — types the subscriber wants. Only account-anchored types are permitted (today: `creative.status_changed`, `creative.purged`, `product.created`, `product.updated`, `product.priced`, `product.removed`, `signal.created`, `signal.updated`, `signal.priced`, `signal.removed`, `wholesale_feed.bulk_change`). Sellers MUST reject any media-buy-anchored type (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) as a per-account validation failure with `INVALID_REQUEST` or `VALIDATION_ERROR` in `accounts[].errors[]`, and `error.field` MUST point at the invalid `event_types` entry — those events belong on a media buy's `push_notification_config`.
+- `authentication` (optional) — legacy Bearer or HMAC-SHA256. Omit to use the default RFC 9421 webhook profile. When present, the same signed-registration downgrade-resistance rules as `push_notification_config.authentication` apply. Credentials are write-only — sellers omit them on reads.
+- `active` (default `true`) — set `false` to pause a subscriber without removing the registration. For wholesale feed subscribers, sellers MAY persist the config as inactive until endpoint proof-of-control completes.
+
+Example — register a buyer-side endpoint plus an audit bus on an explicit account:
+
+```json
+{
+  "idempotency_key": "f2c4b7d9-6789-49bc-defa-2345678901bc",
+  "accounts": [
+    {
+      "account": { "account_id": "acc_acme_pinnacle" },
+      "notification_configs": [
+        {
+          "subscriber_id": "buyer-primary",
+          "url": "https://buyer.example/webhooks/adcp/creative",
+          "event_types": ["creative.status_changed", "creative.purged"],
+          "active": true
+        },
+        {
+          "subscriber_id": "audit-bus",
+          "url": "https://audit.buyer.example/adcp/ingest",
+          "event_types": ["creative.status_changed", "creative.purged"],
+          "active": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+Example — register a wholesale feed mirror subscriber for wholesale product and signal changes:
+
+```json
+{
+  "idempotency_key": "a8af8cf1-89bd-41f3-b27d-7ee7e9f8d2e4",
+  "accounts": [
+    {
+      "account": { "account_id": "acc_acme_pinnacle" },
+      "notification_configs": [
+        {
+          "subscriber_id": "wholesale-feed-sync",
+          "url": "https://buyer.example/webhooks/adcp/wholesale-feed",
+          "event_types": [
+            "product.created",
+            "product.updated",
+            "product.priced",
+            "product.removed",
+            "signal.created",
+            "signal.updated",
+            "signal.priced",
+            "signal.removed",
+            "wholesale_feed.bulk_change"
+          ],
+          "active": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+Governance agents registered via [`sync_governance`](/docs/accounts/tasks/sync_governance) are **not** implicitly subscribed to these webhooks. If your governance agent should also receive creative-lifecycle fires, register its URL as a separate `notification_configs[]` entry — explicit, auditable, with its own `event_types[]` filter.
+
+Verify applied state via [`list_accounts`](/docs/accounts/tasks/list_accounts) — the response carries `notification_configs[]` per account with credentials redacted.
+
+Wholesale feed notifications are registered here, not through a separate subscription task. The webhook body is [`wholesale-feed-webhook.json`](https://adcontextprotocol.org/schemas/v3/core/wholesale-feed-webhook.json): it carries the changed product, signal, or bulk-change summary plus the post-change `wholesale_feed_version`. Sellers MUST apply the same per-subscriber authorization and scope predicate used by the corresponding wholesale read before emitting each webhook. Receivers MAY apply the payload to local mirrors; use `get_products` / `get_signals` with `if_wholesale_feed_version` to repair missed or distrusted pushes and before binding spend or authority. See [wholesale_feed_webhooks](/docs/protocol/get_adcp_capabilities#wholesale_feed_webhooks) for capability declaration and event semantics.
 
 ## Common scenarios
 

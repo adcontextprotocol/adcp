@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/enums/metric-scope.json",
+  "title": "Metric Scope",
+  "description": "Discriminator for entries in unified metric arrays (`committed_metrics`, `missing_metrics`). `standard`: a metric from the closed `available-metric.json` enum, identified by `metric_id` alone. `vendor`: a vendor-defined metric, identified by the tuple `(vendor, metric_id)` where `vendor` is a BrandRef anchored on the vendor's `brand.json`.",
+  "type": "string",
+  "enum": [
+    "standard",
+    "vendor"
+  ]
+}

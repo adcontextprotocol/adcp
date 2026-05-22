@@ -1,6 +1,7 @@
 import { getClient } from './client.js';
 import { uuidv7 } from './uuid.js';
 import { normalizeIdentifier } from '../services/identifier-normalization.js';
+import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 import { createLogger } from '../logger.js';
 import type { PoolClient } from 'pg';
 
@@ -43,6 +44,7 @@ export interface AdagentsAuthorizedAgent {
   properties?: AdagentsProperty[];           // for inline_properties variant
   publisher_properties?: Array<{
     publisher_domain?: string;
+    publisher_domains?: string[];
     selection_type?: 'all' | 'by_id' | 'by_tag';
     property_ids?: string[];
     property_tags?: string[];
@@ -143,6 +145,43 @@ function truncateResolvedUrl(url: string | undefined): string | null {
   return url.length > RESOLVED_URL_MAX ? url.slice(0, RESOLVED_URL_MAX) : url;
 }
 
+// Pattern from the JSON Schema for `publisher_domain`. Used after
+// canonicalization to drop entries whose canonical form doesn't look like
+// a publishable domain — embedded control chars, scheme remnants, paths,
+// etc. would otherwise land in the revocation set with a key that no
+// real lookup hits (silently-ignored revocation), which is the wrong
+// failure mode for a security control.
+const PUBLISHER_DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+
+// Read `revoked_publisher_domains[]` from a (loose-typed) manifest and return
+// the set of canonicalized publisher_domain values. Entries MUST carry both
+// a string `publisher_domain` (which canonicalizes to a schema-valid domain)
+// and a parseable `revoked_at` per the spec — the writer is a security
+// boundary, and silently accepting malformed revocation entries is the
+// same shape as the cross-publisher bypass this PR closes. Malformed
+// entries are dropped, not honored.
+function extractRevokedPublisherDomains(manifest: unknown): Set<string> {
+  const out = new Set<string>();
+  const m = manifest as { revoked_publisher_domains?: unknown };
+  if (!Array.isArray(m?.revoked_publisher_domains)) return out;
+  for (const entry of m.revoked_publisher_domains) {
+    const pd = (entry as { publisher_domain?: unknown })?.publisher_domain;
+    const ra = (entry as { revoked_at?: unknown })?.revoked_at;
+    if (typeof pd !== 'string' || pd.length === 0) continue;
+    if (typeof ra !== 'string' || ra.length === 0) continue;
+    // Require parseable date-time. Date.parse returns NaN on invalid input.
+    if (Number.isNaN(Date.parse(ra))) continue;
+    const canonical = canonicalizePublisherDomain(pd);
+    // Reject canonical forms that wouldn't pass the schema pattern — they
+    // can't match any legitimately-stored publisher_domain anyway, and
+    // accepting them lets a misbehaving manifest hide revocations as
+    // garbage entries.
+    if (!PUBLISHER_DOMAIN_PATTERN.test(canonical)) continue;
+    out.add(canonical);
+  }
+  return out;
+}
+
 export function canonicalizeAgentUrl(raw: string): string | null {
   const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
@@ -188,13 +227,127 @@ export class PublisherDatabase {
    * Does not touch adagents_json (preserves the last successful body
    * if one exists) and does not bump source_type.
    */
+  /**
+   * Record a child publisher synthesized from a manager file's
+   * publisher_properties[].publisher_domains[] fan-out (adcp#4825 inline
+   * resolution). The child has not been independently crawled — the
+   * manager file IS the authorization. Stamp discovery_method
+   * 'adagents_authoritative' and manager_domain on the publishers row
+   * without writing adagents_json (we never fetched the child's origin).
+   *
+   * If a stronger row already exists (the child WAS independently
+   * crawled and has adagents_json cached), don't overwrite its
+   * provenance — direct crawl wins over manager-file attribution.
+   */
+  async recordChildPublisherFromManager(input: {
+    childDomain: string;
+    managerDomain: string;
+  }): Promise<void> {
+    const childDomain = canonicalizePublisherDomain(input.childDomain);
+    const managerDomain = canonicalizePublisherDomain(input.managerDomain);
+    if (childDomain === managerDomain) return; // never self-attribute
+    const client = await getClient();
+    try {
+      await client.query(
+        `INSERT INTO publishers
+           (domain, source_type, discovery_method, manager_domain, last_validated)
+         VALUES ($1, 'community', 'adagents_authoritative', $2, NOW())
+         ON CONFLICT (domain) DO UPDATE SET
+           discovery_method = CASE
+             WHEN publishers.adagents_json IS NULL THEN EXCLUDED.discovery_method
+             ELSE publishers.discovery_method
+           END,
+           manager_domain = CASE
+             WHEN publishers.adagents_json IS NULL THEN EXCLUDED.manager_domain
+             ELSE publishers.manager_domain
+           END,
+           last_validated = CASE
+             WHEN publishers.adagents_json IS NULL THEN NOW()
+             ELSE publishers.last_validated
+           END,
+           updated_at = NOW()`,
+        [childDomain, managerDomain],
+      );
+
+      // Enqueue the child for delayed periodic re-validation (#4850) so a
+      // manager-asserted child eventually gets bilateral confirmation
+      // (or a 404 backoff). Initial delay of 24h prevents 6,800 fan-out
+      // children from immediately storming the crawler — they spread
+      // across the next day's drain ticks. ON CONFLICT DO NOTHING
+      // preserves any existing backoff window (avoid resetting if the
+      // child already 404'd recently).
+      await client.query(
+        `INSERT INTO manager_revalidation_queue
+           (publisher_domain, manager_domain, enqueued_at, next_attempt_after, attempts, last_attempted_at, last_error)
+         VALUES ($1, $2, NOW(), NOW() + INTERVAL '24 hours', 0, NULL, NULL)
+         ON CONFLICT (publisher_domain) DO NOTHING`,
+        [childDomain, managerDomain],
+      );
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Project a fan-out authorization edge into the catalog
+   * (`catalog_agent_authorizations`) so the partner-sync endpoints
+   * (`/registry/authorizations`, `/registry/authorizations/snapshot`)
+   * — which read the catalog only — see the same edge the legacy
+   * `agent_publisher_authorizations` arm carries. Adcp#4841.
+   *
+   * The catalog's `cacheAdagentsManifest` projection deliberately
+   * refuses cross-publisher claims (publisher-db.ts ~L968: a manager
+   * file cannot land authoritative rows for another publisher's
+   * properties without out-of-band corroboration). For the fan-out
+   * shape — where the manager file names the child publisher in its
+   * `publisher_properties[].publisher_domains[]` selector — the
+   * out-of-band corroboration is the inline-resolution rule itself
+   * (#4825). Evidence value `'adagents_authoritative'` (migration 488)
+   * carries the lower trust profile so consumers can filter when
+   * bilateral verification matters.
+   *
+   * Called from the crawler's fan-out helper per (agent, child) pair.
+   * The companion `recordChildPublisherFromManager` writes the
+   * publishers row (per-child, agent-independent); this writes the
+   * catalog row (per agent × child).
+   */
+  async recordCatalogFanoutAuthorization(input: {
+    agentUrl: string;
+    childDomain: string;
+    authorizedFor?: string;
+  }): Promise<void> {
+    const childDomain = canonicalizePublisherDomain(input.childDomain);
+    const agentCanonical = canonicalizeAgentUrl(input.agentUrl);
+    if (!agentCanonical) return; // canonicalizer rejected — invalid URL, skip
+    const client = await getClient();
+    try {
+      await client.query(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, property_rid, property_id_slug,
+            publisher_domain, authorized_for, evidence, created_by)
+         VALUES ($1, $2, NULL, NULL, $3, $4, 'adagents_authoritative', 'system')
+         ON CONFLICT (agent_url_canonical,
+                      (COALESCE(property_rid::text, '')),
+                      (COALESCE(publisher_domain, '')),
+                      evidence)
+                WHERE deleted_at IS NULL
+         DO UPDATE SET
+           authorized_for = EXCLUDED.authorized_for,
+           updated_at = NOW()`,
+        [input.agentUrl, agentCanonical, childDomain, input.authorizedFor ?? null],
+      );
+    } finally {
+      client.release();
+    }
+  }
+
   async recordFailedAdagentsFetch(input: {
     domain: string;
     statusCode?: number;
     responseBytes?: number;
     resolvedUrl?: string;
   }): Promise<void> {
-    const domain = input.domain.toLowerCase();
+    const domain = canonicalizePublisherDomain(input.domain);
     const client = await getClient();
     try {
       await client.query(
@@ -219,7 +372,7 @@ export class PublisherDatabase {
   }
 
   async upsertAdagentsCache(input: UpsertAdagentsCacheInput): Promise<void> {
-    const domain = input.domain.toLowerCase();
+    const domain = canonicalizePublisherDomain(input.domain);
     const client = await getClient();
     try {
       await client.query('BEGIN');
@@ -265,6 +418,49 @@ export class PublisherDatabase {
           input.managerDomain ?? null,
         ]
       );
+
+      // `revoked_publisher_domains[]` precedence: if this manifest revokes
+      // the source domain, skip property and authorization projection
+      // entirely AND retire any catalog rows that a prior projection of
+      // this same publisher had landed. The publishers row stays as the
+      // verbatim cache of the manifest, but every writer-owned catalog
+      // row (`evidence='adagents_json'`, `created_by='system'`) gets
+      // soft-deleted so the index stops authorizing the revoked
+      // publisher on the next refresh. Without this retirement the
+      // revocation is advisory only — stale rows from before the
+      // revocation would continue to serve, defeating the security gate
+      // the spec promises. See managed-networks.mdx (Publisher
+      // revocation) and the reconciliation block below this branch.
+      const revokedDomains = extractRevokedPublisherDomains(safeManifest);
+      if (revokedDomains.has(domain)) {
+        log.info(
+          { domain, revokedCount: revokedDomains.size },
+          'Revoking projection: source domain appears in revoked_publisher_domains[] — retiring all writer-owned catalog rows for this publisher'
+        );
+        // Soft-delete every writer-owned CAA row for this publisher.
+        // currentCanonical is empty: no authorized_agents[] entries
+        // survive revocation. The OR-chain matches all three writer
+        // shapes (publisher-wide, property_rid-keyed, slug-keyed).
+        await client.query(
+          `UPDATE catalog_agent_authorizations caa
+              SET deleted_at = NOW()
+            WHERE caa.evidence = 'adagents_json'
+              AND caa.created_by = 'system'
+              AND caa.deleted_at IS NULL
+              AND (
+                caa.publisher_domain = $1
+                OR caa.property_rid IN (
+                  SELECT property_rid FROM catalog_properties WHERE created_by = $2
+                )
+                OR (caa.property_id_slug IS NOT NULL AND caa.property_rid IN (
+                  SELECT property_rid FROM catalog_properties WHERE created_by = $2
+                ))
+              )`,
+          [domain, adagentsCreatedBy(domain)],
+        );
+        await client.query('COMMIT');
+        return;
+      }
 
       const properties = Array.isArray(safeManifest.properties) ? safeManifest.properties : [];
       for (let i = 0; i < properties.length; i += 1) {
@@ -370,7 +566,7 @@ export class PublisherDatabase {
     try {
       const r = await client.query<{ adagents_json: AdagentsManifest | null }>(
         `SELECT adagents_json FROM publishers WHERE domain = $1 LIMIT 1`,
-        [domain.toLowerCase()],
+        [canonicalizePublisherDomain(domain)],
       );
       return r.rows[0]?.adagents_json ?? null;
     } finally {
@@ -407,7 +603,7 @@ export class PublisherDatabase {
            attempts = 0,
            last_attempted_at = NULL,
            last_error = NULL`,
-        [managerDomain.toLowerCase()],
+        [canonicalizePublisherDomain(managerDomain)],
       );
       return r.rowCount ?? 0;
     } finally {
@@ -448,7 +644,7 @@ export class PublisherDatabase {
     try {
       await client.query(
         `DELETE FROM manager_revalidation_queue WHERE publisher_domain = $1`,
-        [publisherDomain.toLowerCase()],
+        [canonicalizePublisherDomain(publisherDomain)],
       );
     } finally {
       client.release();
@@ -475,7 +671,7 @@ export class PublisherDatabase {
                   ELSE INTERVAL '3 days'
                 END
           WHERE publisher_domain = $1`,
-        [publisherDomain.toLowerCase(), err],
+        [canonicalizePublisherDomain(publisherDomain), err],
       );
     } finally {
       client.release();
@@ -801,13 +997,38 @@ export class PublisherDatabase {
     } else if (variant === 'publisher_properties') {
       const sels = Array.isArray(entry.publisher_properties) ? entry.publisher_properties : [];
       for (const sel of sels) {
-        const selPub = typeof sel?.publisher_domain === 'string' ? sel.publisher_domain.toLowerCase() : null;
-        if (selPub !== publisherDomain) {
+        // The spec requires XOR — exactly one of `publisher_domain` (singular)
+        // or `publisher_domains[]` (compact) is present on each selector. A
+        // manifest with both populated is malformed and dangerous: a writer
+        // that accepts the union turns a singular-points-at-victim + plural-
+        // points-at-source shape into an unintended permissive projection.
+        // Refuse and log rather than picking a winner.
+        const hasSingular = typeof sel?.publisher_domain === 'string' && sel.publisher_domain.length > 0;
+        const hasPlural = Array.isArray(sel?.publisher_domains) && sel.publisher_domains.length > 0;
+        if (hasSingular && hasPlural) {
+          log.warn(
+            { publisherDomain, agentUrl: agentCanonical, selPub: sel.publisher_domain, selPubsCount: sel.publisher_domains?.length },
+            'Skipping auth projection: publisher_properties entry violates singular/plural XOR (both present)'
+          );
+          continue;
+        }
+        // A selector claims the publisher if the source publisherDomain matches
+        // either the singular publisher_domain or any entry in the compact
+        // publisher_domains[] array. Both forms are equivalent for projection.
+        const selPubSingular = hasSingular ? canonicalizePublisherDomain(sel.publisher_domain!) : null;
+        const selPubInList = hasPlural
+          && sel.publisher_domains!.some((d) => typeof d === 'string' && canonicalizePublisherDomain(d) === publisherDomain);
+        if (selPubSingular !== publisherDomain && !selPubInList) {
           // Cross-publisher third-party-sales claim. Refused per spec — the
           // writer cannot land an authoritative row for another publisher's
           // properties without out-of-band corroboration.
           log.warn(
-            { publisherDomain, agentUrl: agentCanonical, selPub },
+            {
+              publisherDomain,
+              agentUrl: agentCanonical,
+              selPub: selPubSingular,
+              selPubsCount: hasPlural ? sel.publisher_domains!.length : 0,
+            },
             'Skipping auth projection: publisher_properties claims a different publisher (cross-publisher refused)'
           );
           continue;

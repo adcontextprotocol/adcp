@@ -6,6 +6,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "discriminator": {
@@ -81,7 +84,7 @@
         "expires_at": {
           "type": "string",
           "format": "date-time",
-          "description": "ISO 8601 timestamp when preview links expire"
+          "description": "ISO 8601 timestamp when preview links expire. **Optional.** Omit when preview URLs do not expire (some creative agents serve perpetually-valid preview URLs — e.g., signed asset URLs with no TTL, or session-scoped previews that the agent retires explicitly via revocation). When present, consumers MUST treat the URLs as invalid after this timestamp; when omitted, consumers MAY assume the preview URLs are valid until the creative agent revokes them out-of-band (no protocol-level revocation signal exists in 3.x — buyers requiring expiry guarantees SHOULD require sellers that publish `expires_at`)."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -92,8 +95,7 @@
       },
       "required": [
         "response_type",
-        "previews",
-        "expires_at"
+        "previews"
       ],
       "additionalProperties": true
     },
@@ -178,12 +180,11 @@
                   "expires_at": {
                     "type": "string",
                     "format": "date-time",
-                    "description": "When the preview URLs expire"
+                    "description": "When the preview URLs expire. **Optional** — omit for non-expiring preview URLs. See the single-preview branch's `expires_at` description for the full convention."
                   }
                 },
                 "required": [
-                  "previews",
-                  "expires_at"
+                  "previews"
                 ]
               },
               "errors": {
@@ -295,7 +296,7 @@
         "expires_at": {
           "type": "string",
           "format": "date-time",
-          "description": "ISO 8601 timestamp when preview links expire"
+          "description": "ISO 8601 timestamp when preview links expire. **Optional** — omit for non-expiring preview URLs. See the top-level `PreviewCreativeResponse` branch for the full convention."
         },
         "context": {
           "$ref": "/schemas/core/context.json"

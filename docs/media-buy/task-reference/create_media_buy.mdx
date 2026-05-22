@@ -185,7 +185,8 @@ npx @adcp/sdk@latest \
 |-----------|------|----------|-------------|
 | `product_id` | string | Yes | Product ID from `get_products` |
 | `pricing_option_id` | string | Yes | Pricing option ID from product's `pricing_options` array |
-| `format_ids` | FormatID[] | Yes | Format IDs that will be used - must be supported by product |
+| `format_ids` | FormatID[] | No | v1 path. Format IDs that will be used — must be supported by product. When omitted (and `capability_ids` is also omitted), defaults to all formats supported by the product. V2-native buyer SDKs targeting a heterogeneous seller population SHOULD dual-emit this alongside `capability_ids` so v1-only sellers receive an explicit format set rather than defaulting to all-formats. |
+| `capability_ids` | string[] | No | v2 path. References to entries in the product's `format_options[i].capability_id` (see [canonical formats](/docs/creative/canonical-formats)). Lets V2-mental-model buyers author a `create_media_buy` without translating back through `v1_format_ref[]`. When both `capability_ids` and `format_ids` are sent, `capability_ids` wins (the seller routes by it; `format_ids` becomes a v1-compat hint the resolving seller ignores). Sellers MUST reject with `UNSUPPORTED_FEATURE` (field path `packages[i].capability_ids[j]`) when an entry doesn't match a `format_options[]` entry, when the product is v1-only (carries `format_ids` but no `format_options[]`), or when the product's `format_options[]` entries don't publish `capability_id` values (the seller SHOULD set `error.details.reason: "capability_ids_not_published"` so buyers can fall back to `format_ids[]`). |
 | `budget` | number | Yes | Budget in currency specified by pricing option |
 | `impressions` | number | No | Impression goal for this package |
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
@@ -265,6 +266,26 @@ Returned when the buy cannot be confirmed synchronously — e.g., guaranteed buy
 | `errors` | Optional advisory warnings (non-blocking). Terminal failures belong in the Error Response. |
 
 **Note**: Responses are mutually exclusive across these three shapes. Dispatch on `status` first: `"submitted"` → async envelope, otherwise check `errors` before accessing success fields.
+
+### When to return Submitted vs synchronous Success (normative)
+
+The choice between `submitted` and synchronous success is **per-call**, driven by per-product attributes and the seller's policy on each specific create — not a uniform per-seller rule. A sales-guaranteed seller may legitimately return synchronous success on some `create_media_buy` calls and `submitted` on others within the same session; conformant SDK skills MUST NOT instruct agents to return `submitted` for every `create_media_buy` regardless of input. Sellers that uniformly return `submitted` fail the non-IO-approval paths in the `sales-guaranteed` compliance storyboard.
+
+Sellers MUST return `submitted` when:
+
+- The request references one or more products with `delivery_type: "guaranteed"` **and** the seller declares the `requires_io_approval` capability — the human-approval handshake cannot complete inside the response. The completion artifact is delivered via `tasks/get` or webhook once IO signing finishes.
+- The request triggers a seller-side governance review that cannot complete synchronously (e.g., manual brand-safety review for a regulated vertical).
+- The request enters a batched-processing queue the seller cannot drain inside the response timeout.
+
+Sellers MUST return synchronous success when:
+
+- All referenced products have `delivery_type: "non_guaranteed"`. The buy is created and acknowledged in-line; `media_buy_id` and `packages` are issued immediately. This applies regardless of the seller's specialism — a sales-guaranteed seller serving a non-guaranteed product returns synchronous success.
+- The request references guaranteed products and the seller does NOT declare `requires_io_approval` (rare; typically retail-SKU or quoted-rate guaranteed flows where the seller has pre-cleared approval).
+- The buy enters a known non-terminal state immediately observable to the buyer (`pending_creatives` / `pending_start` / `active`).
+
+The compliance grader observes both paths against the same seller via separate storyboard scenarios: the `create_buy_submitted` scenario seeds a guaranteed product with `requires_io_approval`; four shared scenarios (`measurement_terms_rejected`, `pending_creatives_to_start`, `inventory_list_targeting`, `invalid_transitions`) seed non-guaranteed products and expect synchronous `media_buy_id` returns. Sellers that return `submitted` on the synchronous-expected scenarios fail compliance — see [`sales-guaranteed` specialism](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/specialisms/sales-guaranteed) for the fixture pattern (non-guaranteed products listed first so open-brief `get_products` calls resolve to a synchronous-create path).
+
+This rule resolves the skill ↔ storyboard contradiction tracked at [#3822](https://github.com/adcontextprotocol/adcp/issues/3822): an SDK skill that instructs agents to "return a task envelope for every `create_media_buy`" is non-conformant; the correct skill instructs agents to dispatch on per-product `delivery_type` and the seller's `requires_io_approval` capability.
 
 ## Common Scenarios
 
@@ -897,7 +918,7 @@ Common errors and resolutions:
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
 | `PRODUCT_NOT_FOUND` | Invalid product_id | Verify product exists via `get_products` |
-| `FORMAT_INCOMPATIBLE` | Format not supported by product | Check product's `format_ids` field |
+| `UNSUPPORTED_FEATURE` | Format not supported by the product — covers both v1 (`format_ids[]` not in the product's accepted formats) and v2 (`capability_ids[]` entry doesn't resolve against the product's `format_options[]`, the product is v1-only with no `format_options[]` at all, or the product's `format_options[]` entries don't publish `capability_id` values) | Check the product's `format_ids` and/or `format_options[]` from `get_products` — re-author against a supported format, or pick a `capability_id` from the product's published `format_options[]` |
 | `BUDGET_TOO_LOW` | Budget below product minimum | Increase budget or choose different product |
 | `TARGETING_TOO_NARROW` | Targeting yields zero inventory | Broaden geographic or audience criteria |
 | `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
@@ -909,9 +930,9 @@ Example error response:
 ```json
 {
   "errors": [{
-    "code": "FORMAT_INCOMPATIBLE",
+    "code": "UNSUPPORTED_FEATURE",
     "message": "Product 'prod_d979b543' does not support format 'display_728x90'",
-    "field": "packages[0].format_ids",
+    "field": "packages[0].format_ids[0]",
     "suggestion": "Use display_300x250_image, display_300x250_html, or display_300x250_generative formats"
   }]
 }
@@ -921,11 +942,30 @@ Example error response:
 
 ### Format Specification
 
-Format IDs are **required** for each package because:
-- Publishers create placeholder creatives in ad servers
-- Both parties know exactly what creative assets are needed
-- Validation ensures products support requested formats
-- Progress tracking shows which assets are missing
+Each package SHOULD specify the formats it will use, via either `format_ids[]` (v1 path — structured `{agent_url, id}` references) or `capability_ids[]` (v2 path — references into the product's `format_options[]`). Omitting both defaults to all formats supported by the product. Specifying lets the system:
+
+- Publish placeholder creatives in ad servers
+- Pin exactly what creative assets are needed
+- Validate that the product supports the requested formats
+- Track which assets are missing
+
+Use `capability_ids[]` when the buyer's codebase is V2-native (reads `Product.format_options[]`); use `format_ids[]` when integrating with v1-only sellers or libraries. Dual-emission is allowed and recommended for buyer SDKs targeting a mixed seller population — see the `format_ids` row above.
+
+V2-path example (buyer authoring against `Product.format_options[i].capability_id` directly):
+
+```json test=false
+{
+  "packages": [
+    {
+      "product_id": "prod_d979b543",
+      "pricing_option_id": "cpm_usd_auction",
+      "capability_ids": ["nytimes_homepage_image"],
+      "budget": 2500,
+      "bid_price": 5.00
+    }
+  ]
+}
+```
 
 See [Format Workflow](#format-workflow) below for complete details.
 
@@ -979,9 +1019,10 @@ When creating a media buy, format specification enables:
 
 ```
 1. list_creative_formats → Get available format specifications
-2. get_products → Find products (returns format_ids they support)
+2. get_products → Find products (returns format_ids[] and/or format_options[])
 3. Validate compatibility → Ensure products support desired formats
-4. create_media_buy → Specify formats (REQUIRED)
+4. create_media_buy → Specify formats via format_ids[] (v1) or
+                       capability_ids[] (v2); omit for all-formats default
    └── Publisher creates placeholders
    └── Clear creative requirements established
 5. sync_creatives → Upload actual files matching formats
@@ -995,18 +1036,31 @@ Publishers MUST validate:
 - Format specifications match `list_creative_formats` output
 - Creative requirements can be fulfilled within timeline
 
-Invalid format example:
+Invalid format example (v1 path):
 
 ```json
 {
   "errors": [{
-    "code": "FORMAT_INCOMPATIBLE",
+    "code": "UNSUPPORTED_FEATURE",
     "message": "Product 'ctv_sports_premium' does not support format 'audio_standard_30s'",
-    "field": "packages[0].format_ids",
+    "field": "packages[0].format_ids[0]",
     "supported_formats": [
       { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_standard_30s" },
       { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_standard_15s" }
     ]
+  }]
+}
+```
+
+Invalid capability example (v2 path):
+
+```json
+{
+  "errors": [{
+    "code": "UNSUPPORTED_FEATURE",
+    "message": "Product 'ctv_sports_premium' has no format_options[] entry with capability_id 'audio_standard'",
+    "field": "packages[0].capability_ids[0]",
+    "supported_capability_ids": ["ctv_video_30s_premium", "ctv_video_15s_premium"]
   }]
 }
 ```
@@ -1069,6 +1123,7 @@ const response = await session.call('create_media_buy', {
 {
   "status": "completed",
   "media_buy_id": "mb_12345",
+  "media_buy_status": "active",
   "confirmed_at": "2025-06-01T10:00:00Z",
   "creative_deadline": "2025-06-15T23:59:59Z",
   "revision": 1,
@@ -1080,6 +1135,8 @@ const response = await session.call('create_media_buy', {
   ]
 }
 ```
+
+The top-level `status` is the envelope task-status (TaskStatus) — `completed` on synchronous success. The body-level `media_buy_status` carries the buy's lifecycle state (`pending_creatives`, `pending_start`, or `active`). A 3.0-style response would have collided these two enums at the same root key; in 3.1 they are distinct fields. Sellers MAY continue to emit a deprecated top-level `status: MediaBuyStatus` during the 3.1 deprecation window for back-compat with 3.0 buyers, but 3.1 buyers MUST prefer `media_buy_status`. See [Media-buy status field (3.1 migration)](#media-buy-status-field-3-1-migration) below.
 
 ### Long-Running (`submitted`)
 
@@ -1423,6 +1480,14 @@ After creating a media buy:
 2. **Monitor Status**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 3. **Optimize**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback)
 4. **Update**: Use [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) to modify campaign
+
+## Media-buy status field (3.1 migration)
+
+3.1 splits two enums that 3.0 collided at the same root key — envelope `status` (TaskStatus) at the top of every response, and body `media_buy_status` (MediaBuyStatus, **new in 3.1**) carrying the buy's lifecycle state alongside. The legacy top-level `status: MediaBuyStatus` form is `deprecated: true` in 3.1 and removed in 3.2 ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)); nested `status` on `get_media_buys`, `get_media_buy_delivery`, and `core/media-buy.json` follow in 4.0 ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)).
+
+3.1 buyers MUST prefer `media_buy_status` when present. 3.1 compliance storyboards assert `path: "media_buy_status"` — a 3.1 seller emitting only the legacy `status` is schema-valid but fails certification; the storyboard is the binding conformance check.
+
+Full migration: [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status).
 
 ## Learn More
 

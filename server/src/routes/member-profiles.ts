@@ -11,6 +11,7 @@ import { createLogger } from "../logger.js";
 import {
   requireAuth,
   requireAdmin,
+  refuseCrossTenantAdminApiKey,
   isDevModeEnabled,
   DEV_USERS,
 } from "../middleware/auth.js";
@@ -19,6 +20,7 @@ import { MemberDatabase } from "../db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "../db/brand-db.js";
 import { BrandManager } from "../brand-manager.js";
 import { OrganizationDatabase, hasApiAccess, readMembershipTierFromClient, resolveMembershipTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS } from "../db/organization-db.js";
+import { canonicalizeAgentUrl } from "../db/publisher-db.js";
 import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
 import { linkDomain } from "../db/organization-domains-db.js";
 import { autoLinkByVerifiedDomain } from "../db/membership-db.js";
@@ -28,6 +30,13 @@ import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
 import { emailPrefsDb } from "../db/email-preferences-db.js";
 import { slugify } from "../services/collection-feed-sync.js";
+import {
+  verifyAgentHostname,
+  buildUnverifiedHostnameMessage,
+  checkAgentHostnameAgainstDomains,
+  getVerifiedOrgDomains,
+  isHostnameOwnershipRejection,
+} from "../services/agent-hostname-verification.js";
 import {
   isMemberProfileBootstrapBody,
   memberProfileBootstrapRateLimiter,
@@ -52,8 +61,8 @@ import { updateBrandIdentity, BrandIdentityError } from "../services/brand-ident
 import { createEscalation } from "../db/escalation-db.js";
 import { insertTypeReclassification } from "../db/type-reclassification-log-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
-import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
-import { getBrandPrimaryDomain } from "../services/brand-domain-resolver.js";
+import { gateAgentVisibilityForCaller, computeAgentVisibilityGate, type VisibilityWarning, type AgentVisibilityGate } from "../services/agent-visibility-gate.js";
+import { getBrandPrimaryDomain, getBrandPrimaryDomainRecord } from "../services/brand-domain-resolver.js";
 import { normalizeFoundingMemberGrant } from "../services/founding-member-grant.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
@@ -401,13 +410,12 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
               message: 'User is not a member of the requested organization',
             });
           }
-          const role = membership.role?.slug || 'member';
-          if (role !== 'admin' && role !== 'owner') {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'Only admins and owners can create member profiles',
-            });
-          }
+          // The bootstrap path creates the profile as `is_public: false` (see
+          // the createProfile call below). Public visibility flips through the
+          // dedicated `/visibility` PUT, which has its own admin/owner gate.
+          // Allowing any-role member to bootstrap mirrors the `/api/me/agents`
+          // POST auto-bootstrap behavior — the gate inconsistency between
+          // those two paths is what surfaced #4839.
           targetOrgId = requestedOrgId;
         } else {
           targetOrgId = memberships.data[0].organizationId;
@@ -673,18 +681,25 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           });
         }
         const profile = await memberDb.getProfileByOrgId(devOrgId);
+        const devBrandRecord = await getBrandPrimaryDomainRecord(devOrgId);
         if (profile) {
-          const brandPrimary = await getBrandPrimaryDomain(devOrgId);
-          if (brandPrimary) {
-            profile.resolved_brand = await resolveBrand(brandDb, brandPrimary);
+          if (devBrandRecord) {
+            profile.resolved_brand = await resolveBrand(brandDb, devBrandRecord.domain);
+            (profile as unknown as Record<string, unknown>).primary_brand_domain = devBrandRecord.domain;
           }
         }
+        const devHasApiAccess = hasApiAccess(resolveMembershipTier(localOrg));
         logger.info({ userId: user.id, orgId: devOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed (dev mode)');
         return res.json({
           profile: profile || null,
           organization_id: devOrgId,
           organization_name: localOrg.name,
-          has_api_access: hasApiAccess(resolveMembershipTier(localOrg)),
+          has_api_access: devHasApiAccess,
+          agent_visibility_gate: computeAgentVisibilityGate({
+            hasApiAccess: devHasApiAccess,
+            brandPrimaryDomain: devBrandRecord?.domain ?? null,
+            brandDomainVerified: devBrandRecord?.verified ?? false,
+          }),
         });
       }
 
@@ -729,23 +744,33 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       const profile = await memberDb.getProfileByOrgId(targetOrgId);
+      const brandRecord = await getBrandPrimaryDomainRecord(targetOrgId);
       if (profile) {
-        const brandPrimary = await getBrandPrimaryDomain(targetOrgId);
-        if (brandPrimary) {
-          profile.resolved_brand = await resolveBrand(brandDb, brandPrimary);
+        if (brandRecord) {
+          profile.resolved_brand = await resolveBrand(brandDb, brandRecord.domain);
+          // After Stage 2 of #4159 dropped the column, the field is
+          // re-derived from organization_domains.is_primary so clients
+          // (member-profile.html, dashboard-agents.html) keep working.
+          (profile as unknown as Record<string, unknown>).primary_brand_domain = brandRecord.domain;
         }
       }
 
       // Get org name from WorkOS
       const org = await workos!.organizations.getOrganization(targetOrgId);
       const localOrg = await orgDb.getOrganization(targetOrgId);
+      const callerHasApiAccess = hasApiAccess(resolveMembershipTier(localOrg));
 
       logger.info({ userId: user.id, orgId: targetOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed');
       res.json({
         profile: profile || null,
         organization_id: targetOrgId,
         organization_name: org.name,
-        has_api_access: hasApiAccess(resolveMembershipTier(localOrg)),
+        has_api_access: callerHasApiAccess,
+        agent_visibility_gate: computeAgentVisibilityGate({
+          hasApiAccess: callerHasApiAccess,
+          brandPrimaryDomain: brandRecord?.domain ?? null,
+          brandDomainVerified: brandRecord?.verified ?? false,
+        }),
       });
     } catch (error) {
       logger.error({ err: error, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile error');
@@ -823,6 +848,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // Dev mode: handle dev organizations without WorkOS
       const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
       let targetOrgId: string;
+      // Captured during membership resolution below. Drives the
+      // `is_public` downgrade — non-admin/owner creators can bootstrap
+      // their org's profile but cannot publish it publicly in the same call.
+      let callerRole: string = 'owner';
 
       if (isDevUserProfile) {
         const localOrg = await orgDb.getOrganization(requestedOrgId!);
@@ -858,7 +887,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
         // Determine which org to use
         if (requestedOrgId) {
-          // Verify user is admin/owner of the requested org
           const membership = memberships.data.find(m => m.organizationId === requestedOrgId);
           if (!membership) {
             return res.status(403).json({
@@ -866,16 +894,18 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
               message: 'User is not a member of the requested organization',
             });
           }
-          const role = membership.role?.slug || 'member';
-          if (role !== 'admin' && role !== 'owner') {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'Only admins and owners can create member profiles',
-            });
-          }
+          // Any-role member may create the org's profile. The `is_public`
+          // gate happens downstream on the role check below — non-admin/owner
+          // creators have their requested `is_public: true` downgraded to
+          // false with a `visibility_downgraded` warning, matching the tier
+          // gate's pattern. The mutation-visibility separation mirrors the
+          // `/api/me/agents` POST auto-bootstrap behavior (#4839).
+          callerRole = membership.role?.slug || 'member';
           targetOrgId = requestedOrgId;
         } else {
-          targetOrgId = memberships.data[0].organizationId;
+          const firstMembership = memberships.data[0];
+          callerRole = firstMembership.role?.slug || 'member';
+          targetOrgId = firstMembership.organizationId;
         }
       }
 
@@ -908,6 +938,76 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
+      // Canonicalize agent URLs before any downstream processing so
+      // the POST-create write shape matches every other write path
+      // (#3573). Without this, POST-create wrote non-canonical URLs
+      // into JSONB while PUT and per-agent POST canonicalized — same
+      // column, two shapes. Reject query strings / fragments and
+      // unparseable URLs explicitly so the hostname gate below can
+      // trust the URLs it sees.
+      if (Array.isArray(agents)) {
+        for (let i = 0; i < agents.length; i++) {
+          const a = agents[i];
+          // Reject malformed entries outright — silently skipping past
+          // a missing/invalid `url` lets a caller smuggle an entry
+          // through the hostname gate below (CodeQL
+          // js/user-controlled-bypass).
+          if (!a || typeof a.url !== 'string') {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}] must be an object with a string url`,
+            });
+          }
+          if (a.url.includes('?') || a.url.includes('#')) {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}].url must not contain query strings or fragments`,
+            });
+          }
+          const canonical = canonicalizeAgentUrl(a.url);
+          if (!canonical) {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}].url is not a valid agent URL`,
+            });
+          }
+          a.url = canonical;
+        }
+      }
+
+      // Hostname ownership check (#4499 MVP). The POST create path is
+      // the second smuggle vector past the per-agent POST gate (after
+      // the bulk PUT). No grandfathering is needed here — this branch
+      // creates a fresh profile, so there are no existing entries to
+      // honor. All agents in the body are NEW writes.
+      //
+      // Bulk shape (#4673): one query for the verified-domain list
+      // before the loop, pure check inside. Avoids N+1 queries when
+      // the caller submits many agents at once.
+      if (Array.isArray(agents) && agents.length > 0) {
+        const verifiedDomains = await getVerifiedOrgDomains(targetOrgId);
+        for (let i = 0; i < agents.length; i++) {
+          // Canonicalization loop above 400s on any entry without a
+          // string `url`, so by here every `agents[i].url` is a
+          // canonical string. Cast at the call site to satisfy TS
+          // without a conditional that CodeQL classifies as a
+          // user-controlled bypass.
+          const agentUrl = (agents[i] as AgentConfig).url as string;
+          const verification = checkAgentHostnameAgainstDomains(agentUrl, verifiedDomains, targetOrgId);
+          if (isHostnameOwnershipRejection(verification)) {
+            return res.status(400).json({
+              error: 'unverified_hostname',
+              message: `agents[${i}]: ${buildUnverifiedHostnameMessage(verification)}`,
+              agent_index: i,
+              agent_url: agentUrl,
+              agent_hostname: verification.agent_hostname,
+              verified_domains: verification.verified_domains,
+              reason: verification.reason,
+            });
+          }
+        }
+      }
+
       // Gate agent visibility on create using the same helper the PUT
       // path uses. Without this, an Explorer-tier user creating their
       // first profile can land `visibility: 'public'` directly in the
@@ -933,7 +1033,23 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // the agent-visibility bug this PR fixes.
       let effectiveIsPublic = is_public === true;
       if (effectiveIsPublic && !isDevModeEnabled()) {
-        if (!(await orgDb.hasActiveSubscription(targetOrgId))) {
+        // Role gate: non-admin/owner creators may bootstrap the profile
+        // but cannot publish it publicly in the same call. They flip
+        // `is_public` later via the dedicated `/visibility` PUT (which
+        // has its own admin/owner gate). Mirrors the tier-downgrade
+        // pattern below — same warning shape so the UI can render either
+        // path the same way (#4839).
+        if (callerRole !== 'admin' && callerRole !== 'owner') {
+          effectiveIsPublic = false;
+          createWarnings.push({
+            code: 'visibility_downgraded',
+            agent_url: 'profile',
+            requested: 'public',
+            applied: 'members_only',
+            reason: 'role_required',
+            message: 'Making the profile publicly visible requires an admin or owner; stored as private instead. Ask an admin to publish via the visibility setting.',
+          });
+        } else if (!(await orgDb.hasActiveSubscription(targetOrgId))) {
           effectiveIsPublic = false;
           createWarnings.push({
             code: 'visibility_downgraded',
@@ -1140,9 +1256,108 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // the POST create path via gateAgentVisibilityForCaller.
       let warnings: VisibilityWarning[] = [];
       if (Array.isArray(updates.agents)) {
+        // Canonicalize every agent url before any downstream processing
+        // (issue #3573). The per-agent POST/PATCH path canonicalizes at
+        // the handler boundary; the bulk path must match so the same write
+        // applied via two surfaces lands as the same row.
+        for (let i = 0; i < updates.agents.length; i++) {
+          const a = updates.agents[i] as AgentConfig & { url?: unknown };
+          // Reject malformed entries outright instead of skipping them
+          // — silently skipping past a missing/invalid `url` lets a
+          // caller smuggle an entry through the hostname gate below
+          // (CodeQL js/user-controlled-bypass).
+          if (!a || typeof a.url !== 'string') {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}] must be an object with a string url`,
+            });
+          }
+          if (a.url.includes('?') || a.url.includes('#')) {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}].url must not contain query strings or fragments`,
+            });
+          }
+          const canonical = canonicalizeAgentUrl(a.url);
+          if (!canonical) {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}].url is not a valid agent URL`,
+            });
+          }
+          a.url = canonical;
+        }
+
+        // Hostname ownership check (#4499 MVP). The bulk PUT had been a
+        // smuggle path past the per-agent POST gate — same JSONB column,
+        // same downstream consumers, no verification. Per-entry check
+        // here mirrors the POST handler; entries whose canonical URL is
+        // already in `existingProfile.agents` are grandfathered (a bulk
+        // PUT must remain idempotent for an unchanged caller). NEW URLs
+        // go through the gate.
+        // Canonicalize the existing URLs the same way we canonicalize
+        // incoming ones (above) so a legacy pre-#3573 row stored in
+        // non-canonical form (mixed case, trailing slash, etc.) still
+        // matches the grandfather check when a legitimate caller
+        // re-PUTs it. Without this, the gate rejects a re-PUT of an
+        // un-changed entry and the caller has no way to send the
+        // original form because canonicalization strips it server-side.
+        const existingUrls = new Set(
+          (existingProfile.agents ?? [])
+            .map((a) => {
+              if (!a || typeof a.url !== 'string') return null;
+              return canonicalizeAgentUrl(a.url) ?? a.url;
+            })
+            .filter((u): u is string => u !== null),
+        );
+        // Bulk shape (#4673): one query for the verified-domain list
+        // before the loop, pure check inside. Avoids N+1 queries when
+        // the bulk caller submits many agents at once.
+        const bulkVerifiedDomains = await getVerifiedOrgDomains(targetOrgId);
+        for (let i = 0; i < updates.agents.length; i++) {
+          // Canonicalization loop above 400s on any entry without a
+          // string `url`, so by here every `updates.agents[i].url` is a
+          // canonical string. Cast at the call site to satisfy TS
+          // without a conditional that CodeQL classifies as a
+          // user-controlled bypass.
+          const agentUrl = (updates.agents[i] as AgentConfig).url as string;
+          if (existingUrls.has(agentUrl)) continue;
+          const verification = checkAgentHostnameAgainstDomains(agentUrl, bulkVerifiedDomains, targetOrgId);
+          if (isHostnameOwnershipRejection(verification)) {
+            return res.status(400).json({
+              error: 'unverified_hostname',
+              message: `agents[${i}]: ${buildUnverifiedHostnameMessage(verification)}`,
+              agent_index: i,
+              agent_url: agentUrl,
+              agent_hostname: verification.agent_hostname,
+              verified_domains: verification.verified_domains,
+              reason: verification.reason,
+            });
+          }
+        }
+
         const localOrgForTier = await orgDb.getOrganization(targetOrgId);
         const callerHasApi = hasApiAccess(resolveMembershipTier(localOrgForTier));
         const gated = gateAgentVisibilityForCaller(updates.agents, callerHasApi);
+
+        // If any agent will be publicly listed, require a DNS-verified brand domain.
+        // Tier downgrade (above) is a soft warning; domain verification is a hard gate.
+        if (gated.agents.some((a) => a.visibility === 'public')) {
+          const brandRec = await getBrandPrimaryDomainRecord(targetOrgId);
+          if (!brandRec) {
+            return res.status(400).json({
+              error: 'brand_domain_required',
+              message: 'To list an agent publicly, your profile needs a primary brand domain.',
+            });
+          }
+          if (!brandRec.verified) {
+            return res.status(400).json({
+              error: 'brand_domain_unverified',
+              message: 'To list an agent publicly, your primary brand domain must be DNS-verified. Complete the domain verification challenge in the Brand section of your profile.',
+            });
+          }
+        }
+
         // Resolve `type` server-side from the capability snapshot. The
         // client cannot pin a misclassification (e.g. sales agent typed
         // 'buying') — the inferred_type from the crawler probe wins. See
@@ -1359,7 +1574,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // setPrimaryDomain (Stage 3) racing this read lands old-or-new — both
       // states the org legitimately controls, so worst case is wrong-brand
       // listing recoverable by re-publish.
-      const brandPrimaryDomain = await getBrandPrimaryDomain(orgId);
+      const brandPrimaryRecord = await getBrandPrimaryDomainRecord(orgId);
+      const brandPrimaryDomain = brandPrimaryRecord?.domain ?? null;
       const parsedAgents = typeof row.agents === 'string'
         ? JSON.parse(row.agents)
         : Array.isArray(row.agents) ? row.agents : [];
@@ -1384,8 +1600,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
       const agent = agents[index];
 
-      // Only the public path needs to reach out to brand.json, so the
-      // brand-domain requirement is scoped to `target === 'public'`.
+      // For public listing, the primary brand domain is the first
+      // prerequisite: an imported or legacy primary domain can exist before
+      // DNS verification is complete. Report that state before falling
+      // through to per-agent hostname ownership checks.
       if (target === 'public') {
         if (!brandPrimaryDomain) {
           await client.query('ROLLBACK');
@@ -1397,6 +1615,42 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             },
           };
         }
+        if (!brandPrimaryRecord?.verified) {
+          await client.query('ROLLBACK');
+          return {
+            status: 400,
+            body: {
+              error: 'brand_domain_unverified',
+              message: 'To list an agent publicly, your primary brand domain must be DNS-verified. Complete the domain verification challenge in the Brand section of your profile.',
+            },
+          };
+        }
+      }
+
+      // Re-verify hostname ownership on any non-private flip (#4499 MVP).
+      // A grandfathered row registered before the gate landed should not
+      // be promotable to `members_only` or `public` without satisfying
+      // the same constraint a fresh POST has to satisfy — escalation
+      // #340 was specifically about a public claim, and members_only is
+      // still discoverable to every paying member (the attack audience).
+      // Demotion to `private` is exempt — privacy is always safe.
+      if (target !== 'private') {
+        const verification = await verifyAgentHostname(orgId, agent.url);
+        if (isHostnameOwnershipRejection(verification)) {
+          await client.query('ROLLBACK');
+          return {
+            status: 400,
+            body: {
+              error: 'unverified_hostname',
+              message: buildUnverifiedHostnameMessage(verification),
+            },
+          };
+        }
+      }
+
+      // Only the public path needs to reach out to brand.json, so the
+      // brand-domain requirement is scoped to `target === 'public'`.
+      if (target === 'public') {
         try {
           const parsed = new URL(agent.url);
           if (parsed.protocol !== 'https:') {
@@ -1874,8 +2128,19 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             domain: canonicalizeBrandDomain(rawDomain),
           });
         }
+        if (result.code === 'workos_misconfigured') {
+          return res.status(503).json({
+            error: 'Brand verification temporarily unavailable',
+            code: 'workos_misconfigured',
+            message: result.message,
+            domain: canonicalizeBrandDomain(rawDomain),
+          });
+        }
         return res.status(500).json({ error: 'Failed to issue domain verification challenge', code: 'workos_error' });
       }
+      const dnsRecordName = result.verification_prefix
+        ? `${result.verification_prefix}.${result.domain}`
+        : null;
       return res.json({
         domain: result.domain,
         workos_domain_id: result.workos_domain_id,
@@ -1883,10 +2148,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         verification_strategy: result.verification_strategy,
         verification_token: result.verification_token,
         verification_prefix: result.verification_prefix,
+        dns_record_name: dnsRecordName,
         prior_manifest_exists: result.prior_manifest_exists,
         instructions: result.already_verified
           ? 'Domain is already verified. Run /brand-claim/verify to sync the brand registry, or call PUT /brand-identity directly.'
-          : 'Publish the DNS TXT record at verification_prefix.{domain} with the value verification_token, then call POST /api/me/member-profile/brand-claim/verify.',
+          : dnsRecordName
+            ? `Publish a DNS TXT record at ${dnsRecordName} with the value ${result.verification_token}, then call POST /api/me/member-profile/brand-claim/verify.`
+            : 'Publish a DNS TXT record at <verification_prefix>.<domain> with the value <verification_token>, then call POST /api/me/member-profile/brand-claim/verify.',
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to issue brand claim challenge');
@@ -2330,6 +2598,23 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
       const { id } = req.params;
       const updates = req.body;
 
+      // Cross-tenant gate. `requireAdmin` keys off `:orgId` in the path,
+      // but this route uses `:id` (a profile UUID) — resolve the profile's
+      // org and apply the gate here. Without this, any WorkOS API key
+      // holding `admin:*` (issued by any org) could mutate any
+      // member_profiles row by guessing the UUID. Surfaced by security
+      // review on #4498.
+      const existingProfile = await memberDb.getProfileById(id);
+      if (!existingProfile) {
+        return res.status(404).json({
+          error: 'Profile not found',
+          message: `No member profile found with ID: ${id}`,
+        });
+      }
+      if (refuseCrossTenantAdminApiKey(req, res, existingProfile.workos_organization_id)) {
+        return;
+      }
+
       // Validate offerings if provided
       if (updates.offerings && Array.isArray(updates.offerings)) {
         const invalidOfferings = updates.offerings.filter((o: string) => !VALID_MEMBER_OFFERINGS.includes(o as any));
@@ -2392,6 +2677,18 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
   router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
+
+      // Cross-tenant gate — see PUT above for context.
+      const existingProfile = await memberDb.getProfileById(id);
+      if (!existingProfile) {
+        return res.status(404).json({
+          error: 'Profile not found',
+          message: `No member profile found with ID: ${id}`,
+        });
+      }
+      if (refuseCrossTenantAdminApiKey(req, res, existingProfile.workos_organization_id)) {
+        return;
+      }
 
       const deleted = await memberDb.deleteProfile(id);
 

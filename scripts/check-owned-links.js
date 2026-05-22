@@ -31,6 +31,10 @@ function extractUrls(file) {
   return [...new Set(matches)]
     .map((url) => url.replace(/[.,;:!?]+$/, ''))
     .filter((url) => !url.includes('${'))
+    // Documentation placeholders like /agents/{url-encoded-agent-url}/badge
+    // never resolve to a real route; checking them burns the per-URL retry
+    // budget on guaranteed timeouts.
+    .filter((url) => !url.includes('{') && !url.includes('}'))
     .filter((url) => {
       try {
         return LINK_HOSTS.has(new URL(url).hostname);

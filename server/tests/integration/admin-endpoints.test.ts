@@ -7,18 +7,26 @@ import type { Pool } from 'pg';
 
 // Override only the auth gates; spread the real module so HTTPServer setup
 // still finds optionalAuth and other exports it imports.
-vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
-  requireAuth: (req: any, _res: any, next: any) => {
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
+  const requireAuthMock = (req: any, _res: any, next: any) => {
     req.user = {
       id: 'user_test_admin',
       email: 'admin@test.com',
       is_admin: true
     };
     next();
-  },
-  requireAdmin: (_req: any, _res: any, next: any) => next(),
-}));
+  };
+  const passthrough = (_req: any, _res: any, next: any) => next();
+  return {
+    ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
+    requireAuth: requireAuthMock,
+    requireAdmin: passthrough,
+    // Several admin routers now use `...requireGlobalAdmin` (post-#4684).
+    // The exported array captures references at load time so the
+    // per-export mocks above don't propagate; re-build it here.
+    requireGlobalAdmin: [requireAuthMock, passthrough, passthrough],
+  };
+});
 
 vi.mock('../../src/middleware/csrf.js', () => ({
   csrfProtection: (_req: any, _res: any, next: any) => next(),

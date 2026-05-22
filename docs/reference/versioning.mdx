@@ -49,6 +49,8 @@ Buyers and sellers negotiate at **release precision** (VERSION.RELEASE, e.g. `"3
 
 When the response omits `adcp_version` (a legacy 3.0 seller that doesn't read the field — `additionalProperties: true` makes it invisible there), buyers SHOULD validate against their own pin and treat the seller as 3.0-only for capability inference. The buyer's SDK falls back to its constructor pin in this case.
 
+**When `get_adcp_capabilities` is absent entirely.** A seller that does not expose `get_adcp_capabilities` (the tool isn't advertised on the MCP tool list, the A2A skill list, or the REST tool index) is a pre-v3 implementation — the tool itself is v3-and-later. Buyers SHOULD infer **v2** in this case and route the request through the v2 wire-shape adapter, emitting a one-time advisory warning that retry-safety guarantees are unknown for this seller (no `replay_ttl_seconds` declaration is available). This is fail-open by design: failing closed on this signal would block the most common adoption path — sellers that shipped v2 tools and never implemented v3 discovery. Buyers MUST NOT use absence of `get_adcp_capabilities` as a positive v2 conformance signal; it is purely an inference from "v3 discovery surface is missing." Idempotency, signed-requests, and other v3 trust primitives MUST be treated as unknown — buyers requiring those guarantees MUST fail closed at the application layer when the seller cannot advertise them. The fail-open rule applies to the wire-shape adapter only, not to the trust primitives the wire shape carries.
+
 This lets buyers and sellers upgrade independently — sellers can declare multi-release support, and buyers can pin to a specific release without coordinating their migration.
 
 #### Pre-release pins
@@ -294,6 +296,7 @@ As the protocol and its implementation base mature, domain leads will take incre
 ## Additional resources
 
 - **[Versions & Compatibility](/docs/reference/versions)** — At-a-glance status of every published version
+- **[Specification lifecycle](/docs/reference/specification-lifecycle)** — Stage definitions (Draft → Proposed → Final → Deprecated → Sunset), entry criteria, and how to check the current stage of a spec section
 - **[Roadmap](/docs/reference/roadmap)** — Planned features and milestones
 - **[Release Notes](/docs/reference/release-notes)** — What shipped, with migration guides
 - **[Changelog](/docs/reference/changelog)** — Technical change history

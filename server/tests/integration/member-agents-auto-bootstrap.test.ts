@@ -159,11 +159,24 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
   });
 
   async function seedOrgWithoutProfile(orgId: string, name = 'Acme Bootstrap Co') {
+    // The hostname verification gate (#4499 MVP) requires a row in
+    // `organization_domains` with `verified = true` — `email_domain`
+    // is NOT a trustworthy claim and is no longer trusted by the gate
+    // (security review on #4648). Seed a verified parent so the test
+    // agent URLs (`*.example.com/mcp`) match as subdomains. RFC 2606
+    // reserves example.com so safe in tests.
     await pool.query(
       `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
        VALUES ($1, $2, false, NOW(), NOW())
        ON CONFLICT (workos_organization_id) DO UPDATE SET name = EXCLUDED.name`,
       [orgId, name],
+    );
+    await pool.query(
+      `INSERT INTO organization_domains
+         (workos_organization_id, domain, verified, source, created_at, updated_at)
+       VALUES ($1, 'example.com', true, 'test', NOW(), NOW())
+       ON CONFLICT (domain) DO NOTHING`,
+      [orgId],
     );
     await pool.query(
       `INSERT INTO users (workos_user_id, email, primary_organization_id, created_at, updated_at)
@@ -192,6 +205,12 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
     ]);
     await pool.query(`DELETE FROM users WHERE workos_user_id = $1`, [USER_ID]);
     await pool.query(`DELETE FROM organization_domains WHERE domain LIKE $1`, ['%boot-corp.test']);
+    // Clean up shared verified-domain rows seeded by helpers /
+    // individual tests so tests in this file (and others) don't race
+    // on the unique-domain constraint.
+    await pool.query(
+      `DELETE FROM organization_domains WHERE domain IN ('example.com', 'no-fork.test')`,
+    );
     await pool.query(`DELETE FROM organizations WHERE workos_organization_id LIKE $1`, [
       `${TEST_PREFIX}%`,
     ]);
@@ -314,7 +333,16 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
       expect(domainRow.rows.find((r) => r.domain === 'boot-corp.test')!.verified).toBe(true);
     });
 
-    it('auto-creates a personal workspace for a fresh user with a free-email provider', async () => {
+    it('auto-bootstraps a personal workspace for a fresh free-email user but rejects the agent registration (no hostname claim)', async () => {
+      // Pre-#4499-MVP this auto-bootstrap succeeded silently with an
+      // unverified agent registered on whatever hostname the caller
+      // supplied. With the hardened gate (security review on PR #4648),
+      // orgs with zero verified domains hard-reject — the org is
+      // still auto-bootstrapped (resolveOrAutoBootstrapOrg fires before
+      // the gate) but the agent registration returns 400
+      // no_verified_domains. The user gets a personal workspace they
+      // can use for everything else; they just can't register agents
+      // until they verify a domain.
       userOverride.email = `solo+${Date.now()}@gmail.com`;
       userOverride.firstName = 'Solo';
       userOverride.lastName = 'Founder';
@@ -323,11 +351,14 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
         .post('/api/me/agents')
         .send({ url: 'https://agent.solo.test/mcp', type: 'sales', visibility: 'private' });
 
-      expect(res.status).toBe(201);
-      expect(res.body.org_auto_created).toBe(true);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('unverified_hostname');
+      expect(res.body.reason).toBe('no_verified_domains');
 
-      const orgRow = await pool.query<{ name: string; is_personal: boolean }>(
-        `SELECT o.name, o.is_personal
+      // The org bootstrap still fired — failure was on the agent
+      // registration step, not on org creation.
+      const orgRow = await pool.query<{ workos_organization_id: string; name: string; is_personal: boolean }>(
+        `SELECT o.workos_organization_id, o.name, o.is_personal
          FROM organizations o
          JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
          WHERE om.workos_user_id = $1`,
@@ -336,6 +367,15 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
       expect(orgRow.rowCount).toBe(1);
       expect(orgRow.rows[0].is_personal).toBe(true);
       expect(orgRow.rows[0].name).toBe("Solo Founder's Workspace");
+
+      // No member profile should exist either — the gate fires after
+      // profile auto-bootstrap, so a failed agent registration on a
+      // brand-new org should NOT leave a half-built profile. Pin this
+      // so a future regression doesn't silently strand orphan profiles.
+      const profile = await memberDb.getProfileByOrgId(
+        orgRow.rows[0].workos_organization_id,
+      );
+      expect(profile).toBeNull();
     });
 
     it('does NOT auto-bootstrap when caller already has a membership — registers against the derived primary org instead of forking', async () => {
@@ -350,6 +390,15 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
          VALUES ($1, $2, false, NOW(), NOW())
          ON CONFLICT (workos_organization_id) DO NOTHING`,
         [existingOrgId, 'Already Owned'],
+      );
+      // Verified domain matching the agent URL — required by the
+      // hostname gate. email_domain is no longer trusted (see #4648).
+      await pool.query(
+        `INSERT INTO organization_domains
+           (workos_organization_id, domain, verified, source, created_at, updated_at)
+         VALUES ($1, 'no-fork.test', true, 'test', NOW(), NOW())
+         ON CONFLICT (domain) DO NOTHING`,
+        [existingOrgId],
       );
       await pool.query(
         `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, role, email, created_at, updated_at)

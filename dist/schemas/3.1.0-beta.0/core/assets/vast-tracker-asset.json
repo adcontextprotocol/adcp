@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/core/assets/vast-tracker-asset.json",
+  "title": "VAST Tracker Asset",
+  "description": "A single tracker URL bound to a VAST `TrackingEvents` event. Emitted by the creative agent as a decomposed VAST-event URL; the sales agent assembles these into the VAST `TrackingEvents` block at serve time. IMPORTANT: this asset type is for `TrackingEvents` URLs only (start, quartiles, complete, pause, mute, etc.). The `Impression` URL MUST be modeled as a `url` asset with `url_type: \"tracker_pixel\"`, not as a vast_tracker with `vast_event: \"impression\"`. Decomposed trackers let format requirements bind specific measurement events (e.g., MRC viewable) without forcing the buyer to construct a full VAST tag.",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "vast_tracker",
+      "description": "Discriminator identifying this as a VAST tracker asset. See /schemas/creative/asset-types for the registry."
+    },
+    "vast_event": {
+      "allOf": [
+        {
+          "$ref": "/schemas/3.1.0-beta.0/enums/vast-tracking-event.json"
+        },
+        {
+          "not": {
+            "enum": [
+              "impression",
+              "clickTracking",
+              "customClick",
+              "error",
+              "viewable",
+              "notViewable",
+              "viewUndetermined",
+              "measurableImpression",
+              "viewableImpression"
+            ]
+          }
+        }
+      ],
+      "description": "The VAST tracking event this URL fires on. Maps 1:1 to the VAST `Tracking event=\"...\"` attribute inside `TrackingEvents`. MUST NOT be `impression` (belongs in the VAST `Impression` element \u2014 model as a `url` asset with `url_type: \"tracker_pixel\"`), `clickTracking` / `customClick` (belong in `VideoClicks`), `error` (VAST `Error` element), or any of `viewable` / `notViewable` / `viewUndetermined` / `measurableImpression` / `viewableImpression` (children of the VAST `ViewableImpression` element, not `TrackingEvents`)."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri-template",
+      "description": "Tracker URL that fires when `vast_event` occurs. May carry AdCP universal macros (e.g., `{SKU}`, `{MEDIA_BUY_ID}`); the sales agent or ad server URL-encodes substituted values at serve time. See docs/creative/universal-macros.mdx."
+    },
+    "offset": {
+      "type": "string",
+      "description": "VAST `offset` attribute. Required when `vast_event` is `progress`; ignored otherwise. Format matches the VAST 4.2 XSD `Tracking@offset` pattern: `HH:MM:SS` or `HH:MM:SS.mmm` for absolute time (two-digit hours, minutes 00\u201359, seconds 00\u201359), or an integer percentage 0\u2013100 suffixed with `%`. Negative offsets are NOT permitted \u2014 the VAST 4.2 XSD pattern does not allow a leading minus.",
+      "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$"
+    },
+    "target": {
+      "type": "string",
+      "enum": ["linear", "non_linear", "companion"],
+      "default": "linear",
+      "description": "Which VAST creative element this tracker scopes to \u2014 `linear` for `<Linear>/<TrackingEvents>`, `non_linear` for `<NonLinearAds>/<TrackingEvents>`, `companion` for `<CompanionAds>/<Companion>/<TrackingEvents>`. VAST 4.2 places these under separate XML elements with separate event semantics (e.g., `acceptInvitation` is meaningful on non-linear / companion; `closeLinear` only on linear). Defaults to `linear`. Sales agents use this to place the tracker in the correct location during VAST assembly."
+    },
+    "provenance": {
+      "$ref": "/schemas/3.1.0-beta.0/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance."
+    }
+  },
+  "required": [
+    "asset_type",
+    "vast_event",
+    "url"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "vast_event": { "const": "progress" } },
+        "required": ["vast_event"]
+      },
+      "then": {
+        "required": ["offset"]
+      }
+    }
+  ],
+  "additionalProperties": true
+}

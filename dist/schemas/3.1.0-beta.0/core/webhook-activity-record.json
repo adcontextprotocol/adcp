@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/core/webhook-activity-record.json",
+  "title": "Webhook Activity Record",
+  "description": "Single webhook delivery attempt surfaced to a calling principal as a buyer-side debug aid. Represents one HTTP attempt of a logical webhook fire from the seller to the buyer's registered endpoint — retries of the same logical fire share `idempotency_key` and differ by `attempt`. This is the canonical record shape for any AdCP resource that exposes a `webhook_activity[]` log on its read API; see snapshot-and-log.mdx § Webhook activity log pattern for the full normative contract (scoping, retention, three-state presence, request-field conventions).",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Equals the `idempotency_key` carried in the webhook payload itself (see docs/building/by-layer/L3/webhooks.mdx § Dedup by `idempotency_key`). Stable across retry attempts of the same logical fire — retries with `attempt` > 1 reuse this key. Buyers correlate this surface with their own endpoint logs via this exact field; the spec deliberately reuses the payload key rather than minting a parallel `delivery_id` so callers do not need a join table. Format is sender-defined; callers MUST treat as opaque."
+    },
+    "subscriber_id": {
+      "type": "string",
+      "description": "Identifies which registered webhook subscriber received this fire. **Required on records from account-anchored notification channels** (`notification_configs[]` registered via `sync_accounts`) — every subscriber has a `subscriber_id` at registration time, the seller MUST echo it on every fire and every activity record. **Optional on records from per-resource push channels** (`push_notification_config` on a media buy or task) — the calling principal is unambiguous in single-subscriber configurations and the field MAY be omitted; sellers MUST populate it once `reporting_webhook` adopts multi-subscriber (per #3009 in AdCP 4.0). Buyers MUST NOT use absence as a signal that no other subscribers exist; that information is not exposed by this surface."
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller initiated the HTTP request for this attempt."
+    },
+    "completed_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller observed the response (or terminal timeout / connection error — for `timeout` and `connection_error` outcomes, `completed_at` is set to the moment the seller declared the attempt terminal). Explicitly `null` when the attempt is still in flight or queued for retry (status `pending`); MUST be set as `null` rather than omitted so callers can distinguish 'still in flight' from 'field missing'."
+    },
+    "notification_type": {
+      "$ref": "/schemas/3.1.0-beta.0/enums/notification-type.json",
+      "description": "Notification type carried by this fire, verbatim from the webhook payload. Includes both delivery-report types (`scheduled`, `final`, `delayed`, `adjusted`) and health-notification types (`impairment`). All share the same persistent-channel webhook contract and the same buyer-side debug need."
+    },
+    "sequence_number": {
+      "type": "integer",
+      "description": "Sequence number from the webhook payload. Surfaced here so the buyer can spot stale-sequence drops and gaps without correlating against their own endpoint log. Absent for notification types that do not carry a sequence number.",
+      "minimum": 0
+    },
+    "attempt": {
+      "type": "integer",
+      "description": "1-indexed retry counter for this logical fire. Initial fire is attempt=1; retries increment. Sellers MUST emit one record per attempt, so a successful first-attempt fire appears as a single record with `attempt: 1` and a 3-attempt retry trail appears as three records sharing `idempotency_key`.",
+      "minimum": 1
+    },
+    "status": {
+      "type": "string",
+      "description": "Outcome of this attempt. `success` — response received with 2xx (`http_status_code` populated). `failed` — response received with non-2xx (`http_status_code` populated). `timeout` — no response within the seller's configured timeout (`http_status_code` null). `connection_error` — DNS / TLS / socket failure before any HTTP response (`http_status_code` null). `pending` — attempt is in flight or queued for retry (`completed_at` null, `http_status_code` null). The `timeout` / `connection_error` split is intentional and operationally distinct: `timeout` typically signals a slow / overloaded buyer endpoint, `connection_error` typically signals it is unreachable or misconfigured.",
+      "enum": [
+        "success",
+        "failed",
+        "timeout",
+        "connection_error",
+        "pending"
+      ]
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Target URL for this fire. Query string and fragment MUST be stripped before surfacing — buyers commonly stash bearer tokens in the query string and sellers MUST NOT echo those back through this debug surface. Sellers SHOULD additionally redact path segments matching obvious secret patterns (e.g., a path segment that is high-entropy random material or matches a UUID / token format). Buyers matching this against their own configured URL should compare by origin + path; query strings will not match and that mismatch is expected."
+    },
+    "http_status_code": {
+      "type": ["integer", "null"],
+      "description": "HTTP status code returned by the buyer's endpoint. Explicitly `null` when no HTTP response was received (status `timeout`, `connection_error`, or `pending`); MUST be set as `null` rather than omitted.",
+      "minimum": 100,
+      "maximum": 599
+    },
+    "response_time_ms": {
+      "type": ["integer", "null"],
+      "description": "Wall-clock latency between request send and response receipt, in milliseconds. Explicitly `null` when the attempt did not complete (`timeout`, `connection_error`, `pending`); MUST be set as `null` rather than omitted.",
+      "minimum": 0
+    },
+    "payload_size_bytes": {
+      "type": "integer",
+      "description": "Size of the request body the seller sent, in bytes. Useful for diagnosing oversized-payload rejections from the buyer's gateway.",
+      "minimum": 0
+    },
+    "error_message": {
+      "type": ["string", "null"],
+      "description": "Short human-readable server-side classification of why this attempt did not succeed (e.g., `connection refused`, `TLS handshake timeout`, `HTTP 503 Service Unavailable`). Explicitly `null` for `success` (MUST be set as `null` rather than omitted). Sellers MUST NOT include request headers, request body content, or response body content in this field — payload surfacing is reserved for a future `include_webhook_payloads` extension and is subject to stricter access controls. Sellers SHOULD also avoid including buyer-endpoint internal hostnames, stack traces, or other implementation detail leaked by the response — keep it a stable classification string.",
+      "maxLength": 500
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json",
+      "description": "Resource-specific extension slot. Adopters MAY surface a resource-specific cross-reference (e.g., `creative_id` on a creative-lifecycle record, `media_buy_id` on a record nested inside an account-level read) under `ext` rather than adding top-level fields — the canonical record shape stays uniform across resources and the `ext` envelope absorbs per-resource needs. Top-level extensions are not permitted (`additionalProperties: false`)."
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "fired_at",
+    "notification_type",
+    "attempt",
+    "status",
+    "url"
+  ],
+  "additionalProperties": false
+}

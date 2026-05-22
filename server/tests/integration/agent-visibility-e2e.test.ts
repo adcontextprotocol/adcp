@@ -150,6 +150,18 @@ describe('Agent visibility E2E', () => {
     await closeDatabase();
   });
 
+  async function seedBrandPrimaryUnverified(orgId: string, domain: string) {
+    await pool.query(
+      `INSERT INTO organization_domains
+         (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, false, true, 'workos', NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET
+         workos_organization_id = EXCLUDED.workos_organization_id,
+         verified = false, is_primary = true, source = 'workos'`,
+      [orgId, domain],
+    );
+  }
+
   async function seedBrandPrimary(orgId: string, domain: string) {
     await pool.query(
       `INSERT INTO organization_domains
@@ -391,8 +403,8 @@ describe('Agent visibility E2E', () => {
       .put('/api/me/member-profile')
       .send({
         agents: [
-          { url: 'https://smuggled.example', visibility: 'public' },
-          { url: 'https://also.example', visibility: 'public', name: 'Evil' },
+          { url: 'https://smuggled.putbypass.example', visibility: 'public' },
+          { url: 'https://also.putbypass.example', visibility: 'public', name: 'Evil' },
         ],
       });
 
@@ -424,7 +436,7 @@ describe('Agent visibility E2E', () => {
       .put('/api/me/member-profile')
       .send({
         agents: [
-          { url: 'https://pro-pub.example', visibility: 'public' },
+          { url: 'https://pro-pub.putpro.example', visibility: 'public' },
         ],
       });
 
@@ -625,5 +637,308 @@ describe('Agent visibility E2E', () => {
     } finally {
       updateSpy.mockRestore();
     }
+  });
+
+  // Pins the contract the dashboard reads to enable/disable the "Public"
+  // visibility toggle. Stage 2 of #4159 dropped the column the dashboard
+  // was inferring from; without this surface, the toggle silently greyed
+  // out for every Builder/Member with a verified primary domain.
+  describe('GET /api/me/member-profile: agent_visibility_gate', () => {
+    it('Builder with primary brand domain: can_publish_publicly=true', async () => {
+      const orgId = `${TEST_PREFIX}_gate_ok`;
+      const userId = `${TEST_PREFIX}_gate_ok_user`;
+      await seedOrg(pool, orgId, 'company_standard');
+      await provisionUser(userId, orgId);
+      await createProfile(orgId, 'gateok');
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).get('/api/me/member-profile');
+
+      expect(res.status).toBe(200);
+      expect(res.body.has_api_access).toBe(true);
+      expect(res.body.agent_visibility_gate).toEqual({
+        can_publish_publicly: true,
+        reasons: [],
+      });
+      // Re-derived from organization_domains.is_primary so legacy callers
+      // (member-profile.html, dashboard-agents.html) keep working post-#4313.
+      expect(res.body.profile.primary_brand_domain).toBe('gateok.example');
+    });
+
+    it('Explorer with primary brand domain: tier_required', async () => {
+      const orgId = `${TEST_PREFIX}_gate_tier`;
+      const userId = `${TEST_PREFIX}_gate_tier_user`;
+      await seedOrg(pool, orgId, 'individual_academic');
+      await provisionUser(userId, orgId);
+      await createProfile(orgId, 'gatetier');
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).get('/api/me/member-profile');
+
+      expect(res.status).toBe(200);
+      expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
+      expect(res.body.agent_visibility_gate.reasons).toEqual(['tier_required']);
+    });
+
+    it('Builder without primary brand domain: brand_domain_required', async () => {
+      const orgId = `${TEST_PREFIX}_gate_brand`;
+      const userId = `${TEST_PREFIX}_gate_brand_user`;
+      await seedOrg(pool, orgId, 'company_standard');
+      await provisionUser(userId, orgId);
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'No Brand Org',
+        slug: 'gatebrand',
+        is_public: true,
+        agents: [{ url: 'https://a.gatebrand.example', visibility: 'private' }],
+      });
+      // Deliberately no seedBrandPrimary — the org has no is_primary row.
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).get('/api/me/member-profile');
+
+      expect(res.status).toBe(200);
+      expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
+      expect(res.body.agent_visibility_gate.reasons).toEqual(['brand_domain_required']);
+      expect(res.body.profile.primary_brand_domain).toBeUndefined();
+    });
+
+    it('unpaid tier with no brand domain: both reasons surface', async () => {
+      const orgId = `${TEST_PREFIX}_gate_both`;
+      const userId = `${TEST_PREFIX}_gate_both_user`;
+      await seedOrg(pool, orgId, null);
+      await provisionUser(userId, orgId);
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'Bare Org',
+        slug: 'gateboth',
+        is_public: true,
+        agents: [{ url: 'https://a.gateboth.example', visibility: 'private' }],
+      });
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).get('/api/me/member-profile');
+
+      expect(res.status).toBe(200);
+      expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
+      // Order is deterministic: tier first, then brand. Pinned in the
+      // unit test for computeAgentVisibilityGate too.
+      expect(res.body.agent_visibility_gate.reasons).toEqual([
+        'tier_required',
+        'brand_domain_required',
+      ]);
+    });
+
+    it('Builder with unverified primary domain: brand_domain_unverified', async () => {
+      const orgId = `${TEST_PREFIX}_gate_unverified`;
+      const userId = `${TEST_PREFIX}_gate_unverified_user`;
+      await seedOrg(pool, orgId, 'company_standard');
+      await provisionUser(userId, orgId);
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'Unverified Domain Org',
+        slug: 'gateunverified',
+        is_public: true,
+        agents: [],
+      });
+      await seedBrandPrimaryUnverified(orgId, 'gateunverified.example');
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).get('/api/me/member-profile');
+
+      expect(res.status).toBe(200);
+      expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
+      expect(res.body.agent_visibility_gate.reasons).toContain('brand_domain_unverified');
+    });
+  });
+
+  // Unverified domain write-side enforcement (#4511).
+  // An org can have is_primary=true but verified=false (admin import, legacy
+  // seeding). All three write paths that can set visibility='public' must
+  // reject with brand_domain_unverified until the org completes DNS verification.
+  describe('Unverified domain write-side enforcement', () => {
+    async function setupUnverifiedOrg(suffix: string) {
+      const orgId = `${TEST_PREFIX}_unv_${suffix}`;
+      const userId = `${TEST_PREFIX}_unv_${suffix}_user`;
+      const domain = `unv${suffix}.example`;
+      await seedOrg(pool, orgId, 'individual_professional');
+      await provisionUser(userId, orgId);
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: `Unverified ${suffix}`,
+        slug: `unv${suffix}`,
+        is_public: true,
+        agents: [{ url: `https://agent.${domain}`, visibility: 'private' }],
+      });
+      await seedBrandPrimaryUnverified(orgId, domain);
+      return { orgId, userId, domain };
+    }
+
+    it('POST /publish returns 400 brand_domain_unverified when primary domain is not DNS-verified', async () => {
+      const { userId, orgId } = await setupUnverifiedOrg('pub');
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).post('/api/me/member-profile/agents/0/publish');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('brand_domain_unverified');
+    });
+
+    it('PATCH /visibility=public returns 400 brand_domain_unverified when primary domain is not DNS-verified', async () => {
+      const { userId, orgId } = await setupUnverifiedOrg('patch');
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app)
+        .patch('/api/me/member-profile/agents/0/visibility')
+        .send({ visibility: 'public' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('brand_domain_unverified');
+    });
+
+    it('PUT /member-profile: rejects visibility=public when primary domain is not DNS-verified', async () => {
+      const { userId, orgId, domain } = await setupUnverifiedOrg('put');
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app)
+        .put('/api/me/member-profile')
+        .send({ agents: [{ url: `https://agent.${domain}`, visibility: 'public' }] });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('brand_domain_unverified');
+    });
+  });
+
+  // Hostname verification (#4499 MVP) wired into the bulk PUT and
+  // visibility-flip paths in addition to the per-agent POST. Closes the
+  // smuggle paths the security review on PR #4648 flagged:
+  // bulk PUT was rewriting the JSONB without hostname checks, and
+  // visibility-flip could promote a grandfathered (un-verified) row to
+  // public — the exact escalation #340 shape.
+  describe('Hostname verification on bulk PUT + visibility flip', () => {
+    it('PUT /api/me/member-profile: rejects NEW agent on an unverified hostname', async () => {
+      const orgId = `${TEST_PREFIX}_put_rogue`;
+      const userId = `${TEST_PREFIX}_put_rogue_user`;
+      await seedOrg(pool, orgId, 'individual_professional');
+      await provisionUser(userId, orgId);
+      await createProfile(orgId, 'putrogue');
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app)
+        .put('/api/me/member-profile')
+        .send({
+          agents: [
+            { url: 'https://existing.putrogue.example', visibility: 'private' },
+            { url: 'https://adcp-mcp.celtra.com/mcp', visibility: 'private' },
+          ],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('unverified_hostname');
+      expect(res.body.agent_index).toBe(1);
+      expect(res.body.agent_hostname).toBe('adcp-mcp.celtra.com');
+    });
+
+    it('PUT /api/me/member-profile: grandfathers entries already in the JSONB', async () => {
+      const orgId = `${TEST_PREFIX}_put_grandfather`;
+      const userId = `${TEST_PREFIX}_put_grandfather_user`;
+      await seedOrg(pool, orgId, 'individual_professional');
+      await provisionUser(userId, orgId);
+      // Seed a profile with an agent on a hostname that does NOT match
+      // the verified domain. Real production case: an entry that
+      // pre-dates the hostname gate.
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'Grandfathered',
+        slug: 'putgrandfather',
+        is_public: false,
+        agents: [{ url: 'https://legacy.unrelated.example', visibility: 'private' }],
+      });
+      await seedBrandPrimary(orgId, 'putgrandfather.example');
+
+      (app as any).setCurrentUser(userId, orgId);
+      // Same legacy URL — should pass the gate as a grandfather.
+      const res = await request(app)
+        .put('/api/me/member-profile')
+        .send({
+          agents: [{ url: 'https://legacy.unrelated.example', visibility: 'private', name: 'updated' }],
+        });
+
+      expect(res.status).toBe(200);
+    });
+
+    it('PUT /api/me/member-profile: grandfathers non-canonical legacy URLs after canonicalization', async () => {
+      // A pre-#3573 row could be stored in non-canonical form (mixed case,
+      // trailing slash, etc.). When a legitimate caller re-PUTs the same
+      // entry, the incoming URL gets canonicalized and the grandfather
+      // set must also be built from canonical URLs — otherwise the gate
+      // rejects an unchanged entry with no escape hatch. Pins
+      // member-profiles.ts:1219-1230 canonicalization of `existingUrls`.
+      const orgId = `${TEST_PREFIX}_put_grandfather_noncanonical`;
+      const userId = `${TEST_PREFIX}_put_grandfather_noncanonical_user`;
+      await seedOrg(pool, orgId, 'individual_professional');
+      await provisionUser(userId, orgId);
+      // Seed in non-canonical form by writing directly to JSONB.
+      await pool.query(
+        `INSERT INTO member_profiles
+           (workos_organization_id, display_name, slug, is_public, agents, created_at, updated_at)
+         VALUES ($1, $2, $3, false, $4::jsonb, NOW(), NOW())`,
+        [
+          orgId,
+          'Grandfathered noncanonical',
+          'putgfnoncanonical',
+          JSON.stringify([
+            { url: 'https://Legacy.Unrelated.Example/', visibility: 'private' },
+          ]),
+        ],
+      );
+      await seedBrandPrimary(orgId, 'putgfnoncanonical.example');
+
+      (app as any).setCurrentUser(userId, orgId);
+      // Caller sends the same URL — canonicalization will lowercase + strip
+      // trailing slash. The grandfather check has to compare canonicalized
+      // values on both sides.
+      const res = await request(app)
+        .put('/api/me/member-profile')
+        .send({
+          agents: [
+            { url: 'https://Legacy.Unrelated.Example/', visibility: 'private', name: 'still here' },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+    });
+
+    it('PATCH /agents/:index/visibility: rejects flipping a grandfathered row to members_only or public', async () => {
+      const orgId = `${TEST_PREFIX}_flip_gf`;
+      const userId = `${TEST_PREFIX}_flip_gf_user`;
+      await seedOrg(pool, orgId, 'individual_professional');
+      await provisionUser(userId, orgId);
+      // Grandfathered agent — hostname doesn't match the verified domain.
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'Flip GF',
+        slug: 'flipgf',
+        is_public: false,
+        agents: [{ url: 'https://legacy.unrelated.example', visibility: 'private' }],
+      });
+      await seedBrandPrimary(orgId, 'flipgf.example');
+
+      (app as any).setCurrentUser(userId, orgId);
+
+      // members_only flip — should reject.
+      const membersRes = await request(app)
+        .patch('/api/me/member-profile/agents/0/visibility')
+        .send({ visibility: 'members_only' });
+      expect(membersRes.status).toBe(400);
+      expect(membersRes.body.error).toBe('unverified_hostname');
+
+      // public flip — should also reject.
+      const publicRes = await request(app)
+        .patch('/api/me/member-profile/agents/0/visibility')
+        .send({ visibility: 'public' });
+      expect(publicRes.status).toBe(400);
+      expect(publicRes.body.error).toBe('unverified_hostname');
+
+      // private (demotion) — always allowed.
+      const privateRes = await request(app)
+        .patch('/api/me/member-profile/agents/0/visibility')
+        .send({ visibility: 'private' });
+      expect(privateRes.status).toBe(200);
+    });
   });
 });

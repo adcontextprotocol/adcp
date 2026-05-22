@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "oneOf": [
@@ -20,14 +23,29 @@
           "description": "Seller's identifier for the media buy",
           "x-entity": "media_buy"
         },
+        "media_buy_status": {
+          "$ref": "/schemas/enums/media-buy-status.json",
+          "description": "Media buy status after the update. Present when the update changes the media buy's status (e.g., cancellation transitions to 'canceled', pause transitions to 'paused'). Added in 3.1: at the top level of flat-on-the-wire MCP responses, the `status` key is reserved for the envelope TaskStatus. Sellers SHOULD emit `media_buy_status` from 3.1 onward; the legacy top-level `status: MediaBuyStatus` form is deprecated and removed in 3.2 (#4906). When the deprecated `status` is also present during the 3.1 deprecation window, both MUST carry identical values — divergent emission is a conformance violation flagged by 3.1 compliance storyboards."
+        },
         "status": {
           "$ref": "/schemas/enums/media-buy-status.json",
-          "description": "Media buy status after the update. Present when the update changes the media buy's status (e.g., cancellation transitions to 'canceled', pause transitions to 'paused')."
+          "deprecated": true,
+          "description": "DEPRECATED in 3.1, removed in 3.2 (#4906). Use `media_buy_status` instead. During the 3.1 deprecation window, sellers emitting both `status` and `media_buy_status` MUST emit identical values — divergent emission is a conformance violation. See adcontextprotocol/adcp#4895."
         },
         "revision": {
           "type": "integer",
           "description": "Revision number after this update. Use this value in subsequent update_media_buy requests for optimistic concurrency.",
           "minimum": 1
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code for monetary values at this media buy level. Echoed when the update affects budget or currency. Matches the currency field in subsequent get_media_buys responses.",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "total_budget": {
+          "type": "number",
+          "description": "Updated total budget amount across all packages, denominated in currency. Echoed when the update affects package budgets so buyers can verify the new aggregate without a round-trip to get_media_buys. Matches the total_budget field in subsequent get_media_buys responses.",
+          "minimum": 0
         },
         "implementation_date": {
           "type": [
@@ -50,10 +68,18 @@
         },
         "valid_actions": {
           "type": "array",
-          "description": "Actions the buyer can perform after this update. Saves a round-trip to get_media_buys.",
+          "description": "Flat-vocabulary actions the buyer can perform after this update. Saves a round-trip to get_media_buys. Deprecated in favor of `available_actions[]`, which carries `mode`, optional SLA, and optional `terms_ref`. Sellers SHOULD populate both during the 3.x deprecation window; consumers MUST prefer `available_actions[]` when both are present. Removed in 4.0.",
           "items": {
             "$ref": "/schemas/enums/media-buy-valid-action.json"
           }
+        },
+        "available_actions": {
+          "type": "array",
+          "description": "Structured per-buy resolution of actions available after this update. Authoritative — see `get-media-buys-response.json` for full semantics.",
+          "items": {
+            "$ref": "/schemas/core/media-buy-available-action.json"
+          },
+          "uniqueItems": true
         },
         "sandbox": {
           "type": "boolean",

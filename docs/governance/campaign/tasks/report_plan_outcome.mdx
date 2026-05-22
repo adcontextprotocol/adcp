@@ -57,7 +57,7 @@ Sellers do not call this task. They report delivery data via [`check_governance`
 ```json
 {
   "outcome_id": "out_001",
-  "status": "accepted",
+  "outcome_state": "accepted",
   "committed_budget": 150000,
   "plan_summary": {
     "total_committed": 425000,
@@ -75,7 +75,7 @@ In this alternative scenario for the same action, the seller modified the reques
 ```json
 {
   "outcome_id": "out_002",
-  "status": "findings",
+  "outcome_state": "findings",
   "committed_budget": 120000,
   "findings": [
     {
@@ -128,7 +128,7 @@ The governance agent still commits the seller's actual amount (\$120K, not the r
 ```json
 {
   "outcome_id": "out_del_001",
-  "status": "accepted"
+  "outcome_state": "accepted"
 }
 ```
 
@@ -137,7 +137,7 @@ The governance agent still commits the seller's actual amount (\$120K, not the r
 ```json
 {
   "outcome_id": "out_del_002",
-  "status": "findings",
+  "outcome_state": "findings",
   "findings": [
     {
       "category_id": "budget_authority",
@@ -177,7 +177,7 @@ If the seller rejected the request, report it so the governance agent can update
 ```json
 {
   "outcome_id": "out_003",
-  "status": "accepted",
+  "outcome_state": "accepted",
   "committed_budget": 0,
   "plan_summary": {
     "total_committed": 275000,
@@ -218,9 +218,9 @@ If the seller rejected the request, report it so the governance agent can update
 | Field | Type | Description |
 |-------|------|-------------|
 | `outcome_id` | string | Unique identifier for this outcome record. |
-| `status` | enum | `accepted` (state updated, no issues) or `findings` (issues detected). |
+| `outcome_state` | enum | `accepted` (state updated, no issues) or `findings` (issues detected). |
 | `committed_budget` | number | Budget committed from this outcome (present for `completed`/`failed` outcomes). |
-| `findings` | array | Present only when status is `findings`. |
+| `findings` | array | Present only when `outcome_state` is `findings`. |
 | `findings[].category_id` | string | Which validation category flagged the issue. |
 | `findings[].severity` | enum | `info`, `warning`, or `critical`. |
 | `findings[].explanation` | string | Human-readable description of the issue. |

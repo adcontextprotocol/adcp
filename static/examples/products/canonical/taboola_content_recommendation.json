@@ -1,0 +1,82 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "taboola_content_recommendation_us",
+  "name": "Taboola — US Content Recommendation",
+  "description": "In-feed native content-recommendation placement on Taboola's publisher network (CNN, USA Today, Bloomberg, MSN, and ~2 000 other premium properties). Buyer ships an IAB-shaped native asset bundle (title, thumbnail, body, display_url, optional rating); Taboola's renderer composes the unit to match each publisher's feed look-and-feel. Distinct from `sponsored_placement` (catalog-keyed retail-media — Taboola has no per-item catalog feed) and from `responsive_creative` (algorithmic combinator — Taboola uses a single asset bundle, not an asset pool). Renderer-fired pixel trackers (impression, viewability, click) ship as `pixel_tracker` assets.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "taboola.com",
+      "selection_type": "all"
+    }
+  ],
+  "channels": [
+    "display"
+  ],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpc_open_auction",
+      "pricing_model": "cpc",
+      "currency": "USD",
+      "floor_price": 0.1
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": [
+      "hourly",
+      "daily"
+    ],
+    "expected_delay_minutes": 30,
+    "timezone": "America/New_York",
+    "supports_webhooks": true,
+    "available_metrics": [
+      "impressions",
+      "clicks",
+      "spend",
+      "ctr",
+      "viewability",
+      "conversions"
+    ],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_kind": "native_in_feed",
+      "display_name": "Taboola Sponsored Content — Premium",
+      "applies_to_channels": ["display"],
+      "params": {
+        "title_max_chars": 80,
+        "body_text_max_chars": 140,
+        "cta_max_chars": 25,
+        "cta_values": ["LEARN_MORE", "READ_MORE", "SHOP_NOW", "SIGN_UP", "DOWNLOAD"],
+        "main_image_sizes": [
+          { "width": 1200, "height": 627 },
+          { "width": 1080, "height": 1080 }
+        ],
+        "max_image_file_size_kb": 500,
+        "image_formats": ["jpg", "jpeg", "png", "webp"],
+        "ssl_required": true,
+        "asset_source": "buyer_uploaded",
+        "buyer_asset_acceptance": "accepted",
+        "composition_model": "deterministic",
+        "slots": [
+          { "asset_group_id": "title", "asset_type": "text", "required": true, "max_chars": 80 },
+          { "asset_group_id": "body_text", "asset_type": "text", "required": false, "max_chars": 140 },
+          { "asset_group_id": "main_image", "asset_type": "image", "required": true },
+          { "asset_group_id": "cta", "asset_type": "text", "required": false, "max_chars": 25 },
+          { "asset_group_id": "advertiser_name", "asset_type": "text", "required": true },
+          { "asset_group_id": "sponsored_label", "asset_type": "text", "required": false },
+          { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true },
+          { "asset_group_id": "display_url", "asset_type": "text", "required": false },
+          { "asset_group_id": "rating", "asset_type": "text", "required": false },
+          { "asset_group_id": "impression_tracker", "asset_type": "pixel_tracker", "required": false },
+          { "asset_group_id": "viewability_tracker", "asset_type": "pixel_tracker", "required": false },
+          { "asset_group_id": "click_tracker", "asset_type": "pixel_tracker", "required": false }
+        ]
+      },
+      "v1_format_ref": [
+        { "agent_url": "https://creative.adcontextprotocol.org", "id": "native_content" }
+      ]
+    }
+  ]
+}

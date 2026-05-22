@@ -182,6 +182,18 @@ export const PropertySummarySchema = z
 const MemberRefSchema = z.object({
   slug: z.string().optional(),
   display_name: z.string().optional(),
+  membership_tier: z.string().optional().openapi({
+    description:
+      "Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.",
+  }),
+  membership_tier_label: z.string().optional().openapi({
+    description:
+      "Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.",
+  }),
+  is_founding_member: z.boolean().optional().openapi({
+    description:
+      "True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).",
+  }),
 });
 
 export const ResolvedBrandSchema = z
@@ -718,6 +730,32 @@ export const ComplianceRunSchema = z
     tested_at: z.string(),
   })
   .openapi("ComplianceRun");
+
+export const ComplianceStepDiagnosticSchema = z
+  .object({
+    id: z.union([z.number(), z.string()]),
+    run_id: z.string(),
+    agent_url: z.string(),
+    storyboard_id: z.string(),
+    phase_id: z.string(),
+    step_id: z.string(),
+    task: z.string(),
+    step_passed: z.boolean(),
+    duration_ms: z.number().nullable().optional(),
+    request_url: z.string().nullable().optional(),
+    request_jsonb: z.any().optional(),
+    response_status: z.number().nullable().optional(),
+    response_headers_jsonb: z.record(z.string(), z.string()).nullable().optional(),
+    response_jsonb: z.any().optional(),
+    extraction_path: z.string().nullable().optional(),
+    extraction_note: z.string().nullable().optional(),
+    error_text: z.string().nullable().optional(),
+    adcp_error_jsonb: z.any().optional(),
+    failed_validations_jsonb: z.any().optional(),
+    served_by_agent_url: z.string().nullable().optional(),
+    captured_at: z.string(),
+  })
+  .openapi("ComplianceStepDiagnostic");
 
 export const OutboundRequestSchema = z
   .object({

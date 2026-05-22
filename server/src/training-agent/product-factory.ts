@@ -412,8 +412,21 @@ function buildProduct(
       metrics.push('engagements', 'reach');
     }
     if (metrics.length > 0) {
+      // Sibling unit declarations to supported_metrics: completed_views
+      // requires durations and reach requires units. Industry-default values
+      // (TikTok/Meta/Snap durations; CTV/social reach units) so buyers can
+      // bind reach_unit / view_duration_seconds without re-discovery.
+      // create_media_buy's metric-kind validation reads these to reject
+      // unsupported values (reach_buy_flow / completed_views_buy_flow).
+      type MetricOpt = NonNullable<Product['metric_optimization']>;
+      const supportedViewDurations: MetricOpt['supported_view_durations'] = metrics.includes('completed_views') ? [2, 6, 15, 30] : undefined;
+      const supportedReachUnits: MetricOpt['supported_reach_units'] = metrics.includes('reach')
+        ? ['individuals', 'households', 'devices', 'accounts']
+        : undefined;
       metricOptimization = {
         supported_metrics: metrics,
+        ...(supportedReachUnits && { supported_reach_units: supportedReachUnits }),
+        ...(supportedViewDurations && { supported_view_durations: supportedViewDurations }),
         supported_targets: ['cost_per'],
       };
     }

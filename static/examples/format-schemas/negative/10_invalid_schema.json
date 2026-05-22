@@ -1,0 +1,25 @@
+{
+  "test_id": "fetch-contract-neg-10-invalid-schema",
+  "category": "schema_validity",
+  "description": "Body parses as JSON but isn't a valid JSON Schema (Draft 07 or 2020-12). SDK MUST treat as unresolvable; MUST NOT attempt partial validation.",
+  "setup": {
+    "request_uri": "https://creative.adcontextprotocol.org/extensions/not_a_schema",
+    "declared_digest": "sha256:<computed_from_response_body>",
+    "response_status": 200,
+    "response_body": {
+      "this_is": "not a JSON schema",
+      "missing": [
+        "$schema",
+        "$id",
+        "type",
+        "properties"
+      ]
+    },
+    "response_headers": {
+      "Content-Type": "application/json"
+    }
+  },
+  "expected_outcome": "fail:schema_invalid",
+  "expected_error_code": "FORMAT_PROJECTION_FAILED",
+  "rationale": "Schema-validity is part of the contract. If body is JSON but not a valid schema, SDK MUST surface unresolvable rather than silently downgrading to 'best-effort' validation."
+}

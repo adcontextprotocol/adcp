@@ -35,24 +35,43 @@ vi.hoisted(() => {
 });
 
 // Bypass WorkOS auth — the registry feed requires `requireAuth`. Stamp
-// every request with a fixed test user. Other public registry endpoints
-// use `optAuth` (no-op without a session), so the pass-through here is
-// only load-bearing for /registry/feed.
-const TEST_USER_ID = 'user_test_registry_baseline_endpoints';
+// every requireAuth request with a fixed default test user. Other public
+// registry endpoints use `optAuth` (no-op without a session), which the
+// real implementation leaves alone; we follow suit by default so the
+// existing baseline assertions keep their anonymous-caller behavior.
+//
+// The scope-matrix tests below swap callers per request via
+// `setOptAuthUser(...)` — that lets us exercise the auth × scope filter
+// matrix without rebuilding the route's dependency graph.
+const DEFAULT_TEST_USER_ID = 'user_test_registry_baseline_endpoints';
+const authState = vi.hoisted(() => ({
+  optAuthUser: null as { id: string; email: string } | null,
+}));
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
     '../../src/middleware/auth.js'
   );
-  const pass = (req: { user: unknown }, _res: unknown, next: () => void) => {
-    req.user = { id: TEST_USER_ID, email: 'registry-baseline@test.com' };
+  const requireAuthPass = (req: { user: unknown }, _res: unknown, next: () => void) => {
+    req.user = { id: DEFAULT_TEST_USER_ID, email: 'registry-baseline@test.com' };
+    next();
+  };
+  const optAuthPass = (req: { user: unknown }, _res: unknown, next: () => void) => {
+    if (authState.optAuthUser) {
+      req.user = authState.optAuthUser;
+    }
     next();
   };
   return {
     ...actual,
-    requireAuth: pass,
+    requireAuth: requireAuthPass,
+    optionalAuth: optAuthPass,
     requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
   };
 });
+
+function setOptAuthUser(user: { id: string; email: string } | null) {
+  authState.optAuthUser = user;
+}
 
 vi.mock('../../src/middleware/csrf.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
@@ -768,6 +787,223 @@ describe('Registry reader baseline — public endpoints', () => {
     it('rejects an invalid cursor format with 400', async () => {
       const res = await request(app).get('/api/registry/feed?cursor=not-a-uuid');
       expect(res.status).toBe(400);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // /registry/operator ?scope= filter × auth-tier matrix.
+  //
+  // `scope` only narrows what auth would otherwise unlock — never
+  // escalates. The 12-cell matrix below pins one assertion per cell so
+  // a future refactor that quietly inverts a row (e.g. lets `scope=member`
+  // expose members_only to anonymous callers) flips red.
+  // ──────────────────────────────────────────────────────────────────
+
+  describe('/registry/operator ?scope= × auth tier matrix', () => {
+    const SCOPE_DOMAIN = 'endpoint-scope-matrix.registry-baseline.example';
+    const SCOPE_OWNER_ORG = 'org_endpoint_scope_owner';
+    const SCOPE_OTHER_API_ORG = 'org_endpoint_scope_other_api';
+    const SCOPE_EXPLORER_ORG = 'org_endpoint_scope_explorer';
+    const SCOPE_OWNER_USER = 'user_endpoint_scope_owner';
+    const SCOPE_OTHER_API_USER = 'user_endpoint_scope_other_api';
+    const SCOPE_EXPLORER_USER = 'user_endpoint_scope_explorer';
+    const SCOPE_SLUG = 'endpoint-scope-matrix';
+
+    const PUBLIC_URL = 'https://public.scope-matrix.example';
+    const MEMBERS_URL = 'https://members.scope-matrix.example';
+    const PRIVATE_URL = 'https://private.scope-matrix.example';
+
+    async function seedOrg(orgId: string, tier: string | null) {
+      await pool.query(
+        `INSERT INTO organizations (
+           workos_organization_id, name, is_personal, membership_tier,
+           subscription_status, created_at, updated_at
+         ) VALUES ($1, $2, true, $3, $4, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET
+           membership_tier = EXCLUDED.membership_tier,
+           subscription_status = EXCLUDED.subscription_status`,
+        [orgId, `Scope Matrix ${orgId}`, tier, tier ? 'active' : null],
+      );
+    }
+
+    async function provisionUser(userId: string, orgId: string) {
+      await pool.query(
+        `INSERT INTO users (workos_user_id, email, primary_organization_id, created_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
+         ON CONFLICT (workos_user_id) DO UPDATE SET primary_organization_id = EXCLUDED.primary_organization_id`,
+        [userId, `${userId}@example.com`, orgId],
+      );
+      // resolvePrimaryOrganization trusts the cached column only when a
+      // current organization_memberships row backs it.
+      await pool.query(
+        `INSERT INTO organization_memberships
+           (workos_user_id, workos_organization_id, role, email, created_at, updated_at)
+         VALUES ($1, $2, 'admin', $3, NOW(), NOW())
+         ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING`,
+        [userId, orgId, `${userId}@example.com`],
+      );
+    }
+
+    async function clearScopeFixtures() {
+      const orgs = [SCOPE_OWNER_ORG, SCOPE_OTHER_API_ORG, SCOPE_EXPLORER_ORG];
+      const users = [SCOPE_OWNER_USER, SCOPE_OTHER_API_USER, SCOPE_EXPLORER_USER];
+      await pool.query(
+        `DELETE FROM organization_domains WHERE workos_organization_id = ANY($1::text[]) OR domain = $2`,
+        [orgs, SCOPE_DOMAIN],
+      );
+      await pool.query(
+        `DELETE FROM member_profiles WHERE workos_organization_id = ANY($1::text[])`,
+        [orgs],
+      );
+      await pool.query(
+        `DELETE FROM organization_memberships WHERE workos_user_id = ANY($1::text[])`,
+        [users],
+      );
+      await pool.query(
+        `DELETE FROM users WHERE workos_user_id = ANY($1::text[])`,
+        [users],
+      );
+      await pool.query(
+        `DELETE FROM organizations WHERE workos_organization_id = ANY($1::text[])`,
+        [orgs],
+      );
+    }
+
+    beforeEach(async () => {
+      await clearScopeFixtures();
+      // Owner: API-tier org that owns the queried domain + a profile with
+      // one agent per visibility bucket. Other-API: API-tier org with no
+      // ownership claim. Explorer: no-API-tier org.
+      await seedOrg(SCOPE_OWNER_ORG, 'company_standard');
+      await seedOrg(SCOPE_OTHER_API_ORG, 'company_standard');
+      await seedOrg(SCOPE_EXPLORER_ORG, 'individual_academic');
+      await provisionUser(SCOPE_OWNER_USER, SCOPE_OWNER_ORG);
+      await provisionUser(SCOPE_OTHER_API_USER, SCOPE_OTHER_API_ORG);
+      await provisionUser(SCOPE_EXPLORER_USER, SCOPE_EXPLORER_ORG);
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, is_public, created_at, updated_at
+         ) VALUES ($1, 'Scope Matrix Owner', $2, $3::jsonb, true, NOW(), NOW())`,
+        [
+          SCOPE_OWNER_ORG,
+          SCOPE_SLUG,
+          JSON.stringify([
+            { url: PUBLIC_URL, name: 'Public', type: 'sales', visibility: 'public' },
+            { url: MEMBERS_URL, name: 'Members', type: 'sales', visibility: 'members_only' },
+            { url: PRIVATE_URL, name: 'Private', type: 'sales', visibility: 'private' },
+          ]),
+        ],
+      );
+      await pool.query(
+        `INSERT INTO organization_domains
+           (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+         VALUES ($1, $2, true, true, 'workos', NOW(), NOW())
+         ON CONFLICT (domain) DO UPDATE SET
+           workos_organization_id = EXCLUDED.workos_organization_id,
+           verified = true, is_primary = true, source = 'workos'`,
+        [SCOPE_OWNER_ORG, SCOPE_DOMAIN],
+      );
+    });
+
+    afterAll(async () => {
+      await clearScopeFixtures();
+      setOptAuthUser(null);
+    });
+
+    type CallerKind = 'anonymous' | 'owner' | 'other_api' | 'explorer';
+    function setCaller(kind: CallerKind) {
+      if (kind === 'anonymous') return setOptAuthUser(null);
+      const id = kind === 'owner' ? SCOPE_OWNER_USER
+        : kind === 'other_api' ? SCOPE_OTHER_API_USER
+        : SCOPE_EXPLORER_USER;
+      setOptAuthUser({ id, email: `${id}@example.com` });
+    }
+
+    async function fetchAgents(scope: string | null, kind: CallerKind): Promise<string[]> {
+      setCaller(kind);
+      const qs = scope === null ? '' : `&scope=${encodeURIComponent(scope)}`;
+      const res = await request(app).get(
+        `/api/registry/operator?domain=${encodeURIComponent(SCOPE_DOMAIN)}${qs}`,
+      );
+      expect(res.status).toBe(200);
+      return (res.body.agents as Array<{ url: string }>).map(a => a.url).sort();
+    }
+
+    // ── scope omitted (existing tier-aware behavior) ──────────────────
+    it('scope omitted, anonymous → public only', async () => {
+      expect(await fetchAgents(null, 'anonymous')).toEqual([PUBLIC_URL]);
+    });
+    it('scope omitted, explorer (no API tier) → public only', async () => {
+      expect(await fetchAgents(null, 'explorer')).toEqual([PUBLIC_URL]);
+    });
+    it('scope omitted, API-tier non-owner → public + members_only', async () => {
+      expect(await fetchAgents(null, 'other_api')).toEqual(
+        [MEMBERS_URL, PUBLIC_URL].sort(),
+      );
+    });
+    it('scope omitted, profile owner → all three buckets', async () => {
+      expect(await fetchAgents(null, 'owner')).toEqual(
+        [MEMBERS_URL, PRIVATE_URL, PUBLIC_URL].sort(),
+      );
+    });
+
+    // ── scope=public ──────────────────────────────────────────────────
+    it('scope=public collapses every caller to public only', async () => {
+      for (const kind of ['anonymous', 'explorer', 'other_api', 'owner'] as const) {
+        expect(await fetchAgents('public', kind)).toEqual([PUBLIC_URL]);
+      }
+    });
+
+    // ── scope=member ──────────────────────────────────────────────────
+    it('scope=member from anonymous silently degrades to public only', async () => {
+      expect(await fetchAgents('member', 'anonymous')).toEqual([PUBLIC_URL]);
+    });
+    it('scope=member from explorer (no API tier) silently degrades to public only', async () => {
+      expect(await fetchAgents('member', 'explorer')).toEqual([PUBLIC_URL]);
+    });
+    it('scope=member from API-tier non-owner → public + members_only', async () => {
+      expect(await fetchAgents('member', 'other_api')).toEqual(
+        [MEMBERS_URL, PUBLIC_URL].sort(),
+      );
+    });
+    it('scope=member from owner → public + members_only (private excluded by scope)', async () => {
+      expect(await fetchAgents('member', 'owner')).toEqual(
+        [MEMBERS_URL, PUBLIC_URL].sort(),
+      );
+    });
+
+    // ── scope=private ─────────────────────────────────────────────────
+    it('scope=private from non-owner callers returns empty (no 403)', async () => {
+      for (const kind of ['anonymous', 'explorer', 'other_api'] as const) {
+        expect(await fetchAgents('private', kind)).toEqual([]);
+      }
+    });
+    it('scope=private from owner → only private agents', async () => {
+      expect(await fetchAgents('private', 'owner')).toEqual([PRIVATE_URL]);
+    });
+
+    // ── scope=all (explicit) matches omitted ─────────────────────────
+    it('scope=all is equivalent to omitting scope', async () => {
+      expect(await fetchAgents('all', 'owner')).toEqual(
+        await fetchAgents(null, 'owner'),
+      );
+      expect(await fetchAgents('all', 'other_api')).toEqual(
+        await fetchAgents(null, 'other_api'),
+      );
+      expect(await fetchAgents('all', 'anonymous')).toEqual(
+        await fetchAgents(null, 'anonymous'),
+      );
+    });
+
+    // ── validation ────────────────────────────────────────────────────
+    it('rejects unknown scope with 400', async () => {
+      setCaller('owner');
+      const res = await request(app).get(
+        `/api/registry/operator?domain=${encodeURIComponent(SCOPE_DOMAIN)}&scope=membr`,
+      );
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/scope/i);
     });
   });
 });

@@ -7,6 +7,10 @@ testable: false
 
 Discover a seller's protocol support and capabilities across all AdCP protocols. This is the first call a buyer should make to understand what a seller supports.
 
+<Info>
+**Why this shape.** Capabilities are organized into ~14 top-level domain keys (one per protocol plus identity and signing infrastructure), with feature flags nested under each domain's `features`/`execution`/etc. sub-namespace. We rejected a flat capability list — it forces every implementer to scan an unbounded surface, and it removes the discoverability that comes from related flags sitting next to each other. New capability flags belong under existing domains, not in new top-level keys; declarations are commitments, not advertisements (the conformance runner probes them). → [Capabilities explorer](/docs/protocol/capabilities-explorer) walks the tree before you propose. → [Design principle: capabilities are commitments](/docs/protocol/design-principles#4-capabilities-are-commitments-declared-under-existing-buckets).
+</Info>
+
 **Response Time**: ~2 seconds (configuration lookup)
 
 **Purpose**:
@@ -80,11 +84,11 @@ Core AdCP protocol information:
 | Field | Type | Description |
 |-------|------|-------------|
 | `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[3]`) |
-| `idempotency` | object | **Required.** Idempotency semantics for mutating requests. See [idempotency](#idempotency). |
+| `idempotency` | object | **Required.** Idempotency semantics. See [idempotency](#idempotency). |
 
 #### idempotency
 
-Declares whether this seller honors `idempotency_key` replay protection on mutating requests. Mirrors the `request_signing.supported` pattern — a single positive declaration, decoupled from the window detail. Clients MUST NOT assume a default; a seller without this block is non-compliant and should be treated as unsafe for retry-sensitive operations.
+Declares whether this seller honors `idempotency_key` replay protection. From 3.1 onward `idempotency_key` is required on every AdCP task request (read and mutating alike — staged enforcement for reads: SHOULD-reject in 3.1, MUST-reject in 3.2; see [security.mdx § Idempotency](/docs/building/by-layer/L1/security#idempotency)). Mirrors the `request_signing.supported` pattern — a single positive declaration, decoupled from the window detail. Clients MUST NOT assume a default; a seller without this block is non-compliant and should be treated as unsafe for retry-sensitive operations across all call modes.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -349,7 +353,13 @@ Inventory portfolio information:
 
 ### signals
 
-Signals protocol capabilities. Only present if `signals` is in `supported_protocols`. Reserved for future use.
+Signals protocol capabilities. Only present if `signals` is in `supported_protocols`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `data_provider_domains` | string[] | Data provider domains this signals agent is authorized to resell. Buyers should fetch each provider's `adagents.json` for signal catalog definitions and to verify authorization. |
+| `discovery_modes` | string[] | Discovery modes the agent supports on `get_signals`. `"brief"` (semantic discovery via `signal_spec` / `signal_ids`) is implicit and always supported. Declare `"wholesale"` to advertise that callers can omit `signal_spec` / `signal_ids` and enumerate the full priced signals feed. Agents not declaring `"wholesale"` MAY return `INVALID_REQUEST` for wholesale calls. Absent declaration is treated as `["brief"]`. |
+| `features.catalog_signals` | boolean | Supports signals from data provider catalogs with structured `signal_id` references. |
 
 ### creative
 
@@ -358,6 +368,7 @@ Creative protocol capabilities. Only present if `creative` is in `supported_prot
 | Field | Type | Description |
 |-------|------|-------------|
 | `supports_compliance` | boolean | When `true`, this creative agent can process briefs with compliance requirements (`required_disclosures`, `prohibited_claims`) and will validate that disclosures can be satisfied by the target format. Use the `disclosure_positions` filter on `list_creative_formats` to find compatible formats. |
+| `bills_through_adcp` | boolean | When `true`, this creative agent bills through the AdCP rate-card surface — `list_creatives` returns `pricing_options` (with `include_pricing=true` and an authenticated account), `build_creative` populates `pricing_option_id` and `vendor_cost`, and `report_usage` accepts records against the rate card. When `false` or absent, the agent bills out of band (flat license, SaaS contract, bundled enterprise agreement); buyers should skip pricing fields and tolerate `report_usage` returning `accepted: 0` with `BILLING_OUT_OF_BAND` errors. Pre-call discriminator for routing across creative agents. |
 
 ### governance
 
@@ -405,6 +416,7 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 ```json
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
+  "status": "completed",
   "adcp": {
     "major_versions": [3],
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
@@ -507,14 +519,14 @@ Compliance testing is sandbox-only at the deployment level — production deploy
 
 ### webhook_signing
 
-Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook` or `media_buy.content_standards.supports_webhook_delivery: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/docs/building/implementation/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
+Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook`, `media_buy.content_standards.supports_webhook_delivery: true`, or `wholesale_feed_webhooks.supported: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/docs/building/implementation/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `supported` | boolean | **Required when the seller advertises mutating-webhook emission elsewhere in its capability surface.** `true` iff the seller signs outbound webhooks. `false` means the seller emits webhooks but does not sign them; buyers MUST fail onboarding. Sellers that emit no webhooks SHOULD omit the entire block rather than set `supported: false` — `false` is reserved for the unsafe posture of unsigned-webhook emission, not absence-of-webhooks. |
 | `profile` | string | **Required when `supported: true`.** The profile version string. Currently `"adcp/webhook-signing/v1"`. Future versions bump the string. |
 | `algorithms` | string[] | **Required when `supported: true`.** Subset of `["ed25519", "ecdsa-p256-sha256"]` — the algorithms this seller will sign webhooks with. Matches the webhook-signing verifier allowlist (see [Verifier checklist for webhooks](/docs/building/implementation/security#webhook-callbacks), step 4). Buyers MUST be prepared to verify any algorithm listed AND MUST reject onboarding with a user-actionable error if an advertised algorithm is outside this enumerated set — a seller advertising an out-of-set algorithm (e.g., `hs256`) is either misconfigured or signalling a non-conforming profile. |
-| `legacy_hmac_fallback` | boolean | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0. |
+| `legacy_hmac_fallback` | boolean | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials` or `accounts[].notification_configs[].authentication.credentials`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0. |
 
 **Example:**
 
@@ -548,6 +560,11 @@ Extension schemas are published in the [AdCP extension registry](/docs/building/
 }
 ```
 
+This tells buyers:
+- Responses may include `ext.iab_tcf` with IAB TCF consent data
+- Responses may include `ext.iab_gpp` with IAB GPP (Global Privacy Platform) signals
+- Responses may include `ext.acmecorp` with vendor-specific data from Acme Corp
+
 ### experimental_features
 
 Array of experimental AdCP surfaces this agent implements. A surface is experimental when its schema carries `x-status: experimental` — it is part of the core protocol but not yet frozen and may break between 3.x releases with 6 weeks' notice. Sellers that implement any experimental surface MUST list its feature id here.
@@ -567,10 +584,61 @@ Buyers should inspect `experimental_features` before relying on an experimental 
 
 See [experimental status](/docs/reference/experimental-status) for the full stability contract, graduation criteria, and client guidance.
 
-This tells buyers:
-- Responses may include `ext.iab_tcf` with IAB TCF consent data
-- Responses may include `ext.iab_gpp` with IAB GPP (Global Privacy Platform) signals
-- Responses may include `ext.acmecorp` with vendor-specific data from Acme Corp
+### wholesale_feed_versioning
+
+Conditional-fetch token capabilities for [`get_products`](/docs/media-buy/task-reference/get_products#wholesale-feed-versioning) and [`get_signals`](/docs/signals/tasks/get_signals#wholesale-feed-versioning). Independent of wholesale feed webhooks: an agent MAY support cheap version probes without pushing change payloads, and an agent MAY push change payloads while still requiring reconciliation reads for repair.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | **Required.** Whether the agent returns `wholesale_feed_version` on responses and honors `if_wholesale_feed_version` on requests. When absent or `false`, buyers can still probe by reading the response (the field-presence detection path) but can't pre-flight-decide which agents to cache versions for. |
+| `pricing_version_separate` | boolean | Whether the agent tracks `pricing_version` independently of `wholesale_feed_version`. When `true`, callers can send `if_pricing_version` alongside `if_wholesale_feed_version` for finer-grained "did prices change?" probes. When `false` or absent, the agent collapses both into `wholesale_feed_version` — sending `if_pricing_version` is wasted bytes. |
+| `cache_scope_account` | boolean | Whether the agent ever returns `cache_scope: "account"` (i.e., publishes per-account overlays distinct from the public rate card). When `true`, buyers MUST be prepared to maintain account-overlay caches alongside the public layer. When `false` or absent, all responses are `cache_scope: "public"` — the agent's rate card is universal across accounts. Note: declaring `true` advertises that the agent runs custom-pricing deals, which is itself a small market-posture signal; agents preferring confidentiality MAY omit the field and detect-on-call instead. |
+
+**Example:**
+
+```json
+{
+  "wholesale_feed_versioning": {
+    "supported": true,
+    "pricing_version_separate": true,
+    "cache_scope_account": true
+  }
+}
+```
+
+### wholesale_feed_webhooks
+
+Per-agent wholesale product-feed and wholesale signals-feed webhook capabilities. Declared by sales agents (products) and signals agents (signals). When `supported` is `true`, consumers can register `sync_accounts.accounts[].notification_configs[]` entries for `product.*`, `signal.*`, and `wholesale_feed.bulk_change` events and receive the actual change payload in each webhook. See `specs/wholesale-feed-webhooks.md` for the full spec.
+
+**Terminology.** Here "wholesale feed" means the agent's buyable wholesale product feed and wholesale signals feed exposed by `get_products` and `get_signals`. It is distinct from `sync_catalogs`, which pushes buyer-provided campaign input feeds into a seller account for campaign execution.
+
+Complementary to (and independent of) [`wholesale_feed_versioning`](#wholesale_feed_versioning): webhooks push changed products/signals or bulk-change summaries; version tokens give a cheap repair and reconciliation probe. Adopters MAY ship either, both, or neither.
+
+Agents that declare `supported: true` MUST apply the same account/caller authorization and scope predicate used by the corresponding wholesale read before emitting each webhook. A caller that could not see a product, signal, price, or account overlay through `get_products buying_mode: "wholesale"` or `get_signals discovery_mode: "wholesale"` MUST NOT receive a webhook revealing that change. Agents unable to guarantee per-principal filtering MUST NOT declare support.
+
+**Capability consistency.** Agents listing any `product.*` value in `event_types[]` MUST declare and support wholesale `get_products` (`media_buy.buying_modes` includes `"wholesale"`). Agents listing any `signal.*` value MUST declare and support wholesale `get_signals` (`signals.discovery_modes` includes `"wholesale"`). Agents listing `wholesale_feed.bulk_change` MUST have at least one of those wholesale repair paths, and each bulk-change payload's `affected_entity_type` MUST name only a feed family the agent can repair through a declared wholesale read.
+
+**Consumer precedence.** When more than one mechanism is declared, consumers SHOULD prefer them in this order: (1) `wholesale_feed_webhooks` when maintaining a long-lived mirror (lowest latency, lowest seller cost); (2) `wholesale_feed_versioning` conditional fetch for occasional polling and webhook repair; (3) wholesale enumeration via `buying_modes` / `discovery_modes` for cold start, `wholesale_feed.bulk_change`, or any missed/distrusted push.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | **Required.** Whether this agent can push wholesale feed change payloads through account-level `sync_accounts.accounts[].notification_configs[]`. When `false` or this stanza is absent, consumers fall back to wholesale polling, optionally with `if_wholesale_feed_version` probes. |
+| `event_types` | string[] | Event types this agent can emit. Sales agents emit `product.*` events; signals agents emit `signal.*` events; agents that are both can emit both event families. `product.*` requires wholesale `get_products`; `signal.*` requires wholesale `get_signals`; `wholesale_feed.bulk_change` requires at least one declared wholesale repair path and names one affected feed the consumer repairs by re-reading via `get_products` or `get_signals`. |
+
+**Example (sales + signals agent):**
+
+```json
+{
+  "wholesale_feed_webhooks": {
+    "supported": true,
+    "event_types": [
+      "product.created", "product.updated", "product.priced", "product.removed",
+      "signal.created", "signal.updated", "signal.priced", "signal.removed",
+      "wholesale_feed.bulk_change"
+    ]
+  }
+}
+```
 
 ## The Capability Contract
 
@@ -806,6 +874,7 @@ const buy = await client.createMediaBuy({
 ```json
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
+  "status": "completed",
   "adcp": {
     "major_versions": [3],
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
@@ -899,6 +968,7 @@ An agent can implement multiple protocols from a single endpoint. This is common
 ```json
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
+  "status": "completed",
   "adcp": {
     "major_versions": [3],
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
@@ -921,7 +991,8 @@ An agent can implement multiple protocols from a single endpoint. This is common
     "has_creative_library": true,
     "supports_generation": true,
     "supports_transformation": false,
-    "supports_compliance": false
+    "supports_compliance": false,
+    "bills_through_adcp": true
   }
 }
 ```
@@ -973,7 +1044,8 @@ New fields:
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `AUTH_REQUIRED` | Authentication needed | Provide credentials |
+| `AUTH_MISSING` | No credentials presented | Provide credentials via auth header |
+| `AUTH_INVALID` | Credentials rejected (expired / revoked) | Human credential rotation required |
 | `VERSION_UNSUPPORTED` | Declared `adcp_major_version` not in seller's `major_versions` | Call without `adcp_major_version` to discover supported versions, then retry |
 | `INTERNAL_ERROR` | Server error | Retry with backoff |
 

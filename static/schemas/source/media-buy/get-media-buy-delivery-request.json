@@ -53,6 +53,15 @@
       "default": false,
       "description": "When true, include daily_breakdown arrays within each package in by_package. Useful for per-package pacing analysis and line-item monitoring. Omit or set false to reduce response size — package daily data can be large for multi-package buys over long flights."
     },
+    "time_granularity": {
+      "$ref": "/schemas/enums/reporting-frequency.json",
+      "description": "Per-window slice granularity for the pull, using the same vocabulary as reporting_webhook.reporting_frequency. When set, the seller returns per-window delivery slices over the date range — useful for reconstructing data a buyer's webhook receiver missed, since the slice payload is shape-aligned with what reporting_webhook would have delivered for the same window. Capability-scoped: the value MUST be one of the seller's declared reporting_capabilities.windowed_pull_granularities; otherwise the seller MUST return UNSUPPORTED_GRANULARITY. When omitted, behavior is unchanged (cumulative aggregates plus optional daily breakdowns per existing fields)."
+    },
+    "include_window_breakdown": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, the response includes media_buy_deliveries[].windows[] — an array of per-window delivery slices over the date range at the requested time_granularity. Ignored when time_granularity is omitted. Each window's payload mirrors what reporting_webhook would have delivered for the same window, enabling lossless GET-path recovery for buyers who missed webhook fires. Omit or set false to reduce response size when only cumulative aggregates are needed."
+    },
     "attribution_window": {
       "type": "object",
       "description": "Attribution window to apply for conversion metrics. When provided, the seller returns conversion data using the requested lookback windows instead of their platform default. The seller echoes the applied window in the response. Sellers that do not support configurable windows ignore this field and return their default. Check get_adcp_capabilities conversion_tracking.attribution_windows for available options.",

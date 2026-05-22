@@ -38,6 +38,7 @@ import type {
   SyncAccountsResultRow,
 } from '@adcp/sdk/server';
 import { handleSyncAccounts } from './account-handlers.js';
+import { pickFromInput } from './v6-input-helpers.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 function trainingCtxFromResolveCtx(ctx: ResolveContext | undefined): TrainingContext {
@@ -57,8 +58,15 @@ export const syncAccountsUpsert: NonNullable<AccountStore['upsert']> = async (re
   // names. If the v6 SDK ever diverges (e.g., renames `billing` to
   // `billing_party`), this cast hides the break and the v5 handler will
   // see a different shape than it validated against.
+  //
+  // `dry_run` is dropped from the v6 typed signature (adcp-client#1842).
+  // Lift it off `ctx.input` so the v5 handler skips persistence and
+  // returns the would-be result rows. `delete_missing` is on the SDK's
+  // drop list too but `handleSyncAccounts` doesn't implement it yet, so
+  // threading it would be inert — wire when v5 grows support.
+  const fromInput = pickFromInput(ctx?.input, ['dry_run'] as const);
   const v5Result = handleSyncAccounts(
-    { accounts: refs as unknown[] } as ToolArgs,
+    { accounts: refs as unknown[], ...fromInput } as ToolArgs,
     trainingCtx,
   );
   // v5 handleSyncAccounts returns `{ accounts: [...] }` where each entry
