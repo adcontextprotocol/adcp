@@ -3721,12 +3721,11 @@ export function createMemberToolHandlers(
                 // Owner test runs are not dry runs — they update the live public record.
                 // (complianceResultToDbInput hard-codes dry_run: true; override here.)
                 dry_run: false,
-                // Known gap (deferred to follow-up): the canonical write doesn't
-                // carry the triggering org id. If two orgs both own the same
-                // agent URL (rare — staging vs prod orgs of one publisher), an
-                // owner_test from Org A surfaces in Org B's dashboard without
-                // attribution. Acceptable for the unblock; full fix adds
-                // `triggered_org_id` to agent_compliance_runs (#4247 PR 4).
+                // Org scope for the per-org `agent_context_with_latest_test` view.
+                // Without this, two orgs that own the same agent URL (staging vs
+                // prod orgs of one publisher) would conflate their test history.
+                // See migration 490.
+                triggered_org_id: organizationId,
               };
               await complianceDb.recordComplianceRun(dbInput);
               // notifyComplianceChange intentionally omitted: owner test runs are

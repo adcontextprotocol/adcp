@@ -6109,8 +6109,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         // matches evaluate_agent_quality semantics: owner_test, not the legacy
         // 'manual' label.
         const metadata = await complianceDb.getRegistryMetadata(agentUrl);
-        await complianceDb.recordComplianceRun(
-          complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "owner_test", [req.params.storyboardId]),
+        await complianceDb.recordComplianceRun({
+          ...complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "owner_test", [req.params.storyboardId]),
+          triggered_org_id: orgId,
+        },
         );
 
         // Fan out badge issuance on the canonical write so an owner who
