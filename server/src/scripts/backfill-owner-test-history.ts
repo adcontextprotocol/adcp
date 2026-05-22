@@ -8,15 +8,15 @@
  *
  * ## Usage
  *
- *   # Dry run (counts what would land, no writes):
- *   DATABASE_URL=… npx tsx server/src/scripts/backfill-owner-test-history.ts --dry-run
+ *   # Dry run (default; counts what would land, no writes):
+ *   DATABASE_URL=… npx tsx server/src/scripts/backfill-owner-test-history.ts
  *
  *   # Commit, default chunk size:
- *   DATABASE_URL=… npx tsx server/src/scripts/backfill-owner-test-history.ts
+ *   DATABASE_URL=… npx tsx server/src/scripts/backfill-owner-test-history.ts --commit
  *
  *   # Commit, custom chunk + sleep (for prod-sized tables):
  *   DATABASE_URL=… npx tsx server/src/scripts/backfill-owner-test-history.ts \
- *     --chunk-size 500 --sleep-ms 250
+ *     --commit --chunk-size 500 --sleep-ms 250
  *
  * ## Env
  *
@@ -60,14 +60,15 @@ interface Args {
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { chunkSize: 1000, sleepMs: 100, dryRun: false };
+  const args: Args = { chunkSize: 1000, sleepMs: 100, dryRun: true };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--chunk-size') args.chunkSize = parseInt(argv[++i], 10);
     else if (a === '--sleep-ms') args.sleepMs = parseInt(argv[++i], 10);
     else if (a === '--dry-run') args.dryRun = true;
+    else if (a === '--commit') args.dryRun = false;
     else if (a === '--help' || a === '-h') {
-      console.log('Usage: backfill-owner-test-history.ts [--chunk-size N] [--sleep-ms N] [--dry-run]');
+      console.log('Usage: backfill-owner-test-history.ts [--commit] [--chunk-size N] [--sleep-ms N] [--dry-run]');
       process.exit(0);
     } else throw new Error(`Unknown arg: ${a}`);
   }
