@@ -73,6 +73,7 @@ export interface AgentPublisherDetailRow {
   manager_domain: string | null;
   properties_total: number;
   properties_authorized: number;
+  property_ids: string[] | null;
   signing_keys_pinned: boolean;
   status: 'authorized' | 'revoked';
 }
@@ -250,6 +251,7 @@ export class FederatedIndexDatabase {
       cursor?: string;
       since?: Date;
       includeRevoked?: boolean;
+      includePropertyIds?: boolean;
       limit: number;
     },
   ): Promise<AgentPublisherDetailRow[]> {
@@ -257,6 +259,7 @@ export class FederatedIndexDatabase {
     const cursor = opts.cursor ?? '';
     const limit = opts.limit;
     const includeRevoked = opts.includeRevoked ?? false;
+    const includePropertyIds = opts.includePropertyIds ?? false;
 
     // Dual-read pattern matches getDomainsForAgent / getAgentsForDomain:
     // UNION ALL with explicit src_priority (legacy=0 wins on collision) +
@@ -356,15 +359,31 @@ export class FederatedIndexDatabase {
              FROM discovered_properties dp
             WHERE dp.publisher_domain = e.publisher_domain
          ), 0) AS properties_total,
-         -- properties_authorized: count of properties under THIS publisher_domain
-         -- the agent is authorized for, via agent_property_authorizations.
+         -- properties_authorized: count of canonical property_id strings under
+         -- THIS publisher_domain the agent is authorized for. Filtered to
+         -- dp.property_id IS NOT NULL so this count is symmetric with the
+         -- property_ids ARRAY_AGG below (MUST len(property_ids) ==
+         -- properties_authorized per spec).
          COALESCE((
-           SELECT COUNT(DISTINCT apa.property_id)::int
+           SELECT COUNT(DISTINCT dp.property_id)::int
              FROM agent_property_authorizations apa
              JOIN discovered_properties dp ON dp.id = apa.property_id
             WHERE apa.agent_url = $1
               AND dp.publisher_domain = e.publisher_domain
+              AND dp.property_id IS NOT NULL
          ), 0) AS properties_authorized,
+         -- property_ids: resolved property_id strings, present only when
+         -- ?include=properties was requested ($6=true). CASE WHEN short-circuits
+         -- the subquery when false, so there is no cost on default calls.
+         -- Only properties with a non-null property_id are included.
+         CASE WHEN $6::boolean THEN (
+           SELECT ARRAY_AGG(DISTINCT dp.property_id ORDER BY dp.property_id)
+             FROM agent_property_authorizations apa
+             JOIN discovered_properties dp ON dp.id = apa.property_id
+            WHERE apa.agent_url = $1
+              AND dp.publisher_domain = e.publisher_domain
+              AND dp.property_id IS NOT NULL
+         ) ELSE NULL END AS property_ids,
          e.signing_keys_pinned,
          CASE WHEN e.is_revoked THEN 'revoked' ELSE 'authorized' END AS status
        FROM enriched e
@@ -373,7 +392,7 @@ export class FederatedIndexDatabase {
          AND ($4::boolean OR NOT e.is_revoked)
        ORDER BY e.publisher_domain
        LIMIT $5`,
-      [agentUrl, cursor, since, includeRevoked, limit],
+      [agentUrl, cursor, since, includeRevoked, limit, includePropertyIds],
     );
     return result.rows;
   }

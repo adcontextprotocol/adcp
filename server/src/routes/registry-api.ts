@@ -752,6 +752,9 @@ const AgentPublishersEntrySchema = z.object({
   manager_domain: z.string().nullable(),
   properties_authorized: z.number().int().min(0),
   properties_total: z.number().int().min(0),
+  property_ids: z.array(z.string()).optional().openapi({
+    description: "Canonical list of property_id strings the agent is authorized for under this publisher. Present iff the request included `?include=properties`. Same population as `properties_authorized` but surfaced as IDs for set-diff comparison.",
+  }),
   signing_keys_pinned: z.boolean(),
   status: z.enum(["authorized", "revoked"]),
   last_verified_at: z.string().datetime(),
@@ -775,6 +778,9 @@ const AgentPublishersOpenApi = {
       cursor: z.string().optional().openapi({ description: "Opaque pagination cursor returned by a prior response" }),
       status: z.array(z.enum(["authorized", "revoked"])).optional().openapi({
         description: "Lifecycle status filter — repeat the key once per value (?status=authorized&status=revoked). Default: authorized. The comma-separated single-value form is rejected with 400.",
+      }),
+      include: z.array(z.enum(["properties"])).optional().openapi({
+        description: "Opt into expanded per-row fields — repeat the key once per value. v1: `properties` adds `property_ids[]` to each PublisherEntry so consumers can run full set-diff against a federated fetch (count-equality is not set-equality). Unknown values return 400. The comma-separated form is rejected with 400.",
       }),
       limit: z.coerce.number().int().min(1).max(1000).optional().openapi({ description: "Page size, default 200, max 1000" }),
     }),
@@ -7188,6 +7194,32 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         ? Math.min(limitParam, 1000)
         : 200;
 
+      // include: repeated-key form (?include=properties), same encoding rule as status.
+      // Comma-separated single-value form is rejected with 400.
+      const rawInclude = req.query.include;
+      let includePropertyIds = false;
+      if (rawInclude !== undefined) {
+        let includeValues: string[];
+        if (Array.isArray(rawInclude)) {
+          includeValues = rawInclude.filter((v): v is string => typeof v === 'string');
+        } else if (typeof rawInclude === 'string') {
+          if (rawInclude.includes(',')) {
+            return res.status(400).json({
+              error: "Invalid `include` encoding — repeat the key once per value (?include=properties). The comma-separated form is not accepted.",
+            });
+          }
+          includeValues = [rawInclude];
+        } else {
+          return res.status(400).json({ error: "Invalid `include` query parameter" });
+        }
+        for (const v of includeValues) {
+          if (v !== 'properties') {
+            return res.status(400).json({ error: `Invalid include value '${v}' — supported: properties` });
+          }
+        }
+        includePropertyIds = includeValues.includes('properties');
+      }
+
       const federatedIndex = crawler.getFederatedIndex();
 
       // Fetch limit+1 so we can detect "more available" without a second query.
@@ -7198,6 +7230,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         cursor,
         since,
         includeRevoked,
+        includePropertyIds,
         limit: limit + 1,
       });
 
@@ -7251,6 +7284,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         manager_domain: string | null;
         properties_authorized: number;
         properties_total: number;
+        property_ids?: string[];
         signing_keys_pinned: boolean;
         status: 'authorized' | 'revoked';
         last_verified_at: string;
@@ -7290,6 +7324,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           manager_domain: r.manager_domain,
           properties_authorized: r.properties_authorized,
           properties_total: r.properties_total,
+          ...(includePropertyIds ? { property_ids: r.property_ids ?? [] } : {}),
           signing_keys_pinned: r.signing_keys_pinned,
           status: r.status,
           last_verified_at: lastVerified.toISOString(),
@@ -7307,8 +7342,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         cursor,
         since: since?.toISOString() ?? null,
         status: Array.from(statusSet).sort().join(','),
+        include: includePropertyIds ? 'properties' : '',
         limit,
-        rows: shaped.map(r => `${r.publisher_domain}|${r.status}|${r.last_verified_at}|${r.properties_authorized}|${r.properties_total}|${r.signing_keys_pinned}`),
+        rows: shaped.map(r => `${r.publisher_domain}|${r.status}|${r.last_verified_at}|${r.properties_authorized}|${r.properties_total}|${r.signing_keys_pinned}|${(r.property_ids ?? []).join(',')}`),
       });
       const etag = `"${createHash('sha256').update(etagInput).digest('hex').slice(0, 32)}"`;
 

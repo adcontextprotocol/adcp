@@ -239,7 +239,7 @@ export class FederatedIndexService {
    */
   async getPublishersForAgentDetail(
     agentUrl: string,
-    opts: { cursor?: string; since?: Date; includeRevoked?: boolean; limit: number },
+    opts: { cursor?: string; since?: Date; includeRevoked?: boolean; includePropertyIds?: boolean; limit: number },
   ): Promise<AgentPublisherDetailRow[]> {
     return this.db.getPublishersForAgentDetail(agentUrl, opts);
   }

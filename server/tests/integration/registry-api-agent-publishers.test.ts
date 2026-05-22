@@ -220,4 +220,68 @@ describe('GET /v1 and /api/v1 agents/{agent_url}/publishers (HTTP)', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/repeat the key/i);
   });
+
+  it('?include=properties surfaces property_ids[] on each PublisherEntry', async () => {
+    await seedAuthorized(PUB_A);
+    // Seed a property and authorize it.
+    const result = await pool.query<{ id: string }>(
+      `INSERT INTO discovered_properties (property_id, publisher_domain, property_type, name, identifiers)
+       VALUES ($1, $2, 'website', $1, $3::jsonb)
+       RETURNING id`,
+      ['p-001', PUB_A, JSON.stringify([{ type: 'domain', value: PUB_A }])],
+    );
+    await pool.query(
+      `INSERT INTO agent_property_authorizations (agent_url, property_id, authorized_for, discovered_at)
+       VALUES ($1, $2, 'test', NOW())`,
+      [AGENT_URL, result.rows[0]!.id],
+    );
+
+    const res = await request(app).get(url(AGENT_URL, '?include=properties'));
+    expect(res.status).toBe(200);
+    const pub = res.body.publishers.find((p: { publisher_domain: string }) => p.publisher_domain === PUB_A);
+    expect(pub).toBeDefined();
+    expect(pub.property_ids).toEqual(['p-001']);
+  });
+
+  it('default (no include) omits property_ids from PublisherEntry', async () => {
+    await seedAuthorized(PUB_A);
+    const res = await request(app).get(url(AGENT_URL));
+    expect(res.status).toBe(200);
+    const pub = res.body.publishers[0];
+    expect(pub).toBeDefined();
+    expect(pub.property_ids).toBeUndefined();
+  });
+
+  it('rejects unknown include value with 400', async () => {
+    await seedAuthorized(PUB_A);
+    const res = await request(app).get(url(AGENT_URL, '?include=full_objects'));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/include/i);
+  });
+
+  it('rejects comma-separated include with 400', async () => {
+    await seedAuthorized(PUB_A);
+    const res = await request(app).get(url(AGENT_URL, '?include=properties,other'));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/repeat the key/i);
+  });
+
+  it('?include=properties returns property_ids: [] (not null or absent) when no properties authorized', async () => {
+    await seedAuthorized(PUB_A);
+    // No properties seeded — agent has authorization but no named properties.
+    const res = await request(app).get(url(AGENT_URL, '?include=properties'));
+    expect(res.status).toBe(200);
+    const pub = res.body.publishers.find((p: { publisher_domain: string }) => p.publisher_domain === PUB_A);
+    expect(pub).toBeDefined();
+    expect(pub.property_ids).toEqual([]); // null coerced to [] at the route layer
+  });
+
+  it('?include=properties produces a different ETag than default', async () => {
+    await seedAuthorized(PUB_A);
+    const base = await request(app).get(url(AGENT_URL));
+    const withProps = await request(app).get(url(AGENT_URL, '?include=properties'));
+    expect(base.status).toBe(200);
+    expect(withProps.status).toBe(200);
+    expect(base.headers['etag']).not.toBe(withProps.headers['etag']);
+  });
 });
