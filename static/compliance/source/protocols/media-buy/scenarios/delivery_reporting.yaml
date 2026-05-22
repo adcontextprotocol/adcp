@@ -51,6 +51,11 @@ fixtures:
       channels: ["video"]
       format_ids:
         - id: "video_15s"
+    - product_id: "video_viewability_q2"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_15s"
   pricing_options:
     - product_id: "outdoor_display_q2"
       pricing_option_id: "cpm_standard"
@@ -62,6 +67,11 @@ fixtures:
       pricing_model: "cpm"
       currency: "USD"
       fixed_price: 12.0
+    - product_id: "video_viewability_q2"
+      pricing_option_id: "vcpm_standard"
+      pricing_model: "vcpm"
+      currency: "USD"
+      fixed_price: 14.0
 
 phases:
   - id: setup
@@ -205,3 +215,128 @@ phases:
           - check: field_present
             path: "media_buy_deliveries"
             description: "Response contains delivery data"
+
+  - id: viewability_delivery
+    title: "Delivery reporting surfaces viewability.viewed_seconds for viewability-capable products"
+    narrative: |
+      3.1 adds `viewability.viewed_seconds` to delivery-metrics — the
+      average in-view duration per measurable impression in seconds. It
+      shares the same denominator (`measurable_impressions`) as
+      `viewable_rate` and is governed by the same measurement `standard`
+      (e.g., MRC 50%/1s for display, 50%/2s for video). Sellers reporting
+      against a `viewed_seconds` optimization goal MUST populate this field.
+
+      This phase creates a separate media buy for a viewability-capable
+      vCPM video product, injects simulated delivery with a full viewability
+      block (measurable_impressions, viewable_impressions, viewable_rate,
+      viewed_seconds, standard), and verifies that get_media_buy_delivery
+      returns the viewed_seconds field inside the viewability block. The
+      denominator check (viewable_rate is viewable_impressions /
+      measurable_impressions, not total impressions) is enforced by the
+      response_schema validation against delivery-metrics.json.
+
+    steps:
+      - id: create_media_buy_viewability
+        title: "Create media buy for viewability-capable video product"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Create the media buy. Returns a media_buy_id used for the
+          viewability delivery simulation.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "video_viewability_q2"
+              budget: 20000
+              pricing_option_id: "vcpm_standard"
+          idempotency_key: "$generate:uuid_v4#delivery_reporting_viewability_delivery_create_media_buy"
+        context_outputs:
+          - name: viewability_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Media buy has a platform-assigned ID"
+
+      - id: simulate_viewability_delivery
+        title: "Inject simulated delivery with full viewability block including viewed_seconds"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller acknowledges the simulated delivery with a
+          full viewability block: measurable_impressions as the shared
+          denominator, viewable_impressions, viewable_rate, viewed_seconds,
+          and the MRC standard.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.viewability_media_buy_id"
+            impressions: 80000
+            viewability:
+              measurable_impressions: 74000
+              viewable_impressions: 59200
+              viewable_rate: 0.80
+              viewed_seconds: 4.3
+              standard: "mrc"
+            reported_spend:
+              amount: 1030.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation with viewability block succeeds"
+
+      - id: get_viewability_delivery
+        title: "Verify viewability.viewed_seconds appears in delivery report"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Delivery response carries a viewability block with viewed_seconds,
+          measurable_impressions (shared denominator), viewable_rate, and
+          standard. The viewed_seconds value represents the average in-view
+          duration per measurable impression — the reporting counterpart to
+          the viewed_seconds optimization metric. The denominator for both
+          viewable_rate and viewed_seconds is measurable_impressions (not
+          total impressions) since some environments cannot measure viewability.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.viewability_media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.viewability"
+            description: "Viewability block present on delivery row"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.viewability.viewed_seconds"
+            description: "viewed_seconds — average in-view duration per measurable impression — present in viewability block"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.viewability.measurable_impressions"
+            description: "measurable_impressions denominator present (shared basis for viewable_rate and viewed_seconds)"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.viewability.standard"
+            description: "viewability standard present — governs threshold for both viewable_rate and viewed_seconds"

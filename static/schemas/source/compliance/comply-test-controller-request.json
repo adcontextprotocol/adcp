@@ -520,6 +520,76 @@
             "currency"
           ]
         },
+        "reach": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Unique reach count to inject into the simulated delivery row. Used by simulate_delivery. The unit of measurement matches the reach_unit declared on the media buy's optimization goal. When supplied, sellers MUST surface this value at `totals.reach` in the next get_media_buy_delivery response."
+        },
+        "frequency": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Average frequency per reach unit to inject. Used by simulate_delivery. When supplied alongside reach, sellers MUST surface this value at `totals.frequency`. The measurement window for this frequency value is declared in `reach_window` when also present."
+        },
+        "reach_window": {
+          "type": "object",
+          "description": "Measurement window semantics to attach to the simulated reach and frequency values. Used by simulate_delivery. When present, sellers MUST populate `reach_window` on the delivery row so buyers can determine the window semantics (cumulative vs. period vs. rolling). Omitting this param produces a row with no `reach_window` — valid per schema but sum-unsafe. Mirrors the `reach_window` shape in delivery-metrics.json.",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["cumulative", "period", "rolling"],
+              "description": "Window kind. `cumulative` — no period field required. `period` and `rolling` — period field REQUIRED."
+            },
+            "period": {
+              "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+              "description": "Duration of the measurement window. REQUIRED when kind is `period` or `rolling`. Matches the `period` field in delivery-metrics.json's reach_window block."
+            }
+          },
+          "required": ["kind"],
+          "allOf": [
+            {
+              "if": {
+                "properties": { "kind": { "enum": ["period", "rolling"] } },
+                "required": ["kind"]
+              },
+              "then": {
+                "required": ["period"]
+              }
+            }
+          ],
+          "additionalProperties": true
+        },
+        "viewability": {
+          "type": "object",
+          "description": "Viewability metrics to inject into the simulated delivery row. Used by simulate_delivery. When present, sellers MUST surface these values inside `viewability` on the next get_media_buy_delivery response. Mirrors the `viewability` block in delivery-metrics.json: measurable_impressions is the shared denominator for viewable_rate and viewed_seconds.",
+          "properties": {
+            "measurable_impressions": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Impressions where viewability could be measured. Coverage denominator for viewable_rate and viewed_seconds."
+            },
+            "viewable_impressions": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Impressions that met the viewability threshold."
+            },
+            "viewable_rate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Viewable impression rate (viewable_impressions / measurable_impressions)."
+            },
+            "viewed_seconds": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Average in-view duration per measurable impression in seconds. Reporting counterpart to the viewed_seconds optimization metric."
+            },
+            "standard": {
+              "$ref": "/schemas/enums/viewability-standard.json",
+              "description": "Viewability measurement standard governing the threshold for viewable_rate and viewed_seconds."
+            }
+          },
+          "additionalProperties": true
+        },
         "spend_percentage": {
           "type": "number",
           "minimum": 0,
