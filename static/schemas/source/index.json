@@ -1551,7 +1551,7 @@
       "purpose": "Declares brand identity and agent for a domain, enabling brand discovery and verification"
     },
     "trusted-match": {
-      "description": "Trusted Match Protocol (TMP) — real-time execution layer for activating pre-negotiated packages across any surface",
+      "description": "Trusted Match Protocol (TMP) — real-time execution layer for activating pre-negotiated packages across any surface. Conformance invariants are normative in docs/trusted-match/specification.mdx; the cap-fire boundary contract is at docs/trusted-match/identity-match-implementation.mdx; a non-normative impression-tracker implementation reference (multi-identity dedup, fcap_keys labels, log-based data model, SDK primitives) is at docs/trusted-match/impression-tracker-implementation.mdx. Storage backend is an implementation choice; conformant services may use any store that satisfies the invariants.",
       "supporting-schemas": {
         "available-package": {
           "$ref": "/schemas/tmp/available-package.json",
