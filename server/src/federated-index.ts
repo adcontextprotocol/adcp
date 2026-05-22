@@ -1,4 +1,4 @@
-import { FederatedIndexDatabase, type AgentPublisherAuthorization, type AgentPublisherDetailRow, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
+import { FederatedIndexDatabase, type AgentPublisherAuthorization, type AgentPublisherDetailRow, type DiscoveredAgent, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
 import { MemberDatabase } from './db/member-db.js';
 import { canonicalizeAgentUrl } from './db/publisher-db.js';
 import type { FederatedAgent, FederatedPublisher, DomainLookupResult, AgentType } from './types.js';
@@ -143,6 +143,15 @@ export class FederatedIndexService {
     }
 
     return Array.from(registeredPublishers.values());
+  }
+
+  /**
+   * List agents from the discovered_agents table (populated by the crawler
+   * from adagents.json files), optionally filtered by agent type.
+   * Distinct from listAllAgents(), which returns only member-profile agents.
+   */
+  async listDiscoveredAgents(agentType?: string): Promise<DiscoveredAgent[]> {
+    return this.db.getAllDiscoveredAgents(agentType);
   }
 
   // ============================================

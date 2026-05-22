@@ -125,12 +125,34 @@ export class CrawlerService {
     }
     log.info({ agentCount: activeAgents.length }, 'Starting crawl');
 
-    // Convert our Agent type to AgentInfo for the crawler
+    // Convert our Agent type to AgentInfo for the crawler, starting with config-seeded agents
+    const seenAgentUrls = new Set<string>(activeAgents.map(a => a.url));
     const agentInfos: AgentInfo[] = activeAgents.map((agent) => ({
       agent_url: agent.url,
-      protocol: agent.protocol || "mcp", // Use agent's protocol, default to MCP
-      publisher_domain: this.extractDomain(agent.url),
+      protocol: agent.protocol || "mcp",
     }));
+
+    // Merge in DB-discovered sales agents from prior crawl cycles so their
+    // list_authorized_properties is called by the PropertyCrawler and their
+    // publisher claims enter the PropertyIndex for step 2 (adcp#4849).
+    try {
+      const discoveredSales = await this.federatedIndex.listDiscoveredAgents('sales');
+      let added = 0;
+      for (const da of discoveredSales) {
+        if (seenAgentUrls.has(da.agent_url) || pausedUrls.has(da.agent_url)) continue;
+        seenAgentUrls.add(da.agent_url);
+        agentInfos.push({
+          agent_url: da.agent_url,
+          protocol: (da.protocol as 'mcp' | 'a2a') || 'mcp',
+        });
+        added++;
+      }
+      if (added > 0) {
+        log.debug({ count: added }, 'Including discovered sales agents in PropertyCrawler pass');
+      }
+    } catch (err) {
+      log.warn({ err }, 'Failed to fetch discovered sales agents; proceeding with config agents only');
+    }
 
     try {
       const result = await this.crawler.crawlAgents(agentInfos);
@@ -579,6 +601,69 @@ export class CrawlerService {
           log.error({ domain, err }, 'Failed to process domain');
         }
       }
+    }
+
+    // 2b. Walk all DB-discovered agents through the PropertyIndex. The type filter
+    //     is intentionally absent — `index.getAgentAuthorizations` acts as the gate:
+    //     only agents included in the PropertyCrawler pass (those with agent_type='sales'
+    //     at the START of this cycle, promoted by refreshAgentSnapshots in a prior cycle)
+    //     will have non-empty publisher_domains. Agents discovered for the first time
+    //     this cycle have no PropertyIndex entry and are silently skipped; they will
+    //     appear here on the next cycle (adcp#4849).
+    log.debug('Processing DB-discovered agents via PropertyIndex');
+    try {
+      const discoveredSalesAgents = await this.federatedIndex.listDiscoveredAgents();
+      for (const da of discoveredSalesAgents) {
+        const auth = index.getAgentAuthorizations(da.agent_url);
+        if (!auth || auth.publisher_domains.length === 0) continue;
+
+        for (const domain of auth.publisher_domains) {
+          try {
+            const validation = await this.adAgentsManager.validateDomain(domain);
+            // Always write the agent_claim row so this discovered agent's authorization
+            // edge is recorded even when the domain was already processed by step 1/2.
+            await this.federatedIndex.recordPublisherFromAgent(domain, da.agent_url, validation.valid);
+            if (processedDomains.has(domain)) continue;
+
+            if (validation.valid && validation.raw_data?.authorized_agents) {
+              await this.federatedIndex.markPublisherHasValidAdagents(domain);
+              processedDomains.add(domain);
+
+              await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest, {
+                statusCode: validation.status_code,
+                responseBytes: validation.response_bytes,
+                resolvedUrl: validation.resolved_url,
+                discoveryMethod: validation.discovery_method,
+                managerDomain: validation.manager_domain,
+              });
+
+              for (const authorizedAgent of validation.raw_data.authorized_agents) {
+                if (!authorizedAgent.url) continue;
+                await this.federatedIndex.recordAgentFromAdagentsJson(
+                  authorizedAgent.url, domain,
+                  authorizedAgent.authorized_for, authorizedAgent.property_ids
+                );
+                await this.recordPropertiesForAgent(
+                  validation.raw_data.properties || [], domain,
+                  authorizedAgent.url, authorizedAgent.authorized_for, authorizedAgent.property_ids
+                );
+                // Skip fan-out when the source publisher delegates via
+                // ads.txt MANAGERDOMAIN — see step 1/2 guards for rationale.
+                if (validation.discovery_method !== 'ads_txt_managerdomain') {
+                  await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+                }
+              }
+              // Safe to reconcile here: the `processedDomains.has(domain)` guard above
+              // ensures each domain is handled exactly once across steps 1, 2, and 2b.
+              await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
+            }
+          } catch (err) {
+            log.error({ domain, agentUrl: da.agent_url, err }, 'Failed to process DB-discovered sales agent domain');
+          }
+        }
+      }
+    } catch (err) {
+      log.warn({ err }, 'Failed to process DB-discovered sales agents; skipping step 2b');
     }
 
     // Log stats
