@@ -130,7 +130,6 @@ export class CrawlerService {
     const agentInfos: AgentInfo[] = activeAgents.map((agent) => ({
       agent_url: agent.url,
       protocol: agent.protocol || "mcp",
-      publisher_domain: this.extractDomain(agent.url),
     }));
 
     // Merge in DB-discovered sales agents from prior crawl cycles so their
@@ -145,7 +144,6 @@ export class CrawlerService {
         agentInfos.push({
           agent_url: da.agent_url,
           protocol: (da.protocol as 'mcp' | 'a2a') || 'mcp',
-          publisher_domain: this.extractDomain(da.agent_url),
         });
         added++;
       }
