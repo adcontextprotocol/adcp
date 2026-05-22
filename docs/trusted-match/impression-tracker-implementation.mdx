@@ -36,16 +36,18 @@ Required properties:
 
 ## fcap_keys label model
 
-Caps are tagged with `dimension:value` labels at impression-write time. Packages declare which labels they map to; fcap policies attach `(window_sec, max_count)` to each label.
+Caps are tagged with `dimension:value` labels at impression-write time. Packages declare which labels they map to; fcap policies attach a `window` and a `max_impression_count` to each label.
 
 ```
 package 2342:                   fcap_keys ["campaign:42", "campaign_group:7", "advertiser:13"]
-policy "campaign:42":           {window_sec: 60,     max_count: 5}
-policy "campaign_group:7":      {window_sec: 86400,  max_count: 50}
-policy "advertiser:13":         {window_sec: 86400,  max_count: 20}
+policy "campaign:42":           {window: {interval: 10, unit: "minutes"}, max_impression_count: 5}
+policy "campaign_group:7":      {window: {interval: 1,  unit: "days"},    max_impression_count: 50}
+policy "advertiser:13":         {window: {interval: 1,  unit: "days"},    max_impression_count: 20}
 ```
 
 When the impression tracker writes an exposure for an impression on package 2342, the entry's `fcap_keys` is `["campaign:42", "campaign_group:7", "advertiser:13"]`. When evaluating whether a cap has fired, it scans the log for entries matching each label within that policy's window.
+
+**Window unit is load-bearing**, not just human-readable shorthand. The reference impl uses `unit` as the sliding-window bucket size: `unit: "hours"` evaluates against hourly buckets; `unit: "minutes"` evaluates against minute buckets. Two policies that look duration-equivalent — `{interval: 2, unit: "hours"}` vs `{interval: 120, unit: "minutes"}` — have the **same window length** but **different post-cap re-evaluation cadence**. After a user hits the 2-hour-bucket cap, the next eligibility check that admits new traffic happens at the next-hour bucket boundary; for the 120-minute-bucket policy, it happens at the next-minute bucket boundary. Pick `unit` to match the cadence you want, not the duration you can fit in the smaller number.
 
 **Charset constraint.** Each segment matches `[a-zA-Z0-9_-]+` so the `:` delimiter is unambiguous. URL-bearing or otherwise colon-bearing values must be hashed or shortened.
 
@@ -81,10 +83,10 @@ Each entry records:
 ```
 type:  STRING  (JSON-encoded FcapPolicy)
 key:   fcap_policy:{fcap_key}
-value: { window_sec, max_count, active, updated_at }
+value: { window: {interval, unit}, max_impression_count, active, updated_at }
 ```
 
-Sliding window applied at read by filtering `timestamp >= now - window_sec`. No FIXED/SLIDING toggle.
+Sliding window applied at read by counting log entries that fall in the current and prior buckets that span the window. Bucket size is derived from `window.unit` (`minutes`/`hours`/`days`/`weeks`/`months`); window length is `interval × unit`. The bucket-level filter, not a per-second `>=` filter on entry timestamps, is what production uses — it makes re-evaluation cadence after a cap fires predictable from the policy's `unit`.
 
 ### Package configuration (per package)
 
@@ -113,14 +115,16 @@ The read-modify-write per identity is not atomic in the reference impl ([`engine
 
 ## Evaluating whether this impression exhausted a cap
 
-After writing the exposure, the impression tracker decides whether any cap just fired. For each `fcap_key` on the exposure, it scans the user's identity logs:
+After writing the exposure, the impression tracker decides whether any cap just fired. **A package typically maps to multiple `fcap_keys` (campaign, campaign_group, advertiser, …), each with its own policy. Policies are evaluated independently, and the cap fires when *any one* of them reaches `max_impression_count` within its window.** A user can be capped on a package by the per-campaign policy without ever approaching the per-advertiser policy, or vice versa.
+
+For each `fcap_key` on the exposure, the impression tracker scans the user's identity logs:
 
 1. Read `user:exposures:{h}` for every resolved identity.
-2. Filter entries to `timestamp >= now - policy.window_sec` and `fcap_key ∈ entry.fcap_keys`.
+2. Filter entries to those that fall in the current+prior buckets spanning `policy.window` and where `fcap_key ∈ entry.fcap_keys`.
 3. Deduplicate by `impression_id` across all the user's identity logs.
-4. Compare the deduped count to `policy.max_count`.
+4. Compare the deduped count to `policy.max_impression_count`.
 
-If the deduped count is `>= max_count`, the cap fired on this impression. The impression tracker then writes a cap-fire entry to the Identity Match cap-state store for every `(user_identity, package_id)` whose package maps to the exhausted `fcap_key`. The expiration is `now + remaining_window`, where `remaining_window` is the window of the oldest deduped exposure still in scope.
+If any policy's deduped count is `>= max_impression_count`, the cap fired on this impression. The impression tracker then writes a cap-fire entry to the Identity Match cap-state store for every `(user_identity, package_id)` whose package maps to the exhausted `fcap_key`. The expiration is the end of the current bucket of `policy.window` (which is when the oldest in-scope exposure ages out under bucket semantics).
 
 For a cap on an advertiser-level label (`advertiser:13`) that maps to multiple packages on multiple sellers, the impression tracker emits one cap-fire entry per `(user_identity, seller_agent_url, package_id)` affected — main's [boundary contract](/docs/trusted-match/identity-match-implementation#the-cap-fire-event) is package-scoped, so cross-dimensional caps fan out at write time.
 
@@ -148,7 +152,7 @@ Plus the buyer-side management plane:
 
 ```
 upsertPackage(seller_agent_url, package_id, fcap_keys, opts)
-upsertFcapPolicy(fcap_key, {window_sec, max_count})
+upsertFcapPolicy(fcap_key, {window: {interval, unit}, max_impression_count})
 inspectExposures(uid_type, user_token, fcap_key?)   // debugging helper
 ```
 
@@ -187,7 +191,7 @@ Decode at intake; emit to pub/sub for buffering; downstream worker writes the ex
 
 These walk through impression-tracker behavior end-to-end. They are buyer-internal mechanics; the on-wire observable is whatever cap-fire entries land in the Identity Match cap-state store, which surfaces as eligibility decisions in later `identity_match_request` calls.
 
-Setup for both scenarios: `package = "pkg-42"` on `seller-a.example`, `fcap_keys: ["campaign:42"]`, `policy campaign:42 = {window_sec: 86400, max_count: 5}`.
+Setup for both scenarios: `package = "pkg-42"` on `seller-a.example`, `fcap_keys: ["campaign:42"]`, `policy campaign:42 = {window: {interval: 1, unit: "days"}, max_impression_count: 5}`.
 
 ### Scenario A — multi-identity dedup
 
@@ -220,7 +224,7 @@ Union the entries across logs, deduplicate by `impression_id`:
 { imp-001, imp-002, imp-003, imp-004, imp-005 } = 5 distinct impressions
 ```
 
-5 = `max_count` → the cap just exhausted. Since both identities are resolved on imp-005, the impression tracker emits cap-fire entries for both:
+5 = `max_impression_count` → the cap just exhausted. Since both identities are resolved on imp-005, the impression tracker emits cap-fire entries for both:
 
 ```
 RecordCap(rampid:abc, [{seller-a.example, pkg-42}], expire_at)
@@ -229,10 +233,10 @@ RecordCap(id5:def,    [{seller-a.example, pkg-42}], expire_at)
 
 Two things are demonstrated:
 
-- **Dedup matters.** Naively summing per-identity counts gives `5 + 4 = 9` — way over `max_count`. Dedup by `impression_id` recovers the correct count of 5.
+- **Dedup matters.** Naively summing per-identity counts gives `5 + 4 = 9` — way over `max_impression_count`. Dedup by `impression_id` recovers the correct count of 5.
 - **Identity-resolution stability isn't required.** imp-004 missed id5's log entirely; dedup at evaluation time still produces the right answer when both identities are next resolved together.
 
-A counter-based tracker with a MAX merge_rule would see counters `max(rampid=5, id5=4) = 5` here — coincidentally correct at this point, but only because the divergence happened to be a single missed write. A second missed-id5 impression (imp-006-style) would push rampid to 6 while leaving id5 at 5; MAX would still say 5 and over-serve by one. SUM over-counts in the opposite direction. The log + `impression_id` dedup is correct by construction.
+A counter-based tracker with a MAX merge_rule would see counters `max(rampid=5, id5=4) = 5` here — coincidentally correct at this point, but only because the divergence happened to be a single missed write. A second missed-id5 impression (imp-006-style) would push rampid to 6 while leaving id5 at 5; MAX would still say 5 and over-serve by one. SUM (= 9 here) over-counts in the opposite direction. The log + `impression_id` dedup is correct by construction.
 
 A consequence to flag for the implementer: if a future query resolves only id5:def, the cap-state lookup hits the id5:def entry written at imp-005 and the user is correctly suppressed. If neither identity gets resolved in a future query, no cap-state lookup happens at all — that's an identity-resolution problem upstream of fcap, not a fcap correctness problem.
 
@@ -243,10 +247,10 @@ Two packages on different sellers, both mapped to the same advertiser-level labe
 ```
 package:identity:pkg-A = { fcap_keys: ["advertiser:13"], active: true }   // seller-a
 package:identity:pkg-B = { fcap_keys: ["advertiser:13"], active: true }   // seller-b
-fcap_policy:advertiser:13 = { window_sec: 86400, max_count: 10 }
+fcap_policy:advertiser:13 = { window: {interval: 1, unit: "days"}, max_impression_count: 10 }
 ```
 
-Ten impressions on `pkg-A` from `seller-a`. Each exposure entry's `fcap_keys` includes `advertiser:13`. At the 10th write, the deduped count for `advertiser:13` matches `max_count`. The impression tracker emits cap-fire entries for **every package mapped to `advertiser:13` across all sellers**, for every resolved identity:
+Ten impressions on `pkg-A` from `seller-a`. Each exposure entry's `fcap_keys` includes `advertiser:13`. At the 10th write, the deduped count for `advertiser:13` matches `max_impression_count`. The impression tracker emits cap-fire entries for **every package mapped to `advertiser:13` across all sellers**, for every resolved identity:
 
 ```
 RecordCap(<identity>, [
