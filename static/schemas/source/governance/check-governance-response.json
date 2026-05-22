@@ -11,12 +11,12 @@
     {
       "if": {
         "properties": {
-          "status": {
+          "verdict": {
             "const": "conditions"
           }
         },
         "required": [
-          "status"
+          "verdict"
         ]
       },
       "then": {
@@ -33,12 +33,12 @@
     {
       "if": {
         "properties": {
-          "status": {
+          "verdict": {
             "const": "denied"
           }
         },
         "required": [
-          "status"
+          "verdict"
         ]
       },
       "then": {
@@ -55,7 +55,7 @@
     {
       "if": {
         "properties": {
-          "status": {
+          "verdict": {
             "enum": [
               "approved",
               "conditions"
@@ -63,7 +63,7 @@
           }
         },
         "required": [
-          "status"
+          "verdict"
         ]
       },
       "then": {
@@ -80,8 +80,9 @@
       "description": "Unique identifier for this governance check record. Use in report_plan_outcome to link outcomes to the check that authorized them.",
       "x-entity": "governance_check"
     },
-    "status": {
-      "$ref": "/schemas/enums/governance-decision.json"
+    "verdict": {
+      "$ref": "/schemas/enums/governance-decision.json",
+      "description": "Governance verdict: approved | denied | conditions. Renamed from `status` in 3.1 to free the top-level `status` key for the envelope task-status (TaskStatus) under MCP flat-on-the-wire serialization. The enum values are unchanged; only the property name moved."
     },
     "plan_id": {
       "type": "string",
@@ -94,7 +95,7 @@
     },
     "findings": {
       "type": "array",
-      "description": "Specific issues found during the governance check. Present when status is 'denied' or 'conditions'. MAY also be present on 'approved' for informational findings (e.g., budget approaching limit).",
+      "description": "Specific issues found during the governance check. Present when verdict is 'denied' or 'conditions'. MAY also be present on 'approved' for informational findings (e.g., budget approaching limit).",
       "items": {
         "type": "object",
         "properties": {
@@ -145,7 +146,7 @@
     },
     "conditions": {
       "type": "array",
-      "description": "Present when status is 'conditions'. Specific adjustments the caller must make. After applying conditions, the caller MUST re-call check_governance with the adjusted parameters before proceeding.",
+      "description": "Present when verdict is 'conditions'. Specific adjustments the caller must make. After applying conditions, the caller MUST re-call check_governance with the adjusted parameters before proceeding.",
       "items": {
         "type": "object",
         "properties": {
@@ -171,7 +172,7 @@
     "expires_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When this approval expires. Present when status is 'approved' or 'conditions'. The caller must act before this time or re-call check_governance. A lapsed approval is no approval."
+      "description": "When this approval expires. Present when verdict is 'approved' or 'conditions'. The caller must act before this time or re-call check_governance. A lapsed approval is no approval."
     },
     "next_check": {
       "type": "string",
@@ -212,7 +213,7 @@
   },
   "required": [
     "check_id",
-    "status",
+    "verdict",
     "plan_id",
     "explanation"
   ],

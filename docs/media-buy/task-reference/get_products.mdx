@@ -131,7 +131,7 @@ asyncio.run(discover_with_filters())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw inventory for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on products and proposals from a previous response using the `refine` array of change requests. v3 clients MUST include `buying_mode`. Sellers receiving requests from pre-v3 clients without `buying_mode` SHOULD default to `"brief"`. **Timing semantics:** `"wholesale"` is a catalog read — sellers SHOULD return a synchronous response and MUST NOT route a `"wholesale"` request through the async/Submitted arm. Partial completion is signalled via [`incomplete[]`](#incomplete-array), not a task handoff. `"brief"` and `"refine"` MAY complete synchronously OR MAY return a `Submitted` envelope when curation requires upstream-system queries or HITL review the seller cannot complete inside `time_budget`. Buyers needing predictable fast catalog access MUST use `"wholesale"`. |
+| `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw product feed access for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on products and proposals from a previous response using the `refine` array of change requests. v3 clients MUST include `buying_mode`. Sellers receiving requests from pre-v3 clients without `buying_mode` SHOULD default to `"brief"`. **Timing semantics:** `"wholesale"` is a wholesale product feed read — sellers SHOULD return a synchronous response and MUST NOT route a `"wholesale"` request through the async/Submitted arm. Partial completion is signalled via [`incomplete[]`](#incomplete-array), not a task handoff. `"brief"` and `"refine"` MAY complete synchronously OR MAY return a `Submitted` envelope when curation requires upstream-system queries or HITL review the seller cannot complete inside `time_budget`. Buyers needing predictable fast wholesale product feed access MUST use `"wholesale"`. |
 | `brief` | string | Conditional | Natural language description of campaign requirements. Required when `buying_mode` is `"brief"`. Must not be provided when `buying_mode` is `"wholesale"` or `"refine"`. |
 | `refine` | [Refine[]](#refine-array) | Conditional | Array of change requests for iterating on products and proposals. Required when `buying_mode` is `"refine"`. Must not be provided when `buying_mode` is `"brief"` or `"wholesale"`. See [Refine array](#refine-array) below. |
 | `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
@@ -139,9 +139,9 @@ asyncio.run(discover_with_filters())
 | `catalog` | [Catalog](/docs/creative/catalogs) | No | Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Requires `brand`. See [Catalog discovery](#catalog-discovery) below. |
 | `filters` | Filters | No | Structured filters (see below) |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
-| `pagination` | PaginationRequest | No | Cursor-based pagination for large product catalogs (see below) |
-| `if_catalog_version` | string | No | Opaque `catalog_version` token from a prior `get_products` response. When provided, the seller compares against its current catalog version and MAY return `unchanged: true` (with `products` omitted) if nothing has changed. Versions are scoped to the (agent, account, filters, `buying_mode`, `property_list`, `catalog`) tuple. See [Catalog versioning](#catalog-versioning). |
-| `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_catalog_version`. Evaluation order: `if_catalog_version` mismatch → full payload; `if_catalog_version` matches but `if_pricing_version` mismatches → full payload (so the buyer sees updated `pricing_options`); both match → seller MAY return `unchanged: true`. Sellers that don't track pricing separately ignore this. |
+| `pagination` | PaginationRequest | No | Cursor-based pagination for large product result sets and wholesale product feeds (see below) |
+| `if_wholesale_feed_version` | string | No | Opaque `wholesale_feed_version` token from a prior `get_products` response. When provided, the seller compares against its current wholesale product feed version and MAY return `unchanged: true` (with `products` omitted) if nothing has changed. Versions are scoped to the (agent, account, filters, `buying_mode`, `property_list`, `catalog`) tuple. See [Wholesale feed versioning](#wholesale-feed-versioning). |
+| `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_wholesale_feed_version`. Evaluation order: `if_wholesale_feed_version` mismatch → full payload; `if_wholesale_feed_version` matches but `if_pricing_version` mismatches → full payload (so the buyer sees updated `pricing_options`); both match → seller MAY return `unchanged: true`. Sellers that don't track pricing separately ignore this. |
 | `time_budget` | Duration | No | Maximum time the buyer will commit to this request. The seller returns the best results achievable within this budget and does not start processes (human approvals, expensive external queries) that cannot complete in time. When omitted, the seller decides timing. Example: `{"interval": 30, "unit": "seconds"}`. |
 
 <Note>
@@ -291,7 +291,7 @@ Publishers may return proposals alongside products - structured media plans with
 
 ### Pagination
 
-For large product catalogs, use cursor-based pagination:
+For large product result sets and wholesale product feeds, use cursor-based pagination:
 
 | Request Parameter | Type | Description |
 |---|---|---|
@@ -315,19 +315,19 @@ Pagination is optional. When omitted, the server returns all results (or a serve
 | `refinement_applied` | [RefinementResult[]](#refinement_applied-response) | Seller acknowledgment of each `refine` entry, matched by position. Only present when `buying_mode` is `"refine"`. See [refinement_applied](#refinement_applied-response) above. |
 | `incomplete` | [IncompleteEntry[]](#incomplete-array) | Declares what the seller could not finish within the `time_budget` or due to internal limits. Each entry identifies a scope with a human-readable explanation. Absent when the response is fully complete. See [incomplete array](#incomplete-array) below. |
 | `filter_diagnostics` | object | Optional non-fatal observability block describing how `filters` narrowed the candidate set — `total_candidates` plus per-filter `excluded_by` counts (keyed by filter name). Disambiguates "no inventory" from "your filter excluded everything" when the result list is empty or unexpectedly small. Counts only — never product names — to avoid leaking competitive intelligence. See [filter_diagnostics](#filter_diagnostics) below. |
-| `catalog_version` | string | Opaque token representing the version of the catalog state used to compose this response. Sellers implementing conditional-fetch (`if_catalog_version`) MUST return this on every response so buyers can cache and probe later. Treat as opaque — no format, no ordering, no inspection. See [Catalog versioning](#catalog-versioning). |
-| `pricing_version` | string | Optional opaque token representing the version of the pricing layer. When the seller supports independent pricing versioning, `pricing_version` changes when prices move but `catalog_version` changes only when structure/metadata moves. Sellers not separating these MAY omit `pricing_version` and use `catalog_version` for both. |
+| `wholesale_feed_version` | string | Opaque token representing the version of the wholesale product feed state used to compose this response. Sellers implementing conditional-fetch (`if_wholesale_feed_version`) MUST return this on every response so buyers can cache and probe later. Treat as opaque — no format, no ordering, no inspection. See [Wholesale feed versioning](#wholesale-feed-versioning). |
+| `pricing_version` | string | Optional opaque token representing the version of the pricing layer. When the seller supports independent pricing versioning, `pricing_version` changes when prices move but `wholesale_feed_version` changes only when structure/metadata moves. Sellers not separating these MAY omit `pricing_version` and use `wholesale_feed_version` for both. |
 | `cache_scope` | string | `"public"` or `"account"`. **REQUIRED on every response** (schema-enforced — the safety property of the two-layer cache depends on it). When the request had no `account`, MUST be `"public"`. When the request had `account`, the seller declares either `"public"` (account prices off the rate card — buyer dedupes) or `"account"` (account-specific overrides). See [Cache layering](#cache-layering). |
-| `unchanged` | boolean | Present and `true` ONLY when the request carried `if_catalog_version` (and/or `if_pricing_version`) matching the seller's current version for the buyer's `cache_scope`, in which case `products[]` MUST be omitted; `catalog_version`, `cache_scope`, and `pricing_version` (when used) MUST still be echoed. Sellers MUST NOT emit `unchanged: false` — absence of the field IS the "response carries products" signal (one shape per state). Buyers receiving `unchanged: true` MUST NOT mutate their local catalog mirror. |
+| `unchanged` | boolean | Present and `true` ONLY when the request carried `if_wholesale_feed_version` (and/or `if_pricing_version`) matching the seller's current version for the buyer's `cache_scope`, in which case `products[]` MUST be omitted; `wholesale_feed_version`, `cache_scope`, and `pricing_version` (when used) MUST still be echoed. Sellers MUST NOT emit `unchanged: false` — absence of the field IS the "response carries products" signal (one shape per state). Buyers receiving `unchanged: true` MUST NOT mutate their local wholesale product mirror. |
 
 ### filter_diagnostics
 
-When the seller can attribute exclusions to specific filters, the response MAY include a `filter_diagnostics` block. This is observability — not error reporting; sellers still silently exclude unmatched products per the filter-not-fail convention. Buyers use this to triage empty/small results without depending on its presence. `total_candidates` and `excluded_by` are independently optional — sellers whose baseline catalog size is sensitive MAY emit `excluded_by` without `total_candidates`.
+When the seller can attribute exclusions to specific filters, the response MAY include a `filter_diagnostics` block. This is observability — not error reporting; sellers still silently exclude unmatched products per the filter-not-fail convention. Buyers use this to triage empty/small results without depending on its presence. `total_candidates` and `excluded_by` are independently optional — sellers whose baseline candidate set size is sensitive MAY emit `excluded_by` without `total_candidates`.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `semantics` | string | `"only"` (deterministic; counts products that would have been included if not for *this* filter alone — recommended for triage), `"any"` (counts products excluded by any filter; counts may overlap), or `"approximate"` (seller can't cleanly attribute exclusions to a single filter). Buyers SHOULD inspect `semantics` before doing arithmetic on counts. |
-| `total_candidates` | integer | Number of products considered before filters were applied. May be sampled or capped at large catalogs. Optional. |
+| `total_candidates` | integer | Number of products considered before filters were applied. May be sampled or capped when the candidate pool is large. Optional. |
 | `excluded_by` | object | Keys are filter property names from the request (`required_metrics`, `required_geo_targeting`, `budget_range`, etc.). Each value is `{ count, values?, notes? }`. Only filters that meaningfully narrowed the set need appear. |
 | `excluded_by.<filter>.count` | integer | Count of products excluded by this filter, interpreted per the parent `semantics` field. |
 | `excluded_by.<filter>.values` | array | Optional list of the specific filter values that contributed to exclusions (e.g., `["completed_views"]` for `required_metrics`). Items are strings or objects depending on filter shape; opaque without filter-specific knowledge. |
@@ -354,13 +354,15 @@ When the seller cannot complete all work within the `time_budget` (or due to its
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `scope` | string | Yes | `"products"`: not all inventory sources were searched. `"pricing"`: products returned but pricing is absent or unconfirmed. `"forecast"`: products returned but forecast data is absent. `"proposals"`: proposals were not generated or are incomplete. |
+| `scope` | string | Yes | `"products"`: not all inventory sources were searched. `"pricing"`: products returned but pricing is absent or unconfirmed. `"forecast"`: products returned but forecast data is absent. `"proposals"`: proposals were not generated or are incomplete. `"wholesale_feed"`: in wholesale mode, full feed enumeration could not complete. |
 | `description` | string | Yes | Human-readable explanation of what is missing and why. |
 | `estimated_wait` | Duration | No | How much additional time would resolve this scope. |
 
-### Catalog versioning
+### Wholesale feed versioning
 
-A buyer that just synced a seller's catalog can ask "has anything changed since version X?" in one cheap call, regardless of catalog size. Sellers return an opaque `catalog_version` on every response; buyers pass it back via `if_catalog_version` on the next call and the seller MAY short-circuit with `unchanged: true` — no products payload, no per-page diff. Patterned on HTTP `ETag` / `If-None-Match`.
+A buyer that just synced a seller's wholesale product feed can ask "has anything changed since version X?" in one cheap call, regardless of feed size. Sellers return an opaque `wholesale_feed_version` on every response; buyers pass it back via `if_wholesale_feed_version` on the next call and the seller MAY short-circuit with `unchanged: true` — no products payload, no per-page diff. Patterned on HTTP `ETag` / `If-None-Match`.
+
+This is the seller-side wholesale product feed returned by `get_products`. It is not a `sync_catalogs` feed; `sync_catalogs` manages buyer-provided campaign input feeds on the seller account.
 
 **Unchanged response example:**
 
@@ -370,31 +372,32 @@ Request:
 {
   "$schema": "/schemas/media-buy/get-products-request.json",
   "buying_mode": "wholesale",
-  "if_catalog_version": "v2026-05-18T08:00:00Z-acme-rev412"
+  "if_wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412"
 }
 ```
 
-Response (catalog unchanged):
+Response (wholesale product feed unchanged):
 
 ```json
 {
   "$schema": "/schemas/media-buy/get-products-response.json",
-  "message": "Catalog unchanged since v2026-05-18T08:00:00Z-acme-rev412.",
+  "status": "completed",
+  "message": "Wholesale product feed unchanged since v2026-05-18T08:00:00Z-acme-rev412.",
   "context_id": "ctx-abc-789",
   "unchanged": true,
-  "catalog_version": "v2026-05-18T08:00:00Z-acme-rev412",
+  "wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412",
   "pricing_version": "v2026-05-18T08:00:00Z-acme-rev412",
   "cache_scope": "public"
 }
 ```
 
-Response (catalog changed — full payload returned, abbreviated):
+Response (wholesale product feed changed — full payload returned, abbreviated):
 
 ```json test=false
 {
-  "message": "Returning 50 of 312 products (catalog version advanced).",
+  "message": "Returning 50 of 312 products (wholesale feed version advanced).",
   "context_id": "ctx-abc-790",
-  "catalog_version": "v2026-05-18T10:15:00Z-acme-rev415",
+  "wholesale_feed_version": "v2026-05-18T10:15:00Z-acme-rev415",
   "pricing_version": "v2026-05-18T10:15:00Z-acme-rev415",
   "cache_scope": "public",
   "products": [
@@ -417,28 +420,28 @@ Response (catalog changed — full payload returned, abbreviated):
 **Rules**
 
 - Tokens are **opaque**. No format, no ordering, no inspection.
-- A returned `catalog_version` is scoped to the request parameters that produced it. Buyers MUST cache the version alongside the `(account, filters, buying_mode, property_list, catalog)` tuple used.
-- `pricing_version` is an optional finer-grained token: when present, it changes when prices move but `catalog_version` changes only when structure/metadata moves. Common for rate-card sweeps that don't change product metadata.
-- **`if_pricing_version` requires `if_catalog_version`.** Pricing has no structural baseline of its own. Sending `if_pricing_version` without `if_catalog_version` is a schema-level error. The seller's evaluation is two-stage: catalog mismatch returns the full payload (pricing is implicitly stale); catalog match with pricing mismatch also returns the full payload (so the buyer sees updated `pricing_options`); both match → `unchanged: true`.
-- **`filters` canonicalization.** Sellers MUST treat the `filters` object as canonicalized before hashing into the `catalog_version` keyspace: keys MUST be sorted lexicographically, omitted-and-default values MUST be treated identically (a missing `delivery_type` key is the same scope as `delivery_type: null`), array values MUST be sorted where the filter has set semantics (e.g., `channels`, `format_ids`, `required_metrics`) and preserved-order where the filter has sequence semantics (e.g., `preferred_delivery_types`). Buyers that pass equivalent-but-differently-shaped filter objects MUST receive the same `catalog_version` from the seller. This rule prevents silent stale-mirror bugs from key-order or default-elision differences between buyer SDKs. **Forward-compat default:** new filter fields added in 3.x minor versions MUST declare set-vs-sequence semantics in their schema (via `x-canonicalization: set | sequence` or equivalent prose); absent an explicit declaration, the rule defaults to **set-semantics** (sort before hashing). Sellers and SDKs that drift on this default produce cache misses that consumers can't explain.
-- **Pagination interaction.** `catalog_version` describes the catalog as a whole, not individual pages. Sellers MUST return `catalog_version` on every paginated page (not only the first) when they declare `catalog_change_feed.supported: true`; sellers that do not declare the feed SHOULD do the same. When the catalog mutates between pages, the new version surfaces on the next page and the buyer MUST restart pagination from `cursor: null` — the partial pages they've already received describe a stale version. Sellers MAY alternatively snapshot the catalog at the start of pagination and serve all pages from that snapshot under the original version; either implementation is conformant as long as `catalog_version` on a given page is the version that page belongs to.
-- **`unchanged: true` and in-progress pagination.** A buyer that is mid-pagination on `cursor: X` MAY send `if_catalog_version` matching the version their pages so far were drawn from. If the seller confirms `unchanged: true`, the response omits `products[]` and pagination envelope entirely; the buyer abandons their in-progress walk under that version with confidence that no further pages would have produced new data. Sellers MAY NOT use the conditional-fetch short-circuit to skip individual pages within an active pagination — `unchanged` is whole-catalog-versus-cached-version, not per-page.
-- Pre-v3.1 sellers that ignore `if_catalog_version` simply return the full payload — semantically correct, just inefficient (same as the unchanged-server path in HTTP).
+- A returned `wholesale_feed_version` is scoped to the request parameters that produced it. Buyers MUST cache the version alongside the `(account, filters, buying_mode, property_list, catalog)` tuple used.
+- `pricing_version` is an optional finer-grained token: when present, it changes when prices move but `wholesale_feed_version` changes only when structure/metadata moves. Common for rate-card sweeps that don't change product metadata.
+- **`if_pricing_version` requires `if_wholesale_feed_version`.** Pricing has no structural baseline of its own. Sending `if_pricing_version` without `if_wholesale_feed_version` is a schema-level error. The seller's evaluation is two-stage: wholesale feed mismatch returns the full payload (pricing is implicitly stale); wholesale feed match with pricing mismatch also returns the full payload (so the buyer sees updated `pricing_options`); both match → `unchanged: true`.
+- **`filters` canonicalization.** Sellers MUST treat the `filters` object as canonicalized before hashing into the `wholesale_feed_version` keyspace: keys MUST be sorted lexicographically, omitted-and-default values MUST be treated identically (a missing `delivery_type` key is the same scope as `delivery_type: null`), array values MUST be sorted where the filter has set semantics (e.g., `channels`, `format_ids`, `required_metrics`) and preserved-order where the filter has sequence semantics (e.g., `preferred_delivery_types`). Buyers that pass equivalent-but-differently-shaped filter objects MUST receive the same `wholesale_feed_version` from the seller. This rule prevents silent stale-mirror bugs from key-order or default-elision differences between buyer SDKs. **Forward-compat default:** new filter fields added in 3.x minor versions MUST declare set-vs-sequence semantics in their schema (via `x-canonicalization: set | sequence` or equivalent prose); absent an explicit declaration, the rule defaults to **set-semantics** (sort before hashing). Sellers and SDKs that drift on this default produce cache misses that consumers can't explain.
+- **Pagination interaction.** `wholesale_feed_version` describes the wholesale product feed as a whole, not individual pages. Sellers MUST return `wholesale_feed_version` on every paginated page (not only the first) when they declare `wholesale_feed_versioning.supported: true`; sellers that do not declare versioning SHOULD do the same. When the wholesale feed mutates between pages, the new version surfaces on the next page and the buyer MUST restart pagination from `cursor: null` — the partial pages they've already received describe a stale version. Sellers MAY alternatively snapshot the feed at the start of pagination and serve all pages from that snapshot under the original version; either implementation is conformant as long as `wholesale_feed_version` on a given page is the version that page belongs to.
+- **`unchanged: true` and in-progress pagination.** A buyer that is mid-pagination on `cursor: X` MAY send `if_wholesale_feed_version` matching the version their pages so far were drawn from. If the seller confirms `unchanged: true`, the response omits `products[]` and pagination envelope entirely; the buyer abandons their in-progress walk under that version with confidence that no further pages would have produced new data. Sellers MAY NOT use the conditional-fetch short-circuit to skip individual pages within an active pagination — `unchanged` is feed-versus-cached-version, not per-page.
+- Pre-v3.1 sellers that ignore `if_wholesale_feed_version` simply return the full payload — semantically correct, just inefficient (same as the unchanged-server path in HTTP).
 
-For ongoing change tracking beyond conditional fetch, see `specs/catalog-change-feed.md` — a per-agent event stream that emits `product.created` / `product.updated` / `product.priced` / `product.removed` events for incremental sync.
+For pushed change tracking beyond conditional fetch, see `specs/wholesale-feed-webhooks.md`. Wholesale feed webhooks carry the changed product payload, pricing payload, removal tombstone, or bulk-change summary; `get_products` remains the repair and reconciliation read.
 
 ### Cache layering
 
 Sellers publish two notional layers: a **public layer** (the rate-card / structural view) and **per-account overlays** (custom deals, account-specific rate cards). The conditional-fetch path is layer-aware via `cache_scope`.
 
-**Why this matters.** A buyer mirroring catalogs across N accounts at one seller doesn't want to hold N copies of inventory that's actually identical for every buyer. The public layer is the seller's published rate card; most accounts at most sellers price off it directly. Premium custom deals are the exception.
+**Why this matters.** A buyer mirroring wholesale products across N accounts at one seller doesn't want to hold N copies of inventory that's actually identical for every buyer. The public layer is the seller's published rate card; most accounts at most sellers price off it directly. Premium custom deals are the exception.
 
 **Two-layer cache.**
 
 | Layer | Cache key | What's stored |
 |---|---|---|
-| Public | `(agent, buying_mode, filters, property_list, catalog)` | `catalog_version_public`, the catalog payload as seen without an account ref |
-| Account overlay | `(agent, buying_mode, filters, property_list, catalog, account_id)` | `catalog_version_account`, the catalog payload as seen WITH this account ref, when `cache_scope: "account"` was returned |
+| Public | `(agent, buying_mode, filters, property_list, catalog)` | `wholesale_feed_version_public`, the wholesale product feed payload as seen without an account ref |
+| Account overlay | `(agent, buying_mode, filters, property_list, catalog, account_id)` | `wholesale_feed_version_account`, the wholesale product feed payload as seen WITH this account ref, when `cache_scope: "account"` was returned |
 
 **Behavior.**
 
@@ -448,15 +451,15 @@ Sellers publish two notional layers: a **public layer** (the rate-card / structu
   - `"account"`: this response carries account-specific overrides. Buyer caches under the account overlay key.
 - Sellers MAY downgrade an account from `"account"` back to `"public"` by returning `cache_scope: "public"` on a request that previously got `"account"` — buyers SHOULD interpret this as "this account no longer has overrides" and drop their account overlay.
 
-**Conditional fetch with `if_catalog_version`.** Send the token paired with whichever scope it was returned in. The seller compares against the current version for that scope. If the buyer's token belongs to an `"account"` scope but the seller responds with `cache_scope: "public"`, that's the downgrade signal — buyer drops the overlay.
+**Conditional fetch with `if_wholesale_feed_version`.** Send the token paired with whichever scope it was returned in. The seller compares against the current version for that scope. If the buyer's token belongs to an `"account"` scope but the seller responds with `cache_scope: "public"`, that's the downgrade signal — buyer drops the overlay.
 
-**Event invalidation.** The change feed declares `applies_to.scope` on `*.priced` and `*.updated` events:
+**Webhook invalidation.** Wholesale feed webhook events declare `applies_to.scope` on `*.priced` and `*.updated` payloads. Sellers MUST apply the same account/caller authorization predicate used by `get_products buying_mode: "wholesale"` when deciding which subscribers receive product webhooks:
 
 - `applies_to: { scope: "public" }` → invalidate the public-layer cache for the entity. All account overlays referencing that public version are also stale and SHOULD be refetched.
 - `applies_to: { scope: "account", account_ids: [...] }` → invalidate only the named accounts' overlays. The public layer is unaffected.
 - `applies_to: { scope: "account" }` without `account_ids` → the seller is withholding the affected set; the per-subscriber scope filter routes the event only to subscribers whose principal is in the affected set. Receiving the event means "your overlay is stale."
 
-See `specs/catalog-change-feed.md` §"Cache layering and event scoping" for the full event-side spec.
+See `specs/wholesale-feed-webhooks.md` §"Cache layering and event scoping" for the full webhook-side spec.
 
 **See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-response.json)
 
@@ -553,7 +556,7 @@ A response with incomplete data — products are returned but some scopes are mi
 }
 ```
 
-### Standard Catalog Discovery
+### Wholesale Product Discovery
 
 <CodeGroup>
 
@@ -572,7 +575,7 @@ const result = await testAgent.getProducts({
 });
 
 if (result.success && result.data) {
-  console.log(`Found ${result.data.products.length} standard catalog products`);
+  console.log(`Found ${result.data.products.length} standard wholesale products`);
 }
 ```
 
@@ -580,7 +583,7 @@ if (result.success && result.data) {
 import asyncio
 from adcp.testing import test_agent
 
-async def discover_standard_catalog():
+async def discover_standard_wholesale_products():
     # wholesale mode: buyer applies their own audiences, no publisher curation
     result = await test_agent.simple.get_products(
         buying_mode='wholesale',
@@ -591,9 +594,9 @@ async def discover_standard_catalog():
             'delivery_type': 'non_guaranteed'
         }
     )
-    print(f"Found {len(result.products)} standard catalog products")
+    print(f"Found {len(result.products)} standard wholesale products")
 
-asyncio.run(discover_standard_catalog())
+asyncio.run(discover_standard_wholesale_products())
 ```
 
 </CodeGroup>
@@ -1093,8 +1096,8 @@ See the difference between authenticated and unauthenticated access:
 ```javascript JavaScript
 import { testAgent, testAgentNoAuth } from '@adcp/sdk/testing';
 
-// WITH authentication - full catalog with pricing
-const fullCatalog = await testAgent.getProducts({
+// WITH authentication - full product results with pricing
+const fullProducts = await testAgent.getProducts({
   buying_mode: 'brief',
   brief: 'Premium CTV inventory for brand awareness',
   brand: {
@@ -1102,15 +1105,15 @@ const fullCatalog = await testAgent.getProducts({
   }
 });
 
-if (!fullCatalog.success) {
-  throw new Error(`Failed to get products: ${fullCatalog.error}`);
+if (!fullProducts.success) {
+  throw new Error(`Failed to get products: ${fullProducts.error}`);
 }
 
-console.log(`With auth: ${fullCatalog.data.products.length} products`);
-console.log(`First product pricing: ${fullCatalog.data.products[0].pricing_options.length} options`);
+console.log(`With auth: ${fullProducts.data.products.length} products`);
+console.log(`First product pricing: ${fullProducts.data.products[0].pricing_options.length} options`);
 
-// WITHOUT authentication - limited public catalog
-const publicCatalog = await testAgentNoAuth.getProducts({
+// WITHOUT authentication - limited public product results
+const publicProducts = await testAgentNoAuth.getProducts({
   buying_mode: 'brief',
   brief: 'Premium CTV inventory for brand awareness',
   brand: {
@@ -1118,12 +1121,12 @@ const publicCatalog = await testAgentNoAuth.getProducts({
   }
 });
 
-if (!publicCatalog.success) {
-  throw new Error(`Failed to get products: ${publicCatalog.error}`);
+if (!publicProducts.success) {
+  throw new Error(`Failed to get products: ${publicProducts.error}`);
 }
 
-console.log(`Without auth: ${publicCatalog.data.products.length} products`);
-console.log(`First product pricing: ${publicCatalog.data.products[0].pricing_options?.length || 0} options`);
+console.log(`Without auth: ${publicProducts.data.products.length} products`);
+console.log(`First product pricing: ${publicProducts.data.products[0].pricing_options?.length || 0} options`);
 ```
 
 ```python Python
@@ -1131,8 +1134,8 @@ import asyncio
 from adcp.testing import test_agent, test_agent_no_auth
 
 async def compare_auth():
-    # WITH authentication - full catalog with pricing
-    full_catalog = await test_agent.simple.get_products(
+    # WITH authentication - full product results with pricing
+    full_products = await test_agent.simple.get_products(
         buying_mode='brief',
         brief='Premium CTV inventory for brand awareness',
         brand={
@@ -1140,11 +1143,11 @@ async def compare_auth():
         }
     )
 
-    print(f"With auth: {len(full_catalog['products'])} products")
-    print(f"First product pricing: {len(full_catalog['products'][0]['pricing_options'])} options")
+    print(f"With auth: {len(full_products['products'])} products")
+    print(f"First product pricing: {len(full_products['products'][0]['pricing_options'])} options")
 
-    # WITHOUT authentication - limited public catalog
-    public_catalog = await test_agent_no_auth.simple.get_products(
+    # WITHOUT authentication - limited public product results
+    public_products = await test_agent_no_auth.simple.get_products(
         buying_mode='brief',
         brief='Premium CTV inventory for brand awareness',
         brand={
@@ -1152,8 +1155,8 @@ async def compare_auth():
         }
     )
 
-    print(f"Without auth: {len(public_catalog['products'])} products")
-    print(f"First product pricing: {len(public_catalog['products'][0].get('pricing_options', []))} options")
+    print(f"Without auth: {len(public_products['products'])} products")
+    print(f"First product pricing: {len(public_products['products'][0].get('pricing_options', []))} options")
 
 asyncio.run(compare_auth())
 ```
@@ -1168,8 +1171,8 @@ asyncio.run(compare_auth())
 
 ## Authentication Behavior
 
-- **Without credentials**: Returns limited catalog (standard catalog products), no pricing, no custom offerings
-- **With credentials**: Returns complete catalog with pricing and custom products
+- **Without credentials**: Returns limited public product results, no pricing, no custom offerings
+- **With credentials**: Returns complete product results with pricing and custom products
 
 See [Authentication Guide](/docs/building/integration/authentication) for details.
 

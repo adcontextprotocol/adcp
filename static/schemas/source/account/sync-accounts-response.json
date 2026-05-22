@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "oneOf": [
@@ -225,6 +228,7 @@
     {
       "description": "Mixed results — one active, one pending approval",
       "data": {
+        "status": "completed",
         "accounts": [
           {
             "account_id": "acc_spark_001",
@@ -263,6 +267,7 @@
     {
       "description": "Rejected account — no account_id assigned",
       "data": {
+        "status": "completed",
         "accounts": [
           {
             "brand": {
@@ -282,6 +287,7 @@
     {
       "description": "Unsupported billing — seller rejects the request",
       "data": {
+        "status": "completed",
         "accounts": [
           {
             "brand": {
@@ -303,6 +309,7 @@
     {
       "description": "Advertiser billed directly with billing entity (bank details omitted in response)",
       "data": {
+        "status": "completed",
         "accounts": [
           {
             "account_id": "acc_acme_direct_bill",
@@ -341,6 +348,7 @@
     {
       "description": "Unsupported payment terms — seller rejects the request",
       "data": {
+        "status": "completed",
         "accounts": [
           {
             "brand": {

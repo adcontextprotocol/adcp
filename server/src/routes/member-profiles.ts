@@ -62,7 +62,7 @@ import { createEscalation } from "../db/escalation-db.js";
 import { insertTypeReclassification } from "../db/type-reclassification-log-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
 import { gateAgentVisibilityForCaller, computeAgentVisibilityGate, type VisibilityWarning, type AgentVisibilityGate } from "../services/agent-visibility-gate.js";
-import { getBrandPrimaryDomain } from "../services/brand-domain-resolver.js";
+import { getBrandPrimaryDomain, getBrandPrimaryDomainRecord } from "../services/brand-domain-resolver.js";
 import { normalizeFoundingMemberGrant } from "../services/founding-member-grant.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
@@ -410,13 +410,12 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
               message: 'User is not a member of the requested organization',
             });
           }
-          const role = membership.role?.slug || 'member';
-          if (role !== 'admin' && role !== 'owner') {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'Only admins and owners can create member profiles',
-            });
-          }
+          // The bootstrap path creates the profile as `is_public: false` (see
+          // the createProfile call below). Public visibility flips through the
+          // dedicated `/visibility` PUT, which has its own admin/owner gate.
+          // Allowing any-role member to bootstrap mirrors the `/api/me/agents`
+          // POST auto-bootstrap behavior — the gate inconsistency between
+          // those two paths is what surfaced #4839.
           targetOrgId = requestedOrgId;
         } else {
           targetOrgId = memberships.data[0].organizationId;
@@ -682,11 +681,11 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           });
         }
         const profile = await memberDb.getProfileByOrgId(devOrgId);
-        const devBrandPrimary = await getBrandPrimaryDomain(devOrgId);
+        const devBrandRecord = await getBrandPrimaryDomainRecord(devOrgId);
         if (profile) {
-          if (devBrandPrimary) {
-            profile.resolved_brand = await resolveBrand(brandDb, devBrandPrimary);
-            (profile as unknown as Record<string, unknown>).primary_brand_domain = devBrandPrimary;
+          if (devBrandRecord) {
+            profile.resolved_brand = await resolveBrand(brandDb, devBrandRecord.domain);
+            (profile as unknown as Record<string, unknown>).primary_brand_domain = devBrandRecord.domain;
           }
         }
         const devHasApiAccess = hasApiAccess(resolveMembershipTier(localOrg));
@@ -698,7 +697,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           has_api_access: devHasApiAccess,
           agent_visibility_gate: computeAgentVisibilityGate({
             hasApiAccess: devHasApiAccess,
-            brandPrimaryDomain: devBrandPrimary,
+            brandPrimaryDomain: devBrandRecord?.domain ?? null,
+            brandDomainVerified: devBrandRecord?.verified ?? false,
           }),
         });
       }
@@ -744,14 +744,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       const profile = await memberDb.getProfileByOrgId(targetOrgId);
-      const brandPrimary = await getBrandPrimaryDomain(targetOrgId);
+      const brandRecord = await getBrandPrimaryDomainRecord(targetOrgId);
       if (profile) {
-        if (brandPrimary) {
-          profile.resolved_brand = await resolveBrand(brandDb, brandPrimary);
+        if (brandRecord) {
+          profile.resolved_brand = await resolveBrand(brandDb, brandRecord.domain);
           // After Stage 2 of #4159 dropped the column, the field is
           // re-derived from organization_domains.is_primary so clients
           // (member-profile.html, dashboard-agents.html) keep working.
-          (profile as unknown as Record<string, unknown>).primary_brand_domain = brandPrimary;
+          (profile as unknown as Record<string, unknown>).primary_brand_domain = brandRecord.domain;
         }
       }
 
@@ -768,7 +768,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         has_api_access: callerHasApiAccess,
         agent_visibility_gate: computeAgentVisibilityGate({
           hasApiAccess: callerHasApiAccess,
-          brandPrimaryDomain: brandPrimary,
+          brandPrimaryDomain: brandRecord?.domain ?? null,
+          brandDomainVerified: brandRecord?.verified ?? false,
         }),
       });
     } catch (error) {
@@ -847,6 +848,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // Dev mode: handle dev organizations without WorkOS
       const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
       let targetOrgId: string;
+      // Captured during membership resolution below. Drives the
+      // `is_public` downgrade — non-admin/owner creators can bootstrap
+      // their org's profile but cannot publish it publicly in the same call.
+      let callerRole: string = 'owner';
 
       if (isDevUserProfile) {
         const localOrg = await orgDb.getOrganization(requestedOrgId!);
@@ -882,7 +887,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
         // Determine which org to use
         if (requestedOrgId) {
-          // Verify user is admin/owner of the requested org
           const membership = memberships.data.find(m => m.organizationId === requestedOrgId);
           if (!membership) {
             return res.status(403).json({
@@ -890,16 +894,18 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
               message: 'User is not a member of the requested organization',
             });
           }
-          const role = membership.role?.slug || 'member';
-          if (role !== 'admin' && role !== 'owner') {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'Only admins and owners can create member profiles',
-            });
-          }
+          // Any-role member may create the org's profile. The `is_public`
+          // gate happens downstream on the role check below — non-admin/owner
+          // creators have their requested `is_public: true` downgraded to
+          // false with a `visibility_downgraded` warning, matching the tier
+          // gate's pattern. The mutation-visibility separation mirrors the
+          // `/api/me/agents` POST auto-bootstrap behavior (#4839).
+          callerRole = membership.role?.slug || 'member';
           targetOrgId = requestedOrgId;
         } else {
-          targetOrgId = memberships.data[0].organizationId;
+          const firstMembership = memberships.data[0];
+          callerRole = firstMembership.role?.slug || 'member';
+          targetOrgId = firstMembership.organizationId;
         }
       }
 
@@ -1027,7 +1033,23 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // the agent-visibility bug this PR fixes.
       let effectiveIsPublic = is_public === true;
       if (effectiveIsPublic && !isDevModeEnabled()) {
-        if (!(await orgDb.hasActiveSubscription(targetOrgId))) {
+        // Role gate: non-admin/owner creators may bootstrap the profile
+        // but cannot publish it publicly in the same call. They flip
+        // `is_public` later via the dedicated `/visibility` PUT (which
+        // has its own admin/owner gate). Mirrors the tier-downgrade
+        // pattern below — same warning shape so the UI can render either
+        // path the same way (#4839).
+        if (callerRole !== 'admin' && callerRole !== 'owner') {
+          effectiveIsPublic = false;
+          createWarnings.push({
+            code: 'visibility_downgraded',
+            agent_url: 'profile',
+            requested: 'public',
+            applied: 'members_only',
+            reason: 'role_required',
+            message: 'Making the profile publicly visible requires an admin or owner; stored as private instead. Ask an admin to publish via the visibility setting.',
+          });
+        } else if (!(await orgDb.hasActiveSubscription(targetOrgId))) {
           effectiveIsPublic = false;
           createWarnings.push({
             code: 'visibility_downgraded',
@@ -1317,6 +1339,25 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         const localOrgForTier = await orgDb.getOrganization(targetOrgId);
         const callerHasApi = hasApiAccess(resolveMembershipTier(localOrgForTier));
         const gated = gateAgentVisibilityForCaller(updates.agents, callerHasApi);
+
+        // If any agent will be publicly listed, require a DNS-verified brand domain.
+        // Tier downgrade (above) is a soft warning; domain verification is a hard gate.
+        if (gated.agents.some((a) => a.visibility === 'public')) {
+          const brandRec = await getBrandPrimaryDomainRecord(targetOrgId);
+          if (!brandRec) {
+            return res.status(400).json({
+              error: 'brand_domain_required',
+              message: 'To list an agent publicly, your profile needs a primary brand domain.',
+            });
+          }
+          if (!brandRec.verified) {
+            return res.status(400).json({
+              error: 'brand_domain_unverified',
+              message: 'To list an agent publicly, your primary brand domain must be DNS-verified. Complete the domain verification challenge in the Brand section of your profile.',
+            });
+          }
+        }
+
         // Resolve `type` server-side from the capability snapshot. The
         // client cannot pin a misclassification (e.g. sales agent typed
         // 'buying') — the inferred_type from the crawler probe wins. See
@@ -1533,7 +1574,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // setPrimaryDomain (Stage 3) racing this read lands old-or-new — both
       // states the org legitimately controls, so worst case is wrong-brand
       // listing recoverable by re-publish.
-      const brandPrimaryDomain = await getBrandPrimaryDomain(orgId);
+      const brandPrimaryRecord = await getBrandPrimaryDomainRecord(orgId);
+      const brandPrimaryDomain = brandPrimaryRecord?.domain ?? null;
       const parsedAgents = typeof row.agents === 'string'
         ? JSON.parse(row.agents)
         : Array.isArray(row.agents) ? row.agents : [];
@@ -1557,6 +1599,33 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         return { status: 404, body: { error: 'Agent not found at index' } };
       }
       const agent = agents[index];
+
+      // For public listing, the primary brand domain is the first
+      // prerequisite: an imported or legacy primary domain can exist before
+      // DNS verification is complete. Report that state before falling
+      // through to per-agent hostname ownership checks.
+      if (target === 'public') {
+        if (!brandPrimaryDomain) {
+          await client.query('ROLLBACK');
+          return {
+            status: 400,
+            body: {
+              error: 'brand_domain_required',
+              message: 'To list an agent publicly, your profile needs a primary brand domain. If you have a verified email domain in your organization (e.g. via SSO), it should auto-populate — otherwise, claim your brand domain in the Brand section of your profile.',
+            },
+          };
+        }
+        if (!brandPrimaryRecord?.verified) {
+          await client.query('ROLLBACK');
+          return {
+            status: 400,
+            body: {
+              error: 'brand_domain_unverified',
+              message: 'To list an agent publicly, your primary brand domain must be DNS-verified. Complete the domain verification challenge in the Brand section of your profile.',
+            },
+          };
+        }
+      }
 
       // Re-verify hostname ownership on any non-private flip (#4499 MVP).
       // A grandfathered row registered before the gate landed should not
@@ -1582,16 +1651,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // Only the public path needs to reach out to brand.json, so the
       // brand-domain requirement is scoped to `target === 'public'`.
       if (target === 'public') {
-        if (!brandPrimaryDomain) {
-          await client.query('ROLLBACK');
-          return {
-            status: 400,
-            body: {
-              error: 'brand_domain_required',
-              message: 'To list an agent publicly, your profile needs a primary brand domain. If you have a verified email domain in your organization (e.g. via SSO), it should auto-populate — otherwise, claim your brand domain in the Brand section of your profile.',
-            },
-          };
-        }
         try {
           const parsed = new URL(agent.url);
           if (parsed.protocol !== 'https:') {

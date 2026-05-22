@@ -37,6 +37,7 @@ import {
 } from './catalog-event-handlers.js';
 import { handleSyncAudiences } from './audience-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
+import { pickFromInput } from './v6-input-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
@@ -250,7 +251,19 @@ export class TrainingSalesPlatform
 
     syncCreatives: async (creatives, ctx) => {
       const brandDomain = brandDomainFromCtx(ctx.account);
-      const args = brandDomain ? { creatives, brand: { domain: brandDomain } } : { creatives };
+      // `dry_run` and `assignments[]` are dropped from the v6 typed
+      // signature (adcp-client#1842). Lift them back off `ctx.input` so
+      // the v5 handler honors dry-run mode and writes inline
+      // package-binding side effects to session storage. The v6
+      // response signature returns only `SyncCreativesRow[]`, so
+      // `assignments[]` are observable via subsequent `get_media_buys`,
+      // not in the sync_creatives response itself.
+      const fromInput = pickFromInput(ctx.input, ['assignments', 'dry_run'] as const);
+      const args = {
+        creatives,
+        ...fromInput,
+        ...(brandDomain && { brand: { domain: brandDomain } }),
+      };
       const v5Result = await handleSyncCreatives(args as unknown as ToolArgs, buildTrainingCtx(ctx.account));
       // v5 returns wire-wrapped `{ creatives: [...] }`; v6 SalesPlatform
       // wants rows directly — framework re-wraps.

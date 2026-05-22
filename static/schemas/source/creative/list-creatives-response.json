@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "properties": {
@@ -96,10 +99,14 @@
             "patternProperties": {
               "^[a-z0-9_]+$": {
                 "oneOf": [
-                  { "$ref": "/schemas/core/assets/asset-union.json" },
+                  {
+                    "$ref": "/schemas/core/assets/asset-union.json"
+                  },
                   {
                     "type": "array",
-                    "items": { "$ref": "/schemas/core/assets/asset-union.json" },
+                    "items": {
+                      "$ref": "/schemas/core/assets/asset-union.json"
+                    },
                     "minItems": 1
                   }
                 ]
@@ -339,6 +346,7 @@
     {
       "description": "Library query with creatives and variables",
       "data": {
+        "status": "completed",
         "query_summary": {
           "total_matching": 2,
           "returned": 2,
@@ -446,6 +454,7 @@
     {
       "description": "Library query with webhook_activity and a purged tombstone",
       "data": {
+        "status": "completed",
         "query_summary": {
           "total_matching": 2,
           "returned": 2,

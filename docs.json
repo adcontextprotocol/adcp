@@ -98,7 +98,8 @@
                       "docs/reference/migration/brand-identity",
                       "docs/reference/migration/signals",
                       "docs/reference/migration/audiences",
-                      "docs/reference/migration/attribution"
+                      "docs/reference/migration/attribution",
+                      "docs/reference/migration/media-buy-status"
                     ]
                   },
                   "docs/protocol/architecture",

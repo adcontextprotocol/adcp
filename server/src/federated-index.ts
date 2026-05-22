@@ -1,4 +1,4 @@
-import { FederatedIndexDatabase, type AgentPublisherAuthorization, type AgentPublisherDetailRow, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
+import { FederatedIndexDatabase, type AgentPublisherAuthorization, type AgentPublisherDetailRow, type DiscoveredAgent, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
 import { MemberDatabase } from './db/member-db.js';
 import { canonicalizeAgentUrl } from './db/publisher-db.js';
 import type { FederatedAgent, FederatedPublisher, DomainLookupResult, AgentType } from './types.js';
@@ -25,6 +25,45 @@ export class FederatedIndexService {
   // ============================================
   // List All (merged view)
   // ============================================
+
+  /**
+   * List all agents the crawler should periodically probe.
+   *
+   * Two sources, deduplicated by canonical URL:
+   *  - `listAllAgents()` — agents registered in member profiles (the
+   *    configured / seed set)
+   *  - `discovered_agents` where `source_type='adagents_json'` — agents
+   *    we learned about by parsing some publisher's `adagents.json`,
+   *    including manager-file-only agents like `interchange.io` that
+   *    are only ever named in cafemedia.com's selector and never appear
+   *    in any sales-agent's `list_authorized_properties` (adcp#4849).
+   *
+   * `source_type='list_authorized_properties'` (agent_claim) is
+   * intentionally excluded — those are unverified claims from other
+   * agents; probing them creates churn without confirmation.
+   */
+  async listAllProbeableAgents(): Promise<FederatedAgent[]> {
+    const registered = await this.listAllAgents();
+    const discovered = await this.db.getAllDiscoveredAgents();
+
+    const byKey = new Map<string, FederatedAgent>();
+    for (const agent of registered) {
+      const key = canonicalizeAgentUrl(agent.url) ?? agent.url;
+      byKey.set(key, agent);
+    }
+    for (const d of discovered) {
+      if (d.source_type !== 'adagents_json') continue;
+      const key = canonicalizeAgentUrl(d.agent_url) ?? d.agent_url;
+      if (byKey.has(key)) continue; // registered metadata wins
+      byKey.set(key, {
+        url: key,
+        name: d.name || key,
+        type: (d.agent_type as FederatedAgent['type']) || 'unknown',
+        protocol: (d.protocol as 'mcp' | 'a2a') || 'mcp',
+      });
+    }
+    return Array.from(byKey.values());
+  }
 
   /**
    * List all registered agents, optionally filtered by type.
@@ -104,6 +143,15 @@ export class FederatedIndexService {
     }
 
     return Array.from(registeredPublishers.values());
+  }
+
+  /**
+   * List agents from the discovered_agents table (populated by the crawler
+   * from adagents.json files), optionally filtered by agent type.
+   * Distinct from listAllAgents(), which returns only member-profile agents.
+   */
+  async listDiscoveredAgents(agentType?: string): Promise<DiscoveredAgent[]> {
+    return this.db.getAllDiscoveredAgents(agentType);
   }
 
   // ============================================

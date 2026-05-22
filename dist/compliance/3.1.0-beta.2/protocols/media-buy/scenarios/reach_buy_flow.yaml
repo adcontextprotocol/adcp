@@ -1,0 +1,349 @@
+id: media_buy_seller/reach_buy_flow
+version: "1.0.0"
+title: "Seller fulfills a media buy with a reach optimization goal"
+category: media_buy_seller
+summary: "Verifies that a seller advertising reach in supported_optimization_metrics can accept a media buy whose metric-kind optimization_goal targets unique reach with a buyer-supplied reach_unit, reject reach_unit values not in the product's metric_optimization.supported_reach_units, and report reach + frequency on delivery. Sibling to the performance buy scenarios on the brand-reach side: sellers that don't advertise reach as an optimization metric (most pure performance DSPs, retail-media networks) grade not_applicable."
+track: media_buy
+
+# Gate: scenario runs only when the seller declares reach in
+# media_buy.supported_optimization_metrics (proposed in #4669). Sellers
+# whose products optimize for clicks / conversions / views but not unique
+# reach grade `not_applicable`, not failing. Reach as an optimization
+# metric is upper-funnel-shaped — broadcast TV, CTV, social brand
+# campaigns, audio — and gating on the explicit metric in
+# supported_optimization_metrics avoids over-claiming against the
+# performance-tracking community. Requires runner support for the
+# `contains:` matcher (adcp-client >= 7.70).
+requires_capability:
+  path: media_buy.supported_optimization_metrics
+  contains: "reach"
+
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buy_delivery
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  A "reach buy" is a media buy whose optimization_goal is metric-kind with
+  metric: reach and a buyer-supplied reach_unit naming the units of the
+  count (individuals / households / devices / accounts / cookies / custom).
+  Optionally the buyer specifies a target_frequency band — the seller treats
+  impressions toward entities already within [min, max] as lower-value and
+  prioritizes fresh reach. This is the upper-funnel optimization shape
+  (broadcast TV, CTV, social brand campaigns, audio) that's distinct from
+  the performance / conversion-tracking shapes.
+
+  Discriminating behaviors this scenario verifies:
+  1. create_media_buy with metric: reach, a reach_unit value declared in
+     the product's metric_optimization.supported_reach_units, and an optional
+     target_frequency band is accepted.
+  2. create_media_buy with a reach_unit value NOT in the product's
+     supported_reach_units is rejected with INVALID_REQUEST. error.field
+     points at the offending reach_unit path. Silent acceptance with
+     unit-coercion would create cross-platform comparison errors because
+     reach in cookies is not reach in households.
+  3. get_media_buy_delivery surfaces totals.reach (the unique-count value)
+     and totals.frequency (average exposures per reach unit over the
+     declared reach_window). reach_unit on delivery aligns with the
+     reach_unit declared on the optimization goal — the unit declaration is
+     load-bearing for cross-platform comparison.
+
+  Per-window reach-window breakdown (cumulative vs period vs rolling
+  semantics declared in delivery-metrics.json's reach_window block) is
+  deliberately NOT asserted at the per-row level here. The scenario asserts
+  that totals.reach and totals.frequency are present at the buy level;
+  follow-up scenarios will exercise the per-window semantics once the
+  reach_window field is widely populated by adopters.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+  examples:
+    - "Broadcast TV / CTV sellers optimizing for unique households"
+    - "Social platforms with reach optimization (Meta Reach & Frequency, TikTok Reach)"
+    - "Audio sellers optimizing for unique listeners"
+    - "OOH / DOOH sellers optimizing for unique passers-by"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller must implement comply_test_controller with simulate_delivery
+    (already required for delivery_reporting). simulate_delivery injects
+    impressions, reach, and frequency values so get_media_buy_delivery has
+    something to surface for the reach-optimized buy.
+
+    The buyer fixture supplies a brand, an operator, and reach targeting
+    parameters sufficient to exercise the reach_unit binding contract and
+    the unsupported-unit rejection.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "reach_ctv_q2"
+      delivery_type: "non_guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_30s"
+      metric_optimization:
+        supported_metrics: ["reach"]
+        supported_reach_units: ["households", "individuals"]
+  pricing_options:
+    - product_id: "reach_ctv_q2"
+      pricing_option_id: "auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 18.00
+
+phases:
+
+  - id: setup
+    title: "Establish account and discover products"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#reach_buy_flow_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: get_products_for_reach
+        title: "Discover products that support reach optimization"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return at least one product whose metric_optimization capabilities
+          include reach as an optimization metric and declare
+          supported_reach_units. The buyer selects a unit from that list for
+          the create_media_buy call below.
+        sample_request:
+          buying_mode: "brief"
+          brief: "CTV video, US adults 25-54. Q2 brand flight ~$50K, optimizing for unique household reach with a target frequency cap."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains products"
+
+  - id: create_reach_buy
+    title: "Create a reach-optimized buy with a supported reach_unit"
+    narrative: |
+      The buyer creates a media buy whose package carries a metric-kind
+      optimization_goal with metric: reach, reach_unit: households (explicitly
+      declared in the product fixture's supported_reach_units), and
+      a target_frequency band of 1–3 over a 7-day rolling window. The seller
+      should accept and return a media_buy_id used for subsequent delivery
+      checks.
+
+    steps:
+      - id: create_media_buy_reach
+        title: "Create media buy with metric-kind reach goal"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Create the media buy. Response carries a media_buy_id used for
+          subsequent get_media_buy_delivery calls.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "reach_ctv_q2"
+              budget: 50000
+              pricing_option_id: "auction_cpm"
+              optimization_goals:
+                - kind: "metric"
+                  metric: "reach"
+                  reach_unit: "households"
+                  target_frequency:
+                    window:
+                      interval: 7
+                      unit: "days"
+                    min: 1
+                    max: 3
+                  priority: 1
+          idempotency_key: "$generate:uuid_v4#reach_buy_flow_create_reach_buy_create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Media buy has a platform-assigned ID"
+
+  - id: rejection_unsupported_reach_unit
+    title: "Reject a reach goal whose reach_unit is not in supported_reach_units"
+    narrative: |
+      Silent acceptance of a reach_unit value not declared in the product's
+      metric_optimization.supported_reach_units is a façade — the seller
+      either coerces the unit (creating cross-platform comparison errors)
+      or runs without a unit (delivery reach values become uncomparable).
+      The seller MUST reject with INVALID_REQUEST and set error.field to the
+      offending reach_unit path. Same shape as the unbound event_source_id
+      rejection in performance_buy_flow and the unbound audience_id
+      rejection in audience_buy_flow.
+
+      "devices" is chosen because it is a valid spec-defined reach_unit enum
+      value that the reach_ctv_q2 product fixture deliberately omits from
+      supported_reach_units (which declares only "households" and
+      "individuals"). Using a valid enum value satisfies
+      negative_path: payload_well_formed (the request is schema-valid),
+      while the fixture exclusion ensures the rejection must come from the
+      seller's capability-checking logic rather than schema validation.
+      Sellers that silently accept "devices" are demonstrating they don't
+      validate reach_unit against their product capability declarations.
+
+    steps:
+      - id: create_media_buy_with_unsupported_reach_unit
+        title: "Submit a reach goal whose reach_unit is not in supported_reach_units"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject with INVALID_REQUEST. error.field points at the offending
+          reach_unit path. media_buy_id is not allocated.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "reach_ctv_q2"
+              budget: 10000
+              pricing_option_id: "auction_cpm"
+              optimization_goals:
+                - kind: "metric"
+                  metric: "reach"
+                  reach_unit: "devices"
+          idempotency_key: "$generate:uuid_v4#reach_buy_flow_rejection_unsupported_reach_unit"
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST"]
+            description: "Seller rejects the unsupported reach_unit with INVALID_REQUEST"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].optimization_goals[0].reach_unit"
+            description: "Error.field points at the offending reach_unit path (core/error.json defines field as deterministic JSONPath-lite — literal equality)"
+
+  - id: reach_delivery
+    title: "Delivery reporting carries reach and frequency"
+    narrative: |
+      The discriminating assertion of the reach buy mode: delivery reporting
+      MUST surface reach and frequency at the buy level — not just
+      impressions and spend. The runner injects simulated impressions,
+      reach, and frequency via the test controller, then verifies
+      get_media_buy_delivery returns reach + frequency on totals.
+
+      Per-row reach_window semantics (cumulative vs period vs rolling — see
+      delivery-metrics.json) are deliberately not asserted at this layer.
+      The scenario asserts the discriminating fields are present at the
+      buy level; reach_window correctness is asserted by the schema
+      validation alongside the totals payload.
+
+    steps:
+      - id: simulate_reach_delivery
+        title: "Inject impressions + reach + frequency"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller acknowledges the simulated delivery.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 750000
+            reach: 250000
+            frequency: 3.0
+            reported_spend:
+              amount: 14000.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation succeeds"
+
+      - id: get_reach_delivery
+        title: "Get delivery and verify reach + frequency metrics"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Delivery response includes totals.reach (the unique-count value
+          in the declared reach_unit) and totals.frequency (average
+          exposures per reach unit over the declared reach_window). These
+          two fields are the discriminating output of reach optimization
+          and are required on reach-optimized buys.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.reach"
+            description: "Reach count surfaced at the buy level (in the declared reach_unit)"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.frequency"
+            description: "Frequency surfaced at the buy level — average exposures per reach unit"

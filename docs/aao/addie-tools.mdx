@@ -1186,6 +1186,12 @@ List brand domains in the orphaned state — a prior owner relinquished and the 
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
+### `create_contact`
+
+Create or find a contact record for a person by email. Writes to email_contacts (CRM) and person_relationships (engagement tracking). Returns whether the contact was new and whether they were auto-matched to an organization.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
 ## outreach (admin only)
 
 SDR outreach operations — view outreach stats, check history, send outreach, look up people, manage action items (admin only)

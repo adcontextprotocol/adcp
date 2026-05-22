@@ -2676,6 +2676,13 @@
           ];
           if (data.type_promoted) parts.push('type promoted');
           if (data.oauth_required) parts.push('OAuth required');
+          if (data.compliance?.ran) {
+            const passing = data.compliance.storyboards_passing ?? 0;
+            const total = data.compliance.storyboards_total ?? 0;
+            parts.push(`compliance: ${passing}/${total}`);
+          } else if (data.compliance?.error) {
+            parts.push(`compliance not run (${data.compliance.error})`);
+          }
           // Online flashes auto-dismiss; offline-but-reachable persists so
           // the operator can read the diagnostic at their pace.
           const flash = renderFlash({

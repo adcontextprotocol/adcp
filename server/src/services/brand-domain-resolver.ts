@@ -16,19 +16,21 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('brand-domain-resolver');
 
+export interface BrandPrimaryDomainRecord {
+  domain: string;
+  verified: boolean;
+}
+
 /**
- * Resolve the brand-primary domain for an org. Reads
- * `organization_domains.is_primary=true`. Returns null when no such row.
- *
- * Detects the rare case of multiple is_primary=true rows (the "exactly one"
- * invariant Stage 0 enforced); logs a loud error but still returns a valid
- * domain so callers don't crash on the anomaly.
+ * Resolve the brand-primary domain record for an org. Returns both `domain`
+ * and `verified` so callers can gate on DNS proof-of-control. Returns null
+ * when no is_primary=true row exists.
  */
-export async function getBrandPrimaryDomain(orgId: string): Promise<string | null> {
+export async function getBrandPrimaryDomainRecord(orgId: string): Promise<BrandPrimaryDomainRecord | null> {
   const pool = getPool();
 
-  const od = await pool.query<{ domain: string }>(
-    `SELECT domain FROM organization_domains
+  const od = await pool.query<{ domain: string; verified: boolean }>(
+    `SELECT domain, verified FROM organization_domains
       WHERE workos_organization_id = $1 AND is_primary = true`,
     [orgId],
   );
@@ -38,7 +40,15 @@ export async function getBrandPrimaryDomain(orgId: string): Promise<string | nul
       'Multiple is_primary=true rows on organization_domains for one org — invariant broken',
     );
   }
-  return od.rows[0]?.domain ?? null;
+  return od.rows[0] ? { domain: od.rows[0].domain, verified: od.rows[0].verified } : null;
+}
+
+/**
+ * Convenience wrapper returning only the domain string. Delegates to
+ * {@link getBrandPrimaryDomainRecord}. Use when verified status is not needed.
+ */
+export async function getBrandPrimaryDomain(orgId: string): Promise<string | null> {
+  return (await getBrandPrimaryDomainRecord(orgId))?.domain ?? null;
 }
 
 /**
