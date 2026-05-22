@@ -4580,7 +4580,12 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // post-dispatch gate below never inserts this into the replay cache.
         const firstError = resultObj.errors![0];
         if (ERROR_IN_BODY_TOOLS.has(name)) {
-          const body: Record<string, unknown> = { errors: resultObj.errors };
+          // Envelope `status` is required per protocol-envelope.json (#4876)
+          // and now folded into every per-task response schema (#4896). The
+          // task itself completed successfully and produced a response that
+          // happens to describe application-level errors — `completed` is
+          // the correct TaskStatus regardless of body shape.
+          const body: Record<string, unknown> = { status: 'completed', errors: resultObj.errors };
           if (callerContext !== undefined) body.context = callerContext;
           toolResult = {
             content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -4609,10 +4614,15 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // schemas are not passthrough and reject the extra key).
         const inner = result as Record<string, unknown>;
         cachableResponse = inner;
-        const envelope: Record<string, unknown> = {};
-        if (name === 'create_media_buy') envelope.replayed = false;
-        if (callerContext !== undefined) envelope.context = callerContext;
-        const response = { ...inner, ...envelope };
+        // Envelope `status` is required per protocol-envelope.json (#4876) and
+        // now folded into every per-task response schema (#4896). Default to
+        // `completed` on synchronous success — handlers that emit a different
+        // TaskStatus (e.g., `submitted` for async-task envelopes) set it on
+        // `inner` and we honor that value.
+        const response: Record<string, unknown> = { ...inner };
+        if (response.status === undefined) response.status = 'completed';
+        if (name === 'create_media_buy') response.replayed = false;
+        if (callerContext !== undefined) response.context = callerContext;
         // `structuredContent` is authoritative on success so raw-probe
         // callers (storyboard runner's rawMcpProbe) can validate envelope
         // fields. `content` stays empty: the SDK unwrapper folds text
