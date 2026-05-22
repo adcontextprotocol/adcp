@@ -3507,7 +3507,7 @@ paths:
                   - agent_url
                   - domains
                   - count
-  /api/v1/agents/{encodedUrl}/publishers:
+  /v1/agents/{encodedUrl}/publishers:
     get:
       operationId: getPublishersForAgent
       summary: AAO directory inverse-lookup
