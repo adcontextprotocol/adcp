@@ -192,6 +192,7 @@ phases:
           context:
             correlation_id: "signal_marketplace--governance_denied--activate"
         sample_response:
+          status: "failed"
           errors:
             - code: "GOVERNANCE_DENIED"
               message: "Signal activation requires governance approval. Call check_governance first — a governance plan is registered for this account."

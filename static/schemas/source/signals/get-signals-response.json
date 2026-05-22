@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "properties": {
@@ -187,18 +190,32 @@
   },
   "if": {
     "properties": {
-      "unchanged": { "const": true }
+      "unchanged": {
+        "const": true
+      }
     },
-    "required": ["unchanged"]
+    "required": [
+      "unchanged"
+    ]
   },
   "then": {
     "description": "Catalog-unchanged response: signals MUST be omitted; catalog_version and cache_scope MUST be present (echoed from the cached version).",
-    "required": ["catalog_version", "cache_scope"],
-    "not": { "required": ["signals"] }
+    "required": [
+      "catalog_version",
+      "cache_scope"
+    ],
+    "not": {
+      "required": [
+        "signals"
+      ]
+    }
   },
   "else": {
     "description": "Standard response: signals[] MUST be present and cache_scope MUST declare the response's cache layer.",
-    "required": ["signals", "cache_scope"]
+    "required": [
+      "signals",
+      "cache_scope"
+    ]
   },
   "additionalProperties": true
 }

@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "properties": {
@@ -106,8 +109,16 @@
               ],
               "not": {
                 "anyOf": [
-                  { "required": ["replay_ttl_seconds"] },
-                  { "required": ["in_flight_max_seconds"] }
+                  {
+                    "required": [
+                      "replay_ttl_seconds"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "in_flight_max_seconds"
+                    ]
+                  }
                 ]
               }
             }
@@ -204,7 +215,9 @@
           },
           "minItems": 1,
           "uniqueItems": true,
-          "default": ["brief"]
+          "default": [
+            "brief"
+          ]
         },
         "reporting_delivery_methods": {
           "type": "array",
@@ -238,11 +251,17 @@
           "description": "Where this seller surfaces dependency-resource impairments (creative rejected post-approval, audience suspended, catalog item withdrawn, event source insufficient, property depublished) to buyers. Non-exclusive: a seller mirroring impairments on both the buy snapshot AND firing webhooks declares `[\"snapshot\", \"webhook\"]` (the common case for premium guaranteed sellers). Each value names one surface where buyers can observe an impairment:\n\n- **`snapshot`** — seller propagates resource transitions into `media_buy.health` and `media_buy.impairments[]` on the next `get_media_buys` read. The `impairment.coherence` compliance assertion grades this surface; storyboards that exercise it (`media_buy_seller/dependency_impairment`, `media_buy_seller/dependency_impairment_cardinality`) require `\"snapshot\"` to be declared, else they grade `not_applicable`.\n- **`webhook`** — seller fires `notification-type: impairment` webhooks (configured via `push_notification_config`). Sellers declaring `\"webhook\"` MUST satisfy the persistent-channel webhook contract for the impairment event type. A seller declaring `[\"webhook\"]` without `\"snapshot\"` is webhook-only — buyers reconcile state from the push channel alone, and snapshot-coherence storyboards grade `not_applicable`.\n- **`out_of_band`** — seller propagates via channels outside the AdCP protocol surface entirely (email to trafficker, separate dashboard, partner-specific notification feed). Long-tail and enterprise-bundled platforms commonly use this when impairment workflows are managed in human channels. Sellers declaring only `[\"out_of_band\"]` are not graded by snapshot or webhook compliance — their bar is the offline agreement, not a protocol assertion. If a seller has impairment data in their API under a non-AdCP field name (a mapping gap, not truly out-of-band), they SHOULD document the mapping rather than declare `out_of_band` — the spec's gap, not the seller's posture, is what `out_of_band` legitimately covers.\n\nDefault: `[\"snapshot\"]` when absent (preserves the existing snapshot-coherence contract for sellers that don't declare). Empty array `[]` is invalid (`minItems: 1`) — omit the field to inherit the default rather than declaring no surfaces. Pick the surfaces that honestly describe where buyers will see impairments on this agent. Mixing is normative — `[\"snapshot\", \"webhook\"]` is the documented common case; `[\"snapshot\", \"webhook\", \"out_of_band\"]` is valid for sellers that ship all three surfaces (rare but legal). See lifecycle.mdx § Compliance for the per-surface contract.",
           "items": {
             "type": "string",
-            "enum": ["snapshot", "webhook", "out_of_band"]
+            "enum": [
+              "snapshot",
+              "webhook",
+              "out_of_band"
+            ]
           },
           "uniqueItems": true,
           "minItems": 1,
-          "default": ["snapshot"]
+          "default": [
+            "snapshot"
+          ]
         },
         "features": {
           "$ref": "/schemas/core/media-buy-features.json"
@@ -530,7 +549,19 @@
           "description": "Optimization metrics this seller can support on at least one of their products. Seller-level rollup of product-level metric_optimization.supported_metrics declarations (core/product.json). Buyers SHOULD filter their requested optimization goals against this list before submitting briefs. Sellers MUST keep this in sync with their product catalog — if no products support a metric, it must not appear here. Omitting this field means the seller declares no specific guarantees about which metrics they support; buyers should fall back to per-product inspection of metric_optimization.supported_metrics.",
           "items": {
             "type": "string",
-            "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"]
+            "enum": [
+              "clicks",
+              "views",
+              "completed_views",
+              "viewed_seconds",
+              "attention_seconds",
+              "attention_score",
+              "engagements",
+              "follows",
+              "saves",
+              "profile_visits",
+              "reach"
+            ]
           },
           "minItems": 1,
           "uniqueItems": true
@@ -560,7 +591,11 @@
               "description": "Event-goal target kinds this seller can compute against. Buyers should only submit event-kind optimization goals whose target.kind is listed here — sellers MUST reject goals with unlisted target kinds. When omitted, only target-less event goals (maximize conversion count within budget) are guaranteed; sellers MAY accept specific target kinds but buyers should not rely on it. Named to parallel `metric_optimization.supported_targets` at the product level — same concept (which target kinds are supported), one at seller-capability granularity and one at product granularity.",
               "items": {
                 "type": "string",
-                "enum": ["cost_per", "per_ad_spend", "maximize_value"]
+                "enum": [
+                  "cost_per",
+                  "per_ad_spend",
+                  "maximize_value"
+                ]
               },
               "minItems": 1,
               "uniqueItems": true
@@ -636,7 +671,9 @@
             "supported_per_units": {
               "type": "array",
               "description": "Entity granularities the seller can enforce caps against. Values from the reach-unit enum. Omit to indicate all reach-unit values are supported.",
-              "items": { "$ref": "/schemas/enums/reach-unit.json" },
+              "items": {
+                "$ref": "/schemas/enums/reach-unit.json"
+              },
               "minItems": 1,
               "uniqueItems": true
             },
@@ -744,7 +781,9 @@
           },
           "minItems": 1,
           "uniqueItems": true,
-          "default": ["brief"]
+          "default": [
+            "brief"
+          ]
         },
         "features": {
           "type": "object",
@@ -1038,7 +1077,9 @@
                 "description": "Format declaration this agent can produce. Same shape as a product's inline `format_options[i]`: `format_kind` + `params` + `slots`."
               }
             },
-            "required": ["format"],
+            "required": [
+              "format"
+            ],
             "additionalProperties": true
           }
         },
@@ -1161,8 +1202,14 @@
               "must_equal_when": {
                 "value": true,
                 "any_of": [
-                  { "field": "media_buy.reporting_delivery_methods", "contains_item": "webhook" },
-                  { "field": "media_buy.content_standards.supports_webhook_delivery", "equals": true }
+                  {
+                    "field": "media_buy.reporting_delivery_methods",
+                    "contains_item": "webhook"
+                  },
+                  {
+                    "field": "media_buy.content_standards.supports_webhook_delivery",
+                    "equals": true
+                  }
                 ]
               }
             },
@@ -1212,12 +1259,30 @@
             "trust_root": true,
             "required_when": {
               "any_of": [
-                { "field": "request_signing.supported_for", "non_empty": true },
-                { "field": "request_signing.required_for", "non_empty": true },
-                { "field": "request_signing.protocol_methods_supported_for", "non_empty": true },
-                { "field": "request_signing.protocol_methods_required_for", "non_empty": true },
-                { "field": "webhook_signing.supported", "equals": true },
-                { "field": "identity.key_origins", "any_subfield_present": true }
+                {
+                  "field": "request_signing.supported_for",
+                  "non_empty": true
+                },
+                {
+                  "field": "request_signing.required_for",
+                  "non_empty": true
+                },
+                {
+                  "field": "request_signing.protocol_methods_supported_for",
+                  "non_empty": true
+                },
+                {
+                  "field": "request_signing.protocol_methods_required_for",
+                  "non_empty": true
+                },
+                {
+                  "field": "webhook_signing.supported",
+                  "equals": true
+                },
+                {
+                  "field": "identity.key_origins",
+                  "any_subfield_present": true
+                }
               ]
             },
             "schema_required_when": {
@@ -1324,7 +1389,14 @@
                     "accrediting_body": {
                       "type": "string",
                       "description": "Accrediting organization — open string (the global landscape includes MRC, ARF, ABC, BARB, JICWEBS, AGOF, JIC bodies in many markets). Use the canonical short name where one exists.",
-                      "examples": ["MRC", "ARF", "ABC", "BARB", "JICWEBS", "AGOF"]
+                      "examples": [
+                        "MRC",
+                        "ARF",
+                        "ABC",
+                        "BARB",
+                        "JICWEBS",
+                        "AGOF"
+                      ]
                     },
                     "certification_id": {
                       "type": "string",
@@ -1341,7 +1413,9 @@
                       "description": "Optional URL pointing at the accrediting body's public listing for this certification (the buyer's path to verify the claim independently)."
                     }
                   },
-                  "required": ["accrediting_body"],
+                  "required": [
+                    "accrediting_body"
+                  ],
                   "additionalProperties": false
                 },
                 "uniqueItems": true
@@ -1349,7 +1423,15 @@
               "unit": {
                 "type": "string",
                 "description": "Unit of the metric value when reported via `vendor_metric_values.value` (e.g., `score`, `seconds`, `persons`, `gCO2e`, `lift_percent`, `USD`). Buyers SHOULD render the unit alongside the value rather than computing units locally; sellers populating `vendor_metric_values.unit` MUST match this declaration when present.",
-                "examples": ["score", "seconds", "persons", "gCO2e", "lift_percent", "index", "USD"]
+                "examples": [
+                  "score",
+                  "seconds",
+                  "persons",
+                  "gCO2e",
+                  "lift_percent",
+                  "index",
+                  "USD"
+                ]
               },
               "description": {
                 "type": "string",
@@ -1363,20 +1445,28 @@
               "methodology_version": {
                 "type": "string",
                 "description": "Optional version identifier (semver, ISO date, or vendor-defined version string) for the methodology this metric currently implements. When present, buyer agents pin the contracted version on `committed_metrics` so silent vendor methodology changes are detectable; absence means the vendor does not version their methodology and buyers MUST treat any change as untracked.",
-                "examples": ["v2.1", "2026-Q1", "1.0"]
+                "examples": [
+                  "v2.1",
+                  "2026-Q1",
+                  "1.0"
+                ]
               },
               "ext": {
                 "$ref": "/schemas/core/ext.json"
               }
             },
-            "required": ["metric_id"],
+            "required": [
+              "metric_id"
+            ],
             "additionalProperties": false
           },
           "minItems": 1,
           "uniqueItems": true
         }
       },
-      "required": ["metrics"]
+      "required": [
+        "metrics"
+      ]
     },
     "compliance_testing": {
       "type": "object",

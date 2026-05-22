@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/catalog-event.json",
   "title": "Catalog Change Event",
-  "description": "A single event emitted by an AdCP agent's catalog change feed (GET /catalog/events). Events are append-only, UUID-v7-ordered, and denormalized \u2014 the payload carries the post-change state of the entity so consumers can update local state without a follow-up get_products / get_signals call. The discriminator is `event_type`; each branch defines the payload shape. See specs/catalog-change-feed.md for the full sync semantics and security posture.",
+  "description": "A single event emitted by an AdCP agent's catalog change feed (GET /catalog/events). Events are append-only, UUID-v7-ordered, and denormalized — the payload carries the post-change state of the entity so consumers can update local state without a follow-up get_products / get_signals call. The discriminator is `event_type`; each branch defines the payload shape. See specs/catalog-change-feed.md for the full sync semantics and security posture.",
   "type": "object",
   "discriminator": {
     "propertyName": "event_type"
@@ -19,7 +19,7 @@
     "event_id": {
       "type": "string",
       "format": "uuid",
-      "description": "UUID **v7** identifier \u2014 monotonically ordered without server-clock skew. Consumers use this as the cursor on subsequent /catalog/events polls. The `format: uuid` schema constraint accepts any UUID version; v7 is a spec-level MUST that schema validators will not catch alone \u2014 sellers MUST emit v7 specifically, callers SHOULD verify the version nibble when ordering matters."
+      "description": "UUID **v7** identifier — monotonically ordered without server-clock skew. Consumers use this as the cursor on subsequent /catalog/events polls. The `format: uuid` schema constraint accepts any UUID version; v7 is a spec-level MUST that schema validators will not catch alone — sellers MUST emit v7 specifically, callers SHOULD verify the version nibble when ordering matters."
     },
     "event_type": {
       "type": "string",
@@ -52,7 +52,7 @@
     "created_at": {
       "type": "string",
       "format": "date-time",
-      "description": "ISO 8601 timestamp when the agent emitted the event. Advisory \u2014 consumers MUST order by event_id (UUID v7), not by created_at, to avoid clock-skew artifacts."
+      "description": "ISO 8601 timestamp when the agent emitted the event. Advisory — consumers MUST order by event_id (UUID v7), not by created_at, to avoid clock-skew artifacts."
     },
     "payload": {
       "type": "object",
@@ -61,7 +61,7 @@
   },
   "oneOf": [
     {
-      "description": "product.created \u2014 a new product was added to the agent's catalog.",
+      "description": "product.created — a new product was added to the agent's catalog.",
       "properties": {
         "event_type": {
           "const": "product.created"
@@ -86,7 +86,7 @@
             },
             "applies_to": {
               "$ref": "#/$defs/appliesTo",
-              "description": "REQUIRED. Sellers MUST declare the cache layer explicitly on every *.created event. When introducing an entity that exists only in an account overlay (e.g., a custom product for a single account), the seller MUST emit { scope: 'account', account_ids: [...] } to prevent the entity from leaking into every consumer's public-layer cache. For public-layer additions, declare { scope: 'public' } explicitly rather than relying on a default \u2014 schema-required declaration prevents the quiet-failure path where a forgotten applies_to leaks an account-only entity to all consumers."
+              "description": "REQUIRED. Sellers MUST declare the cache layer explicitly on every *.created event. When introducing an entity that exists only in an account overlay (e.g., a custom product for a single account), the seller MUST emit { scope: 'account', account_ids: [...] } to prevent the entity from leaking into every consumer's public-layer cache. For public-layer additions, declare { scope: 'public' } explicitly rather than relying on a default — schema-required declaration prevents the quiet-failure path where a forgotten applies_to leaks an account-only entity to all consumers."
             }
           },
           "additionalProperties": true
@@ -97,7 +97,7 @@
       ]
     },
     {
-      "description": "product.updated \u2014 product metadata changed (name, description, formats, properties, targeting capabilities, measurement terms). Use changed_fields for fine-grained re-render, but be prepared to handle a full replacement.",
+      "description": "product.updated — product metadata changed (name, description, formats, properties, targeting capabilities, measurement terms). Use changed_fields for fine-grained re-render, but be prepared to handle a full replacement.",
       "properties": {
         "event_type": {
           "const": "product.updated"
@@ -138,7 +138,7 @@
       ]
     },
     {
-      "description": "product.priced \u2014 pricing options changed (new option, removed option, price/floor change). Existing media buys unaffected; composition layer must re-price.",
+      "description": "product.priced — pricing options changed (new option, removed option, price/floor change). Existing media buys unaffected; composition layer must re-price.",
       "properties": {
         "event_type": {
           "const": "product.priced"
@@ -163,7 +163,7 @@
               "items": {
                 "$ref": "/schemas/core/pricing-option.json"
               },
-              "description": "Full post-change pricing_options array. NOT a delta \u2014 consumers replace the prior options with this list."
+              "description": "Full post-change pricing_options array. NOT a delta — consumers replace the prior options with this list."
             },
             "previous_pricing_option_ids": {
               "type": "array",
@@ -175,12 +175,12 @@
             "effective_at": {
               "type": "string",
               "format": "date-time",
-              "description": "When the price change takes effect. A value in the future is a pre-announcement: consumers MAY warm caches but MUST NOT bind decisions until the effective time has passed. See specs/catalog-change-feed.md \u00a7`effective_at` and pre-announce."
+              "description": "When the price change takes effect. A value in the future is a pre-announcement: consumers MAY warm caches but MUST NOT bind decisions until the effective time has passed. See specs/catalog-change-feed.md §`effective_at` and pre-announce."
             },
             "retracts_event_id": {
               "type": "string",
               "format": "uuid",
-              "description": "Optional. When this event retracts a prior pre-announced *.priced (per the \u00a7`effective_at` and pre-announce rules), set this to the event_id of the announcement being retracted. Lets consumers detect retraction deterministically by event_id lookup rather than maintaining per-entity 'latest-event' state. When present, the retraction MUST carry effective_at <= the retracted event's effective_at."
+              "description": "Optional. When this event retracts a prior pre-announced *.priced (per the §`effective_at` and pre-announce rules), set this to the event_id of the announcement being retracted. Lets consumers detect retraction deterministically by event_id lookup rather than maintaining per-entity 'latest-event' state. When present, the retraction MUST carry effective_at <= the retracted event's effective_at."
             },
             "applies_to": {
               "$ref": "#/$defs/appliesTo"
@@ -194,7 +194,7 @@
       ]
     },
     {
-      "description": "product.removed \u2014 product no longer available. In-flight buys honor existing cancellation policy regardless of removal_reason; storefront catalog UX differs by reason.",
+      "description": "product.removed — product no longer available. In-flight buys honor existing cancellation policy regardless of removal_reason; storefront catalog UX differs by reason.",
       "properties": {
         "event_type": {
           "const": "product.removed"
@@ -226,7 +226,7 @@
       ]
     },
     {
-      "description": "signal.created \u2014 a new signal was added to the agent's catalog.",
+      "description": "signal.created — a new signal was added to the agent's catalog.",
       "properties": {
         "event_type": {
           "const": "signal.created"
@@ -249,7 +249,7 @@
             },
             "applies_to": {
               "$ref": "#/$defs/appliesTo",
-              "description": "REQUIRED. Agents MUST declare the cache layer explicitly on every *.created event. When introducing a signal that exists only in an account overlay (e.g., a custom segment for a single account), the agent MUST emit { scope: 'account', account_ids: [...] } to prevent leak into every consumer's public-layer cache. For public-layer additions, declare { scope: 'public' } explicitly rather than relying on a default \u2014 schema-required declaration prevents the quiet-failure path."
+              "description": "REQUIRED. Agents MUST declare the cache layer explicitly on every *.created event. When introducing a signal that exists only in an account overlay (e.g., a custom segment for a single account), the agent MUST emit { scope: 'account', account_ids: [...] } to prevent leak into every consumer's public-layer cache. For public-layer additions, declare { scope: 'public' } explicitly rather than relying on a default — schema-required declaration prevents the quiet-failure path."
             }
           },
           "additionalProperties": true
@@ -260,7 +260,7 @@
       ]
     },
     {
-      "description": "signal.updated \u2014 signal metadata changed (description, coverage, deployments).",
+      "description": "signal.updated — signal metadata changed (description, coverage, deployments).",
       "properties": {
         "event_type": {
           "const": "signal.updated"
@@ -299,7 +299,7 @@
       ]
     },
     {
-      "description": "signal.priced \u2014 signal pricing options changed.",
+      "description": "signal.priced — signal pricing options changed.",
       "properties": {
         "event_type": {
           "const": "signal.priced"
@@ -356,7 +356,7 @@
       ]
     },
     {
-      "description": "signal.removed \u2014 signal no longer available.",
+      "description": "signal.removed — signal no longer available.",
       "properties": {
         "event_type": {
           "const": "signal.removed"
@@ -391,7 +391,7 @@
       ]
     },
     {
-      "description": "catalog.bulk_change \u2014 fast-forward event emitted when a single operation affects many entities. Consumers SHOULD re-bootstrap via wholesale enumeration rather than processing per-entity events.",
+      "description": "catalog.bulk_change — fast-forward event emitted when a single operation affects many entities. Consumers SHOULD re-bootstrap via wholesale enumeration rather than processing per-entity events.",
       "properties": {
         "event_type": {
           "const": "catalog.bulk_change"
@@ -433,7 +433,7 @@
               "enum": [
                 "wholesale_resync"
               ],
-              "description": "Advisory recommendation. Consumers MUST stagger their resyncs per the jittered coalescing rule \u2014 the recommendation is not a synchronized trigger. Modeled as a single-value enum (not a boolean) so future minor versions can extend the recommendation vocabulary (e.g., cursor_advance, subscribe_to_subscope) without a breaking shape change. Consumers MUST be prepared to ignore unknown recommendation values."
+              "description": "Advisory recommendation. Consumers MUST stagger their resyncs per the jittered coalescing rule — the recommendation is not a synchronized trigger. Modeled as a single-value enum (not a boolean) so future minor versions can extend the recommendation vocabulary (e.g., cursor_advance, subscribe_to_subscope) without a breaking shape change. Consumers MUST be prepared to ignore unknown recommendation values."
             },
             "applies_to": {
               "$ref": "#/$defs/appliesTo"
@@ -451,13 +451,13 @@
     "appliesTo": {
       "type": "object",
       "title": "Cache layer scope",
-      "description": "Declares which cache layer this event invalidates. See specs/catalog-change-feed.md \u00a7Cache layering and event scoping.",
+      "description": "Declares which cache layer this event invalidates. See specs/catalog-change-feed.md §Cache layering and event scoping.",
       "discriminator": {
         "propertyName": "scope"
       },
       "oneOf": [
         {
-          "description": "Public layer \u2014 invalidate the public-layer cache for the entity; all account overlays referencing that public version are also stale.",
+          "description": "Public layer — invalidate the public-layer cache for the entity; all account overlays referencing that public version are also stale.",
           "properties": {
             "scope": {
               "const": "public"
@@ -469,7 +469,7 @@
           "additionalProperties": false
         },
         {
-          "description": "Account overlay \u2014 invalidate the named account overlays only; public layer unaffected. The seller MAY omit account_ids when the affected set is competitively sensitive; the per-subscriber scope filter (see API Endpoints \u00a7Per-caller scope filtering) ensures each subscriber sees only events for accounts they're authorized for.",
+          "description": "Account overlay — invalidate the named account overlays only; public layer unaffected. The seller MAY omit account_ids when the affected set is competitively sensitive; the per-subscriber scope filter (see API Endpoints §Per-caller scope filtering) ensures each subscriber sees only events for accounts they're authorized for.",
           "properties": {
             "scope": {
               "const": "account"

@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "oneOf": [
@@ -245,6 +248,7 @@
     {
       "description": "Credit account — current, with invoice history",
       "data": {
+        "status": "completed",
         "account": {
           "account_id": "acc_acme_001"
         },
@@ -283,6 +287,7 @@
     {
       "description": "Prepay account with low balance",
       "data": {
+        "status": "completed",
         "account": {
           "brand": {
             "domain": "acme-corp.com"
@@ -313,6 +318,7 @@
     {
       "description": "Agent-billed account — not supported",
       "data": {
+        "status": "completed",
         "errors": [
           {
             "code": "UNSUPPORTED_FEATURE",

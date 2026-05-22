@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "properties": {
@@ -23,7 +26,10 @@
       "patternProperties": {
         "^https?://[^@]+@sha256:[a-f0-9]{64}$": {
           "type": "object",
-          "required": ["extends", "fields"],
+          "required": [
+            "extends",
+            "fields"
+          ],
           "properties": {
             "extends": {
               "type": "string",
@@ -215,7 +221,11 @@
       "properties": {
         "semantics": {
           "type": "string",
-          "enum": ["only", "any", "approximate"],
+          "enum": [
+            "only",
+            "any",
+            "approximate"
+          ],
           "description": "How `excluded_by[*].count` values are computed across multiple filters. `only`: counts products that would have been included if not for THIS filter alone (deterministic; the right value for 'which filter killed my result set' triage — recommended when feasible). `any`: counts products excluded by ANY filter (so multiple filters' counts may overlap and sum to more than `total_candidates`). `approximate`: sellers SHOULD use this when their pipeline can't cleanly attribute exclusions to a single filter. Buyers SHOULD inspect `semantics` before doing arithmetic on counts."
         },
         "total_candidates": {
@@ -239,8 +249,12 @@
                 "description": "Optional list of the specific filter values that contributed to exclusions, when meaningful. For `required_metrics`: the metric names that excluded products (strings). For `required_vendor_metrics`: the vendor/metric pin entries (objects). Item shape is filter-specific; the schema admits string OR object items. Buyers without filter-specific knowledge SHOULD treat as opaque.",
                 "items": {
                   "oneOf": [
-                    { "type": "string" },
-                    { "type": "object" }
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
                   ]
                 }
               },
@@ -249,7 +263,9 @@
                 "description": "Optional human-readable note about why this filter narrowed the set (e.g., 'no products in this brief support DV viewability at the requested threshold')."
               }
             },
-            "required": ["count"],
+            "required": [
+              "count"
+            ],
             "additionalProperties": false
           }
         }
@@ -260,9 +276,18 @@
           "semantics": "only",
           "total_candidates": 47,
           "excluded_by": {
-            "required_metrics": { "count": 31, "values": ["completed_views"] },
-            "required_geo_targeting": { "count": 9 },
-            "budget_range": { "count": 7 }
+            "required_metrics": {
+              "count": 31,
+              "values": [
+                "completed_views"
+              ]
+            },
+            "required_geo_targeting": {
+              "count": 9
+            },
+            "budget_range": {
+              "count": 7
+            }
           }
         }
       ]
@@ -304,18 +329,32 @@
   },
   "if": {
     "properties": {
-      "unchanged": { "const": true }
+      "unchanged": {
+        "const": true
+      }
     },
-    "required": ["unchanged"]
+    "required": [
+      "unchanged"
+    ]
   },
   "then": {
     "description": "Catalog-unchanged response: products MUST be omitted; catalog_version and cache_scope MUST be present (echoed from the cached version).",
-    "required": ["catalog_version", "cache_scope"],
-    "not": { "required": ["products"] }
+    "required": [
+      "catalog_version",
+      "cache_scope"
+    ],
+    "not": {
+      "required": [
+        "products"
+      ]
+    }
   },
   "else": {
     "description": "Standard response: products[] MUST be present and cache_scope MUST declare the response's cache layer.",
-    "required": ["products", "cache_scope"]
+    "required": [
+      "products",
+      "cache_scope"
+    ]
   },
   "additionalProperties": true
 }

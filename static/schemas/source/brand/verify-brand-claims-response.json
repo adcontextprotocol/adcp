@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "oneOf": [
@@ -29,11 +32,17 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["results"],
+      "required": [
+        "results"
+      ],
       "additionalProperties": true,
       "not": {
         "anyOf": [
-          { "required": ["errors"] }
+          {
+            "required": [
+              "errors"
+            ]
+          }
         ]
       }
     },
@@ -56,11 +65,17 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": true,
       "not": {
         "anyOf": [
-          { "required": ["results"] }
+          {
+            "required": [
+              "results"
+            ]
+          }
         ]
       }
     }
@@ -77,7 +92,12 @@
           "properties": {
             "claim_type": {
               "type": "string",
-              "enum": ["subsidiary", "parent", "property", "trademark"],
+              "enum": [
+                "subsidiary",
+                "parent",
+                "property",
+                "trademark"
+              ],
               "description": "Echoes the request item's claim_type for caller-side routing."
             },
             "status": {
@@ -95,11 +115,18 @@
               "description": "Public — free-text context the brand chooses to surface."
             }
           },
-          "required": ["claim_type", "status"],
+          "required": [
+            "claim_type",
+            "status"
+          ],
           "additionalProperties": true,
           "not": {
             "anyOf": [
-              { "required": ["error"] }
+              {
+                "required": [
+                  "error"
+                ]
+              }
             ]
           }
         },
@@ -112,12 +139,22 @@
               "$ref": "/schemas/core/error.json"
             }
           },
-          "required": ["error"],
+          "required": [
+            "error"
+          ],
           "additionalProperties": true,
           "not": {
             "anyOf": [
-              { "required": ["status"] },
-              { "required": ["claim_type"] }
+              {
+                "required": [
+                  "status"
+                ]
+              },
+              {
+                "required": [
+                  "claim_type"
+                ]
+              }
             ]
           }
         }
