@@ -33,8 +33,15 @@ narrative: |
      sellers that cannot MUST reject with MULTI_FINALIZE_UNSUPPORTED (preferred, distinguishes
      capability gap from malformed request) or INVALID_REQUEST (acceptable fallback for
      pre-3.1 error catalogs). This case uses a branch set: the storyboard accepts either
-     outcome from a conformant seller. If the brief returns only one proposal, the multi-
-     finalize phases are skipped gracefully.
+     outcome from a conformant seller. Because both branches are optional and the runner
+     executes both, the branch that does not match the seller's behavior will fail its
+     validation step (tolerated as optional) while the matching branch contributes; the
+     gate asserts at least one contributed.
+
+     A second brief is attempted in the setup_second_proposal phase to capture a second
+     proposal_id. If the seller returns fewer than two proposals, all multi-finalize phases
+     skip gracefully via skip_if guards and the storyboard still passes on the two mandatory
+     cases.
 
 agent:
   interaction_model: media_buy_seller
@@ -58,7 +65,7 @@ prerequisites:
 
 phases:
   - id: setup
-    title: "Account setup and proposal discovery"
+    title: "Account setup and first proposal discovery"
     steps:
       - id: sync_accounts
         title: "Establish account"
@@ -85,7 +92,7 @@ phases:
             description: "Account has a platform-assigned ID"
 
       - id: get_products_brief
-        title: "Request proposals for use in finalize error probes"
+        title: "Request proposals — captures proposal_id_1 for mandatory error probes"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
@@ -93,9 +100,8 @@ phases:
         comply_scenario: full_sales_flow
         stateful: false
         expected: |
-          Return at least one proposal with a proposal_id. A second proposal
-          (proposals[1]) is captured for the multi-finalize branch set; if the
-          seller returns only one proposal, all multi-finalize phases skip gracefully.
+          Return at least one proposal with a proposal_id. proposal_id_1 is captured
+          here for the mandatory mixed-finalize and non-proposal-finalize error probes.
         sample_request:
           buying_mode: "brief"
           brief: "Premium video and display across outdoor lifestyle and sports. Q2 flight, $50K budget. Adults 25-54, US and Canada."
@@ -106,14 +112,50 @@ phases:
         context_outputs:
           - path: "proposals[0].proposal_id"
             key: "proposal_id_1"
-          - path: "proposals[1].proposal_id"
-            key: "proposal_id_2"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
           - check: field_present
             path: "proposals[0].proposal_id"
             description: "At least one proposal returned with an ID"
+
+  - id: setup_second_proposal
+    title: "Attempt second proposal capture for multi-finalize coverage"
+    optional: true
+    narrative: |
+      Sends a second brief to capture a second proposal_id for the multi-finalize branch
+      set. This phase is optional: if the seller returns fewer than two proposals, this
+      phase fails gracefully and all multi-finalize phases skip via skip_if guards. The
+      two mandatory error-probe phases (mixed_finalize_rejected, non_proposal_finalize_rejected)
+      are unaffected.
+    steps:
+      - id: get_products_brief_second
+        title: "Second brief to capture proposal_id_2"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return at least two proposals. proposals[1].proposal_id is captured as
+          proposal_id_2. If the seller returns only one proposal, this step fails
+          (tolerated — phase is optional), proposal_id_2 stays unset, and the
+          multi-finalize phases skip gracefully.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium video and display across outdoor lifestyle and sports. Q2 flight, $50K budget. Adults 25-54, US and Canada."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        context_outputs:
+          - path: "proposals[1].proposal_id"
+            key: "proposal_id_2"
+        validations:
+          - check: field_present
+            path: "proposals[1].proposal_id"
+            description: "Second proposal present for multi-finalize test"
 
   - id: mixed_finalize_rejected
     title: "Mixed finalize rejected"
@@ -138,7 +180,9 @@ phases:
         expected: |
           Reject with:
           - code: INVALID_REQUEST
-          - error.field: pointing at the non-finalize refine entry (e.g. "refine[1]")
+          - error.field: pointing at the offending refine entry (e.g. "refine[0]",
+            "refine[1]", or "refine" — seller-chosen, any index that identifies
+            the violation is conformant)
           No proposal state is changed; the finalize entry does not commit.
         sample_request:
           buying_mode: "refine"
@@ -169,6 +213,9 @@ phases:
       additionalProperties: false. This is a structurally invalid payload — the runner
       skips sample_request schema validation (negative_path: schema_invalid) and verifies
       the seller returns INVALID_REQUEST rather than a 500 or silent acceptance.
+
+      The product_id value is a synthetic test sentinel; since the request fails at schema
+      validation before any product lookup, no fixture seeding is required.
 
     steps:
       - id: get_products_product_finalize
@@ -259,6 +306,12 @@ phases:
       Per the spec, such sellers MUST reject with MULTI_FINALIZE_UNSUPPORTED (preferred —
       distinguishes seller-side capability gap from a malformed request) or INVALID_REQUEST
       (acceptable fallback for sellers on a pre-3.1 error catalog). No proposal is committed.
+
+      Note: the runner executes both branch-set peers regardless of which succeeds. For
+      a seller that handled atomically in the sibling branch, this step will attempt to
+      finalize already-committed proposals and may receive a different error (e.g.
+      INVALID_STATE). That step failure is tolerated (optional branch); the atomic branch's
+      contribution is sufficient for the gate assertion.
 
     steps:
       - id: get_products_multi_finalize_unsupported
