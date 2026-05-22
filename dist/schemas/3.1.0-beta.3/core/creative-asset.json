@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.3/core/creative-asset.json",
+  "title": "Creative Asset",
+  "description": "Creative asset for upload to library — supports static assets, generative formats, and third-party snippets. Identifies which format this creative conforms to via EITHER a v1 `format_id` (structured `{agent_url, id}`) OR v2 `format_kind` (canonical format name). Mutually exclusive — see the `oneOf` at the schema root.",
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "description": "Unique identifier for the creative. Stable across v1 and v2 paths — a creative registered against v1 `format_id` retains the same `creative_id` when later viewed via v2 flatten.",
+      "x-entity": "creative"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable creative name"
+    },
+    "format_id": {
+      "$ref": "/schemas/3.1.0-beta.3/core/format-id.json",
+      "description": "v1 path. Always a structured object {agent_url, id} — never a plain string. Format identifier specifying which format this creative conforms to. Can be: (1) concrete format_id referencing a format with fixed dimensions, (2) template format_id referencing a template format, or (3) parameterized format_id with dimensions/duration parameters for template formats. Mutually exclusive with `format_kind`."
+    },
+    "format_kind": {
+      "$ref": "/schemas/3.1.0-beta.3/core/canonical-format-kind.json",
+      "description": "v2 path. The canonical format name this creative targets (e.g., `image`, `video_hosted`). Mutually exclusive with `format_id`."
+    },
+    "capability_id": {
+      "type": "string",
+      "description": "v2 path, optional. Stable identifier matching one of the seller's product `format_options[i].capability_id` values. REQUIRED only when the target product has multiple `format_options` entries sharing the same `format_kind`."
+    },
+    "assets": {
+      "type": "object",
+      "description": "Assets required by the format, keyed by asset_id. Each slot value is either a single asset object or an array of asset objects (for slots with `min`/`max > 1` like carousel `cards` or responsive_creative `headlines`). Each asset value carries an `asset_type` discriminator that selects the matching asset schema.",
+      "patternProperties": {
+        "^[a-z0-9_]+$": {
+          "oneOf": [
+            { "$ref": "/schemas/3.1.0-beta.3/core/assets/asset-union.json" },
+            {
+              "type": "array",
+              "items": { "$ref": "/schemas/3.1.0-beta.3/core/assets/asset-union.json" },
+              "minItems": 1
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "inputs": {
+      "type": "array",
+      "description": "Preview contexts for generative formats - defines what scenarios to generate previews for",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this preview variant"
+          },
+          "macros": {
+            "type": "object",
+            "description": "Macro values to apply for this preview",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "context_description": {
+            "type": "string",
+            "description": "Natural language description of the context for AI-generated content"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "tags": {
+      "type": "array",
+      "description": "User-defined tags for organization and searchability",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "$ref": "/schemas/3.1.0-beta.3/enums/creative-status.json",
+      "description": "For generative creatives: set to 'approved' to finalize, 'rejected' to request regeneration with updated assets/message. Omit for non-generative creatives (system will set based on processing state)."
+    },
+    "weight": {
+      "type": "number",
+      "description": "Optional delivery weight for creative rotation when uploading via create_media_buy or update_media_buy (0-100). If omitted, platform determines rotation. Only used during upload to media buy - not stored in creative library.",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "placement_ids": {
+      "type": "array",
+      "description": "Optional array of placement IDs where this creative should run when uploading via create_media_buy or update_media_buy. References placement_id values from the product's placements array. If omitted, creative runs on all placements. Only used during upload to media buy - not stored in creative library.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "industry_identifiers": {
+      "type": "array",
+      "description": "Industry-standard identifiers for this creative (e.g., Ad-ID, ISCI, Clearcast clock number). In broadcast buying, these identifiers tie the creative to rotation instructions and traffic systems. A creative may have multiple identifiers when different systems reference the same asset.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.3/core/industry-identifier.json"
+      },
+      "uniqueItems": true
+    },
+    "provenance": {
+      "$ref": "/schemas/3.1.0-beta.3/core/provenance.json",
+      "description": "Provenance metadata for this creative. Serves as the default provenance for all manifests and assets within this creative. A manifest or asset with its own provenance replaces this object entirely (no field-level merging)."
+    }
+  },
+  "required": [
+    "creative_id",
+    "name",
+    "assets"
+  ],
+  "oneOf": [
+    {
+      "title": "v1 creative (named-format reference)",
+      "description": "Creative references a named format via the structured `format_id` object. The v1 path; remains supported through 4.x.",
+      "required": ["format_id"],
+      "not": { "required": ["format_kind"] }
+    },
+    {
+      "title": "v2 creative (canonical format kind)",
+      "description": "Creative declares which canonical format it targets via `format_kind` (e.g., `image`). The v2 path introduced by RFC #3305.",
+      "required": ["format_kind"],
+      "not": { "required": ["format_id"] }
+    }
+  ],
+  "additionalProperties": true
+}
