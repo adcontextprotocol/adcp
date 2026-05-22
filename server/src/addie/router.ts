@@ -933,7 +933,7 @@ export class AddieRouter {
 
       // Admin outreach logging - "I emailed X", "spoke with X", "had a call with X", etc.
       const outreachLogPattern =
-        /\b(?:emailed|contacted|called|dm[\u2018\u2019']?d|dmed|messaged)\s+\w|(?:spoke|talked|caught\s+up|met)\s+with\s+\w|had\s+a?\s*(?:call|meeting|conversation|chat)\s+with\s+\w|(?:reached\s+out|followed\s+up)\s+(?:with|to)\s+\w/i;
+        /\b(?:emailed|contacted|called|dm[\u2018\u2019']?d|dmed|messaged)\s+\w|(?:spoke|talked|caught\s+up|met)\s+with\s+\w|had\s+(?:a\s+)?(?:call|meeting|conversation|chat)\s+with\s+\w|(?:reached\s+out|followed\s+up)\s+(?:with|to)\s+\w/i;
       if (outreachLogPattern.test(text)) {
         return {
           action: "respond",

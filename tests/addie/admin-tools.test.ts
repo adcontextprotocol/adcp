@@ -259,17 +259,6 @@ vi.mock("../../server/src/addie/services/relationship-context.js", () => ({
   loadRelationshipContext: vi.fn(),
 }));
 
-// ── relationship db ───────────────────────────────────────────────────────────
-vi.mock("../../server/src/db/relationship-db.js", () => ({
-  resolvePersonId: vi.fn(),
-  getRelationship: vi.fn(),
-  recordAddieMessage: vi.fn(),
-  updateStage: vi.fn(),
-  rowToRelationship: vi.fn(),
-  getRelationshipBySlackId: vi.fn(),
-  getRelationshipByWorkosId: vi.fn(),
-}));
-
 // ── outreach simulator ────────────────────────────────────────────────────────
 vi.mock("../../server/src/addie/services/outreach-simulator.js", () => ({
   assessHistoricalBehavior: vi.fn(),
