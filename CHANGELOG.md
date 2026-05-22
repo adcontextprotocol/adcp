@@ -185,7 +185,7 @@
 
 - 8b7e646: feat(scripts): exercise the AAO directory inverse-lookup in the agent-resolution e2e script.
 
-  `scripts/e2e-resolve-training-agent.ts` now optionally appends a directory inverse-lookup after the 8-step forward chain. Given the resolved agent URL, the script calls `fetchAgentAuthorizationsFromDirectory` (shipped in `@adcp/sdk@7.10.0`) against the AAO's `GET /v1/agents/{agent_url}/publishers` endpoint and prints the publishers whose `adagents.json` authorize the agent.
+  `scripts/e2e-resolve-training-agent.ts` now optionally appends a directory inverse-lookup after the 8-step forward chain. Given the resolved agent URL, the script calls `fetchAgentAuthorizationsFromDirectory` (shipped in `@adcp/sdk@7.10.0`) against the AAO's `GET /api/v1/agents/{agent_url}/publishers` endpoint and prints the publishers whose `adagents.json` authorize the agent.
 
   - HTTP mode: defaults the directory URL to `<base-url>/api` (where the registry router is mounted in `server/src/http.ts`). Pass `--directory <url>` to point at a different directory, or `--directory none` to skip.
   - In-process mode: skipped (the inline Express app doesn't mount the AAO routes, which require database access).

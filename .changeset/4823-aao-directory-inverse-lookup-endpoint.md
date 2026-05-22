@@ -1,13 +1,13 @@
 ---
 ---
 
-feat(aao): define directory inverse-lookup endpoint — `GET /v1/agents/{agent_url}/publishers` returns the set of publishers whose adagents.json authorizes a given agent_url, with provenance, per-publisher property counts, and lifecycle status.
+feat(aao): define directory inverse-lookup endpoint — `GET /api/v1/agents/{agent_url}/publishers` returns the set of publishers whose adagents.json authorizes a given agent_url, with provenance, per-publisher property counts, and lifecycle status.
 
 **Why.** The push primitive (`verify_agent_authorization`) and the pull-with-list primitive (`fetch_agent_authorizations`) both presuppose the operator already knows the publisher set. At managed-network scale (Raptive: ~6,800 domains delegated to cafemedia.com) that presupposition fails. The AAO directory at `agenticadvertising.org` already indexes publisher adagents.json files — this RFC exposes the inverse map as a public HTTP endpoint so sales-agent operators can answer "what publishers have authorized my agent?" at sync time, without crawling the open web themselves.
 
 **What this changeset defines** (spec-only — server implementation tracked separately, see Follow-ups).
 
-1. **Endpoint shape** (`docs/aao/directory-api.mdx`). `GET /v1/agents/{agent_url}/publishers` with `since`, `cursor`, `status`, `limit` query parameters. Canonicalizes the `agent_url` lookup key the same way `verify_agent_authorization` does. Cursor-based pagination; opaque cursors.
+1. **Endpoint shape** (`docs/aao/directory-api.mdx`). `GET /api/v1/agents/{agent_url}/publishers` with `since`, `cursor`, `status`, `limit` query parameters. Canonicalizes the `agent_url` lookup key the same way `verify_agent_authorization` does. Cursor-based pagination; opaque cursors.
 
 2. **Response envelope schema** (`static/schemas/source/aao/agent-publishers.json`). Returns `{ agent_url, directory_indexed_at, publishers[], next_cursor }`. Each `PublisherEntry` carries `publisher_domain`, `discovery_method`, optional `manager_domain`, `properties_authorized`, `properties_total`, optional `signing_keys_pinned`, `status`, `last_verified_at`.
 
@@ -24,6 +24,6 @@ feat(aao): define directory inverse-lookup endpoint — `GET /v1/agents/{agent_u
 **Dependency.** `properties_total` on managed-network-shape parent files (the cafemedia case) depends on the [adcp#4825](https://github.com/adcontextprotocol/adcp/issues/4825) inline resolution rule. Strict federation at managed-network scale requires N HTTP fetches per directory refresh per publisher — the same scale problem operators have, moved one layer up. With inline resolution endorsed, the directory computes per-publisher counts from the parent file's inline `properties[]` filtered by matching `publisher_domain`.
 
 **Follow-ups.**
-- Server implementation in `server/src/routes/registry-api.ts` (new endpoint), backed by `server/src/db/federated-index-db.ts` (extends existing `getDomainsForAgent` shape with `discovery_method`, `manager_domain`, count resolution, `signing_keys_pinned`). Tracked: `feat(server): implement /v1/agents/{agent_url}/publishers endpoint` — to be filed.
+- Server implementation in `server/src/routes/registry-api.ts` (new endpoint), backed by `server/src/db/federated-index-db.ts` (extends existing `getDomainsForAgent` shape with `discovery_method`, `manager_domain`, count resolution, `signing_keys_pinned`). Tracked: `feat(server): implement /api/v1/agents/{agent_url}/publishers endpoint` — to be filed.
 - SDK companion: `fetch_agent_authorizations_from_directory(agent_url, directory_url)` in adcp-client-python (adcp-client-python#746) and TS/Go/Java mirrors.
 - `?include=properties` for inline property detail — out of scope for v1; add later if operators ask.

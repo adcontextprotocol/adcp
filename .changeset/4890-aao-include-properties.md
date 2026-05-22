@@ -1,7 +1,7 @@
 ---
 ---
 
-feat(aao): re-introduce `?include=properties` on `GET /v1/agents/{agent_url}/publishers` so SDK divergence detectors can run full set-diff, not just count comparison (#4890).
+feat(aao): re-introduce `?include=properties` on `GET /api/v1/agents/{agent_url}/publishers` so SDK divergence detectors can run full set-diff, not just count comparison (#4890).
 
 **Why.** The directory's per-publisher `properties_authorized` count is a false-negative trap for divergence detection. Count-equality is not set-equality — a publisher rotating N properties leaves the count unchanged while the underlying set is entirely different. The SDK divergence detector ([adcp-client-python#752](https://github.com/adcontextprotocol/adcp-client-python/pull/752)) currently has to short-circuit to "no divergence" on count match, missing routine publisher rotations against managed-network parent files (the cafemedia ~6,800-publisher shape).
 

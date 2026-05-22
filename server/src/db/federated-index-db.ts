@@ -235,7 +235,7 @@ export class FederatedIndexDatabase {
 
   /**
    * Detailed publisher row for the AAO directory inverse-lookup endpoint
-   * (adcp#4823 / GET /v1/agents/{agent_url}/publishers). Layered on top of
+   * (adcp#4823 / GET /api/v1/agents/{agent_url}/publishers). Layered on top of
    * the existing publisher → agent authorization edge with provenance
    * (discovery_method, manager_domain), per-publisher property counts,
    * signing-key pin status, and revocation lifecycle.

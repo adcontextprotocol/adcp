@@ -1,7 +1,7 @@
 /**
  * Integration tests for `FederatedIndexDatabase.getPublishersForAgentDetail`,
  * the backing query for the AAO directory inverse-lookup endpoint
- * (`GET /v1/agents/{agent_url}/publishers`, adcp#4823).
+ * (`GET /api/v1/agents/{agent_url}/publishers`, adcp#4823).
  *
  * Each row is built end-to-end:
  *   - `agent_publisher_authorizations` row(s) for the agent → publisher edge

@@ -802,13 +802,6 @@ const AgentPublishersOpenApi = {
 registry.registerPath({
   method: "get",
   path: "/api/v1/agents/{encodedUrl}/publishers",
-  operationId: "getPublishersForAgentLegacyApiPrefix",
-  ...AgentPublishersOpenApi,
-});
-
-registry.registerPath({
-  method: "get",
-  path: "/v1/agents/{encodedUrl}/publishers",
   operationId: "getPublishersForAgent",
   ...AgentPublishersOpenApi,
 });
@@ -2963,10 +2956,6 @@ registry.registerPath({
 // ── Router factory ──────────────────────────────────────────────
 
 export function createRegistryApiRouter(config: RegistryApiConfig): Router {
-  return createRegistryApiRouters(config).router;
-}
-
-export function createRegistryApiRouters(config: RegistryApiConfig): { router: Router; v1AgentsRouter: Router } {
   const router = Router();
   const {
     brandManager,
@@ -7105,11 +7094,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   //
   // The bare /registry/lookup/agent/:agentUrl/domains above is kept as a
   // lightweight legacy surface (domain strings only). This endpoint is the
-  // spec-compliant richer shape — different path so the contract is explicit.
-  //
-  // adcp#4924: handler extracted so it can be registered at both the legacy
-  // /api/v1/agents/... path (via the /api mount in http.ts) and the
-  // spec-conformant /v1/agents/... path (via v1AgentsRouter mounted at /v1).
+  // richer public directory shape at /api/v1/agents/... after the /api mount
+  // in http.ts.
   const agentPublishersHandler: RequestHandler = async (req, res) => {
     try {
       // decodeURIComponent throws on malformed percent-escapes (`%E0%A4`);
@@ -7335,13 +7321,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   };
 
-  // Legacy path (router mounted at /api in http.ts → /api/v1/agents/...).
+  // Public directory path (router mounted at /api in http.ts → /api/v1/agents/...).
   router.get("/v1/agents/:encodedUrl/publishers", registryReadRateLimiter, agentPublishersHandler);
-
-  // Spec-conformant path: mounted at /v1 in http.ts → /v1/agents/...
-  // (adcp#4924). Keeps /api/v1/... working for backward compat.
-  const v1AgentsRouter = Router();
-  v1AgentsRouter.get("/agents/:encodedUrl/publishers", registryReadRateLimiter, agentPublishersHandler);
 
   router.post("/registry/validate/product-authorization", async (req, res) => {
     try {
@@ -8471,5 +8452,5 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  return { router, v1AgentsRouter };
+  return router;
 }

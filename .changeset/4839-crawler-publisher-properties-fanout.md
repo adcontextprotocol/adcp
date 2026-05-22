@@ -9,7 +9,7 @@ feat(crawler): fan publisher_properties[].publisher_domains[] into per-child aut
 
 1. **Migration 486** (`server/src/db/migrations/486_publisher_discovery_method_adagents_authoritative.sql`). Adds `'adagents_authoritative'` to `publishers.discovery_method` CHECK constraint. Migration 470's three values (`direct`, `authoritative_location`, `ads_txt_managerdomain`) cover paths where the publisher's own origin was fetched. The fourth value covers paths where the publisher is named only in the manager file's inline properties — the inline-resolution shape the spec endorsed in #4827.
 
-2. **DiscoveryMethod type** (`server/src/adagents-manager.ts`, `server/src/db/federated-index-db.ts`). TS union widened to four values. Endpoint at `/v1/agents/{agent_url}/publishers` (shipped in #4838) already accepted the fourth value in its OpenAPI/JSON-Schema; this PR makes it emittable.
+2. **DiscoveryMethod type** (`server/src/adagents-manager.ts`, `server/src/db/federated-index-db.ts`). TS union widened to four values. Endpoint at `/api/v1/agents/{agent_url}/publishers` (shipped in #4838) already accepted the fourth value in its OpenAPI/JSON-Schema; this PR makes it emittable.
 
 3. **`PublisherDatabase.recordChildPublisherFromManager`** (`server/src/db/publisher-db.ts`). Upserts a `publishers` row keyed on the child domain with `source_type='community'`, `discovery_method='adagents_authoritative'`, `manager_domain=<host>`, and NO `adagents_json` blob — the child's own origin was never fetched. Critically: if a stronger row already exists (the child was independently crawled and has its own blob + `direct` discovery), the upsert preserves it. Direct crawl wins over manager-file attribution.
 

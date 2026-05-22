@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/aao/agent-publishers.json",
   "title": "AAO Directory: Agent → Publishers Inverse Lookup Response",
-  "description": "Response envelope for `GET /v1/agents/{agent_url}/publishers` against an AAO-compatible directory. Returns the set of publishers whose adagents.json authorizes the given agent_url, with provenance (discovery_method, manager_domain), per-publisher property counts, and lifecycle status. The publisher's own adagents.json remains the trust root; this endpoint is discovery, not authorization. Each `publisher_domain` row tells the operator which publishers to verify directly via the SDK's per-domain primitives.",
+  "description": "Response envelope for `GET /api/v1/agents/{agent_url}/publishers` against an AAO-compatible directory. Returns the set of publishers whose adagents.json authorizes the given agent_url, with provenance (discovery_method, manager_domain), per-publisher property counts, and lifecycle status. The publisher's own adagents.json remains the trust root; this endpoint is discovery, not authorization. Each `publisher_domain` row tells the operator which publishers to verify directly via the SDK's per-domain primitives.",
   "type": "object",
   "required": [
     "agent_url",

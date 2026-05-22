@@ -17,8 +17,10 @@ This endpoint is **discovery**, not **authorization**. The publisher's own `adag
 ## Endpoint
 
 ```
-GET https://{aao_directory}/v1/agents/{agent_url}/publishers
+GET https://{aao_directory}/api/v1/agents/{agent_url}/publishers
 ```
+
+`{aao_directory}` is the directory origin, for example `https://agenticadvertising.org`; `/api/v1` is part of the endpoint path.
 
 `{agent_url}` MUST be percent-encoded. The directory canonicalizes the lookup key (lowercase host, default port stripped, trailing slash on path component normalized) using the same convention the SDK applies in `verify_agent_authorization`.
 
@@ -35,13 +37,13 @@ GET https://{aao_directory}/v1/agents/{agent_url}/publishers
 #### Worked example: filtering by multiple status values
 
 ```
-GET /v1/agents/https%3A%2F%2Fsales-agent.example.com%2F/publishers?status=authorized&status=revoked&limit=500
+GET /api/v1/agents/https%3A%2F%2Fsales-agent.example.com%2F/publishers?status=authorized&status=revoked&limit=500
 ```
 
 Equivalent in TypeScript:
 
 ```ts
-const url = new URL(`${directory}/v1/agents/${encodeURIComponent(agentUrl)}/publishers`);
+const url = new URL(`${directory}/api/v1/agents/${encodeURIComponent(agentUrl)}/publishers`);
 url.searchParams.append("status", "authorized");
 url.searchParams.append("status", "revoked");
 url.searchParams.set("limit", "500");
@@ -51,7 +53,7 @@ Equivalent in Python (`requests`):
 
 ```python
 requests.get(
-    f"{directory}/v1/agents/{quote(agent_url, safe='')}/publishers",
+    f"{directory}/api/v1/agents/{quote(agent_url, safe='')}/publishers",
     params=[("status", "authorized"), ("status", "revoked"), ("limit", "500")],
 )
 ```
@@ -76,7 +78,7 @@ Repeated-key was chosen because (a) it is what `URLSearchParams.append()` and Op
 #### Worked example: requesting `?include=properties` for full set-diff
 
 ```
-GET /v1/agents/https%3A%2F%2Fsales-agent.example.com%2F/publishers?include=properties
+GET /api/v1/agents/https%3A%2F%2Fsales-agent.example.com%2F/publishers?include=properties
 ```
 
 The default response carries `properties_authorized` as a count only. Count-equality is **not** set-equality: a publisher rotating three properties leaves the count unchanged but the set entirely different, which a count-based divergence detector cannot see. `?include=properties` adds a `property_ids: list[string]` field per `PublisherEntry` — the canonical IDs the agent's selectors resolve to under that publisher — so consumers can run full set-diff against a federated `fetch_agent_authorizations` result and detect rotation, not just delta-in-magnitude.
@@ -216,13 +218,13 @@ The AAO directory complements the existing SDK primitives:
 |---|---|---|
 | Is *this* agent listed in *this* publisher's `adagents.json`? | `verify_agent_authorization(adagents_data, agent_url)` | Push (publisher → agent) |
 | Given a list of publishers, which authorize my agent? | `fetch_agent_authorizations(agent_url, publisher_domains)` | Pull, caller-supplied list |
-| **Which publishers authorize my agent?** | **`GET /v1/agents/{agent_url}/publishers`** | **Pull, directory-supplied list** |
+| **Which publishers authorize my agent?** | **`GET /api/v1/agents/{agent_url}/publishers`** | **Pull, directory-supplied list** |
 
 The first two answer questions where the operator already knows the publisher set. The directory endpoint answers the operator's actual sync-time question: "what's my publisher set?"
 
 The recommended workflow:
 
-1. Call `GET /v1/agents/{agent_url}/publishers` to discover the publisher set.
+1. Call `GET /api/v1/agents/{agent_url}/publishers` to discover the publisher set.
 2. For each `publisher_domain` in the response, the operator MAY call `verify_agent_authorization` against the publisher's own `adagents.json` to re-confirm against the trust root. The directory's `last_verified_at` reduces but does not eliminate the need for per-domain verification on critical paths.
 3. Use the response's `properties_authorized` / `properties_total` for operator-facing scope summaries, and the `signing_keys_pinned` flag to surface which agents must publish a JWKS matching the publisher's pin.
 4. Operators running a divergence detector (catching cases where the directory and the publisher's live `adagents.json` disagree) SHOULD request `?include=properties` and compare the directory's `property_ids[]` against a federated fetch as a set, not as a count. A publisher rotating N properties produces equal counts on both sides; only set-comparison catches it.

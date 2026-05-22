@@ -1,7 +1,7 @@
 ---
 ---
 
-feat(aao): implement `GET /v1/agents/{agent_url}/publishers` directory inverse-lookup endpoint (#4836)
+feat(aao): implement `GET /api/v1/agents/{agent_url}/publishers` directory inverse-lookup endpoint (#4836)
 
 Server implementation of the spec landed in #4828. Returns the publishers whose `adagents.json` authorizes a given `agent_url`, with provenance (`discovery_method`, `manager_domain`), per-publisher property counts (`properties_authorized`, `properties_total`), signing-key pin status, and lifecycle state.
 
@@ -12,7 +12,7 @@ Server implementation of the spec landed in #4828. Returns the publishers whose 
    - `signing_keys_pinned`: walks `adagents_json->'authorized_agents'` for entries whose canonicalized `url` matches the requested agent, returns `true` iff `signing_keys[]` is a non-empty array.
    - `status`: `revoked` when the parent file lists this `publisher_domain` in `revoked_publisher_domains[]`; otherwise `authorized`.
 
-2. **New endpoint** (`server/src/routes/registry-api.ts`). `GET /v1/agents/:encodedUrl/publishers` mounted next to the existing legacy `/registry/lookup/agent/:agentUrl/domains` (which is kept; the new path is the spec-compliant richer shape). Honors:
+2. **New endpoint** (`server/src/routes/registry-api.ts`). `GET /api/v1/agents/:encodedUrl/publishers` mounted next to the existing legacy `/registry/lookup/agent/:agentUrl/domains` (which is kept; the new path is the richer public directory shape). Honors:
    - `since=<iso8601>` — incremental sync filter against `publishers.last_validated`.
    - `cursor=<opaque>` — base64url-encoded `publisher_domain` for stable ASC pagination.
    - `status=authorized,revoked` — comma-separated filter; default `authorized` only.

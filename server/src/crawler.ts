@@ -1090,7 +1090,7 @@ export class CrawlerService {
   /**
    * Fan publisher_properties[].publisher_domains[] out into per-child
    * rows so the AAO directory inverse-lookup endpoint
-   * (GET /v1/agents/{agent_url}/publishers, adcp#4823) returns one row
+   * (GET /api/v1/agents/{agent_url}/publishers, adcp#4823) returns one row
    * per represented publisher, not one row per manager file.
    *
    * For a manager file like cafemedia's 6,800-publisher network, the
