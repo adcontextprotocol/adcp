@@ -113,6 +113,7 @@ phases:
             - product_id: "$context.product_id"
               budget: 25000
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 10.0
               measurement_terms:
                 billing_measurement:
                   vendor:
@@ -170,6 +171,7 @@ phases:
             - product_id: "$context.product_id"
               budget: 25000
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 10.0
               measurement_terms:
                 billing_measurement:
                   vendor:

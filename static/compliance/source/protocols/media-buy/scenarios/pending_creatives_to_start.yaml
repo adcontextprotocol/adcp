@@ -110,6 +110,7 @@ phases:
             - product_id: "$context.product_id"
               budget: 10000
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 10.0
 
           context:
             correlation_id: "pending_creatives_to_start--create_buy_no_creatives"

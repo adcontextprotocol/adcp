@@ -191,6 +191,7 @@ phases:
             - product_id: "$context.product_id"
               budget: 50000
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 10.0
           context:
             correlation_id: "governance_denied_recovery--create_media_buy_denied"
         validations:
@@ -236,6 +237,7 @@ phases:
             - product_id: "$context.product_id"
               budget: 8000
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 10.0
         context_outputs:
           - name: media_buy_id
             path: "media_buy_id"

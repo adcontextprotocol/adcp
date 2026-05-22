@@ -166,6 +166,7 @@ phases:
           packages:
             - product_id: "$context.product_id"
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 10.0
               budget: 25000
           idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_accountability_create"
         validations:

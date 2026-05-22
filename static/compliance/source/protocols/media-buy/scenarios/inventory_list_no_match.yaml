@@ -123,6 +123,7 @@ phases:
             - product_id: "$context.product_id"
               budget: 10000
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 10.0
               targeting_overlay:
                 property_list:
                   agent_url: "https://governance.pinnacle-agency.example"

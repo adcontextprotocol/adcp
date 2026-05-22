@@ -171,6 +171,7 @@ phases:
             - product_id: "$context.product_id"
               budget: 5000
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 10.0
           context:
             correlation_id: "dependency_impairment--create_buy"
         context_outputs:
