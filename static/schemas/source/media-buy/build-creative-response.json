@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-response.json",
   "title": "Build Creative Response",
-  "description": "Response payload for build_creative. Exactly one of four shapes: (1) synchronous single-format success \u2014 creative_manifest issued in-line (target_format_id request); (2) synchronous multi-format success \u2014 creative_manifests issued in-line (target_format_ids request); (3) terminal failure \u2014 an errors array; (4) submitted task envelope \u2014 status 'submitted' with task_id when the build is queued (e.g., slow generative or multi-minute LLM pipeline). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These four shapes are mutually exclusive \u2014 a response has exactly one.",
+  "description": "Response payload for build_creative. Exactly one of four shapes: (1) synchronous single-format success — creative_manifest issued in-line (target_format_id request); (2) synchronous multi-format success — creative_manifests issued in-line (target_format_ids request); (3) terminal failure — an errors array; (4) submitted task envelope — status 'submitted' with task_id when the build is queued (e.g., slow generative or multi-minute LLM pipeline). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These four shapes are mutually exclusive — a response has exactly one.",
   "type": "object",
   "allOf": [
     {
@@ -124,7 +124,7 @@
         },
         "consumption": {
           "$ref": "/schemas/core/creative-consumption.json",
-          "description": "Structured consumption details for this build. Informational \u2014 lets the buyer verify that vendor_cost is consistent with the rate card. vendor_cost is the billing source of truth."
+          "description": "Structured consumption details for this build. Informational — lets the buyer verify that vendor_cost is consistent with the rate card. vendor_cost is the billing source of truth."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -140,7 +140,7 @@
     },
     {
       "title": "BuildCreativeMultiSuccess",
-      "description": "Multi-format success response. Returned when the request used target_format_ids. Contains one manifest per requested format. Multi-format requests are atomic \u2014 all formats must succeed or the entire request fails with an error response. Array order corresponds to the target_format_ids request order.",
+      "description": "Multi-format success response. Returned when the request used target_format_ids. Contains one manifest per requested format. Multi-format requests are atomic — all formats must succeed or the entire request fails with an error response. Array order corresponds to the target_format_ids request order.",
       "type": "object",
       "properties": {
         "creative_manifests": {
@@ -258,7 +258,7 @@
         },
         "consumption": {
           "$ref": "/schemas/core/creative-consumption.json",
-          "description": "Structured consumption details for this build. Informational \u2014 lets the buyer verify that vendor_cost is consistent with the rate card."
+          "description": "Structured consumption details for this build. Informational — lets the buyer verify that vendor_cost is consistent with the rate card."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -274,12 +274,12 @@
     },
     {
       "title": "BuildCreativeError",
-      "description": "Error response \u2014 creative generation failed. Multi-format requests (`target_format_ids[]`) are atomic per `BuildCreativeMultiSuccess` semantics: a single format failing means the entire batch returns an error response, not a partial success. Buyers diagnose per-format failures by reading the `errors[]` array's per-format attribution (see the `errors` field description).",
+      "description": "Error response — creative generation failed. Multi-format requests (`target_format_ids[]`) are atomic per `BuildCreativeMultiSuccess` semantics: a single format failing means the entire batch returns an error response, not a partial success. Buyers diagnose per-format failures by reading the `errors[]` array's per-format attribution (see the `errors` field description).",
       "type": "object",
       "properties": {
         "errors": {
           "type": "array",
-          "description": "Array of errors explaining why creative generation failed.\n\n**Per-format attribution on multi-format requests.** When the request used `target_format_ids[]` (a batch request), sellers MUST attribute each failure to the specific format(s) that caused it so buyers can correct and retry the failing subset rather than re-running the entire batch. Two attribution surfaces, populated together:\n\n1. **`error.field`** \u2014 set to `target_format_ids[N]` where `N` is the zero-based index of the failing format in the request's `target_format_ids[]` array (e.g., `target_format_ids[1]` for the second requested format). Mirrors the JSONPath-lite convention `error.field` uses elsewhere. Required when the error is format-scoped.\n2. **`error.details.format_id`** \u2014 the resolved `format_id` value (e.g., `\"meta-reels-9x16\"`). Required when the error is format-scoped. Lets buyers dispatch on the format identity without re-parsing `error.field`.\n\nErrors not attributable to a specific format (whole-batch failures: authentication, governance denial, transport-level errors) MAY omit `field` and `details.format_id`. Buyers MUST treat per-format errors as scoped to the named format only \u2014 a `correctable` error on `target_format_ids[1]` does NOT mean the buyer must reshape the entire batch; they may retry just that format with corrected input. Sellers SHOULD emit one error per failing format (rather than collapsing multiple format failures into a single error entry) so per-format recovery routing is unambiguous.",
+          "description": "Array of errors explaining why creative generation failed.\n\n**Per-format attribution on multi-format requests.** When the request used `target_format_ids[]` (a batch request), sellers MUST attribute each failure to the specific format(s) that caused it so buyers can correct and retry the failing subset rather than re-running the entire batch. Two attribution surfaces, populated together:\n\n1. **`error.field`** — set to `target_format_ids[N]` where `N` is the zero-based index of the failing format in the request's `target_format_ids[]` array (e.g., `target_format_ids[1]` for the second requested format). Mirrors the JSONPath-lite convention `error.field` uses elsewhere. Required when the error is format-scoped.\n2. **`error.details.format_id`** — the resolved `format_id` value (e.g., `\"meta-reels-9x16\"`). Required when the error is format-scoped. Lets buyers dispatch on the format identity without re-parsing `error.field`.\n\nErrors not attributable to a specific format (whole-batch failures: authentication, governance denial, transport-level errors) MAY omit `field` and `details.format_id`. Buyers MUST treat per-format errors as scoped to the named format only — a `correctable` error on `target_format_ids[1]` does NOT mean the buyer must reshape the entire batch; they may retry just that format with corrected input. Sellers SHOULD emit one error per failing format (rather than collapsing multiple format failures into a single error entry) so per-format recovery routing is unambiguous.",
           "items": {
             "$ref": "/schemas/core/error.json"
           },
@@ -323,7 +323,7 @@
     },
     {
       "title": "BuildCreativeSubmitted",
-      "description": "Async task envelope returned when build_creative cannot be confirmed before the response \u2014 for example, when a slow generative pipeline or multi-minute LLM workflow is queued. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the creative_manifest(s) land on the completion artifact, not this envelope.",
+      "description": "Async task envelope returned when build_creative cannot be confirmed before the response — for example, when a slow generative pipeline or multi-minute LLM workflow is queued. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the creative_manifest(s) land on the completion artifact, not this envelope.",
       "type": "object",
       "properties": {
         "status": {
@@ -339,7 +339,7 @@
         "message": {
           "type": "string",
           "maxLength": 2000,
-          "description": "Optional human-readable explanation of why the task is submitted \u2014 e.g., 'Generative build queued; typical turnaround 3\u20135 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context \u2014 a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
+          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Generative build queued; typical turnaround 3–5 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
         },
         "errors": {
           "type": "array",

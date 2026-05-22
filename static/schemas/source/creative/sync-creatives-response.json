@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/sync-creatives-response.json",
   "title": "Sync Creatives Response",
-  "description": "Response from creative sync operation. Exactly one of three shapes: (1) synchronous success \u2014 per-creative results in the creatives array (best-effort processing with per-item status/failures); (2) terminal failure \u2014 errors array with no creatives processed; (3) submitted task envelope \u2014 status 'submitted' with task_id when the whole operation is queued (batch ingestion, async review that must settle before per-item results can be issued). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. Final per-item results land on the task completion artifact, not this envelope. These three shapes are mutually exclusive \u2014 a response has exactly one.",
+  "description": "Response from creative sync operation. Exactly one of three shapes: (1) synchronous success — per-creative results in the creatives array (best-effort processing with per-item status/failures); (2) terminal failure — errors array with no creatives processed; (3) submitted task envelope — status 'submitted' with task_id when the whole operation is queued (batch ingestion, async review that must settle before per-item results can be issued). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. Final per-item results land on the task completion artifact, not this envelope. These three shapes are mutually exclusive — a response has exactly one.",
   "type": "object",
   "allOf": [
     {
@@ -43,7 +43,7 @@
               },
               "status": {
                 "$ref": "/schemas/enums/creative-status.json",
-                "description": "Advisory review-lifecycle state of the creative after this sync \u2014 a UI hint and polling-scheduling signal, NOT a spend-authorization gate. Orthogonal to action \u2014 action says what the sync did (created, updated, ...); status says where the creative sits in review. Values come from CreativeStatus only (processing, pending_review, approved, rejected, archived) \u2014 never from CreativeAction. Sellers with async review return processing or pending_review; sellers with synchronous review MAY return a terminal value (approved, rejected). Buyers MUST NOT gate downstream spend or package activation on status: approved from this response \u2014 a compromised or buggy seller could declare approved while bypassing content-policy review. Reconcile via list_creatives or a signed review webhook before committing spend. Authoritative state is always via list_creatives. MUST be omitted when action is failed or deleted (the creative has no meaningful review state \u2014 failure details belong in the errors array; deleted creatives are gone from the library). Omit entirely when the seller has no review lifecycle at all."
+                "description": "Advisory review-lifecycle state of the creative after this sync — a UI hint and polling-scheduling signal, NOT a spend-authorization gate. Orthogonal to action — action says what the sync did (created, updated, ...); status says where the creative sits in review. Values come from CreativeStatus only (processing, pending_review, approved, rejected, archived) — never from CreativeAction. Sellers with async review return processing or pending_review; sellers with synchronous review MAY return a terminal value (approved, rejected). Buyers MUST NOT gate downstream spend or package activation on status: approved from this response — a compromised or buggy seller could declare approved while bypassing content-policy review. Reconcile via list_creatives or a signed review webhook before committing spend. Authoritative state is always via list_creatives. MUST be omitted when action is failed or deleted (the creative has no meaningful review state — failure details belong in the errors array; deleted creatives are gone from the library). Omit entirely when the seller has no review lifecycle at all."
               },
               "platform_id": {
                 "type": "string",
@@ -231,7 +231,7 @@
     },
     {
       "title": "SyncCreativesSubmitted",
-      "description": "Async task envelope returned when the whole sync operation cannot be confirmed before the response is emitted \u2014 for example, when the seller batches ingestion, when async review must settle before per-item results can be issued, or when governance review gates the sync. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the creatives array with per-item action/status lands on the completion artifact, not this envelope. Per-item async review (an item in pending_review while the rest of the sync resolves synchronously) belongs on the SyncCreativesSuccess branch with status: pending_review, not here.",
+      "description": "Async task envelope returned when the whole sync operation cannot be confirmed before the response is emitted — for example, when the seller batches ingestion, when async review must settle before per-item results can be issued, or when governance review gates the sync. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the creatives array with per-item action/status lands on the completion artifact, not this envelope. Per-item async review (an item in pending_review while the rest of the sync resolves synchronously) belongs on the SyncCreativesSuccess branch with status: pending_review, not here.",
       "type": "object",
       "properties": {
         "status": {
@@ -247,7 +247,7 @@
         "message": {
           "type": "string",
           "maxLength": 2000,
-          "description": "Optional human-readable explanation of why the task is submitted \u2014 e.g., 'Batch ingestion queued; typical turnaround 15-30 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context \u2014 a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
+          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Batch ingestion queued; typical turnaround 15-30 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
         },
         "errors": {
           "type": "array",

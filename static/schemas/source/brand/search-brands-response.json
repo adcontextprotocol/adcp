@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/brand/search-brands-response.json",
   "title": "Search Brands Response",
-  "description": "Brand stubs matching the search query. Each stub carries the public identity tier \u2014 enough to evaluate a brand and follow up with get_brand_identity (for full identity) or get_rights (for pricing). Rich authorized data (voice synthesis, high-res assets, tone guidelines) is not included.",
+  "description": "Brand stubs matching the search query. Each stub carries the public identity tier — enough to evaluate a brand and follow up with get_brand_identity (for full identity) or get_rights (for pricing). Rich authorized data (voice synthesis, high-res assets, tone guidelines) is not included.",
   "x-status": "experimental",
   "definitions": {
     "SearchBrandResult": {

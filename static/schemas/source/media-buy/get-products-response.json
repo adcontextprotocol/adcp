@@ -41,7 +41,7 @@
             },
             "version": {
               "type": "string",
-              "description": "Semantic version of the extension definition. Distinct from the digest \u2014 version is human-readable; digest is the integrity check."
+              "description": "Semantic version of the extension definition. Distinct from the digest — version is human-readable; digest is the integrity check."
             },
             "description": {
               "type": "string"
@@ -76,7 +76,7 @@
     },
     "refinement_applied": {
       "type": "array",
-      "description": "Seller's response to each change request in the refine array, matched by position. Each entry acknowledges whether the corresponding ask was applied, partially applied, or unable to be fulfilled. MUST contain the same number of entries in the same order as the request's refine array. Only present when the request used buying_mode: 'refine'. Each entry MUST echo the request entry's scope and \u2014 for product and proposal scopes \u2014 the matching id field (product_id or proposal_id), so orchestrators can cross-validate alignment.",
+      "description": "Seller's response to each change request in the refine array, matched by position. Each entry acknowledges whether the corresponding ask was applied, partially applied, or unable to be fulfilled. MUST contain the same number of entries in the same order as the request's refine array. Only present when the request used buying_mode: 'refine'. Each entry MUST echo the request entry's scope and — for product and proposal scopes — the matching id field (product_id or proposal_id), so orchestrators can cross-validate alignment.",
       "items": {
         "type": "object",
         "discriminator": {
@@ -97,7 +97,7 @@
                   "partial",
                   "unable"
                 ],
-                "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled \u2014 see notes for details. 'unable': the seller could not fulfill the ask \u2014 see notes for why."
+                "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
               },
               "notes": {
                 "type": "string",
@@ -128,7 +128,7 @@
                   "partial",
                   "unable"
                 ],
-                "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled \u2014 see notes for details. 'unable': the seller could not fulfill the ask \u2014 see notes for why."
+                "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
               },
               "notes": {
                 "type": "string",
@@ -160,7 +160,7 @@
                   "partial",
                   "unable"
                 ],
-                "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled \u2014 see notes for details. 'unable': the seller could not fulfill the ask \u2014 see notes for why."
+                "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
               },
               "notes": {
                 "type": "string",
@@ -193,7 +193,7 @@
               "proposals",
               "catalog"
             ],
-            "description": "'products': not all inventory sources were searched. 'pricing': products returned but pricing is absent or unconfirmed. 'forecast': products returned but forecast data is absent. 'proposals': proposals were not generated or are incomplete. 'catalog': in wholesale mode, whole-catalog enumeration could not complete in the time budget \u2014 symmetric with get_signals' 'catalog' scope so sellers have a precise way to declare wholesale-incomplete on the products surface."
+            "description": "'products': not all inventory sources were searched. 'pricing': products returned but pricing is absent or unconfirmed. 'forecast': products returned but forecast data is absent. 'proposals': proposals were not generated or are incomplete. 'catalog': in wholesale mode, whole-catalog enumeration could not complete in the time budget — symmetric with get_signals' 'catalog' scope so sellers have a precise way to declare wholesale-incomplete on the products surface."
           },
           "description": {
             "type": "string",
@@ -217,7 +217,7 @@
     },
     "filter_diagnostics": {
       "type": "object",
-      "description": "Optional non-fatal diagnostic block describing how the request's `filters` narrowed the candidate set. Use this to disambiguate empty/small result lists between 'no inventory matches the brief' and 'a specific filter excluded everything', without breaking the filter-not-fail convention (sellers still silently exclude unmatched products; this block is observability, not error reporting). Sellers MAY populate this when meaningful narrowing occurred; buyers MAY use it for triage UX without depending on its presence. Counts only \u2014 products are not enumerated by name to avoid leaking competitive intelligence about adjacent campaigns or seller inventory. `total_candidates` and `excluded_by` are independently optional \u2014 sellers whose baseline catalog size is sensitive MAY emit `excluded_by` without `total_candidates`, or vice versa.",
+      "description": "Optional non-fatal diagnostic block describing how the request's `filters` narrowed the candidate set. Use this to disambiguate empty/small result lists between 'no inventory matches the brief' and 'a specific filter excluded everything', without breaking the filter-not-fail convention (sellers still silently exclude unmatched products; this block is observability, not error reporting). Sellers MAY populate this when meaningful narrowing occurred; buyers MAY use it for triage UX without depending on its presence. Counts only — products are not enumerated by name to avoid leaking competitive intelligence about adjacent campaigns or seller inventory. `total_candidates` and `excluded_by` are independently optional — sellers whose baseline catalog size is sensitive MAY emit `excluded_by` without `total_candidates`, or vice versa.",
       "properties": {
         "semantics": {
           "type": "string",
@@ -226,11 +226,11 @@
             "any",
             "approximate"
           ],
-          "description": "How `excluded_by[*].count` values are computed across multiple filters. `only`: counts products that would have been included if not for THIS filter alone (deterministic; the right value for 'which filter killed my result set' triage \u2014 recommended when feasible). `any`: counts products excluded by ANY filter (so multiple filters' counts may overlap and sum to more than `total_candidates`). `approximate`: sellers SHOULD use this when their pipeline can't cleanly attribute exclusions to a single filter. Buyers SHOULD inspect `semantics` before doing arithmetic on counts."
+          "description": "How `excluded_by[*].count` values are computed across multiple filters. `only`: counts products that would have been included if not for THIS filter alone (deterministic; the right value for 'which filter killed my result set' triage — recommended when feasible). `any`: counts products excluded by ANY filter (so multiple filters' counts may overlap and sum to more than `total_candidates`). `approximate`: sellers SHOULD use this when their pipeline can't cleanly attribute exclusions to a single filter. Buyers SHOULD inspect `semantics` before doing arithmetic on counts."
         },
         "total_candidates": {
           "type": "integer",
-          "description": "Number of products the seller considered before applying `filters`. Baseline for interpreting per-filter exclusion counts. Approximate \u2014 sellers MAY return a sampled or capped count when their candidate pool is large. Optional; sellers whose baseline catalog size is sensitive (revealing market posture or competitive density) MAY omit this while still emitting `excluded_by`.",
+          "description": "Number of products the seller considered before applying `filters`. Baseline for interpreting per-filter exclusion counts. Approximate — sellers MAY return a sampled or capped count when their candidate pool is large. Optional; sellers whose baseline catalog size is sensitive (revealing market posture or competitive density) MAY omit this while still emitting `excluded_by`.",
           "minimum": 0
         },
         "excluded_by": {
@@ -297,7 +297,7 @@
     },
     "catalog_version": {
       "type": "string",
-      "description": "Opaque token representing the version of the catalog state used to compose this response. Sellers that implement conditional-fetch (if_catalog_version) MUST return this on every response so buyers can cache and probe later. Buyers MUST treat the value as opaque \u2014 no format, no ordering, no inspection. The token is scope-keyed: it describes a version for the cache_scope declared on this response, NOT a global agent version. A buyer caches `(cache_scope, catalog_version)` pairs and presents the matching token on the next request. Scoping dimensions: (agent, buying_mode, filters, property_list, catalog) for cache_scope: 'public'; that tuple plus account_id for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. See specs/catalog-change-feed.md for the full cache layering model."
+      "description": "Opaque token representing the version of the catalog state used to compose this response. Sellers that implement conditional-fetch (if_catalog_version) MUST return this on every response so buyers can cache and probe later. Buyers MUST treat the value as opaque — no format, no ordering, no inspection. The token is scope-keyed: it describes a version for the cache_scope declared on this response, NOT a global agent version. A buyer caches `(cache_scope, catalog_version)` pairs and presents the matching token on the next request. Scoping dimensions: (agent, buying_mode, filters, property_list, catalog) for cache_scope: 'public'; that tuple plus account_id for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. See specs/catalog-change-feed.md for the full cache layering model."
     },
     "pricing_version": {
       "type": "string",
@@ -309,12 +309,12 @@
         "public",
         "account"
       ],
-      "description": "Declares whether the catalog_version and pricing_version on this response describe a universal layer or an account-specific overlay. REQUIRED on every 3.1+ response (the 3.1 schema enforces this \u2014 the safety property of the two-layer cache model depends on it). 'public': this response describes the seller's published rate card; the buyer MAY dedupe under (agent, buying_mode, filters, property_list, catalog) without scoping by account. 'account': this response includes account-specific overrides; the buyer MUST cache the version under (agent, buying_mode, filters, property_list, catalog, account_id). When the request did NOT include `account`, the seller MUST return `cache_scope: 'public'`. When the request included `account`, the seller MUST return either: 'public' (this account prices off the public rate card \u2014 buyer dedupes) or 'account' (account-specific overrides exist \u2014 buyer caches under the account key). Sellers MAY return 'public' on an account-scoped request that previously had overrides \u2014 buyers SHOULD interpret this as a downgrade and drop their account-overlay for the (agent, filters, mode) tuple. Without schema-required cache_scope, a seller silently omitting the field on an account-scoped response would cause buyers to mis-key the cache and serve account-overlay payloads to other accounts \u2014 the canonical safety invariant of the entire cache layering model. **Backward-compatibility note for 3.1 validators:** SDKs that validate strictly against the 3.1 schema MUST select the validator based on the server-declared `adcp_version` (release-precision version negotiation, 3.1). For responses with `adcp_version` starting `3.0`, the 3.1 cache_scope-required constraint MUST be relaxed \u2014 pre-3.1 sellers correctly emit no cache_scope and remain conformant to their declared version. This is a tightening within 3.1, not a 3.0 break."
+      "description": "Declares whether the catalog_version and pricing_version on this response describe a universal layer or an account-specific overlay. REQUIRED on every 3.1+ response (the 3.1 schema enforces this — the safety property of the two-layer cache model depends on it). 'public': this response describes the seller's published rate card; the buyer MAY dedupe under (agent, buying_mode, filters, property_list, catalog) without scoping by account. 'account': this response includes account-specific overrides; the buyer MUST cache the version under (agent, buying_mode, filters, property_list, catalog, account_id). When the request did NOT include `account`, the seller MUST return `cache_scope: 'public'`. When the request included `account`, the seller MUST return either: 'public' (this account prices off the public rate card — buyer dedupes) or 'account' (account-specific overrides exist — buyer caches under the account key). Sellers MAY return 'public' on an account-scoped request that previously had overrides — buyers SHOULD interpret this as a downgrade and drop their account-overlay for the (agent, filters, mode) tuple. Without schema-required cache_scope, a seller silently omitting the field on an account-scoped response would cause buyers to mis-key the cache and serve account-overlay payloads to other accounts — the canonical safety invariant of the entire cache layering model. **Backward-compatibility note for 3.1 validators:** SDKs that validate strictly against the 3.1 schema MUST select the validator based on the server-declared `adcp_version` (release-precision version negotiation, 3.1). For responses with `adcp_version` starting `3.0`, the 3.1 cache_scope-required constraint MUST be relaxed — pre-3.1 sellers correctly emit no cache_scope and remain conformant to their declared version. This is a tightening within 3.1, not a 3.0 break."
     },
     "unchanged": {
       "type": "boolean",
       "const": true,
-      "description": "Present and `true` ONLY when the request carried if_catalog_version (and/or if_pricing_version) matching the seller's current version for the buyer's cache_scope, in which case products[] MUST be omitted; catalog_version (echoed), cache_scope (echoed), and pricing_version (echoed when used) MUST still be present. Buyers receiving unchanged: true MUST NOT mutate their local catalog mirror. **One shape per state:** sellers MUST NOT emit `unchanged: false` \u2014 the absence of the field IS the signal that the response carries products. Two shapes ({ unchanged: false, products: [...] } vs. { products: [...] }) for the same state would let some sellers always emit the field and some never would, creating an inconsistency the wire shouldn't carry."
+      "description": "Present and `true` ONLY when the request carried if_catalog_version (and/or if_pricing_version) matching the seller's current version for the buyer's cache_scope, in which case products[] MUST be omitted; catalog_version (echoed), cache_scope (echoed), and pricing_version (echoed when used) MUST still be present. Buyers receiving unchanged: true MUST NOT mutate their local catalog mirror. **One shape per state:** sellers MUST NOT emit `unchanged: false` — the absence of the field IS the signal that the response carries products. Two shapes ({ unchanged: false, products: [...] } vs. { products: [...] }) for the same state would let some sellers always emit the field and some never would, creating an inconsistency the wire shouldn't carry."
     },
     "sandbox": {
       "type": "boolean",

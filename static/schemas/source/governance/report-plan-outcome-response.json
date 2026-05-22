@@ -76,7 +76,7 @@
     },
     "replayed": {
       "type": "boolean",
-      "description": "Set to true when this response was returned from the idempotency cache rather than from a fresh execution. Set to false (or omitted) when the request was executed fresh. Buyers use this to distinguish cached replays from new executions \u2014 matters for billing reconciliation, audit logs, state-machine routing (cached state-tracking fields are historical snapshots, not current state \u2014 re-read via the resource's read endpoint), and any downstream system that assumes exactly-once event semantics. From 3.1 onward, `replayed` MAY appear on responses to any request that resolved via the idempotency cache, including read tools \u2014 universal `idempotency_key` (see security.mdx \u00a7Idempotency) means the cache holds read responses too.",
+      "description": "Set to true when this response was returned from the idempotency cache rather than from a fresh execution. Set to false (or omitted) when the request was executed fresh. Buyers use this to distinguish cached replays from new executions — matters for billing reconciliation, audit logs, state-machine routing (cached state-tracking fields are historical snapshots, not current state — re-read via the resource's read endpoint), and any downstream system that assumes exactly-once event semantics. From 3.1 onward, `replayed` MAY appear on responses to any request that resolved via the idempotency cache, including read tools — universal `idempotency_key` (see security.mdx §Idempotency) means the cache holds read responses too.",
       "default": false
     },
     "context": {

@@ -155,7 +155,7 @@
               },
               "authorization": {
                 "$ref": "/schemas/core/account-authorization.json",
-                "description": "Optional. The caller's scope grant against this account after the sync operation. Vendor agents of any type (media-buy, signals, governance, creative, brand) that support scope introspection SHOULD populate this so callers can preempt RBAC errors rather than discovering scope by trial and error. Media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Present on `created`, `updated`, and `unchanged` results; omitted on `failed` results (where the account did not reach a usable state). Absence means the vendor agent does not advertise introspectable scope \u2014 callers MUST NOT infer access from absence."
+                "description": "Optional. The caller's scope grant against this account after the sync operation. Vendor agents of any type (media-buy, signals, governance, creative, brand) that support scope introspection SHOULD populate this so callers can preempt RBAC errors rather than discovering scope by trial and error. Media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Present on `created`, `updated`, and `unchanged` results; omitted on `failed` results (where the account did not reach a usable state). Absence means the vendor agent does not advertise introspectable scope — callers MUST NOT infer access from absence."
               }
             },
             "required": [
@@ -226,7 +226,7 @@
   ],
   "examples": [
     {
-      "description": "Mixed results \u2014 one active, one pending approval",
+      "description": "Mixed results — one active, one pending approval",
       "data": {
         "status": "completed",
         "accounts": [
@@ -265,7 +265,7 @@
       }
     },
     {
-      "description": "Rejected account \u2014 no account_id assigned",
+      "description": "Rejected account — no account_id assigned",
       "data": {
         "status": "completed",
         "accounts": [
@@ -285,7 +285,7 @@
       }
     },
     {
-      "description": "Unsupported billing \u2014 seller rejects the request",
+      "description": "Unsupported billing — seller rejects the request",
       "data": {
         "status": "completed",
         "accounts": [
@@ -346,7 +346,7 @@
       }
     },
     {
-      "description": "Unsupported payment terms \u2014 seller rejects the request",
+      "description": "Unsupported payment terms — seller rejects the request",
       "data": {
         "status": "completed",
         "accounts": [

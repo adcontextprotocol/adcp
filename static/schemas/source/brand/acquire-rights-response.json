@@ -79,7 +79,7 @@
         },
         "rights_constraint": {
           "$ref": "/schemas/core/rights-constraint.json",
-          "description": "Pre-built rights constraint for embedding in creative manifests. Populated from the agreed terms \u2014 the buyer does not need to construct it manually."
+          "description": "Pre-built rights constraint for embedding in creative manifests. Populated from the agreed terms — the buyer does not need to construct it manually."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -164,11 +164,11 @@
         },
         "reason": {
           "type": "string",
-          "description": "Why the rights request was rejected. May be sanitized to protect confidential brand rules \u2014 e.g., 'This violates our public figures brand guidelines' rather than naming the specific rule."
+          "description": "Why the rights request was rejected. May be sanitized to protect confidential brand rules — e.g., 'This violates our public figures brand guidelines' rather than naming the specific rule."
         },
         "suggestions": {
           "type": "array",
-          "description": "Actionable alternatives the buyer can try. If present, the rejection is fixable \u2014 the buyer can adjust their request. If absent, the rejection is final for this talent/rights combination.",
+          "description": "Actionable alternatives the buyer can try. If present, the rejection is fixable — the buyer can adjust their request. If absent, the rejection is final for this talent/rights combination.",
           "items": {
             "type": "string"
           }

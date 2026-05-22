@@ -46,7 +46,7 @@
         },
         "consumption": {
           "$ref": "/schemas/core/creative-consumption.json",
-          "description": "Structured consumption details for this evaluation. Informational \u2014 lets the buyer verify that vendor_cost is consistent with the rate card. vendor_cost is the billing source of truth."
+          "description": "Structured consumption details for this evaluation. Informational — lets the buyer verify that vendor_cost is consistent with the rate card. vendor_cost is the billing source of truth."
         },
         "context": {
           "$ref": "/schemas/core/context.json"

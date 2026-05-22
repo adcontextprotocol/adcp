@@ -70,7 +70,7 @@
                     },
                     "explanation": {
                       "type": "string",
-                      "description": "Directional human-readable explanation (e.g., 'Below minimum resolution for display placement'). Avoid quantitative thresholds \u2014 the evaluator is the oracle."
+                      "description": "Directional human-readable explanation (e.g., 'Below minimum resolution for display placement'). Avoid quantitative thresholds — the evaluator is the oracle."
                     },
                     "confidence": {
                       "type": "number",

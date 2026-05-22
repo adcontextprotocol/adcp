@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/brand/verify-brand-claims-response.json",
   "title": "Verify Brand Claims Response (Bulk)",
-  "description": "Bulk response for `verify_brand_claims`. `results[]` is positionally aligned with the request's `claims[]` (zip-by-index). Per-result success carries `claim_type` + `status` + per-claim-type `details`; per-result failure carries an `error` field on that single result without failing the batch. Top-level `errors[]` is reserved for batch-level failures (auth, rate-limit, malformed request) \u2014 in that case `results` is absent. Top-level `Cache-Control` represents the lowest-common max-age across the batch; individual results MAY carry their own staleness signals out-of-band.",
+  "description": "Bulk response for `verify_brand_claims`. `results[]` is positionally aligned with the request's `claims[]` (zip-by-index). Per-result success carries `claim_type` + `status` + per-claim-type `details`; per-result failure carries an `error` field on that single result without failing the batch. Top-level `errors[]` is reserved for batch-level failures (auth, rate-limit, malformed request) — in that case `results` is absent. Top-level `Cache-Control` represents the lowest-common max-age across the batch; individual results MAY carry their own staleness signals out-of-band.",
   "type": "object",
   "allOf": [
     {
@@ -49,7 +49,7 @@
     {
       "title": "VerifyBrandClaimsError",
       "type": "object",
-      "description": "Batch-level failure \u2014 the entire request was rejected. Use per-result `error` on the success arm for per-claim failures that should not fail the batch.",
+      "description": "Batch-level failure — the entire request was rejected. Use per-result `error` on the success arm for per-claim failures that should not fail the batch.",
       "properties": {
         "errors": {
           "type": "array",
@@ -102,17 +102,17 @@
             },
             "status": {
               "$ref": "/schemas/brand/verification-status.json",
-              "description": "Verification status for this claim. Not every status applies to every claim_type \u2014 see the single-target task page for the applicable subset."
+              "description": "Verification status for this claim. Not every status applies to every claim_type — see the single-target task page for the applicable subset."
             },
             "details": {
               "type": "object",
-              "description": "Per-claim-type response fields. Shape varies \u2014 see the single-target task page for each claim_type's expected fields.",
+              "description": "Per-claim-type response fields. Shape varies — see the single-target task page for each claim_type's expected fields.",
               "additionalProperties": true
             },
             "context_note": {
               "type": "string",
               "maxLength": 500,
-              "description": "Public \u2014 free-text context the brand chooses to surface."
+              "description": "Public — free-text context the brand chooses to surface."
             }
           },
           "required": [

@@ -92,7 +92,7 @@
         },
         "revoked_publisher_domains": {
           "type": "array",
-          "description": "Publisher domains explicitly removed from this managed network. Validators MUST treat any publisher domain listed here as no-longer-authorized, taking precedence over any appearance of the same domain in `authorized_agents[].publisher_properties[].publisher_domain` / `.publisher_domains[]` or in top-level `properties[].publisher_domain`. Lets a network propagate per-publisher revocations on the next refresh instead of waiting for the file-level 7-day cache cap. Validators MUST hold previously-observed `(publisher_domain, revoked_at)` tuples for 7 days from the validator's first observation, even if the entry vanishes from a subsequent fetch \u2014 this closes the rollback gap where an attacker re-serves a stale file with the revocation removed. Networks SHOULD retain entries for at least 7 days after `revoked_at` so validators that didn't observe the original entry still pick it up on refresh.",
+          "description": "Publisher domains explicitly removed from this managed network. Validators MUST treat any publisher domain listed here as no-longer-authorized, taking precedence over any appearance of the same domain in `authorized_agents[].publisher_properties[].publisher_domain` / `.publisher_domains[]` or in top-level `properties[].publisher_domain`. Lets a network propagate per-publisher revocations on the next refresh instead of waiting for the file-level 7-day cache cap. Validators MUST hold previously-observed `(publisher_domain, revoked_at)` tuples for 7 days from the validator's first observation, even if the entry vanishes from a subsequent fetch — this closes the rollback gap where an attacker re-serves a stale file with the revocation removed. Networks SHOULD retain entries for at least 7 days after `revoked_at` so validators that didn't observe the original entry still pick it up on refresh.",
           "items": {
             "type": "object",
             "properties": {
@@ -114,7 +114,7 @@
                   "publisher_request",
                   "other"
                 ],
-                "description": "Reason for revocation. **Operator-internal self-classification for review routing \u2014 not a public accusation.** `relationship_ended` is the routine commercial case. `compliance_violation` SHOULD be used only when the network has itself determined the publisher is out of policy; for un-adjudicated third-party allegations (regulator inquiries, advertiser complaints, ongoing investigations), use `other` to avoid making a discoverable adverse statement. `publisher_request` is for publisher-initiated exits. Compare to sellers.json, which deliberately carries no reason field for the same exposure concern."
+                "description": "Reason for revocation. **Operator-internal self-classification for review routing — not a public accusation.** `relationship_ended` is the routine commercial case. `compliance_violation` SHOULD be used only when the network has itself determined the publisher is out of policy; for un-adjudicated third-party allegations (regulator inquiries, advertiser complaints, ongoing investigations), use `other` to avoid making a discoverable adverse statement. `publisher_request` is for publisher-initiated exits. Compare to sellers.json, which deliberately carries no reason field for the same exposure concern."
               }
             },
             "required": [

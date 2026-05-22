@@ -84,7 +84,7 @@
         },
         "collection_info": {
           "type": "object",
-          "description": "Information about artifact collection for this media buy. Sampling is configured at buy creation time \u2014 this reports what was actually collected.",
+          "description": "Information about artifact collection for this media buy. Sampling is configured at buy creation time — this reports what was actually collected.",
           "properties": {
             "total_deliveries": {
               "type": "integer",
