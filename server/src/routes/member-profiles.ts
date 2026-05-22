@@ -1580,6 +1580,33 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
       const agent = agents[index];
 
+      // For public listing, the primary brand domain is the first
+      // prerequisite: an imported or legacy primary domain can exist before
+      // DNS verification is complete. Report that state before falling
+      // through to per-agent hostname ownership checks.
+      if (target === 'public') {
+        if (!brandPrimaryDomain) {
+          await client.query('ROLLBACK');
+          return {
+            status: 400,
+            body: {
+              error: 'brand_domain_required',
+              message: 'To list an agent publicly, your profile needs a primary brand domain. If you have a verified email domain in your organization (e.g. via SSO), it should auto-populate — otherwise, claim your brand domain in the Brand section of your profile.',
+            },
+          };
+        }
+        if (!brandPrimaryRecord?.verified) {
+          await client.query('ROLLBACK');
+          return {
+            status: 400,
+            body: {
+              error: 'brand_domain_unverified',
+              message: 'To list an agent publicly, your primary brand domain must be DNS-verified. Complete the domain verification challenge in the Brand section of your profile.',
+            },
+          };
+        }
+      }
+
       // Re-verify hostname ownership on any non-private flip (#4499 MVP).
       // A grandfathered row registered before the gate landed should not
       // be promotable to `members_only` or `public` without satisfying
@@ -1604,26 +1631,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // Only the public path needs to reach out to brand.json, so the
       // brand-domain requirement is scoped to `target === 'public'`.
       if (target === 'public') {
-        if (!brandPrimaryDomain) {
-          await client.query('ROLLBACK');
-          return {
-            status: 400,
-            body: {
-              error: 'brand_domain_required',
-              message: 'To list an agent publicly, your profile needs a primary brand domain. If you have a verified email domain in your organization (e.g. via SSO), it should auto-populate — otherwise, claim your brand domain in the Brand section of your profile.',
-            },
-          };
-        }
-        if (!brandPrimaryRecord?.verified) {
-          await client.query('ROLLBACK');
-          return {
-            status: 400,
-            body: {
-              error: 'brand_domain_unverified',
-              message: 'To list an agent publicly, your primary brand domain must be DNS-verified. Complete the domain verification challenge in the Brand section of your profile.',
-            },
-          };
-        }
         try {
           const parsed = new URL(agent.url);
           if (parsed.protocol !== 'https:') {
