@@ -313,6 +313,44 @@ When AdCP validators encounter a URL reference:
 
 Validators MUST apply the fetch semantics, change-detection, and rollback protection rules in [Managed network security considerations](/docs/governance/property/managed-networks#security-considerations). That section is the canonical source for blast-radius guidance on the authoritative_location pattern.
 
+### Troubleshooting authoritative_location failures
+
+Publishers registering agents through a URL reference commonly encounter these failure modes. Use this checklist before contacting support.
+
+**Origin requires authentication or IP restriction**
+
+Validators fetch `authoritative_location` server-side — CORS response headers are not required for server-to-server requests. However, if your origin requires authentication (e.g., an S3 bucket with a restrictive bucket policy, a CDN with origin protection that blocks unknown IPs) the fetch will be rejected with a `403`. Verify the URL is publicly reachable without authentication.
+
+**Redirect at the authoritative URL**
+
+Validators reject any HTTP redirect on the `authoritative_location` URL. The URL must resolve directly to the JSON file with a `200` response — no `301`, `302`, or other redirect chain. If your CDN or hosting redirects the URL (HTTP→HTTPS canonicalization, `www` redirect, versioned-path redirect), update `authoritative_location` to point to the final destination URL directly.
+
+**Wrong Content-Type**
+
+The response must be served with `Content-Type: application/json`. Servers that return `text/html` or `text/plain` — even when the body contains valid JSON — will fail content-type validation. Check your CDN or origin response headers.
+
+**HTML error page with 200 status**
+
+Some CDNs return an HTML error page with `200 OK` instead of a `4xx` status. Validators check the `Content-Type` header and attempt JSON parsing; an HTML body will fail parsing even when the status is `200`. Look for a parse error alongside a `200` status in validator output.
+
+**Debugging checklist**
+
+Reproduce the validator's fetch from your terminal to diagnose these failures:
+
+```bash
+curl -v \
+  -H "Accept: application/json" \
+  "https://cdn.example.com/adagents.json"
+```
+
+Verify in the output:
+- Response status is `200` (not `301`, `302`, `403`, or `404`)
+- `Content-Type` header is `application/json`
+- Response body is valid JSON containing at least one of `properties`, `signals`, or `authorized_agents`
+- Body does **not** contain an `authoritative_location` field (nested references are rejected)
+
+If the crawler exposes a diagnostic endpoint, run your URL through it for structured error output.
+
 ### Caching Recommendations
 
 - Cache reference files for 24 hours minimum
