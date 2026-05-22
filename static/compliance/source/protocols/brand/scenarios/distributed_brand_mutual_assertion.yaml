@@ -1,0 +1,339 @@
+id: brand/distributed_brand_mutual_assertion
+version: "1.0.0"
+title: "Distributed brand.json: mutual-assertion happy path and leaf-only negative branch"
+category: brand_baseline
+summary: "Consumer-side conformance tests for the 3.1 distributed brand.json trust model. Mutual assertion (both sides reciprocate) produces relationship trust; leaf-only assertion does not."
+track: brand
+required_tools:
+  - verify_brand_claim
+
+narrative: |
+  3.1's headline brand-protocol addition is distributed brand.json: a brand (leaf) self-publishes
+  a Brand Canonical Document at its own domain while the house declares ownership through
+  brand_refs[]. The trust model is mutual assertion — the leaf's house_domain must match an
+  entry in the house's brand_refs[], and the house's brand_refs[] entry must point at the
+  leaf's domain. Both halves are crawler-readable from well-known URLs.
+
+  This storyboard grades the consumer side of that trust model. The runner (via
+  distributed_brand_runner contract — see test-kits/distributed-brand-runner.yaml) hosts two
+  fixture documents:
+    - House Portfolio: nova-house.example/.well-known/brand.json (with brand_refs[] pointing
+      at leaf-brand.example, managed_by: "acme-agency.example")
+    - Brand Canonical Document: leaf-brand.example/.well-known/brand.json (with house_domain:
+      "nova-house.example" and identity fields including typed trademarks)
+
+  Phase 1 (mutual_assertion_happy_path): the runner dispatches the consumer to classify the
+  trust tier for the leaf. Both sides of the assertion are present and consistent. The consumer
+  MUST:
+    1. Fetch BOTH the house portfolio and the leaf's canonical document.
+    2. Classify the edge as "mutual" — full trust, governance propagation is permitted.
+    3. NOT use the managed_by field (acme-agency.example) for trust or authorization.
+
+  Phase 2 (leaf_only_negative_branch): the runner serves the same leaf canonical document but
+  a house portfolio that does NOT include the leaf in brand_refs[]. The consumer MUST classify
+  as leaf-only (identity trusted on TLS, relationship unverified) and MUST NOT extend
+  relationship trust — no governance-context creation, member feature inheritance, or billable
+  seat inclusion.
+
+  ## Runner contract
+
+  Conformance target: distributed_brand_runner (test-kits/distributed-brand-runner.yaml).
+  The consumer under test advertises a comply_test_controller scenario named
+  evaluate_brand_mutual_assertion. Consumers that do not advertise this scenario grade every
+  step not_applicable. Consumers that DO advertise it but produce traffic patterns inconsistent
+  with the criteria below grade failed — silent passing on an empty traffic record is the
+  facade signal this scenario exists to catch.
+
+  Until adcp-client ships consumer-under-test dispatch for the mutual-assertion surface, all
+  graded steps declare requires_contract: distributed_brand_runner and grade not_applicable.
+  Writing the scenario now gives consumers a stable conformance target and the runner a stable
+  contract to implement against — the same approach used by
+  protocols/brand/scenarios/single_side_trust_extension.yaml.
+
+  ## What this scenario does NOT test
+
+  Items 3 and 4 from the source issue — (a) identity-trust vs. relationship-trust field
+  resolution semantics, and (b) strictest-of compliance merge behavior — are resolution-layer
+  semantics that are not schema-encoded (see docs/brand-protocol/brand-json.mdx lines 341-346).
+  No storyboard validation check today can assert over fields like compliance_policies or
+  policy_categories because they do not appear in the wire schema. These items require a
+  separate schema addition or a consumer-under-test runner that can evaluate field-resolution
+  results; tracked as follow-up to this issue.
+
+agent:
+  interaction_model: brand_consumer
+  capabilities: []
+  examples:
+    - "Any consumer that crawls brand.json documents and classifies mutual-assertion trust tiers"
+    - "DSPs evaluating portfolio membership before extending governance trust"
+    - "Agency platforms inheriting brand relationships from house portfolios"
+    - "AgenticAdvertising.org registry crawlers"
+
+caller:
+  role: compliance_runner
+  example: "AdCP Verified runner with consumer-under-test dispatch for brand.json crawl evaluation"
+
+prerequisites:
+  description: |
+    The runner hosts the fixture brand documents described in
+    test-kits/distributed-brand-runner.yaml. The consumer under test advertises a
+    comply_test_controller scenario named evaluate_brand_mutual_assertion (see the runner
+    contract for the request shape). Consumers that do not advertise this scenario grade every
+    step not_applicable. Consumers that DO advertise it but produce traffic patterns
+    inconsistent with the conformance criteria below grade failed.
+  test_kit: "test-kits/distributed-brand-runner.yaml"
+
+phases:
+  - id: mutual_assertion_happy_path
+    title: "Mutual assertion — both sides reciprocate, consumer grants relationship trust"
+    narrative: |
+      The runner dispatches the consumer with variant mutual_assertion. The fixture house
+      portfolio (nova-house.example) includes the leaf (leaf-brand.example) in brand_refs[]
+      with managed_by: "acme-agency.example" and effective_at set. The leaf's canonical
+      document carries house_domain: "nova-house.example". Both halves are present and
+      consistent — the consumer MUST classify the edge as "mutual" and MAY propagate
+      governance trust accordingly.
+
+      The managed_by: "acme-agency.example" entry is directory metadata only. Consumers
+      MUST NOT use it for trust or authorization decisions. Phase 1 includes an advisory
+      assertion (Step 4) that the consumer did not use it for trust-classification purposes.
+
+    steps:
+      - id: dispatch_mutual_assertion
+        title: "Dispatch consumer through mutual-assertion evaluation"
+        narrative: |
+          The runner calls the consumer's comply_test_controller with scenario
+          evaluate_brand_mutual_assertion, variant mutual_assertion. The controller
+          scenario instructs the consumer to evaluate the trust tier for leaf-brand.example
+          against nova-house.example and return the classified tier. The runner then
+          proceeds to the observability assertions below.
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        requires_contract: distributed_brand_runner
+        stateful: true
+        expected: |
+          The controller scenario completes (any terminal status). The consumer's
+          trust classification is asserted by the upstream_traffic checks below,
+          not by the controller's return shape.
+        sample_request_skip_schema: true
+        sample_request:
+          scenario: evaluate_brand_mutual_assertion
+          params:
+            variant: mutual_assertion
+            house_domain: "nova-house.example"
+            leaf_domain: "leaf-brand.example"
+            leaf_brand_id: "leaf_brand"
+          context:
+            correlation_id: "brand--distributed_mutual_assertion--mutual--dispatch"
+
+      - id: assert_house_fetched
+        title: "Consumer fetched the house portfolio"
+        narrative: |
+          The consumer MUST have fetched nova-house.example/.well-known/brand.json to
+          verify the house's brand_refs[] includes the leaf. A consumer that infers
+          mutual assertion from the leaf's house_domain claim alone — without verifying
+          the house side — cannot distinguish mutual from leaf-only and has not completed
+          the required two-document crawl.
+        task: verify_brand_claim
+        schema_ref: "brand/verify-brand-claim-request.json"
+        response_schema_ref: "brand/verify-brand-claim-response.json"
+        doc_ref: "/brand-protocol/brand-json#mutual-assertion-trust-model"
+        requires_contract: distributed_brand_runner
+        stateful: false
+        expected: |
+          Recorded upstream traffic includes at least one GET against the house's
+          well-known brand.json endpoint, carrying the house domain as a load-bearing
+          identifier echo (anti-facade).
+        sample_request:
+          claim_type: subsidiary
+          claim:
+            subsidiary_domain: "leaf-brand.example"
+          context:
+            correlation_id: "brand--distributed_mutual_assertion--mutual--house_fetch"
+        validations:
+          - check: upstream_traffic
+            description: "Consumer fetched the house portfolio to verify brand_refs[] reciprocation"
+            endpoint_pattern: "GET *nova-house.example/.well-known/brand.json"
+            min_count: 1
+            identifier_paths:
+              - "params.house_domain"
+
+      - id: assert_leaf_fetched
+        title: "Consumer fetched the leaf's canonical document"
+        narrative: |
+          The consumer MUST have fetched leaf-brand.example/.well-known/brand.json to
+          read the leaf's house_domain claim. Without this fetch the consumer cannot
+          confirm the leaf's self-declared parent and cannot complete the mutual-assertion
+          two-document crawl.
+        task: verify_brand_claim
+        schema_ref: "brand/verify-brand-claim-request.json"
+        response_schema_ref: "brand/verify-brand-claim-response.json"
+        doc_ref: "/brand-protocol/brand-json#mutual-assertion-trust-model"
+        requires_contract: distributed_brand_runner
+        stateful: false
+        expected: |
+          Recorded upstream traffic includes at least one GET against the leaf's
+          well-known brand.json endpoint.
+        sample_request:
+          claim_type: subsidiary
+          claim:
+            subsidiary_domain: "leaf-brand.example"
+          context:
+            correlation_id: "brand--distributed_mutual_assertion--mutual--leaf_fetch"
+        validations:
+          - check: upstream_traffic
+            description: "Consumer fetched the leaf's Brand Canonical Document"
+            endpoint_pattern: "GET *leaf-brand.example/.well-known/brand.json"
+            min_count: 1
+            identifier_paths:
+              - "params.leaf_domain"
+
+      - id: assert_managed_by_not_for_trust
+        title: "Consumer did NOT use managed_by for trust classification (advisory)"
+        narrative: |
+          The house's brand_refs[] entry for the leaf includes managed_by:
+          "acme-agency.example". Per docs/brand-protocol/brand-json.mdx §managed_by:
+          "Consumers MUST NOT use it for trust or authorization decisions." The intended
+          use is aggregation across houses ("show me everything Acme Agency manages") —
+          it is not a trust field. This assertion is advisory while the consumer-under-test
+          dispatch primitive matures; a consumer that fetches acme-agency.example for trust
+          classification purposes is still graded failed when the contract is active.
+        task: verify_brand_claim
+        schema_ref: "brand/verify-brand-claim-request.json"
+        response_schema_ref: "brand/verify-brand-claim-response.json"
+        doc_ref: "/brand-protocol/brand-json#managed-by"
+        requires_contract: distributed_brand_runner
+        stateful: false
+        expected: |
+          Zero recorded calls to acme-agency.example/.well-known/brand.json for
+          trust-classification purposes during this dispatch window.
+        sample_request:
+          claim_type: subsidiary
+          claim:
+            subsidiary_domain: "leaf-brand.example"
+          context:
+            correlation_id: "brand--distributed_mutual_assertion--mutual--managed_by"
+        validations:
+          - check: upstream_traffic
+            description: "No trust-classification fetch to the managed_by domain"
+            endpoint_pattern: "GET *acme-agency.example/.well-known/brand.json"
+            min_count: 0
+            severity: advisory
+            permanent_advisory:
+              reason: "managed_by is a directory field — MUST NOT be used for trust. This check cannot become required until adcp-client ships consumer-under-test dispatch for brand.json crawl evaluation; it is advisory by design, not pending graduation."
+
+  - id: leaf_only_negative_branch
+    title: "Leaf-only — leaf asserts house_domain, house does not reciprocate in brand_refs[]"
+    narrative: |
+      The runner dispatches the consumer with variant leaf_only. The same leaf canonical
+      document is served (house_domain: "nova-house.example"), but the runner now serves a
+      house portfolio that does NOT include the leaf in brand_refs[]. Per the trust model:
+
+        Leaf-only: leaf claims house_domain A; A's brand_refs[] does not include leaf.
+        → Identity is trusted on TLS (the brand controls its own domain — logos, colors,
+          tone are real). The relationship layer is unverified. Governance propagation,
+          member feature inheritance, and billable seat inclusion are blocked pending
+          reciprocation.
+
+      The consumer MUST classify the edge as leaf-only or unverified — NOT mutual — and
+      MUST NOT extend governance trust on the leaf's one-sided house_domain claim.
+
+    steps:
+      - id: dispatch_leaf_only
+        title: "Dispatch consumer through leaf-only evaluation"
+        narrative: |
+          The runner dispatches the consumer with variant leaf_only. The controller
+          scenario instructs the consumer to evaluate the trust tier for leaf-brand.example
+          against nova-house.example and decide whether to extend relationship trust.
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        requires_contract: distributed_brand_runner
+        stateful: true
+        expected: |
+          The controller scenario completes. The consumer's classification and trust
+          decision are asserted by the upstream_traffic checks below.
+        sample_request_skip_schema: true
+        sample_request:
+          scenario: evaluate_brand_mutual_assertion
+          params:
+            variant: leaf_only
+            house_domain: "nova-house.example"
+            leaf_domain: "leaf-brand.example"
+            leaf_brand_id: "leaf_brand"
+          context:
+            correlation_id: "brand--distributed_mutual_assertion--leaf_only--dispatch"
+
+      - id: assert_leaf_only_house_fetch_attempted
+        title: "Consumer DID attempt to verify house reciprocation"
+        narrative: |
+          Even in the leaf-only case the consumer MUST attempt to fetch the house's
+          brand.json to check whether the leaf appears in brand_refs[]. A consumer
+          that classifies the relationship without checking the house side is producing
+          an unverified verdict — it cannot distinguish leaf-only from mutual based
+          on the leaf document alone.
+        task: verify_brand_claim
+        schema_ref: "brand/verify-brand-claim-request.json"
+        response_schema_ref: "brand/verify-brand-claim-response.json"
+        doc_ref: "/brand-protocol/brand-json#mutual-assertion-trust-model"
+        requires_contract: distributed_brand_runner
+        stateful: false
+        expected: |
+          Recorded upstream traffic includes at least one GET against the house's
+          brand.json endpoint — the consumer attempted to verify reciprocation even
+          though no reciprocation was present.
+        sample_request:
+          claim_type: subsidiary
+          claim:
+            subsidiary_domain: "leaf-brand.example"
+          context:
+            correlation_id: "brand--distributed_mutual_assertion--leaf_only--house_fetch"
+        validations:
+          - check: upstream_traffic
+            description: "Consumer fetched the house portfolio to check for brand_refs[] reciprocation"
+            endpoint_pattern: "GET *nova-house.example/.well-known/brand.json"
+            min_count: 1
+            identifier_paths:
+              - "params.house_domain"
+
+      - id: assert_leaf_only_relationship_trust_not_extended
+        title: "Consumer did NOT extend relationship trust on the leaf-only edge"
+        narrative: |
+          With no reciprocation in the house's brand_refs[], the consumer MUST NOT
+          have propagated relationship trust. The leaf's identity is still real and
+          TLS-trusted — its logos, colors, tone, and other brand attributes are valid.
+          Only the relationship layer (governance trust extension) is blocked.
+        task: verify_brand_claim
+        schema_ref: "brand/verify-brand-claim-request.json"
+        response_schema_ref: "brand/verify-brand-claim-response.json"
+        doc_ref: "/brand-protocol/brand-json#mutual-assertion-trust-model"
+        requires_contract: distributed_brand_runner
+        stateful: false
+        expected: |
+          Zero recorded calls match governance-trust-extension endpoint patterns.
+        sample_request:
+          claim_type: subsidiary
+          claim:
+            subsidiary_domain: "leaf-brand.example"
+          context:
+            correlation_id: "brand--distributed_mutual_assertion--leaf_only--no_trust"
+        validations:
+          - check: upstream_traffic
+            description: "No governance-context creation fired on the leaf-only edge"
+            endpoint_pattern: "POST */governance/auto-provision"
+            min_count: 0
+          - check: upstream_traffic
+            description: "No member auto-provisioning fired on the leaf-only edge"
+            endpoint_pattern: "POST */accounts/auto-create-member"
+            min_count: 0
+          - check: upstream_traffic
+            description: "No governance-context creation fired"
+            endpoint_pattern: "POST */governance/contexts"
+            min_count: 0
+          - check: upstream_traffic
+            description: "No billable seat auto-inclusion fired on the leaf-only edge"
+            endpoint_pattern: "POST */billing/seats/auto-add"
+            min_count: 0

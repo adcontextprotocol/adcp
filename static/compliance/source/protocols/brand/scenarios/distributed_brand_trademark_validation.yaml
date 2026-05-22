@@ -1,0 +1,91 @@
+id: brand/distributed_brand_trademark_validation
+version: "1.0.0"
+title: "Brand-level typed trademarks: schema conformance for status, countries, and nice_classes"
+category: brand_baseline
+summary: "Schema-conformance validation for the 3.1 typed brand-level trademark definition. Brand agents that return trademarks[] in get_brand_identity responses must use typed enum values for status, ISO 3166-1 alpha-2 for countries, and integer class numbers for nice_classes."
+track: brand
+required_tools:
+  - get_brand_identity
+
+narrative: |
+  3.1 typed the brand-level trademark definition (PR #4505). Prior to 3.1, trademarks[] entries
+  carried free-text fields for status and countries; 3.1 now enforces:
+
+    - status: enum ("active" | "pending" | "abandoned" | "cancelled" | "expired"). Free-text
+      values no longer validate.
+    - countries: array of ISO 3166-1 alpha-2 strings (2-char uppercase). Non-conforming
+      country codes no longer validate.
+    - nice_classes: array of integers in the range 1-45 (Nice Classification). Out-of-range
+      values no longer validate.
+    - license_type: enum ("owned" | "licensed_in" | "licensed_out").
+    - licensor_domain: domain string, meaningful when license_type=licensed_in.
+
+  This storyboard grades a brand agent's get_brand_identity response envelope for
+  schema conformance. Note that trademarks[] is a brand.json static-file field and does
+  not appear in the get-brand-identity-response.json task response schema — typed trademark
+  enforcement (the enum and format constraints above) is exercised via the
+  distributed_brand_runner fixture's Brand Canonical Document, not through the
+  get_brand_identity response schema check.
+
+  The response_schema check in Phase 1 validates that the agent's response envelope is
+  well-formed. A brand agent that does not return trademarks[] in its get_brand_identity
+  response passes this step without error.
+
+agent:
+  interaction_model: brand_agent
+  capabilities: []
+  examples:
+    - "Brand agents returning get_brand_identity responses that include trademarks[]"
+    - "House Portfolio agents whose inline brands[] entries carry brand-level marks"
+    - "Brand Canonical Document agents self-publishing trademark ownership"
+
+caller:
+  role: buyer_agent
+  example: "Any buyer, creative agent, or DSP calling get_brand_identity"
+
+prerequisites:
+  description: |
+    The test kit provides a fixture brand (leaf_brand at leaf-brand.example) whose Brand
+    Canonical Document includes typed trademark entries. The scenario validates the
+    get_brand_identity response envelope; typed trademark field conformance is exercised
+    at the brand.json static-file layer via the distributed_brand_runner fixtures.
+  test_kit: "test-kits/distributed-brand-runner.yaml"
+
+phases:
+  - id: trademark_schema_conformance
+    title: "get_brand_identity response passes typed trademark schema"
+    narrative: |
+      The buyer calls get_brand_identity with a known brand_id. The response_schema check
+      validates the response envelope against get-brand-identity-response.json. Note:
+      trademarks[] is a brand.json static-file field and does not appear in the
+      get_brand_identity task response schema — typed trademark enforcement (status enum,
+      ISO 3166-1 alpha-2 countries, Nice Classification nice_classes) is exercised via
+      the runner's fixture brand.json documents rather than through this response schema
+      check. The response_schema check here confirms the response envelope is valid;
+      typed trademark conformance is validated by the distributed_brand_runner fixtures.
+
+    steps:
+      - id: get_brand_identity_with_trademarks
+        title: "Retrieve brand identity and validate typed trademark schema"
+        narrative: |
+          The buyer calls get_brand_identity with brand_id "leaf_brand". The response
+          MUST match the get-brand-identity-response.json schema. This confirms the
+          agent's response envelope is valid. Typed trademark field conformance
+          (status enum, ISO 3166-1 alpha-2 countries, nice_classes as integers) is
+          enforced at the brand.json static-file layer — the distributed_brand_runner
+          fixture serves a canonical document with typed trademark entries and validates
+          that they parse correctly.
+        task: get_brand_identity
+        schema_ref: "brand/get-brand-identity-request.json"
+        response_schema_ref: "brand/get-brand-identity-response.json"
+        doc_ref: "/brand-protocol/tasks/get_brand_identity"
+        stateful: false
+        expected: |
+          Return a schema-valid brand identity response.
+        sample_request:
+          brand_id: "leaf_brand"
+          context:
+            correlation_id: "brand--trademark_validation--schema"
+        validations:
+          - check: response_schema
+            description: "Response matches get-brand-identity-response.json including typed trademark definition"

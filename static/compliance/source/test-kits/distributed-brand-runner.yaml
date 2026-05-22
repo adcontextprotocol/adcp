@@ -1,0 +1,203 @@
+id: distributed_brand_runner
+applies_to:
+  protocol_scenarios:
+    - distributed_brand_mutual_assertion
+    - distributed_brand_trademark_validation
+
+# Distributed Brand Runner — Harness Contract Test Kit
+#
+# Applies to:
+#   - protocols/brand/scenarios/distributed_brand_mutual_assertion.yaml
+#   - protocols/brand/scenarios/distributed_brand_trademark_validation.yaml
+#
+# This runner contract supports two complementary conformance scenarios:
+#
+# 1. Consumer-under-test dispatch for the mutual-assertion trust model.
+#    The distributed brand.json trust model (3.1, PR #4505) requires consumers
+#    to crawl BOTH the house portfolio and the leaf's canonical document before
+#    classifying a relationship as mutual. A consumer that short-circuits on the
+#    leaf's house_domain claim alone (without verifying the house's brand_refs[])
+#    cannot distinguish mutual from leaf-only. The runner surfaces this check.
+#
+# 2. Agent-under-test schema validation for typed brand-level trademarks.
+#    3.1's trademark typing (status enum, ISO 3166-1 alpha-2 countries,
+#    Nice Classification nice_classes) is schema-enforced. Any brand agent
+#    that returns trademarks[] in its get_brand_identity response must emit
+#    typed values; free-text status or non-ISO countries will fail the
+#    response_schema check.
+#
+# See docs/brand-protocol/brand-json.mdx for the normative trust model and
+# trademark definitions.
+
+# --- Fixture brands ---
+#
+# Two fixture domains are used for consumer-under-test testing:
+#
+#   nova-house.example    — House Portfolio publisher (the parent house)
+#   leaf-brand.example    — Brand Canonical Document publisher (the child brand)
+#
+# The runner serves both well-known files. The consumer under test is
+# dispatched via comply_test_controller to evaluate the trust tier.
+
+fixtures:
+  house_portfolio:
+    domain: "nova-house.example"
+    well_known_path: "/.well-known/brand.json"
+    description: "House Portfolio for the mutual-assertion variant. Includes brand_refs[] pointing at the leaf."
+    document:
+      house:
+        domain: "nova-house.example"
+        name: "Nova House"
+      brand_refs:
+        - domain: "leaf-brand.example"
+          brand_id: "leaf_brand"
+          managed_by: "acme-agency.example"
+          effective_at: "2026-01-15T00:00:00Z"
+      contact:
+        email: "brand@nova-house.example"
+      last_updated: "2026-05-01T00:00:00Z"
+
+  leaf_canonical_document:
+    domain: "leaf-brand.example"
+    well_known_path: "/.well-known/brand.json"
+    description: "Brand Canonical Document for the leaf brand. Declares house_domain back to nova-house.example."
+    document:
+      id: "leaf_brand"
+      house_domain: "nova-house.example"
+      names:
+        - en: "Leaf Brand"
+      description: "Fictional sub-brand for distributed brand.json conformance testing."
+      keller_type: "independent"
+      trademarks:
+        - registry: "USPTO"
+          number: "9876001"
+          mark: "LEAF BRAND"
+          status: "active"
+          countries: ["US", "CA", "GB"]
+          nice_classes: [25]
+        - registry: "EUIPO"
+          number: "EU018001"
+          mark: "LEAF BRAND"
+          status: "active"
+          countries: ["DE", "FR", "ES", "IT"]
+          license_type: "owned"
+      contact:
+        email: "brand@leaf-brand.example"
+      last_updated: "2026-04-01T00:00:00Z"
+
+  house_portfolio_leaf_only:
+    domain: "nova-house.example"
+    well_known_path: "/.well-known/brand.json"
+    description: |
+      House Portfolio for the leaf-only variant. Does NOT include the leaf in brand_refs[].
+      Used to assert that a leaf-only edge (leaf declares house_domain, house is silent)
+      does not produce relationship trust.
+    document:
+      house:
+        domain: "nova-house.example"
+        name: "Nova House"
+      brand_refs:
+        - domain: "other-brand.example"
+          brand_id: "other_brand"
+      contact:
+        email: "brand@nova-house.example"
+      last_updated: "2026-05-01T00:00:00Z"
+
+# --- Consumer-under-test dispatch ---
+#
+# The mutual-assertion storyboard exercises a CONSUMER of brand.json documents,
+# not a brand-agent serving tasks. The subject under test is a platform or agent
+# that crawls brand.json files and classifies the mutual-assertion trust tier
+# for house/leaf relationships. The scenario name and request shape below are
+# the stable contract this runner defines; consumers advertise this via
+# comply_test_controller.
+
+consumer_controller_contract:
+  scenario_name: evaluate_brand_mutual_assertion
+  description: |
+    Drives the consumer under test to evaluate the trust tier for a given
+    house/leaf brand.json pair. The runner serves the fixture documents and
+    dispatches the consumer via comply_test_controller. The consumer must:
+      1. Fetch the house portfolio (validate brand_refs[] inclusion)
+      2. Fetch the leaf's canonical document (validate house_domain)
+      3. Classify the relationship as one of: mutual | leaf_only | house_only | standalone
+      4. Return the classification result
+
+  variants:
+    mutual_assertion:
+      description: "Both sides assert. House brand_refs[] includes the leaf; leaf house_domain points to the house. Expected classification: mutual."
+      house_doc: fixtures.house_portfolio
+      leaf_doc: fixtures.leaf_canonical_document
+
+    leaf_only:
+      description: "One-sided assertion. Leaf declares house_domain; house does NOT include the leaf in brand_refs[]. Expected classification: leaf_only."
+      house_doc: fixtures.house_portfolio_leaf_only
+      leaf_doc: fixtures.leaf_canonical_document
+
+  request_shape:
+    scenario: evaluate_brand_mutual_assertion
+    params:
+      variant: "<mutual_assertion | leaf_only>"
+      house_domain: "nova-house.example"
+      leaf_domain: "leaf-brand.example"
+      leaf_brand_id: "leaf_brand"
+
+# --- Upstream traffic assertions ---
+#
+# Runners assert via query_upstream_traffic that the consumer made the
+# expected HTTP calls during the dispatch window.
+
+upstream_traffic_contract:
+  house_fetch_observed:
+    description: "Consumer fetched the house portfolio to verify brand_refs[] inclusion."
+    min_count: 1
+    endpoint_pattern: "GET *nova-house.example/.well-known/brand.json"
+
+  leaf_fetch_observed:
+    description: "Consumer fetched the leaf's canonical document to read house_domain."
+    min_count: 1
+    endpoint_pattern: "GET *leaf-brand.example/.well-known/brand.json"
+
+  managed_by_not_for_trust:
+    description: |
+      Consumer did NOT make trust-classification calls to the managed_by domain.
+      managed_by (acme-agency.example) is a directory field — aggregation only.
+      A conformant consumer MUST NOT fetch it for trust purposes.
+    min_count: 0
+    endpoint_pattern: "GET *acme-agency.example/.well-known/brand.json"
+    severity: advisory
+
+  relationship_trust_not_extended:
+    description: |
+      Zero governance-trust-extension side effects fire on a leaf-only edge.
+      Identity trust (logos, colors, tone from the leaf's TLS-verified canonical
+      document) remains valid; relationship trust (governance propagation,
+      member feature inheritance, billable seat inclusion) is blocked.
+    min_count: 0
+    candidate_endpoint_patterns:
+      - "POST */governance/auto-provision"
+      - "POST */accounts/auto-create-member"
+      - "POST */governance/contexts"
+      - "POST */billing/seats/auto-add"
+
+scope:
+  in_scope: |
+    - Fixture brand.json document shapes (house portfolio variants and leaf canonical document).
+    - The consumer-test-controller scenario name and request shape the runner uses to
+      dispatch the consumer under test.
+    - The endpoint patterns the runner asserts on via query_upstream_traffic.
+    - Typed trademark fixture values used by distributed_brand_trademark_validation.yaml.
+  out_of_scope: |
+    - The consumer's internal trust-extension implementation. The contract asserts on
+      observable side effects; the consumer's internals are partner-specific.
+    - Runner-side dispatch implementation. Tracked separately when consumer adoption reaches
+      a quorum. Until then, consumer-under-test steps grade not_applicable via
+      requires_contract.
+    - Real-world brand domains. All fixture domains are on the IANA-reserved .example TLD.
+
+references:
+  mutual_assertion_scenario: static/compliance/source/protocols/brand/scenarios/distributed_brand_mutual_assertion.yaml
+  trademark_scenario: static/compliance/source/protocols/brand/scenarios/distributed_brand_trademark_validation.yaml
+  trust_model: /brand-protocol/brand-json#mutual-assertion-trust-model
+  schema: /schemas/latest/brand.json
+  source_issue: https://github.com/adcontextprotocol/adcp/issues/4932
