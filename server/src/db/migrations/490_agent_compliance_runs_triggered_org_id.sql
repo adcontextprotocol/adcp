@@ -1,4 +1,4 @@
--- Migration 473: add triggered_org_id to agent_compliance_runs and create
+-- Migration 490: add triggered_org_id to agent_compliance_runs and create
 -- agent_context_with_latest_test view.
 --
 -- Part of the #4247 compliance-state unification (PR 4 of 4). Today,

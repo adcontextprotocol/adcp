@@ -3724,7 +3724,7 @@ export function createMemberToolHandlers(
                 // Org scope for the per-org `agent_context_with_latest_test` view.
                 // Without this, two orgs that own the same agent URL (staging vs
                 // prod orgs of one publisher) would conflate their test history.
-                // See migration 473.
+                // See migration 490.
                 triggered_org_id: organizationId,
               };
               await complianceDb.recordComplianceRun(dbInput);

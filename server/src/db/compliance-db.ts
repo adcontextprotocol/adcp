@@ -227,7 +227,7 @@ export interface RecordComplianceRunInput {
    * for triggered_by='owner_test'; heartbeat / manual / webhook leave it NULL.
    * Required for the per-org scoping of `agent_context_with_latest_test` so
    * two orgs that own the same agent (e.g. staging vs prod orgs of one
-   * publisher) don't conflate their test history. See migration 473.
+   * publisher) don't conflate their test history. See migration 490.
    */
   triggered_org_id?: string | null;
   dry_run?: boolean;

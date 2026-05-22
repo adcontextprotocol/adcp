@@ -205,7 +205,7 @@ export class AgentContextDatabase {
         -- The legacy agent_contexts.last_test_* columns stay for backward
         -- compat with non-owner third-party writes through recordTest, but
         -- reads come from the view so the unification is consistent. See
-        -- migration 473.
+        -- migration 490.
         canonical_last_test_scenario AS last_test_scenario,
         canonical_last_test_passed AS last_test_passed,
         canonical_last_test_summary AS last_test_summary,
@@ -250,7 +250,7 @@ export class AgentContextDatabase {
         -- The legacy agent_contexts.last_test_* columns stay for backward
         -- compat with non-owner third-party writes through recordTest, but
         -- reads come from the view so the unification is consistent. See
-        -- migration 473.
+        -- migration 490.
         canonical_last_test_scenario AS last_test_scenario,
         canonical_last_test_passed AS last_test_passed,
         canonical_last_test_summary AS last_test_summary,
@@ -294,7 +294,7 @@ export class AgentContextDatabase {
         -- The legacy agent_contexts.last_test_* columns stay for backward
         -- compat with non-owner third-party writes through recordTest, but
         -- reads come from the view so the unification is consistent. See
-        -- migration 473.
+        -- migration 490.
         canonical_last_test_scenario AS last_test_scenario,
         canonical_last_test_passed AS last_test_passed,
         canonical_last_test_summary AS last_test_summary,
@@ -373,7 +373,7 @@ export class AgentContextDatabase {
         -- The legacy agent_contexts.last_test_* columns stay for backward
         -- compat with non-owner third-party writes through recordTest, but
         -- reads come from the view so the unification is consistent. See
-        -- migration 473.
+        -- migration 490.
         canonical_last_test_scenario AS last_test_scenario,
         canonical_last_test_passed AS last_test_passed,
         canonical_last_test_summary AS last_test_summary,
