@@ -665,6 +665,8 @@ export interface PendingContentItem {
   content_type: string;
   external_url: string | null;
   external_site_name: string | null;
+  status: 'pending_review' | 'needs_revisions';
+  revision_notes: string | null;
   proposer: { id: string; name: string };
   proposed_at: string;
   collection: {
@@ -713,7 +715,7 @@ export async function listPendingContentForUser(
   let query = `
     SELECT
       p.id, p.title, p.subtitle, p.excerpt, p.content, p.slug, p.content_type,
-      p.external_url, p.external_site_name,
+      p.external_url, p.external_site_name, p.status, p.revision_notes,
       p.proposer_user_id, p.proposed_at, p.working_group_id,
       wg.name as committee_name, wg.slug as committee_slug,
       u.first_name, u.last_name, u.email as proposer_email,
@@ -725,7 +727,7 @@ export async function listPendingContentForUser(
     FROM perspectives p
     LEFT JOIN working_groups wg ON wg.id = p.working_group_id
     LEFT JOIN users u ON u.workos_user_id = p.proposer_user_id
-    WHERE p.status = 'pending_review'
+    WHERE p.status IN ('pending_review', 'needs_revisions')
   `;
   const params: (string | string[])[] = [];
 
@@ -751,6 +753,8 @@ export async function listPendingContentForUser(
     content_type: row.content_type,
     external_url: row.external_url,
     external_site_name: row.external_site_name,
+    status: row.status,
+    revision_notes: row.revision_notes,
     proposer: {
       id: row.proposer_user_id,
       name: row.first_name && row.last_name
@@ -783,7 +787,8 @@ export type ContentReviewError =
 
 export interface ContentReviewResult {
   success: boolean;
-  status?: 'published' | 'draft' | 'rejected';
+  /** 'needs_revisions' is non-terminal — author can resubmit. 'pending_review' is returned by resubmit. */
+  status?: 'published' | 'draft' | 'rejected' | 'needs_revisions' | 'pending_review';
   message?: string;
   error?: ContentReviewError;
   error_message?: string;
@@ -814,11 +819,11 @@ export async function approveContentForUser(
 
   const content = contentResult.rows[0];
 
-  if (content.status !== 'pending_review') {
+  if (content.status !== 'pending_review' && content.status !== 'needs_revisions') {
     return {
       success: false,
       error: 'invalid_status',
-      error_message: `Content is not pending review (current status: ${content.status})`,
+      error_message: `Content is not in a reviewable state (current status: ${content.status})`,
     };
   }
 
@@ -946,11 +951,11 @@ export async function rejectContentForUser(
 
   const content = contentResult.rows[0];
 
-  if (content.status !== 'pending_review') {
+  if (content.status !== 'pending_review' && content.status !== 'needs_revisions') {
     return {
       success: false,
       error: 'invalid_status',
-      error_message: `Content is not pending review (current status: ${content.status})`,
+      error_message: `Content is not in a reviewable state (current status: ${content.status})`,
     };
   }
 
@@ -983,6 +988,128 @@ export async function rejectContentForUser(
   }, 'Content rejected');
 
   return { success: true, status: 'rejected', message: 'Content rejected' };
+}
+
+/**
+ * Request revisions on pending content — non-terminal alternative to rejection.
+ * Sets status to 'needs_revisions' and stores notes in revision_notes.
+ * The author can resubmit via POST /api/content/:id/resubmit.
+ */
+export async function requestRevisionsForUser(
+  user: ContentUser,
+  contentId: string,
+  notes: string
+): Promise<ContentReviewResult> {
+  if (!notes) {
+    return {
+      success: false,
+      error: 'missing_reason',
+      error_message: 'Revision notes are required when requesting revisions',
+    };
+  }
+
+  const pool = getPool();
+
+  const contentResult = await pool.query(
+    `SELECT p.*, wg.slug as committee_slug
+     FROM perspectives p
+     LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+     WHERE p.id = $1`,
+    [contentId]
+  );
+
+  if (contentResult.rows.length === 0) {
+    return { success: false, error: 'not_found', error_message: `No content found with id: ${contentId}` };
+  }
+
+  const content = contentResult.rows[0];
+
+  if (content.status !== 'pending_review') {
+    return {
+      success: false,
+      error: 'invalid_status',
+      error_message: `Revisions can only be requested on pending content (current status: ${content.status})`,
+    };
+  }
+
+  const userIsAdmin = await isWebUserAAOAdmin(user.id);
+  const userIsLead = content.working_group_id
+    ? await isCommitteeLead(content.working_group_id, user.id)
+    : false;
+
+  if (!userIsAdmin && !userIsLead) {
+    return {
+      success: false,
+      error: 'permission_denied',
+      error_message: 'You do not have permission to request revisions on this content',
+    };
+  }
+
+  await pool.query(
+    `UPDATE perspectives
+     SET status = 'needs_revisions', revision_notes = $1,
+         revision_requested_at = NOW(), reviewed_by_user_id = $2, reviewed_at = NOW()
+     WHERE id = $3`,
+    [notes, user.id, contentId]
+  );
+
+  logger.info({
+    contentId,
+    reviewerId: user.id,
+    committeeSlug: content.committee_slug,
+  }, 'Content revision requested');
+
+  return { success: true, status: 'needs_revisions', message: 'Revision request sent to author' };
+}
+
+/**
+ * Resubmit content after revisions — author-only action.
+ * Moves status from 'needs_revisions' back to 'pending_review'.
+ */
+export async function resubmitContentForUser(
+  user: ContentUser,
+  contentId: string
+): Promise<ContentReviewResult> {
+  const pool = getPool();
+
+  const contentResult = await pool.query(
+    `SELECT * FROM perspectives WHERE id = $1`,
+    [contentId]
+  );
+
+  if (contentResult.rows.length === 0) {
+    return { success: false, error: 'not_found', error_message: `No content found with id: ${contentId}` };
+  }
+
+  const content = contentResult.rows[0];
+
+  if (content.status !== 'needs_revisions') {
+    return {
+      success: false,
+      error: 'invalid_status',
+      error_message: `Only content in needs_revisions state can be resubmitted (current status: ${content.status})`,
+    };
+  }
+
+  // Only the original proposer can resubmit
+  if (content.proposer_user_id !== user.id) {
+    return {
+      success: false,
+      error: 'permission_denied',
+      error_message: 'Only the original proposer can resubmit content for review',
+    };
+  }
+
+  await pool.query(
+    `UPDATE perspectives
+     SET status = 'pending_review', proposed_at = NOW(), revision_notes = NULL
+     WHERE id = $1`,
+    [contentId]
+  );
+
+  logger.info({ contentId, proposerId: user.id }, 'Content resubmitted after revisions');
+
+  return { success: true, status: 'pending_review', message: 'Content resubmitted for review' };
 }
 
 /**
@@ -1267,6 +1394,69 @@ export function createContentRouter(): Router {
     }
   });
 
+  // POST /api/content/:id/request-revisions - Request revisions (non-terminal)
+  router.post('/:id/request-revisions', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const { notes } = req.body;
+
+      const result = await requestRevisionsForUser(
+        { id: user.id, email: user.email },
+        id,
+        notes
+      );
+
+      if (!result.success) {
+        const httpStatus = result.error === 'not_found' ? 404
+                         : result.error === 'permission_denied' ? 403
+                         : 400;
+        return res.status(httpStatus).json({
+          error: result.error === 'not_found' ? 'Content not found'
+               : result.error === 'permission_denied' ? 'Permission denied'
+               : result.error === 'missing_reason' ? 'Missing revision notes'
+               : 'Invalid status',
+          message: result.error_message,
+        });
+      }
+
+      res.json({ success: true, status: result.status, message: result.message });
+    } catch (error) {
+      logger.error({ err: error }, 'POST /api/content/:id/request-revisions error');
+      res.status(500).json({ error: 'Failed to request revisions' });
+    }
+  });
+
+  // POST /api/content/:id/resubmit - Author resubmits after revisions
+  router.post('/:id/resubmit', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+
+      const result = await resubmitContentForUser(
+        { id: user.id, email: user.email },
+        id
+      );
+
+      if (!result.success) {
+        const httpStatus = result.error === 'not_found' ? 404
+                         : result.error === 'permission_denied' ? 403
+                         : 400;
+        return res.status(httpStatus).json({
+          error: result.error === 'not_found' ? 'Content not found'
+               : result.error === 'permission_denied' ? 'Permission denied'
+               : 'Invalid status',
+          message: result.error_message,
+        });
+      }
+
+      res.json({ success: true, status: result.status, message: result.message });
+    } catch (error) {
+      logger.error({ err: error }, 'POST /api/content/:id/resubmit error');
+      res.status(500).json({ error: 'Failed to resubmit content' });
+    }
+  });
+
   // =========================================================================
   // PERSPECTIVE ASSET UPLOAD
   // =========================================================================
@@ -1528,7 +1718,7 @@ export function createMyContentRouter(): Router {
       // committee — otherwise an unrelated co-author could resurrect a
       // rejected item without going through the rejecter (see #2713).
       if (requestedStatus !== undefined) {
-        const allowedStatuses = ['draft', 'pending_review', 'published', 'archived'];
+        const allowedStatuses = ['draft', 'pending_review', 'published', 'archived', 'needs_revisions'];
         if (allowedStatuses.includes(requestedStatus)) {
           // Non-admins can only set draft or pending_review
           if (!userIsAdmin && !['draft', 'pending_review'].includes(requestedStatus)) {
@@ -1538,8 +1728,8 @@ export function createMyContentRouter(): Router {
             });
           }
           // Moving out of `rejected` or `archived` requires admin or the
-          // lead of the item's committee. Prevents a co-author on an
-          // unrelated committee from resurrecting a rejected item.
+          // lead of the item's committee. Moving out of `needs_revisions`
+          // is allowed for the proposer (resubmit flow) or lead/admin.
           const currentStatus = contentItem.status as string;
           if (
             (currentStatus === 'rejected' || currentStatus === 'archived')
@@ -1550,6 +1740,18 @@ export function createMyContentRouter(): Router {
             return res.status(403).json({
               error: 'Permission denied',
               message: `Only an admin or a lead of this item's committee can move it out of ${currentStatus}`,
+            });
+          }
+          if (
+            currentStatus === 'needs_revisions'
+            && requestedStatus !== currentStatus
+            && !isProposer
+            && !userIsAdmin
+            && !userIsLead
+          ) {
+            return res.status(403).json({
+              error: 'Permission denied',
+              message: 'Only the original proposer, a committee lead, or an admin can resubmit content from needs_revisions',
             });
           }
           updates.push(`status = $${paramIndex++}`);

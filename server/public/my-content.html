@@ -217,6 +217,7 @@
     .badge-published { background: var(--color-success-100); color: var(--color-success-700); }
     .badge-pending_review { background: var(--color-warning-100); color: var(--color-warning-700); }
     .badge-rejected { background: var(--color-error-100); color: var(--color-error-700); }
+    .badge-needs_revisions { background: var(--color-warning-100); color: var(--color-warning-700); border: 1px solid var(--color-warning-300); }
     .badge-archived { background: var(--color-bg-button-secondary); color: var(--color-text); }
     .badge-article { background: var(--color-info-100); color: var(--color-info-700); }
     .badge-link { background: var(--color-primary-100); color: var(--color-primary-700); }
@@ -605,6 +606,7 @@
               <option value="">All Statuses</option>
               <option value="draft">Draft</option>
               <option value="pending_review">Pending Review</option>
+              <option value="needs_revisions">Needs revisions</option>
               <option value="published">Published</option>
               <option value="rejected">Rejected</option>
               <option value="archived">Archived</option>
@@ -1025,7 +1027,9 @@
 
       const rejectionInfo = item.status === 'rejected' && item.rejection_reason
         ? `<div class="rejection-reason"><strong>Rejection reason:</strong> ${escapeHtml(item.rejection_reason)}</div>`
-        : '';
+        : item.status === 'needs_revisions' && item.revision_notes
+          ? `<div class="rejection-reason" style="border-color: var(--color-warning-300);"><strong>Revision notes:</strong> ${escapeHtml(item.revision_notes)}</div>`
+          : '';
       const pageviews30dValue = Number(item.performance?.pageviews_last_30d || 0);
       const pageviews30d = pageviews30dValue > 0 ? formatMetricCount(pageviews30dValue) : null;
 
@@ -1036,8 +1040,10 @@
         `;
       } else {
         const canEdit = item.relationships?.includes('owner') || item.relationships?.includes('author') || item.relationships?.includes('proposer');
+        const isProposer = item.relationships?.includes('proposer');
         actions = `
           ${canEdit ? `<button class="btn btn-small btn-secondary" onclick="editContent('${safeId(item.id)}')">Edit</button>` : ''}
+          ${item.status === 'needs_revisions' && isProposer ? `<button class="btn btn-small btn-warning" onclick="resubmitContent('${safeId(item.id)}')">Resubmit for review</button>` : ''}
           ${item.status === 'published' ? `<button class="btn btn-small btn-outline" onclick="viewContent('${safeId(item.id)}')">View</button>` : ''}
           ${item.status === 'published' && linkedInShareUrl ? `<a class="btn btn-small btn-outline" href="${linkedInShareUrl}" target="_blank" rel="noopener">Share on LinkedIn</a>` : ''}
           <a class="btn btn-small btn-outline" href="${addieSocialPrompt}">${item.status === 'published' ? 'Draft LinkedIn post' : 'Sharpen with Addie'}</a>
@@ -1116,7 +1122,7 @@
       document.getElementById('externalUrl').value = item.external_url || '';
       document.getElementById('articleContent').value = item.content || '';
       document.getElementById('category').value = item.category || '';
-      document.getElementById('statusSelect').value = item.status === 'published' ? 'published' : 'draft';
+      document.getElementById('statusSelect').value = item.status === 'published' ? 'published' : (item.status === 'needs_revisions' ? 'pending_review' : 'draft');
 
       // Set collection
       const collectionSlug = item.collection?.committee_slug || item.collection?.slug;
@@ -1476,6 +1482,7 @@
         pending_review: 'Pending Review',
         published: 'Published',
         rejected: 'Rejected',
+        needs_revisions: 'Needs revisions',
         archived: 'Archived'
       };
       return labels[status] || status;
@@ -1500,6 +1507,16 @@
     function safeId(id) {
       if (typeof id === 'string' && /^[a-f0-9-]+$/i.test(id)) return id;
       return '';
+    }
+
+    async function resubmitContent(id) {
+      if (!id) return;
+      if (!confirm('Resubmit this article for review? The committee will be notified.')) return;
+      try {
+        const res = await fetch(`/api/content/${id}/resubmit`, { method: 'POST', credentials: 'include' });
+        if (!res.ok) { const e = await res.json(); throw new Error(e.message || 'Failed'); }
+        await loadMyContent();
+      } catch (e) { alert('Failed to resubmit: ' + e.message); }
     }
 
     function escapeHtml(text) {

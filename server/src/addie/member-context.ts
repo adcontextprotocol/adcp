@@ -82,7 +82,7 @@ async function getPendingContentForUser(
     SELECT wg.slug as committee_slug, COUNT(*) as count
     FROM perspectives p
     LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-    WHERE p.status = 'pending_review'
+    WHERE p.status IN ('pending_review', 'needs_revisions')
   `;
   const params: (string | string[])[] = [];
 

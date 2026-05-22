@@ -17,8 +17,8 @@ import { getPool } from '../db/client.js';
 import { isWebUserAAOAdmin } from '../addie/admin-status-lookup.js';
 import { fetchPathPageviewCounts } from './posthog-query.js';
 
-export type MyContentStatus = 'draft' | 'pending_review' | 'published' | 'archived' | 'rejected';
-const VALID_STATUSES: readonly MyContentStatus[] = ['draft', 'pending_review', 'published', 'archived', 'rejected'];
+export type MyContentStatus = 'draft' | 'pending_review' | 'published' | 'archived' | 'rejected' | 'needs_revisions';
+const VALID_STATUSES: readonly MyContentStatus[] = ['draft', 'pending_review', 'published', 'archived', 'rejected', 'needs_revisions'];
 
 export type MyContentRelationship = 'author' | 'proposer' | 'owner';
 const VALID_RELATIONSHIPS: readonly MyContentRelationship[] = ['author', 'proposer', 'owner'];
@@ -48,6 +48,8 @@ export interface MyContentItem {
   created_at: Date;
   updated_at: Date;
   performance?: { pageviews_last_30d: number };
+  revision_notes?: string | null;
+  rejection_reason?: string | null;
 }
 
 export type MyContentErrorCode = 'invalid_status';
@@ -127,6 +129,7 @@ export async function listMyContent({
       p.content, p.tags, p.featured_image_url,
       p.external_url, p.external_site_name, p.status, p.published_at,
       p.created_at, p.updated_at, p.working_group_id, p.proposer_user_id,
+      p.revision_notes, p.rejection_reason,
       wg.name as committee_name, wg.slug as committee_slug,
       CASE WHEN p.proposer_user_id = $1 THEN true ELSE false END as is_proposer,
       CASE WHEN EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $1) THEN true ELSE false END as is_author,
@@ -194,6 +197,8 @@ export async function listMyContent({
     is_author: boolean;
     is_lead: boolean;
     authors: Array<{ user_id: string; display_name: string; display_title: string | null }> | null;
+    revision_notes: string | null;
+    rejection_reason: string | null;
   }
   const result = await pool.query<MyContentSqlRow>(queryText, params);
 
@@ -227,6 +232,8 @@ export async function listMyContent({
         published_at: row.published_at,
         created_at: row.created_at,
         updated_at: row.updated_at,
+        revision_notes: row.revision_notes,
+        rejection_reason: row.rejection_reason,
       } satisfies MyContentItem;
     })
     .filter((item) => {
