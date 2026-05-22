@@ -7,6 +7,8 @@ description: "sync_catalogs task — sync product feeds, store locations, and ve
 
 Manage catalog feeds on a seller account. Sync product feeds, inventory data, store locations, offerings, and industry-vertical catalogs (hotel, flight, job, vehicle, real estate, education, destination). Supports URL-based feeds with scheduled re-fetch, inline item data, and discovery of existing catalogs.
 
+**Terminology.** `sync_catalogs` manages buyer-provided data feeds that a seller uses to render or target ads. This is separate from the seller-side wholesale product feed exposed by `get_products buying_mode: "wholesale"` and the wholesale signals feed exposed by `get_signals discovery_mode: "wholesale"`; webhooks are the push layer for changes to those seller-side feeds.
+
 **Response Time**: Instant to days (returns `completed` for small catalogs, or `submitted` for large feeds requiring platform review)
 
 **Request Schema**: [`/schemas/v3/media-buy/sync-catalogs-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json)

@@ -191,9 +191,9 @@
               "pricing",
               "forecast",
               "proposals",
-              "catalog"
+              "wholesale_feed"
             ],
-            "description": "'products': not all inventory sources were searched. 'pricing': products returned but pricing is absent or unconfirmed. 'forecast': products returned but forecast data is absent. 'proposals': proposals were not generated or are incomplete. 'catalog': in wholesale mode, whole-catalog enumeration could not complete in the time budget — symmetric with get_signals' 'catalog' scope so sellers have a precise way to declare wholesale-incomplete on the products surface."
+            "description": "'products': not all inventory sources were searched. 'pricing': products returned but pricing is absent or unconfirmed. 'forecast': products returned but forecast data is absent. 'proposals': proposals were not generated or are incomplete. 'wholesale_feed': in wholesale mode, full feed enumeration could not complete in the time budget — symmetric with get_signals' 'wholesale_feed' scope so sellers have a precise way to declare wholesale-incomplete on the products surface."
           },
           "description": {
             "type": "string",
@@ -217,7 +217,7 @@
     },
     "filter_diagnostics": {
       "type": "object",
-      "description": "Optional non-fatal diagnostic block describing how the request's `filters` narrowed the candidate set. Use this to disambiguate empty/small result lists between 'no inventory matches the brief' and 'a specific filter excluded everything', without breaking the filter-not-fail convention (sellers still silently exclude unmatched products; this block is observability, not error reporting). Sellers MAY populate this when meaningful narrowing occurred; buyers MAY use it for triage UX without depending on its presence. Counts only — products are not enumerated by name to avoid leaking competitive intelligence about adjacent campaigns or seller inventory. `total_candidates` and `excluded_by` are independently optional — sellers whose baseline catalog size is sensitive MAY emit `excluded_by` without `total_candidates`, or vice versa.",
+      "description": "Optional non-fatal diagnostic block describing how the request's `filters` narrowed the candidate set. Use this to disambiguate empty/small result lists between 'no inventory matches the brief' and 'a specific filter excluded everything', without breaking the filter-not-fail convention (sellers still silently exclude unmatched products; this block is observability, not error reporting). Sellers MAY populate this when meaningful narrowing occurred; buyers MAY use it for triage UX without depending on its presence. Counts only — products are not enumerated by name to avoid leaking competitive intelligence about adjacent campaigns or seller inventory. `total_candidates` and `excluded_by` are independently optional — sellers whose baseline candidate set size is sensitive MAY emit `excluded_by` without `total_candidates`, or vice versa.",
       "properties": {
         "semantics": {
           "type": "string",
@@ -230,7 +230,7 @@
         },
         "total_candidates": {
           "type": "integer",
-          "description": "Number of products the seller considered before applying `filters`. Baseline for interpreting per-filter exclusion counts. Approximate — sellers MAY return a sampled or capped count when their candidate pool is large. Optional; sellers whose baseline catalog size is sensitive (revealing market posture or competitive density) MAY omit this while still emitting `excluded_by`.",
+          "description": "Number of products the seller considered before applying `filters`. Baseline for interpreting per-filter exclusion counts. Approximate — sellers MAY return a sampled or capped count when their candidate pool is large. Optional; sellers whose baseline candidate set size is sensitive (revealing market posture or competitive density) MAY omit this while still emitting `excluded_by`.",
           "minimum": 0
         },
         "excluded_by": {
@@ -295,13 +295,23 @@
     "pagination": {
       "$ref": "/schemas/core/pagination-response.json"
     },
-    "catalog_version": {
+    "wholesale_feed_version": {
       "type": "string",
-      "description": "Opaque token representing the version of the catalog state used to compose this response. Sellers that implement conditional-fetch (if_catalog_version) MUST return this on every response so buyers can cache and probe later. Buyers MUST treat the value as opaque — no format, no ordering, no inspection. The token is scope-keyed: it describes a version for the cache_scope declared on this response, NOT a global agent version. A buyer caches `(cache_scope, catalog_version)` pairs and presents the matching token on the next request. Scoping dimensions: (agent, buying_mode, filters, property_list, catalog) for cache_scope: 'public'; that tuple plus account_id for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. See specs/catalog-change-feed.md for the full cache layering model."
+      "description": "Opaque token representing the version of the wholesale product feed state used to compose this response. Sellers that implement conditional-fetch (if_wholesale_feed_version) MUST return this on every wholesale-mode response so buyers can cache and probe later. Buyers MUST treat the value as opaque — no format, no ordering, no inspection. The token is scope-keyed: it describes a version for the cache_scope declared on this response, NOT a global agent version. A buyer caches `(cache_scope, wholesale_feed_version)` pairs and presents the matching token on the next request. Scoping dimensions: (agent, buying_mode, filters, property_list, catalog) for cache_scope: 'public'; that tuple plus account_id for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. See specs/wholesale-feed-webhooks.md for the full cache layering model.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "required_for_wholesale_request": {
+            "task": "get_products",
+            "request_field": "buying_mode",
+            "equals": "wholesale"
+          }
+        },
+        "spec": "specs/wholesale-feed-webhooks.md#consumer-pattern"
+      }
     },
     "pricing_version": {
       "type": "string",
-      "description": "Opaque token representing the version of the pricing layer. When the seller supports independent pricing versioning, pricing_version changes when prices move but catalog_version changes only when structure/metadata moves. Same cache_scope keying as catalog_version. Sellers not separating these MAY omit pricing_version and use catalog_version for both."
+      "description": "Opaque token representing the version of the pricing layer. When the seller supports independent pricing versioning, pricing_version changes when prices move but wholesale_feed_version changes only when structure/metadata moves. Same cache_scope keying as wholesale_feed_version. Sellers not separating these MAY omit pricing_version and use wholesale_feed_version for both."
     },
     "cache_scope": {
       "type": "string",
@@ -309,12 +319,12 @@
         "public",
         "account"
       ],
-      "description": "Declares whether the catalog_version and pricing_version on this response describe a universal layer or an account-specific overlay. REQUIRED on every 3.1+ response (the 3.1 schema enforces this — the safety property of the two-layer cache model depends on it). 'public': this response describes the seller's published rate card; the buyer MAY dedupe under (agent, buying_mode, filters, property_list, catalog) without scoping by account. 'account': this response includes account-specific overrides; the buyer MUST cache the version under (agent, buying_mode, filters, property_list, catalog, account_id). When the request did NOT include `account`, the seller MUST return `cache_scope: 'public'`. When the request included `account`, the seller MUST return either: 'public' (this account prices off the public rate card — buyer dedupes) or 'account' (account-specific overrides exist — buyer caches under the account key). Sellers MAY return 'public' on an account-scoped request that previously had overrides — buyers SHOULD interpret this as a downgrade and drop their account-overlay for the (agent, filters, mode) tuple. Without schema-required cache_scope, a seller silently omitting the field on an account-scoped response would cause buyers to mis-key the cache and serve account-overlay payloads to other accounts — the canonical safety invariant of the entire cache layering model. **Backward-compatibility note for 3.1 validators:** SDKs that validate strictly against the 3.1 schema MUST select the validator based on the server-declared `adcp_version` (release-precision version negotiation, 3.1). For responses with `adcp_version` starting `3.0`, the 3.1 cache_scope-required constraint MUST be relaxed — pre-3.1 sellers correctly emit no cache_scope and remain conformant to their declared version. This is a tightening within 3.1, not a 3.0 break."
+      "description": "Declares whether the wholesale_feed_version and pricing_version on this response describe a universal layer or an account-specific overlay. REQUIRED on every 3.1+ response (the 3.1 schema enforces this — the safety property of the two-layer cache model depends on it). 'public': this response describes the seller's published rate card; the buyer MAY dedupe under (agent, buying_mode, filters, property_list, catalog) without scoping by account. 'account': this response includes account-specific overrides; the buyer MUST cache the version under (agent, buying_mode, filters, property_list, catalog, account_id). When the request did NOT include `account`, the seller MUST return `cache_scope: 'public'`. When the request included `account`, the seller MUST return either: 'public' (this account prices off the public rate card — buyer dedupes) or 'account' (account-specific overrides exist — buyer caches under the account key). Sellers MAY return 'public' on an account-scoped request that previously had overrides — buyers SHOULD interpret this as a downgrade and drop their account-overlay for the (agent, filters, mode) tuple. Without schema-required cache_scope, a seller silently omitting the field on an account-scoped response would cause buyers to mis-key the cache and serve account-overlay payloads to other accounts — the canonical safety invariant of the entire cache layering model. **Backward-compatibility note for 3.1 validators:** SDKs that validate strictly against the 3.1 schema MUST select the validator based on the server-declared `adcp_version` (release-precision version negotiation, 3.1). For responses with `adcp_version` starting `3.0`, the 3.1 cache_scope-required constraint MUST be relaxed — pre-3.1 sellers correctly emit no cache_scope and remain conformant to their declared version. This is a tightening within 3.1, not a 3.0 break."
     },
     "unchanged": {
       "type": "boolean",
       "const": true,
-      "description": "Present and `true` ONLY when the request carried if_catalog_version (and/or if_pricing_version) matching the seller's current version for the buyer's cache_scope, in which case products[] MUST be omitted; catalog_version (echoed), cache_scope (echoed), and pricing_version (echoed when used) MUST still be present. Buyers receiving unchanged: true MUST NOT mutate their local catalog mirror. **One shape per state:** sellers MUST NOT emit `unchanged: false` — the absence of the field IS the signal that the response carries products. Two shapes ({ unchanged: false, products: [...] } vs. { products: [...] }) for the same state would let some sellers always emit the field and some never would, creating an inconsistency the wire shouldn't carry."
+      "description": "Present and `true` ONLY on wholesale-mode responses when the request carried if_wholesale_feed_version (and/or if_pricing_version) matching the seller's current version for the buyer's cache_scope, in which case products[] MUST be omitted; wholesale_feed_version (echoed), cache_scope (echoed), and pricing_version (echoed when used) MUST still be present. Buyers receiving unchanged: true MUST NOT mutate their local wholesale product mirror. **One shape per state:** sellers MUST NOT emit `unchanged: false` — the absence of the field IS the signal that the response carries products. Two shapes ({ unchanged: false, products: [...] } vs. { products: [...] }) for the same state would let some sellers always emit the field and some never would, creating an inconsistency the wire shouldn't carry."
     },
     "sandbox": {
       "type": "boolean",
@@ -338,9 +348,9 @@
     ]
   },
   "then": {
-    "description": "Catalog-unchanged response: products MUST be omitted; catalog_version and cache_scope MUST be present (echoed from the cached version).",
+    "description": "Wholesale-feed unchanged response: products MUST be omitted; wholesale_feed_version and cache_scope MUST be present (echoed from the cached version).",
     "required": [
-      "catalog_version",
+      "wholesale_feed_version",
       "cache_scope"
     ],
     "not": {
@@ -350,7 +360,7 @@
     }
   },
   "else": {
-    "description": "Standard response: products[] MUST be present and cache_scope MUST declare the response's cache layer.",
+    "description": "Standard response: products[] MUST be present and cache_scope MUST declare the response's cache layer. wholesale_feed_version is required by the wholesale-mode contract and verifier constraints, but is not schema-required here because this response schema is shared by non-wholesale reads.",
     "required": [
       "products",
       "cache_scope"

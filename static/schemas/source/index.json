@@ -186,6 +186,10 @@
           "$ref": "/schemas/core/catalog.json",
           "description": "A typed data feed — structural (offering, product, inventory, store, promotion) or vertical (hotel, flight, job, vehicle, real_estate, education, destination). Can be synced, inline, or fetched from a URL."
         },
+        "wholesale-feed-event": {
+          "$ref": "/schemas/core/wholesale-feed-event.json",
+          "description": "A wholesale product feed or wholesale signals feed event carried by wholesale feed webhooks"
+        },
         "offering": {
           "$ref": "/schemas/core/offering.json",
           "description": "A promotable offering from a brand with structured asset groups and optional conversational SI experiences"
@@ -405,6 +409,10 @@
         "provenance": {
           "$ref": "/schemas/core/provenance.json",
           "description": "AI provenance and disclosure metadata — declares how content was produced, C2PA references, regulatory disclosure requirements, and third-party verification results"
+        },
+        "wholesale-feed-webhook": {
+          "$ref": "/schemas/core/wholesale-feed-webhook.json",
+          "description": "Webhook payload carrying a wholesale feed change event"
         }
       },
       "requirements": {

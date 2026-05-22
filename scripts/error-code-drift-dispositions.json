@@ -166,11 +166,6 @@
       "target_version": "3.1",
       "note": "Graceful-degradation advisory (#4899). Non-fatal; emitted alongside a populated payload that the seller served from cache past its freshness target because an upstream or sub-agent fetch failed. Distinct from SERVICE_UNAVAILABLE (empty payload + fatal). Details follow error-details/stale-response.json (served_from_cache, cache_age_seconds, optional upstream + original_error). Wire change — held for 3.1."
     },
-    "RETENTION_EXPIRED": {
-      "disposition": "held-for-next-minor",
-      "target_version": "3.1",
-      "note": "From catalog change-feed (#4763; PR #4767). Returned by GET /catalog/events when cursor is older than the agent's retention window OR originates from a different agent. Consumer MUST re-bootstrap via wholesale enumeration. New surface in 3.1 — held."
-    },
     "UNSUPPORTED_GRANULARITY": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
