@@ -131,9 +131,7 @@ Create an advertising campaign from selected products.
       "budget": 10000
     }
   ],
-  "start_time": {
-    "type": "asap"
-  },
+  "start_time": "asap",
   "end_time": "2024-03-31T23:59:59Z"
 }
 ```
@@ -147,7 +145,7 @@ Create an advertising campaign from selected products.
   - `bid_price`: Required for auction pricing
   - `targeting_overlay`: Additional targeting constraints
   - `creative_ids` or `creatives`: Creative assignments
-- `start_time` (object, required): `{ "type": "asap" }` or `{ "type": "scheduled", "datetime": "..." }`
+- `start_time` (string, required): `"asap"` or an ISO 8601 datetime (e.g., `"2024-06-01T00:00:00Z"`)
 - `end_time` (string, required): ISO 8601 datetime
 
 **Response contains:**

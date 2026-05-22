@@ -27,6 +27,10 @@
 import { getDomain } from 'tldts';
 import express from 'express';
 import request from 'supertest';
+import {
+  fetchAgentAuthorizationsFromDirectory,
+  type DirectoryPublisherEntry,
+} from '@adcp/sdk';
 
 const MAX_CAPABILITIES_BYTES = 65_536;
 const MAX_BRAND_JSON_BYTES = 262_144;
@@ -369,6 +373,46 @@ async function resolveAgent(agentUrl: string, ctx: CallContext): Promise<Resolut
   };
 }
 
+/**
+ * AAO directory inverse-lookup: given the resolved agent URL, ask the
+ * directory which publishers' adagents.json authorize it. Companion to
+ * the forward chain — answers "where does this agent sell?" via the
+ * directory shipped in spec PR #4828 / SDK 7.10.
+ *
+ * Trust posture: the directory is discovery, not authorization. Each
+ * entry here is a hint that the listed publisher's adagents.json
+ * authorizes the agent; verifying that claim still requires fetching
+ * the publisher's file directly. Don't grant access on directory
+ * output alone.
+ */
+async function lookupPublishers(
+  agentUrl: string,
+  directoryUrl: string,
+): Promise<DirectoryPublisherEntry[]> {
+  const iter = fetchAgentAuthorizationsFromDirectory(agentUrl, {
+    directoryUrl,
+    status: ['authorized'],
+  });
+  return iter.toArray();
+}
+
+function printPublishers(directoryUrl: string, publishers: DirectoryPublisherEntry[]): void {
+  console.log('');
+  console.log(`directory      ${directoryUrl}`);
+  console.log(`publishers     ${publishers.length} authorized`);
+  if (publishers.length === 0) {
+    console.log('  (no publishers — agent may not be present in any indexed adagents.json)');
+    return;
+  }
+  for (const p of publishers) {
+    const mgr = p.manager_domain ? ` via=${p.manager_domain}` : '';
+    const pinned = p.signing_keys_pinned ? ' pinned' : '';
+    console.log(
+      `  ${p.publisher_domain.padEnd(40)} ${p.discovery_method.padEnd(24)}${mgr.padEnd(24)} props=${p.properties_authorized}/${p.properties_total}${pinned}  verified=${p.last_verified_at}`,
+    );
+  }
+}
+
 function printResult(result: ResolutionResult): void {
   console.log('');
   console.log(`agent_url      ${result.agentUrl}`);
@@ -392,9 +436,16 @@ function printResult(result: ResolutionResult): void {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length === 0) {
-    console.error('Usage: tsx scripts/e2e-resolve-training-agent.ts <base-url|--inproc>');
+    console.error('Usage: tsx scripts/e2e-resolve-training-agent.ts <base-url|--inproc> [--directory <url>]');
+    console.error('');
+    console.error('  --directory <url>  Run the AAO directory inverse-lookup after the forward chain.');
+    console.error('                     Defaults to <base-url>/api when HTTP mode is used and the');
+    console.error('                     flag is omitted. Pass --directory none to skip.');
     process.exit(2);
   }
+
+  const directoryFlagIdx = args.indexOf('--directory');
+  const directoryArg = directoryFlagIdx >= 0 ? args[directoryFlagIdx + 1] : undefined;
 
   if (args[0] === '--inproc') {
     // In-process mode: spin up Express with the training-agent router AND the
@@ -454,6 +505,24 @@ async function main(): Promise<void> {
     },
   });
   printResult(result);
+
+  // Forward chain done. Now the AAO directory inverse-lookup: which
+  // publishers' adagents.json authorize this agent? Defaults to the
+  // same dev-server host (router is mounted under `/api`).
+  const directoryUrl = directoryArg === 'none'
+    ? undefined
+    : directoryArg ?? `${baseUrl}/api`;
+  if (directoryUrl) {
+    try {
+      const publishers = await lookupPublishers(agentUrl, directoryUrl);
+      printPublishers(directoryUrl, publishers);
+    } catch (err) {
+      console.error(`\ndirectory lookup failed: ${(err as Error).message}`);
+      // Don't propagate — the forward chain is the primary contract;
+      // directory lookup is an additive demo.
+    }
+  }
+
   console.log('OK');
 }
 

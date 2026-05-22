@@ -137,9 +137,10 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
 
   async function seedOrg(
     orgId: string,
-    overrides: Partial<{ name: string; company_type: string | null; revenue_tier: string | null; membership_tier: string | null }> = {},
+    overrides: Partial<{ name: string; company_type: string | null; revenue_tier: string | null; membership_tier: string | null; role: string }> = {},
   ) {
     const name = overrides.name ?? 'Acme Media';
+    const role = overrides.role ?? 'owner';
     await pool.query(
       `INSERT INTO organizations (workos_organization_id, name, is_personal, company_type, revenue_tier, membership_tier, created_at, updated_at)
        VALUES ($1, $2, false, $3, $4, $5, NOW(), NOW())
@@ -152,9 +153,9 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     );
     await pool.query(
       `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, role, email, created_at, updated_at)
-       VALUES ($1, $2, 'owner', $3, NOW(), NOW())
-       ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = 'owner'`,
-      [currentUserId, orgId, currentUserEmail],
+       VALUES ($1, $2, $3, $4, NOW(), NOW())
+       ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = EXCLUDED.role`,
+      [currentUserId, orgId, role, currentUserEmail],
     );
   }
 
@@ -542,6 +543,30 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
 
     // Cleanup
     await pool.query(`DELETE FROM user_agreement_acceptances WHERE workos_user_id = $1`, [currentUserId]);
+  });
+
+  it('allows member-role users to bootstrap the org profile (#4839)', async () => {
+    currentUserEmail = 'member@acme.example';
+    currentUserId = 'user_boot_member_role';
+    const orgId = `${TEST_PREFIX}_member_role`;
+    await seedOrg(orgId, { role: 'member' });
+
+    const res = await request(app)
+      .post('/api/me/member-profile')
+      .send({
+        organization_name: 'Acme Media',
+        company_type: 'publisher',
+        corporate_domain: 'acme.example',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.profile.organization_id).toBe(orgId);
+
+    const profileRow = await pool.query<{ is_public: boolean }>(
+      `SELECT is_public FROM member_profiles WHERE workos_organization_id = $1`,
+      [orgId],
+    );
+    expect(profileRow.rows[0]?.is_public).toBe(false);
   });
 
   it('still routes legacy display_name + slug bodies to the original handler', async () => {

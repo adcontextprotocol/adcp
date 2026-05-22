@@ -27,7 +27,7 @@ For the opposite direction — failures that are **not** in this list and do hav
 - **Storyboard**: `universal/security.yaml` phases `oauth_discovery` + `mechanism_required`.
 - **Gap**: the RFC 9728 / RFC 8414 probes run for every agent by default. API-key-only sandboxes were standing up fake issuer URLs to "pass" the probes, which is worse than skipping them.
 - **Resolution**: [#2606](https://github.com/adcontextprotocol/adcp/issues/2606) — the storyboard narrative now explicitly directs API-key-only agents to declare `auth.api_key` in the test kit and omit PRM entirely. Optional-phase semantics make `oauth_discovery` failures non-fatal; `mechanism_required` passes via the API-key path.
-- **Workaround**: if your agent has no OAuth issuer, do not serve `/.well-known/oauth-protected-resource/...`. Declare `auth.api_key` in your test-kit and let the OAuth discovery phase fail silently.
+- **Workaround**: if your agent has no OAuth issuer, do not serve `/.well-known/oauth-protected-resource/...`. Configure your agent to accept the test kit's probe key as a valid credential — the default test kit (`acme-outdoor`) probes with `demo-acme-outdoor-v1`, and your agent must accept that value alongside your production key. This satisfies `test_kit.auth.api_key` and lets the `api_key_path` phase run; without it the phase is skipped and `assert_mechanism` fails with `actual: []`. See the [storyboard troubleshooting guide — Bearer-only agent: assert_mechanism](/docs/building/operating/storyboard-troubleshooting#bearer-only-agent-no-auth-mechanism-contributed-assert_mechanism) for the concrete fix.
 
 ### Idempotency missing-key probe via SDK
 

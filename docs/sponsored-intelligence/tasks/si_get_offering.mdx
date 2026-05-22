@@ -122,6 +122,7 @@ This request must not include any personally identifiable information. The `inte
 ```json
 {
   "$schema": "/schemas/sponsored-intelligence/si-get-offering-response.json",
+  "status": "completed",
   "available": true,
   "offering_token": "offering_abc123xyz",
   "ttl_seconds": 3600,
@@ -153,6 +154,7 @@ This request must not include any personally identifiable information. The `inte
 ```json
 {
   "$schema": "/schemas/sponsored-intelligence/si-get-offering-response.json",
+  "status": "completed",
   "available": true,
   "offering_token": "offering_abc123xyz",
   "ttl_seconds": 3600,
@@ -193,6 +195,7 @@ This enables the host to show:
 ```json
 {
   "$schema": "/schemas/sponsored-intelligence/si-get-offering-response.json",
+  "status": "completed",
   "available": false,
   "checked_at": "2025-01-19T10:00:00Z",
   "unavailable_reason": "expired",

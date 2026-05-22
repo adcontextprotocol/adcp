@@ -95,6 +95,80 @@ describe('crawler publisher_properties fan-out (integration)', () => {
       expect(result.rows[0]?.count).toBe('0');
     });
 
+    it('enqueues child for periodic re-validation with 24h initial delay (#4850)', async () => {
+      await publisherDb.recordChildPublisherFromManager({
+        childDomain: CHILD_A,
+        managerDomain: MANAGER,
+      });
+      const queueRow = await query<{
+        publisher_domain: string;
+        manager_domain: string;
+        next_attempt_after: Date;
+        attempts: number;
+      }>(
+        `SELECT publisher_domain, manager_domain, next_attempt_after, attempts
+           FROM manager_revalidation_queue WHERE publisher_domain = $1`,
+        [CHILD_A],
+      );
+      expect(queueRow.rows[0]).toMatchObject({
+        publisher_domain: CHILD_A,
+        manager_domain: MANAGER,
+        attempts: 0,
+      });
+      // First attempt should be ~24 hours from now (allow 1-min slack for clock drift)
+      const expectedAttemptAt = Date.now() + 24 * 60 * 60 * 1000;
+      const actualAttemptAt = new Date(queueRow.rows[0]!.next_attempt_after).getTime();
+      expect(Math.abs(actualAttemptAt - expectedAttemptAt)).toBeLessThan(60 * 1000);
+
+      // Cleanup
+      await pool.query('DELETE FROM manager_revalidation_queue WHERE publisher_domain = $1', [CHILD_A]);
+    });
+
+    it('preserves existing queue backoff on re-enqueue (idempotent)', async () => {
+      // Initial enqueue from fan-out
+      await publisherDb.recordChildPublisherFromManager({
+        childDomain: CHILD_A,
+        managerDomain: MANAGER,
+      });
+      // Manually advance backoff (simulate a recent failed attempt)
+      await pool.query(
+        `UPDATE manager_revalidation_queue
+            SET next_attempt_after = NOW() + INTERVAL '3 days',
+                attempts = 2
+          WHERE publisher_domain = $1`,
+        [CHILD_A],
+      );
+      // Re-enqueue from a subsequent fan-out (same row exists)
+      await publisherDb.recordChildPublisherFromManager({
+        childDomain: CHILD_A,
+        managerDomain: MANAGER,
+      });
+      // Backoff state should be preserved (NOT reset to NOW + 24h)
+      const queueRow = await query<{ next_attempt_after: Date; attempts: number }>(
+        `SELECT next_attempt_after, attempts FROM manager_revalidation_queue WHERE publisher_domain = $1`,
+        [CHILD_A],
+      );
+      expect(queueRow.rows[0]?.attempts).toBe(2); // unchanged
+      const attemptAt = new Date(queueRow.rows[0]!.next_attempt_after).getTime();
+      const threeDaysFromNow = Date.now() + 3 * 24 * 60 * 60 * 1000;
+      expect(Math.abs(attemptAt - threeDaysFromNow)).toBeLessThan(60 * 1000);
+
+      // Cleanup
+      await pool.query('DELETE FROM manager_revalidation_queue WHERE publisher_domain = $1', [CHILD_A]);
+    });
+
+    it('does not enqueue when manager == child (self-attribute no-op skips queue too)', async () => {
+      await publisherDb.recordChildPublisherFromManager({
+        childDomain: MANAGER,
+        managerDomain: MANAGER,
+      });
+      const queueCount = await query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM manager_revalidation_queue WHERE publisher_domain = $1`,
+        [MANAGER],
+      );
+      expect(queueCount.rows[0]?.count).toBe('0');
+    });
+
     it('does not overwrite a child that already has its own adagents_json cached', async () => {
       // Seed a stronger row: child was independently crawled, has its own
       // adagents_json blob and discovery_method=direct.

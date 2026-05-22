@@ -59,8 +59,8 @@ export const ADCP_TASK_REGISTRY: Record<string, AdcpTaskMeta> = {
     validate: (params) => {
       if (!params.brand) return 'brand is required (with domain).';
       if (!params.packages || !Array.isArray(params.packages)) return 'packages array is required.';
-      if (!params.start_time) return 'start_time is required.';
-      if (!params.end_time) return 'end_time is required.';
+      if (typeof params.start_time !== 'string' || !params.start_time) return 'start_time must be "asap" or an ISO 8601 datetime string.';
+      if (typeof params.end_time !== 'string' || !params.end_time) return 'end_time must be an ISO 8601 datetime string.';
       return null;
     },
   },
@@ -497,7 +497,7 @@ const callAdcpTaskTool: AddieTool = {
         description: [
           'Task-specific parameters. Quick reference for common tasks:',
           '• get_products: { brief, brand: { domain }, buying_mode?: "brief"|"wholesale"|"refine", filters?: { channels, budget_range } }',
-          '• create_media_buy: { idempotency_key, brand: { domain }, packages: [{ product_id, pricing_option_id, budget }], start_time: { type: "asap"|"scheduled" }, end_time }',
+          '• create_media_buy: { idempotency_key, brand: { domain }, packages: [{ product_id, pricing_option_id, budget }], start_time: "asap" | "2024-06-01T00:00:00Z", end_time: "2024-06-30T23:59:59Z" }',
           '• update_media_buy: { idempotency_key, account: { account_id } OR { brand:{domain}, operator }, media_buy_id, paused?, canceled?, packages?: [{ package_id, budget? }] }',
           '• sync_creatives: { idempotency_key, creatives: [{ creative_id, format_id: { agent_url, id }, assets }], assignments? }',
           '• build_creative: { message, target_format_id: { agent_url, id }, brand?: { domain } }',

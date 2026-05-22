@@ -18,17 +18,17 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `discovery_mode` | string | No (v3.1+ SHOULD include) | `"brief"` (default) or `"wholesale"`. `"brief"`: existing behavior — `signal_spec` or `signal_ids` is required, agent performs inference/RAG. `"wholesale"`: raw catalog enumeration — `signal_spec` and `signal_ids` MUST NOT be provided; agent returns its full priced catalog, paginated, scoped by `filters` / `account` / `destinations` / `countries` when present. **Timing semantics:** `"wholesale"` is a catalog read — agents SHOULD respond synchronously and MUST NOT route through the async/Submitted arm; partial completion uses [`incomplete[]`](#incomplete-array). Agents receiving requests from pre-v3.1 clients without `discovery_mode` MUST default to `"brief"`. Probe support via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) (`signals.discovery_modes`). |
+| `discovery_mode` | string | No (v3.1+ SHOULD include) | `"brief"` (default) or `"wholesale"`. `"brief"`: existing behavior — `signal_spec` or `signal_ids` is required, agent performs inference/RAG. `"wholesale"`: raw wholesale signals feed enumeration — `signal_spec` and `signal_ids` MUST NOT be provided; agent returns its full priced signals feed, paginated, scoped by `filters` / `account` / `destinations` / `countries` when present. **Timing semantics:** `"wholesale"` is a wholesale signals feed read — agents SHOULD respond synchronously and MUST NOT route through the async/Submitted arm; partial completion uses [`incomplete[]`](#incomplete-array). Agents receiving requests from pre-v3.1 clients without `discovery_mode` MUST default to `"brief"`. Probe support via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) (`signals.discovery_modes`). |
 | `signal_spec` | string | Conditional | Natural language description of the desired signals. Required when `discovery_mode` is `"brief"` (and `signal_ids` is absent). MUST NOT be provided when `discovery_mode` is `"wholesale"`. |
 | `signal_ids` | SignalID[] | Conditional | Specific signals to look up by data provider and ID. Required when `discovery_mode` is `"brief"` (and `signal_spec` is absent). MUST NOT be provided when `discovery_mode` is `"wholesale"`. |
 | `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account for this request. When provided, the signals agent returns per-account pricing options if configured. In wholesale mode, this is the rate-card scope; when omitted the agent returns default rate-card pricing or omits `pricing_options` entirely. |
 | `destinations` | Destination[] | No | Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. See Destination Object below. |
 | `countries` | string[] | No | Countries where signals will be used (ISO 3166-1 alpha-2 codes) |
-| `filters` | Filters | No | Filters to refine results (see Filters Object below). In wholesale mode, filters constrain the enumerated catalog (e.g., `filters.data_providers: ["acme-data"]` returns only that provider's signals). |
-| `if_catalog_version` | string | No | Opaque `catalog_version` token from a prior `get_signals` response. When provided, the agent compares against its current catalog version for the caller's `cache_scope` and MAY return `unchanged: true` (with `signals` omitted) if nothing has changed. See [Catalog versioning](#catalog-versioning) and [Cache layering](#cache-layering). |
-| `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_catalog_version`. Evaluation order: `if_catalog_version` mismatch → full payload; `if_catalog_version` matches but `if_pricing_version` mismatches → full payload (so the caller sees updated `pricing_options`); both match → agent MAY return `unchanged: true`. Agents that don't track pricing separately ignore this. |
+| `filters` | Filters | No | Filters to refine results (see Filters Object below). In wholesale mode, filters constrain the enumerated signals feed (e.g., `filters.data_providers: ["acme-data"]` returns only that provider's signals). |
+| `if_wholesale_feed_version` | string | No | Opaque `wholesale_feed_version` token from a prior `get_signals` response. When provided, the agent compares against its current wholesale signals feed version for the caller's `cache_scope` and MAY return `unchanged: true` (with `signals` omitted) if nothing has changed. See [Wholesale feed versioning](#wholesale-feed-versioning) and [Cache layering](#cache-layering). |
+| `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_wholesale_feed_version`. Evaluation order: `if_wholesale_feed_version` mismatch → full payload; `if_wholesale_feed_version` matches but `if_pricing_version` mismatches → full payload (so the caller sees updated `pricing_options`); both match → agent MAY return `unchanged: true`. Agents that don't track pricing separately ignore this. |
 | `max_results` | number | No | **Deprecated.** Use `pagination.max_results` instead. When both are present, `pagination.max_results` takes precedence. Will be removed in AdCP 4.0. |
-| `pagination` | object | No | Pagination envelope. `pagination.max_results` (max: 100, default: 50) controls page size; `pagination.cursor` (opaque token from previous response) advances pages. Required for wholesale (catalogs may be large). |
+| `pagination` | object | No | Pagination envelope. `pagination.max_results` (max: 100, default: 50) controls page size; `pagination.cursor` (opaque token from previous response) advances pages. Required for wholesale (signals feeds may be large). |
 
 ### Destination Object
 
@@ -142,10 +142,10 @@ Select the pricing option that matches your billing model and pass its `pricing_
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `catalog_version` | string | Opaque token representing the version of the catalog state used to compose this response. Treat as opaque — no format, no ordering, no inspection. Returned on every response by agents implementing conditional-fetch. See [Catalog versioning](#catalog-versioning). |
-| `pricing_version` | string | Optional finer-grained token. Changes when prices move while `catalog_version` only changes for structure/metadata. Agents not separating these MAY omit `pricing_version`. |
+| `wholesale_feed_version` | string | Opaque token representing the version of the wholesale signals feed state used to compose this response. Treat as opaque — no format, no ordering, no inspection. Returned on every response by agents implementing conditional-fetch. See [Wholesale feed versioning](#wholesale-feed-versioning). |
+| `pricing_version` | string | Optional finer-grained token. Changes when prices move while `wholesale_feed_version` only changes for structure/metadata. Agents not separating these MAY omit `pricing_version`. |
 | `cache_scope` | string | `"public"` or `"account"`. **REQUIRED on every response** (schema-enforced — the safety property of the two-layer cache depends on it). When the request had no `account`, MUST be `"public"`. When the request had `account`, the agent declares either `"public"` (account prices off the rate card — caller dedupes) or `"account"` (account-specific overrides). See [Cache layering](#cache-layering). |
-| `unchanged` | boolean | Present and `true` ONLY when the request carried `if_catalog_version` (and/or `if_pricing_version`) matching the agent's current version for the caller's `cache_scope`, in which case `signals[]` MUST be omitted; `catalog_version`, `cache_scope`, and `pricing_version` (when used) MUST still be echoed. Agents MUST NOT emit `unchanged: false` — absence of the field IS the "response carries signals" signal (one shape per state). Callers receiving `unchanged: true` MUST NOT mutate their local catalog mirror. |
+| `unchanged` | boolean | Present and `true` ONLY when the request carried `if_wholesale_feed_version` (and/or `if_pricing_version`) matching the agent's current version for the caller's `cache_scope`, in which case `signals[]` MUST be omitted; `wholesale_feed_version`, `cache_scope`, and `pricing_version` (when used) MUST still be echoed. Agents MUST NOT emit `unchanged: false` — absence of the field IS the "response carries signals" signal (one shape per state). Callers receiving `unchanged: true` MUST NOT mutate their local wholesale signals mirror. |
 | `incomplete` | IncompleteEntry[] | Declares what the agent could not finish within the caller's `time_budget` or due to internal limits. See [Incomplete array](#incomplete-array). |
 | `pagination` | PaginationResponse | `has_more`, `cursor`, optional `total_count`. Required for wholesale mode. |
 
@@ -208,9 +208,11 @@ Because the authenticated caller matches the deployment target, the response inc
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
+  "status": "completed",
   "message": "Found 1 luxury segment matching your criteria. Already activated for your sales agent.",
   "context_id": "ctx-signals-123",
   "cache_scope": "public",
+  "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
   "signals": [
     {
       "signal_id": {
@@ -256,9 +258,11 @@ Some signals offer multiple pricing models. The buyer selects one and passes its
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
+  "status": "completed",
   "message": "Found 1 segment matching your criteria. Three pricing options are available: CPM at $3.50, 15% of media spend, or $5,000/month flat fee.",
   "context_id": "ctx-signals-456",
   "cache_scope": "public",
+  "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
   "signals": [
     {
       "signal_id": {
@@ -349,9 +353,11 @@ A buyer with credentials for both The Trade Desk and Amazon DSP receives keys fo
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
+  "status": "completed",
   "message": "Found 1 luxury segment matching your criteria. Already activated on The Trade Desk, pending activation on Amazon DSP.",
   "context_id": "ctx-signals-123",
   "cache_scope": "public",
+  "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
   "signals": [
     {
       "signal_id": {
@@ -537,7 +543,9 @@ Discover all available deployments across platforms:
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
+  "status": "completed",
   "cache_scope": "public",
+  "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
   "signals": [{
     "signal_id": {
       "source": "catalog",
@@ -644,9 +652,9 @@ Discover all available deployments across platforms:
 5. **Activation Required**: If `is_live` is false, use the `activate_signal` task
 6. **The message field** provides a quick summary of the most relevant findings
 
-## Wholesale catalog enumeration
+## Wholesale signals feed
 
-When a consumer (storefront, federated marketplace, registry) needs to mirror a signals agent's full priced catalog, set `discovery_mode: "wholesale"` and omit `signal_spec` / `signal_ids`. Wholesale enumeration is symmetric with [`get_products` `buying_mode: "wholesale"`](/docs/media-buy/task-reference/get_products): synchronous, paginated, firm-priced, with partial completion declared via `incomplete[]`.
+When a consumer (storefront, federated marketplace, registry) needs to mirror a signals agent's full priced signals feed, set `discovery_mode: "wholesale"` and omit `signal_spec` / `signal_ids`. Wholesale enumeration is symmetric with [`get_products` `buying_mode: "wholesale"`](/docs/media-buy/task-reference/get_products): synchronous, paginated, firm-priced, with partial completion declared via `incomplete[]`.
 
 ### Request
 
@@ -668,10 +676,11 @@ When a consumer (storefront, federated marketplace, registry) needs to mirror a 
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
+  "status": "completed",
   "message": "Returning 50 of 312 signals in wholesale mode.",
   "context_id": "ctx-wholesale-001",
   "cache_scope": "public",
-  "catalog_version": "v2026-05-18T08:00:00Z-acme-rev412",
+  "wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412",
   "signals": [
     {
       "signal_id": { "source": "catalog", "data_provider_domain": "acme-data.com", "id": "luxury_auto_intenders" },
@@ -700,11 +709,11 @@ Marketplace signals (`signal_type: "marketplace"`) remain attributable to their 
 
 - Each marketplace signal carries `data_provider`.
 - Consumers SHOULD verify provider authorization via the provider's `adagents.json` — the signals agent's URL must appear in the provider's authorization list for that signal class.
-- Storefronts and registries MAY use wholesale enumeration plus `adagents.json` cross-reference to materialize a "data publisher catalog" view: for each known data provider, the set of signals available via authorized signals agents, with prices.
+- Storefronts and registries MAY use wholesale enumeration plus `adagents.json` cross-reference to materialize a data-publisher signal view: for each known data provider, the set of signals available via authorized signals agents, with prices.
 
 ### Pricing
 
-`pricing_options[]` MUST be populated for authenticated callers when the agent has firm prices to declare. When `account` is omitted, the agent returns default rate-card pricing or omits `pricing_options[]` (in which case the caller MUST re-query with `account` before composing). Unauthenticated callers MAY receive catalog metadata without pricing.
+`pricing_options[]` MUST be populated for authenticated callers when the agent has firm prices to declare. When `account` is omitted, the agent returns default rate-card pricing or omits `pricing_options[]` (in which case the caller MUST re-query with `account` before composing). Unauthenticated callers MAY receive signal metadata without pricing.
 
 ### Capability declaration
 
@@ -720,9 +729,11 @@ Signals agents declare wholesale support in [`get_adcp_capabilities`](/docs/prot
 
 Agents not declaring `"wholesale"` MAY return `INVALID_REQUEST` for wholesale calls. The capability declaration is the canonical signal — callers SHOULD probe before issuing wholesale requests.
 
-## Catalog versioning
+## Wholesale feed versioning
 
-Even with wholesale enumeration, a consumer mirroring an agent's catalog would re-fetch every paginated page on each poll just to detect changes. To avoid that, `get_signals` supports an opaque `catalog_version` token returned on every response. Pass it back via `if_catalog_version` on a subsequent call and the agent MAY short-circuit with `unchanged: true` — no catalog payload, no per-page diff.
+Even with wholesale enumeration, a consumer mirroring an agent's signals feed would re-fetch every paginated page on each poll just to detect changes. To avoid that, `get_signals` supports an opaque `wholesale_feed_version` token returned on every response. Pass it back via `if_wholesale_feed_version` on a subsequent call and the agent MAY short-circuit with `unchanged: true` — no signal payload, no per-page diff.
+
+This is the seller-side wholesale signals feed returned by `get_signals`. It is not a `sync_catalogs` feed; `sync_catalogs` manages buyer-provided campaign input feeds on a seller account.
 
 ### Unchanged response
 
@@ -732,33 +743,34 @@ Even with wholesale enumeration, a consumer mirroring an agent's catalog would r
 {
   "$schema": "/schemas/signals/get-signals-request.json",
   "discovery_mode": "wholesale",
-  "if_catalog_version": "v2026-05-18T08:00:00Z-acme-rev412"
+  "if_wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412"
 }
 ```
 
-**Response (catalog unchanged):**
+**Response (wholesale signals feed unchanged):**
 
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
-  "message": "Catalog unchanged since v2026-05-18T08:00:00Z-acme-rev412.",
+  "status": "completed",
+  "message": "Wholesale signals feed unchanged since v2026-05-18T08:00:00Z-acme-rev412.",
   "context_id": "ctx-abc-789",
   "unchanged": true,
-  "catalog_version": "v2026-05-18T08:00:00Z-acme-rev412",
+  "wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412",
   "pricing_version": "v2026-05-18T08:00:00Z-acme-rev412",
   "cache_scope": "public"
 }
 ```
 
-When `unchanged: true`, `signals[]` MUST be omitted and consumers MUST NOT mutate their local catalog mirror.
+When `unchanged: true`, `signals[]` MUST be omitted and consumers MUST NOT mutate their local wholesale signals mirror.
 
-### Catalog changed — full payload returned (abbreviated)
+### Wholesale signals feed changed — full payload returned (abbreviated)
 
 ```json test=false
 {
-  "message": "Returning 312 signals (catalog version advanced).",
+  "message": "Returning 312 signals (wholesale feed version advanced).",
   "context_id": "ctx-abc-790",
-  "catalog_version": "v2026-05-18T10:15:00Z-acme-rev415",
+  "wholesale_feed_version": "v2026-05-18T10:15:00Z-acme-rev415",
   "pricing_version": "v2026-05-18T10:15:00Z-acme-rev415",
   "cache_scope": "public",
   "signals": [
@@ -786,15 +798,15 @@ When `unchanged: true`, `signals[]` MUST be omitted and consumers MUST NOT mutat
 ### Rules
 
 - Tokens are **opaque**. No format, no ordering, no inspection.
-- A returned `catalog_version` is scope-keyed via `cache_scope`. Callers cache `(cache_scope, catalog_version)` pairs alongside the `(account, filters, discovery_mode, destinations, countries)` tuple used. See [Cache layering](#cache-layering) for the two-layer model.
-- `pricing_version` is an optional finer-grained token: when present, it changes when prices move but `catalog_version` changes only when structure/metadata moves. Common for rate-card sweeps that don't change segment metadata.
-- **`if_pricing_version` requires `if_catalog_version`.** Pricing has no structural baseline of its own. Sending `if_pricing_version` without `if_catalog_version` is a schema-level error. The agent's evaluation is two-stage: catalog mismatch returns the full payload; catalog match with pricing mismatch also returns the full payload (so the caller sees updated `pricing_options`); both match → `unchanged: true`.
-- **`filters` canonicalization.** Agents MUST treat the `filters` object as canonicalized before hashing into the `catalog_version` keyspace: keys sorted lexicographically, omitted-and-default values treated identically, array values sorted where the filter has set semantics (e.g., `catalog_types`, `data_providers`). Callers that pass equivalent-but-differently-shaped filter objects MUST receive the same `catalog_version`. Prevents silent stale-mirror bugs from key-order or default-elision differences. **Forward-compat default:** new filter fields added in 3.x minor versions MUST declare set-vs-sequence semantics; absent an explicit declaration, the rule defaults to **set-semantics**.
-- **Pagination interaction.** Agents MUST return `catalog_version` on every paginated page (not only the first) when they declare `catalog_change_feed.supported: true`; agents that do not declare the feed SHOULD do the same. If the catalog mutates between pages, the new version surfaces on the next page and the caller MUST restart pagination from `cursor: null` — the partial pages already received describe a stale version.
-- **`unchanged: true` and in-progress pagination.** A caller mid-pagination MAY send `if_catalog_version` matching the version their pages so far were drawn from. If the agent confirms `unchanged: true`, the response omits `signals[]` and pagination envelope entirely; the caller abandons their in-progress walk under that version. Agents MAY NOT use the conditional-fetch short-circuit to skip individual pages within an active pagination — `unchanged` is whole-catalog-versus-cached-version, not per-page.
-- Pre-v3.1 agents that ignore `if_catalog_version` simply return the full payload — semantically correct, just inefficient.
+- A returned `wholesale_feed_version` is scope-keyed via `cache_scope`. Callers cache `(cache_scope, wholesale_feed_version)` pairs alongside the `(account, filters, discovery_mode, destinations, countries)` tuple used. See [Cache layering](#cache-layering) for the two-layer model.
+- `pricing_version` is an optional finer-grained token: when present, it changes when prices move but `wholesale_feed_version` changes only when structure/metadata moves. Common for rate-card sweeps that don't change segment metadata.
+- **`if_pricing_version` requires `if_wholesale_feed_version`.** Pricing has no structural baseline of its own. Sending `if_pricing_version` without `if_wholesale_feed_version` is a schema-level error. The agent's evaluation is two-stage: wholesale feed mismatch returns the full payload; wholesale feed match with pricing mismatch also returns the full payload (so the caller sees updated `pricing_options`); both match → `unchanged: true`.
+- **`filters` canonicalization.** Agents MUST treat the `filters` object as canonicalized before hashing into the `wholesale_feed_version` keyspace: keys sorted lexicographically, omitted-and-default values treated identically, array values sorted where the filter has set semantics (e.g., `catalog_types`, `data_providers`). Callers that pass equivalent-but-differently-shaped filter objects MUST receive the same `wholesale_feed_version`. Prevents silent stale-mirror bugs from key-order or default-elision differences. **Forward-compat default:** new filter fields added in 3.x minor versions MUST declare set-vs-sequence semantics; absent an explicit declaration, the rule defaults to **set-semantics**.
+- **Pagination interaction.** Agents MUST return `wholesale_feed_version` on every paginated page (not only the first) when they declare `wholesale_feed_versioning.supported: true`; agents that do not declare versioning SHOULD do the same. If the wholesale feed mutates between pages, the new version surfaces on the next page and the caller MUST restart pagination from `cursor: null` — the partial pages already received describe a stale version.
+- **`unchanged: true` and in-progress pagination.** A caller mid-pagination MAY send `if_wholesale_feed_version` matching the version their pages so far were drawn from. If the agent confirms `unchanged: true`, the response omits `signals[]` and pagination envelope entirely; the caller abandons their in-progress walk under that version. Agents MAY NOT use the conditional-fetch short-circuit to skip individual pages within an active pagination — `unchanged` is feed-versus-cached-version, not per-page.
+- Pre-v3.1 agents that ignore `if_wholesale_feed_version` simply return the full payload — semantically correct, just inefficient.
 
-For ongoing change tracking beyond conditional fetch, see `specs/catalog-change-feed.md` — a per-agent event stream that emits `signal.created` / `signal.updated` / `signal.priced` / `signal.removed` events for incremental sync.
+For pushed change tracking beyond conditional fetch, see `specs/wholesale-feed-webhooks.md`. Wholesale feed webhooks carry the changed signal payload, pricing payload, removal tombstone, or bulk-change summary; `get_signals` remains the repair and reconciliation read.
 
 ## Cache layering
 
@@ -804,8 +816,8 @@ Signals agents publish two notional layers: a **public layer** (the rate-card / 
 
 | Layer | Cache key | What's stored |
 |---|---|---|
-| Public | `(agent, discovery_mode, filters, destinations, countries)` | `catalog_version_public`, the catalog payload as seen without an account ref |
-| Account overlay | `(agent, discovery_mode, filters, destinations, countries, account_id)` | `catalog_version_account`, the catalog payload when `cache_scope: "account"` was returned |
+| Public | `(agent, discovery_mode, filters, destinations, countries)` | `wholesale_feed_version_public`, the wholesale signals feed payload as seen without an account ref |
+| Account overlay | `(agent, discovery_mode, filters, destinations, countries, account_id)` | `wholesale_feed_version_account`, the wholesale signals feed payload when `cache_scope: "account"` was returned |
 
 **Behavior.**
 
@@ -815,15 +827,15 @@ Signals agents publish two notional layers: a **public layer** (the rate-card / 
   - `"account"`: this response carries account-specific overrides. Caller caches under the account overlay key.
 - Agents MAY downgrade an account from `"account"` back to `"public"` — callers SHOULD interpret this as "this account no longer has overrides" and drop their overlay.
 
-**Conditional fetch with `if_catalog_version`.** Send the token paired with whichever scope it was returned in. The agent compares against the current version for that scope. If the caller's token belongs to an `"account"` scope but the agent responds with `cache_scope: "public"`, that's the downgrade signal.
+**Conditional fetch with `if_wholesale_feed_version`.** Send the token paired with whichever scope it was returned in. The agent compares against the current version for that scope. If the caller's token belongs to an `"account"` scope but the agent responds with `cache_scope: "public"`, that's the downgrade signal.
 
-**Event invalidation.** The change feed declares `applies_to.scope` on `*.priced` and `*.updated` events:
+**Webhook invalidation.** Wholesale feed webhook events declare `applies_to.scope` on `*.priced` and `*.updated` payloads. Agents MUST apply the same account/caller authorization predicate used by `get_signals discovery_mode: "wholesale"` when deciding which subscribers receive signal webhooks:
 
 - `applies_to: { scope: "public" }` → invalidate the public-layer cache; all account overlays referencing that public version are also stale.
 - `applies_to: { scope: "account", account_ids: [...] }` → invalidate only the named accounts' overlays.
 - `applies_to: { scope: "account" }` without `account_ids` → seller withholds the affected set; the per-subscriber scope filter routes the event only to subscribers whose principal is in the affected set.
 
-See `specs/catalog-change-feed.md` §"Cache layering and event scoping" for the full event-side spec.
+See `specs/wholesale-feed-webhooks.md` §"Cache layering and event scoping" for the full webhook-side spec.
 
 ## Incomplete array
 
@@ -831,7 +843,7 @@ When the agent cannot complete all work within the caller's `time_budget` (or du
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `scope` | string | Yes | `"signals"`: not all matching signals were returned. `"pricing"`: signals returned but pricing is absent or unconfirmed. `"catalog"`: in wholesale mode, whole-catalog enumeration could not complete. |
+| `scope` | string | Yes | `"signals"`: not all matching signals were returned. `"pricing"`: signals returned but pricing is absent or unconfirmed. `"wholesale_feed"`: in wholesale mode, full feed enumeration could not complete. |
 | `description` | string | Yes | Human-readable explanation of what is missing and why. |
 | `estimated_wait` | Duration | No | How much additional time would resolve this scope. |
 
@@ -844,7 +856,7 @@ When the agent cannot complete all work within the caller's `time_budget` (or du
 | `signal_spec` only | Discovery — find signals matching the description |
 | `signal_ids` only | Exact lookup — return specific signals by ID |
 | `signal_ids` + `signal_spec` | Refinement — start from known signals, adjust per the spec |
-| `discovery_mode: "wholesale"` (neither `signal_spec` nor `signal_ids`) | Wholesale — enumerate the agent's full priced catalog. See [Wholesale catalog enumeration](#wholesale-catalog-enumeration). |
+| `discovery_mode: "wholesale"` (neither `signal_spec` nor `signal_ids`) | Wholesale — enumerate the agent's full priced signals feed. See [Wholesale signals feed](#wholesale-signals-feed). |
 
 To refine previous results, pass back the `signal_id` values from signals you want to keep, and provide an updated `signal_spec` describing what to change:
 
@@ -926,9 +938,11 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
+  "status": "completed",
   "message": "Found 2 luxury signals, but encountered some platform limitations. The 'Premium Auto Shoppers' signal has limited reach due to data restrictions, and pricing data is unavailable for one platform. Review the warnings below for optimization suggestions.",
   "context_id": "ctx-signals-abc123",
   "cache_scope": "public",
+  "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
   "signals": [
     {
       "signal_id": {
@@ -994,9 +1008,11 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
+  "status": "completed",
   "message": "I couldn't find any signals matching 'underwater basket weavers' in the requested platforms. This appears to be a very niche audience. Consider broadening your criteria to 'craft enthusiasts' or 'hobby communities' for better results. Alternatively, we could create a custom signal for this specific audience.",
   "context_id": "ctx-signals-abc123",
   "cache_scope": "public",
+  "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
   "signals": []
 }
 ```

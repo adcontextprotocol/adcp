@@ -19,6 +19,13 @@
  * Optional filters:
  *   --credential-id=<certifier_credential_id>   only this credential
  *   --workos-user-id=<id>                        only this learner's credentials
+ *   --skip-personal-email-fallback              skip credentials where the
+ *                                                proposed value is the user's
+ *                                                email AND the domain is a
+ *                                                personal-email provider
+ *                                                (gmail, hotmail, etc.) —
+ *                                                avoids surfacing PII on a
+ *                                                publicly-shareable artifact
  *
  * Usage (prod, via fly ssh):
  *   fly ssh console -a adcp-docs -C 'node /app/dist/scripts/repair-credential-recipient-names.js'
@@ -38,6 +45,7 @@ import {
 
 const apply = process.argv.includes('--apply');
 const dryRun = !apply;
+const skipPersonalEmailFallback = process.argv.includes('--skip-personal-email-fallback');
 
 function readFlag(name: string): string | null {
   const prefix = `--${name}=`;
@@ -47,6 +55,48 @@ function readFlag(name: string): string | null {
 
 const credentialIdFilter = readFlag('credential-id');
 const userIdFilter = readFlag('workos-user-id');
+
+// Personal-email domains where writing the email as the recipient name on a
+// public-shareable certificate would expose PII. Corporate domains are fine
+// — the email is already on the user's business card / LinkedIn — but
+// personal addresses surface on a publicly-linkable artifact in a way the
+// user didn't opt into. The `--skip-personal-email-fallback` flag skips
+// credentials where the proposed value would write one of these domains.
+// The recovery path for those users is the new NAME_REQUIRED gate +
+// set_my_name tool added in #4799 — they enter their name via Addie and
+// the backfill becomes a no-op when we re-run.
+const PERSONAL_EMAIL_DOMAINS = new Set([
+  'gmail.com',
+  'googlemail.com',
+  'hotmail.com',
+  'hotmail.co.uk',
+  'outlook.com',
+  'live.com',
+  'yahoo.com',
+  'yahoo.co.uk',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'aol.com',
+  'protonmail.com',
+  'proton.me',
+  'mail.com',
+  'gmx.com',
+  'gmx.de',
+  'zoho.com',
+  'fastmail.com',
+  'pm.me',
+  'tutanota.com',
+  'msn.com',
+  'hey.com',
+]);
+
+function isPersonalEmailFallback(desired: string, email: string): boolean {
+  if (desired !== email) return false;
+  const at = email.lastIndexOf('@');
+  if (at < 0) return false;
+  return PERSONAL_EMAIL_DOMAINS.has(email.slice(at + 1).toLowerCase());
+}
 
 interface Row {
   workos_user_id: string;
@@ -63,6 +113,24 @@ interface PlanEntry {
   certifier_credential_id: string;
   current_name: string;
   desired_name: string;
+}
+
+// Certifier's recipient.name field on the credential GET is a denormalized
+// snapshot of the recipient resource — it is NOT what drives certificate
+// rendering. The design template resolves `{recipient.name}` placeholders
+// against the `attributes` map first (the override layer written by PATCH
+// /credentials/{id}); only when that key is absent does it fall back to the
+// recipient resource. So:
+//   - When attributes['recipient.name'] is set, that's the rendered name.
+//   - When attributes['recipient.name'] is absent, recipient.name renders.
+// effectiveRenderedName picks the right one. Prior versions of this script
+// compared against recipient.name alone, which made the dry-run report
+// already-repaired credentials as still-broken (the attribute override was
+// landing correctly, but the comparison missed it).
+function effectiveRenderedName(remote: { recipient?: { name?: string }; attributes?: Record<string, string> }): string {
+  const override = remote.attributes?.['recipient.name']?.trim();
+  if (override) return override;
+  return remote.recipient?.name ?? '';
 }
 
 function needsRepair(current: string, desired: string, user: Row): boolean {
@@ -122,15 +190,24 @@ async function main(): Promise<void> {
     try {
       const desired = buildRecipientName(row);
       const remote = await getCredential(row.certifier_credential_id);
-      const current = remote.recipient?.name ?? '';
+      const current = effectiveRenderedName(remote);
       if (needsRepair(current, desired, row)) {
-        plan.push({
-          workos_user_id: row.workos_user_id,
-          email: row.email,
-          certifier_credential_id: row.certifier_credential_id,
-          current_name: current,
-          desired_name: desired,
-        });
+        if (skipPersonalEmailFallback && isPersonalEmailFallback(desired, row.email)) {
+          skipped.push({
+            row,
+            current,
+            desired,
+            reason: 'personal-email-fallback (--skip-personal-email-fallback)',
+          });
+        } else {
+          plan.push({
+            workos_user_id: row.workos_user_id,
+            email: row.email,
+            certifier_credential_id: row.certifier_credential_id,
+            current_name: current,
+            desired_name: desired,
+          });
+        }
       } else {
         skipped.push({
           row,
@@ -174,6 +251,17 @@ async function main(): Promise<void> {
         await updateCredential(p.certifier_credential_id, {
           recipient: { name: p.desired_name, email: p.email },
         });
+        // Verify the attribute override actually landed. Certifier returns
+        // 200 on PATCH regardless, so post-update GET is the only honest
+        // signal that the rendered cert will pick up the new name. Catches
+        // the "PATCH accepted but field-shape was wrong" class of bug.
+        const verify = await getCredential(p.certifier_credential_id);
+        const verifyName = effectiveRenderedName(verify);
+        if (verifyName !== p.desired_name) {
+          console.log(`  FAIL  ${p.certifier_credential_id}  PATCH 200 but rendered name still "${verifyName}" (expected "${p.desired_name}")`);
+          failed++;
+          continue;
+        }
         console.log(`  ok    ${p.certifier_credential_id}  -> "${p.desired_name}"`);
         ok++;
       } catch (err) {

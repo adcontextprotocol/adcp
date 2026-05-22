@@ -296,7 +296,7 @@ This tests the second half of the funnel: can a buyer agent actually *execute* t
 ### What the tool does (deterministic, no LLM)
 
 1. Validate agent URL, resolve auth
-2. Call `get_products` with `buying_mode: "wholesale"` to get the agent's full catalog
+2. Call `get_products` with `buying_mode: "wholesale"` to get the agent's wholesale product feed
 3. Also extract any proposals from the response — proposals are pre-packaged bundles that may map to IO line items better than individual products (e.g., "Homepage Takeover Package" maps to a proposal, not a single product)
 4. For each IO line item, attempt to match against products AND proposals:
    - First check proposals: if a proposal name/description matches the line item (string containment, normalized), prefer it — proposals represent how the publisher actually packages deals
@@ -570,7 +570,7 @@ Addie should guide publishers through this sequence naturally. If they jump to I
 ### What's tested now
 
 - `test_rfp_response` uses `buying_mode: "brief"` — tests discovery from a buyer's natural language request
-- `test_io_execution` uses `buying_mode: "wholesale"` — gets full catalog to match IO line items against
+- `test_io_execution` uses `buying_mode: "wholesale"` — gets the wholesale product feed to match IO line items against
 
 ### What's not tested (future)
 

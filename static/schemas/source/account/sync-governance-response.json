@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "oneOf": [
@@ -121,6 +124,7 @@
     {
       "description": "Governance agents synced on two accounts",
       "data": {
+        "status": "completed",
         "accounts": [
           {
             "account": {
@@ -150,6 +154,7 @@
     {
       "description": "Partial failure — one account not found",
       "data": {
+        "status": "completed",
         "accounts": [
           {
             "account": {

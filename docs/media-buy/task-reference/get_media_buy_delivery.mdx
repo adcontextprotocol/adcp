@@ -57,10 +57,14 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 
 ### Media Buy Delivery Object
 
+<Note>
+**3.1 vocabulary note.** `get_media_buy_delivery` returns the lifecycle state on a nested `media_buy_deliveries[].status` field (no envelope collision — nested at depth 1). `create_media_buy` and `update_media_buy` success responses return the same lifecycle state on a top-level **`media_buy_status`** field (added in 3.1 to avoid colliding with the envelope task-status `status`). Same enum, two field names in 3.1 — the cascade unifies in 4.0 ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)). See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status) for the full picture.
+</Note>
+
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
-| `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`). In webhook context, may also be `reporting_delayed` or `failed`. |
+| `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`). In webhook context, may also be `reporting_delayed` or `failed`. Maps to `media_buy_status` on `create_media_buy` / `update_media_buy` success responses (3.1 vocabulary note above). |
 | `totals` | Aggregate metrics (impressions, spend, clicks, ctr, conversions, conversion_value, roas, new_to_brand_rate) |
 | `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
 | `daily_breakdown` | Day-by-day delivery (date, impressions, spend, conversions, conversion_value, roas, new_to_brand_rate) |

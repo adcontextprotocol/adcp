@@ -94,6 +94,17 @@ All parameters are optional. An empty request returns all accounts.
 | `authorization` | Optional. The calling agent's scope grant for this account — `allowed_tasks`, `field_scopes`, `scope_name`, `read_only`. Applies to every vendor agent type (media-buy, signals, governance, creative, brand) — the Accounts Protocol surface is shared. Vendor agents that support scope introspection SHOULD populate this; media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Absence means the vendor agent does not advertise introspectable scope for this account; callers MUST NOT infer access from absence and fall back to error-driven discovery via the RBAC error codes. See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape and semantics. |
 | `notification_configs` | Account-level webhook subscribers registered via [`sync_accounts`](/docs/accounts/tasks/sync_accounts#account-level-webhook-subscriptions). Each entry carries `subscriber_id`, `url`, `event_types[]`, and `active`. Present when the account has any persisted subscribers. `authentication.credentials` is omitted on every entry (write-only). Use this surface to verify what's active after a sync, audit fan-out across multiple subscribers, and detect drift between buyer-side expectations and seller-side persisted state. |
 
+### Single-publisher cardinality
+
+A seller serving exactly one publisher entity MAY return that entity as the sole account on `list_accounts` responses, regardless of calling principal. The *"Direct advertiser with single account"* example in [`list-accounts-response.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/account/list-accounts-response.json) is canonical for this case — a single-element `accounts[]` with no `pagination` envelope at all.
+
+Pagination conformance requiring `pagination.has_more: true` does not apply when:
+
+- `pagination` is absent entirely (canonical single-account shape), or
+- `pagination.total_count` is present and ≤ 1
+
+Runners SHOULD grade pagination-walk phases as `not_applicable` in either case. This pattern is conformant; the spec carries no `minItems` constraint on `accounts[]` and the single-account example is normative.
+
 ## Common Scenarios
 
 ### Poll until account becomes active

@@ -268,6 +268,74 @@ export class PublisherDatabase {
            updated_at = NOW()`,
         [childDomain, managerDomain],
       );
+
+      // Enqueue the child for delayed periodic re-validation (#4850) so a
+      // manager-asserted child eventually gets bilateral confirmation
+      // (or a 404 backoff). Initial delay of 24h prevents 6,800 fan-out
+      // children from immediately storming the crawler — they spread
+      // across the next day's drain ticks. ON CONFLICT DO NOTHING
+      // preserves any existing backoff window (avoid resetting if the
+      // child already 404'd recently).
+      await client.query(
+        `INSERT INTO manager_revalidation_queue
+           (publisher_domain, manager_domain, enqueued_at, next_attempt_after, attempts, last_attempted_at, last_error)
+         VALUES ($1, $2, NOW(), NOW() + INTERVAL '24 hours', 0, NULL, NULL)
+         ON CONFLICT (publisher_domain) DO NOTHING`,
+        [childDomain, managerDomain],
+      );
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Project a fan-out authorization edge into the catalog
+   * (`catalog_agent_authorizations`) so the partner-sync endpoints
+   * (`/registry/authorizations`, `/registry/authorizations/snapshot`)
+   * — which read the catalog only — see the same edge the legacy
+   * `agent_publisher_authorizations` arm carries. Adcp#4841.
+   *
+   * The catalog's `cacheAdagentsManifest` projection deliberately
+   * refuses cross-publisher claims (publisher-db.ts ~L968: a manager
+   * file cannot land authoritative rows for another publisher's
+   * properties without out-of-band corroboration). For the fan-out
+   * shape — where the manager file names the child publisher in its
+   * `publisher_properties[].publisher_domains[]` selector — the
+   * out-of-band corroboration is the inline-resolution rule itself
+   * (#4825). Evidence value `'adagents_authoritative'` (migration 488)
+   * carries the lower trust profile so consumers can filter when
+   * bilateral verification matters.
+   *
+   * Called from the crawler's fan-out helper per (agent, child) pair.
+   * The companion `recordChildPublisherFromManager` writes the
+   * publishers row (per-child, agent-independent); this writes the
+   * catalog row (per agent × child).
+   */
+  async recordCatalogFanoutAuthorization(input: {
+    agentUrl: string;
+    childDomain: string;
+    authorizedFor?: string;
+  }): Promise<void> {
+    const childDomain = canonicalizePublisherDomain(input.childDomain);
+    const agentCanonical = canonicalizeAgentUrl(input.agentUrl);
+    if (!agentCanonical) return; // canonicalizer rejected — invalid URL, skip
+    const client = await getClient();
+    try {
+      await client.query(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, property_rid, property_id_slug,
+            publisher_domain, authorized_for, evidence, created_by)
+         VALUES ($1, $2, NULL, NULL, $3, $4, 'adagents_authoritative', 'system')
+         ON CONFLICT (agent_url_canonical,
+                      (COALESCE(property_rid::text, '')),
+                      (COALESCE(publisher_domain, '')),
+                      evidence)
+                WHERE deleted_at IS NULL
+         DO UPDATE SET
+           authorized_for = EXCLUDED.authorized_for,
+           updated_at = NOW()`,
+        [input.agentUrl, agentCanonical, childDomain, input.authorizedFor ?? null],
+      );
     } finally {
       client.release();
     }

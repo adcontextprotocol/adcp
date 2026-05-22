@@ -1,0 +1,144 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.3/formats/canonical/_base.json",
+  "title": "Canonical Format Base",
+  "description": "Shared parameter fields that apply across canonical formats. Each canonical format extends this base with format-specific parameters (dimensions, durations, codecs, slot constraints).",
+  "type": "object",
+  "properties": {
+    "experimental": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, this canonical (or a seller's specific narrowing of it) may not work as declared — adopters SHOULD have a v1 fallback ready and SHOULD NOT route production budget without testing. Same semantics as `experimental` on protocols: 'this is shipping but may break, evolve, or fail.' Buyers reading `experimental: true` SHOULD prefer the v1 path when a v1 fallback exists for the same product (via `format_ids` on the parent product or via the v2 declaration's `v1_format_ref`).\n\nThree drivers of `experimental: true`:\n1. **Spec maturity** — the canonical's tracking model or parameter shape is still being settled (`agent_placement`'s tracking macros, `sponsored_placement`'s per-adapter contracts, `responsive_creative`'s algorithmic composition).\n2. **Adopter runtime gap** — the seller has declared the canonical in their catalog but their runtime doesn't yet honor it cleanly.\n3. **Custom shapes** — `format_kind: \"custom\"` is inherently experimental until the working group promotes a `format_shape` to a first-class canonical.\n\nReplaces the earlier `status` enum (`stable | preview | deprecated`) + `runtime_status` enum (`stable | preview | declared_only`) — two axes with subtle overlap. The single boolean is what buyers actually care about: do I treat this as production-stable or as 'try at my own risk.' Sellers SHOULD set `experimental: true` on canonicals or product declarations that aren't yet production-ready, regardless of which axis (spec, runtime, custom) drives the experimentation. The 6 IAB/VAST/DAAST re-encodings (`image`, `display_tag`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`) default to non-experimental at the canonical level; sellers MAY still mark a specific product declaration experimental (e.g., a beta runtime path for an existing product)."
+    },
+    "deprecated": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, this canonical (or a seller's specific narrowing of it) is going away. Existing adopters are supported through the deprecation cycle; new adoption is discouraged. Pair with `migration_target_version` to indicate when the canonical is expected to be removed. Distinct from `experimental`: an experimental canonical may stabilize and stop being experimental; a deprecated canonical is on a sunset path."
+    },
+    "v1_translatable": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this canonical has any v1 named-format equivalent. `true` (default) — the canonical is structurally expressible as one or more v1 named formats (IAB display sizes, VAST tags, DAAST tags, etc.); v1→v2 projection via `v1-canonical-mapping.json` is meaningful. `false` — the canonical is inherently new in v2 and has no v1 form; v1's `list_creative_formats` couldn't express it because the underlying concept (algorithmic surface composition, AI-surface mentions, retail-media catalog placements, multi-card carousels) didn't exist as a v1 named-format archetype.\n\nLets SDKs distinguish two failure modes that today look identical: (a) the registry hasn't covered this canonical yet (correctable — seller adds explicit `canonical` field or files a registry entry) vs (b) no v1 path is possible (informational — buyer needs v2-aware consumption, or seller declares `canonical_formats_only: true` on the product declaration). SDKs encountering `v1_translatable: false` on a canonical SHOULD NOT emit `FORMAT_PROJECTION_FAILED` (which signals registry-coverage gap) — instead surface the inherent v1-unreachability as a different diagnostic or skip silently. The 4 inherently-v2 canonicals at 3.1 GA: `image_carousel`, `sponsored_placement`, `responsive_creative`, `agent_placement`."
+    },
+    "since_version": {
+      "type": "string",
+      "pattern": "^[1-9]\\d*\\.(0|[1-9]\\d*)$",
+      "description": "AdCP MAJOR.MINOR version that introduced this canonical (e.g., '3.1', '3.2'). Lets adopters reason about minimum protocol version requirements when consuming a format declaration. Patch precision is intentionally rejected — canonicals are introduced at minor-version boundaries."
+    },
+    "migration_target_version": {
+      "type": "string",
+      "pattern": "^[1-9]\\d*\\.(0|[1-9]\\d*)$",
+      "description": "AdCP MAJOR.MINOR version by which the working group expects this canonical to stabilize, surface a breaking revision, or (when `deprecated: true`) be removed. Patch precision is intentionally rejected — canonicals shift at minor-version boundaries. Absence signals 'no specific target' (omit the field rather than use a placeholder like 'unknown')."
+    },
+    "composition_model": {
+      "type": "string",
+      "enum": ["deterministic", "algorithmic"],
+      "description": "Whether the surface composes deterministically (buyer can predict per-slot rendering — sponsored_placement, image, video) or algorithmically (surface chooses combinations or phrasing — responsive_creative, agent_placement)."
+    },
+    "provenance_required": {
+      "type": "boolean",
+      "description": "When true, the product rejects unsigned synthesized assets. Builders calling build_creative MUST attach a C2PA-compatible provenance manifest attributing synthesis to the creative agent."
+    },
+    "platform_extensions": {
+      "type": "array",
+      "description": "Platform-specific extensions narrowing the canonical (pixel ID shapes, conversion event taxonomies, platform-specific CTAs/destinations). Each extension is a URI+digest reference resolved against the bundled `extensions` map in get_products responses or fetched directly.\n\n**Collision precedence (normative).** When two or more `platform_extensions[]` entries on the same declaration extend the same target (e.g., both extend `tracking`) with overlapping field names, **array order is authoritative — later entries override earlier ones on a per-field basis** (last-in-array-wins). SDKs MUST surface the overlap via the `errors[]` array on the `get_products` response with a structured code (`FORMAT_DECLARATION_DIVERGENT` is appropriate when the overlap appears across dual-emitted shapes; a producer-self-emitted overlap on a single declaration SHOULD use the same code with `error.details: { collision_kind: \"platform_extension_field\", target, overlapping_fields, winning_extension_uri }`). Producers SHOULD avoid the collision by emitting one extension per target or by partitioning fields across extensions; the deterministic precedence is for last-resort consistency across SDK implementations, not a sanctioned merging strategy.",
+      "items": { "$ref": "/schemas/3.1.0-beta.3/core/platform-extension-ref.json" }
+    },
+    "synthesis_nondeterministic": {
+      "type": "boolean",
+      "description": "When true, the format's production pipeline is genuinely nondeterministic — the platform cannot guarantee that synthesis from a given input set produces in-spec output. Veo / Sora / Runway-class generative video, and other AI-synthesis flows where output dimensions, duration, or quality vary per run. Implies a different validation contract: predictive `validate_input` is impossible; the platform's own post-synthesis QA loop applies; if the QA loop exhausts without producing a valid artifact, `build_creative` returns task_failed with a synthesis_failed reason. Distinct from `composition_model` (which describes how the surface composes per-slot rendering, not whether synthesis is deterministic). When false or absent, the format's production is predictable enough that `validate_input` can predict output properties from input properties.\n\n**Compatibility with `asset_source` / `item_production_model`**: `synthesis_nondeterministic: true` MAY pair with any of `seller_pre_rendered_from_brief`, `seller_human_designed`, or `agent_synthesized` (the QA loop is concept-level, not source-specific — 'seller renders from brief but each retry differs' is just as nondeterministic as Veo). It MUST NOT pair with `buyer_uploaded` (the buyer ships pre-rendered bytes; there's no synthesis step to be nondeterministic about). It MUST NOT pair with `publisher_host_recorded` (the publisher's host produces a deterministic-from-script output even if the human voice varies). When `synthesis_nondeterministic: true` is set with an incompatible source, validators SHOULD reject with a structured error.",
+      "default": false
+    },
+    "slots": {
+      "type": "array",
+      "description": "Programmatic declaration of which canonical asset_group_id slots a manifest targeting this format must (or may) populate. Lets SDK codegen and validators enumerate expected slots without parsing the format's prose description. Each entry references an asset_group_id from the canonical vocabulary registry, paired with an `asset_type` so the validator knows which asset schema to apply. Format-level narrowing parameters that apply across all slots (e.g., flat `headline_max_chars` on responsive_creative) may also live on the format declaration; per-slot constraints (a specific slot's `max_chars` or `max_size_kb`) live on the slot entry.",
+      "items": {
+        "type": "object",
+        "required": ["asset_group_id", "asset_type"],
+        "properties": {
+          "asset_group_id": {
+            "type": "string",
+            "description": "Canonical asset_group_id from /schemas/core/asset-group-vocabulary.json. Non-canonical IDs are valid but trigger soft warnings."
+          },
+          "asset_type": {
+            "type": "string",
+            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "catalog", "zip", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"],
+            "description": "Discriminator selecting the asset schema this slot accepts. SDK codegen uses this to type the slot value. `card` is the multi-card carousel element type (see card-asset.json). `pixel_tracker` / `vast_tracker` / `daast_tracker` are the renderer-fired measurement-tracker primitives — see `/schemas/core/assets/pixel-tracker-asset.json` and the VAST / DAAST tracker schemas. `object` is a last-resort fallback for structured non-asset inputs that don't fit any primitive asset_type — prefer specific types whenever possible."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether this slot is required for a valid manifest.",
+            "default": false
+          },
+          "min": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Minimum count for repeatable / pool slots."
+          },
+          "max": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximum count for repeatable / pool slots."
+          },
+          "max_chars": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Per-slot character limit. Valid only when `asset_type` is `text`, `markdown`, or `brief`. Mutually exclusive with `max_size_kb` (which applies to binary asset types). Schema enforces via if/then so a producer can't set both on the same slot."
+          },
+          "max_size_kb": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Per-slot file size limit in kilobytes. Valid only when `asset_type` is `image`, `video`, `audio`, or `zip`. Mutually exclusive with `max_chars` (which applies to text asset types). Schema enforces via if/then so a producer can't set both on the same slot."
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of what the slot expects from the buyer."
+          },
+          "consumed_for_production": {
+            "type": "boolean",
+            "default": false,
+            "description": "Dispatch hint for `build_creative` and v1↔v2 wire translators: when `true`, the slot's value is consumed as INPUT to a production step (host-read script, brief copy fed to generative synthesis, catalog feed driving per-SKU rendering) and is not rendered verbatim. When `false` (default), the slot's value is rendered verbatim on the placement (image bytes, video file, display tag).\n\nMotivates the v1↔v2 dispatch table: pre-v2 buyers shipped production-consumed inputs separately in a `inputs` map on the build_creative request; v2 collapses inputs and rendered assets into a single `assets` map keyed by `asset_group_id`. SDK translators between v1 and v2 use this flag per canonical to know which assets in the v2 manifest map back to v1 `inputs` vs v1 `assets`. Without the per-slot flag the dispatch table lives in adopter code and every SDK gets it slightly different.\n\nProducers SHOULD set this explicitly on slots whose consumption pattern isn't obvious (host-read scripts on `audio_hosted`, briefs on generative `video_hosted`, catalog feeds on `sponsored_placement`). For canonicals where every slot is render-verbatim (`image`, `display_tag`, `video_vast`), the default `false` is sufficient and the flag MAY be omitted."
+          }
+        },
+        "additionalProperties": true,
+        "allOf": [
+          {
+            "$comment": "max_chars is valid only for text-shaped asset types; max_size_kb is valid only for binary asset types. A slot MUST NOT carry both; the type-appropriate one is enforced via if/then.",
+            "if": {
+              "properties": { "asset_type": { "enum": ["text", "markdown", "brief"] } },
+              "required": ["asset_type"]
+            },
+            "then": { "not": { "required": ["max_size_kb"] } }
+          },
+          {
+            "if": {
+              "properties": { "asset_type": { "enum": ["image", "video", "audio", "zip"] } },
+              "required": ["asset_type"]
+            },
+            "then": { "not": { "required": ["max_chars"] } }
+          },
+          {
+            "$comment": "Non-size asset types (url, catalog, html, css, javascript, webhook, daast, vast, card, object, pixel_tracker, vast_tracker, daast_tracker) reject both — there's no defined per-slot size semantics on those.",
+            "if": {
+              "properties": { "asset_type": { "enum": ["url", "catalog", "html", "css", "javascript", "webhook", "daast", "vast", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"] } },
+              "required": ["asset_type"]
+            },
+            "then": {
+              "not": { "anyOf": [
+                { "required": ["max_chars"] },
+                { "required": ["max_size_kb"] }
+              ] }
+            }
+          }
+        ]
+      }
+    },
+    "production_window_business_days": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Typical production turnaround in business days when the format requires seller-side production (e.g., host-recording from a buyer-supplied script). 0 for synchronous (e.g., generative AI); >0 for human-produced (e.g., podcast host-read). Absent when no production is required (buyer uploads complete creative)."
+    }
+  },
+  "additionalProperties": true,
+  "x-canonical-policy-required-params-not-enforced": "Canonical format schemas intentionally do NOT mark any of their parameter fields as `required` and use `additionalProperties: true`. The canonical is the loose contract — describing what parameters MAY narrow it. Products narrow the canonical with concrete values (and may also leave most parameters absent — buyers infer behavior from the canonical's prose description for any unspecified parameter). This is intentional, not an oversight: enforcing required params on the canonical would force every product to declare every parameter, which is the wrong direction (we want products to declare only the values that differ from sensible canonical defaults). Adopters writing strict validators should validate against the canonical's structural shape (what fields ARE valid) and apply business rules separately for product-level narrowing minima."
+}

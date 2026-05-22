@@ -2,11 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/brand/acquire-rights-response.json",
   "title": "Acquire Rights Response",
-  "description": "Result of a rights acquisition request. Returns one of three statuses: acquired (with terms and generation credentials), pending_approval (requires rights holder review), or rejected (with reason). Uses discriminated union on status field.",
+  "description": "Result of a rights acquisition request. Returns one of three rights_status values: acquired (with terms and generation credentials), pending_approval (requires rights holder review), or rejected (with reason). Uses discriminated union on `rights_status` field.",
   "type": "object",
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "x-status": "experimental",
@@ -19,10 +22,10 @@
           "description": "Rights grant identifier",
           "x-entity": "rights_grant"
         },
-        "status": {
+        "rights_status": {
           "type": "string",
           "const": "acquired",
-          "description": "Rights have been cleared and credentials issued"
+          "description": "Rights have been cleared and credentials issued. Renamed from `status` in 3.1 to free the top-level `status` key for the envelope task-status (TaskStatus) under MCP flat-on-the-wire serialization (#4878)."
         },
         "brand_id": {
           "type": "string",
@@ -87,7 +90,7 @@
       },
       "required": [
         "rights_id",
-        "status",
+        "rights_status",
         "brand_id",
         "terms",
         "generation_credentials",
@@ -107,7 +110,7 @@
           "type": "string",
           "x-entity": "rights_grant"
         },
-        "status": {
+        "rights_status": {
           "type": "string",
           "const": "pending_approval",
           "description": "Rights require approval from the rights holder"
@@ -133,7 +136,7 @@
       },
       "required": [
         "rights_id",
-        "status",
+        "rights_status",
         "brand_id"
       ],
       "additionalProperties": true,
@@ -150,7 +153,7 @@
           "type": "string",
           "x-entity": "rights_grant"
         },
-        "status": {
+        "rights_status": {
           "type": "string",
           "const": "rejected",
           "description": "Rights request was rejected"
@@ -179,7 +182,7 @@
       },
       "required": [
         "rights_id",
-        "status",
+        "rights_status",
         "brand_id",
         "reason"
       ],
@@ -215,7 +218,7 @@
         "anyOf": [
           {
             "required": [
-              "status"
+              "rights_status"
             ]
           }
         ]
