@@ -21,7 +21,7 @@ Start a conversational session with a brand agent. The host platform invokes thi
 | `offering_id` | string | No | Brand-specific offering reference to apply |
 | `supported_capabilities` | object | No | What the host platform supports |
 | `offering_token` | string | No | Token from `si_get_offering` for correlation |
-| `context` | object | No | Opaque correlation data echoed unchanged in the response (see [application context](/dist/docs/3.1.0-beta.3/building/integration/context-sessions#application-context-context)) |
+| `context` | object | No | Opaque correlation data echoed unchanged in the response (see [application context](/dist/docs/3.1.0-beta.3/building/by-layer/L2/context-sessions#application-context-context)) |
 
 ### Offering Token
 
@@ -103,7 +103,7 @@ Declares what the host platform can render:
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/sponsored-intelligence/si-initiate-session-request.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/sponsored-intelligence/si-initiate-session-request.json",
   "idempotency_key": "f6a7b8c9-d0e1-4234-f567-234567890123",
   "intent": "User wants to fly to Boston next Tuesday morning on flight 632 at 6 AM.",
   "media_buy_id": "delta_q1_premium_upgrade",
@@ -142,7 +142,7 @@ Declares what the host platform can render:
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/sponsored-intelligence/si-initiate-session-response.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/sponsored-intelligence/si-initiate-session-response.json",
   "status": "completed",
   "session_id": "sess_abc123",
   "session_status": "active",

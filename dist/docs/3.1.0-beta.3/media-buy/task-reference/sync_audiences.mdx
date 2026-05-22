@@ -116,7 +116,7 @@ asyncio.run(main())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | [account-ref](/dist/docs/3.1.0-beta.3/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. |
+| `account` | [account-ref](/dist/docs/3.1.0-beta.3/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. |
 | `audiences` | [Audience](#audience-object)[] | No | Audiences to sync. When omitted, the call is discovery-only and returns all existing audiences without modification. |
 | `delete_missing` | boolean | No | When true, buyer-managed audiences on the account not in this request are removed (default: false). Does not affect seller-managed audiences. Do not combine with an omitted `audiences` array or all buyer-managed audiences will be deleted. |
 
@@ -534,7 +534,7 @@ Two distinct async patterns — match the right one to the seller's behavior:
 
 Poll `tasks/get` or wait for the webhook. The completion artifact carries the `audiences` array with per-item `action`/`status` results; operation-level failures surface as `status: "failed"` on the task.
 
-**See:** [Webhooks](/dist/docs/3.1.0-beta.3/building/implementation/webhooks) for webhook configuration.
+**See:** [Webhooks](/dist/docs/3.1.0-beta.3/building/by-layer/L3/webhooks) for webhook configuration.
 
 ## Hashing Requirements
 

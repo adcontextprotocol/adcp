@@ -370,7 +370,7 @@ Request:
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/media-buy/get-products-request.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/media-buy/get-products-request.json",
   "buying_mode": "wholesale",
   "if_wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412"
 }
@@ -380,7 +380,7 @@ Response (wholesale product feed unchanged):
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/media-buy/get-products-response.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/media-buy/get-products-response.json",
   "status": "completed",
   "message": "Wholesale product feed unchanged since v2026-05-18T08:00:00Z-acme-rev412.",
   "context_id": "ctx-abc-789",
@@ -1174,7 +1174,7 @@ asyncio.run(compare_auth())
 - **Without credentials**: Returns limited public product results, no pricing, no custom offerings
 - **With credentials**: Returns complete product results with pricing and custom products
 
-See [Authentication Guide](/dist/docs/3.1.0-beta.3/building/integration/authentication) for details.
+See [Authentication Guide](/dist/docs/3.1.0-beta.3/building/by-layer/L2/authentication) for details.
 
 ## Asynchronous Operations
 
@@ -1489,7 +1489,7 @@ Response (200 OK):
 | `submitted` | Custom curation queued | Wait for webhook notification |
 | `failed` | Search couldn't complete | Check error message, adjust brief |
 
-**Note:** For the complete status list see [Task Lifecycle](/dist/docs/3.1.0-beta.3/building/implementation/task-lifecycle).
+**Note:** For the complete status list see [Task Lifecycle](/dist/docs/3.1.0-beta.3/building/by-layer/L3/task-lifecycle).
 
 **Most searches complete immediately.** Async processing is only needed for complex scenarios or when the system needs your input.
 

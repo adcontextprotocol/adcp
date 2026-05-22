@@ -75,6 +75,11 @@ rewrite_file() {
     "$file" > "$tmp2"
   mv "$tmp2" "$file"
 
+  # Phase 1c: apply docs.json redirects inside the frozen snapshot. This keeps
+  # links written against old public routes valid after the source docs move
+  # files, without depending on runtime redirects for /dist/docs/<version>/.
+  node "$(dirname "$0")/rewrite-dist-redirect-links.mjs" "$file" "$VERSION" > /dev/null
+
   # Phase 2: rewrite *escaping* relative links (`../../...` etc.) to compensate
   # for the `dist/docs/<version>/` mirror layer. Depth-aware via a node helper
   # so this works at any source-file depth, not just `docs/<section>/file.md`.

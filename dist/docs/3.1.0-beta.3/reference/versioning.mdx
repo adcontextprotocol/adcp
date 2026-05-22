@@ -81,7 +81,7 @@ Per the three-tier model, patches by definition introduce no contract change —
 
 The `adcp_version` wire shape is `MAJOR.MINOR` or `MAJOR.MINOR-PRERELEASE`. **No patch component is valid on the wire**, even alongside a pre-release tag. SDKs that internally key bundles using full semver (`"3.1.0-beta.1"`) MUST normalize to release-precision (`"3.1-beta.1"`) before emitting. `"3.1.2"`, `"3.1.0-beta.1"`, `"v3.1"`, and `"3"` are all invalid wire values and will be rejected by validation.
 
-**Don't confuse the wire field with bundle metadata.** The schema registry, tarball manifest, compliance index, and the `/protocol/` HTTP discovery endpoint all expose a `published_version` field (e.g. `"3.1.0-beta.1"`) at full-semver precision — that's the version of the published artifact, not a wire value. A legacy `adcp_version` alias is also present on those meta-objects through 3.x for `@adcp/sdk.ComplianceIndex` compatibility, sunset at 4.0. **Never emit a meta-field value on the wire** — normalize to release-precision first. See [schemas-and-sdks](/dist/docs/3.1.0-beta.3/building/schemas-and-sdks#version-discovery) for the discovery URL.
+**Don't confuse the wire field with bundle metadata.** The schema registry, tarball manifest, compliance index, and the `/protocol/` HTTP discovery endpoint all expose a `published_version` field (e.g. `"3.1.0-beta.1"`) at full-semver precision — that's the version of the published artifact, not a wire value. A legacy `adcp_version` alias is also present on those meta-objects through 3.x for `@adcp/sdk.ComplianceIndex` compatibility, sunset at 4.0. **Never emit a meta-field value on the wire** — normalize to release-precision first. See [schemas-and-sdks](/dist/docs/3.1.0-beta.3/building/by-layer/L0/schemas#version-discovery) for the discovery URL.
 
 ### Major-precision negotiation (deprecated, kept through 3.x)
 
@@ -208,7 +208,7 @@ Any change that requires an implementation to adapt — renamed field, required-
 
 The latest published tag must always reflect the same required-field set as source HEAD. A PR that changes any `required` array, changes a discriminator `const`, or tightens a validation constraint must be accompanied by a new tag cut before the change becomes the active implementation target for external consumers. This is in addition to any upstream obligations — for example, the deprecation requirement for optional→required transitions described in the stability guarantees above.
 
-**Why:** Implementors validate against a published tag (whether pinned to an exact version or resolved through the [version alias](/dist/docs/3.1.0-beta.3/building/schemas-and-sdks#schema-versioning)). If source HEAD's required fields grow beyond what that tag declares, an evaluator reading source and the implementor's validator reading the published tag will disagree — not because either is wrong, but because the published contract hasn't caught up. The implementor cannot reconcile the gap without reading source history.
+**Why:** Implementors validate against a published tag (whether pinned to an exact version or resolved through the [version alias](/dist/docs/3.1.0-beta.3/building/by-layer/L0/schemas#schema-versioning)). If source HEAD's required fields grow beyond what that tag declares, an evaluator reading source and the implementor's validator reading the published tag will disagree — not because either is wrong, but because the published contract hasn't caught up. The implementor cannot reconcile the gap without reading source history.
 
 **During RC cycles:** The same invariant applies between RC tags. A schema change that lands between `rc.N` and `rc.N+1` requires cutting `rc.N+1` before the new required-field set is treated as active.
 
@@ -257,7 +257,7 @@ AdCP distinguishes three levels of schema extension. The rules below apply to ev
 | Surface | Who may extend | How |
 |---|---|---|
 | **Core fields** defined by the protocol | Working group, via a release | Proposed in a working group, accepted through the normal release process. Never extended inline by an implementer. |
-| **`ext.{namespace}`** on any request or response object | Anyone, by declaring a namespace in `extensions_supported` | Namespaced, out-of-band, does not affect baseline interop. Namespaces SHOULD be registered in the [extension registry](/dist/docs/3.1.0-beta.3/building/integration/context-sessions#extensions). |
+| **`ext.{namespace}`** on any request or response object | Anyone, by declaring a namespace in `extensions_supported` | Namespaced, out-of-band, does not affect baseline interop. Namespaces SHOULD be registered in the [extension registry](/dist/docs/3.1.0-beta.3/building/by-layer/L2/context-sessions#extensions). |
 | **`additionalProperties: true`** on containers that allow it | Anyone | Additive fields at the declared location. MUST NOT shadow or redefine a core field. Readers MUST ignore unknown fields rather than erroring. When an additional field collides in name with a core field defined on a later release, readers MUST prefer the core field. |
 
 **What MUST NOT happen:**

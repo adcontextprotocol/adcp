@@ -74,7 +74,7 @@ Sam's agent fetches `https://northwind.example/.well-known/brand.json`. This is 
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/brand.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/brand.json",
   "version": "1.0",
   "id": "northwind_media",
   "names": [{ "en_US": "Northwind Media" }],
@@ -109,7 +109,7 @@ Sam's agent fetches `https://streamhaus.example/.well-known/adagents.json` — t
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/adagents.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/adagents.json",
   "contact": {
     "name": "StreamHaus Publishing",
     "email": "adops@streamhaus.example",
@@ -181,7 +181,7 @@ StreamHaus's own brand.json declares its parent:
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/brand.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/brand.json",
   "version": "1.0",
   "id": "streamhaus",
   "names": [{ "en_US": "StreamHaus" }],
@@ -196,7 +196,7 @@ Then the parent's brand.json reciprocates:
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/brand.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/brand.json",
   "version": "1.0",
   "house": {
     "domain": "sportshaus-holdings.example",

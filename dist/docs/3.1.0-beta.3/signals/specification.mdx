@@ -65,7 +65,7 @@ Every signal request involves two roles:
   same response as "agent does not exist." Distinguishing "exists but unauthorized"
   from "does not exist" would enable cross-tenant enumeration of private agents.
   See the uniform-response MUST in
-  [error-handling.mdx](/dist/docs/3.1.0-beta.3/building/implementation/error-handling) for the full
+  [error-handling.mdx](/dist/docs/3.1.0-beta.3/building/by-layer/L3/error-handling) for the full
   set of observable channels that MUST match on both paths.
 - Signal agents MUST NOT expose private signals across accounts
 
@@ -121,9 +121,9 @@ Activate a signal for use on a decisioning platform.
 
 ## Error Handling
 
-Signal agents MUST return errors using the [standard AdCP error schema](/dist/docs/3.1.0-beta.3/building/implementation/error-handling).
+Signal agents MUST return errors using the [standard AdCP error schema](/dist/docs/3.1.0-beta.3/building/by-layer/L3/error-handling).
 
-Signal agents MUST use Signals Protocol error codes as defined in the [Error Handling Reference](/dist/docs/3.1.0-beta.3/building/implementation/error-handling).
+Signal agents MUST use Signals Protocol error codes as defined in the [Error Handling Reference](/dist/docs/3.1.0-beta.3/building/by-layer/L3/error-handling).
 
 ## Security Considerations
 

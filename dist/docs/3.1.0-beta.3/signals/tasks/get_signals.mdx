@@ -21,7 +21,7 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 | `discovery_mode` | string | No (v3.1+ SHOULD include) | `"brief"` (default) or `"wholesale"`. `"brief"`: existing behavior — `signal_spec` or `signal_ids` is required, agent performs inference/RAG. `"wholesale"`: raw wholesale signals feed enumeration — `signal_spec` and `signal_ids` MUST NOT be provided; agent returns its full priced signals feed, paginated, scoped by `filters` / `account` / `destinations` / `countries` when present. **Timing semantics:** `"wholesale"` is a wholesale signals feed read — agents SHOULD respond synchronously and MUST NOT route through the async/Submitted arm; partial completion uses [`incomplete[]`](#incomplete-array). Agents receiving requests from pre-v3.1 clients without `discovery_mode` MUST default to `"brief"`. Probe support via [`get_adcp_capabilities`](/dist/docs/3.1.0-beta.3/protocol/get_adcp_capabilities) (`signals.discovery_modes`). |
 | `signal_spec` | string | Conditional | Natural language description of the desired signals. Required when `discovery_mode` is `"brief"` (and `signal_ids` is absent). MUST NOT be provided when `discovery_mode` is `"wholesale"`. |
 | `signal_ids` | SignalID[] | Conditional | Specific signals to look up by data provider and ID. Required when `discovery_mode` is `"brief"` (and `signal_spec` is absent). MUST NOT be provided when `discovery_mode` is `"wholesale"`. |
-| `account` | [AccountRef](/dist/docs/3.1.0-beta.3/building/integration/accounts-and-agents#account-references) | No | Account for this request. When provided, the signals agent returns per-account pricing options if configured. In wholesale mode, this is the rate-card scope; when omitted the agent returns default rate-card pricing or omits `pricing_options` entirely. |
+| `account` | [AccountRef](/dist/docs/3.1.0-beta.3/building/by-layer/L2/accounts-and-agents#account-references) | No | Account for this request. When provided, the signals agent returns per-account pricing options if configured. In wholesale mode, this is the rate-card scope; when omitted the agent returns default rate-card pricing or omits `pricing_options` entirely. |
 | `destinations` | Destination[] | No | Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. See Destination Object below. |
 | `countries` | string[] | No | Countries where signals will be used (ISO 3166-1 alpha-2 codes) |
 | `filters` | Filters | No | Filters to refine results (see Filters Object below). In wholesale mode, filters constrain the enumerated signals feed (e.g., `filters.data_providers: ["acme-data"]` returns only that provider's signals). |
@@ -207,7 +207,7 @@ Because the authenticated caller matches the deployment target, the response inc
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/signals/get-signals-response.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/signals/get-signals-response.json",
   "status": "completed",
   "message": "Found 1 luxury segment matching your criteria. Already activated for your sales agent.",
   "context_id": "ctx-signals-123",
@@ -257,7 +257,7 @@ Some signals offer multiple pricing models. The buyer selects one and passes its
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/signals/get-signals-response.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/signals/get-signals-response.json",
   "status": "completed",
   "message": "Found 1 segment matching your criteria. Three pricing options are available: CPM at $3.50, 15% of media spend, or $5,000/month flat fee.",
   "context_id": "ctx-signals-456",
@@ -352,7 +352,7 @@ A buyer with credentials for both The Trade Desk and Amazon DSP receives keys fo
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/signals/get-signals-response.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/signals/get-signals-response.json",
   "status": "completed",
   "message": "Found 1 luxury segment matching your criteria. Already activated on The Trade Desk, pending activation on Amazon DSP.",
   "context_id": "ctx-signals-123",
@@ -520,7 +520,7 @@ Discover all available deployments across platforms:
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/signals/get-signals-request.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/signals/get-signals-request.json",
   "signal_spec": "Contextual segments for luxury automotive content",
   "destinations": [
     { "type": "platform", "platform": "index-exchange", "account": "agency-123-ix" },
@@ -542,7 +542,7 @@ Discover all available deployments across platforms:
 **Payload**:
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/signals/get-signals-response.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/signals/get-signals-response.json",
   "status": "completed",
   "cache_scope": "public",
   "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
@@ -660,7 +660,7 @@ When a consumer (storefront, federated marketplace, registry) needs to mirror a 
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/signals/get-signals-request.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/signals/get-signals-request.json",
   "discovery_mode": "wholesale",
   "account": { "account_id": "acct_123" },
   "filters": {
@@ -675,7 +675,7 @@ When a consumer (storefront, federated marketplace, registry) needs to mirror a 
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/signals/get-signals-response.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/signals/get-signals-response.json",
   "status": "completed",
   "message": "Returning 50 of 312 signals in wholesale mode.",
   "context_id": "ctx-wholesale-001",
@@ -741,7 +741,7 @@ This is the seller-side wholesale signals feed returned by `get_signals`. It is 
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/signals/get-signals-request.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/signals/get-signals-request.json",
   "discovery_mode": "wholesale",
   "if_wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412"
 }
@@ -751,7 +751,7 @@ This is the seller-side wholesale signals feed returned by `get_signals`. It is 
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/signals/get-signals-response.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/signals/get-signals-response.json",
   "status": "completed",
   "message": "Wholesale signals feed unchanged since v2026-05-18T08:00:00Z-acme-rev412.",
   "context_id": "ctx-abc-789",
@@ -862,7 +862,7 @@ To refine previous results, pass back the `signal_id` values from signals you wa
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/signals/get-signals-request.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/signals/get-signals-request.json",
   "signal_spec": "Same audience but with broader coverage, ideally above 20%",
   "signal_ids": [
     {
@@ -937,7 +937,7 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/signals/get-signals-response.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/signals/get-signals-response.json",
   "status": "completed",
   "message": "Found 2 luxury signals, but encountered some platform limitations. The 'Premium Auto Shoppers' signal has limited reach due to data restrictions, and pricing data is unavailable for one platform. Review the warnings below for optimization suggestions.",
   "context_id": "ctx-signals-abc123",
@@ -1007,7 +1007,7 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
 
 ```json
 {
-  "$schema": "/schemas/3.1.0-beta.3/signals/get-signals-response.json",
+  "$schema": "/schemas/3.1.0-beta.3/3.1.0-beta.3/signals/get-signals-response.json",
   "status": "completed",
   "message": "I couldn't find any signals matching 'underwater basket weavers' in the requested platforms. This appears to be a very niche audience. Consider broadening your criteria to 'craft enthusiasts' or 'hobby communities' for better results. Alternatively, we could create a custom signal for this specific audience.",
   "context_id": "ctx-signals-abc123",
