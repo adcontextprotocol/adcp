@@ -757,10 +757,7 @@ const AgentPublishersEntrySchema = z.object({
   last_verified_at: z.string().datetime(),
 });
 
-registry.registerPath({
-  method: "get",
-  path: "/v1/agents/{encodedUrl}/publishers",
-  operationId: "getPublishersForAgent",
+const AgentPublishersOpenApi = {
   summary: "AAO directory inverse-lookup",
   description:
     "Given a percent-encoded `agent_url`, returns the publishers whose adagents.json authorizes that agent, " +
@@ -800,6 +797,20 @@ registry.registerPath({
     400: { description: "Invalid agent_url, cursor, since, or status", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Directory has never indexed any publisher referencing this agent_url. Distinct from 200 + empty.", content: { "application/json": { schema: ErrorSchema } } },
   },
+};
+
+registry.registerPath({
+  method: "get",
+  path: "/api/v1/agents/{encodedUrl}/publishers",
+  operationId: "getPublishersForAgentLegacyApiPrefix",
+  ...AgentPublishersOpenApi,
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/v1/agents/{encodedUrl}/publishers",
+  operationId: "getPublishersForAgent",
+  ...AgentPublishersOpenApi,
 });
 
 registry.registerPath({
@@ -2951,7 +2962,11 @@ registry.registerPath({
 
 // ── Router factory ──────────────────────────────────────────────
 
-export function createRegistryApiRouter(config: RegistryApiConfig): { router: Router; v1AgentsRouter: Router } {
+export function createRegistryApiRouter(config: RegistryApiConfig): Router {
+  return createRegistryApiRouters(config).router;
+}
+
+export function createRegistryApiRouters(config: RegistryApiConfig): { router: Router; v1AgentsRouter: Router } {
   const router = Router();
   const {
     brandManager,

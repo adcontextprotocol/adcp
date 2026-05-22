@@ -120,7 +120,7 @@ import {
   buildConformanceTokenRouter,
   conformanceSessions,
 } from "./conformance/index.js";
-import { createRegistryApiRouter } from "./routes/registry-api.js";
+import { createRegistryApiRouters } from "./routes/registry-api.js";
 import { getPublicJwks } from "./services/verification-token.js";
 import { createCatalogApiRouter } from "./routes/catalog-api.js";
 import { getLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
@@ -1055,7 +1055,7 @@ export class HTTPServer {
     this.app.use('/api', createInvitesRouter());
 
     // Mount public Registry API routes (brands, properties, agents, search, validation)
-    const { router: registryApiRouter, v1AgentsRouter } = createRegistryApiRouter({
+    const { router: registryApiRouter, v1AgentsRouter } = createRegistryApiRouters({
       brandManager: this.brandManager,
       brandDb: this.brandDb,
       propertyDb: this.propertyDb,
