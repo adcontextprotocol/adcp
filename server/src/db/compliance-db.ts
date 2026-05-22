@@ -93,6 +93,7 @@ export interface ComplianceRun {
   agent_profile_json: any;
   observations_json: any;
   triggered_by: TriggeredBy;
+  triggered_org_id: string | null;
   dry_run: boolean;
 }
 

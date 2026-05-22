@@ -21,15 +21,25 @@ COMMENT ON COLUMN agent_compliance_runs.triggered_org_id IS
   'WorkOS organization ID of the org that triggered the run. Stored as TEXT (no FK) because WorkOS IDs are foreign-system keys — referential integrity against organizations.workos_organization_id is not enforced at the DB layer. Populated only for triggered_by=''owner_test''; heartbeat / manual / webhook rows leave it NULL.';
 
 -- Index supports the derived `agent_context_with_latest_test` view's
--- per-(org, url) DISTINCT ON lookup. tested_at DESC keeps the latest-row
+-- per-(org, url) LATERAL lookup. tested_at DESC keeps the latest-row
 -- pull as a single index scan.
 CREATE INDEX IF NOT EXISTS idx_agent_compliance_runs_triggered_org_url_at
   ON agent_compliance_runs (triggered_org_id, agent_url, tested_at DESC)
   WHERE triggered_org_id IS NOT NULL;
 
+-- Rows backfilled before this column existed stored their org dimension in
+-- observations_json. Copy it into triggered_org_id so transition-window owner
+-- runs are visible to the derived view. Rows that remain dry_run=TRUE are still
+-- ignored by the view, preserving dry-run semantics.
+UPDATE agent_compliance_runs
+SET triggered_org_id = observations_json ->> 'backfill_org_id'
+WHERE triggered_by = 'owner_test'
+  AND triggered_org_id IS NULL
+  AND observations_json ? 'backfill_org_id';
+
 -- View: agent_context joined with the latest agent_compliance_runs row
--- scoped to that org via triggered_org_id. Replaces direct reads of
--- agent_contexts.last_test_* columns.
+-- scoped to that org via triggered_org_id. Falls back to the legacy
+-- agent_contexts.last_test_* columns when no owner-canonical row exists.
 --
 -- The columns on agent_contexts stay for backward compat — recordTest()
 -- still writes them for third-party (non-owner) runs, and a follow-up
@@ -37,27 +47,34 @@ CREATE INDEX IF NOT EXISTS idx_agent_compliance_runs_triggered_org_url_at
 -- agent_test_history drop, which is itself gated on the soak windows
 -- documented in #4247).
 --
--- last_test_passed: derived from overall_status='passing'.
+-- last_test_passed: derived from overall_status='passing' when a canonical
+--   owner row exists, else falls back to agent_contexts.last_test_passed.
 -- last_test_scenario: tracks_json[0].track when present, else 'compliance'
 --   (heartbeat/manual writes don't carry the legacy 'quality_evaluation'
 --   scenario string — the closest semantic in the canonical schema is the
---   first track of the run).
--- last_test_summary: agent_compliance_runs.headline.
--- last_tested_at: agent_compliance_runs.tested_at.
+--   first track of the run). Falls back to agent_contexts.last_test_scenario
+--   when there is no canonical owner row.
+-- last_test_summary: agent_compliance_runs.headline, falling back to
+--   agent_contexts.last_test_summary.
+-- last_tested_at: agent_compliance_runs.tested_at, falling back to
+--   agent_contexts.last_tested_at.
 -- total_tests_run: COUNT(*) of agent_compliance_runs rows scoped to the
---   org+url. Was a per-context counter on the old column; the COUNT-based
---   derivation matches the new canonical semantics.
+--   org+url when a canonical owner row exists, else falls back to the legacy
+--   per-context counter.
 CREATE OR REPLACE VIEW agent_context_with_latest_test AS
 SELECT
   ac.*,
-  latest.tested_at AS canonical_last_tested_at,
-  latest.overall_status = 'passing' AS canonical_last_test_passed,
-  COALESCE(
-    (latest.tracks_json -> 0 ->> 'track'),
-    'compliance'
-  ) AS canonical_last_test_scenario,
-  latest.headline AS canonical_last_test_summary,
-  COALESCE(run_counts.total, 0) AS canonical_total_tests_run
+  COALESCE(latest.tested_at, ac.last_tested_at) AS canonical_last_tested_at,
+  COALESCE(latest.overall_status = 'passing', ac.last_test_passed) AS canonical_last_test_passed,
+  CASE
+    WHEN latest.tested_at IS NULL THEN ac.last_test_scenario
+    ELSE COALESCE(latest.tracks_json -> 0 ->> 'track', 'compliance')
+  END AS canonical_last_test_scenario,
+  COALESCE(latest.headline, ac.last_test_summary) AS canonical_last_test_summary,
+  CASE
+    WHEN latest.tested_at IS NULL THEN ac.total_tests_run
+    ELSE COALESCE(run_counts.total, 0)
+  END AS canonical_total_tests_run
 FROM agent_contexts ac
 LEFT JOIN LATERAL (
   SELECT tested_at, overall_status, tracks_json, headline
@@ -77,4 +94,4 @@ LEFT JOIN LATERAL (
 ) AS run_counts ON TRUE;
 
 COMMENT ON VIEW agent_context_with_latest_test IS
-  'Derives last_test_* fields from agent_compliance_runs (triggered_org_id-scoped). Replaces direct reads of agent_contexts.last_test_*. The legacy columns stay for backward compat until recordTest() retires (#4247 PR-after-drop).';
+  'Derives last_test_* fields from agent_compliance_runs (triggered_org_id-scoped), falling back to legacy agent_contexts.last_test_* fields for non-owner tests until recordTest() retires (#4247 PR-after-drop).';
