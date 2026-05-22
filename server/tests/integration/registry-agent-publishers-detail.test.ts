@@ -333,4 +333,50 @@ describe('FederatedIndexDatabase.getPublishersForAgentDetail (integration)', () 
     const rows = await fedDb.getPublishersForAgentDetail(AGENT_URL, { limit: 100 });
     expect(rows).toEqual([]);
   });
+
+  it('includePropertyIds=true surfaces property_ids[] for authorized properties', async () => {
+    await insertPublisher({
+      domain: PUB_DIRECT,
+      discovery_method: 'direct',
+      adagents: { authorized_agents: [{ url: AGENT_URL, authorization_type: 'all' }] },
+    });
+    await insertAuthz({ agent_url: AGENT_URL, publisher_domain: PUB_DIRECT });
+    await insertPropertyAndAuthz({ publisher_domain: PUB_DIRECT, property_id: 'prop-b', authorize_to: AGENT_URL });
+    await insertPropertyAndAuthz({ publisher_domain: PUB_DIRECT, property_id: 'prop-a', authorize_to: AGENT_URL });
+    await insertPropertyAndAuthz({ publisher_domain: PUB_DIRECT, property_id: 'prop-c' }); // not authorized
+
+    const rows = await fedDb.getPublishersForAgentDetail(AGENT_URL, { limit: 100, includePropertyIds: true });
+    expect(rows).toHaveLength(1);
+    // Sorted ascending by property_id, unauthorized excluded.
+    expect(rows[0]!.property_ids).toEqual(['prop-a', 'prop-b']);
+    expect(rows[0]!.properties_authorized).toBe(2);
+  });
+
+  it('includePropertyIds=true returns empty array when no properties are authorized', async () => {
+    await insertPublisher({
+      domain: PUB_NOPIN,
+      discovery_method: 'direct',
+      adagents: { authorized_agents: [{ url: AGENT_URL, authorization_type: 'all' }] },
+    });
+    await insertAuthz({ agent_url: AGENT_URL, publisher_domain: PUB_NOPIN });
+    // No properties seeded at all.
+
+    const rows = await fedDb.getPublishersForAgentDetail(AGENT_URL, { limit: 100, includePropertyIds: true });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.property_ids).toBeNull(); // ARRAY_AGG returns NULL for empty set
+  });
+
+  it('includePropertyIds omitted (default) leaves property_ids null', async () => {
+    await insertPublisher({
+      domain: PUB_DIRECT,
+      discovery_method: 'direct',
+      adagents: { authorized_agents: [{ url: AGENT_URL, authorization_type: 'all' }] },
+    });
+    await insertAuthz({ agent_url: AGENT_URL, publisher_domain: PUB_DIRECT });
+    await insertPropertyAndAuthz({ publisher_domain: PUB_DIRECT, property_id: 'prop-x', authorize_to: AGENT_URL });
+
+    const rows = await fedDb.getPublishersForAgentDetail(AGENT_URL, { limit: 100 });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.property_ids).toBeNull();
+  });
 });
