@@ -3756,35 +3756,41 @@ export function createMemberToolHandlers(
           }
         }
 
-        // Legacy session-scoped audit trail. Retained until Emma's #4247 PR 3
-        // backfills + drops `agent_test_history`. NOT a public-state write —
-        // the previous dual-write to `recordComplianceRun(..., 'manual')` was
-        // dropped because (a) it was gated only on `agent_contexts` row
-        // existence (which `save_agent` lets any org create for any URL — no
-        // ownership check), so any user could publish a `manual` verdict on
-        // someone else's agent; and (b) the owner-test branch above already
-        // updates canonical state with proper ownership checking, so the
-        // legacy write has no remaining function for owners. Non-owner runs
-        // continue to land here in `agent_test_history` only.
-        try {
-          const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
-          if (context) {
-            await agentContextDb.recordTest({
-              agent_context_id: context.id,
-              scenario: 'quality_evaluation',
-              overall_passed: result.overall_status === 'passing',
-              steps_passed: result.summary.tracks_passed,
-              steps_failed: result.summary.tracks_failed,
-              total_duration_ms: result.total_duration_ms,
-              summary: result.summary.headline,
-              dry_run: true,
-              triggered_by: 'user',
-              user_id: memberContext?.workos_user?.workos_user_id,
-              agent_profile_json: result.agent_profile,
-            });
+        // Legacy write to agent_contexts + agent_test_history. Retained ONLY
+        // for non-owner runs so a third-party who runs evaluate_agent_quality
+        // against someone else's agent still has a session-scoped audit trail
+        // (their own org's agent_test_history). Owner runs already wrote
+        // canonical state above (PR #4250 / merged); writing twice for owners
+        // would split the audit and re-introduce the dual-write bug PR #4247
+        // is closing. The previous unconditional `recordComplianceRun(...,
+        // 'manual')` dual-write was already dropped on main because it had
+        // no ownership check; this PR completes the picture by gating the
+        // remaining recordTest call on `!isAgentOwner`.
+        //
+        // PR 4 of #4247 collapses agent_contexts.last_test_* into a derived
+        // view, after which this legacy block (and recordTest itself) drop
+        // entirely.
+        if (!isAgentOwner) {
+          try {
+            const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
+            if (context) {
+              await agentContextDb.recordTest({
+                agent_context_id: context.id,
+                scenario: 'quality_evaluation',
+                overall_passed: result.overall_status === 'passing',
+                steps_passed: result.summary.tracks_passed,
+                steps_failed: result.summary.tracks_failed,
+                total_duration_ms: result.total_duration_ms,
+                summary: result.summary.headline,
+                dry_run: true,
+                triggered_by: 'user',
+                user_id: memberContext?.workos_user?.workos_user_id,
+                agent_profile_json: result.agent_profile,
+              });
+            }
+          } catch (error) {
+            logger.debug({ error }, 'Could not record quality evaluation result');
           }
-        } catch (error) {
-          logger.debug({ error }, 'Could not record quality evaluation result');
         }
       }
 
