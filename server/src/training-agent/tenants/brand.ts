@@ -16,6 +16,7 @@ import { TrainingBrandPlatform } from '../v6-brand-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { customToolFor } from './custom-tool-helper.js';
 import { handleCreativeApproval } from '../brand-handlers.js';
+import { handleGetAdcpCapabilities } from '../task-handlers.js';
 
 const TENANT_ID = 'brand';
 
@@ -67,6 +68,12 @@ export function buildBrandTenantConfig(host: string): {
             'Submit a generated creative for brand approval against rights grant terms.',
             CREATIVE_APPROVAL_SCHEMA,
             handleCreativeApproval,
+          ),
+          get_adcp_capabilities: customToolFor(
+            'get_adcp_capabilities',
+            'Return capabilities and supported features of this AdCP agent, including supported protocol versions, specialisms, and task list.',
+            {},
+            handleGetAdcpCapabilities,
           ),
         },
       },

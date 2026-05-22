@@ -116,16 +116,7 @@ async function startLocalAgent(): Promise<{ url: string; close: () => Promise<vo
  * a regression — track each entry with the upstream/internal issue that gates
  * removal so the skip list doesn't silently grow.
  */
-const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
-  // The storyboard asserts `field_present: status` against the v3 envelope,
-  // but `response_schema_ref` points at the inner per-tool response schema
-  // (which doesn't define `status`). The framework's auto-registered
-  // `get_adcp_capabilities` returns the inner payload as `structuredContent`
-  // without an envelope wrapper, so `data.status` is undefined at runtime.
-  // Tracked upstream as adcp#3429; remove once the storyboard is migrated to
-  // `envelope_field_present` AND the framework wraps capabilities responses.
-  ['v3_envelope_integrity', 'adcp-client#1045 / adcp#3429 — storyboard asserts envelope status, framework capabilities tool returns unenveloped payload'],
-]);
+const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([]);
 
 /**
  * Per-step skip list. Entries are `{storyboard_id}/{step_id}` keys mapped to a
