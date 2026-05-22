@@ -13,6 +13,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import {
   getBrandPrimaryDomain,
   getBrandPrimaryDomainsForOrgs,
+  getBrandPrimaryDomainRecord,
 } from '../../src/services/brand-domain-resolver.js';
 import type { Pool } from 'pg';
 
@@ -82,11 +83,7 @@ describe('getBrandPrimaryDomain', () => {
     expect(await getBrandPrimaryDomain(ORG_A)).toBeNull();
   });
 
-  it('returns an unverified is_primary=true row (verified is enforced at write time, not read)', async () => {
-    // The resolver does not filter on verified — writers ensure
-    // is_primary=true rows are also verified, and the publish-agent gate
-    // re-checks verified independently. Document the contract here so a
-    // future refactor that adds a verified filter is an intentional change.
+  it('getBrandPrimaryDomainRecord returns { domain, verified: false } for an unverified is_primary row', async () => {
     await seedOrg(pool, ORG_A, 'A Co');
     await pool.query(
       `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
@@ -94,7 +91,22 @@ describe('getBrandPrimaryDomain', () => {
        ON CONFLICT (domain) DO UPDATE SET verified = false, is_primary = true`,
       [ORG_A, 'a-unverified.example'],
     );
-    expect(await getBrandPrimaryDomain(ORG_A)).toBe('a-unverified.example');
+    const record = await getBrandPrimaryDomainRecord(ORG_A);
+    expect(record?.domain).toBe('a-unverified.example');
+    expect(record?.verified).toBe(false);
+  });
+
+  it('getBrandPrimaryDomainRecord returns { domain, verified: true } for a verified is_primary row', async () => {
+    await seedOrg(pool, ORG_A, 'A Co');
+    await seedDomain(pool, ORG_A, 'a.example', true);
+    const record = await getBrandPrimaryDomainRecord(ORG_A);
+    expect(record?.domain).toBe('a.example');
+    expect(record?.verified).toBe(true);
+  });
+
+  it('getBrandPrimaryDomainRecord returns null when no is_primary row exists', async () => {
+    await seedOrg(pool, ORG_A, 'A Co');
+    expect(await getBrandPrimaryDomainRecord(ORG_A)).toBeNull();
   });
 
   it('returns the first row but does not throw when multiple is_primary=true rows exist (data anomaly)', async () => {
