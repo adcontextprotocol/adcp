@@ -713,35 +713,6 @@ export class CrawlerService {
       toProbe.push(src);
     }
 
-    // Also probe agents discovered via adagents.json (discovered_agents table).
-    // listAllAgents() is member-profile-only; discovered-only agents would never
-    // get their type promoted without this pass (adcp#4849).
-    // Single fetch serves both the knownTypes seed and the toProbe extension.
-    try {
-      const discoveredAgents = await this.federatedIndex.listDiscoveredAgents();
-      for (const da of discoveredAgents) {
-        // Seed knownTypes so the type-disagreement guard (#3538) applies correctly
-        // to agents in discovered_agents not yet on a member profile.
-        if (da.agent_type && da.agent_type !== 'unknown' && !knownTypes.has(da.agent_url)) {
-          knownTypes.set(da.agent_url, da.agent_type);
-        }
-        if (seen.has(da.agent_url) || pausedUrls.has(da.agent_url)) continue;
-        seen.add(da.agent_url);
-        toProbe.push({
-          name: da.name || da.agent_url,
-          url: da.agent_url,
-          type: (da.agent_type as Agent['type']) || 'unknown',
-          protocol: (da.protocol as 'mcp' | 'a2a') || 'mcp',
-          description: '',
-          mcp_endpoint: da.agent_url,
-          contact: { name: '', email: '', website: '' },
-          added_date: new Date().toISOString().split('T')[0],
-        });
-      }
-    } catch (err) {
-      log.warn({ err }, 'Failed to fetch discovered agents for snapshot refresh; continuing with member-profile agents only');
-    }
-
     if (toProbe.length === 0) {
       log.debug('No agents to probe');
       return;
