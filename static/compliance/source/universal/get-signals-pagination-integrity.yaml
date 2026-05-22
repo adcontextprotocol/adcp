@@ -43,7 +43,7 @@ agent:
   capabilities:
     - catalog_signals
   examples:
-    - "Any AdCP agent that exposes a paginated get_signals over a non-trivial catalog"
+    - "Any AdCP agent that exposes a paginated get_signals over a non-trivial signal set"
 
 caller:
   role: buyer_agent
@@ -54,7 +54,7 @@ prerequisites:
     No fixtures required. The agent's signal catalog is treated as given —
     the storyboard sends a broad query and asserts pagination shape
     invariants on whatever match set the agent returns. Any agent
-    declaring catalog_signals SHOULD have a non-trivial catalog matching
+    declaring catalog_signals SHOULD have a non-trivial signal set matching
     "audience".
   test_kit: "test-kits/acme-outdoor.yaml"
 
