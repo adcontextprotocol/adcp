@@ -249,8 +249,8 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "status"
-            description: "Response contains a governance decision"
+            path: "verdict"
+            description: "Response contains a governance verdict"
 
           - check: field_present
             path: "context"
@@ -426,8 +426,8 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "status"
-            description: "Response contains a governance decision"
+            path: "verdict"
+            description: "Response contains a governance verdict"
           - check: field_present
             path: "findings"
             description: "Response contains findings about the drift"

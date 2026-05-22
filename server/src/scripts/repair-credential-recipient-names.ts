@@ -115,6 +115,24 @@ interface PlanEntry {
   desired_name: string;
 }
 
+// Certifier's recipient.name field on the credential GET is a denormalized
+// snapshot of the recipient resource — it is NOT what drives certificate
+// rendering. The design template resolves `{recipient.name}` placeholders
+// against the `attributes` map first (the override layer written by PATCH
+// /credentials/{id}); only when that key is absent does it fall back to the
+// recipient resource. So:
+//   - When attributes['recipient.name'] is set, that's the rendered name.
+//   - When attributes['recipient.name'] is absent, recipient.name renders.
+// effectiveRenderedName picks the right one. Prior versions of this script
+// compared against recipient.name alone, which made the dry-run report
+// already-repaired credentials as still-broken (the attribute override was
+// landing correctly, but the comparison missed it).
+function effectiveRenderedName(remote: { recipient?: { name?: string }; attributes?: Record<string, string> }): string {
+  const override = remote.attributes?.['recipient.name']?.trim();
+  if (override) return override;
+  return remote.recipient?.name ?? '';
+}
+
 function needsRepair(current: string, desired: string, user: Row): boolean {
   if (current === desired) return false;
   if (current.toLowerCase().includes('undefined')) return true;
@@ -172,7 +190,7 @@ async function main(): Promise<void> {
     try {
       const desired = buildRecipientName(row);
       const remote = await getCredential(row.certifier_credential_id);
-      const current = remote.recipient?.name ?? '';
+      const current = effectiveRenderedName(remote);
       if (needsRepair(current, desired, row)) {
         if (skipPersonalEmailFallback && isPersonalEmailFallback(desired, row.email)) {
           skipped.push({
@@ -233,6 +251,17 @@ async function main(): Promise<void> {
         await updateCredential(p.certifier_credential_id, {
           recipient: { name: p.desired_name, email: p.email },
         });
+        // Verify the attribute override actually landed. Certifier returns
+        // 200 on PATCH regardless, so post-update GET is the only honest
+        // signal that the rendered cert will pick up the new name. Catches
+        // the "PATCH accepted but field-shape was wrong" class of bug.
+        const verify = await getCredential(p.certifier_credential_id);
+        const verifyName = effectiveRenderedName(verify);
+        if (verifyName !== p.desired_name) {
+          console.log(`  FAIL  ${p.certifier_credential_id}  PATCH 200 but rendered name still "${verifyName}" (expected "${p.desired_name}")`);
+          failed++;
+          continue;
+        }
         console.log(`  ok    ${p.certifier_credential_id}  -> "${p.desired_name}"`);
         ok++;
       } catch (err) {

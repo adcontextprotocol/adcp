@@ -222,8 +222,8 @@ phases:
             correlation_id: "media_buy_state_machine--pause_buy"
         validations:
           - check: field_present
-            path: "status"
-            description: "Response includes updated status"
+            path: "media_buy_status"
+            description: "Response includes updated media_buy_status"
 
           - check: field_present
             path: "context"
@@ -258,8 +258,8 @@ phases:
             correlation_id: "media_buy_state_machine--resume_buy"
         validations:
           - check: field_present
-            path: "status"
-            description: "Response includes updated status"
+            path: "media_buy_status"
+            description: "Response includes updated media_buy_status"
 
           - check: field_present
             path: "context"
@@ -295,8 +295,8 @@ phases:
             correlation_id: "media_buy_state_machine--cancel_buy"
         validations:
           - check: field_present
-            path: "status"
-            description: "Response includes canceled status"
+            path: "media_buy_status"
+            description: "Response includes canceled media_buy_status"
 
           - check: field_present
             path: "context"

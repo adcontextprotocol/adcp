@@ -516,7 +516,7 @@ async function runTests() {
 
   await testSchemaValidation(
     '/schemas/governance/report-plan-outcome-response.json',
-    { outcome_id: 'outcome_abc123', status: 'accepted', replayed: true },
+    { outcome_id: 'outcome_abc123', outcome_state: 'accepted', replayed: true },
     'report_plan_outcome accepts replayed on envelope'
   );
 

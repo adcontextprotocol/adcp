@@ -27,6 +27,7 @@ import {
   handleSyncCreatives,
 } from './task-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
+import { pickFromInput } from './v6-input-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
@@ -145,7 +146,9 @@ export class TrainingCreativeBuilderPlatform
       return translateV5Result(result);
     },
     syncCreatives: async (creatives, ctx) => {
-      const result = await handleSyncCreatives({ creatives } as unknown as ToolArgs, buildTrainingCtx(ctx.account));
+      // Lift `dry_run` and `assignments[]` off ctx.input (adcp-client#1842).
+      const fromInput = pickFromInput(ctx.input, ['assignments', 'dry_run'] as const);
+      const result = await handleSyncCreatives({ creatives, ...fromInput } as unknown as ToolArgs, buildTrainingCtx(ctx.account));
       const wrapped = translateV5Result<{ creatives?: unknown[] }>(result);
       return (wrapped.creatives ?? []) as SyncCreativesRow[];
     },
