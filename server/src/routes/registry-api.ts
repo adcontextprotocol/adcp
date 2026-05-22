@@ -752,6 +752,9 @@ const AgentPublishersEntrySchema = z.object({
   manager_domain: z.string().nullable(),
   properties_authorized: z.number().int().min(0),
   properties_total: z.number().int().min(0),
+  property_ids: z.array(z.string()).optional().openapi({
+    description: "Resolved property_id strings for set-diff divergence detection. Present iff request included ?include=properties; absent otherwise.",
+  }),
   signing_keys_pinned: z.boolean(),
   status: z.enum(["authorized", "revoked"]),
   last_verified_at: z.string().datetime(),
@@ -778,6 +781,9 @@ registry.registerPath({
       cursor: z.string().optional().openapi({ description: "Opaque pagination cursor returned by a prior response" }),
       status: z.array(z.enum(["authorized", "revoked"])).optional().openapi({
         description: "Lifecycle status filter — repeat the key once per value (?status=authorized&status=revoked). Default: authorized. The comma-separated single-value form is rejected with 400.",
+      }),
+      include: z.array(z.enum(["properties"])).optional().openapi({
+        description: "Optional inclusions — repeat the key once per value (?include=properties). `properties` adds property_ids: string[] per PublisherEntry for full set-diff divergence detection. Default: omit.",
       }),
       limit: z.coerce.number().int().min(1).max(1000).optional().openapi({ description: "Page size, default 200, max 1000" }),
     }),
@@ -7146,6 +7152,30 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const includeRevoked = statusSet.has('revoked');
       const includeAuthorized = statusSet.has('authorized');
 
+      // include: repeated-key form — ?include=properties. Unknown values → 400.
+      const rawInclude = req.query.include;
+      let includeSet: Set<string>;
+      if (rawInclude === undefined) {
+        includeSet = new Set();
+      } else if (Array.isArray(rawInclude)) {
+        includeSet = new Set(rawInclude.filter((v): v is string => typeof v === 'string'));
+      } else if (typeof rawInclude === 'string') {
+        if (rawInclude.includes(',')) {
+          return res.status(400).json({
+            error: "Invalid `include` encoding — repeat the key once per value (?include=properties). The comma-separated form is not accepted.",
+          });
+        }
+        includeSet = new Set([rawInclude]);
+      } else {
+        return res.status(400).json({ error: "Invalid `include` query parameter" });
+      }
+      for (const v of includeSet) {
+        if (v !== 'properties') {
+          return res.status(400).json({ error: `Invalid include value '${v}' — supported: properties` });
+        }
+      }
+      const includePropertyIds = includeSet.has('properties');
+
       // Cursor is opaque to consumers but encodes the last seen
       // publisher_domain ASC. URL-safe base64 of the domain string keeps
       // the wire shape opaque without needing a state table.
@@ -7179,6 +7209,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         cursor,
         since,
         includeRevoked,
+        includePropertyIds,
         limit: limit + 1,
       });
 
@@ -7232,6 +7263,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         manager_domain: string | null;
         properties_authorized: number;
         properties_total: number;
+        property_ids?: string[];
         signing_keys_pinned: boolean;
         status: 'authorized' | 'revoked';
         last_verified_at: string;
@@ -7271,6 +7303,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           manager_domain: r.manager_domain,
           properties_authorized: r.properties_authorized,
           properties_total: r.properties_total,
+          ...(includePropertyIds ? { property_ids: r.property_ids ?? [] } : {}),
           signing_keys_pinned: r.signing_keys_pinned,
           status: r.status,
           last_verified_at: lastVerified.toISOString(),
@@ -7288,8 +7321,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         cursor,
         since: since?.toISOString() ?? null,
         status: Array.from(statusSet).sort().join(','),
+        include: Array.from(includeSet).sort().join(','),
         limit,
-        rows: shaped.map(r => `${r.publisher_domain}|${r.status}|${r.last_verified_at}|${r.properties_authorized}|${r.properties_total}|${r.signing_keys_pinned}`),
+        rows: shaped.map(r => `${r.publisher_domain}|${r.status}|${r.last_verified_at}|${r.properties_authorized}|${r.properties_total}|${r.signing_keys_pinned}|${r.property_ids?.join(',') ?? ''}`),
       });
       const etag = `"${createHash('sha256').update(etagInput).digest('hex').slice(0, 32)}"`;
 

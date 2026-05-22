@@ -3553,6 +3553,17 @@ paths:
           name: status
           in: query
         - schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - properties
+            description: "Optional inclusions — repeat the key once per value (?include=properties). `properties` adds property_ids: string[] per PublisherEntry for full set-diff divergence detection. Default: omit."
+          required: false
+          description: "Optional inclusions — repeat the key once per value (?include=properties). `properties` adds property_ids: string[] per PublisherEntry for full set-diff divergence detection. Default: omit."
+          name: include
+          in: query
+        - schema:
             type: integer
             minimum: 1
             maximum: 1000
@@ -3601,6 +3612,11 @@ paths:
                         properties_total:
                           type: integer
                           minimum: 0
+                        property_ids:
+                          type: array
+                          items:
+                            type: string
+                          description: Resolved property_id strings for set-diff divergence detection. Present iff request included ?include=properties; absent otherwise.
                         signing_keys_pinned:
                           type: boolean
                         status:

@@ -78,7 +78,7 @@
         "property_ids": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Canonical list of `property_id`s under THIS `publisher_domain` that the agent's selectors resolve to. Present iff the request included `?include=properties`; absent otherwise. The set is the same population `properties_authorized` counts, surfaced as IDs so consumers can run full set-diff against a federated fetch (count-equality is not set-equality — a publisher rotating N properties leaves the count unchanged but the set entirely different). Per-publisher scope; never network-wide. Order is unspecified; consumers should treat as a set."
+          "description": "Canonical list of `property_id`s under THIS `publisher_domain` that the agent's selectors resolve to. Present iff the request included `?include=properties`; absent otherwise. Drawn from the same authorized-property population that `properties_authorized` counts, but limited to properties whose adagents.json entry carries an explicit `property_id` string — `len(property_ids) ≤ properties_authorized` when any authorized properties lack a `property_id`. Use for full set-diff divergence detection: count-equality is not set-equality — a publisher rotating N properties leaves the count unchanged but the set entirely different. Per-publisher scope; never network-wide. Order is unspecified; consumers should treat as a set."
         },
         "signing_keys_pinned": {
           "type": "boolean",
