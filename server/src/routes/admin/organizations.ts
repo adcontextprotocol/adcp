@@ -1167,7 +1167,7 @@ export function setupOrganizationRoutes(
               continue;
             }
 
-            let newMembership;
+            let newMembership: Awaited<ReturnType<WorkOS['userManagement']['createOrganizationMembership']>>;
             try {
               newMembership = await workos.userManagement.createOrganizationMembership({
                 userId,
