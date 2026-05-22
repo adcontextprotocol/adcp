@@ -18,6 +18,7 @@ requires_scenarios:
   - media_buy_seller/invalid_transitions
   - media_buy_seller/proposal_finalize
   - media_buy_seller/proposal_finalize_asap_timing
+  - media_buy_seller/proposal_not_found_errors
 
 # Cross-step assertion (adcp#2664). status.monotonic rejects resource
 # status transitions observed across steps that aren't on the spec
