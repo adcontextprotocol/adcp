@@ -24,13 +24,18 @@
  *
  * ## Safety / chunking strategy
  *
+ * - Owner-only eligibility: mirrors `isOrgOwnerOfAgent()` by requiring the
+ *   historical user to be a member of the agent-context org and that org's
+ *   member profile to list the agent URL. Non-owner legacy rows stay in
+ *   `agent_test_history`; this script must not elevate them to `owner_test`.
+ *
  * - Cutover guard: skips any `agent_test_history` row whose `started_at` is at
- *   or after the earliest `triggered_by='owner_test'` row in
- *   `agent_compliance_runs`. That earliest row is the live-write cutover
- *   point — anything after that timestamp would already have been written
- *   by the runtime canonical path in PR #4250 and re-inserting it here
- *   would duplicate. When no `owner_test` rows exist yet (fresh deploy),
- *   the cutover is treated as `+infinity` and every row is eligible.
+ *   or after the earliest live (not backfilled) `triggered_by='owner_test'`
+ *   row in `agent_compliance_runs`. That earliest row is the live-write
+ *   cutover point — anything after that timestamp would already have been
+ *   written by the runtime canonical path in PR #4250 and re-inserting it
+ *   here would duplicate. When no live `owner_test` rows exist yet (fresh
+ *   deploy), the cutover is treated as `+infinity` and every row is eligible.
  *
  * - Idempotency: each row carries its source `agent_test_history.id` in
  *   `observations_json.backfill_source_id`. The chunk SELECT filters with
@@ -63,17 +68,27 @@ function parseArgs(argv: string[]): Args {
   const args: Args = { chunkSize: 1000, sleepMs: 100, dryRun: true };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
-    if (a === '--chunk-size') args.chunkSize = parseInt(argv[++i], 10);
-    else if (a === '--sleep-ms') args.sleepMs = parseInt(argv[++i], 10);
-    else if (a === '--dry-run') args.dryRun = true;
+    if (a === '--chunk-size') {
+      const value = argv[++i];
+      if (!value) throw new Error('--chunk-size requires a value');
+      args.chunkSize = Number.parseInt(value, 10);
+    } else if (a === '--sleep-ms') {
+      const value = argv[++i];
+      if (!value) throw new Error('--sleep-ms requires a value');
+      args.sleepMs = Number.parseInt(value, 10);
+    } else if (a === '--dry-run') args.dryRun = true;
     else if (a === '--commit') args.dryRun = false;
     else if (a === '--help' || a === '-h') {
       console.log('Usage: backfill-owner-test-history.ts [--commit] [--chunk-size N] [--sleep-ms N] [--dry-run]');
       process.exit(0);
     } else throw new Error(`Unknown arg: ${a}`);
   }
-  if (args.chunkSize <= 0) throw new Error('--chunk-size must be > 0');
-  if (args.sleepMs < 0) throw new Error('--sleep-ms must be >= 0');
+  if (!Number.isFinite(args.chunkSize) || args.chunkSize <= 0) {
+    throw new Error('--chunk-size must be a finite number > 0');
+  }
+  if (!Number.isFinite(args.sleepMs) || args.sleepMs < 0) {
+    throw new Error('--sleep-ms must be a finite number >= 0');
+  }
   return args;
 }
 
@@ -90,7 +105,10 @@ async function main(): Promise<void> {
   // Anything in agent_test_history with started_at >= cutover would
   // duplicate a row PR #4250's runtime path already inserted.
   const cutoverRow = await pool.query<{ cutover: Date | null }>(
-    `SELECT MIN(tested_at) AS cutover FROM agent_compliance_runs WHERE triggered_by = 'owner_test'`,
+    `SELECT MIN(tested_at) AS cutover
+       FROM agent_compliance_runs
+      WHERE triggered_by = 'owner_test'
+        AND (observations_json->>'backfill_source') IS DISTINCT FROM 'agent_test_history'`,
   );
   const cutover: Date | null = cutoverRow.rows[0]?.cutover ?? null;
   logger.info(
@@ -103,6 +121,12 @@ async function main(): Promise<void> {
     `SELECT COUNT(*)::text AS count
        FROM agent_test_history ath
        JOIN agent_contexts ac ON ac.id = ath.agent_context_id
+       JOIN member_profiles mp
+         ON mp.workos_organization_id = ac.organization_id
+        AND mp.agents @> jsonb_build_array(jsonb_build_object('url', ac.agent_url))
+       JOIN organization_memberships om
+         ON om.workos_organization_id = ac.organization_id
+        AND om.workos_user_id = ath.user_id
       WHERE ath.user_id IS NOT NULL
         AND ($1::timestamptz IS NULL OR ath.started_at < $1::timestamptz)
         AND NOT EXISTS (
@@ -130,9 +154,15 @@ async function main(): Promise<void> {
   while (true) {
     const insertResult: { rows: Array<{ inserted_count: number; max_id: string | null }> } = await pool.query<{ inserted_count: number; max_id: string | null }>(
       `WITH eligible AS (
-        SELECT ath.*, ac.agent_url
+        SELECT ath.*, ac.agent_url, ac.organization_id
           FROM agent_test_history ath
           JOIN agent_contexts ac ON ac.id = ath.agent_context_id
+          JOIN member_profiles mp
+            ON mp.workos_organization_id = ac.organization_id
+           AND mp.agents @> jsonb_build_array(jsonb_build_object('url', ac.agent_url))
+          JOIN organization_memberships om
+            ON om.workos_organization_id = ac.organization_id
+           AND om.workos_user_id = ath.user_id
          WHERE ath.user_id IS NOT NULL
            AND ($1::timestamptz IS NULL OR ath.started_at < $1::timestamptz)
            AND ($2::uuid IS NULL OR ath.id > $2::uuid)
@@ -177,10 +207,12 @@ async function main(): Promise<void> {
             'backfill_source', 'agent_test_history',
             'backfill_source_id', eligible.id::text,
             'backfill_script', 'backfill-owner-test-history',
-            'original_scenario', eligible.scenario
+            'original_scenario', eligible.scenario,
+            'backfill_user_id', eligible.user_id,
+            'backfill_org_id', eligible.organization_id
           ),
           'owner_test',
-          FALSE,
+          COALESCE(eligible.dry_run, TRUE),
           eligible.started_at
         FROM eligible
         LEFT JOIN agent_registry_metadata arm ON arm.agent_url = eligible.agent_url
@@ -206,6 +238,12 @@ async function main(): Promise<void> {
         `SELECT COUNT(*)::text AS count
            FROM agent_test_history ath
            JOIN agent_contexts ac ON ac.id = ath.agent_context_id
+           JOIN member_profiles mp
+             ON mp.workos_organization_id = ac.organization_id
+            AND mp.agents @> jsonb_build_array(jsonb_build_object('url', ac.agent_url))
+           JOIN organization_memberships om
+             ON om.workos_organization_id = ac.organization_id
+            AND om.workos_user_id = ath.user_id
           WHERE ath.user_id IS NOT NULL
             AND ($1::timestamptz IS NULL OR ath.started_at < $1::timestamptz)
             AND ($2::uuid IS NULL OR ath.id > $2::uuid)
@@ -245,8 +283,9 @@ async function main(): Promise<void> {
 
 main()
   .then(() => process.exit(0))
-  .catch((err: unknown) => {
+  .catch(async (err: unknown) => {
     logger.error({ err }, 'backfill-owner-test-history failed');
     console.error(err);
+    await closeDatabase().catch(() => undefined);
     process.exit(1);
   });
