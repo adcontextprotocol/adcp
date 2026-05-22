@@ -66,7 +66,7 @@ Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status m
 ```json Response (acquired)
 {
   "rights_id": "janssen_likeness_voice",
-  "status": "acquired",
+  "rights_status": "acquired",
   "brand_id": "daan_janssen",
   "terms": {
     "pricing_option_id": "monthly_exclusive",
@@ -130,7 +130,7 @@ Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status m
 ```json Response (pending approval)
 {
   "rights_id": "janssen_likeness_voice",
-  "status": "pending_approval",
+  "rights_status": "pending_approval",
   "brand_id": "daan_janssen",
   "detail": "Creative concept requires talent approval per contract terms",
   "estimated_response_time": "48h"
@@ -140,7 +140,7 @@ Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status m
 ```json Response (rejected — actionable)
 {
   "rights_id": "janssen_likeness_voice",
-  "status": "rejected",
+  "rights_status": "rejected",
   "brand_id": "daan_janssen",
   "reason": "Active exclusivity with another brand for food/restaurant in NL through 2026-09-30",
   "suggestions": [
@@ -153,7 +153,7 @@ Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status m
 ```json Response (rejected — final)
 {
   "rights_id": "janssen_likeness_voice",
-  "status": "rejected",
+  "rights_status": "rejected",
   "brand_id": "daan_janssen",
   "reason": "This violates our public figures brand guidelines"
 }

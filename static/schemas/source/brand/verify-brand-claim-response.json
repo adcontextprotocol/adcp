@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/brand/verify-brand-claim-response.json",
   "title": "Verify Brand Claim Response",
-  "description": "The brand-agent's authoritative answer to a verification claim. Always returns claim_type + status; richer per-claim-type fields ride on the `details` object (shape varies by claim_type — see the task page).",
+  "description": "The brand-agent's authoritative answer to a verification claim. Always returns claim_type + verification_status; richer per-claim-type fields ride on the `details` object (shape varies by claim_type — see the task page).",
   "type": "object",
   "allOf": [
     {
@@ -27,9 +27,9 @@
           ],
           "description": "Echoes the request's claim_type for caller-side routing."
         },
-        "status": {
+        "verification_status": {
           "$ref": "/schemas/brand/verification-status.json",
-          "description": "Verification status. Not every status applies to every claim_type — see the task page for the applicable subset."
+          "description": "Verification status. Not every status applies to every claim_type — see the task page for the applicable subset. Renamed from `status` in 3.1 to free the top-level `status` key for the envelope task-status (TaskStatus) under MCP flat-on-the-wire serialization (#4878)."
         },
         "details": {
           "type": "object",
@@ -50,7 +50,7 @@
       },
       "required": [
         "claim_type",
-        "status"
+        "verification_status"
       ],
       "additionalProperties": true,
       "not": {
@@ -89,7 +89,7 @@
         "anyOf": [
           {
             "required": [
-              "status"
+              "verification_status"
             ]
           },
           {

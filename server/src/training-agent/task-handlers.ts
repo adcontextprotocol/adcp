@@ -2250,9 +2250,14 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
   const status = deriveStatus(mediaBuy);
+  // Emit `media_buy_status` (canonical 3.1 field per #4895). Body-level
+  // `status` carrying MediaBuyStatus is deprecated and removed in 3.2
+  // (#4906) — emitting it here would collide with envelope `status`
+  // (TaskStatus), which the envelope-fold (#4878) now requires to validate
+  // against the per-task response schema.
   return {
     media_buy_id: mediaBuyId,
-    status,
+    media_buy_status: status,
     revision: mediaBuy.revision,
     confirmed_at: mediaBuy.confirmedAt,
     valid_actions: validActionsForStatus(status),
@@ -2964,9 +2969,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     mb.updatedAt = now;
 
     const status = deriveStatus(mb);
+    // `media_buy_status` is the canonical 3.1 body field (#4895); legacy
+    // body `status: MediaBuyStatus` removed in 3.2 (#4906).
     return {
       media_buy_id: mb.mediaBuyId,
-      status,
+      media_buy_status: status,
       revision: mb.revision,
       valid_actions: validActionsForStatus(status),
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
@@ -3159,9 +3166,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   mb.updatedAt = now;
 
   const status = deriveStatus(mb);
+  // `media_buy_status` is the canonical 3.1 body field (#4895); legacy
+  // body `status: MediaBuyStatus` removed in 3.2 (#4906).
   const result = {
     media_buy_id: mb.mediaBuyId,
-    status,
+    media_buy_status: status,
     revision: mb.revision,
     valid_actions: validActionsForStatus(status),
     ...(mb.canceledAt && {
@@ -4545,10 +4554,16 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         };
       }
       if (outcome.kind === 'replay') {
-        // Cached inner response; envelope fields (`replayed`, `context`) are
-        // produced fresh on every response per security.mdx. Replayed
-        // responses bypass the handler entirely — no mutations, no flush.
+        // Cached inner response; envelope fields (`replayed`, `context`,
+        // `status`) are produced fresh on every response per security.mdx.
+        // Replayed responses bypass the handler entirely — no mutations, no
+        // flush. We stamp envelope `status: 'completed'` defensively in case
+        // the cached inner doesn't carry one (older cache entries written
+        // before the envelope-fold landed, or handlers that emitted bodies
+        // without status). Per #4878, every per-task response schema now
+        // requires envelope `status`.
         const body: Record<string, unknown> = { ...(outcome.response as Record<string, unknown>), replayed: true };
+        if (body.status === undefined) body.status = 'completed';
         if (callerContext !== undefined) body.context = callerContext;
         toolResult = {
           content: [{ type: 'text', text: JSON.stringify(body) }],

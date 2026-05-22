@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/brand/creative-approval-response.json",
   "title": "Creative Approval Response",
-  "description": "Response from the approval_webhook after reviewing a submitted creative. Uses discriminated union on status field: approved, rejected, or pending_review.",
+  "description": "Response from the approval_webhook after reviewing a submitted creative. Uses discriminated union on `approval_status` field: approved, rejected, or pending_review.",
   "type": "object",
   "allOf": [
     {
@@ -16,10 +16,10 @@
     {
       "title": "CreativeApproved",
       "properties": {
-        "status": {
+        "approval_status": {
           "type": "string",
           "const": "approved",
-          "description": "Creative has been approved for distribution"
+          "description": "Creative has been approved for distribution. Renamed from `status` in 3.1 to free the top-level `status` key for the envelope task-status (TaskStatus) under MCP flat-on-the-wire serialization (#4878)."
         },
         "rights_id": {
           "type": "string",
@@ -53,7 +53,7 @@
         }
       },
       "required": [
-        "status",
+        "approval_status",
         "rights_id"
       ],
       "additionalProperties": true,
@@ -66,7 +66,7 @@
     {
       "title": "CreativeRejected",
       "properties": {
-        "status": {
+        "approval_status": {
           "type": "string",
           "const": "rejected",
           "description": "Creative was rejected"
@@ -103,7 +103,7 @@
         }
       },
       "required": [
-        "status",
+        "approval_status",
         "rights_id",
         "reason"
       ],
@@ -117,7 +117,7 @@
     {
       "title": "CreativePendingReview",
       "properties": {
-        "status": {
+        "approval_status": {
           "type": "string",
           "const": "pending_review",
           "description": "Creative is queued for review"
@@ -142,7 +142,7 @@
         "status_url": {
           "type": "string",
           "format": "uri",
-          "description": "URL to poll for updated approval status. GET this URL to receive a creative-approval-response. Poll at reasonable intervals (suggested: every 5 minutes, back off after 1 hour to every 30 minutes). Stop polling after estimated_response_time has elapsed and the status is still pending_review."
+          "description": "URL to poll for updated approval status. GET this URL to receive a creative-approval-response. Poll at reasonable intervals (suggested: every 5 minutes, back off after 1 hour to every 30 minutes). Stop polling after estimated_response_time has elapsed and the approval_status is still pending_review."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -152,7 +152,7 @@
         }
       },
       "required": [
-        "status",
+        "approval_status",
         "rights_id"
       ],
       "additionalProperties": true,
@@ -187,7 +187,7 @@
         "anyOf": [
           {
             "required": [
-              "status"
+              "approval_status"
             ]
           }
         ]
