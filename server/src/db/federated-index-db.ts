@@ -359,14 +359,13 @@ export class FederatedIndexDatabase {
              FROM discovered_properties dp
             WHERE dp.publisher_domain = e.publisher_domain
          ), 0) AS properties_total,
-         -- properties_authorized: count of properties under THIS publisher_domain
-         -- the agent is authorized for, via agent_property_authorizations.
-         -- Filtered to dp.property_id IS NOT NULL so this count is symmetric
-         -- with the property_ids ARRAY_AGG below (MUST len(property_ids) ==
-         -- properties_authorized per spec). Properties without a canonical
-         -- property_id string can't appear in either count or array.
+         -- properties_authorized: count of canonical property_id strings under
+         -- THIS publisher_domain the agent is authorized for. Filtered to
+         -- dp.property_id IS NOT NULL so this count is symmetric with the
+         -- property_ids ARRAY_AGG below (MUST len(property_ids) ==
+         -- properties_authorized per spec).
          COALESCE((
-           SELECT COUNT(DISTINCT apa.property_id)::int
+           SELECT COUNT(DISTINCT dp.property_id)::int
              FROM agent_property_authorizations apa
              JOIN discovered_properties dp ON dp.id = apa.property_id
             WHERE apa.agent_url = $1
@@ -376,10 +375,9 @@ export class FederatedIndexDatabase {
          -- property_ids: resolved property_id strings, present only when
          -- ?include=properties was requested ($6=true). CASE WHEN short-circuits
          -- the subquery when false, so there is no cost on default calls.
-         -- Only properties with a non-null property_id are included; properties
-         -- without one are counted in properties_authorized but cannot be named.
+         -- Only properties with a non-null property_id are included.
          CASE WHEN $6::boolean THEN (
-           SELECT ARRAY_AGG(dp.property_id ORDER BY dp.property_id)
+           SELECT ARRAY_AGG(DISTINCT dp.property_id ORDER BY dp.property_id)
              FROM agent_property_authorizations apa
              JOIN discovered_properties dp ON dp.id = apa.property_id
             WHERE apa.agent_url = $1

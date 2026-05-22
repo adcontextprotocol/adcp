@@ -3553,6 +3553,17 @@ paths:
           name: status
           in: query
         - schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - properties
+            description: "Opt into expanded per-row fields — repeat the key once per value. v1: `properties` adds `property_ids[]` to each PublisherEntry so consumers can run full set-diff against a federated fetch (count-equality is not set-equality). Unknown values return 400. The comma-separated form is rejected with 400."
+          required: false
+          description: "Opt into expanded per-row fields — repeat the key once per value. v1: `properties` adds `property_ids[]` to each PublisherEntry so consumers can run full set-diff against a federated fetch (count-equality is not set-equality). Unknown values return 400. The comma-separated form is rejected with 400."
+          name: include
+          in: query
+        - schema:
             type: integer
             minimum: 1
             maximum: 1000
@@ -3601,6 +3612,11 @@ paths:
                         properties_total:
                           type: integer
                           minimum: 0
+                        property_ids:
+                          type: array
+                          items:
+                            type: string
+                          description: Canonical list of property_id strings the agent is authorized for under this publisher. Present iff the request included `?include=properties`. Same population as `properties_authorized` but surfaced as IDs for set-diff comparison.
                         signing_keys_pinned:
                           type: boolean
                         status:
@@ -3689,6 +3705,17 @@ paths:
           name: status
           in: query
         - schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - properties
+            description: "Opt into expanded per-row fields — repeat the key once per value. v1: `properties` adds `property_ids[]` to each PublisherEntry so consumers can run full set-diff against a federated fetch (count-equality is not set-equality). Unknown values return 400. The comma-separated form is rejected with 400."
+          required: false
+          description: "Opt into expanded per-row fields — repeat the key once per value. v1: `properties` adds `property_ids[]` to each PublisherEntry so consumers can run full set-diff against a federated fetch (count-equality is not set-equality). Unknown values return 400. The comma-separated form is rejected with 400."
+          name: include
+          in: query
+        - schema:
             type: integer
             minimum: 1
             maximum: 1000
@@ -3737,6 +3764,11 @@ paths:
                         properties_total:
                           type: integer
                           minimum: 0
+                        property_ids:
+                          type: array
+                          items:
+                            type: string
+                          description: Canonical list of property_id strings the agent is authorized for under this publisher. Present iff the request included `?include=properties`. Same population as `properties_authorized` but surfaced as IDs for set-diff comparison.
                         signing_keys_pinned:
                           type: boolean
                         status:
