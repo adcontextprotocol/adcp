@@ -6510,6 +6510,9 @@ paths:
                     type: string
                   error:
                     type: string
+                  compliance_check_queued:
+                    type: boolean
+                    description: True when a background compliance re-run was triggered alongside the capability probe. False when the agent has opted out of compliance monitoring.
                 required:
                   - online
                   - tools_count
@@ -6518,6 +6521,7 @@ paths:
                   - type_promoted
                   - oauth_required
                   - checked_at
+                  - compliance_check_queued
         "400":
           description: Invalid agent URL
           content:
