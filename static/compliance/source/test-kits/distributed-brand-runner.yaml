@@ -67,7 +67,7 @@ fixtures:
       names:
         - en: "Leaf Brand"
       description: "Fictional sub-brand for distributed brand.json conformance testing."
-      keller_type: "independent"
+      keller_type: "endorsed"
       trademarks:
         - registry: "USPTO"
           number: "9876001"
