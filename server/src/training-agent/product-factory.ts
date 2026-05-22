@@ -562,6 +562,7 @@ function buildProduct(
     } as NonNullable<Product['reporting_capabilities']>,
     ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as CatalogType[] }),
     ...(metricOptimization && { metric_optimization: metricOptimization }),
+    ...(pub.vendorMetricOptimization && { vendor_metric_optimization: pub.vendorMetricOptimization }),
     ...(forecast && { forecast }),
     ...(conversionTracking && { conversion_tracking: conversionTracking }),
     ...(collectionSelectors && { collections: collectionSelectors }),

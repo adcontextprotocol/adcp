@@ -31,7 +31,17 @@ export const PUBLISHERS: PublisherProfile[] = [
     reportingMetrics: ['impressions', 'spend', 'clicks', 'ctr', 'viewability', 'completed_views', 'completion_rate'],
     vendorMetrics: [
       { vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_units' },
+      { vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_score' },
     ],
+    vendorMetricOptimization: {
+      supported_metrics: [
+        {
+          vendor: { domain: 'attentionvendor.example' },
+          metric_id: 'attention_score',
+          supported_targets: ['threshold_rate'],
+        },
+      ],
+    },
     properties: [
       {
         propertyId: 'pinnacle_web',
