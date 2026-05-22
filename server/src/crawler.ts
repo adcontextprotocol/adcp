@@ -125,12 +125,34 @@ export class CrawlerService {
     }
     log.info({ agentCount: activeAgents.length }, 'Starting crawl');
 
-    // Convert our Agent type to AgentInfo for the crawler
+    // Convert our Agent type to AgentInfo for the crawler, starting with config-seeded agents
+    const seenAgentUrls = new Set<string>(activeAgents.map(a => a.url));
     const agentInfos: AgentInfo[] = activeAgents.map((agent) => ({
       agent_url: agent.url,
-      protocol: agent.protocol || "mcp", // Use agent's protocol, default to MCP
-      publisher_domain: this.extractDomain(agent.url),
+      protocol: agent.protocol || "mcp",
     }));
+
+    // Merge in DB-discovered sales agents from prior crawl cycles so their
+    // list_authorized_properties is called by the PropertyCrawler and their
+    // publisher claims enter the PropertyIndex for step 2 (adcp#4849).
+    try {
+      const discoveredSales = await this.federatedIndex.listDiscoveredAgents('sales');
+      let added = 0;
+      for (const da of discoveredSales) {
+        if (seenAgentUrls.has(da.agent_url) || pausedUrls.has(da.agent_url)) continue;
+        seenAgentUrls.add(da.agent_url);
+        agentInfos.push({
+          agent_url: da.agent_url,
+          protocol: (da.protocol as 'mcp' | 'a2a') || 'mcp',
+        });
+        added++;
+      }
+      if (added > 0) {
+        log.debug({ count: added }, 'Including discovered sales agents in PropertyCrawler pass');
+      }
+    } catch (err) {
+      log.warn({ err }, 'Failed to fetch discovered sales agents; proceeding with config agents only');
+    }
 
     try {
       const result = await this.crawler.crawlAgents(agentInfos);
@@ -479,10 +501,18 @@ export class CrawlerService {
               // (adcp#4823) returns one row per represented publisher
               // instead of one row for the manager. See adcp#4825 for the
               // inline-resolution rule this implements.
-              await this.fanOutPublisherPropertiesAuthorizations(
-                authorizedAgent,
-                pubConfig.domain,
-              );
+              //
+              // Skip when the crawl source is a delegating child (the
+              // file lives at the manager via ads.txt MANAGERDOMAIN). In
+              // that case the manager's own crawl handles fan-out with
+              // correct attribution; firing fan-out here would overwrite
+              // siblings' manager_domain with the delegating child's name.
+              if (validation.discovery_method !== 'ads_txt_managerdomain') {
+                await this.fanOutPublisherPropertiesAuthorizations(
+                  authorizedAgent,
+                  pubConfig.domain,
+                );
+              }
             }
             await this.reconcileLegacyAdagentsAgents(pubConfig.domain, validation.raw_data as AdagentsManifest);
           } else {
@@ -559,7 +589,11 @@ export class CrawlerService {
                 authorizedAgent.property_ids
               );
 
-              await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+              // Skip fan-out when the source publisher delegates via
+              // ads.txt MANAGERDOMAIN — see L482 for rationale.
+              if (validation.discovery_method !== 'ads_txt_managerdomain') {
+                await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+              }
             }
             await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
           }
@@ -567,6 +601,69 @@ export class CrawlerService {
           log.error({ domain, err }, 'Failed to process domain');
         }
       }
+    }
+
+    // 2b. Walk all DB-discovered agents through the PropertyIndex. The type filter
+    //     is intentionally absent — `index.getAgentAuthorizations` acts as the gate:
+    //     only agents included in the PropertyCrawler pass (those with agent_type='sales'
+    //     at the START of this cycle, promoted by refreshAgentSnapshots in a prior cycle)
+    //     will have non-empty publisher_domains. Agents discovered for the first time
+    //     this cycle have no PropertyIndex entry and are silently skipped; they will
+    //     appear here on the next cycle (adcp#4849).
+    log.debug('Processing DB-discovered agents via PropertyIndex');
+    try {
+      const discoveredSalesAgents = await this.federatedIndex.listDiscoveredAgents();
+      for (const da of discoveredSalesAgents) {
+        const auth = index.getAgentAuthorizations(da.agent_url);
+        if (!auth || auth.publisher_domains.length === 0) continue;
+
+        for (const domain of auth.publisher_domains) {
+          try {
+            const validation = await this.adAgentsManager.validateDomain(domain);
+            // Always write the agent_claim row so this discovered agent's authorization
+            // edge is recorded even when the domain was already processed by step 1/2.
+            await this.federatedIndex.recordPublisherFromAgent(domain, da.agent_url, validation.valid);
+            if (processedDomains.has(domain)) continue;
+
+            if (validation.valid && validation.raw_data?.authorized_agents) {
+              await this.federatedIndex.markPublisherHasValidAdagents(domain);
+              processedDomains.add(domain);
+
+              await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest, {
+                statusCode: validation.status_code,
+                responseBytes: validation.response_bytes,
+                resolvedUrl: validation.resolved_url,
+                discoveryMethod: validation.discovery_method,
+                managerDomain: validation.manager_domain,
+              });
+
+              for (const authorizedAgent of validation.raw_data.authorized_agents) {
+                if (!authorizedAgent.url) continue;
+                await this.federatedIndex.recordAgentFromAdagentsJson(
+                  authorizedAgent.url, domain,
+                  authorizedAgent.authorized_for, authorizedAgent.property_ids
+                );
+                await this.recordPropertiesForAgent(
+                  validation.raw_data.properties || [], domain,
+                  authorizedAgent.url, authorizedAgent.authorized_for, authorizedAgent.property_ids
+                );
+                // Skip fan-out when the source publisher delegates via
+                // ads.txt MANAGERDOMAIN — see step 1/2 guards for rationale.
+                if (validation.discovery_method !== 'ads_txt_managerdomain') {
+                  await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+                }
+              }
+              // Safe to reconcile here: the `processedDomains.has(domain)` guard above
+              // ensures each domain is handled exactly once across steps 1, 2, and 2b.
+              await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
+            }
+          } catch (err) {
+            log.error({ domain, agentUrl: da.agent_url, err }, 'Failed to process DB-discovered sales agent domain');
+          }
+        }
+      }
+    } catch (err) {
+      log.warn({ err }, 'Failed to process DB-discovered sales agents; skipping step 2b');
     }
 
     // Log stats
@@ -604,7 +701,13 @@ export class CrawlerService {
   private async refreshAgentSnapshots(agents: Agent[]): Promise<void> {
     log.debug('Refreshing agent health + capability snapshots');
 
-    const allAgents = await this.federatedIndex.listAllAgents();
+    // listAllProbeableAgents unions member-profile registrations with
+    // adagents_json-sourced discovered_agents so manager-file-only agents
+    // (e.g., interchange.io, named only in cafemedia.com's selector with
+    // no seed-set registration of its own) still get periodic probes.
+    // Excludes agent_claim (list_authorized_properties) discoveries
+    // intentionally — those are unverified peer claims. (adcp#4849)
+    const allAgents = await this.federatedIndex.listAllProbeableAgents();
     const knownTypes = new Map<string, string>();
     for (const a of allAgents) {
       if (a.type && a.type !== 'unknown') {
@@ -1073,6 +1176,14 @@ export class CrawlerService {
           authorizedAgent.authorized_for,
           undefined, // property_ids: managed-network children authorize via tags, not IDs
         );
+        // Catalog projection (#4841) — partner sync endpoints read
+        // catalog_agent_authorizations, not the legacy edge table.
+        // Without this row they miss the manager-asserted child.
+        await this.publisherDb.recordCatalogFanoutAuthorization({
+          agentUrl,
+          childDomain: childCanonical,
+          authorizedFor: authorizedAgent.authorized_for,
+        });
       } catch (err) {
         // Per-child failures must not abort the rest of the fan-out —
         // partial progress beats silent total failure on a 6,800-domain
@@ -1344,7 +1455,11 @@ export class CrawlerService {
           authorizedAgent.property_ids
         );
 
-        await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+        // Skip fan-out when the source publisher delegates via ads.txt
+        // MANAGERDOMAIN — the manager's own crawl handles the fan-out.
+        if (validation.discovery_method !== 'ads_txt_managerdomain') {
+          await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+        }
       }
       await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 
@@ -1621,7 +1736,11 @@ export class CrawlerService {
         authorizedAgent.property_ids
       );
 
-      await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+      // Skip fan-out when the source publisher delegates via ads.txt
+      // MANAGERDOMAIN — the manager's own crawl handles the fan-out.
+      if (validation.discovery_method !== 'ads_txt_managerdomain') {
+        await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+      }
     }
     await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 

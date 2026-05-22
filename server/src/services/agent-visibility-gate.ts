@@ -30,7 +30,10 @@ import { validateExternalUrl } from '../utils/url-security.js';
  * warnings emitted by {@link gateAgentVisibilityForCaller} below — keep the
  * vocabulary aligned when adding new reasons.
  */
-export type AgentVisibilityGateReason = 'tier_required' | 'brand_domain_required';
+export type AgentVisibilityGateReason =
+  | 'tier_required'
+  | 'brand_domain_required'
+  | 'brand_domain_unverified';
 
 export interface AgentVisibilityGate {
   can_publish_publicly: boolean;
@@ -40,10 +43,12 @@ export interface AgentVisibilityGate {
 export function computeAgentVisibilityGate(opts: {
   hasApiAccess: boolean;
   brandPrimaryDomain: string | null | undefined;
+  brandDomainVerified: boolean;
 }): AgentVisibilityGate {
   const reasons: AgentVisibilityGateReason[] = [];
   if (!opts.hasApiAccess) reasons.push('tier_required');
   if (!opts.brandPrimaryDomain) reasons.push('brand_domain_required');
+  else if (!opts.brandDomainVerified) reasons.push('brand_domain_unverified');
   return { can_publish_publicly: reasons.length === 0, reasons };
 }
 
@@ -58,7 +63,7 @@ export interface VisibilityWarning {
   agent_url: string;
   requested: 'public';
   applied: 'members_only';
-  reason: 'tier_required';
+  reason: 'tier_required' | 'role_required';
   message: string;
 }
 

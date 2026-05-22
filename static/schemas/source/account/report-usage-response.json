@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "properties": {
@@ -41,12 +44,14 @@
     {
       "description": "All records accepted",
       "data": {
+        "status": "completed",
         "accepted": 2
       }
     },
     {
       "description": "Partial acceptance — one record failed validation",
       "data": {
+        "status": "completed",
         "accepted": 1,
         "errors": [
           {

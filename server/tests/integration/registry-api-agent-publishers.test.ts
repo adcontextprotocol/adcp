@@ -186,7 +186,7 @@ describe('GET /api/v1/agents/{agent_url}/publishers (HTTP)', () => {
     expect(page2.body.next_cursor).toBeNull();
   });
 
-  it('surfaces revoked rows only when status=revoked is requested', async () => {
+  it('surfaces revoked rows when status=revoked is repeated alongside authorized', async () => {
     await seedRevoked(PUB_REVOKED);
     await seedAuthorized(PUB_A);
 
@@ -194,9 +194,15 @@ describe('GET /api/v1/agents/{agent_url}/publishers (HTTP)', () => {
     expect(defaultRes.status).toBe(200);
     expect(defaultRes.body.publishers.map((p: { publisher_domain: string }) => p.publisher_domain)).toEqual([PUB_A]);
 
-    const bothRes = await request(app).get(url(AGENT_URL, '?status=authorized,revoked'));
+    const bothRes = await request(app).get(url(AGENT_URL, '?status=authorized&status=revoked'));
     expect(bothRes.status).toBe(200);
     const domains = bothRes.body.publishers.map((p: { publisher_domain: string }) => p.publisher_domain).sort();
     expect(domains).toEqual([PUB_A, PUB_REVOKED].sort());
+  });
+
+  it('rejects the comma-separated status form with 400 (per #4858 spec)', async () => {
+    const res = await request(app).get(url(AGENT_URL, '?status=authorized,revoked'));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/repeat the key/i);
   });
 });

@@ -41,11 +41,11 @@ Common questions from teams building AdCP sales agents and integrations, with di
 
 The publisher's AI interprets this and returns relevant products. Future versions may add structured targeting filters.
 
-### Q: What does "no brief = standard catalog" mean? We don't have a standard catalog.
+### Q: What does `buying_mode: "wholesale"` mean? We don't expose a wholesale product feed.
 
-**A:** When buyers omit the `brief` field, they're requesting your standard catalog - baseline products available to all advertisers without custom recommendations.
+**A:** In wholesale mode, buyers are requesting baseline products available without publisher curation or proposal generation.
 
-**If you don't offer a standard catalog**, return an error:
+**If you don't offer a wholesale product feed**, return an error:
 ```json
 {
   "message": "We require a campaign brief to recommend products. Please provide details about your campaign goals, audience, and objectives.",
@@ -53,7 +53,7 @@ The publisher's AI interprets this and returns relevant products. Future version
 }
 ```
 
-**If you do offer standard catalog**, return standard products matching the provided filters (format types, delivery type, etc.).
+**If you do offer wholesale access**, return products matching the provided filters (format types, delivery type, etc.).
 
 ### Q: Should buyers call `list_creative_formats` before or after `get_products`?
 

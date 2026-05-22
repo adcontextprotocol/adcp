@@ -731,6 +731,32 @@ export const ComplianceRunSchema = z
   })
   .openapi("ComplianceRun");
 
+export const ComplianceStepDiagnosticSchema = z
+  .object({
+    id: z.union([z.number(), z.string()]),
+    run_id: z.string(),
+    agent_url: z.string(),
+    storyboard_id: z.string(),
+    phase_id: z.string(),
+    step_id: z.string(),
+    task: z.string(),
+    step_passed: z.boolean(),
+    duration_ms: z.number().nullable().optional(),
+    request_url: z.string().nullable().optional(),
+    request_jsonb: z.any().optional(),
+    response_status: z.number().nullable().optional(),
+    response_headers_jsonb: z.record(z.string(), z.string()).nullable().optional(),
+    response_jsonb: z.any().optional(),
+    extraction_path: z.string().nullable().optional(),
+    extraction_note: z.string().nullable().optional(),
+    error_text: z.string().nullable().optional(),
+    adcp_error_jsonb: z.any().optional(),
+    failed_validations_jsonb: z.any().optional(),
+    served_by_agent_url: z.string().nullable().optional(),
+    captured_at: z.string(),
+  })
+  .openapi("ComplianceStepDiagnostic");
+
 export const OutboundRequestSchema = z
   .object({
     id: z.string(),

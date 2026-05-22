@@ -157,10 +157,11 @@ export class FederatedIndexDatabase {
            v.authorized_for,
            NULL::text[] AS property_ids,
            CASE v.evidence
-             WHEN 'adagents_json' THEN 'adagents_json'
-             WHEN 'agent_claim'   THEN 'agent_claim'
-             WHEN 'override'      THEN 'adagents_json'
-             WHEN 'community'     THEN 'agent_claim'
+             WHEN 'adagents_json'          THEN 'adagents_json'
+             WHEN 'agent_claim'            THEN 'agent_claim'
+             WHEN 'override'               THEN 'adagents_json'
+             WHEN 'community'              THEN 'agent_claim'
+             WHEN 'adagents_authoritative' THEN 'adagents_json'
            END AS source,
            v.created_at AS discovered_at,
            v.updated_at AS last_validated,
@@ -206,10 +207,11 @@ export class FederatedIndexDatabase {
            v.authorized_for,
            NULL::text[] AS property_ids,
            CASE v.evidence
-             WHEN 'adagents_json' THEN 'adagents_json'
-             WHEN 'agent_claim'   THEN 'agent_claim'
-             WHEN 'override'      THEN 'adagents_json'
-             WHEN 'community'     THEN 'agent_claim'
+             WHEN 'adagents_json'          THEN 'adagents_json'
+             WHEN 'agent_claim'            THEN 'agent_claim'
+             WHEN 'override'               THEN 'adagents_json'
+             WHEN 'community'              THEN 'agent_claim'
+             WHEN 'adagents_authoritative' THEN 'adagents_json'
            END AS source,
            v.created_at AS discovered_at,
            v.updated_at AS last_validated,
@@ -271,10 +273,11 @@ export class FederatedIndexDatabase {
          SELECT
            v.publisher_domain,
            CASE v.evidence
-             WHEN 'adagents_json' THEN 'adagents_json'
-             WHEN 'agent_claim'   THEN 'agent_claim'
-             WHEN 'override'      THEN 'adagents_json'
-             WHEN 'community'     THEN 'agent_claim'
+             WHEN 'adagents_json'          THEN 'adagents_json'
+             WHEN 'agent_claim'            THEN 'agent_claim'
+             WHEN 'override'               THEN 'adagents_json'
+             WHEN 'community'              THEN 'agent_claim'
+             WHEN 'adagents_authoritative' THEN 'adagents_json'
            END AS source,
            v.updated_at AS authz_last_validated,
            1 AS src_priority
@@ -437,10 +440,11 @@ export class FederatedIndexDatabase {
              v.authorized_for,
              NULL::text[] AS property_ids,
              CASE v.evidence
-               WHEN 'adagents_json' THEN 'adagents_json'
-               WHEN 'agent_claim'   THEN 'agent_claim'
-               WHEN 'override'      THEN 'adagents_json'
-               WHEN 'community'     THEN 'agent_claim'
+               WHEN 'adagents_json'          THEN 'adagents_json'
+               WHEN 'agent_claim'            THEN 'agent_claim'
+               WHEN 'override'               THEN 'adagents_json'
+               WHEN 'community'              THEN 'agent_claim'
+               WHEN 'adagents_authoritative' THEN 'adagents_json'
              END AS source,
              v.created_at AS discovered_at,
              v.updated_at AS last_validated,
@@ -1283,10 +1287,11 @@ export class FederatedIndexDatabase {
          UNION ALL
          SELECT
            CASE v.evidence
-             WHEN 'adagents_json' THEN 'adagents_json'
-             WHEN 'agent_claim'   THEN 'agent_claim'
-             WHEN 'override'      THEN 'adagents_json'
-             WHEN 'community'     THEN 'agent_claim'
+             WHEN 'adagents_json'          THEN 'adagents_json'
+             WHEN 'agent_claim'            THEN 'agent_claim'
+             WHEN 'override'               THEN 'adagents_json'
+             WHEN 'community'              THEN 'agent_claim'
+             WHEN 'adagents_authoritative' THEN 'adagents_json'
            END AS source,
            1 AS src_priority
            FROM v_effective_agent_authorizations v

@@ -56,7 +56,7 @@ on receive(create_media_buy request):
     mediaBuyId:  null,                                 # intent tokens have no media_buy_id
   })                                                  # throws on any of 15 checks failing
   call check_governance(planned_delivery, token)      # seller-side execution check — produces purchase-phase token
-  proceed only if governance_agent status = approved
+  proceed only if governance_agent verdict = approved
 ```
 
 Sellers that have not yet implemented verification MUST still persist and forward the token unchanged — auditors and regulators rely on this. Verification is the ramp from "forward-only" compliance to cryptographic accountability and can be adopted incrementally.
@@ -95,11 +95,11 @@ See the [specification](/docs/governance/campaign/specification#spend-commit-inv
 
 ### Expiration
 
-`expires_at` is present when the status is `approved` or `conditions`. A lapsed approval is no approval -- the caller must re-call `check_governance` before proceeding.
+`expires_at` is present when the `verdict` is `approved` or `conditions`. A lapsed approval is no approval -- the caller must re-call `check_governance` before proceeding.
 
 ### Conditions
 
-When the status is `conditions`, the caller MUST re-call `check_governance` with adjusted parameters before proceeding. Conditions with a `required_value` are machine-actionable -- the caller can programmatically apply the value. Conditions without a `required_value` are advisory -- the caller should interpret the `reason` and adjust accordingly.
+When the `verdict` is `conditions`, the caller MUST re-call `check_governance` with adjusted parameters before proceeding. Conditions with a `required_value` are machine-actionable -- the caller can programmatically apply the value. Conditions without a `required_value` are advisory -- the caller should interpret the `reason` and adjust accordingly.
 
 Governance agents SHOULD return `denied` (not `conditions`) after 3 unsuccessful re-calls for the same action. This prevents infinite negotiation loops, particularly for seller-side checks where the seller has no visibility into the campaign plan.
 
@@ -288,7 +288,7 @@ On the first `check_governance` call, the governance agent extracts what it need
 ```json
 {
   "check_id": "chk_001",
-  "status": "approved",
+  "verdict": "approved",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Proposed create_media_buy is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
   "categories_evaluated": ["budget_authority", "geo_compliance", "channel_compliance", "flight_compliance", "delegation_authority"],
@@ -304,7 +304,7 @@ The orchestrator proceeds to send the `create_media_buy` to the seller before `e
 ```json
 {
   "check_id": "chk_002",
-  "status": "approved",
+  "verdict": "approved",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Planned delivery is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
   "mode": "enforce",
@@ -320,7 +320,7 @@ The seller proceeds with the media buy. The presence of `next_check` signals tha
 ```json
 {
   "check_id": "chk_003",
-  "status": "approved",
+  "verdict": "approved",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Delivery on track. Week 1 spend: $12,500 of $150,000 (8.3%). Pacing is on target for 13-week flight. Geo and channel distribution match plan parameters.",
   "next_check": "2026-03-29T00:00:00Z"
@@ -334,7 +334,7 @@ The seller continues delivery and schedules the next governance check for `next_
 ```json
 {
   "check_id": "chk_004",
-  "status": "denied",
+  "verdict": "denied",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Proposed media buy targets CA (Canada) which is not within the plan's geography.",
   "findings": [
@@ -358,7 +358,7 @@ The orchestrator MUST NOT send the tool call to the seller.
 ```json
 {
   "check_id": "chk_005",
-  "status": "denied",
+  "verdict": "denied",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Delivery has drifted outside plan parameters. 12% of impressions delivered in CA (Canada) which is not within the plan's geography.",
   "findings": [
@@ -383,7 +383,7 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 ```json
 {
   "check_id": "chk_006",
-  "status": "conditions",
+  "verdict": "conditions",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Budget approved but frequency cap must be applied per brand policy.",
   "conditions": [
@@ -404,7 +404,7 @@ The seller MUST adjust its planned delivery, then re-call `check_governance` wit
 ```json
 {
   "check_id": "chk_007",
-  "status": "conditions",
+  "verdict": "conditions",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Delivery is pacing 40% ahead of schedule. Cumulative spend of $42,000 after 2 weeks exceeds expected $23,000 for this point in the flight.",
   "conditions": [
@@ -460,18 +460,18 @@ The seller MUST adjust pacing and re-call `check_governance` immediately. The `n
 | Field | Type | Description |
 |-------|------|-------------|
 | `check_id` | string | Unique identifier for this governance check. Use in `report_plan_outcome` to link outcomes. |
-| `status` | enum | `approved`, `denied`, or `conditions`. |
+| `verdict` | enum | `approved`, `denied`, or `conditions`. |
 | `plan_id` | string | Echoed from request. |
 | `explanation` | string | Human-readable explanation of the decision. |
-| `findings` | array | Per-category issues found. Present when status is `denied` or `conditions`. MAY also be present on `approved` for informational findings. Each finding has `category_id`, `severity`, `explanation`, and optionally `policy_id`, `details`, `confidence` (0-1), and `uncertainty_reason`. `category_id` is an **agent-internal label**, not a protocol-level enum — treat as opaque for display/audit, not for machine pattern-matching. |
-| `conditions` | array | Present when status is `conditions`. Adjustments the caller must make before re-calling. |
+| `findings` | array | Per-category issues found. Present when `verdict` is `denied` or `conditions`. MAY also be present on `approved` for informational findings. Each finding has `category_id`, `severity`, `explanation`, and optionally `policy_id`, `details`, `confidence` (0-1), and `uncertainty_reason`. `category_id` is an **agent-internal label**, not a protocol-level enum — treat as opaque for display/audit, not for machine pattern-matching. |
+| `conditions` | array | Present when `verdict` is `conditions`. Adjustments the caller must make before re-calling. |
 | `categories_evaluated` | string[] | Governance categories evaluated during this check (e.g., `budget_authority`, `geo_compliance`, `channel_compliance`). **Agent-internal labels** — each string is defined by the governance agent's policy model and is how internal specialist review (legal, brand safety, category) surfaces for audit from behind the agent's single endpoint. Not a protocol enum; not safe to pattern-match against a fixed list. |
 | `policies_evaluated` | string[] | Registry policy IDs evaluated during this check. |
 | `mode` | enum | `audit`, `advisory`, or `enforce` — governance mode active when this check was evaluated. Recorded by the governance agent from its runtime configuration at check time, not from a plan field. Lets counterparties, regulators, and auditors distinguish whether an `approved` decision reflects deliberate `enforce` enforcement or `audit`-mode silent logging. |
-| `expires_at` | string | Present when status is `approved` or `conditions`. The caller must act before this time or re-call. A lapsed approval is no approval. |
+| `expires_at` | string | Present when `verdict` is `approved` or `conditions`. The caller must act before this time or re-call. A lapsed approval is no approval. |
 | `next_check` | string | When the seller should next call `check_governance` with delivery metrics. Present when the governance agent expects ongoing delivery reporting. |
-| `governance_context` | string | Governance context token for this governed action. Present when status is `approved` or `conditions`. Attach to the protocol envelope and include on all subsequent governance calls. This is the sole lifecycle correlator for all purchase types. See [Signed Governance Context](/docs/building/implementation/security#signed-governance-context) for the JWS profile and seller verification; see [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit) for the `plan_hash` audit-layer claim. Sellers that do not verify MUST still persist and forward the token verbatim. |
-| `authority_remaining` | object | Buyer-side plan budget authority remaining after this check — not the seller's allocated budget. Present when status is `approved` or `conditions` for execution checks. Contains `budget_remaining` (number), `currency` (string), and `budget_used_pct` (number, 0-100). Orchestrators use this to track plan-level spend against the media plan's total authority. |
+| `governance_context` | string | Governance context token for this governed action. Present when `verdict` is `approved` or `conditions`. Attach to the protocol envelope and include on all subsequent governance calls. This is the sole lifecycle correlator for all purchase types. See [Signed Governance Context](/docs/building/implementation/security#signed-governance-context) for the JWS profile and seller verification; see [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit) for the `plan_hash` audit-layer claim. Sellers that do not verify MUST still persist and forward the token verbatim. |
+| `authority_remaining` | object | Buyer-side plan budget authority remaining after this check — not the seller's allocated budget. Present when `verdict` is `approved` or `conditions` for execution checks. Contains `budget_remaining` (number), `currency` (string), and `budget_used_pct` (number, 0-100). Orchestrators use this to track plan-level spend against the media plan's total authority. |
 
 ## Error codes
 

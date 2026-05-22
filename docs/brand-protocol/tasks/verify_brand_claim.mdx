@@ -99,7 +99,7 @@ House-side: a consumer detects `converse.com` claiming `house_domain: nikeinc.co
 ```json
 {
   "claim_type": "subsidiary",
-  "status": "owned",
+  "verification_status": "owned",
   "details": { "brand_id": "converse" }
 }
 ```
@@ -109,7 +109,7 @@ The brand can also reject — rejection direction is authoritative on a single s
 ```json
 {
   "claim_type": "subsidiary",
-  "status": "not_ours",
+  "verification_status": "not_ours",
   "context_note": "We have no record of this brand; the leaf's claim is in error."
 }
 ```
@@ -149,7 +149,7 @@ Leaf-side: a consumer wants the leaf's authoritative answer about its parent. As
 ```json
 {
   "claim_type": "parent",
-  "status": "owned",
+  "verification_status": "owned",
   "details": { "house_domain": "nikeinc.com" }
 }
 ```
@@ -159,7 +159,7 @@ The leaf can also actively reject:
 ```json
 {
   "claim_type": "parent",
-  "status": "disputed",
+  "verification_status": "disputed",
   "context_note": "We are not a Nike subsidiary; their claim is in error."
 }
 ```
@@ -204,7 +204,7 @@ The request asks about one property; the response describes the brand's relation
 ```json
 {
   "claim_type": "property",
-  "status": "owned",
+  "verification_status": "owned",
   "details": {
     "relationship": "owned",
     "brand_id": "nike",
@@ -225,7 +225,7 @@ A property that spans multiple regions (e.g., a global e-commerce surface) retur
 →
 {
   "claim_type": "property",
-  "status": "owned",
+  "verification_status": "owned",
   "details": {
     "relationship": "owned",
     "brand_id": "nike",
@@ -244,7 +244,7 @@ The brand can also reject — rejection direction is authoritative on a single s
 →
 {
   "claim_type": "property",
-  "status": "not_ours",
+  "verification_status": "not_ours",
   "context_note": "Unaffiliated third-party site; we do not authorize use of our marks on it."
 }
 ```
@@ -286,7 +286,7 @@ Applicable statuses: `owned`, `transferring`, `disputed`, `not_ours`, `archived`
 ```json
 {
   "claim_type": "trademark",
-  "status": "owned",
+  "verification_status": "owned",
   "details": {
     "matched_registration": {
       "registry": "USPTO",
@@ -303,7 +303,7 @@ Applicable statuses: `owned`, `transferring`, `disputed`, `not_ours`, `archived`
 ```json
 {
   "claim_type": "trademark",
-  "status": "licensed_in",
+  "verification_status": "licensed_in",
   "details": {
     "matched_registration": { "registry": "EUIPO", "number": "EU98765", "mark": "CONVERSE", "registration_status": "active" },
     "licensor_domain": "converseholdings-eu.com",
@@ -325,7 +325,7 @@ The brand can also reject — rejection direction is authoritative on a single s
 →
 {
   "claim_type": "trademark",
-  "status": "disputed",
+  "verification_status": "disputed",
   "context_note": "EU mark in this jurisdiction held by separate entity; we contest their registration and do not authorize use as ours."
 }
 ```

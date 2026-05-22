@@ -206,6 +206,7 @@ async function runTests() {
 
   await validateExample(
     {
+      "status": "completed",
       "event_sources": [
         {
           "event_source_id": "website_pixel",
@@ -235,6 +236,7 @@ async function runTests() {
 
   await validateExample(
     {
+      "status": "failed",
       "errors": [
         { "code": "AUTHENTICATION_FAILED", "message": "Invalid or expired credentials" }
       ]
@@ -301,6 +303,7 @@ async function runTests() {
 
   await validateExample(
     {
+      "status": "completed",
       "events_received": 3,
       "events_processed": 2,
       "partial_failures": [
@@ -319,6 +322,7 @@ async function runTests() {
 
   await validateExample(
     {
+      "status": "failed",
       "errors": [
         { "code": "EVENT_SOURCE_NOT_FOUND", "message": "Event source 'unknown_pixel' not found on this account" }
       ]
@@ -543,6 +547,7 @@ async function runTests() {
   // Context Match response — web (from index.mdx)
   await validateExample(
     {
+      "status": "completed",
       "type": "context_match_response",
       "request_id": "ctx-8f3a2b",
       "offers": [
@@ -578,6 +583,7 @@ async function runTests() {
   // Identity Match response — web (from index.mdx)
   await validateExample(
     {
+      "status": "completed",
       "type": "identity_match_response",
       "request_id": "id-7c9e1d",
       "eligible_package_ids": ["pkg-outdoor-audio"],
@@ -612,6 +618,7 @@ async function runTests() {
   // Context Match response — AI assistant with creative manifest (from ai-mediation.mdx)
   await validateExample(
     {
+      "status": "completed",
       "type": "context_match_response",
       "request_id": "ctx-trail-shoes-01",
       "offers": [
@@ -729,6 +736,7 @@ async function runTests() {
   // Buyer-side implementers can reference this as the canonical response shape.
   await validateExample(
     {
+      "status": "completed",
       "adcp": {
         "major_versions": [3],
         "supported_versions": ["3.0"],

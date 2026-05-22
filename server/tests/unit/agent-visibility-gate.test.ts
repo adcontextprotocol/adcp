@@ -127,35 +127,65 @@ describe('gateAgentVisibilityForCaller', () => {
 describe('computeAgentVisibilityGate', () => {
   it('allows public when caller has both API access and a brand domain', () => {
     expect(
-      computeAgentVisibilityGate({ hasApiAccess: true, brandPrimaryDomain: 'example.com' }),
+      computeAgentVisibilityGate({ hasApiAccess: true, brandPrimaryDomain: 'example.com', brandDomainVerified: true }),
     ).toEqual({ can_publish_publicly: true, reasons: [] });
   });
 
   it('returns tier_required when caller lacks API access', () => {
-    const gate = computeAgentVisibilityGate({ hasApiAccess: false, brandPrimaryDomain: 'example.com' });
+    const gate = computeAgentVisibilityGate({ hasApiAccess: false, brandPrimaryDomain: 'example.com', brandDomainVerified: true });
     expect(gate.can_publish_publicly).toBe(false);
     expect(gate.reasons).toEqual(['tier_required']);
   });
 
   it('returns brand_domain_required when caller has API access but no primary brand domain', () => {
-    const gate = computeAgentVisibilityGate({ hasApiAccess: true, brandPrimaryDomain: null });
+    const gate = computeAgentVisibilityGate({ hasApiAccess: true, brandPrimaryDomain: null, brandDomainVerified: false });
     expect(gate.can_publish_publicly).toBe(false);
     expect(gate.reasons).toEqual(['brand_domain_required']);
   });
 
   it('returns both reasons when neither precondition is met', () => {
-    const gate = computeAgentVisibilityGate({ hasApiAccess: false, brandPrimaryDomain: null });
+    const gate = computeAgentVisibilityGate({ hasApiAccess: false, brandPrimaryDomain: null, brandDomainVerified: false });
     expect(gate.can_publish_publicly).toBe(false);
     expect(gate.reasons).toEqual(['tier_required', 'brand_domain_required']);
   });
 
   it('treats an empty-string domain the same as null', () => {
-    const gate = computeAgentVisibilityGate({ hasApiAccess: true, brandPrimaryDomain: '' });
+    const gate = computeAgentVisibilityGate({ hasApiAccess: true, brandPrimaryDomain: '', brandDomainVerified: false });
     expect(gate.reasons).toEqual(['brand_domain_required']);
   });
 
   it('treats undefined the same as null', () => {
-    const gate = computeAgentVisibilityGate({ hasApiAccess: true, brandPrimaryDomain: undefined });
+    const gate = computeAgentVisibilityGate({ hasApiAccess: true, brandPrimaryDomain: undefined, brandDomainVerified: false });
     expect(gate.reasons).toEqual(['brand_domain_required']);
+  });
+
+  it('returns brand_domain_unverified when primary domain exists but verified=false', () => {
+    const gate = computeAgentVisibilityGate({
+      hasApiAccess: true,
+      brandPrimaryDomain: 'example.com',
+      brandDomainVerified: false,
+    });
+    expect(gate.can_publish_publicly).toBe(false);
+    expect(gate.reasons).toContain('brand_domain_unverified');
+  });
+
+  it('returns tier_required AND brand_domain_unverified when both preconditions fail', () => {
+    const gate = computeAgentVisibilityGate({
+      hasApiAccess: false,
+      brandPrimaryDomain: 'example.com',
+      brandDomainVerified: false,
+    });
+    expect(gate.reasons).toContain('tier_required');
+    expect(gate.reasons).toContain('brand_domain_unverified');
+  });
+
+  it('allows public when tier, domain, and verified are all present', () => {
+    const gate = computeAgentVisibilityGate({
+      hasApiAccess: true,
+      brandPrimaryDomain: 'example.com',
+      brandDomainVerified: true,
+    });
+    expect(gate.can_publish_publicly).toBe(true);
+    expect(gate.reasons).toEqual([]);
   });
 });

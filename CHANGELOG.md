@@ -1,5 +1,330 @@
 # Changelog
 
+## 3.1.0-beta.3
+
+### Minor Changes
+
+- ca60b16: spec/chore(envelope-fold): close 3 brand-schema body-`status` collisions surfaced by #4878, normalize schema-source UTF-8, harden pre-push hook.
+
+  Follow-up bundle to PR #4896 (envelope-fold). Three brand response schemas had body-level `status` collisions with the envelope `status` (TaskStatus) that the fold didn't carve out; left unfixed they were jointly unsatisfiable on the per-task validator. Two non-spec improvements (UTF-8 normalization, pre-push hook trap) landed alongside since they were touching the same surface.
+
+  ## Brand-schema body-`status` renames
+
+  Same pattern as #4895 (media-buy) and #4897 (governance), applied to three brand-protocol response schemas:
+
+  - **`brand/verify-brand-claim-response.json`** — `status` → `verification_status` ($ref unchanged: `brand/verification-status.json`). Updated `required[]` and the error branch's `not.anyOf` discriminator clause. Schema is NOT `x-status: experimental` but is pre-3.1-GA, so beta-cycle rename is acceptable.
+  - **`brand/creative-approval-response.json`** — `status` → `approval_status` (const discriminator: `approved` | `rejected` | `pending_review`). Renamed across all four oneOf branches (3 success + 1 error), all `required[]` lists, and the error branch's `not.anyOf` clause. Not experimental.
+  - **`brand/acquire-rights-response.json`** — `status` → `rights_status` (const discriminator: `acquired` | `pending_approval` | `rejected`). Renamed across all four oneOf branches, all `required[]` lists, and the error branch's `not.anyOf` clause. Schema is `x-status: experimental` so hard rename is sanctioned.
+
+  Docs swept:
+
+  - `docs/brand-protocol/tasks/verify_brand_claim.mdx` — 10 example bodies renamed `status` → `verification_status`.
+  - `docs/brand-protocol/tasks/acquire_rights.mdx` — 4 example bodies renamed `status` → `rights_status`.
+  - `docs/brand-protocol/walkthrough-rights-licensing.mdx` — 4 example bodies renamed `status` → `rights_status`.
+
+  Why now (vs deferring to a separate PR): the doc-injector in #4878 correctly skipped these three files because the schema-level collision was detectable in advance. Closing them in the same PR keeps the envelope-fold contract whole — every per-task response schema admits at least one valid response with envelope `status: "completed"` post-merge.
+
+  ## Training-agent envelope-status fixes (server, not spec)
+
+  `server/src/training-agent/task-handlers.ts`:
+
+  - **Idempotency replay path** (L4547-4561) now stamps `status: 'completed'` if the cached inner response lacks one. Older cache entries written pre-envelope-fold are auto-upgraded on replay. Without this, every cache hit on a folded schema fails its own per-task validator.
+  - **`handleCreateMediaBuy` / `handleUpdateMediaBuy` cancel branch / `handleUpdateMediaBuy` non-cancel branch** now emit `media_buy_status: MediaBuyStatus` instead of body `status: MediaBuyStatus` (canonical 3.1 form per #4895). The envelope-stamp guard at L4622-4623 then sets envelope `status: 'completed'` cleanly. Without this, MediaBuyStatus values like `pending_creatives` / `active` would survive the guard and fail TaskStatus validation.
+
+  Nested `media_buys[].status` and `media_buy_deliveries[].status` (get_media_buys and get_media_buy_delivery handlers) are intentionally left as `status` — the cascade is deferred to 4.0 (#4905) per #4895's Option-E-pure scope.
+
+  ## Doc fix (signals/activate_signal)
+
+  `docs/signals/tasks/activate_signal.mdx:466` — "Error Response (Failed)" example was mis-injected with `status: "completed"`. Corrected to `status: "failed"`. Aligns with the `error-handling.mdx` two-layer model: envelope `status: "failed"` + `errors[]` + optional `adcp_error`.
+
+  ## Schema-source UTF-8 normalization (chore)
+
+  48 schema source files re-encoded by some prior tooling using `\uXXXX` escape sequences for printable non-ASCII characters (em-dashes, en-dashes, smart quotes). Same character semantically, but inflates diffs and obscures real changes — was the dominant source of noise in #4896's review.
+
+  - `scripts/normalize-schema-utf8.mjs` — targeted normalizer that only rewrites `\uXXXX` escapes for printable non-ASCII BMP characters. Does NOT touch JSON-required escapes, surrogates, control characters, whitespace, property order, or anything else. Round-trip sanity check via `JSON.parse`.
+  - `npm run fix:schema-utf8` — apply normalization.
+  - `npm run test:schema-utf8` — CI guard. Added to the master `test` chain so regressions are caught at PR time.
+
+  ## Pre-push hook hardening (chore)
+
+  `.husky/pre-push` — `dist/docs` / `dist/addie/rules` / `.addie-repos` / `.context` are moved to `/tmp/.prepush-<name>-<pid>` before the Mintlify broken-links check, then restored. If interrupted, the temp dir was orphaning into `dist/docs/.prepush-<name>-<pid>/`. Now:
+
+  - Trap `EXIT / INT / TERM` to restore on any exit path.
+  - Idempotent restore (only moves if source exists AND dest doesn't).
+  - `.gitignore` entry `.prepush-*/` and `dist/docs/.prepush-*/` as belt-and-suspenders.
+
+  ## Test verification
+
+  - `npm run build:schemas` — clean
+  - `npm run test:schemas` — 8/8
+  - `npm run test:examples` — 36/36
+  - `npm run test:composed` — 43/43
+  - `npm run test:json-schema` — 270/270
+  - `npm run test:schema-utf8` — passes
+  - `npx vitest run server/tests/unit` — 3760/3760 pass (233 test files)
+
+- ca60b16: spec: fold `protocol-envelope.json` into per-task response schemas
+
+  Closes #4878. Companion to #4876 (envelope `status` REQUIRED) — that PR locked the contract on the envelope schema; this PR cascades it to every per-task response schema so per-task `response_schema` validators catch envelope omissions directly, without relying on the separate `envelope_field_present` storyboard check.
+
+  **What changed.** 64 task response schemas now `$ref` `core/protocol-envelope.json` in their `allOf` chain alongside the existing `core/version-envelope.json` ref. Two schemas without an existing `allOf` (`brand/search-brands-response.json`, `creative/validate-input-response.json`) had `allOf` added with both envelope refs for consistency.
+
+  **Carve-outs.**
+
+  - `core/pagination-response.json`, `core/catalog-events-response.json` — nested helpers, not task responses. Excluded.
+  - `governance/check-governance-response.json`, `governance/report-plan-outcome-response.json` — body-level `status` enum (`approved`/`denied`/`conditions` and `accepted`/`findings` respectively) collides with envelope `status` (task-status enum) on MCP flat serialization. Excluded; tracked as a separate spec issue.
+
+  **What this catches in adopter shape.** Pre-3.1-GA, any response shape lacking top-level envelope `status` now fails its own per-task `response_schema` validator, not just the universal `envelope_field_present` storyboard step. Validators integrated against the per-task schema (typed-SDK codegen, request-replay tooling, schema-aware test fixtures) gain envelope coverage for free.
+
+  **Cleanup also applied.** 25 schema examples in the affected response schemas were updated to include `status: "completed"`. 62 JSON blocks in the docs (across 27 `.mdx` files) were updated likewise. Test fixtures in `tests/composed-schema-validation.test.cjs` and `tests/example-validation-simple.test.cjs` were updated to include `status` on the relevant cases — surface-aligned with the schema fold so the test suite continues to assert what conformant adopters MUST send.
+
+  **SDK companion (filed separately as #4877).** `@adcp/client`'s auto-registered `get_adcp_capabilities` handler needs to emit `status: "completed"` for adopter responses to remain conformant; that's the going-forward fix in the SDK repo.
+
+  **Body-status conflict tracked as follow-up.** The two carve-outs (`check_governance`, `report_plan_outcome`) need their body discriminator field renamed (e.g. `verdict` / `decision`) ahead of 3.1 GA. Filing as a separate spec issue.
+
+- 06abeab: spec(media-buy): add `media_buy_status` field on create_media_buy and update_media_buy success responses; deprecate top-level `status` (#4895).
+
+  Under MCP flat-on-the-wire serialization, the envelope task-status (`status`, drawn from `task-status.json`) and the body-level `MediaBuyStatus` (`status`, drawn from `media-buy-status.json`) share the same root key on `CreateMediaBuySuccess` and `UpdateMediaBuySuccess`. The two enums overlap on `completed | canceled | rejected` and diverge elsewhere — a `MediaBuyStatus: 'active'` is silently destroyed when the envelope stamps a TaskStatus at the same path, and no validator catches it.
+
+  WG-recommended Option E (additive-deprecate, 3.1 minor → 3.2 removal of legacy `status` (#4906) → 4.0 nested cascade (#4905)) per the issue triage. **Strictly additive in 3.1 — no schema is renamed and no `required[]` constraint changes.**
+
+  - **`media-buy/create-media-buy-response.json`** (`CreateMediaBuySuccess` branch) — adds `media_buy_status: $ref media-buy-status.json` alongside the existing `status` field. The legacy `status` is marked `deprecated: true` (description) and slated for removal in 3.2 (#4906). Both fields are optional in 3.1; neither was in `required[]` before and neither becomes required now. The `CreateMediaBuySubmitted` branch is unchanged — its `status: { const: "submitted" }` is the TaskStatus discriminator, not a MediaBuyStatus.
+  - **`media-buy/update-media-buy-response.json`** (`UpdateMediaBuySuccess` branch) — symmetric: adds `media_buy_status`, marks legacy `status` as deprecated. Both optional.
+
+  **Not in scope** (deliberate — see below): `get-media-buys-response.json` `media_buys[].status`, `get-media-buy-delivery-response.json` `media_buy_deliveries[].status`, and `core/media-buy.json` `status`. These fields live nested inside arrays at depth ≥ 1, so the envelope `status` at the response root does not collide with them on the wire. The nested-vocabulary inconsistency in 3.1 (one buyer call returns `media_buy_status` at root, the next returns `status` inside an array) is mildly annoying but the price of keeping the change strictly additive — renaming a nested field that 3.0 sellers already emit would require either a `required[]` swap (breaking) or a double-fielded transition (schema churn for no wire-collision payoff). Resolve in 4.0 alongside the legacy-`status` removal, when a clean cascade rename is on the table.
+
+  The synthetic `cancel_media_buy` response (issue body called this out as a separate scope question) is performed via `update_media_buy` with cancel intent — there is no dedicated `cancel_media_buy` tool. Inherits the rename from `UpdateMediaBuySuccess` for free. No separate schema change.
+
+  Storyboards swept:
+
+  - `protocols/media-buy/state-machine.yaml` — three `field_present path: "status"` assertions against `update-media-buy-response.json` updated to `path: "media_buy_status"`. Under additive-deprecate, 3.1-conformant sellers SHOULD emit `media_buy_status`; the assertion documents the canonical-field expectation.
+  - `protocols/media-buy/scenarios/pending_creatives_to_start.yaml` — two `field_value` assertions checking MediaBuyStatus values against `create-media-buy-response.json` and `update-media-buy-response.json` updated to `path: "media_buy_status"`.
+  - `protocols/media-buy/scenarios/create_media_buy_async.yaml` — left as `path: "status"`: this checks the `submitted`-arm TaskStatus discriminator, not a MediaBuyStatus.
+
+  Docs:
+
+  - `docs/media-buy/task-reference/update_media_buy.mdx` — the cancellation success-response example shows the canonical `media_buy_status` form.
+  - `docs/reference/whats-new-in-3-1.mdx` — migration note in Final-spec clarifications batch.
+
+  Adopter impact:
+
+  - **Sellers (3.1+):** SHOULD emit `media_buy_status` on `create_media_buy` and `update_media_buy` success responses. MAY continue to emit the legacy top-level `status` during the deprecation window — both fields are valid in 3.1.
+  - **Buyers (3.1+):** MUST prefer `media_buy_status` when present. MAY fall back to the legacy `status` during the deprecation window for compatibility with sellers still on the legacy form.
+  - **3.0 sellers and buyers:** continue to work unchanged. The schema remains backward-compatible — no required-field swap, no rename, no breakage. The `get-media-buys-response`, `get-media-buy-delivery-response`, and `core/media-buy.json` surfaces are untouched, so the nested `status` field 3.0 emitters already produce continues to validate.
+  - **3.2:** the deprecated top-level `status` on the success branches of `create-media-buy-response.json` and `update-media-buy-response.json` is removed (#4906). The deprecation window is intentionally short — storyboard certification already forces 3.1-conformant sellers off the legacy field, so carrying it longer would just mean SDK consumers hold two fields in generated types for no operational benefit. After 3.2, top-level `status` on these responses unambiguously carries envelope TaskStatus only.
+  - **4.0:** the nested `status` cascade lands (#4905) — `media_buys[].status` on `get-media-buys-response`, `media_buy_deliveries[].status` on `get-media-buy-delivery-response`, and `status` on `core/media-buy.json` rename to `media_buy_status`. Genuinely breaking (a `required[]` swap), held to the major.
+  - SDK regen required for `@adcp/client`, `adcp-go`, and the Python client. The `@adcp/client` transport precedence fix (adcontextprotocol/adcp-client#1898) already drafts the consumer-side logic.
+
+  Related:
+
+  - #4876 — envelope `status` REQUIRED (beta.2).
+  - #4897 — companion governance schema rename (separate PR).
+  - adcontextprotocol/adcp-client#1898 — SDK-side audit and transport precedence fix.
+
+- 989da51: spec(governance): rename body-level `status` on `check_governance` and `report_plan_outcome` responses to free the envelope `status` key (#4897).
+
+  Under MCP flat-on-the-wire serialization, the envelope task-status (`status`, drawn from `task-status.json`) and the body-level governance field share the same root key. The two enums overlap on `completed | canceled | rejected` and diverge elsewhere; whichever side wins on the wire, the other is silently destroyed and no validator catches it.
+
+  Resolution (WG-recommended Option A per the issue triage):
+
+  - **`governance/check-governance-response.json`** — `status` → `verdict`. Enum unchanged (`approved | denied | conditions`); `if/then` discriminator blocks now key on `verdict`. Renamed in `required[]`. Description threads (`findings`, `conditions`, `expires_at`) updated to reference the new name.
+  - **`governance/report-plan-outcome-response.json`** — `status` → `outcome_state`. Enum unchanged (`accepted | findings`); renamed in `required[]`. Description thread on `findings` updated.
+  - **`governance/get-plan-audit-logs-response.json`** — `entries[].status` → `entries[].verdict` (cascade for vocabulary consistency with check-governance-response). Other `status` fields (`plans[].status`, `governed_actions[].status`) are lifecycle states, not verdicts, and are left unchanged.
+
+  Docs swept (~25 example bodies + table descriptions):
+
+  - `docs/governance/overview.mdx`
+  - `docs/governance/campaign/tasks/check_governance.mdx` (7 examples + response table + prose)
+  - `docs/governance/campaign/tasks/report_plan_outcome.mdx` (5 examples + response table)
+  - `docs/governance/campaign/tasks/get_plan_audit_logs.mdx` (2 nested check entries)
+  - `docs/governance/campaign/audit-trail.mdx` (7 example bodies + field-tagging table)
+  - `docs/governance/campaign/specification.mdx` (3 examples)
+
+  Storyboards swept (the issue triage initially scoped this as "no yaml renames needed"; corrected during implementation):
+
+  - `static/compliance/source/specialisms/governance-spend-authority/index.yaml` — `field_present path: "status"` → `path: "verdict"`
+  - `static/compliance/source/specialisms/governance-spend-authority/denied.yaml` — both `field_present` and `field_value` assertions
+  - `static/compliance/source/specialisms/governance-delivery-monitor/index.yaml` — two `field_present` assertions
+  - `static/compliance/source/protocols/governance/index.yaml` — two `field_present` assertions plus a stale `outcome.expected` block referencing `status: recorded` (not in the enum) → corrected to `outcome_state: accepted`
+
+  Adopter impact:
+
+  - Wire-shape change on three experimental governance schemas (`x-status: experimental`).
+  - Buyers and sellers rename one property name per emitter / consumer; enum values are unchanged.
+  - SDK regen required for `@adcp/client`, `adcp-go`, and the Python client. Per the experimental-surface contract, this is a sanctioned 3.1 pre-GA adjustment.
+
+  Related:
+
+  - #4876 — envelope `status` REQUIRED (beta.2).
+  - #4895 — companion media-buy collision (separate PR).
+  - #4896 — per-task envelope fold. Once this PR lands, the carve-outs for `check-governance-response.json` and `report-plan-outcome-response.json` in #4896 can be removed; both schemas pick up the standard envelope fold cleanly.
+
+- 4adb65a: spec(errors): register `STALE_RESPONSE` for cache-fallback served when an upstream is unreachable (#4899)
+
+  The existing error vocabulary covered the binary "upstream unreachable, no response" case (via `SERVICE_UNAVAILABLE`) but had no registered code for the **degraded-but-functional** case: an upstream or sub-agent is unreachable now, but the seller has a cached prior response and serves that cache instead of returning empty. Without a standard code, every seller either invents a discriminator (`STALE_CACHE` / `CACHED_FALLBACK` / `DEGRADED_RESPONSE` / ...) or returns `SERVICE_UNAVAILABLE` with a populated payload — internally contradictory, since the call did succeed from the caller's POV.
+
+  This change:
+
+  - Adds `STALE_RESPONSE` to `static/schemas/source/enums/error-code.json`. Recovery: `transient`. Emitted **alongside** a populated success payload as a non-fatal advisory in `errors[]`; transport-level success markers stay flipped to success (HTTP 200, MCP `isError: false`, A2A `succeeded`). Sibling to the existing per-asset advisory family (`PIXEL_TRACKER_LOSSY_DOWNGRADE`, `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE`).
+  - Adds `error-details/stale-response.json` — required `served_from_cache: true` + `cache_age_seconds`, optional `freshness_target_seconds`, `upstream: {url, name}`, and `original_error: {code, message}`. Multi-upstream cases emit one `STALE_RESPONSE` entry per stale upstream (mirroring the per-asset advisory precedent), not one aggregated entry.
+  - Adds the System-errors-table row in `docs/building/by-layer/L3/error-handling.mdx` with the distinction from `SERVICE_UNAVAILABLE` (empty payload + fatal).
+  - Adds the disposition entry in `scripts/error-code-drift-dispositions.json` (`held-for-next-minor`, `target_version: 3.1`).
+
+  **Normative wire rules.** Sellers MUST emit `STALE_RESPONSE` only when the response payload is non-empty AND derived from a cache entry past the surface's freshness target. When no cached entry exists or the cache hit is within freshness target, sellers MUST NOT emit this code. Buyers MUST treat as non-fatal and SHOULD surface staleness to operators or end users where relevant; `cache_age_seconds` is the informational knob for the buyer's retry policy.
+
+  Closes #4899.
+
+### Patch Changes
+
+- e27cffb: spec: replace the durable catalog event feed with account-level wholesale feed webhooks.
+
+  Wholesale product and signals feed changes are now registered through
+  `sync_accounts.accounts[].notification_configs[]`, delivered with denormalized
+  `product.*`, `signal.*`, and `wholesale_feed.bulk_change` payloads, and repaired
+  through `get_products` / `get_signals` using `if_wholesale_feed_version`.
+
+- 8b7e646: feat(scripts): exercise the AAO directory inverse-lookup in the agent-resolution e2e script.
+
+  `scripts/e2e-resolve-training-agent.ts` now optionally appends a directory inverse-lookup after the 8-step forward chain. Given the resolved agent URL, the script calls `fetchAgentAuthorizationsFromDirectory` (shipped in `@adcp/sdk@7.10.0`) against the AAO's `GET /v1/agents/{agent_url}/publishers` endpoint and prints the publishers whose `adagents.json` authorize the agent.
+
+  - HTTP mode: defaults the directory URL to `<base-url>/api` (where the registry router is mounted in `server/src/http.ts`). Pass `--directory <url>` to point at a different directory, or `--directory none` to skip.
+  - In-process mode: skipped (the inline Express app doesn't mount the AAO routes, which require database access).
+
+  Pairs PR #4836 (server endpoint) with the SDK's consumer-side wrapper, giving a runnable demo of the full directory chain. Directory failures are caught and reported but don't fail the script — the forward chain is the primary contract, the inverse lookup is an additive demo.
+
+- 8b7e646: chore(deps): bump @adcp/sdk 7.7 → 7.10.2 — catches the spec repo up on the 7.x line.
+
+  Pulls in 7.8's `impairment.coherence` audience-inverse grading + `creative_approvals[]` walk, 7.8's `ctx.input` surface on v6 platform methods (adoption in our v6 shims is a follow-up), 7.9's `pgCtxMetadataStore.resource` round-trip, and 7.10's `fetchAgentAuthorizationsFromDirectory` + typed `AGENT_SUSPENDED`/`AGENT_BLOCKED` codes. 7.10.0/7.10.1 had v2/projection packaging gaps that crashed `/sales` storyboards; both fixed via adcp-client#1909 (catalog) and adcp-client#1917 (registry).
+
+  Spec-side behavior unchanged; storyboard floors held without modification.
+
+- 8b7e646: fix(training-agent): thread `dry_run` and `assignments[]` through v6 platform shims via `ctx.input`.
+
+  The v6 SDK's typed `SalesPlatform.syncCreatives`, `AudiencePlatform.syncAudiences`, and `AccountStore.upsert` signatures destructure the request envelope and pass only the typed first-arg (`creatives[]` / `audiences[]` / `refs[]`) to the platform method — fields like `dry_run` and inline `assignments[]` were dropped on the v6 path while the legacy `/mcp` route preserved them (adcp-client#1842). 7.8 fixed this by exposing the original envelope as `ctx.input: Readonly<Record<string, unknown>>`; this change lifts the dropped fields back out for our v5-shimming v6 platforms.
+
+  Adopted in:
+
+  - `v6-sales-platform.ts` and `v6-creative-platform.ts` and `v6-creative-builder-platform.ts` — `syncCreatives` now threads `dry_run` (suppresses session persistence) and `assignments[]` (writes inline package bindings) through to `handleSyncCreatives`. The v6 response signature returns only `SyncCreativesRow[]`, so assignment results are observable via subsequent `get_media_buys` rather than in the sync response itself.
+  - `v6-account-helpers.ts` — `syncAccountsUpsert` threads `dry_run` to `handleSyncAccounts`. `delete_missing` is on the SDK's drop list but the v5 handler doesn't implement it yet, so threading it would be inert — wire when v5 grows support.
+
+  Helper `pickFromInput` in `v6-input-helpers.ts` does the named-field lift; per SDK guidance, `ctx.input` is buyer-controlled and untrusted, so the helper reads only named fields and never logs wholesale.
+
+## 3.1.0-beta.2
+
+### Minor Changes
+
+- 95bc69c: spec: webhook token round-trip + storyboard `required_any_of_tools` (closes #4339, #4325)
+
+  Two additive 3.1.0-beta.2 blockers bundled. Both are non-breaking — existing senders and receivers continue to interoperate.
+
+  **#4339 — webhook authentication `token` round-trip (`static/schemas/source/core/`)**
+
+  - `mcp-webhook-payload.json` — promote the echoed authentication `token` to a typed optional property (`minLength: 16`, `maxLength: 4096`). The field previously traveled on the wire under `additionalProperties: true`; this is purely a typed surface on an existing implicit contract. Schema-driven SDK clients can now access `payload.token` without falling through an extras path. Receivers that configured a token MUST compare it to this value to validate request authenticity, and SHOULD use a constant-time equality check to mitigate timing attacks. The length-check fast-path is forbidden — receivers MAY range-check token length only after subscription lookup and never as a short-circuit on equal-length inputs.
+  - `push-notification-config.json` — add `maxLength: 4096` to the existing `token` field (was previously only `minLength: 16`); this is a constraint addition on the upper bound, not a tightening of the lower bound that would reject existing-conformant configs. Cross-reference the payload-side validation obligation. Add downgrade-defense sentence: receivers that registered both an RFC 9421 signing key and a `token` MUST NOT treat a valid token echo as authorization to skip signature verification. Clarify that `token` is NOT on the 4.0 removal track (only the legacy `authentication` block is being removed in favor of RFC 9421).
+
+  **#4325 — storyboard `required_any_of_tools` declarative one-of-N gate (`static/compliance/source/universal/`)**
+
+  - `storyboard-schema.yaml` — add `required_any_of_tools` as a top-level optional storyboard field. Each entry is an OR-family `{ tools: string[] (minItems: 2), rationale?: string }`. Multiple entries AND-combine. Distinct from `required_tools` (lenient any-of coverage skip) and `provides_state_for` (step-scope state substitution).
+  - `runner-output-contract.yaml` — extend `requirement_unmet` with the canonical `detail` sub-reason prefix `missing_required_tool_family:` plus the literal wire shape for separators (`" or "` between family members, `"; "` between multi-gate aggregations). No new top-level `skip_result.reason` enum value — the contract version stays at 2.2.0. Aggregator guidance is human-display only; automated consumers SHOULD parse only the first sub-reason from aggregated `detail` and surface multi-gate state separately.
+  - `scripts/build-compliance.cjs` — validate the field on specialism `index.yaml` files (filter+trim `tools[]` before `minItems:2` enforcement; reject non-string `rationale`; drop empty `rationale` after trim) and hoist into `compliance/<version>/index.json` for downstream SDK consumption.
+
+  **Downstream pickups (tracked separately):**
+
+  - `adcontextprotocol/adcp-client-python#638` — drops the `extra='allow'` token round-trip path once types regenerate against this schema.
+  - `adcontextprotocol/adcp-client#1481` — drops `examples/hello_si_adapter_brand.ts` top-level `offering_id` mirror once the 3.1.0-beta.2 dist publishes (the SI capture-path fix shipped in #3937 / dist 3.1.0-beta.1).
+  - `adcontextprotocol/adcp-client#1642` — migrates the runner-level account-discovery conformance gate (#1624) to per-storyboard `required_any_of_tools` consumption.
+
+  **Known follow-ups (filed as issues, non-blocking on this beta):**
+
+  - `minLength: 16` on both `token` fields permits ~96-bit base64url credentials, below the 128-bit entropy SHOULD in the description. Raising the floor to 22 would tighten an existing field; the gap is intentional for backward compatibility and re-evaluated in 4.0.
+  - `docs/building/by-layer/L3/webhooks.mdx` token-echo subsection and `whats-new-in-3-1.mdx` / `migration/prerelease-upgrades.mdx` entries are pending. Schema descriptions carry normative weight; the docs page catches up in a follow-up PR.
+
+- 41fce13: spec(envelope): `status` is REQUIRED on every task response envelope.
+
+  The protocol envelope (`core/protocol-envelope.json`) now declares `status` in its `required` array, formalizing the wire contract the docs and conformance storyboards already assume. Every task response — including synchronous read-only metadata calls like `get_adcp_capabilities` — MUST carry a top-level `status` field. Synchronous calls emit `status: "completed"`; async calls emit `submitted`, `working`, `input-required`, etc. per the task-status enum.
+
+  **Why this is a wire-shape clarification, not a new requirement.** The docs (`sdk-stack.mdx`, `mcp-response-extraction.mdx`, `webhooks.mdx`, `error-handling.mdx`) already treat envelope `status` as a canonical protocol-layer field. The `v3_envelope_integrity` conformance storyboard already asserts presence via `envelope_field_present`. The schema design just left `status` declared but not required on the envelope, which let SDKs ship without emitting it on some sync responses. This change closes that ambiguity.
+
+  **Resolves #4832** — adopter (`@adcp/sdk@7.7.0`, production seller) hit `v3_envelope_integrity/no_legacy_status_fields` failure because the SDK's auto-registered `get_adcp_capabilities` handler builds the response payload without setting `status`. The storyboard was correct; the envelope contract just wasn't formalized in schema.
+
+  **Adopter impact.** Agents shipping responses without top-level envelope `status` are now non-conformant per the schema. The single broadly-distributed gap is `@adcp/client`'s auto-registered `get_adcp_capabilities` (tracked separately); other tools that go through the v6 handler pipeline already carry `status` because the SDK threads the envelope around typed platform returns. Adopters using raw-handler patterns (deprecated v5) should audit their responses and add `status: "completed"` to any sync response missing it.
+
+  **Phased follow-ups (not in this PR):**
+
+  - SDK companion in `adcp-client`: emit `status: "completed"` on the auto-registered `get_adcp_capabilities` handler (and audit any other sync helper that builds responses without the v6 pipeline).
+  - Per-task schema fold: extend each of the 64+ task response schemas (`create-media-buy-response.json`, `sync-creatives-response.json`, etc.) to `$ref` `protocol-envelope.json` in addition to `version-envelope.json`. Mechanical cleanup that lets per-task `response_schema` validators catch envelope omissions directly, without relying on the separate `envelope_field_present` storyboard check. Targeted for the 3.1 cycle ahead of GA.
+
+- aa58c94: Add `capability_ids[]` to `PackageRequest` (the `packages[]` item shape on `create_media_buy`) as a V2 path equivalent to `format_ids[]`. Lets buyers reading the V2 mental model (`Product.format_options[]`) author a `create_media_buy` call without translating back through `v1_format_ref[]`.
+
+  Symmetric with the V2 path that `creative-manifest` already exposes (manifest carries a single `capability_id`; package-side carries an array since one package may activate multiple `format_options` entries).
+
+  Additive optional field. When both `capability_ids` and `format_ids` are sent, `capability_ids` wins and the seller routes by it; the resolving seller ignores `format_ids` (V2-native buyer SDKs SHOULD still emit it as a v1-compat hint for v1-only sellers further down the wire). When neither is sent, the package defaults to all formats supported by the product (unchanged from v1 behavior). Sellers MUST reject with `UNSUPPORTED_FEATURE` when an entry doesn't match a `format_options[]` entry, when the product is v1-only (no `format_options[]` at all), or when the product's `format_options[]` entries don't publish `capability_id` values.
+
+  Closes #4842.
+
+### Patch Changes
+
+- ff53133: docs(adagents): add `authorization_type` → companion-field quick-reference table at the top of the Authorization Patterns section, plus a `<Warning>` callout on the `inline_properties` naming exception (companion field is `properties`, not `inline_properties`). Schema `description` strings on the `inline_properties` `oneOf` branch updated to surface the same exception where IDEs and linters display it. "Four patterns" count corrected to "six authorization types" (the two signal-side values were absent from the prose count). Non-normative — no fields, enums, or `required` arrays change.
+
+  Closes #4776.
+
+- 079c25c: Mark `data-provider-signal-selector.json` with `x-adcp-hoist: true` so the schema bundler deduplicates it via root `$defs` instead of inlining it N times.
+
+  In 3.1.0-beta.x, the `tasks-get-response.json` `result` field references `async-response-data.json` — a union of all task response schemas. When bundled, shared sub-schemas get inlined once per referencing response schema. The duplicate `data-provider-signal-selector` instances (a discriminated `oneOf` with `selection_type` values `all`, `by_id`, `by_tag`) caused `datamodel-code-generator` to fabricate a `Literal['reuse']` discriminator value, raising `TypeError: Value 'reuse' for discriminator 'selection_type' mapped to multiple choices` and blocking the entire Python SDK from importing.
+
+  The bundler already has `hoistMarkedSchemas()` for exactly this case. The `x-adcp-hoist: true` directive is build-time only and is stripped from the emitted bundled schemas — the normative wire contract is unchanged.
+
+- c232af3: Fix phantom `FORMAT_INCOMPATIBLE` error code on `create_media_buy` docs. The code was referenced in the error table and two response examples on `docs/media-buy/task-reference/create_media_buy.mdx` but was never defined in `static/schemas/source/enums/error-code.json`. SDKs that validate `errors[].code` against the published enum would reject responses built from the docs literally.
+
+  Migrated all three references to `UNSUPPORTED_FEATURE` — the enum value whose semantics ("a requested feature or field is not supported by this seller") match the "format not in the product's accepted set" case exactly. The error-table row was also merged with the sibling `UNSUPPORTED_FEATURE` row added in #4845 (which covered the v2 `capability_ids[]` failure modes), so a single row now spans both v1 (`format_ids[]`) and v2 (`capability_ids[]`) format-mismatch cases.
+
+  Closes #4852.
+
+- e2c3635: fix(schema): reconcile $ref sandbox host in product-format-declaration (closes #4862)
+
+  `core/product-format-declaration.json#format_schema.description` contained two conflicting normative statements: the `v1_format_ref` mirror-domain migration block (labeled "3.1") says `creative.adcontextprotocol.org/translated/` is the canonical AAO mirror host and that adopters MUST migrate away from the legacy host; the `$ref` sandboxing clause in the same description still named `mirror.adcontextprotocol.org` as the allowed non-same-origin anchor, causing strict implementations of the sandbox to silently reject `$ref`s hosted under the correct domain.
+
+  **Changes:**
+
+  - `core/product-format-declaration.json` `format_schema.description` — two edits:
+    1. **Sandboxing of `$ref` bullet:** `(b) hosted under the AAO mirror namespace (\`https://mirror.adcontextprotocol.org/...\`)` → `(b) hosted under the AAO catalog domain (\`https://creative.adcontextprotocol.org/...\`)`
+    2. **AAO mirror trust bullet (end of description):** rename to "AAO catalog trust", replace `mirror.adcontextprotocol.org/*` with `creative.adcontextprotocol.org/*`, update surrounding prose to match.
+  - `docs/creative/canonical-formats.mdx` `$ref` sandboxing rule (item b) and "AAO mirror" trust anchor note updated to name `creative.adcontextprotocol.org` and use "AAO catalog domain" terminology.
+
+  No structural schema changes. No new fields, enum values, or MUST requirements — this is a normative-text consistency repair. `mirror.adcontextprotocol.org` was never provisioned; `@adcp/sdk` 7.10 already ships both hosts in `DEFAULT_MIRROR_HOSTS` as a transitional posture and can drop the legacy entry on next release.
+
+  Closes #4862.
+
+- ef9946c: fix(compliance): replace phantom_unit with devices in reach_buy_flow rejection step
+
+  The rejection_unsupported_reach_unit phase was using reach_unit: "phantom_unit", which
+  is not a valid reach-unit.json enum value. Because the step carries negative_path:
+  payload_well_formed, the payload must be schema-valid — but phantom_unit caused schema
+  rejection before the seller's capability-checking logic ran, so the test was passing for
+  the wrong reason.
+
+  Fix: add metric_optimization.supported_metrics: ["reach"] and
+  supported_reach_units: ["households", "individuals"] to the reach_ctv_q2 product fixture,
+  replace phantom_unit with "devices" (a valid enum value deliberately absent from the
+  fixture's declared units), and rename the step id from
+  create_media_buy_with_phantom_reach_unit to create_media_buy_with_unsupported_reach_unit.
+  The rejection now comes from the seller's business-logic capability check, which is the
+  contract the scenario is designed to exercise.
+
+  Closes #4819.
+
+- 118d760: spec(preview_creative): allow non-expiring preview URLs by making `expires_at` optional
+
+  `preview_creative` responses previously required `expires_at` for single previews and successful batch results, but the spec did not define how agents should represent preview URLs that do not expire. The response schema now allows omitting `expires_at`; documentation clarifies that a present timestamp marks the time after which consumers should treat preview URLs as invalid, while an omitted timestamp means the preview URLs do not expire.
+
+  This relaxes validation for existing non-expiring implementations without changing the meaning of responses that already include `expires_at`. Closes #4453.
+
+- 210b8a7: Add SHOULD on `product-format-declaration.json`: sellers SHOULD publish `capability_id` on every `format_options[]` entry — not just when structurally required to break a `format_kind` collision. Without it, V2-mental-model buyers using the `PackageRequest.capability_ids[]` path added in #4845 (and the long-standing `creative-manifest.capability_id`) can't address the entry, fall back to v1 `format_ids[]`, and lose the cross-publisher-stable naming the V2 authoring path was designed to provide.
+
+  Co-located with #4845's buyer-side change so 3.1 release-notes readers see the buyer capability and the seller obligation together. No structural change — capability_id remains optional at the schema level; this is description-text only. The 4.0 cutover will tighten SHOULD → MUST (tracked in #4857).
+
+  Closes #4856.
+
 ## 3.1.0-beta.1
 
 ### Minor Changes
@@ -31,30 +356,30 @@
 
   Closes #4556. Refs #3822 (spec-side resolution; SDK-side skill fix tracked in adcp-client).
 
-- 9357289: Catalog sync cluster (3.1): three companion proposals for catalog mirroring between AdCP agents and consumers (storefronts, federated marketplaces, registries). Independent and complementary — agents MAY adopt any subset.
+- 9357289: Wholesale feed mirroring cluster (3.1): three companion proposals for wholesale product feed and wholesale signals feed mirroring between AdCP agents and consumers (storefronts, federated marketplaces, registries). Independent and complementary — agents MAY adopt any subset.
 
   **#4762 — `get_signals` wholesale discovery mode**
 
-  - `signals/get-signals-request.json` adds `discovery_mode` enum (`brief` default, `wholesale`). Wholesale mode bans `signal_spec` / `signal_ids` and returns the agent's full priced catalog, paginated. Symmetric with `get_products buying_mode: "wholesale"`.
-  - `signals/get-signals-response.json` adds `incomplete[]` (scopes: `signals`, `pricing`, `catalog`) so partial completion is signalled inline rather than via async/Submitted handoff. `signals` becomes conditionally required (omitted when `unchanged: true`).
+  - `signals/get-signals-request.json` adds `discovery_mode` enum (`brief` default, `wholesale`). Wholesale mode bans `signal_spec` / `signal_ids` and returns the agent's full priced signals feed, paginated. Symmetric with `get_products buying_mode: "wholesale"`.
+  - `signals/get-signals-response.json` adds `incomplete[]` (scopes: `signals`, `pricing`, `wholesale_feed`) so partial completion is signalled inline rather than via async/Submitted handoff. `signals` becomes conditionally required (omitted when `unchanged: true`).
   - `protocol/get-adcp-capabilities-response.json` adds `signals.discovery_modes`. Agents not declaring `"wholesale"` MAY return `INVALID_REQUEST` for wholesale calls.
   - `docs/signals/tasks/get_signals.mdx` documents wholesale enumeration, authorization/provenance preservation for marketplace signals, pricing scope, and capability probing.
 
-  **#4761 — `catalog_version` conditional fetch (ETag-style)**
+  **#4761 — `wholesale_feed_version` conditional fetch (ETag-style)**
 
-  - `media-buy/get-products-request.json` and `signals/get-signals-request.json` add `if_catalog_version` and `if_pricing_version` opaque tokens.
-  - `media-buy/get-products-response.json` and `signals/get-signals-response.json` add `catalog_version`, `pricing_version`, and `unchanged`. When `unchanged: true`, `products` / `signals` MUST be omitted and `catalog_version` MUST be echoed — encoded as an explicit `oneOf` so the unchanged response is schema-valid without breaking the standard required-payload contract.
+  - `media-buy/get-products-request.json` and `signals/get-signals-request.json` add `if_wholesale_feed_version` and `if_pricing_version` opaque tokens.
+  - `media-buy/get-products-response.json` and `signals/get-signals-response.json` add `wholesale_feed_version`, `pricing_version`, and `unchanged`. When `unchanged: true`, `products` / `signals` MUST be omitted and `wholesale_feed_version` MUST be echoed — encoded as an explicit `oneOf` so the unchanged response is schema-valid without breaking the standard required-payload contract.
   - Tokens are opaque and scoped to the request-parameter tuple that produced them. Pre-v3.1 agents that ignore the conditional fields simply return the full payload — semantically correct, just inefficient.
-  - Pagination interaction: if the catalog mutates mid-pagination, sellers SHOULD return the new `catalog_version` on each page; consumers SHOULD restart from `cursor: null` on a mid-pagination version change.
+  - Pagination interaction: if the wholesale feed mutates mid-pagination, sellers SHOULD return the new `wholesale_feed_version` on each page; consumers SHOULD restart from `cursor: null` on a mid-pagination version change.
 
-  **#4763 — Per-agent catalog change feed**
+  **#4763 — Wholesale feed webhooks**
 
-  - New `specs/catalog-change-feed.md` modeled on `specs/registry-change-feed.md`. UUID-v7 cursor-based event log, one feed per agent, denormalized payloads, optional webhook subscriptions.
-  - Event types: `product.{created,updated,priced,removed}`, `signal.{created,updated,priced,removed}`, `catalog.bulk_change` (fast-forward for rate-card sweeps).
-  - `protocol/get-adcp-capabilities-response.json` adds top-level `catalog_change_feed` declaration (`supported`, `retention_window_days` ≥7, `webhooks_supported`, `event_types[]`).
-  - Endpoints (`GET /catalog/events`, `POST /catalog/subscriptions`) live on the agent itself, not the registry. Authorization scope mirrors wholesale enumeration.
+  - New `specs/wholesale-feed-webhooks.md` defines account-level webhooks for wholesale product feed and wholesale signals feed changes. Webhook payloads are denormalized: the body carries the changed product/signal payload or bulk-change summary plus the post-change `wholesale_feed_version`.
+  - Event types: `product.{created,updated,priced,removed}`, `signal.{created,updated,priced,removed}`, `wholesale_feed.bulk_change` (fast-forward for rate-card sweeps).
+  - `protocol/get-adcp-capabilities-response.json` adds top-level `wholesale_feed_webhooks` declaration (`supported`, `event_types[]`).
+  - Webhooks are registered through `sync_accounts.accounts[].notification_configs[]`. There is no polling event task or cursor-retention API; consumers repair missed or distrusted pushes via `get_products` / `get_signals` with `if_wholesale_feed_version`.
 
-  Additive across the board for 3.0-conformant agents: new optional fields, new conditional schemas, new capability stanzas, new spec doc. Agents MAY implement any combination: conditional-fetch alone for cheap probes against stable catalogs, the full feed for high-frequency mirroring, wholesale-only as a transitional step. Reference implementations land in the prebid salesagent as part of v3.1 conformance prep.
+  Additive across the board for 3.0-conformant agents: new optional fields, new conditional schemas, new capability stanzas, new spec doc. Agents MAY implement any combination: conditional-fetch alone for cheap probes against stable wholesale feeds, webhook pushes for high-frequency mirroring, wholesale-only as a transitional step. Reference implementations land in the prebid salesagent as part of v3.1 conformance prep.
 
   **Validator obligation for 3.1 SDKs (read carefully):** the 3.1 `get_products` / `get_signals` response schema makes `cache_scope` required to enforce the two-layer cache safety invariant — a seller that silently omits `cache_scope` on an account-scoped response would cause buyers to mis-key the cache and serve account-overlay payloads to other accounts. Pre-3.1 sellers correctly omit `cache_scope` and remain conformant to their declared version. SDKs that validate strictly against the 3.1 schema MUST select the validator based on the server-declared `adcp_version` (release-precision version negotiation, 3.1): for responses with `adcp_version` starting `3.0`, the 3.1 cache_scope-required constraint MUST be relaxed. This is a tightening within 3.1, not a 3.0 break — but adopter SDKs that hardcode the 3.1 schema without version-pinned validation will reject correct 3.0 traffic, so the obligation is normative.
 
@@ -98,7 +423,7 @@
 
   Closes #2260. Refs #2261 (webhook mechanics), #2254 (parent media-buy lifecycle issue, already closed), #3305 / #3307 (format-level variant addressability).
 
-- c54c0d5: Creative-lifecycle webhooks (#2261) lands **#4582 track 3** (per-account subscription model) by making `sync_accounts` the universal account-state write surface — no new tool. Governance and notifications are separate concerns: `sync_governance` remains governance-only; `sync_accounts` carries `notification_configs[]` for webhook subscribers.
+- c54c0d5: Creative-lifecycle webhooks (#2261) lands **#4582 track 3** (per-account subscription model) by making `sync_accounts` the universal account-state write surface — no new tool. Governance and notifications are separate concerns: `sync_governance` remains governance-only; `sync_accounts.accounts[].notification_configs[]` carries webhook subscribers.
 
   **Events**
 
@@ -122,7 +447,7 @@
 
   **Governance unchanged**
 
-  `sync_governance` keeps its original surface and scope. Governance agents are **not** implicitly subscribed to webhooks. A governance team that wants creative-lifecycle fires registers its URL as a separate `notification_configs[]` entry on `sync_accounts` — explicit, auditable, filterable via `event_types[]`. No foot-gun where governance endpoints get force-fed signals they aren't built to ingest.
+  `sync_governance` keeps its original surface and scope. Governance agents are **not** implicitly subscribed to webhooks. A governance team that wants creative-lifecycle fires registers its URL as a separate `sync_accounts.accounts[].notification_configs[]` entry — explicit, auditable, filterable via `event_types[]`. No foot-gun where governance endpoints get force-fed signals they aren't built to ingest.
 
   **Self-serve buyers**
 
@@ -1625,7 +1950,7 @@
   ```
 
   - `total_candidates`: integer baseline before filters applied. May be
-    sampled or capped at large catalogs.
+    sampled or capped when the candidate pool is large.
   - `excluded_by`: keyed by filter property name as it appears in the
     request's `filters` object. Each value carries `count` (required),
     optional `values` (the specific filter values that contributed to

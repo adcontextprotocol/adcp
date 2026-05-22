@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.3/core/sla-window.json",
+  "title": "SLA Window",
+  "description": "Service-level commitment a seller declares for a given action. Optional throughout: absence means no commitment, not zero commitment — buyers querying SLA fields via #4425's `requires` predicate grammar MUST compose with `present` to avoid silently matching sellers who never declared one. Durations are ISO 8601 duration strings (e.g., `PT4H`, `PT24H`, `P1D`). Predicate evaluators that compare durations MUST normalize before comparison; `P1D` and `PT24H` are equal.",
+  "type": "object",
+  "properties": {
+    "response_max": {
+      "type": "string",
+      "description": "Maximum time from when the buyer issues the action to when the seller acknowledges receipt (mode-appropriate: synchronous response for self_serve, queue ack for requires_approval, proposal task creation for requires_proposal). ISO 8601 duration.",
+      "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$",
+      "examples": ["PT5M", "PT4H", "P1D"]
+    },
+    "completion_max": {
+      "type": "string",
+      "description": "Maximum time from buyer issuing the action to the seller completing it (mutation applied, proposal finalized, approval resolved). ISO 8601 duration.",
+      "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$",
+      "examples": ["PT1H", "PT24H", "P2D"]
+    }
+  },
+  "additionalProperties": false
+}
