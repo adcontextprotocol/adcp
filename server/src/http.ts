@@ -1055,7 +1055,7 @@ export class HTTPServer {
     this.app.use('/api', createInvitesRouter());
 
     // Mount public Registry API routes (brands, properties, agents, search, validation)
-    const registryApiRouter = createRegistryApiRouter({
+    const { router: registryApiRouter, v1AgentsRouter } = createRegistryApiRouter({
       brandManager: this.brandManager,
       brandDb: this.brandDb,
       propertyDb: this.propertyDb,
@@ -1070,6 +1070,11 @@ export class HTTPServer {
       optionalAuth,
     });
     this.app.use('/api', registryApiRouter);
+    // adcp#4924: spec defines the AAO directory inverse-lookup path as
+    // /v1/agents/{url}/publishers (docs/aao/directory-api.mdx). Mount the
+    // v1AgentsRouter at /v1 so spec-conformant clients work without the /api
+    // prefix workaround. The /api/v1/agents/... path remains for backward compat.
+    this.app.use('/v1', v1AgentsRouter);
 
     // RFC 8615: serve JWKS at root /.well-known/ path for standard OIDC/JWT discovery
     this.app.get('/.well-known/jwks.json', (_req, res) => {

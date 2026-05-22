@@ -759,7 +759,7 @@ const AgentPublishersEntrySchema = z.object({
 
 registry.registerPath({
   method: "get",
-  path: "/api/v1/agents/{encodedUrl}/publishers",
+  path: "/v1/agents/{encodedUrl}/publishers",
   operationId: "getPublishersForAgent",
   summary: "AAO directory inverse-lookup",
   description:
@@ -2951,7 +2951,7 @@ registry.registerPath({
 
 // ── Router factory ──────────────────────────────────────────────
 
-export function createRegistryApiRouter(config: RegistryApiConfig): Router {
+export function createRegistryApiRouter(config: RegistryApiConfig): { router: Router; v1AgentsRouter: Router } {
   const router = Router();
   const {
     brandManager,
@@ -7091,7 +7091,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   // The bare /registry/lookup/agent/:agentUrl/domains above is kept as a
   // lightweight legacy surface (domain strings only). This endpoint is the
   // spec-compliant richer shape — different path so the contract is explicit.
-  router.get("/v1/agents/:encodedUrl/publishers", registryReadRateLimiter, async (req, res) => {
+  //
+  // adcp#4924: handler extracted so it can be registered at both the legacy
+  // /api/v1/agents/... path (via the /api mount in http.ts) and the
+  // spec-conformant /v1/agents/... path (via v1AgentsRouter mounted at /v1).
+  const agentPublishersHandler: RequestHandler = async (req, res) => {
     try {
       // decodeURIComponent throws on malformed percent-escapes (`%E0%A4`);
       // surface as 400 rather than letting the outer catch 500.
@@ -7314,7 +7318,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       logger.error({ err: error, path: req.path }, "Agent → publishers inverse lookup failed");
       return res.status(500).json({ error: "Agent → publishers inverse lookup failed" });
     }
-  });
+  };
+
+  // Legacy path (router mounted at /api in http.ts → /api/v1/agents/...).
+  router.get("/v1/agents/:encodedUrl/publishers", registryReadRateLimiter, agentPublishersHandler);
+
+  // Spec-conformant path: mounted at /v1 in http.ts → /v1/agents/...
+  // (adcp#4924). Keeps /api/v1/... working for backward compat.
+  const v1AgentsRouter = Router();
+  v1AgentsRouter.get("/agents/:encodedUrl/publishers", registryReadRateLimiter, agentPublishersHandler);
 
   router.post("/registry/validate/product-authorization", async (req, res) => {
     try {
@@ -8444,5 +8456,5 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  return router;
+  return { router, v1AgentsRouter };
 }
