@@ -932,7 +932,7 @@ Example error response:
   "errors": [{
     "code": "UNSUPPORTED_FEATURE",
     "message": "Product 'prod_d979b543' does not support format 'display_728x90'",
-    "field": "packages[0].format_ids",
+    "field": "packages[0].format_ids[0]",
     "suggestion": "Use display_300x250_image, display_300x250_html, or display_300x250_generative formats"
   }]
 }
@@ -1043,7 +1043,7 @@ Invalid format example (v1 path):
   "errors": [{
     "code": "UNSUPPORTED_FEATURE",
     "message": "Product 'ctv_sports_premium' does not support format 'audio_standard_30s'",
-    "field": "packages[0].format_ids",
+    "field": "packages[0].format_ids[0]",
     "supported_formats": [
       { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_standard_30s" },
       { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_standard_15s" }
