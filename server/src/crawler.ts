@@ -647,7 +647,11 @@ export class CrawlerService {
                   validation.raw_data.properties || [], domain,
                   authorizedAgent.url, authorizedAgent.authorized_for, authorizedAgent.property_ids
                 );
-                await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+                // Skip fan-out when the source publisher delegates via
+                // ads.txt MANAGERDOMAIN — see step 1/2 guards for rationale.
+                if (validation.discovery_method !== 'ads_txt_managerdomain') {
+                  await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+                }
               }
               // Safe to reconcile here: the `processedDomains.has(domain)` guard above
               // ensures each domain is handled exactly once across steps 1, 2, and 2b.
