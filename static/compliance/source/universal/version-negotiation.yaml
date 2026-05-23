@@ -114,7 +114,7 @@ phases:
               reason: "Per docs/reference/versioning.mdx > Migration timeline, sellers SHOULD declare supported_versions at 3.1 and the compliance grader reports presence as advisory. At 3.2 the storyboard cut promotes this validation to required (manual flip — not gated on runner_capability_version because the 3.2 boundary is a protocol-spec cutover, not a runner-capability cutover). 4.0 promotes to MUST per the spec. Marking permanent_advisory here is a deliberate use of the field to defer promotion to the 3.2 storyboard PR rather than relying on the expires_after_version semver gate."
             description: "Seller advertises release-precision supported_versions (advisory at 3.1, required at 3.2)"
 
-          - check: envelope_field_present
+          - check: field_present
             path: "adcp_version"
             severity: advisory
             permanent_advisory:

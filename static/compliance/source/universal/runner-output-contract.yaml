@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.2.0"
+version: "2.3.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -44,6 +44,7 @@ authored_check_kinds:
   - field_present
   - field_absent
   - envelope_field_present
+  - envelope_field_absent
   - field_value
   - field_value_or_absent
   - status_code
@@ -141,7 +142,8 @@ validation_result:
     - check                   # Validation kind. For storyboard-authored checks,
                               # mirrors the storyboard's step.validations[].check:
                               # response_schema | field_present |
-                              # envelope_field_present | field_value |
+                              # field_absent | envelope_field_present |
+                              # envelope_field_absent | field_value |
                               # field_value_or_absent | status_code | http_status |
                               # http_status_in | error_code | on_401_require_header |
                               # resource_equals_agent_url | any_of | refs_resolve |
@@ -198,8 +200,11 @@ validation_result:
                               #   field_value_or_absent → value or allowed_values array
                               #                          from the storyboard validation
                               #   field_present        → the path that should resolve
+                              #   field_absent         → null (the field must not be present)
                               #   envelope_field_present → the path that should resolve
                               #                          in the protocol envelope
+                              #   envelope_field_absent → null (the envelope field must
+                              #                          not be present)
                               #   status_code          → expected status
                               #   error_code           → expected error code
                               #   any_of               → array of acceptable forms
@@ -251,9 +256,14 @@ validation_result:
                               #   field_present        → null (the field was missing)
                               #                          or the observed non-object
                               #                          value
+                              #   field_absent         → observed value at path (any JSON
+                              #                          type); emitted only on failure
                               #   envelope_field_present → null (the field was missing)
                               #                          or the observed non-object
                               #                          value (scoped to envelope)
+                              #   envelope_field_absent → observed value at path (any JSON
+                              #                          type); emitted only on failure
+	                              #                          and scoped to envelope
                               #   field_less_than      → the observed value at `path`
                               #                          (number when resolvable, null
                               #                          when the field was missing).
