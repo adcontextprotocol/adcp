@@ -1617,12 +1617,19 @@ export function createCertificationToolHandlers(
           if (scenarioTools.includes('get_brand_identity')) {
             lines.push('For get_brand_identity: pass a brand_id from the tool\'s "Available brands" list — not a domain name.');
           }
+          if (scenarioTools.includes('get_adcp_capabilities')) {
+            lines.push('For get_adcp_capabilities: call the `get_adcp_capabilities` tool directly — NOT via `call_adcp_task`.');
+          }
         }
       }
 
       if (mod.exercise_definitions) {
         const exercises = mod.exercise_definitions as certDb.ExerciseDefinition[];
         lines.push('', '## Exercises');
+        const exerciseTools = exercises.flatMap(ex => ex.sandbox_actions.map(a => a.tool));
+        if (exerciseTools.includes('get_adcp_capabilities')) {
+          lines.push('For get_adcp_capabilities: call the `get_adcp_capabilities` tool directly — NOT via `call_adcp_task`.');
+        }
         for (const ex of exercises) {
           lines.push(`### ${ex.title}`);
           lines.push(ex.description);
@@ -1755,6 +1762,9 @@ export function createCertificationToolHandlers(
           }
           if (scenarioTools.includes('get_brand_identity')) {
             lines.push('For get_brand_identity: pass a brand_id from the tool\'s "Available brands" list — not a domain name.');
+          }
+          if (scenarioTools.includes('get_adcp_capabilities')) {
+            lines.push('For get_adcp_capabilities: call the `get_adcp_capabilities` tool directly — NOT via `call_adcp_task`.');
           }
           lines.push('');
         }
@@ -2205,6 +2215,10 @@ export function createCertificationToolHandlers(
       // Lab exercises
       if (exercises?.length) {
         lines.push('## Lab exercises');
+        const labExerciseTools = exercises.flatMap(ex => ex.sandbox_actions.map(a => a.tool));
+        if (labExerciseTools.includes('get_adcp_capabilities')) {
+          lines.push('For get_adcp_capabilities: call the `get_adcp_capabilities` tool directly — NOT via `call_adcp_task`.');
+        }
         for (const ex of exercises) {
           lines.push(`### ${ex.title}`);
           lines.push(ex.description);
