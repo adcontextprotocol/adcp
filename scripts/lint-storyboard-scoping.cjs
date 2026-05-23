@@ -48,6 +48,7 @@ const TENANT_SCOPED_TASKS = new Set([
   'get_products',
   'get_signals',
   'activate_signal',
+  'sync_audiences',
   'provide_performance_feedback',
   // Governance plans
   'sync_plans',

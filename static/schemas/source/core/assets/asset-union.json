@@ -19,7 +19,10 @@
     { "$ref": "/schemas/core/assets/markdown-asset.json" },
     { "$ref": "/schemas/core/assets/brief-asset.json" },
     { "$ref": "/schemas/core/assets/catalog-asset.json" },
-    { "$ref": "/schemas/core/assets/card-asset.json" }
+    { "$ref": "/schemas/core/assets/card-asset.json" },
+    { "$ref": "/schemas/core/assets/pixel-tracker-asset.json" },
+    { "$ref": "/schemas/core/assets/vast-tracker-asset.json" },
+    { "$ref": "/schemas/core/assets/daast-tracker-asset.json" }
   ],
   "discriminator": {
     "propertyName": "asset_type"
