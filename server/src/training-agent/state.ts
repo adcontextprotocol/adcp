@@ -234,6 +234,12 @@ export function getComplianceCreative(id: string): CreativeState | undefined {
  * which is intentional — the teaching goal is delivery-metric interpretation,
  * not catalog browsing.
  *
+ * AUTHORING NOTE: storyboard and lesson-plan authors MUST NOT reference the
+ * fixture IDs (seed_mb_display_q2, seed_mb_video_q1) in criterion text or
+ * criterion IDs — only in exercise scaffolds. Embedding a fixture ID in a
+ * criterion string means that renaming a fixture would silently break
+ * recertification triggers without surfacing as a criterion-ID drift.
+ *
  * Two buys cover the two primary B3 lesson states:
  *  - seed_mb_display_q2: active, partial delivery (default status filter)
  *  - seed_mb_video_q1: completed, 100% delivery (requires status_filter: ['completed'])
