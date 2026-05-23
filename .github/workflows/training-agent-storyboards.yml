@@ -114,6 +114,8 @@ jobs:
             min_passing_steps: 80
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -144,7 +146,9 @@ jobs:
           RELEASE_BASE_REF: 3.0.x
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin "${RELEASE_BASE_REF}:refs/remotes/origin/${RELEASE_BASE_REF}"
+          if ! git show-ref --verify --quiet "refs/remotes/origin/${RELEASE_BASE_REF}"; then
+            git fetch --no-tags --depth=1 origin "${RELEASE_BASE_REF}:refs/remotes/origin/${RELEASE_BASE_REF}"
+          fi
           VERSION=$(node - <<'NODE'
           const { execFileSync } = require('node:child_process');
           const fs = require('node:fs');
