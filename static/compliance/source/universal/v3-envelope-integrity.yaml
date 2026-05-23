@@ -15,15 +15,12 @@ narrative: |
   docs/building/implementation/task-lifecycle.mdx.
 
   This storyboard documents the machine-check assertion and asserts the canonical v3
-  `status` field is present using the `envelope_field_present` check type (added in
-  adcp-client#1045), which walks the protocol envelope rather than the inner response
-  schema. The explicit envelope-root field-absence checks
-  (asserting task_status and response_status are absent) require `field_absent`
-  runner support in @adcp/client — those checks are marked TODO below and are not
-  executed until the runner ships that check type. The schema-level constraint
-  (protocol-envelope.json's top-level `not: { anyOf: [{ required: [task_status] },
-  { required: [response_status] }] }`) is the immediately effective enforcement
-  path for any schema-aware validator operating on the full protocol envelope.
+  `status` field is present using the `envelope_field_present` check type, which
+  walks the protocol envelope rather than the inner response schema. The explicit
+  envelope-root field-absence checks assert that task_status and response_status are
+  absent using `envelope_field_absent`; protocol-envelope.json carries the matching
+  top-level `not: { anyOf: [{ required: [task_status] }, { required:
+  [response_status] }] }` schema constraint.
 
   Scope: envelope top-level only. Domain data inside `payload` (e.g., a reporting
   row carrying a field named task_status) is outside this prohibition and is not
@@ -48,9 +45,8 @@ phases:
     title: "v3 envelope must not carry legacy v2 status field names"
     narrative: |
       Call get_adcp_capabilities and verify the response envelope carries the
-      canonical v3 status field. The complementary absence assertions for
-      task_status and response_status require field_absent runner support
-      (see TODO comments on the validation steps below).
+      canonical v3 status field and omits the legacy v2 field names
+      task_status and response_status.
 
     steps:
       - id: no_legacy_status_fields
@@ -106,16 +102,12 @@ phases:
           - check: envelope_field_present
             path: "status"
             description: "Envelope carries the canonical v3 status field"
-          # TODO: restore these as field_absent checks once @adcp/client runner ships
-          # the field_absent check type. Until then, the schema-level not: {} constraint
-          # in protocol-envelope.json is the enforcement path for schema-aware validators.
-          #
-          # - check: field_absent
-          #   path: "task_status"
-          #   description: "Envelope root MUST NOT carry task_status (v2 legacy; no v3 semantics)"
-          # - check: field_absent
-          #   path: "response_status"
-          #   description: "Envelope root MUST NOT carry response_status (v2 legacy; no v3 semantics)"
+          - check: envelope_field_absent
+            path: "task_status"
+            description: "Envelope root MUST NOT carry task_status (v2 legacy; no v3 semantics)"
+          - check: envelope_field_absent
+            path: "response_status"
+            description: "Envelope root MUST NOT carry response_status (v2 legacy; no v3 semantics)"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
