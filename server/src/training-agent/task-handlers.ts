@@ -183,6 +183,7 @@ import {
   getSession, sessionKeyFromArgs,
   runWithSessionContext, flushDirtySessions,
   getComplianceCreatives, getComplianceCreative,
+  getComplianceMediaBuys, getComplianceMediaBuy,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
 } from './state.js';
 import { getAgentUrl } from './config.js';
@@ -2307,6 +2308,12 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
   const filterIds = req.media_buy_ids;
 
   let buys = Array.from(session.mediaBuys.values());
+  if (buys.length === 0) {
+    // Empty session: provide compliance fixtures so demo.example.com sessions
+    // show realistic media buy data without the learner first creating a buy.
+    // Sessions that have created their own buys return only those — no mixing.
+    buys = getComplianceMediaBuys();
+  }
   if (filterIds?.length) {
     buys = buys.filter(b => filterIds.includes(b.mediaBuyId));
     // Media buy lookup is scoped to the caller's session (brand/account-derived).
@@ -2445,7 +2452,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
   const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
-  const mb = session.mediaBuys.get(mediaBuyId);
+  const mb = session.mediaBuys.get(mediaBuyId) ?? getComplianceMediaBuy(mediaBuyId);
 
   if (!mb) {
     return {

@@ -15,7 +15,7 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { SessionState, AccountRef, BrandRef, CreativeState } from './types.js';
+import type { SessionState, AccountRef, BrandRef, CreativeState, MediaBuyState, PackageState } from './types.js';
 import { cleanupExpiredTasks } from '@adcp/sdk';
 import {
   InMemoryStateStore,
@@ -220,6 +220,105 @@ export function getComplianceCreatives(): CreativeState[] {
 
 export function getComplianceCreative(id: string): CreativeState | undefined {
   return getComplianceCreatives().find(c => c.creativeId === id);
+}
+
+/**
+ * Canonical compliance media-buy fixtures for the open sandbox mode.
+ *
+ * Read-through fallback returned by handleGetMediaBuys and
+ * handleGetMediaBuyDelivery when the session has no caller-created buys.
+ * Sessions that already have buys return only those — no mixing.
+ *
+ * Product IDs are training-agent-internal labels that don't resolve against
+ * the live catalog; derivePricing falls back to the default $10 CPM rate,
+ * which is intentional — the teaching goal is delivery-metric interpretation,
+ * not catalog browsing.
+ *
+ * Two buys cover the two primary B3 lesson states:
+ *  - seed_mb_display_q2: active, partial delivery (default status filter)
+ *  - seed_mb_video_q1: completed, 100% delivery (requires status_filter: ['completed'])
+ *
+ * Dates are recomputed on each call so elapsed fractions remain realistic
+ * across server restarts.
+ */
+export function getComplianceMediaBuys(): MediaBuyState[] {
+  const now = Date.now();
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const daysAgo = (n: number) => iso(now - n * 864e5);
+  const daysOut = (n: number) => iso(now + n * 864e5);
+
+  const displayPackage: PackageState = {
+    packageId: 'seed_pkg_display_q2_a',
+    productId: 'seed_product_display',
+    pricingOptionId: 'seed_po_display_cpm',
+    budget: 50000,
+    paused: false,
+    startTime: daysAgo(14),
+    endTime: daysOut(44),
+    creativeAssignments: ['campaign_hero_video'],
+  };
+
+  const socialPackage: PackageState = {
+    packageId: 'seed_pkg_display_q2_b',
+    productId: 'seed_product_social',
+    pricingOptionId: 'seed_po_social_cpm',
+    budget: 25000,
+    paused: false,
+    startTime: daysAgo(14),
+    endTime: daysOut(44),
+    creativeAssignments: ['campaign_hero_video'],
+  };
+
+  const videoPackage: PackageState = {
+    packageId: 'seed_pkg_video_q1_a',
+    productId: 'seed_product_video',
+    pricingOptionId: 'seed_po_video_cpm',
+    budget: 75000,
+    paused: false,
+    startTime: daysAgo(90),
+    endTime: daysAgo(30),
+    creativeAssignments: ['campaign_hero_video'],
+    optimizationGoals: [{ kind: 'metric', metric: 'reach', reach_unit: 'devices' }],
+  };
+
+  const activeBrand: AccountRef = { account_id: 'demo', brand: { domain: 'demo.example.com' } };
+
+  return [
+    {
+      mediaBuyId: 'seed_mb_display_q2',
+      accountRef: activeBrand,
+      brandRef: { domain: 'demo.example.com' },
+      status: 'active',
+      currency: 'USD',
+      packages: [displayPackage, socialPackage],
+      startTime: daysAgo(14),
+      endTime: daysOut(44),
+      revision: 1,
+      confirmedAt: daysAgo(15),
+      createdAt: daysAgo(15),
+      updatedAt: daysAgo(14),
+      history: [],
+    },
+    {
+      mediaBuyId: 'seed_mb_video_q1',
+      accountRef: activeBrand,
+      brandRef: { domain: 'demo.example.com' },
+      status: 'completed',
+      currency: 'USD',
+      packages: [videoPackage],
+      startTime: daysAgo(90),
+      endTime: daysAgo(30),
+      revision: 2,
+      confirmedAt: daysAgo(91),
+      createdAt: daysAgo(91),
+      updatedAt: daysAgo(30),
+      history: [],
+    },
+  ];
+}
+
+export function getComplianceMediaBuy(id: string): MediaBuyState | undefined {
+  return getComplianceMediaBuys().find(mb => mb.mediaBuyId === id);
 }
 
 /**
