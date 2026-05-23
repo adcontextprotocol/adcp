@@ -154,7 +154,7 @@
     },
     {
       "title": "SimulationSuccess",
-      "description": "A simulate_delivery or simulate_budget_spend scenario succeeded. For delivery: simulated contains impressions/clicks/reported_spend/conversions and cumulative contains running totals. For budget: simulated contains spend_percentage/computed_spend/budget.",
+      "description": "A simulate_delivery or simulate_budget_spend scenario succeeded. For delivery: simulated contains the metrics injected by this call (impressions/clicks/reported_spend/conversions plus optional reach/frequency/reach_window/viewability values) and cumulative contains running totals or latest non-additive metric state. For budget: simulated contains spend_percentage/computed_spend/budget.",
       "type": "object",
       "properties": {
         "success": {

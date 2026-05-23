@@ -88,6 +88,42 @@ export function getBudgetSimulation(session: SessionState, entityId: string): Co
   return session.complyExtensions.budgetSimulations.get(entityId);
 }
 
+function getOrCreateDeliveryAccumulator(session: SessionState, mediaBuyId: string, currency: string): ComplyDeliveryAccumulator {
+  const ext = session.complyExtensions;
+  let cumulative = ext.deliverySimulations.get(mediaBuyId);
+  if (!cumulative) {
+    enforceMapCap(ext.deliverySimulations, mediaBuyId, 'delivery simulations');
+    cumulative = {
+      impressions: 0,
+      clicks: 0,
+      reportedSpend: { amount: 0, currency },
+      conversions: 0,
+    };
+    ext.deliverySimulations.set(mediaBuyId, cumulative);
+  }
+  return cumulative;
+}
+
+function applyExtendedDeliveryParams(cumulative: ComplyDeliveryAccumulator, params: Record<string, unknown>) {
+  if (typeof params.reach === 'number') cumulative.reach = params.reach;
+  if (typeof params.frequency === 'number') cumulative.frequency = params.frequency;
+  if (params.reach_window && typeof params.reach_window === 'object' && !Array.isArray(params.reach_window)) {
+    cumulative.reachWindow = params.reach_window as ComplyDeliveryAccumulator['reachWindow'];
+  }
+  if (params.viewability && typeof params.viewability === 'object' && !Array.isArray(params.viewability)) {
+    cumulative.viewability = params.viewability as ComplyDeliveryAccumulator['viewability'];
+  }
+}
+
+function extendedDeliverySnapshot(cumulative: ComplyDeliveryAccumulator): Record<string, unknown> {
+  return {
+    ...(cumulative.reach !== undefined ? { reach: cumulative.reach } : {}),
+    ...(cumulative.frequency !== undefined ? { frequency: cumulative.frequency } : {}),
+    ...(cumulative.reachWindow ? { reach_window: cumulative.reachWindow } : {}),
+    ...(cumulative.viewability ? { viewability: cumulative.viewability } : {}),
+  };
+}
+
 /** Get account status set by comply test controller. */
 export function getAccountStatus(session: SessionState, accountId: string): string | undefined {
   return session.complyExtensions.accountStatuses.get(accountId);
@@ -295,19 +331,9 @@ function createStore(session: SessionState): TestControllerStore {
       const clicks = params.clicks || 0;
       const conversions = params.conversions || 0;
       const reportedSpend = params.reported_spend;
+      const typedParams = params as Record<string, unknown>;
 
-      const ext = session.complyExtensions;
-      let cumulative = ext.deliverySimulations.get(mediaBuyId);
-      if (!cumulative) {
-        enforceMapCap(ext.deliverySimulations, mediaBuyId, 'delivery simulations');
-        cumulative = {
-          impressions: 0,
-          clicks: 0,
-          reportedSpend: { amount: 0, currency: reportedSpend?.currency || mb.currency },
-          conversions: 0,
-        };
-        ext.deliverySimulations.set(mediaBuyId, cumulative);
-      }
+      const cumulative = getOrCreateDeliveryAccumulator(session, mediaBuyId, reportedSpend?.currency || mb.currency);
 
       cumulative.impressions += impressions;
       cumulative.clicks += clicks;
@@ -316,12 +342,17 @@ function createStore(session: SessionState): TestControllerStore {
         cumulative.reportedSpend.amount += reportedSpend.amount;
         cumulative.reportedSpend.currency = reportedSpend.currency;
       }
+      applyExtendedDeliveryParams(cumulative, typedParams);
 
       const simulated: Record<string, unknown> = {};
       if (impressions) simulated.impressions = impressions;
       if (clicks) simulated.clicks = clicks;
       if (reportedSpend) simulated.reported_spend = reportedSpend;
       if (conversions) simulated.conversions = conversions;
+      if (typedParams.reach !== undefined) simulated.reach = typedParams.reach;
+      if (typedParams.frequency !== undefined) simulated.frequency = typedParams.frequency;
+      if (typedParams.reach_window !== undefined) simulated.reach_window = typedParams.reach_window;
+      if (typedParams.viewability !== undefined) simulated.viewability = typedParams.viewability;
 
       return {
         success: true,
@@ -331,6 +362,7 @@ function createStore(session: SessionState): TestControllerStore {
           clicks: cumulative.clicks,
           reported_spend: cumulative.reportedSpend,
           conversions: cumulative.conversions,
+          ...extendedDeliverySnapshot(cumulative),
         },
         message: `Delivery simulated for ${mediaBuyId}: ${impressions} impressions, ${clicks} clicks${reportedSpend ? `, $${reportedSpend.amount.toFixed(2)} spend` : ''}`,
       };
@@ -658,30 +690,56 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     return { success: true, message: `Creative format "${formatId}" seeded — list_creative_formats will use the seeded catalog process-wide` };
   }
 
-  // Pre-capture vendor_metric_values from simulate_delivery before the SDK dispatcher
-  // strips them. The SDK's TestControllerStore.simulateDelivery interface only accepts
-  // standard scalar params; vendor_metric_values passthrough is a future adcp/client
-  // addition. Until then, read from rawArgs here and store in the accumulator directly
-  // so task-handlers.ts can emit them in get_media_buy_delivery by_package entries.
+  // Pre-capture extended simulate_delivery fields before the SDK dispatcher strips
+  // unknown params. The SDK's TestControllerStore.simulateDelivery interface can lag
+  // this repo's controller schema, so rawArgs remains the compatibility path for
+  // new delivery metrics until the SDK accepts them natively.
   if (scenario === 'simulate_delivery') {
     const params = (rawArgs.params ?? {}) as Record<string, unknown>;
     const mediaBuyId = params.media_buy_id as string | undefined;
     const vendorMetricValues = params.vendor_metric_values;
     const mb = mediaBuyId ? findMediaBuy(session, mediaBuyId) : undefined;
-    if (mb && Array.isArray(vendorMetricValues) && vendorMetricValues.length > 0) {
-      const ext = session.complyExtensions;
-      let cumulative = ext.deliverySimulations.get(mediaBuyId!);
-      if (!cumulative) {
-        enforceMapCap(ext.deliverySimulations, mediaBuyId!, 'delivery simulations');
-        cumulative = { impressions: 0, clicks: 0, reportedSpend: { amount: 0, currency: mb.currency }, conversions: 0 };
-        ext.deliverySimulations.set(mediaBuyId!, cumulative);
+    if (mb) {
+      const cumulative = getOrCreateDeliveryAccumulator(session, mediaBuyId!, mb.currency);
+      applyExtendedDeliveryParams(cumulative, params);
+      if (Array.isArray(vendorMetricValues) && vendorMetricValues.length > 0) {
+        cumulative.vendorMetricValues = vendorMetricValues;
       }
-      cumulative.vendorMetricValues = vendorMetricValues;
     }
   }
 
   const store = createStore(session);
   const sdkResponse = await handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
+
+  if (
+    scenario === 'simulate_delivery'
+    && sdkResponse
+    && typeof sdkResponse === 'object'
+    && (sdkResponse as { success?: boolean }).success === true
+  ) {
+    const params = (rawArgs.params ?? {}) as Record<string, unknown>;
+    const mediaBuyId = params.media_buy_id as string | undefined;
+    const cumulative = mediaBuyId ? getDeliverySimulation(session, mediaBuyId) : undefined;
+    const simulatedExtras: Record<string, unknown> = {};
+    if (params.reach !== undefined) simulatedExtras.reach = params.reach;
+    if (params.frequency !== undefined) simulatedExtras.frequency = params.frequency;
+    if (params.reach_window !== undefined) simulatedExtras.reach_window = params.reach_window;
+    if (params.viewability !== undefined) simulatedExtras.viewability = params.viewability;
+    if (Object.keys(simulatedExtras).length > 0 || cumulative) {
+      const response = sdkResponse as unknown as Record<string, unknown>;
+      return {
+        ...response,
+        simulated: {
+          ...((response.simulated && typeof response.simulated === 'object') ? response.simulated as Record<string, unknown> : {}),
+          ...simulatedExtras,
+        },
+        cumulative: {
+          ...((response.cumulative && typeof response.cumulative === 'object') ? response.cumulative as Record<string, unknown> : {}),
+          ...(cumulative ? extendedDeliverySnapshot(cumulative) : {}),
+        },
+      };
+    }
+  }
 
   // Augment list_scenarios with our local scenarios so storyboards detect support.
   // The SDK answers from store-method presence, which doesn't see the local handlers.
