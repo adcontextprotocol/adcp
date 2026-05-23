@@ -661,7 +661,7 @@ function buildBrandJsonEntry(
 
 export function handleGetBrandIdentity(
   args: ToolArgs,
-  _ctx: TrainingContext,
+  ctx: TrainingContext,
 ) {
   const req = args as { brand_id: string; fields?: string[]; authorized?: boolean };
   const brandId = req.brand_id;
@@ -670,7 +670,10 @@ export function handleGetBrandIdentity(
 
   const talent = BRAND_MAP.get(brandId);
   if (!talent) {
-    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
+    const code = ctx.storyboardCompat?.version === '3.0'
+      ? 'BRAND_NOT_FOUND'
+      : 'REFERENCE_NOT_FOUND';
+    return { errors: [{ code, message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
   }
 
   const requested = fields ?? [...ALL_FIELDS];

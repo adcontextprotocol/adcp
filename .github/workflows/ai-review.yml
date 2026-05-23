@@ -40,11 +40,10 @@ on:
 
 # Bot login that posts Argus reviews. Verifier pins on this to avoid
 # treating reviews from other bots (changesets-release[bot] etc.) as
-# Argus's. The App's user login on GitHub omits the `[bot]` suffix
-# in `pulls/<n>/reviews` response (`user.login: "aao-release-bot"`,
-# `user.type: "Bot"`).
+# Argus's. The App's user login in `pulls/<n>/reviews` includes the
+# `[bot]` suffix (`user.login: "aao-release-bot[bot]"`, `user.type: "Bot"`).
 env:
-  ARGUS_BOT_LOGIN: aao-release-bot
+  ARGUS_BOT_LOGIN: aao-release-bot[bot]
 
 jobs:
   code_review:
@@ -124,7 +123,7 @@ jobs:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const files = (process.env.MODIFIED_FILES || '').trim().split('\n').map(f => `\`${f}\``).join(', ');
-            github.rest.pulls.createReview({
+            await github.rest.pulls.createReview({
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.issue.number,
@@ -304,9 +303,10 @@ jobs:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const runUrl = process.env.RUN_URL;
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
+            await github.rest.pulls.createReview({
+              pull_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
+              event: 'COMMENT',
               body: `⚠️ **Argus review could not complete**\n\nThe automated review encountered an issue (possibly reached max turns, timed out, or failed to post the final \`gh pr review\`). A human reviewer should take this PR.\n\n[View workflow run](${runUrl})\n\n<sub>This is an automated message from the Argus AI review workflow.</sub>`
             })

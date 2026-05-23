@@ -47,6 +47,11 @@ const packageJson = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8')
 );
 const packageVersion = packageJson.version;
+const packageLock = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '../package-lock.json'), 'utf8')
+);
+const lockfileVersion = packageLock.version;
+const lockfileRootVersion = packageLock.packages?.['']?.version;
 
 const registryPath = path.join(__dirname, '../static/schemas/source/index.json');
 const schemaRegistry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
@@ -55,6 +60,8 @@ const legacyAdcpVersion = schemaRegistry.adcp_version;
 
 console.log('\n🔍 Verifying version synchronization...\n');
 console.log(`  package.json version:               ${packageVersion}`);
+console.log(`  package-lock.json version:          ${lockfileVersion}`);
+console.log(`  package-lock root package version:  ${lockfileRootVersion}`);
 console.log(`  schema registry published_version:  ${publishedVersion ?? '(unset)'}`);
 console.log(`  schema registry adcp_version (legacy alias): ${legacyAdcpVersion}`);
 
@@ -76,6 +83,15 @@ function semverCompare(a, b) {
 
 const errors = [];
 const warnings = [];
+
+if (lockfileVersion !== packageVersion || lockfileRootVersion !== packageVersion) {
+  errors.push(
+    `package-lock.json is out of sync with package.json. Expected both ` +
+    `package-lock.json version fields to equal ${packageVersion}, got top-level ` +
+    `${lockfileVersion ?? '(unset)'} and root package ${lockfileRootVersion ?? '(unset)'}. ` +
+    `Run npm install --package-lock-only --ignore-scripts.`
+  );
+}
 
 // Rule 1: adcp_version legacy alias must not fall behind published_version.
 // The alias may legitimately lead (forward-merge bumps it first) but must

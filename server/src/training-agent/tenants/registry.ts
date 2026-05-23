@@ -45,6 +45,7 @@ import { buildCreativeTenantConfig } from './creative.js';
 import { buildCreativeBuilderTenantConfig } from './creative-builder.js';
 import { buildBrandTenantConfig } from './brand.js';
 import { createLogger } from '../../logger.js';
+import type { TrainingContext } from '../types.js';
 
 const logger = createLogger('training-agent-tenants');
 
@@ -241,7 +242,7 @@ export interface RegistryHolder {
   get(): Promise<TenantRegistry>;
 }
 
-export function createRegistryHolder(): RegistryHolder {
+export function createRegistryHolder(options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): RegistryHolder {
   let registry: TenantRegistry | null = null;
   let pendingInit: Promise<TenantRegistry> | null = null;
 
@@ -261,11 +262,11 @@ export function createRegistryHolder(): RegistryHolder {
         const tCreate = Date.now();
         const configs = [
           { id: 'signals', cfg: buildSignalsTenantConfig(hostBase) },
-          { id: 'sales', cfg: buildSalesTenantConfig(hostBase) },
+          { id: 'sales', cfg: buildSalesTenantConfig(hostBase, options) },
           { id: 'governance', cfg: buildGovernanceTenantConfig(hostBase) },
           { id: 'creative', cfg: buildCreativeTenantConfig(hostBase) },
           { id: 'creative-builder', cfg: buildCreativeBuilderTenantConfig(hostBase) },
-          { id: 'brand', cfg: buildBrandTenantConfig(hostBase) },
+          { id: 'brand', cfg: buildBrandTenantConfig(hostBase, options) },
         ] as const;
         const tConfigs = Date.now();
         // awaitFirstValidation:true blocks until the no-op validator

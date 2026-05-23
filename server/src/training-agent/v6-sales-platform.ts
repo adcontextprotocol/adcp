@@ -51,10 +51,14 @@ interface TrainingSalesConfig {
 }
 
 /** Build a TrainingContext from a v6 RequestContext.Account.authInfo. */
-function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undefined): TrainingContext {
+function buildTrainingCtx(
+  account: { authInfo?: { principal?: string } } | undefined,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): TrainingContext {
   return {
     mode: 'open',
     principal: account?.authInfo?.principal ?? 'anonymous',
+    ...(storyboardCompat && { storyboardCompat }),
   };
 }
 
@@ -151,6 +155,8 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
 export class TrainingSalesPlatform
   implements DecisioningPlatform<TrainingSalesConfig, TrainingSalesMeta>
 {
+  constructor(private readonly storyboardCompat?: TrainingContext['storyboardCompat']) {}
+
   capabilities = {
     specialisms: ['sales-non-guaranteed', 'sales-guaranteed'] as const,
     creative_agents: [],
@@ -198,12 +204,12 @@ export class TrainingSalesPlatform
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sales: SalesPlatform<TrainingSalesMeta> = {
     getProducts: async (req, ctx) => {
-      const result = await handleGetProducts(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleGetProducts(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
 
     createMediaBuy: async (req, ctx) => {
-      const v5Result = await handleCreateMediaBuy(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const v5Result = await handleCreateMediaBuy(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       // Detect the submitted-arm envelope the v5 handler returns when the
       // `force_create_media_buy_arm` test-controller directive is set.
       // The framework's projector rejects hand-rolled
@@ -245,7 +251,7 @@ export class TrainingSalesPlatform
       const args = brandDomain
         ? { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>) };
-      const v5Result = await handleUpdateMediaBuy(args as ToolArgs, buildTrainingCtx(ctx.account));
+      const v5Result = await handleUpdateMediaBuy(args as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(v5Result);
     },
 
@@ -264,7 +270,7 @@ export class TrainingSalesPlatform
         ...fromInput,
         ...(brandDomain && { brand: { domain: brandDomain } }),
       };
-      const v5Result = await handleSyncCreatives(args as unknown as ToolArgs, buildTrainingCtx(ctx.account));
+      const v5Result = await handleSyncCreatives(args as unknown as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       // v5 returns wire-wrapped `{ creatives: [...] }`; v6 SalesPlatform
       // wants rows directly — framework re-wraps.
       const wrapped = translateV5Result<{ creatives?: unknown[] }>(v5Result);
@@ -276,7 +282,7 @@ export class TrainingSalesPlatform
       const args = brandDomain
         ? { ...(filter as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : filter;
-      const result = await handleGetMediaBuyDelivery(args as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleGetMediaBuyDelivery(args as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
 
@@ -286,12 +292,12 @@ export class TrainingSalesPlatform
       const args = brandDomain
         ? { ...(req as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : req;
-      const result = await handleGetMediaBuys(args as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleGetMediaBuys(args as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
 
     listCreativeFormats: async (req, ctx) => {
-      const result = await handleListCreativeFormats(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleListCreativeFormats(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
 
@@ -300,12 +306,12 @@ export class TrainingSalesPlatform
       const args = brandDomain
         ? { ...(req as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : req;
-      const result = await handleListCreatives(args as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleListCreatives(args as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
 
     providePerformanceFeedback: async (req, ctx) => {
-      const result = await handleProvidePerformanceFeedback(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleProvidePerformanceFeedback(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
 
@@ -319,7 +325,7 @@ export class TrainingSalesPlatform
       const args = brandDomain
         ? { ...(req as unknown as Record<string, unknown>), account: { brand: { domain: brandDomain } }, brand: { domain: brandDomain } }
         : req;
-      const result = await handleSyncEventSources(args as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleSyncEventSources(args as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
 
@@ -328,7 +334,7 @@ export class TrainingSalesPlatform
       const args = brandDomain
         ? { ...(req as unknown as Record<string, unknown>), account: { brand: { domain: brandDomain } }, brand: { domain: brandDomain } }
         : req;
-      const result = await handleLogEvent(args as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleLogEvent(args as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
   };
@@ -350,7 +356,7 @@ export class TrainingSalesPlatform
         idempotency_key: `framework-projected-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
         ...(brandDomain && { account: { brand: { domain: brandDomain } }, brand: { domain: brandDomain } }),
       };
-      const result = await handleSyncAudiences(args as unknown as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleSyncAudiences(args as unknown as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       const wrapped = translateV5Result<{ audiences?: SyncAudiencesRow[] }>(result);
       return (wrapped.audiences ?? []) as SyncAudiencesRow[];
     },

@@ -165,6 +165,17 @@ function proposalLifecycle(proposal: Proposal): ProposalLifecycle {
   return proposal as unknown as ProposalLifecycle;
 }
 
+const THREE_ZERO_LEGACY_PROPOSAL_ID = 'balanced_reach_q2';
+const THREE_ZERO_LEGACY_PROPOSAL_TARGET_ID = 'sparq_social_amplification';
+
+function isThreeZeroStoryboardCompat(ctx: TrainingContext): boolean {
+  return ctx.storyboardCompat?.version === '3.0';
+}
+
+function resolveThreeZeroProposalAlias(proposals: Proposal[]): Proposal | undefined {
+  return proposals.find(p => p.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_TARGET_ID);
+}
+
 import { buildCatalog, buildShowsForProducts, buildProposals } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
@@ -1517,7 +1528,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
         }
       } else if (op.scope === 'proposal') {
         const action = op.action ?? 'include';
-        const proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
+        let proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
+        if (!proposal && isThreeZeroStoryboardCompat(ctx) && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
+          proposal = resolveThreeZeroProposalAlias([...previousProposals, ...getProposals()]);
+        }
         if (!proposal) {
           refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'unable', notes: `Proposal not found: ${op.proposal_id}` });
           continue;
@@ -1963,8 +1977,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // Proposal-based creation: expand proposal allocations into packages
   if (req.proposal_id && !req.packages?.length) {
     // Check session proposals first (may have finalized versions), then global catalog
-    const proposal = session.lastGetProductsContext?.proposals?.find(p => p.proposal_id === req.proposal_id)
+    let proposal = session.lastGetProductsContext?.proposals?.find(p => p.proposal_id === req.proposal_id)
       || getProposals().find(p => p.proposal_id === req.proposal_id);
+    if (!proposal && isThreeZeroStoryboardCompat(ctx) && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
+      proposal = resolveThreeZeroProposalAlias([...(session.lastGetProductsContext?.proposals ?? []), ...getProposals()]);
+    }
     if (!proposal) {
       return {
         errors: [{ code: 'INVALID_REQUEST', message: `Proposal not found: ${req.proposal_id}` }] as TaskError[],
@@ -1973,7 +1990,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
     // Enforce proposal lifecycle: draft proposals cannot be purchased directly
     const proposalStatus = proposalLifecycle(proposal).proposal_status;
-    if (proposalStatus === 'draft') {
+    if (proposalStatus === 'draft' && !(isThreeZeroStoryboardCompat(ctx) && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID)) {
       return {
         errors: [{ code: 'PROPOSAL_NOT_COMMITTED', message: `Proposal "${req.proposal_id}" has draft status — finalize it first using get_products with buying_mode "refine" and action "finalize".` }] as TaskError[],
       };
@@ -1989,7 +2006,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     // Enforce IO acceptance when required
     const insertionOrder = proposalLifecycle(proposal).insertion_order;
     const ioAcceptance = (req as unknown as Record<string, unknown>).io_acceptance as { io_id: string; accepted_at: string; signatory: string } | undefined;
-    if (insertionOrder?.requires_signature && !ioAcceptance) {
+    if (
+      insertionOrder?.requires_signature
+      && !ioAcceptance
+      && !(isThreeZeroStoryboardCompat(ctx) && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID)
+    ) {
       return {
         errors: [{ code: 'IO_REQUIRED', message: `Proposal "${req.proposal_id}" requires a signed insertion order. Include io_acceptance with io_id "${insertionOrder.io_id}" on create_media_buy.` }] as TaskError[],
       };
@@ -2257,6 +2278,8 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // against the per-task response schema.
   return {
     media_buy_id: mediaBuyId,
+    ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
+    status,
     media_buy_status: status,
     revision: mediaBuy.revision,
     confirmed_at: mediaBuy.confirmedAt,
@@ -2973,6 +2996,8 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     // body `status: MediaBuyStatus` removed in 3.2 (#4906).
     return {
       media_buy_id: mb.mediaBuyId,
+      ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
+      status,
       media_buy_status: status,
       revision: mb.revision,
       valid_actions: validActionsForStatus(status),
@@ -3170,6 +3195,8 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // body `status: MediaBuyStatus` removed in 3.2 (#4906).
   const result = {
     media_buy_id: mb.mediaBuyId,
+    ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
+    status,
     media_buy_status: status,
     revision: mb.revision,
     valid_actions: validActionsForStatus(status),

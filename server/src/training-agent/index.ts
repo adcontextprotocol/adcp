@@ -330,7 +330,7 @@ const TENANT_BRAND_AGENT_DESCRIPTION: Record<typeof TENANT_IDS[number], string> 
   brand: 'Training-agent brand tenant — brand rights and discovery',
 };
 
-export function createTrainingAgentRouter(): Router {
+export function createTrainingAgentRouter(options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): Router {
   const router = Router();
 
   startSessionCleanup();
@@ -367,6 +367,7 @@ export function createTrainingAgentRouter(): Router {
   mountTenantRoutes(router, TENANT_IDS, {
     rateLimit: mcpRateLimiter,
     requireAuth: requireTokenDefault,
+    storyboardCompat: options.storyboardCompat,
   });
 
   // Legacy single-URL `/mcp` route — preserved as a back-compat alias for
@@ -389,7 +390,7 @@ export function createTrainingAgentRouter(): Router {
     let server: ReturnType<typeof createTrainingAgentServer> | null = null;
     try {
       const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
-      const ctx: TrainingContext = { mode: 'open', principal };
+      const ctx: TrainingContext = { mode: 'open', principal, ...(options.storyboardCompat && { storyboardCompat: options.storyboardCompat }) };
       server = createTrainingAgentServer(ctx);
 
       // Streamable HTTP transport requires both `application/json` and
@@ -470,7 +471,13 @@ export function createTrainingAgentRouter(): Router {
       let server: ReturnType<typeof createTrainingAgentServer> | null = null;
       try {
         const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
-        const ctx: TrainingContext = { mode: 'open', principal, strict: true, ...(digestMode !== undefined && { digestMode }) };
+        const ctx: TrainingContext = {
+          mode: 'open',
+          principal,
+          strict: true,
+          ...(digestMode !== undefined && { digestMode }),
+          ...(options.storyboardCompat && { storyboardCompat: options.storyboardCompat }),
+        };
         server = createTrainingAgentServer(ctx);
 
         const acceptHeader = req.headers.accept;
