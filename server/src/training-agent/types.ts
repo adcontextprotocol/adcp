@@ -97,6 +97,14 @@ export interface PublisherProfile {
     vendor: { domain: string; brand_id?: string };
     metric_id: string;
   }>;
+  /** Optional: vendor-defined metrics this publisher can optimize against */
+  vendorMetricOptimization?: {
+    supported_metrics: Array<{
+      vendor: { domain: string; brand_id?: string };
+      metric_id: string;
+      supported_targets?: Array<'cost_per' | 'threshold_rate'>;
+    }>;
+  };
   /** Optional: shows this publisher carries */
   shows?: ShowDefinition[];
   /** Hero image URL for product and proposal cards */

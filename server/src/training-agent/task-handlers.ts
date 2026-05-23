@@ -156,6 +156,27 @@ function validateTargeting(t: unknown, pathLabel: string): { targeting?: Package
   };
 }
 
+interface VendorMetricRefView {
+  vendor?: { domain?: unknown; brand_id?: unknown };
+  metric_id?: unknown;
+  supported_targets?: unknown;
+  scope?: unknown;
+}
+
+interface VendorMetricOptimizationView {
+  supported_metrics?: VendorMetricRefView[];
+}
+
+function vendorMetricKey(entry: VendorMetricRefView | undefined): string | null {
+  const domain = entry?.vendor?.domain;
+  const metricId = entry?.metric_id;
+  if (typeof domain !== 'string' || domain.length === 0 || typeof metricId !== 'string' || metricId.length === 0) {
+    return null;
+  }
+  const brandId = typeof entry?.vendor?.brand_id === 'string' ? entry.vendor.brand_id : '';
+  return `${domain.toLowerCase()}|${brandId}|${metricId}`;
+}
+
 // Proposal lifecycle fields not yet in @adcp/sdk — remove after client update
 interface ProposalLifecycle {
   proposal_status?: 'draft' | 'committed';
@@ -1969,6 +1990,78 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
               }] as TaskError[],
             };
           }
+        }
+      }
+    }
+  }
+
+  // Validate vendor_metric optimization_goals against the product's
+  // vendor_metric_optimization declarations and the package's reporting
+  // contract. This goal kind is only meaningful when the seller can both
+  // optimize toward the vendor metric and commit to reporting the same
+  // (vendor, metric_id) key back to the buyer.
+  if (Array.isArray(req.packages)) {
+    for (let i = 0; i < req.packages.length; i++) {
+      const pkg = req.packages[i] as {
+        product_id?: string;
+        optimization_goals?: unknown;
+        committed_metrics?: unknown;
+      };
+      const goals = pkg?.optimization_goals;
+      if (!Array.isArray(goals)) continue;
+      const product = pkg.product_id
+        ? productMap.get(pkg.product_id) as (Product & { vendor_metric_optimization?: VendorMetricOptimizationView }) | undefined
+        : undefined;
+      const supportedMetrics = product?.vendor_metric_optimization?.supported_metrics;
+      const committedMetrics = Array.isArray(pkg.committed_metrics)
+        ? (pkg.committed_metrics as VendorMetricRefView[])
+        : [];
+      for (let j = 0; j < goals.length; j++) {
+        const goal = goals[j] as VendorMetricRefView & { kind?: unknown; target?: { kind?: unknown } };
+        if (goal?.kind !== 'vendor_metric') continue;
+        const key = vendorMetricKey(goal);
+        if (!key) continue;
+
+        const supported = Array.isArray(supportedMetrics)
+          ? supportedMetrics.find(entry => vendorMetricKey(entry) === key)
+          : undefined;
+        if (!supported) {
+          return {
+            errors: [{
+              code: 'INVALID_REQUEST',
+              message: `vendor_metric goal "${goal.metric_id}" is not in product's vendor_metric_optimization.supported_metrics`,
+              field: `packages[${i}].optimization_goals[${j}].metric_id`,
+            }] as TaskError[],
+          };
+        }
+
+        const targetKind = goal.target?.kind;
+        if (typeof targetKind === 'string') {
+          const supportedTargets = Array.isArray(supported.supported_targets)
+            ? supported.supported_targets
+            : [];
+          if (!supportedTargets.includes(targetKind)) {
+            return {
+              errors: [{
+                code: 'INVALID_REQUEST',
+                message: `vendor_metric target.kind "${targetKind}" is not in product's vendor_metric_optimization.supported_targets`,
+                field: `packages[${i}].optimization_goals[${j}].target.kind`,
+              }] as TaskError[],
+            };
+          }
+        }
+
+        const hasCommittedMetric = committedMetrics.some(entry =>
+          entry?.scope === 'vendor' && vendorMetricKey(entry) === key,
+        );
+        if (!hasCommittedMetric) {
+          return {
+            errors: [{
+              code: 'INVALID_REQUEST',
+              message: `vendor_metric goal "${goal.metric_id}" requires a matching vendor-scope committed_metrics entry`,
+              field: `packages[${i}].committed_metrics`,
+            }] as TaskError[],
+          };
         }
       }
     }
