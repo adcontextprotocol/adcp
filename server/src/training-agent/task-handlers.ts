@@ -2308,10 +2308,12 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
   const filterIds = req.media_buy_ids;
 
   let buys = Array.from(session.mediaBuys.values());
-  if (buys.length === 0) {
-    // Empty session: provide compliance fixtures so demo.example.com sessions
-    // show realistic media buy data without the learner first creating a buy.
-    // Sessions that have created their own buys return only those — no mixing.
+  if (!filterIds?.length && buys.length === 0) {
+    // Broad list on an empty session: provide compliance fixtures so demo.example.com
+    // sessions show realistic media buy data without the learner first creating a buy.
+    // ID-lookup paths skip this — loading all fixtures to filter down is wasteful when
+    // the caller already knows the IDs it wants (and unknown IDs should return empty,
+    // not a fixture). Sessions that have created their own buys return only those.
     buys = getComplianceMediaBuys();
   }
   if (filterIds?.length) {
