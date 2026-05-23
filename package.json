@@ -83,7 +83,7 @@
     "test:storyboards:3.0-compat": "bash scripts/run-storyboards-3-0-compat.sh",
     "prepare": "husky",
     "changeset": "changeset",
-    "version": "changeset version && npm run build:schemas -- --release && npm run build:compliance -- --release && npm run build:protocol-tarball -- --release && npm run sign:protocol-tarball",
+    "version": "changeset version && npm install --package-lock-only --ignore-scripts && npm run build:schemas -- --release && npm run build:compliance -- --release && npm run build:protocol-tarball -- --release && npm run sign:protocol-tarball",
     "sign:protocol-tarball": "bash scripts/sign-protocol-tarball.sh",
     "update-schema-versions": "echo 'Schema versioning is now handled by build:schemas script'",
     "release": "npm run version && npm test && npm run build && git add -A && git commit -m 'Version packages' && git push",

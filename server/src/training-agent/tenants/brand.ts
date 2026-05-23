@@ -16,6 +16,7 @@ import { TrainingBrandPlatform } from '../v6-brand-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { customToolFor } from './custom-tool-helper.js';
 import { handleCreativeApproval } from '../brand-handlers.js';
+import type { TrainingContext } from '../types.js';
 
 const TENANT_ID = 'brand';
 
@@ -47,7 +48,7 @@ const CREATIVE_APPROVAL_SCHEMA = {
   context: CONTEXT_REF,
 };
 
-export function buildBrandTenantConfig(host: string): {
+export function buildBrandTenantConfig(host: string, options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): {
   tenantId: string;
   config: TenantConfig;
 } {
@@ -59,7 +60,7 @@ export function buildBrandTenantConfig(host: string): {
       signingKey: material.signingKey,
       label: 'Training agent — brand',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      platform: new TrainingBrandPlatform() as any,
+      platform: new TrainingBrandPlatform(options.storyboardCompat) as any,
       serverOptions: {
         customTools: {
           creative_approval: customToolFor(

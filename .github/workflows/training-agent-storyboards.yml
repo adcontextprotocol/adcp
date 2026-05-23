@@ -106,11 +106,11 @@ jobs:
             min_passing_steps: 137
           - surface: 3.0-compat
             tenant: creative-builder
-            min_clean_storyboards: 64
+            min_clean_storyboards: 65
             min_passing_steps: 121
           - surface: 3.0-compat
             tenant: brand
-            min_clean_storyboards: 64
+            min_clean_storyboards: 65
             min_passing_steps: 80
     steps:
       - uses: actions/checkout@v6
@@ -141,7 +141,7 @@ jobs:
         if: matrix.surface == '3.0-compat'
         id: compat-bundle
         env:
-          RELEASE_BASE_REF: ${{ github.base_ref || github.ref_name }}
+          RELEASE_BASE_REF: 3.0.x
         run: |
           set -euo pipefail
           git fetch --no-tags --depth=1 origin "${RELEASE_BASE_REF}:refs/remotes/origin/${RELEASE_BASE_REF}"
@@ -185,16 +185,12 @@ jobs:
           process.stdout.write(latest);
           NODE
           )
-          DIR="${PWD}/dist/compliance/${VERSION}"
+          TMP_DIR="$(mktemp -d)"
+          git archive "origin/${RELEASE_BASE_REF}" "dist/compliance/${VERSION}" | tar -x -C "${TMP_DIR}"
+          DIR="${TMP_DIR}/dist/compliance/${VERSION}"
           if [ ! -f "${DIR}/index.json" ]; then
             echo "::error::Compliance bundle not found at ${DIR}"
             exit 1
-          fi
-          if git cat-file -e "origin/${RELEASE_BASE_REF}:dist/compliance/${VERSION}/index.json" 2>/dev/null; then
-            if ! git diff --quiet "origin/${RELEASE_BASE_REF}..." -- "dist/compliance/${VERSION}"; then
-              echo "::error::dist/compliance/${VERSION} differs from origin/${RELEASE_BASE_REF}; 3.0 compat must grade against the released base-branch bundle."
-              exit 1
-            fi
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "dir=${DIR}" >> "$GITHUB_OUTPUT"

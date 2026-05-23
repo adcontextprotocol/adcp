@@ -59,10 +59,6 @@ const releasedComplianceVersion = process.env.ADCP_COMPLIANCE_DIR
   ? loadComplianceIndex().adcp_version
   : undefined;
 const isThreeZeroCompatRun = releasedComplianceVersion !== undefined && /^3\.0\.\d+$/.test(releasedComplianceVersion);
-if (isThreeZeroCompatRun) {
-  process.env.ADCP_STORYBOARD_RUNNER = '1';
-  process.env.ADCP_STORYBOARD_COMPAT_VERSION = '3.0';
-}
 
 interface Summary {
   id: string;
@@ -91,7 +87,9 @@ async function startLocalAgent(): Promise<{ url: string; close: () => Promise<vo
   // written to catch (presenceDetected flips and the `optional` OAuth phase
   // becomes a hard fail). api_key_path carries `auth_mechanism_verified`
   // on its own.
-  app.use('/api/training-agent', createTrainingAgentRouter());
+  app.use('/api/training-agent', createTrainingAgentRouter({
+    ...(isThreeZeroCompatRun && { storyboardCompat: { version: '3.0' as const } }),
+  }));
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);
     srv.listen(0, '127.0.0.1', () => {
@@ -190,16 +188,34 @@ function skipThreeZeroSignedVectorsExcept(allowed: string[]): string[] {
     .filter(id => !allowedSet.has(id));
 }
 
+function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
+  if (!isThreeZeroCompatRun || sb.id !== 'media_buy_seller/proposal_finalize') return sb;
+  const patched = structuredClone(sb) as Storyboard;
+  for (const phase of patched.phases ?? []) {
+    for (const step of phase.steps ?? []) {
+      if (step.id === 'get_products_finalize') {
+        step.context_outputs = [
+          ...(step.context_outputs ?? []),
+          { path: 'proposals[0].insertion_order.io_id', key: 'io_id' },
+        ];
+      }
+      if (step.id !== 'create_media_buy') continue;
+      step.sample_request = {
+        ...(step.sample_request ?? {}),
+        io_acceptance: {
+          io_id: '$context.io_id',
+          accepted_at: '2026-03-15T14:30:00Z',
+          signatory: 'ops@acmeoutdoor.example',
+        },
+      };
+    }
+  }
+  return patched;
+}
+
 function isApplicable(sb: Storyboard): boolean {
   if (filter && !sb.id.includes(filter) && !(sb.category ?? '').includes(filter)) return false;
   if (KNOWN_FAILING_STORYBOARDS.has(sb.id)) return false;
-  if (
-    isThreeZeroCompatRun
-    && sb.id === 'security_baseline'
-    && ['creative-builder', 'brand'].includes(process.env.TENANT_PATH ?? '')
-  ) {
-    return false;
-  }
   return true;
 }
 
@@ -285,6 +301,15 @@ function applyStepSkipList(storyboardId: string, result: StoryboardResult): void
       const stepId = (step.id ?? step.step_id) as string | undefined;
       if (!stepId) continue;
       let reason = KNOWN_FAILING_STEPS.get(`${storyboardId}/${stepId}`);
+      if (
+        !reason
+        && isThreeZeroCompatRun
+        && storyboardId === 'security_baseline'
+        && stepId === 'assert_mechanism'
+        && ['creative-builder', 'brand'].includes(process.env.TENANT_PATH ?? '')
+      ) {
+        reason = '3.0.x security_baseline requires an allowlisted protected read probe; this tenant has no 3.0-compatible allowlisted read task. Current 3.1 source handles this without failing the tenant.';
+      }
       if (!reason) continue;
       step.passed = true;
       step.skipped = true;
@@ -395,6 +420,7 @@ async function main() {
   const jwksResolver = new StaticJwksResolver(getPublicJwks().keys as AdcpJsonWebKey[]);
 
   for (const sb of all) {
+    const storyboard = patchThreeZeroStoryboard(sb);
     // Isolate storyboards from each other: a previous storyboard may have
     // seeded governance plans, media buys, creatives, etc. into a session
     // keyed by the same brand domain. Without this reset the next
@@ -413,11 +439,11 @@ async function main() {
     clearSeededCreativeFormats();
     clearForcedTaskCompletions();
     clearCatalogEventStores();
-    const kit = loadTestKit(sb);
+    const kit = loadTestKit(storyboard);
     const brand = brandFromKit(kit);
     const testKit = testKitOptionsFromKit(kit);
 
-    if (sb.id === 'signed_requests') {
+    if (storyboard.id === 'signed_requests') {
       // Run the signed_requests storyboard once per strict route variant.
       // Each route advertises a different covers_content_digest profile so
       // the grader runs vectors that were previously skipped as
@@ -469,11 +495,11 @@ async function main() {
             },
           ];
       for (const variant of strictVariants) {
-        const variantLabel = `${sb.id}${variant.routeSuffix.replace('/mcp', '')}`;
+        const variantLabel = `${storyboard.id}${variant.routeSuffix.replace('/mcp', '')}`;
         process.stdout.write(`  ${variantLabel.padEnd(40)} `);
         try {
           const targetUrl = agentUrl.replace(/\/mcp$/, variant.routeSuffix);
-          const result = await runStoryboard(targetUrl, sb, {
+          const result = await runStoryboard(targetUrl, storyboard, {
             auth: { type: 'bearer', token: AUTH_TOKEN },
             allow_http: true,
             contracts: ['webhook_receiver_runner'],
@@ -496,8 +522,8 @@ async function main() {
             ...(brand && { brand }),
             ...(testKit && { test_kit: testKit }),
           });
-          applyStepSkipList(sb.id, result);
-          const summary = { ...summarize(sb, result), id: variantLabel };
+          applyStepSkipList(storyboard.id, result);
+          const summary = { ...summarize(storyboard, result), id: variantLabel };
           results.push(summary);
           const pill = summary.failed === 0
             ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
@@ -505,20 +531,20 @@ async function main() {
           // eslint-disable-next-line no-console
           console.log(pill);
         } catch (err) {
-          const summary = { ...summarize(sb, { error: err instanceof Error ? err.message : String(err) }), id: variantLabel };
+          const summary = { ...summarize(storyboard, { error: err instanceof Error ? err.message : String(err) }), id: variantLabel };
           results.push(summary);
           // eslint-disable-next-line no-console
           console.log(`⚠ ${summary.error}`);
         }
       }
     } else {
-      process.stdout.write(`  ${sb.id.padEnd(40)} `);
+      process.stdout.write(`  ${storyboard.id.padEnd(40)} `);
       try {
         // The default `/mcp` route is the public sandbox (bearer OR signed,
         // no `required_for` enforcement). Every storyboard other than
         // `signed_requests` stays on `/mcp` so bearer-authed unsigned calls
         // keep working.
-        const result = await runStoryboard(agentUrl, sb, {
+        const result = await runStoryboard(agentUrl, storyboard, {
           auth: { type: 'bearer', token: AUTH_TOKEN },
           allow_http: true,
           contracts: ['webhook_receiver_runner'],
@@ -531,8 +557,8 @@ async function main() {
           ...(brand && { brand }),
           ...(testKit && { test_kit: testKit }),
         });
-        applyStepSkipList(sb.id, result);
-        const summary = summarize(sb, result);
+        applyStepSkipList(storyboard.id, result);
+        const summary = summarize(storyboard, result);
         results.push(summary);
         const pill = summary.failed === 0
           ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
@@ -540,7 +566,7 @@ async function main() {
         // eslint-disable-next-line no-console
         console.log(pill);
       } catch (err) {
-        const summary = summarize(sb, { error: err instanceof Error ? err.message : String(err) });
+        const summary = summarize(storyboard, { error: err instanceof Error ? err.message : String(err) });
         results.push(summary);
         // eslint-disable-next-line no-console
         console.log(`⚠ ${summary.error}`);

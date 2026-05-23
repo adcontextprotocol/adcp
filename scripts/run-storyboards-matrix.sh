@@ -16,7 +16,7 @@ OVERLAY=1
 COMPLIANCE_DIR=""
 LABEL="current compliance source"
 FLOOR_SET="current"
-RELEASE_BASE_REF="${ADCP_RELEASE_BASE_REF:-origin/main}"
+RELEASE_BASE_REF="${ADCP_RELEASE_BASE_REF:-origin/3.0.x}"
 if [[ "${RELEASE_BASE_REF}" != */* ]]; then
   RELEASE_GIT_REF="origin/${RELEASE_BASE_REF}"
 else
@@ -100,12 +100,12 @@ NODE
         echo "::error::No dist/compliance/3.0.x bundle found"
         exit 1
       fi
-      COMPLIANCE_DIR="${REPO_ROOT}/dist/compliance/${latest_3_0}"
       if git -C "${REPO_ROOT}" cat-file -e "${RELEASE_GIT_REF}:dist/compliance/${latest_3_0}/index.json" 2>/dev/null; then
-        if ! git -C "${REPO_ROOT}" diff --quiet "${RELEASE_GIT_REF}..." -- "dist/compliance/${latest_3_0}"; then
-          echo "::error::dist/compliance/${latest_3_0} differs from ${RELEASE_GIT_REF}; 3.0 compat must grade against the released base-branch bundle."
-          exit 1
-        fi
+        bundle_tmp=$(mktemp -d -t "storyboards-3-0-compat.XXXXXX")
+        git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/compliance/${latest_3_0}" | tar -x -C "${bundle_tmp}"
+        COMPLIANCE_DIR="${bundle_tmp}/dist/compliance/${latest_3_0}"
+      else
+        COMPLIANCE_DIR="${REPO_ROOT}/dist/compliance/${latest_3_0}"
       fi
       LABEL="released compliance bundle: ${latest_3_0}"
       FLOOR_SET="3.0-compat"
@@ -165,8 +165,8 @@ if [ "${FLOOR_SET}" = "3.0-compat" ]; then
     "sales:65:272"
     "governance:65:135"
     "creative:65:137"
-    "creative-builder:64:121"
-    "brand:64:80"
+    "creative-builder:65:121"
+    "brand:65:80"
   )
 else
   TENANTS=(

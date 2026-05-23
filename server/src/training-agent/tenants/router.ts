@@ -17,6 +17,7 @@ import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type Registr
 import { buildSignedRevocationList } from '../governance-revocations.js';
 import { getTenantResponseSigningMaterial } from './signing.js';
 import { wrapResponseForSigning } from '../response-signing.js';
+import type { TrainingContext } from '../types.js';
 
 const logger = createLogger('training-agent-tenant-router');
 
@@ -234,6 +235,8 @@ export interface TenantRouteMiddleware {
   rateLimit?: RequestHandler;
   /** Bearer-auth middleware applied to every tenant POST (sets `res.locals.trainingPrincipal`). */
   requireAuth?: RequestHandler;
+  /** Local storyboard-runner compatibility shims. Never set in deployed routes. */
+  storyboardCompat?: TrainingContext['storyboardCompat'];
 }
 
 export function mountTenantRoutes(
@@ -241,7 +244,7 @@ export function mountTenantRoutes(
   tenantIds: readonly string[],
   middleware: TenantRouteMiddleware = {},
 ): void {
-  const holder = createRegistryHolder();
+  const holder = createRegistryHolder({ storyboardCompat: middleware.storyboardCompat });
   // Eagerly start the 6-tenant registry init at mount time (server boot)
   // instead of waiting for the first request. On a fresh Fly machine the
   // cold init takes 30–60s — longer than the post-deploy smoke's 16s

@@ -65,7 +65,7 @@ jobs:
         if: github.ref_name == 'main' || github.ref_name == '3.0.x'
         run: npm run test:storyboards:3.0-compat
         env:
-          ADCP_RELEASE_BASE_REF: ${{ github.ref_name }}
+          ADCP_RELEASE_BASE_REF: 3.0.x
 
       - name: Create Release Pull Request or Tag Release
         id: changesets

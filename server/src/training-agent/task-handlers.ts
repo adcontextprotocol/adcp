@@ -168,9 +168,8 @@ function proposalLifecycle(proposal: Proposal): ProposalLifecycle {
 const THREE_ZERO_LEGACY_PROPOSAL_ID = 'balanced_reach_q2';
 const THREE_ZERO_LEGACY_PROPOSAL_TARGET_ID = 'sparq_social_amplification';
 
-function isThreeZeroStoryboardCompat(): boolean {
-  return process.env.ADCP_STORYBOARD_RUNNER === '1'
-    && process.env.ADCP_STORYBOARD_COMPAT_VERSION === '3.0';
+function isThreeZeroStoryboardCompat(ctx: TrainingContext): boolean {
+  return ctx.storyboardCompat?.version === '3.0';
 }
 
 function resolveThreeZeroProposalAlias(proposals: Proposal[]): Proposal | undefined {
@@ -1530,7 +1529,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
       } else if (op.scope === 'proposal') {
         const action = op.action ?? 'include';
         let proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
-        if (!proposal && isThreeZeroStoryboardCompat() && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
+        if (!proposal && isThreeZeroStoryboardCompat(ctx) && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
           proposal = resolveThreeZeroProposalAlias([...previousProposals, ...getProposals()]);
         }
         if (!proposal) {
@@ -1980,7 +1979,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     // Check session proposals first (may have finalized versions), then global catalog
     let proposal = session.lastGetProductsContext?.proposals?.find(p => p.proposal_id === req.proposal_id)
       || getProposals().find(p => p.proposal_id === req.proposal_id);
-    if (!proposal && isThreeZeroStoryboardCompat() && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
+    if (!proposal && isThreeZeroStoryboardCompat(ctx) && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
       proposal = resolveThreeZeroProposalAlias([...(session.lastGetProductsContext?.proposals ?? []), ...getProposals()]);
     }
     if (!proposal) {
@@ -1991,7 +1990,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
     // Enforce proposal lifecycle: draft proposals cannot be purchased directly
     const proposalStatus = proposalLifecycle(proposal).proposal_status;
-    if (proposalStatus === 'draft' && !(isThreeZeroStoryboardCompat() && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID)) {
+    if (proposalStatus === 'draft' && !(isThreeZeroStoryboardCompat(ctx) && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID)) {
       return {
         errors: [{ code: 'PROPOSAL_NOT_COMMITTED', message: `Proposal "${req.proposal_id}" has draft status — finalize it first using get_products with buying_mode "refine" and action "finalize".` }] as TaskError[],
       };
@@ -2010,7 +2009,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     if (
       insertionOrder?.requires_signature
       && !ioAcceptance
-      && !isThreeZeroStoryboardCompat()
+      && !(isThreeZeroStoryboardCompat(ctx) && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID)
     ) {
       return {
         errors: [{ code: 'IO_REQUIRED', message: `Proposal "${req.proposal_id}" requires a signed insertion order. Include io_acceptance with io_id "${insertionOrder.io_id}" on create_media_buy.` }] as TaskError[],

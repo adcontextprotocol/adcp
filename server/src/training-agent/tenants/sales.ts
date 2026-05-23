@@ -9,10 +9,11 @@ import type { TenantConfig } from '@adcp/sdk/server';
 import { TrainingSalesPlatform } from '../v6-sales-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildSalesComplyConfig } from './comply.js';
+import type { TrainingContext } from '../types.js';
 
 const TENANT_ID = 'sales';
 
-export function buildSalesTenantConfig(host: string): {
+export function buildSalesTenantConfig(host: string, options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): {
   tenantId: string;
   config: TenantConfig;
 } {
@@ -24,7 +25,7 @@ export function buildSalesTenantConfig(host: string): {
       signingKey: material.signingKey,
       label: 'Training agent — sales',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      platform: new TrainingSalesPlatform() as any,
+      platform: new TrainingSalesPlatform(options.storyboardCompat) as any,
       serverOptions: {
         complyTest: buildSalesComplyConfig(),
       },

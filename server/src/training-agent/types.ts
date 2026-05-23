@@ -29,6 +29,8 @@ export interface TrainingContext {
    *  presence-gated signing at the auth layer. Default `/mcp` leaves
    *  `required_for` empty so unsigned bearer callers keep working. */
   strict?: boolean;
+  /** Local storyboard-runner compatibility shims. Never set in deployed routes. */
+  storyboardCompat?: { version: '3.0' };
   /**
    * `covers_content_digest` mode advertised by this route. Only meaningful
    * when `strict` is true. Defaults to `'either'` (the `/mcp-strict` route).
