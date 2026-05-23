@@ -80,6 +80,7 @@
     "test:all": "npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:error-handling && npm run test:snippets && npm run typecheck",
     "precommit": "bash scripts/with-timeout.sh 60 npm run test:unit && npm run test:test-dynamic-imports && npm run test:callapi-state-change && npm run typecheck",
     "test:storyboards": "bash scripts/run-storyboards-matrix.sh",
+    "test:storyboards:3.0-compat": "bash scripts/run-storyboards-3-0-compat.sh",
     "prepare": "husky",
     "changeset": "changeset",
     "version": "changeset version && npm run build:schemas -- --release && npm run build:compliance -- --release && npm run build:protocol-tarball -- --release && npm run sign:protocol-tarball",

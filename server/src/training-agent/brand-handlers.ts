@@ -670,7 +670,11 @@ export function handleGetBrandIdentity(
 
   const talent = BRAND_MAP.get(brandId);
   if (!talent) {
-    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
+    const code = process.env.ADCP_STORYBOARD_RUNNER === '1'
+      && process.env.ADCP_STORYBOARD_COMPAT_VERSION === '3.0'
+      ? 'BRAND_NOT_FOUND'
+      : 'REFERENCE_NOT_FOUND';
+    return { errors: [{ code, message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
   }
 
   const requested = fields ?? [...ALL_FIELDS];

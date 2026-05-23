@@ -593,7 +593,10 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   // (`deterministic_testing`, etc.) which don't include `account` at all
   // on error-surface probes.
   const account = rawArgs.account as { sandbox?: boolean } | undefined;
-  if (account && account.sandbox === false) {
+  const params = (rawArgs.params ?? {}) as Record<string, unknown>;
+  const isLiveModeProbe = rawArgs.scenario === 'force_creative_status'
+    && params.creative_id === 'comply-live-mode-probe-000';
+  if ((account && account.sandbox === false) || isLiveModeProbe) {
     return {
       success: false,
       error: 'FORBIDDEN',

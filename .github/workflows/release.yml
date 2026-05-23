@@ -61,6 +61,12 @@ jobs:
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
+      - name: Verify 3.0 storyboard compatibility
+        if: github.ref_name == 'main' || github.ref_name == '3.0.x'
+        run: npm run test:storyboards:3.0-compat
+        env:
+          ADCP_RELEASE_BASE_REF: ${{ github.ref_name }}
+
       - name: Create Release Pull Request or Tag Release
         id: changesets
         uses: changesets/action@v1
