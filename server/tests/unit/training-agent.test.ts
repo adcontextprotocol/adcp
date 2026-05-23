@@ -6292,6 +6292,23 @@ describe('proposal lifecycle', () => {
     expect(result.code).toBe('PROPOSAL_NOT_COMMITTED');
   });
 
+  it('rejects create_media_buy for unknown proposal with PROPOSAL_NOT_FOUND', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'proposal-test.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: 'nonexistent_proposal_id',
+      total_budget: { amount: 75000, currency: 'USD' },
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('PROPOSAL_NOT_FOUND');
+    expect(result.field).toBe('proposal_id');
+    expect(result.recovery).toBe('correctable');
+  });
+
   it('rejects create_media_buy for expired proposal with PROPOSAL_EXPIRED', async () => {
     // Get and finalize a proposal
     const server1 = createTrainingAgentServer(DEFAULT_CTX);
@@ -6486,7 +6503,7 @@ describe('proposal lifecycle', () => {
     expect(result.media_buy_id).toBeDefined();
   });
 
-  it('returns unable when finalizing a nonexistent proposal', async () => {
+  it('rejects finalizing a nonexistent proposal with PROPOSAL_NOT_FOUND', async () => {
     const server1 = createTrainingAgentServer(DEFAULT_CTX);
     const { result: initial } = await simulateCallTool(server1, 'get_products', {
       buying_mode: 'brief',
@@ -6496,15 +6513,64 @@ describe('proposal lifecycle', () => {
     expect(initial.proposals).toBeDefined();
 
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+    const { result, isError } = await simulateCallTool(server2, 'get_products', {
       buying_mode: 'refine',
       account,
       refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'nonexistent_proposal_id' }],
     });
 
-    const applied = refined.refinement_applied as Array<Record<string, unknown>>;
-    expect(applied).toBeDefined();
-    expect(applied[0].status).toBe('unable');
+    expect(isError).toBe(true);
+    expect(result.code).toBe('PROPOSAL_NOT_FOUND');
+    expect(result.field).toBe('refine[0].proposal_id');
+    expect(result.recovery).toBe('correctable');
+  });
+
+  it('rejects mixed proposal refine before committing earlier finalize entries', async () => {
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'premium video news',
+      account,
+    });
+    const draftProposal = (initial.proposals as Array<Record<string, unknown>>)?.find(
+      p => p.proposal_status === 'draft',
+    );
+    expect(draftProposal).toBeDefined();
+    const originalExpiresAt = draftProposal!.expires_at;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [
+        { scope: 'proposal', action: 'finalize', proposal_id: draftProposal!.proposal_id },
+        { scope: 'proposal', action: 'finalize', proposal_id: 'nonexistent_proposal_id' },
+      ],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('PROPOSAL_NOT_FOUND');
+    expect(result.field).toBe('refine[1].proposal_id');
+    expect(result.recovery).toBe('correctable');
+
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: afterRejected } = await simulateCallTool(server3, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{
+        scope: 'proposal',
+        proposal_id: draftProposal!.proposal_id,
+        ask: 'Confirm the current proposal status.',
+      }],
+    });
+
+    const proposalAfterRejected = (afterRejected.proposals as Array<Record<string, unknown>>)?.find(
+      p => p.proposal_id === draftProposal!.proposal_id,
+    );
+    expect(proposalAfterRejected).toBeDefined();
+    expect(proposalAfterRejected!.proposal_status).toBe('draft');
+    expect(proposalAfterRejected!.expires_at).toBe(originalExpiresAt);
+    expect(proposalAfterRejected!.insertion_order).toBeUndefined();
   });
 
   it('omits proposals via refine action', async () => {
