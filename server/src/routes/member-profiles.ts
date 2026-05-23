@@ -1797,11 +1797,26 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   }
 
   /**
-   * Resolve the primary organization for the authenticated user, or send
-   * the appropriate error response. Returns null when the response has
-   * already been sent.
+   * Resolve the URL-selected organization for the authenticated user, falling
+   * back to their primary organization when omitted. Returns null when the
+   * response has already been sent.
    */
   async function resolveUserOrgId(req: any, res: any): Promise<string | null> {
+    const requestedOrgId = typeof req.query?.org === 'string' && req.query.org.length > 0
+      ? req.query.org
+      : null;
+    if (requestedOrgId) {
+      const membership = await resolveUserOrgMembership(workos, req.user!.id, requestedOrgId);
+      if (!membership) {
+        res.status(403).json({
+          error: 'Not authorized',
+          message: 'User is not a member of the requested organization',
+        });
+        return null;
+      }
+      return requestedOrgId;
+    }
+
     const orgId = await resolvePrimaryOrganization(req.user!.id);
     if (!orgId) {
       res.status(400).json({ error: 'No organization associated' });
@@ -1977,9 +1992,19 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   // POST /api/me/member-profile/verify-brand - Check if member's domain pointer is live and mark verified
   router.post('/verify-brand', requireAuth, async (req, res) => {
     try {
-      const orgId = await resolvePrimaryOrganization(req.user!.id);
+      const requestedOrgId = typeof req.query.org === 'string' && req.query.org.length > 0
+        ? req.query.org
+        : null;
+      const orgId = requestedOrgId ?? (await resolvePrimaryOrganization(req.user!.id));
       if (!orgId) {
         return res.status(400).json({ error: 'No organization associated with this account' });
+      }
+      const membership = await resolveUserOrgMembership(workos, req.user!.id, orgId);
+      if (!membership || (membership.role !== 'admin' && membership.role !== 'owner')) {
+        return res.status(403).json({
+          error: 'Not authorized',
+          message: 'Only organization admins or owners can verify a brand domain.',
+        });
       }
 
       // Existence check stays separate from the brand-primary lookup so the
@@ -2058,13 +2083,17 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   });
 
   /**
-   * Resolve the caller's primary org and verify they have admin/owner role —
-   * brand-claim is org-scoped state-mutation and shouldn't be reachable by
-   * rank-and-file members. Returns the orgId, or sends an appropriate error
-   * response and returns null. Both /issue and /verify gate through this.
+   * Resolve the caller's requested org (or primary org when omitted) and
+   * verify they have admin/owner role — brand-claim is org-scoped
+   * state-mutation and shouldn't be reachable by rank-and-file members.
+   * Returns the orgId, or sends an appropriate error response and returns
+   * null. Both /issue and /verify gate through this.
    */
   async function resolveBrandClaimOrgOr401(req: import('express').Request, res: import('express').Response): Promise<string | null> {
-    const orgId = await resolvePrimaryOrganization(req.user!.id);
+    const requestedOrgId = typeof req.query.org === 'string' && req.query.org.length > 0
+      ? req.query.org
+      : null;
+    const orgId = requestedOrgId ?? (await resolvePrimaryOrganization(req.user!.id));
     if (!orgId) {
       res.status(400).json({ error: 'No organization associated with this account' });
       return null;
@@ -2141,6 +2170,11 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const dnsRecordName = result.verification_prefix
         ? `${result.verification_prefix}.${result.domain}`
         : null;
+      const requestedOrgId = typeof req.query.org === 'string' && req.query.org.length > 0
+        ? req.query.org
+        : null;
+      const verifyPath = '/api/me/member-profile/brand-claim/verify' +
+        (requestedOrgId ? `?org=${encodeURIComponent(requestedOrgId)}` : '');
       return res.json({
         domain: result.domain,
         workos_domain_id: result.workos_domain_id,
@@ -2151,10 +2185,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         dns_record_name: dnsRecordName,
         prior_manifest_exists: result.prior_manifest_exists,
         instructions: result.already_verified
-          ? 'Domain is already verified. Run /brand-claim/verify to sync the brand registry, or call PUT /brand-identity directly.'
+          ? `Domain is already verified. Run POST ${verifyPath} to sync the brand registry, or call PUT /brand-identity directly.`
           : dnsRecordName
-            ? `Publish a DNS TXT record at ${dnsRecordName} with the value ${result.verification_token}, then call POST /api/me/member-profile/brand-claim/verify.`
-            : 'Publish a DNS TXT record at <verification_prefix>.<domain> with the value <verification_token>, then call POST /api/me/member-profile/brand-claim/verify.',
+            ? `Publish a DNS TXT record at ${dnsRecordName} with the value ${result.verification_token}, then call POST ${verifyPath}.`
+            : `Publish a DNS TXT record at <verification_prefix>.<domain> with the value <verification_token>, then call POST ${verifyPath}.`,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to issue brand claim challenge');
@@ -2336,15 +2370,20 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
               logger.error({ err: escalErr, brandDomain }, 'Failed to file brand-ownership escalation');
               return null;
             });
+            const requestedOrgId = typeof req.query.org === 'string' && req.query.org.length > 0
+              ? req.query.org
+              : null;
+            const selfServicePath = '/api/me/member-profile/brand-claim/issue' +
+              (requestedOrgId ? `?org=${encodeURIComponent(requestedOrgId)}` : '');
             return res.status(409).json({
               error: 'Brand domain is managed by another organization',
               code: 'cross_org_ownership',
               message: escalation
-                ? `We filed a ticket so the team can review. If you actually control ${brandDomain}, you can prove it via the domain verification challenge — call POST /api/me/member-profile/brand-claim/issue and follow the instructions.`
+                ? `We filed a ticket so the team can review. If you actually control ${brandDomain}, you can prove it via the domain verification challenge — call POST ${selfServicePath} and follow the instructions.`
                 : 'We could not file a ticket automatically — please email support@agenticadvertising.org.',
               escalation_id: escalation?.id ?? null,
               brand_domain: brandDomain,
-              self_service_path: '/api/me/member-profile/brand-claim/issue',
+              self_service_path: selfServicePath,
             });
           }
           return res.status(err.statusCode).json({ error: 'Invalid request', message: err.message });

@@ -1702,8 +1702,10 @@
           document.getElementById('brand-pointer-callout').style.display = 'none';
         } else {
           verifiedEl.innerHTML = '<span style="color: var(--color-text-muted);">No brand.json on domain yet &mdash; </span>' +
-            '<button onclick="verifyBrandNow(\'' + escapeHtml(profile.primary_brand_domain) + '\')" ' +
-            'id="brand-verify-btn" style="background: none; border: none; color: var(--color-primary-600); cursor: pointer; font-size: var(--text-sm); padding: 0; text-decoration: underline;">Check now</button>';
+            ((currentOrgRole === 'admin' || currentOrgRole === 'owner')
+              ? '<button onclick="verifyBrandNow(\'' + escapeHtml(profile.primary_brand_domain) + '\')" ' +
+                'id="brand-verify-btn" style="background: none; border: none; color: var(--color-primary-600); cursor: pointer; font-size: var(--text-sm); padding: 0; text-decoration: underline;">Check now</button>'
+              : '<span style="color: var(--color-text-muted);">ask an admin to verify it.</span>');
           // Show pointer snippet
           const callout = document.getElementById('brand-pointer-callout');
           const snippet = document.getElementById('brand-pointer-snippet');
@@ -1745,7 +1747,7 @@
       const addCard = document.getElementById('linked-domains-add');
       const isAdmin = currentOrgRole === 'owner' || currentOrgRole === 'admin';
       try {
-        const resp = await fetch('/api/me/organization/domains', { credentials: 'include' });
+        const resp = await fetch(buildApiUrl('/api/me/organization/domains'), { credentials: 'include' });
         if (!resp.ok) {
           if (section) section.style.display = 'none';
           return;
@@ -1819,7 +1821,7 @@
       const original = btn.textContent;
       btn.textContent = 'Issuing...';
       try {
-        const resp = await fetch('/api/me/organization/domains', {
+        const resp = await fetch(buildApiUrl('/api/me/organization/domains'), {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -1876,7 +1878,7 @@
       if (btn) { btn.disabled = true; btn.textContent = 'Checking...'; }
       if (statusEl) { statusEl.textContent = ''; statusEl.style.color = ''; }
       try {
-        const resp = await fetch('/api/me/organization/domains/' + encodeURIComponent(domain) + '/verify', {
+        const resp = await fetch(buildApiUrl('/api/me/organization/domains/' + encodeURIComponent(domain) + '/verify'), {
           method: 'POST',
           credentials: 'include',
         });
@@ -1920,7 +1922,7 @@
       const originalText = btn ? btn.textContent : '';
       if (btn) { btn.disabled = true; btn.textContent = 'Setting...'; }
       try {
-        const resp = await fetch('/api/me/organization/domains/' + encodeURIComponent(domain) + '/primary', {
+        const resp = await fetch(buildApiUrl('/api/me/organization/domains/' + encodeURIComponent(domain) + '/primary'), {
           method: 'PUT',
           credentials: 'include',
         });
@@ -1944,8 +1946,11 @@
       const btn = document.getElementById('brand-verify-btn');
       if (btn) { btn.textContent = 'Checking...'; btn.disabled = true; }
       try {
-        const res = await fetch('/api/me/member-profile/verify-brand', { method: 'POST' });
+        const res = await fetch(buildApiUrl('/api/me/member-profile/verify-brand'), { method: 'POST' });
         const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || data.error || 'Failed to verify brand domain');
+        }
         const verifiedEl = document.getElementById('brand-verified-status');
         if (data.verified) {
           verifiedEl.innerHTML = '<span style="color: var(--color-success-700);">&#10003; brand.json verified</span>';
@@ -1963,7 +1968,11 @@
             '<button onclick="verifyBrandNow(\'' + escapeHtml(domain) + '\')" ' +
             'id="brand-verify-btn" style="background: none; border: none; color: var(--color-primary-600); cursor: pointer; font-size: var(--text-sm); padding: 0; text-decoration: underline;">Check now</button>';
         }
-      } catch {
+      } catch (err) {
+        const verifiedEl = document.getElementById('brand-verified-status');
+        if (verifiedEl && err && err.message) {
+          verifiedEl.innerHTML = '<span style="color: var(--color-error-600);">' + escapeHtml(err.message) + '</span>';
+        }
         if (btn) { btn.textContent = 'Check now'; btn.disabled = false; }
       }
     }
@@ -2184,7 +2193,7 @@
       btn.disabled = true;
       btn.textContent = 'Requesting...';
       try {
-        var res = await fetch('/api/me/member-profile/brand-claim/issue', {
+        var res = await fetch(buildApiUrl('/api/me/member-profile/brand-claim/issue'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -2239,7 +2248,7 @@
       btn.textContent = 'Verifying...';
       statusEl.textContent = 'Checking DNS...';
       try {
-        var res = await fetch('/api/me/member-profile/brand-claim/verify', {
+        var res = await fetch(buildApiUrl('/api/me/member-profile/brand-claim/verify'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -2293,6 +2302,8 @@
       var fqdn = document.getElementById('domain-claim-record-name').textContent || '';
       var token = document.getElementById('domain-claim-record-value').textContent || '';
       if (!fqdn || !token || !btn) return;
+      var profileUrl = 'https://agenticadvertising.org/member-profile' +
+        (currentOrgId ? '?org=' + encodeURIComponent(currentOrgId) : '');
       var block =
         'Domain: ' + domain + '\n' +
         'Add a DNS TXT record:\n' +
@@ -2302,7 +2313,7 @@
         '  TTL:   300 (or your registrar\'s minimum)\n' +
         '\n' +
         'Once published, propagation is usually 5-15 minutes (sometimes longer with slow registrars). The brand admin will run verification at:\n' +
-        '  https://agenticadvertising.org/member-profile\n';
+        '  ' + profileUrl + '\n';
       var original = btn.textContent;
       navigator.clipboard.writeText(block).then(function() {
         btn.textContent = 'Copied!';
@@ -2358,7 +2369,7 @@
       btn.disabled = true;
       btn.textContent = 'Requesting...';
       try {
-        var res = await fetch('/api/me/member-profile/brand-claim/issue', {
+        var res = await fetch(buildApiUrl('/api/me/member-profile/brand-claim/issue'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -2406,7 +2417,7 @@
       btn.textContent = 'Verifying...';
       statusEl.textContent = 'Checking DNS...';
       try {
-        var res = await fetch('/api/me/member-profile/brand-claim/verify', {
+        var res = await fetch(buildApiUrl('/api/me/member-profile/brand-claim/verify'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -3278,7 +3289,7 @@
       const previous = agents[index]?.visibility;
       if (!agents[index] || previous === target) return;
       try {
-        const resp = await fetch(`/api/me/member-profile/agents/${index}/visibility`, {
+        const resp = await fetch(buildApiUrl(`/api/me/member-profile/agents/${index}/visibility`), {
           method: 'PATCH',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -3304,7 +3315,7 @@
 
     async function checkAgent(index) {
       try {
-        const resp = await fetch(`/api/me/member-profile/agents/${index}/check`, {
+        const resp = await fetch(buildApiUrl(`/api/me/member-profile/agents/${index}/check`), {
           method: 'POST', credentials: 'include'
         });
         const data = await resp.json();
