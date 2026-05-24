@@ -1,5 +1,4 @@
 ---
-"adcontextprotocol": minor
 ---
 
 Add operator-facing registry lifecycle guide and certification module resource.
