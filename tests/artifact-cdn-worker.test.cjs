@@ -170,6 +170,13 @@ describe('artifact CDN Worker', () => {
     assert.equal(response.headers.get('location'), '/schemas/3.1.0-beta.3/index.json');
   });
 
+  it('redirects bare version paths before serving index.json', async () => {
+    const response = await fetchPath('/schemas/3.1.0-beta.3');
+
+    assert.equal(response.status, 301);
+    assert.equal(response.headers.get('location'), '/schemas/3.1.0-beta.3/');
+  });
+
   it('builds the same discovery shape for schemas and compliance', async () => {
     const response = await fetchPath('/schemas/');
     const body = await response.json();
@@ -210,6 +217,14 @@ describe('artifact CDN Worker', () => {
     ]);
     assert.equal(body.latest.tarball, '/protocol/latest.tgz');
     assert.equal(body.latest.published_version, '3.0.12');
+  });
+
+  it('serves protocol discovery at the bare protocol path', async () => {
+    const response = await fetchPath('/protocol');
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.latest.tarball, '/protocol/latest.tgz');
   });
 
   it('supports HEAD without streaming an object body', async () => {
