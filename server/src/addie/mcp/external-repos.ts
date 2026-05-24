@@ -348,6 +348,12 @@ let reposDir: string;
 function getReposDir(): string {
   if (reposDir) return reposDir;
 
+  const dockerReposPath = '/app/.addie-repos';
+  if (fs.existsSync(dockerReposPath)) {
+    reposDir = dockerReposPath;
+    return reposDir;
+  }
+
   // Try to find a suitable location
   const possiblePaths = [
     // From server/src/addie/mcp/ to project root
@@ -355,14 +361,14 @@ function getReposDir(): string {
     // From dist/ to project root
     path.resolve(__dirname, '../../../.addie-repos'),
     // Docker location
-    '/app/.addie-repos',
+    dockerReposPath,
     // Fallback to temp
     path.join(process.env.TMPDIR || '/tmp', 'addie-repos'),
   ];
 
-  // Prefer an existing cache. In Docker, the source-layout path resolves to
-  // `/.addie-repos` from compiled dist output; creating that would hide the
-  // baked `/app/.addie-repos` cache.
+  // Prefer an existing cache. In Docker, the baked `/app/.addie-repos` cache
+  // is selected above before source-layout fallbacks that may resolve to
+  // stale root-level directories from older containers.
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) {
       reposDir = p;

@@ -132,6 +132,8 @@ ENV NODE_ENV=production
 ENV PORT=8080
 ENV TZ=UTC
 # Repos are pre-cloned in the image and stripped of .git metadata above.
+# The runtime image does not install git, so disabling this without adding git
+# will make external repo indexing fall back to the baked cache or skip sync.
 ENV SKIP_REPO_SYNC=true
 
 # Expose port
