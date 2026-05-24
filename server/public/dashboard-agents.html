@@ -384,6 +384,94 @@
       background: var(--color-gray-200, #e5e7eb);
       color: var(--color-text-muted);
     }
+    /* Compliance notices (runner-output-contract.yaml) */
+    .compliance-notices {
+      margin-top: var(--space-3);
+      border-top: 1px solid var(--color-gray-200, #e5e7eb);
+      padding-top: var(--space-2);
+    }
+    .compliance-notices-label {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--space-1);
+    }
+    .compliance-notice {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+      padding: var(--space-2);
+      border-radius: 4px;
+      border: 1px solid var(--color-gray-200, #e5e7eb);
+      background: var(--color-gray-50, #f9fafb);
+      font-size: var(--text-xs);
+      line-height: 1.5;
+      margin-bottom: var(--space-1);
+    }
+    .compliance-notice:last-child { margin-bottom: 0; }
+    .compliance-notice-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+    }
+    .compliance-notice-severity {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: var(--font-semibold);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .compliance-notice-severity--info {
+      background: var(--color-gray-200, #e5e7eb);
+      color: var(--color-text-secondary, #374151);
+    }
+    .compliance-notice-severity--deprecation {
+      background: var(--color-warning-100, #fef3c7);
+      color: var(--color-warning-700, #b45309);
+    }
+    .compliance-notice-severity--future_required {
+      background: #ffedd5;
+      color: #c2410c;
+    }
+    .compliance-notice-severity--unknown {
+      background: var(--color-gray-100, #f3f4f6);
+      color: var(--color-text-muted);
+    }
+    .compliance-notice-code {
+      font-family: var(--font-mono, monospace);
+      font-size: 10px;
+      color: var(--color-text-muted);
+      background: var(--color-gray-100, #f3f4f6);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+    .compliance-notice-message {
+      color: var(--color-text-secondary, #374151);
+    }
+    .compliance-notice-meta {
+      color: var(--color-text-muted);
+      font-size: 10px;
+    }
+    .compliance-notice-details summary {
+      cursor: pointer;
+      color: var(--color-text-muted);
+      font-size: 10px;
+      user-select: none;
+    }
+    .compliance-notice-details[open] summary { margin-bottom: 2px; }
+    .compliance-notice-cap-path {
+      font-family: var(--font-mono, monospace);
+      font-size: 10px;
+      background: var(--color-gray-100, #f3f4f6);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
     .history-run {
       display: flex;
       align-items: center;
@@ -1623,6 +1711,65 @@
     // Empty state: when storyboards are passing but no badges have issued
     // (membership inactive, specialisms not declared), surface a hint
     // pointing at the docs.
+    // Build the notices section HTML for a compliance status object.
+    // Forward-compat: unknown severity values render with a neutral style
+    // rather than being dropped (runner-output-contract.yaml).
+    // XSS note: all notice text fields (message, code, etc.) are rendered
+    // via DOM textContent or escapeHtml — NOT innerHTML — because these
+    // strings originate from storyboard authors, not AAO.
+    function buildNoticesSectionHtml(cs) {
+      const notices = Array.isArray(cs && cs.notices) ? cs.notices : [];
+      if (notices.length === 0) return '';
+
+      const SEVERITY_CLASS = {
+        info: 'compliance-notice-severity--info',
+        deprecation: 'compliance-notice-severity--deprecation',
+        future_required: 'compliance-notice-severity--future_required',
+      };
+
+      const noticesHtml = notices.map(notice => {
+        const severityClass = SEVERITY_CLASS[notice.severity] || 'compliance-notice-severity--unknown';
+        // All text content rendered via escapeHtml (storyboard-author-controlled)
+        const severityLabel = escapeHtml(String(notice.severity ?? ''));
+        const codeLabel = escapeHtml(String(notice.code ?? ''));
+        const messageText = escapeHtml(String(notice.message ?? ''));
+
+        let metaHtml = '';
+        if (notice.effective_version) {
+          metaHtml += `<span class="compliance-notice-meta">Effective in v${escapeHtml(String(notice.effective_version))}</span> `;
+        }
+        if (notice.reference_url && typeof notice.reference_url === 'string' && notice.reference_url.startsWith('http')) {
+          metaHtml += `<a href="${escapeHtml(notice.reference_url)}" target="_blank" rel="noopener" class="compliance-notice-meta">Spec reference</a>`;
+        }
+
+        let capPathHtml = '';
+        if (notice.capability_path) {
+          capPathHtml = `
+            <details class="compliance-notice-details">
+              <summary>Capability path</summary>
+              <span class="compliance-notice-cap-path">${escapeHtml(String(notice.capability_path))}</span>
+            </details>`;
+        }
+
+        return `
+          <div class="compliance-notice">
+            <div class="compliance-notice-header">
+              <span class="compliance-notice-severity ${severityClass}">${severityLabel}</span>
+              <span class="compliance-notice-code">${codeLabel}</span>
+            </div>
+            <div class="compliance-notice-message">${messageText}</div>
+            ${metaHtml ? '<div>' + metaHtml + '</div>' : ''}
+            ${capPathHtml}
+          </div>`;
+      }).join('');
+
+      return `
+        <div class="compliance-notices">
+          <div class="compliance-notices-label">Notices</div>
+          ${noticesHtml}
+        </div>`;
+    }
+
     function renderVerificationPanel(cs, agentUrl, hasAuth) {
       const badges = Array.isArray(cs && cs.verified_badges) ? cs.verified_badges : [];
       // Audit-comment from #3603: values MUST NOT end in "Agent" or
@@ -1738,6 +1885,7 @@
             </div>
             ${declaredHtml}
             <div class="verification-eligibility-hint">${hint}</div>
+            ${buildNoticesSectionHtml(cs)}
           </div>`;
       }
 
@@ -1876,6 +2024,7 @@
           </div>
           ${rowsHtml}
           ${liveHint}
+          ${buildNoticesSectionHtml(cs)}
         </div>`;
     }
 
