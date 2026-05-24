@@ -22,11 +22,13 @@
  */
 
 export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
-  // accounts — auto-registered by the framework on every tenant whose
-  // `accounts.upsert` is wired (see v6-account-helpers.ts). The training
-  // agent wires upsert on every v6 platform so sync_accounts is uniformly
-  // available; sellers using a real platform would scope this per-tenant.
+  // accounts — sync_accounts is auto-registered by the framework on every
+  // tenant whose `accounts.upsert` is wired (see v6-account-helpers.ts).
+  // list_accounts rides a custom read-tool wrapper so it can keep the v5
+  // training-agent pagination shape while the v6 AccountStore.list path is
+  // still preview.
   sync_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand'],
+  list_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand'],
 
   // sales
   get_products: ['sales'],

@@ -152,7 +152,7 @@ if [ "${OVERLAY}" -eq 1 ]; then
   # against current-PR fixtures, not the SDK-published snapshot. Without
   # this, edits under static/compliance/source/ would silently no-op
   # locally and only surface in CI.
-  bash "${SCRIPT_DIR}/overlay-compliance-cache.sh" || true
+  bash "${SCRIPT_DIR}/overlay-compliance-cache.sh"
 else
   echo "Skipping compliance source overlay (${LABEL})."
 fi
