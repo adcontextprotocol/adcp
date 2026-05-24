@@ -44,11 +44,12 @@ through this lens: **is this worth the tokens it will cost to complete?**
 
 ### How to apply
 
-- **In triage:** default-close (or default-Evergreen) anything in the
-  ISN'T bucket. Re-opening a closed issue later is cheap; staring at
-  300 open issues is expensive. Don't punt for the sake of punting —
-  spec quality and pain-prevention are strong "keep" signals even
-  without an active PR.
+- **In triage:** default-defer low-value issues, and use the
+  `Evergreen` milestone only for non-versioned work that still matters
+  later. Closing issues is a human call; triage should route, clarify,
+  defer, or leave an implementation brief. Don't punt for the sake of
+  punting — spec quality and pain-prevention are strong "keep" signals
+  even without an active PR.
 - **In implementation:** if a task touches three files when you scoped
   it to one, stop. Either re-scope or defer.
 - **In scope decisions:** prefer the smallest change that closes the
@@ -678,7 +679,7 @@ lands on an open issue. To poke the routine yourself:
 | What you want | How |
 |---|---|
 | Re-trigger triage on a missed issue | Comment `/triage` |
-| Bias toward Execute on a borderline issue | Comment `/triage execute` |
+| Authorize first draft PR when safe | Comment `/triage execute` |
 | Force a clarifying-question comment | Comment `/triage clarify` |
 | Force defer | Comment `/triage defer` |
 | Add new info / refine a stuck Clarify | Plain comment with the new info — fires the routine in `comment.created` mode |
@@ -703,8 +704,8 @@ lands on an open issue. To poke the routine yourself:
 - Label `claude-triaging` on the issue → routine is actively working
   on it right now (1–3 minutes typical). Do not start a parallel PR.
 - Label `claude-triaged` (without `claude-triaging`) → routine has
-  finished. The triage comment, draft PR link, or silent-defer
-  state is the outcome.
+  finished. The triage comment, implementation brief, draft PR link,
+  or silent-defer state is the outcome.
 - Neither label, no `## Triage` comment, **and** the issue is more
   than a few minutes old → triage didn't fire. Webhook miss is the
   usual cause. Comment `/triage` to recover.
