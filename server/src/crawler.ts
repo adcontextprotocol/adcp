@@ -1398,16 +1398,25 @@ export class CrawlerService {
 
   // ── Inventory Profile Building ───────────────────────────────────
 
-  private async buildInventoryProfiles(): Promise<Map<string, ProfileUpsertInput>> {
+  private async buildInventoryProfiles(
+    options: { agentUrls?: string[]; deleteStale?: boolean } = {},
+  ): Promise<Map<string, ProfileUpsertInput>> {
     const profileMap = new Map<string, ProfileUpsertInput>();
     if (!this.profilesDb) return profileMap;
 
     const agents = await this.federatedIndex.listAllAgents();
+    const agentUrlFilter = options.agentUrls ? new Set(options.agentUrls) : null;
     const profiles: ProfileUpsertInput[] = [];
+    const emptyAgentUrls: string[] = [];
 
     for (const agent of agents) {
+      if (agentUrlFilter && !agentUrlFilter.has(agent.url)) continue;
+
       const domains = await this.federatedIndex.getDomainsForAgent(agent.url);
-      if (domains.length === 0) continue;
+      if (domains.length === 0) {
+        if (agentUrlFilter) emptyAgentUrls.push(agent.url);
+        continue;
+      }
 
       const markets = new Set<string>();
       const propertyTypes = new Set<string>();
@@ -1450,12 +1459,20 @@ export class CrawlerService {
 
     if (profiles.length > 0) {
       await this.profilesDb.upsertProfiles(profiles);
-      const currentUrls = profiles.map(p => p.agent_url);
-      const staleDeleted = await this.profilesDb.deleteStaleProfiles(currentUrls);
-      if (staleDeleted > 0) {
-        log.info({ deleted: staleDeleted }, 'Stale inventory profiles cleaned up');
+      if (options.deleteStale !== false && !agentUrlFilter) {
+        const currentUrls = profiles.map(p => p.agent_url);
+        const staleDeleted = await this.profilesDb.deleteStaleProfiles(currentUrls);
+        if (staleDeleted > 0) {
+          log.info({ deleted: staleDeleted }, 'Stale inventory profiles cleaned up');
+        }
       }
       log.info({ profileCount: profiles.length }, 'Inventory profiles updated');
+    }
+    if (agentUrlFilter && emptyAgentUrls.length > 0) {
+      const deleted = await this.profilesDb.deleteProfiles(emptyAgentUrls);
+      if (deleted > 0) {
+        log.info({ deleted }, 'Empty inventory profiles cleaned up');
+      }
     }
 
     return profileMap;
@@ -1496,9 +1513,17 @@ export class CrawlerService {
         },
       );
 
+      const affectedAgentUrls = new Set<string>();
+      const existingAuthorizations = await this.federatedIndex.getAuthorizationsForDomain(domain);
+      for (const auth of existingAuthorizations) {
+        if (auth.source !== 'adagents_json') continue;
+        affectedAgentUrls.add(canonicalizeAgentUrl(auth.agent_url) ?? auth.agent_url);
+      }
+
       // Record agents and properties
       for (const authorizedAgent of validation.raw_data.authorized_agents) {
         if (!authorizedAgent.url) continue;
+        affectedAgentUrls.add(canonicalizeAgentUrl(authorizedAgent.url) ?? authorizedAgent.url);
 
         await this.federatedIndex.recordAgentFromAdagentsJson(
           authorizedAgent.url,
@@ -1548,7 +1573,10 @@ export class CrawlerService {
       }
 
       // Rebuild profiles for affected agents
-      await this.buildInventoryProfiles();
+      await this.buildInventoryProfiles({
+        agentUrls: [...affectedAgentUrls],
+        deleteStale: false,
+      });
 
       log.info({ domain }, 'Single domain crawl complete');
     } catch (err) {
@@ -1699,11 +1727,11 @@ export class CrawlerService {
 
     this.managerRevalidationProcessing = true;
     // Bounded per-tick batch — caps concurrency budget regardless of
-    // queue depth. At a 5-minute tick and BATCH_SIZE=50, a 6K-publisher
-    // manager rotation propagates within ~10 hours, comfortably ahead
-    // of the 60-minute organic re-crawl cadence for any single row.
+    // queue depth. Keep concurrent full domain crawls below the default
+    // database pool size so background revalidation leaves headroom for
+    // health checks and foreground requests.
     const BATCH_SIZE = 50;
-    const CONCURRENCY = 10;
+    const CONCURRENCY = 4;
 
     try {
       const rows = await this.publisherDb.dequeueRevalidationBatch(BATCH_SIZE);
