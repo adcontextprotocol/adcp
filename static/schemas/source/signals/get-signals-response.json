@@ -21,11 +21,16 @@
         "properties": {
           "signal_id": {
             "$ref": "/schemas/core/signal-id.json",
-            "description": "Universal signal identifier referencing the data provider's catalog. Use this to verify authorization and look up signal definitions."
+            "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older Signals Protocol clients.",
+            "deprecated": true
+          },
+          "signal_ref": {
+            "$ref": "/schemas/core/signal-ref.json",
+            "description": "Canonical signal reference for discovery, activation, and media-buy targeting. Data-provider catalog signals use scope 'data_provider'. Source-native custom signals that are not catalog-published use scope 'signal_source'. Product-local refs are only meaningful when the response is explicitly scoped to a product context."
           },
           "signal_agent_segment_id": {
             "type": "string",
-            "description": "Opaque activation handle. Pass this string verbatim to activate_signal.signal_agent_segment_id — do not pass the signal_id object.",
+            "description": "Opaque signal handle issued by this signal source. Pass this string verbatim to activate_signal.signal_agent_segment_id. For media-buy package signal targeting, signal_ref is the buy-time identity; echo this handle only when the selected product option exposes it as a separate execution handle. Do not pass the signal_id object as this handle.",
             "x-entity": "signal_activation_id"
           },
           "name": {
@@ -68,11 +73,11 @@
           },
           "signal_type": {
             "$ref": "/schemas/enums/signal-catalog-type.json",
-            "description": "Catalog type of signal (marketplace, custom, owned)"
+            "description": "Commercial/provenance type of signal (marketplace, custom, owned)"
           },
           "data_provider": {
             "type": "string",
-            "description": "Human-readable name of the data provider"
+            "description": "Human-readable source name for the signal, when applicable. For data_provider-scoped signals this is the data provider name; for signal_source-scoped signals it may identify the signal source or proprietary origin."
           },
           "coverage_percentage": {
             "type": "number",
@@ -89,7 +94,7 @@
           },
           "pricing_options": {
             "type": "array",
-            "description": "Pricing options available for this signal. The buyer selects one and passes its pricing_option_id in report_usage for billing verification.",
+            "description": "Pricing options available for this signal when it has an incremental price. The buyer selects one and passes its pricing_option_id in report_usage or package-level signal_targeting_groups for billing verification. Omit when pricing is unavailable to the caller, bundled into the destination product, or has no incremental cost.",
             "items": {
               "$ref": "/schemas/core/vendor-pricing-option.json"
             },
@@ -97,15 +102,13 @@
           }
         },
         "required": [
-          "signal_id",
+          "signal_ref",
           "signal_agent_segment_id",
           "name",
           "description",
           "signal_type",
-          "data_provider",
           "coverage_percentage",
-          "deployments",
-          "pricing_options"
+          "deployments"
         ],
         "additionalProperties": true
       }

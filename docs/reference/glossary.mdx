@@ -14,7 +14,7 @@ A billing relationship between a buyer and a seller. The account determines rate
 Classification of MCP session credentials as either "platform" (aggregator) or "customer" (direct advertiser/agency).
 
 **Audience** (AdCP context)
-A named group of users uploaded by a buyer for targeted advertising. Distinct from signals: audiences are buyer-owned first-party CRM data uploaded via `sync_audiences`; signals are third-party data discovered via `get_signals`. Audiences are account-scoped — an `audience_id` cannot be used across sellers. Reference audiences in `targeting_overlay.audience_include` or `audience_exclude` in `create_media_buy`. See also [Audience Member](#audience-member) and [Hashed Identifier](#hashed-identifier).
+A named group of users uploaded by a buyer for targeted advertising. Distinct from signals: audiences are buyer-owned first-party CRM data uploaded via `sync_audiences`; signals are named targeting dimensions discovered through product signal options, data-provider catalogs, or `get_signals`. Audiences are account-scoped — an `audience_id` cannot be used across sellers. Reference audiences in `targeting_overlay.audience_include` or `audience_exclude` in `create_media_buy`. See also [Audience Member](#audience-member) and [Hashed Identifier](#hashed-identifier).
 
 **Audience Member**
 A hashed identifier record representing one person in a CRM audience. Contains at least one of: `hashed_email`, `hashed_phone`, or `uids`. All PII is normalized and hashed (SHA-256) by the buyer before transmission — the wire format never carries cleartext email or phone. Hashing is data minimization at the transport boundary, not anonymization: see [Hashed Identifier](#hashed-identifier) for the pseudonymous-PII caveat that governs retention and consent. Providing multiple identifiers for the same person improves match rates. See also [UID](#uid-universal-id).
@@ -23,7 +23,7 @@ A hashed identifier record representing one person in a CRM audience. Contains a
 Plan-level include/exclude rules that structurally prevent prohibited targeting patterns. Each constraint is an [Audience Selector](#audience-selector). The governance agent evaluates `check_governance` requests against these constraints to detect prohibited targeting before any ad is served.
 
 **Audience Selector**
-A discriminated union describing one targeting criterion — either a signal reference (pointing to a specific data provider signal) or a natural language description. Audience selectors appear in plan audience constraints and `planned_delivery.audience_targeting`.
+A discriminated union describing one targeting criterion — either a signal reference (pointing to a specific `signal_id`) or a natural language description. Audience selectors appear in plan audience constraints and `planned_delivery.audience_targeting`.
 
 **Action Source**
 Where an event physically occurred: `website`, `app`, `in_store`, `phone_call`, `chat`, `email`, `offline`, `system_generated`, or `other`. Set on each event in `log_event` and declared at the product level in `conversion_tracking.action_sources`.
@@ -89,7 +89,7 @@ Direct advertiser or agency account with specific seat access and negotiated rat
 An organization that owns and publishes audience or contextual data (e.g., Polk, Experian, Acxiom). Data providers publish signal catalogs via `/.well-known/adagents.json` on their domain, enabling discovery and authorization verification. See [Data Provider Guide](/docs/signals/data-providers).
 
 **Data Provider Domain**
-The domain where a data provider publishes their signal catalog (e.g., `polk.com`). Used in `signal_id` objects to reference signals: `{ "data_provider_domain": "polk.com", "id": "likely_tesla_buyers" }`.
+The domain where a data provider publishes their signal catalog (e.g., `polk.com`). Used in `signal_ref` objects to reference catalog-published signals: `{ "scope": "data_provider", "data_provider_domain": "polk.com", "signal_id": "likely_tesla_buyers" }`.
 
 **Daypart**
 Specific time-of-day segment for time-based advertising, commonly used in DOOH (e.g., morning_commute, evening_prime, overnight).
@@ -286,7 +286,7 @@ Total duration an ad was displayed across all DOOH screens, measured in seconds.
 A specific advertising account within a decisioning platform, typically representing a brand or campaign.
 
 **Segment ID**
-The specific identifier used for signal activation, may differ from signal_id.
+The specific identifier used for signal activation. This may differ from `signal_ref` because activation handles are destination-specific execution ids, not signal identity.
 
 **Share of Voice (SOV)**
 Percentage of available ad inventory allocated to a specific advertiser in DOOH loops. Expressed as 0.0-1.0 (e.g., 0.15 = 15% SOV).
@@ -301,13 +301,16 @@ A collection of signal definitions published by a data provider via `/.well-know
 A single signal entry in a data provider's signal catalog, containing: `id` (unique identifier), `name` (human-readable), `value_type` (binary, categorical, or numeric), and optional fields like `description`, `tags`, `allowed_values`, and `range`.
 
 **Signal Discovery**
-The process of finding relevant data signals (audiences, contextual, geographical, temporal) using natural language descriptions or structured ID lookup.
+The process of finding relevant data signals (audiences, contextual, geographical, temporal) using natural language descriptions or structured `signal_ref` lookup.
 
 **Signal ID**
-A structured identifier referencing a signal. Uses `source` as a discriminator with two variants: `catalog` signals reference a data provider's published catalog (`data_provider_domain` + `id`, verifiable); `agent` signals are native to the signals agent (`agent_url` + `id`, trust-based). Example catalog signal: `{ "source": "catalog", "data_provider_domain": "polk.com", "id": "likely_tesla_buyers" }`. Example agent signal: `{ "source": "agent", "agent_url": "https://liveramp.com/signals", "id": "custom_segment" }`.
+Deprecated structured identifier previously used by the Signals Protocol for discovery and activation. New discovery, activation, product targeting, and buy-time surfaces use [Signal Ref](#signal-ref).
+
+**Signal Ref**
+A structured signal reference using `scope` as the discriminator. `scope: "data_provider"` references a signal published in an adagents.json signal catalog (`data_provider_domain` + `signal_id`, verifiable). `scope: "signal_source"` references a source-native signal (`signal_source_url` + `signal_id`, trust-based). `scope: "product"` references a product-local signal option meaningful only inside the selected product/package context.
 
 **Signal Source**
-The origin type for a signal identifier: `catalog` (from a data provider's published catalog, authorization verifiable via adagents.json) or `agent` (native to the signals agent, not externally verifiable). See [Data Provider Guide](/docs/signals/data-providers).
+A source that issues or activates signals. Source-native signals that are not published in an adagents.json signal catalog use `signal_ref.scope: "signal_source"` with `signal_source_url`.
 
 **Signal Tags**
 Tags used to group related signals within a data provider's catalog. Enable efficient authorization (authorize "all automotive signals" rather than listing individual IDs). Tags must be lowercase alphanumeric with underscores/hyphens.

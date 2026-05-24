@@ -331,7 +331,7 @@ The `signal_type` enum in signal responses has three values:
 
 - `marketplace` — the signal agent is reselling segments published by a third-party data provider (Experian, Peer39, etc.). Buyers can verify authorization via the provider's `/.well-known/adagents.json`.
 - `owned` — the signal agent exposes its own first-party segments derived from directly owned data (retailer purchase data, publisher behavioral data, telco location data).
-- `custom` — the signal agent builds the segment on demand from models, composites, or buyer-supplied inputs. Use this when no `adagents.json` authorization chain applies — the segment is agent-native, not attributable to a standing upstream provider.
+- `custom` — the signal source builds the segment on demand from models, composites, or buyer-supplied inputs. Use this when no `adagents.json` authorization chain applies — the segment is source-native, not attributable to a standing upstream provider.
 
 ## Source of truth
 

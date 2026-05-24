@@ -356,7 +356,11 @@
         },
         "signal-id": {
           "$ref": "/schemas/core/signal-id.json",
-          "description": "Universal signal identifier - discriminated union by source: 'catalog' (data_provider_domain + id, verifiable) or 'agent' (agent_url + id, trust-based)"
+          "description": "Universal signal identifier - discriminated union by source: 'catalog' (data_provider_domain + id, verifiable) or 'agent' (agent_url + id for a signal-source-native signal)"
+        },
+        "signal-ref": {
+          "$ref": "/schemas/core/signal-ref.json",
+          "description": "Named signal reference for media-buy product targeting: scope 'product' for product-local signal options or scope 'data_provider' for external published adagents.json signal catalogs"
         },
         "signal-definition": {
           "$ref": "/schemas/core/signal-definition.json",
@@ -372,7 +376,11 @@
         },
         "signal-targeting": {
           "$ref": "/schemas/core/signal-targeting.json",
-          "description": "Targeting constraint for a signal - discriminated union by value_type (binary, categorical, numeric)"
+          "description": "Signals Protocol targeting constraint using signal_ref - discriminated union by value_type (binary, categorical, numeric)"
+        },
+        "signal-targeting-expression": {
+          "$ref": "/schemas/core/signal-targeting-expression.json",
+          "description": "Media-buy product targeting expression using signal_ref - discriminated union by value_type (binary, categorical, numeric)"
         },
         "event": {
           "$ref": "/schemas/core/event.json",
@@ -762,7 +770,7 @@
         },
         "signal-source": {
           "$ref": "/schemas/enums/signal-source.json",
-          "description": "Source type for signal identifiers: 'catalog' (verifiable via data provider) or 'agent' (trust-based)"
+          "description": "Source type for signal identifiers: 'catalog' (verifiable via data provider) or 'agent' (signal source identified by agent_url)"
         },
         "universal-macro": {
           "$ref": "/schemas/enums/universal-macro.json",

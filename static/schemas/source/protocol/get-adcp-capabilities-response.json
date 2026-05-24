@@ -771,7 +771,7 @@
         },
         "discovery_modes": {
           "type": "array",
-          "description": "Discovery modes this signals agent supports on get_signals. 'brief' (default — every signals agent supports this): semantic discovery driven by signal_spec or signal_ids. 'wholesale': raw wholesale signals feed enumeration — caller omits signal_spec/signal_ids and the agent returns its full priced signals feed, paginated, scoped by filters/account/destinations/countries. Agents that do not declare 'wholesale' MAY return INVALID_REQUEST for wholesale calls. Absent declaration is treated as ['brief'].",
+          "description": "Discovery modes this signals agent supports on get_signals. 'brief' (default — every signals agent supports this): semantic discovery driven by signal_spec or signal_refs, with deprecated signal_ids accepted for older clients. 'wholesale': raw wholesale signals feed enumeration — caller omits signal_spec, signal_refs, and signal_ids and the agent returns its full priced signals feed, paginated, scoped by filters/account/destinations/countries. Agents that do not declare 'wholesale' MAY return INVALID_REQUEST for wholesale calls. Absent declaration is treated as ['brief'].",
           "items": {
             "type": "string",
             "enum": [
@@ -791,7 +791,7 @@
           "properties": {
             "catalog_signals": {
               "type": "boolean",
-              "description": "Supports signals from data provider catalogs with structured signal_id references"
+              "description": "Supports signals from data provider catalogs with structured signal_ref references"
             }
           },
           "additionalProperties": {
