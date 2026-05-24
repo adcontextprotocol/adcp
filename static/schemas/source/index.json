@@ -356,7 +356,19 @@
         },
         "signal-id": {
           "$ref": "/schemas/core/signal-id.json",
-          "description": "Universal signal identifier - discriminated union by source: 'catalog' (data_provider_domain + id, verifiable) or 'agent' (agent_url + id, trust-based)"
+          "description": "Universal signal identifier - discriminated union by source: 'catalog' (data_provider_domain + id, verifiable) or 'agent' (agent_url + id for a signal-source-native signal)"
+        },
+        "signal-ref": {
+          "$ref": "/schemas/core/signal-ref.json",
+          "description": "Named signal reference for discovery, activation, and media-buy product targeting: scope 'product' for product-local signal options, scope 'data_provider' for published adagents.json signal catalogs, or scope 'signal_source' for source-native signals"
+        },
+        "signal-listing": {
+          "$ref": "/schemas/core/signal-listing.json",
+          "description": "Shared signal_ref plus optional definition metadata used by get_signals and media products"
+        },
+        "product-signal-targeting-option": {
+          "$ref": "/schemas/core/product-signal-targeting-option.json",
+          "description": "Product-scoped signal option available for package-level signal_targeting_groups"
         },
         "signal-definition": {
           "$ref": "/schemas/core/signal-definition.json",
@@ -372,7 +384,27 @@
         },
         "signal-targeting": {
           "$ref": "/schemas/core/signal-targeting.json",
-          "description": "Targeting constraint for a signal - discriminated union by value_type (binary, categorical, numeric)"
+          "description": "Signals Protocol targeting constraint using signal_ref - discriminated union by value_type (binary, categorical, numeric)"
+        },
+        "signal-targeting-rules": {
+          "$ref": "/schemas/core/signal-targeting-rules.json",
+          "description": "Product-scoped composition rules for package-level signal_targeting_groups"
+        },
+        "signal-targeting-expression": {
+          "$ref": "/schemas/core/signal-targeting-expression.json",
+          "description": "Media-buy product targeting expression using signal_ref - discriminated union by value_type (binary, categorical, numeric)"
+        },
+        "package-signal-targeting": {
+          "$ref": "/schemas/core/package-signal-targeting.json",
+          "description": "One selected signal inside a package signal targeting group"
+        },
+        "package-signal-targeting-group": {
+          "$ref": "/schemas/core/package-signal-targeting-group.json",
+          "description": "One include or exclude child group inside package-level signal_targeting_groups"
+        },
+        "package-signal-targeting-groups": {
+          "$ref": "/schemas/core/package-signal-targeting-groups.json",
+          "description": "Portable package-level signal composition: top-level all with child any/none groups"
         },
         "event": {
           "$ref": "/schemas/core/event.json",
@@ -762,7 +794,7 @@
         },
         "signal-source": {
           "$ref": "/schemas/enums/signal-source.json",
-          "description": "Source type for signal identifiers: 'catalog' (verifiable via data provider) or 'agent' (trust-based)"
+          "description": "Source type for signal identifiers: 'catalog' (verifiable via data provider) or 'agent' (signal source identified by agent_url)"
         },
         "universal-macro": {
           "$ref": "/schemas/enums/universal-macro.json",
