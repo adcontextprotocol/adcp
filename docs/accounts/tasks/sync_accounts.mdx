@@ -99,7 +99,7 @@ asyncio.run(main())
 | `billing_entity` | object | No | Structured business entity details for the party responsible for payment. Contains `legal_name` (required), plus optional `vat_id`, `tax_id`, `registration_number`, `address`, `contacts`, and `bank`. Bank details are write-only — included in requests but never echoed in responses. See [billing entity and invoice recipient](/docs/building/integration/accounts-and-agents#billing-entity-and-invoice-recipient). |
 | `payment_terms` | string | No | Payment terms for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. The seller must either accept these terms or reject the account — terms are never silently remapped. When omitted, the seller applies its default terms. |
 | `sandbox` | boolean | No | When true, set up a sandbox account with no real platform calls or billing. Only applicable to implicit accounts (`require_operator_auth: false`). For explicit accounts, sandbox accounts are pre-existing test accounts discovered via `list_accounts`. |
-| `notification_configs` | array | No | Account-level webhook subscribers for events that outlive any single media buy: creative lifecycle notifications and wholesale feed change webhooks. Omit to leave existing subscribers unchanged; send `[]` to remove all subscribers; send a full array to replace. |
+| `notification_configs` | array | No | Account-level webhook subscribers for events that outlive any single media buy: creative lifecycle notifications and wholesale feed change webhooks. Omit to leave existing subscribers unchanged; send `[]` to remove all subscribers; send a full array to replace. The stable match key is `subscriber_id` — an existing `subscriber_id` is upserted; IDs absent from the sent array are removed. |
 
 **Natural key**: The tuple `(brand, operator, sandbox)` uniquely identifies an account relationship. `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (via agency). Adding `sandbox: true` provisions a sandbox account for the same brand/operator pair — no real platform calls or billing.
 
@@ -179,7 +179,7 @@ Schema enforces the exclusivity via `oneOf` — sending both shapes on the same 
 
 For these event types, "wholesale feed" means the seller's buyable wholesale product and signals feeds returned by `get_products` or `get_signals`; it is not the buyer-provided feeds managed by `sync_catalogs`.
 
-Permitted in **both** provisioning and settings-update modes. Declarative semantics: omit to leave existing subscribers unchanged; send `[]` to remove all subscribers; send a full array to replace.
+Permitted in **both** provisioning and settings-update modes. Declarative semantics: omit to leave existing subscribers unchanged; send `[]` to remove all subscribers; send a full array to replace. The stable match key is `subscriber_id` — an entry with an existing `subscriber_id` upserts (replaces) that subscriber's active config. The seller MUST NOT merge the new array with persisted state: entries in persisted state that do not appear in the sent array are removed. Paused entries (`active: false`) are subject to the same semantics — to preserve a paused subscription, re-include the entry with `active: false` in the sent array.
 
 Each entry has:
 
