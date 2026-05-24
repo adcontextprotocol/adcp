@@ -2656,6 +2656,21 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       };
     })()
     : {};
+  const simulatedReachMetrics = simDelivery && (
+    simDelivery.reach !== undefined
+    || simDelivery.frequency !== undefined
+    || simDelivery.reachWindow
+  )
+    ? {
+      ...(simDelivery.reach !== undefined ? { reach: simDelivery.reach } : {}),
+      ...(simDelivery.reach !== undefined && derivedReachUnit ? { reach_unit: derivedReachUnit } : {}),
+      ...(simDelivery.frequency !== undefined ? { frequency: simDelivery.frequency } : {}),
+      ...(simDelivery.reachWindow ? { reach_window: simDelivery.reachWindow } : {}),
+    }
+    : {};
+  const simulatedViewability = simDelivery?.viewability
+    ? { viewability: simDelivery.viewability }
+    : {};
 
   return {
     reporting_period: {
@@ -2683,7 +2698,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
           frequency: +(totalImpressions / totalReach).toFixed(1),
         } : {}),
         ...goalDerivedReach,
+        ...simulatedReachMetrics,
         ...conversionTotals,
+        ...simulatedViewability,
       },
       by_package: byPackage,
     }],

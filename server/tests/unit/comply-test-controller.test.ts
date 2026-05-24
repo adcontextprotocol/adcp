@@ -795,6 +795,56 @@ describe('comply_test_controller', () => {
       expect((result as any).cumulative.impressions).toBe(8000);
     });
 
+    it('injects reach_window and viewability metrics into delivery reporting', async () => {
+      const mediaBuyId = await createMediaBuy(server);
+
+      const viewability = {
+        measurable_impressions: 7400,
+        viewable_impressions: 5920,
+        viewable_rate: 0.8,
+        viewed_seconds: 4.3,
+        standard: 'mrc',
+      };
+      const reachWindow = {
+        kind: 'rolling',
+        period: { interval: 7, unit: 'days' },
+      };
+
+      const { result: simResult } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: {
+          media_buy_id: mediaBuyId,
+          impressions: 10000,
+          reach: 4000,
+          frequency: 2.5,
+          reach_window: reachWindow,
+          viewability,
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+
+      expect(simResult.success).toBe(true);
+      expect((simResult as any).simulated.reach).toBe(4000);
+      expect((simResult as any).simulated.frequency).toBe(2.5);
+      expect((simResult as any).simulated.reach_window).toEqual(reachWindow);
+      expect((simResult as any).simulated.viewability).toEqual(viewability);
+      expect((simResult as any).cumulative.reach).toBe(4000);
+      expect((simResult as any).cumulative.reach_window).toEqual(reachWindow);
+      expect((simResult as any).cumulative.viewability).toEqual(viewability);
+
+      const { result: delivery } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_id: mediaBuyId,
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      const totals = (delivery as any).media_buy_deliveries[0].totals;
+      expect(totals.reach).toBe(4000);
+      expect(totals.frequency).toBe(2.5);
+      expect(totals.reach_window).toEqual(reachWindow);
+      expect(totals.viewability).toEqual(viewability);
+    });
+
     it('returns NOT_FOUND for unknown media buy', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'simulate_delivery',

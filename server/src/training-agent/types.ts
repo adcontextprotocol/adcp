@@ -186,6 +186,19 @@ export interface ComplyDeliveryAccumulator {
   clicks: number;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
+  reach?: number;
+  frequency?: number;
+  reachWindow?: {
+    kind: 'cumulative' | 'period' | 'rolling';
+    period?: { interval: number; unit: string };
+  };
+  viewability?: {
+    measurable_impressions?: number;
+    viewable_impressions?: number;
+    viewable_rate?: number;
+    viewed_seconds?: number;
+    standard?: string;
+  };
   /** vendor_metric_values injected via comply_test_controller simulate_delivery. */
   vendorMetricValues?: unknown[];
 }
