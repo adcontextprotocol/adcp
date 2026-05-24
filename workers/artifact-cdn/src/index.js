@@ -23,17 +23,17 @@ export async function handleRequest(request, env, _ctx) {
     });
   }
 
-  if (pathname === "/schemas" || pathname === "/compliance" || pathname === "/protocol") {
+  if (pathname === "/schemas" || pathname === "/compliance") {
     return redirect(`${pathname}/`, 301);
+  }
+
+  if (pathname === "/protocol" || pathname === "/protocol/") {
+    return protocolDiscoveryResponse(env.ARTIFACTS);
   }
 
   if (pathname === "/schemas/" || pathname === "/compliance/") {
     const mount = pathname.slice(1, -1);
     return discoveryResponse(env.ARTIFACTS, mount);
-  }
-
-  if (pathname === "/protocol/") {
-    return protocolDiscoveryResponse(env.ARTIFACTS);
   }
 
   if (pathname.startsWith("/schemas/")) {
@@ -74,6 +74,11 @@ async function versionedArtifactResponse(request, env, mount, pathname) {
         resolvedPath = `/${targetVersion}${rest}`;
       }
     }
+  }
+
+  const bareVersionMatch = resolvedPath.match(/^\/([^/]+)$/);
+  if (bareVersionMatch && (bareVersionMatch[1] === "latest" || parseSemver(bareVersionMatch[1]))) {
+    return redirect(`/${mount}${resolvedPath}/`, 301);
   }
 
   const dirMatch = resolvedPath.match(VERSION_DIR_PATH);
