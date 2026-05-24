@@ -193,8 +193,12 @@ Plans can declare audience targeting constraints using the `audience` field. Eac
 ```json
 {
   "type": "signal",
-  "catalog_url": "https://signals.dataprovider.com/catalog.json",
-  "signal_id": "likely_ev_buyers",
+  "signal_ref": {
+    "scope": "data_provider",
+    "data_provider_domain": "signals.dataprovider.com",
+    "signal_id": "likely_ev_buyers"
+  },
+  "value_type": "binary",
   "value": true
 }
 ```

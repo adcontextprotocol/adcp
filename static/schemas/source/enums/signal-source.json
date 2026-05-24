@@ -7,6 +7,6 @@
   "enum": ["catalog", "agent"],
   "enumDescriptions": {
     "catalog": "Signal from a data provider's published catalog. Referenced by data_provider_domain + id. Authorization can be verified by checking the data provider's adagents.json.",
-    "agent": "Signal native to the signals agent. Referenced by agent_url + id. Not externally verifiable - buyer trusts the agent's claim about the signal."
+    "agent": "Signal native to a signal source identified by agent_url. Referenced by agent_url + id. Not externally verifiable through an upstream catalog - buyer trusts the issuing source's claim about the signal."
   }
 }

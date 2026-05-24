@@ -147,15 +147,28 @@
     },
     "data_provider_signals": {
       "type": "array",
-      "description": "Data provider signals available for this product. Buyers fetch signal definitions from each data provider's adagents.json and can verify agent authorization.",
+      "description": "Deprecated. Legacy/non-selectable metadata for data-provider catalog signals already bundled into or associated with this product. This field does not provide buyer-selectable options, prices, or seller activation handles. Buyers can fetch definitions from each data provider's adagents.json and verify seller authorization. New selectable or seller-applied package-level signal surfaces use signal_targeting_options.",
+      "deprecated": true,
       "items": {
         "$ref": "/schemas/core/data-provider-signal-selector.json"
       }
     },
+    "signal_targeting_options": {
+      "type": "array",
+      "description": "Seller-offered signals that may be applied to packages for this product at create_media_buy time. Each entry references a named signal definition with signal_ref scope 'product' for a product-local signal option or scope 'data_provider' for an external published adagents.json signal catalog the seller is authorized to apply. This is the canonical buy-time discovery surface for product signal composition; get_signals remains an optional cross-product discovery and activation surface. Buyers select entries through packages[].targeting_overlay.signal_targeting_groups when signal_targeting_rules allow; fixed/default entries are applied by the seller and echoed on the package state. Sellers MUST set signal_targeting_allowed to true whenever this field is present. Bundled, non-selectable signal metadata belongs in product terms; legacy data_provider_signals may appear only for backwards compatibility.",
+      "items": {
+        "$ref": "/schemas/core/product-signal-targeting-option.json"
+      },
+      "minItems": 1
+    },
+    "signal_targeting_rules": {
+      "$ref": "/schemas/core/signal-targeting-rules.json",
+      "description": "Composition rules for selecting entries from signal_targeting_options on this product. Present when the seller needs to constrain storefront composition beyond the listed signal options. This is product-scoped because products may be backed by different ad servers with different Boolean targeting support and group limits."
+    },
     "signal_targeting_allowed": {
       "type": "boolean",
       "default": false,
-      "description": "Whether buyers can filter this product to a subset of its data_provider_signals. When false (default), the product includes all listed signals as a bundle. When true, buyers can target specific signals."
+      "description": "Whether this product has a package-level signal_targeting_groups surface. When false (default), signals are bundled into the product terms and cannot be selected or explicitly echoed as package signal groups. When true, entries from signal_targeting_options may be buyer-selected or seller-applied according to signal_targeting_rules and are represented through packages[].targeting_overlay.signal_targeting_groups. Editability is controlled by signal_targeting_rules; fixed/default-only products still set this to true when applied signal groups are echoed."
     },
     "catalog_types": {
       "type": "array",
@@ -518,6 +531,34 @@
     "delivery_type",
     "pricing_options",
     "reporting_capabilities"
+  ],
+  "allOf": [
+    {
+      "description": "Products with package-level signal targeting options or rules MUST declare the signal targeting surface explicitly.",
+      "if": {
+        "anyOf": [
+          { "required": ["signal_targeting_options"] },
+          { "required": ["signal_targeting_rules"] }
+        ]
+      },
+      "then": {
+        "properties": {
+          "signal_targeting_allowed": {
+            "const": true
+          }
+        },
+        "required": ["signal_targeting_allowed"]
+      }
+    },
+    {
+      "description": "Signal targeting rules constrain the listed product signal options; rules without options are incoherent.",
+      "if": {
+        "required": ["signal_targeting_rules"]
+      },
+      "then": {
+        "required": ["signal_targeting_options"]
+      }
+    }
   ],
   "anyOf": [
     {
