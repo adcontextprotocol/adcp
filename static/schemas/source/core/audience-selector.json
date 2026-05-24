@@ -13,8 +13,8 @@
           "const": "signal",
           "description": "Discriminator for signal-based selectors"
         },
-        "signal_id": {
-          "$ref": "/schemas/core/signal-id.json",
+        "signal_ref": {
+          "$ref": "/schemas/core/signal-ref.json",
           "description": "The signal to target"
         },
         "value_type": {
@@ -27,7 +27,7 @@
           "description": "Whether to include (true) or exclude (false) users matching this signal"
         }
       },
-      "required": ["type", "signal_id", "value_type", "value"],
+      "required": ["type", "signal_ref", "value_type", "value"],
       "additionalProperties": true
     },
     {
@@ -39,8 +39,8 @@
           "const": "signal",
           "description": "Discriminator for signal-based selectors"
         },
-        "signal_id": {
-          "$ref": "/schemas/core/signal-id.json",
+        "signal_ref": {
+          "$ref": "/schemas/core/signal-ref.json",
           "description": "The signal to target"
         },
         "value_type": {
@@ -57,7 +57,7 @@
           "minItems": 1
         }
       },
-      "required": ["type", "signal_id", "value_type", "values"],
+      "required": ["type", "signal_ref", "value_type", "values"],
       "additionalProperties": true
     },
     {
@@ -69,8 +69,8 @@
           "const": "signal",
           "description": "Discriminator for signal-based selectors"
         },
-        "signal_id": {
-          "$ref": "/schemas/core/signal-id.json",
+        "signal_ref": {
+          "$ref": "/schemas/core/signal-ref.json",
           "description": "The signal to target"
         },
         "value_type": {
@@ -87,12 +87,12 @@
           "description": "Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both are provided."
         }
       },
-      "required": ["type", "signal_id", "value_type"],
+      "required": ["type", "signal_ref", "value_type"],
       "additionalProperties": true
     },
     {
       "type": "object",
-      "description": "Description-based selector — natural language audience description. Used when the caller doesn't have a specific signal ID (e.g., buyer setting plan-level goals, or seller using proprietary segments without public catalog entries).",
+      "description": "Description-based selector — natural language audience description. Used when the caller doesn't have a specific signal reference (e.g., buyer setting plan-level goals, or seller using proprietary segments without public catalog entries).",
       "properties": {
         "type": {
           "type": "string",

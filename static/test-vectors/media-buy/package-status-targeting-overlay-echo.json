@@ -7,6 +7,7 @@
       "id": "property-and-collection-list-echo",
       "description": "Specialism MUST — seller echoes persisted PropertyListReference and CollectionListReference under packages[0].targeting_overlay. Mirrors the create/get/update cycle in the inventory_list_targeting storyboard.",
       "payload": {
+        "status": "completed",
         "media_buys": [
           {
             "media_buy_id": "mb_acme_outdoor_001",
@@ -63,6 +64,7 @@
       "id": "plain-overlay-fields-echo",
       "description": "General SHOULD — seller echoes persisted plain overlay fields (geo_countries, frequency_cap, device_type) under packages[0].targeting_overlay. Exercises the non-specialism path that the inventory_list_targeting storyboard does not cover.",
       "payload": {
+        "status": "completed",
         "media_buys": [
           {
             "media_buy_id": "mb_beverage_summer_042",
@@ -122,6 +124,103 @@
         {
           "path": "media_buys[0].packages[0].targeting_overlay.frequency_cap.window.unit",
           "value": "days"
+        }
+      ]
+    },
+    {
+      "id": "signal-targeting-groups-echo",
+      "description": "General SHOULD — seller echoes grouped package-level signal_targeting_groups under packages[0].targeting_overlay so buyers can audit include/exclude signal composition.",
+      "payload": {
+        "status": "completed",
+        "media_buys": [
+          {
+            "media_buy_id": "mb_retail_signal_groups_001",
+            "status": "pending_start",
+            "currency": "USD",
+            "total_budget": 25000,
+            "start_time": "2026-09-01T00:00:00Z",
+            "end_time": "2026-09-30T23:59:59Z",
+            "created_at": "2026-08-15T10:00:00Z",
+            "updated_at": "2026-08-15T10:00:00Z",
+            "packages": [
+              {
+                "package_id": "pkg_retail_signal_groups_video",
+                "product_id": "prod_retail_video_premium",
+                "budget": 25000,
+                "currency": "USD",
+                "start_time": "2026-09-01T00:00:00Z",
+                "end_time": "2026-09-30T23:59:59Z",
+                "targeting_overlay": {
+                  "signal_targeting_groups": {
+                    "operator": "all",
+                    "groups": [
+                      {
+                        "operator": "any",
+                        "signals": [
+                          {
+                            "signal_ref": {
+                              "scope": "product",
+                              "signal_id": "high_intent_shoppers"
+                            },
+                            "value_type": "binary",
+                            "value": true,
+                            "pricing_option_id": "signal_cpm_usd_250",
+                            "signal_agent_segment_id": "sig_high_intent_shoppers"
+                          },
+                          {
+                            "signal_ref": {
+                              "scope": "product",
+                              "signal_id": "loyalty_members"
+                            },
+                            "value_type": "binary",
+                            "value": true,
+                            "pricing_option_id": "signal_cpm_usd_250",
+                            "signal_agent_segment_id": "sig_loyalty_members"
+                          }
+                        ]
+                      },
+                      {
+                        "operator": "none",
+                        "signals": [
+                          {
+                            "signal_ref": {
+                              "scope": "product",
+                              "signal_id": "recent_purchasers"
+                            },
+                            "value_type": "binary",
+                            "value": true,
+                            "signal_agent_segment_id": "sig_recent_purchasers"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.operator",
+          "value": "all"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[0].operator",
+          "value": "any"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[0].signals[1].signal_ref.signal_id",
+          "value": "loyalty_members"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[1].operator",
+          "value": "none"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[1].signals[0].signal_agent_segment_id",
+          "value": "sig_recent_purchasers"
         }
       ]
     }
