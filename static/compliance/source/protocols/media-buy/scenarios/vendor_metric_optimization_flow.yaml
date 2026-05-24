@@ -6,13 +6,12 @@ summary: "Verifies that a seller supporting vendor_metric_optimization accepts a
 track: media_buy
 
 # Gate: scenario runs only when the seller declares vendor-metric
-# optimization support and the threshold_rate target kind. The product-level
-# vendor_metric_optimization block remains the authoritative per-product
-# capability; this seller-level rollup keeps optional-capability sellers
-# not_applicable instead of failing.
+# optimization support. The product-level vendor_metric_optimization block
+# remains the authoritative per-product capability, including target-kind
+# support on the seeded product.
 requires_capability:
-  path: media_buy.vendor_metric_optimization.supported_targets
-  contains: "threshold_rate"
+  path: media_buy.vendor_metric_optimization
+  present: true
 
 required_tools:
   - get_products

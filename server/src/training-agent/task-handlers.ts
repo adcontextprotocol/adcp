@@ -1026,6 +1026,10 @@ const BRIEF_CHANNEL_ALIASES: Record<string, string> = {
   'radio': 'radio',
 };
 
+// Vendor-metric briefs often ask for a measurement outcome (emissions,
+// brand lift, attention) rather than the literal field name. Give products
+// with vendor_metric_optimization a discovery boost even when the brief does
+// not otherwise share catalog keywords with the product card.
 const VENDOR_METRIC_OPTIMIZATION_BRIEF_TERMS = [
   'attention',
   'vendor',
@@ -1512,10 +1516,17 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
 
     // Cap at top 5 most relevant products so learners see brief mode as curated discovery
     const MAX_BRIEF_RESULTS = 5;
-    products = scored.slice(0, MAX_BRIEF_RESULTS).map(s => ({
-      ...s.product,
-      brief_relevance: `Matches ${s.channelScore > 0 ? `${s.channelScore / 10} channel(s)` : 'keywords only'}${s.vendorMetricScore > 0 ? ' with vendor-metric optimization' : ''}. ${s.product.description}`,
-    }));
+    products = scored.slice(0, MAX_BRIEF_RESULTS).map(s => {
+      const matchParts = [
+        ...(s.channelScore > 0 ? [`${s.channelScore / 10} channel(s)`] : []),
+        ...(s.keywordScore > 0 ? ['keywords'] : []),
+        ...(s.vendorMetricScore > 0 ? ['vendor-metric optimization'] : []),
+      ];
+      return {
+        ...s.product,
+        brief_relevance: `Matches ${matchParts.join(' and ')}. ${s.product.description}`,
+      };
+    });
 
     // If no keyword matches, return top products as suggestions
     if (products.length === 0) {
