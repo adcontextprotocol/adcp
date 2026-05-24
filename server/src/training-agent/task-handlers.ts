@@ -1027,22 +1027,56 @@ const BRIEF_CHANNEL_ALIASES: Record<string, string> = {
 };
 
 // Vendor-metric briefs often ask for a measurement outcome (emissions,
-// brand lift, attention) rather than the literal field name. Give products
-// with vendor_metric_optimization a discovery boost even when the brief does
-// not otherwise share catalog keywords with the product card.
-const VENDOR_METRIC_OPTIMIZATION_BRIEF_TERMS = [
-  'attention',
-  'vendor',
-  'emission',
-  'scope3',
-  'carbon',
-  'sustainability',
-  'brand lift',
-  'brand-lift',
-  'awareness',
-  'incremental',
-  'panel',
-];
+// brand lift, attention) rather than the literal field name. Score against
+// each product's declared vendor metrics so the named vendor/metric pair wins
+// even when the product card text has no ordinary keyword overlap.
+function inferVendorMetricBriefTerms(domain: string, metricId: string): string[] {
+  const identity = `${domain} ${metricId} ${metricId.replace(/[_-]+/g, ' ')}`;
+  const terms = new Set<string>();
+
+  if (/(attention|focus)/.test(identity)) terms.add('attention');
+  if (/(gco2e|co2|carbon|emission|scope3|sustainability)/.test(identity)) {
+    terms.add('emission');
+    terms.add('emissions');
+    terms.add('carbon');
+    terms.add('scope3');
+    terms.add('sustainability');
+  }
+  if (/(brand.?lift|awareness|incremental|panel)/.test(identity)) {
+    terms.add('brand lift');
+    terms.add('brand-lift');
+    terms.add('awareness');
+    terms.add('incremental');
+    terms.add('panel');
+  }
+
+  return [...terms];
+}
+
+function vendorMetricBriefScore(product: Product, briefLower: string): number {
+  const supportedMetrics = (product as Product & { vendor_metric_optimization?: VendorMetricOptimizationView })
+    .vendor_metric_optimization?.supported_metrics;
+  if (!supportedMetrics?.length) return 0;
+
+  let bestScore = 0;
+  for (const metric of supportedMetrics) {
+    const domain = typeof metric.vendor?.domain === 'string' ? metric.vendor.domain.toLowerCase() : '';
+    const metricId = typeof metric.metric_id === 'string' ? metric.metric_id.toLowerCase() : '';
+    const metricPhrase = metricId.replace(/[_-]+/g, ' ');
+    const categoryTerms = inferVendorMetricBriefTerms(domain, metricId);
+
+    let score = 0;
+    if (domain && briefLower.includes(domain)) score += 14;
+    if (metricId && (briefLower.includes(metricId) || briefLower.includes(metricPhrase))) score += 14;
+    if (categoryTerms.some(term => briefLower.includes(term))) {
+      score += 6;
+    }
+    if (briefLower.includes('vendor metric') || briefLower.includes('vendor-metric')) score += 2;
+    bestScore = Math.max(bestScore, score);
+  }
+
+  return bestScore;
+}
 
 // ── Shared schema fragments ──────────────────────────────────────
 
@@ -1500,14 +1534,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
         const channelScore = briefChannels.size > 0
           ? (p.channels?.filter(c => briefChannels.has(c)).length ?? 0) * 10
           : 0;
-        const hasVendorMetricOptimization = Boolean(
-          (p as Product & { vendor_metric_optimization?: VendorMetricOptimizationView })
-            .vendor_metric_optimization?.supported_metrics?.length,
-        );
-        const wantsVendorMetricOptimization =
-          hasVendorMetricOptimization
-          && VENDOR_METRIC_OPTIMIZATION_BRIEF_TERMS.some(term => briefLower.includes(term));
-        const vendorMetricScore = wantsVendorMetricOptimization ? 20 : 0;
+        const vendorMetricScore = vendorMetricBriefScore(p, briefLower);
         const totalScore = channelScore + keywordScore + vendorMetricScore;
         return totalScore > 0 ? { product: p, totalScore, channelScore, keywordScore, vendorMetricScore } : null;
       })
@@ -2046,22 +2073,31 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       };
       const goals = pkg?.optimization_goals;
       if (!Array.isArray(goals)) continue;
-      // Product existence is validated later as PRODUCT_NOT_FOUND. This
-      // precondition block mirrors the sibling metric_optimization validator:
-      // a missing product map entry presents here as a capability miss first.
       const product = pkg.product_id
         ? productMap.get(pkg.product_id) as (Product & { vendor_metric_optimization?: VendorMetricOptimizationView }) | undefined
         : undefined;
+      if (!product) continue;
       const supportedMetrics = product?.vendor_metric_optimization?.supported_metrics;
       const reportableMetrics = (product?.reporting_capabilities as ReportingCapabilitiesView | undefined)?.vendor_metrics;
       const committedMetrics = Array.isArray(pkg.committed_metrics)
         ? (pkg.committed_metrics as VendorMetricRefView[])
         : [];
       for (let j = 0; j < goals.length; j++) {
-        const goal = goals[j] as VendorMetricRefView & { kind?: unknown; target?: { kind?: unknown } };
+        const goal = goals[j] as VendorMetricRefView & { kind?: unknown; target?: { kind?: unknown; value?: unknown } };
         if (goal?.kind !== 'vendor_metric') continue;
         const key = vendorMetricKey(goal);
-        if (!key) continue;
+        if (!key) {
+          const field = typeof goal?.vendor?.domain !== 'string' || goal.vendor.domain.length === 0
+            ? `packages[${i}].optimization_goals[${j}].vendor.domain`
+            : `packages[${i}].optimization_goals[${j}].metric_id`;
+          return {
+            errors: [{
+              code: 'INVALID_REQUEST',
+              message: 'vendor_metric goal requires non-empty vendor.domain and metric_id',
+              field,
+            }] as TaskError[],
+          };
+        }
 
         const supported = Array.isArray(supportedMetrics)
           ? supportedMetrics.find(entry => vendorMetricKey(entry) === key)
@@ -2092,7 +2128,18 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
           };
         }
 
-        const targetKind = (target as { kind?: string } | undefined)?.kind;
+        const targetKind = (target as { kind?: string; value?: unknown } | undefined)?.kind;
+        const targetValue = (target as { value?: unknown } | undefined)?.value;
+        if (target !== undefined && (typeof targetValue !== 'number' || !Number.isFinite(targetValue) || targetValue <= 0)) {
+          return {
+            errors: [{
+              code: 'INVALID_REQUEST',
+              message: 'vendor_metric target.value must be a positive number when target is present',
+              field: `packages[${i}].optimization_goals[${j}].target.value`,
+            }] as TaskError[],
+          };
+        }
+
         if (targetKind) {
           const supportedTargets = Array.isArray(supported.supported_targets)
             ? supported.supported_targets

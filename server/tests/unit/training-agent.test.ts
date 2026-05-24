@@ -29,6 +29,7 @@ import {
   HUMAN_REVIEW_CATEGORIES,
   HUMAN_REVIEW_POLICY_IDS,
 } from '../../src/training-agent/governance-handlers.js';
+import { TrainingSalesPlatform } from '../../src/training-agent/v6-sales-platform.js';
 
 // Valid channels per the enum schema at static/schemas/source/enums/channels.json
 const VALID_CHANNELS = [
@@ -1128,6 +1129,10 @@ describe('createTrainingAgentServer', () => {
     // Removed seller-level reporting (product-level is source of truth)
     expect(mediaBuy).not.toHaveProperty('reporting');
 
+    expect(mediaBuy.vendor_metric_optimization).toEqual({
+      supported_targets: ['threshold_rate'],
+    });
+
     // account required for media_buy sellers
     expect(caps.account).toBeDefined();
     const account = caps.account as Record<string, unknown>;
@@ -1135,6 +1140,13 @@ describe('createTrainingAgentServer', () => {
 
     // portfolio present
     expect(mediaBuy.portfolio).toBeDefined();
+  });
+
+  it('keeps v6 sales vendor_metric_optimization capabilities aligned with legacy discovery', () => {
+    const platform = new TrainingSalesPlatform();
+    expect((platform.capabilities as Record<string, unknown>).vendor_metric_optimization).toEqual({
+      supported_targets: ['threshold_rate'],
+    });
   });
 
   it('returns error for unknown tool', async () => {
@@ -2117,13 +2129,193 @@ describe('create_media_buy handler', () => {
     expect(typeof result.media_buy_id).toBe('string');
   });
 
+  it('keeps unknown vendor_metric product_id on the normal product-not-found path', async () => {
+    const account = { brand: { domain: 'unknown-product-vendor-goal.example' }, operator: 'unknown-product-vendor-goal.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'unknown-product-vendor-goal.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: 'missing_vendor_metric_product',
+        pricing_option_id: 'missing_vendor_metric_price',
+        budget: 10000,
+        bid_price: 5.0,
+        optimization_goals: [{
+          kind: 'vendor_metric',
+          vendor: { domain: 'attentionvendor.example' },
+          metric_id: 'attention_score',
+          target: { kind: 'threshold_rate', value: 70 },
+        }],
+        committed_metrics: [{
+          scope: 'vendor',
+          vendor: { domain: 'attentionvendor.example' },
+          metric_id: 'attention_score',
+        }],
+      }],
+    });
+
+    expect(result.code).toBe('PRODUCT_NOT_FOUND');
+  });
+
+  it.each([
+    {
+      name: 'missing vendor.domain',
+      goal: { kind: 'vendor_metric', metric_id: 'attention_score' },
+      field: 'packages[0].optimization_goals[0].vendor.domain',
+    },
+    {
+      name: 'empty vendor.domain',
+      goal: { kind: 'vendor_metric', vendor: { domain: '' }, metric_id: 'attention_score' },
+      field: 'packages[0].optimization_goals[0].vendor.domain',
+    },
+    {
+      name: 'missing metric_id',
+      goal: { kind: 'vendor_metric', vendor: { domain: 'attentionvendor.example' } },
+      field: 'packages[0].optimization_goals[0].metric_id',
+    },
+  ])('rejects malformed vendor_metric optimization_goal: $name', async ({ goal, field }) => {
+    const { productId, pricingOptionId } = findProductWithVendorMetric();
+    const account = { brand: { domain: 'malformed-vendor-goal.example' }, operator: 'malformed-vendor-goal.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'malformed-vendor-goal.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+        bid_price: 5.0,
+        optimization_goals: [goal],
+        committed_metrics: [{
+          scope: 'vendor',
+          vendor: { domain: 'attentionvendor.example' },
+          metric_id: 'attention_score',
+        }],
+      }],
+    });
+
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.field).toBe(field);
+  });
+
   it('surfaces vendor_metric_optimization products first for an attention brief', async () => {
     const account = { brand: { domain: 'discover-vendor-goal.example' }, operator: 'discover-vendor-goal.example', sandbox: true };
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
+    await seedVendorMetricProduct(server, account, 'display_vendor_metric_scope3_unit', {
+      name: 'Display Vendor Metric Optimization',
+      description: 'Display inventory with third-party metric optimization.',
+      delivery_type: 'non_guaranteed',
+      channels: ['display'],
+      reporting_capabilities: {
+        available_metrics: ['impressions', 'clicks', 'spend'],
+        vendor_metrics: [{
+          vendor: { domain: 'scope3.example' },
+          metric_id: 'gco2e_per_impression',
+        }],
+      },
+      vendor_metric_optimization: {
+        supported_metrics: [{
+          vendor: { domain: 'scope3.example' },
+          metric_id: 'gco2e_per_impression',
+          supported_targets: ['threshold_rate'],
+        }],
+      },
+    });
+
+    await seedVendorMetricProduct(server, account, 'display_vendor_metric_multi_unit', {
+      name: 'Display Vendor Metric Optimization',
+      description: 'Display inventory with third-party metric optimization.',
+      delivery_type: 'non_guaranteed',
+      channels: ['display'],
+      reporting_capabilities: {
+        available_metrics: ['impressions', 'clicks', 'spend'],
+        vendor_metrics: [
+          {
+            vendor: { domain: 'customattention.example' },
+            metric_id: 'view_quality',
+          },
+          {
+            vendor: { domain: 'customattention.example' },
+            metric_id: 'screen_focus',
+          },
+          {
+            vendor: { domain: 'customattention.example' },
+            metric_id: 'dwell_index',
+          },
+        ],
+      },
+      vendor_metric_optimization: {
+        supported_metrics: [
+          {
+            vendor: { domain: 'customattention.example' },
+            metric_id: 'view_quality',
+            supported_targets: ['threshold_rate'],
+          },
+          {
+            vendor: { domain: 'customattention.example' },
+            metric_id: 'screen_focus',
+            supported_targets: ['threshold_rate'],
+          },
+          {
+            vendor: { domain: 'customattention.example' },
+            metric_id: 'dwell_index',
+            supported_targets: ['threshold_rate'],
+          },
+        ],
+      },
+    });
+
     await seedVendorMetricProduct(server, account, 'display_vendor_metric_opt_unit', {
       name: 'Display Vendor Metric Optimization',
-      description: 'Display inventory optimized to attentionvendor.example attention_score using a threshold rate.',
+      description: 'Display inventory with third-party metric optimization.',
+      delivery_type: 'non_guaranteed',
+      channels: ['display'],
+      reporting_capabilities: {
+        available_metrics: ['impressions', 'clicks', 'spend'],
+        vendor_metrics: [{
+          vendor: { domain: 'customattention.example' },
+          metric_id: 'focus_depth',
+        }],
+      },
+      vendor_metric_optimization: {
+        supported_metrics: [{
+          vendor: { domain: 'customattention.example' },
+          metric_id: 'focus_depth',
+          supported_targets: ['threshold_rate'],
+        }],
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'get_products', {
+      account,
+      brand: { domain: 'discover-vendor-goal.example' },
+      buying_mode: 'brief',
+      brief: 'Find display inventory that can optimize to the customattention.example focus_depth vendor metric using a 70 percent threshold rate, and report that same vendor metric after delivery.',
+      filters: { channels: ['display'] },
+    });
+
+    const firstProduct = (result.products as Array<Record<string, unknown>>)[0] as {
+      vendor_metric_optimization?: { supported_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> };
+    };
+    expect(firstProduct.vendor_metric_optimization?.supported_metrics?.some(entry =>
+      entry.vendor?.domain === 'customattention.example' && entry.metric_id === 'focus_depth',
+    )).toBe(true);
+  });
+
+  it('surfaces emissions vendor_metric_optimization products for a generic emissions brief', async () => {
+    const account = { brand: { domain: 'discover-emissions-vendor-goal.example' }, operator: 'discover-emissions-vendor-goal.example', sandbox: true };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await seedVendorMetricProduct(server, account, 'display_vendor_metric_attention_unit', {
+      name: 'Display Vendor Metric Optimization',
+      description: 'Display inventory with third-party metric optimization.',
       delivery_type: 'non_guaranteed',
       channels: ['display'],
       reporting_capabilities: {
@@ -2142,18 +2334,41 @@ describe('create_media_buy handler', () => {
       },
     });
 
+    await seedVendorMetricProduct(server, account, 'display_vendor_metric_emissions_unit', {
+      name: 'Display Vendor Metric Optimization',
+      description: 'Display inventory with third-party metric optimization.',
+      delivery_type: 'non_guaranteed',
+      channels: ['display'],
+      reporting_capabilities: {
+        available_metrics: ['impressions', 'clicks', 'spend'],
+        vendor_metrics: [{
+          vendor: { domain: 'scope3.example' },
+          metric_id: 'gco2e_per_impression',
+        }],
+      },
+      vendor_metric_optimization: {
+        supported_metrics: [{
+          vendor: { domain: 'scope3.example' },
+          metric_id: 'gco2e_per_impression',
+          supported_targets: ['threshold_rate'],
+        }],
+      },
+    });
+
     const { result } = await simulateCallTool(server, 'get_products', {
       account,
-      brand: { domain: 'discover-vendor-goal.example' },
+      brand: { domain: 'discover-emissions-vendor-goal.example' },
       buying_mode: 'brief',
-      brief: 'Find display inventory that can optimize to the attentionvendor.example attention_score vendor metric using a 70 percent threshold rate, and report that same vendor metric after delivery.',
+      brief: 'Find display inventory that can optimize to an emissions vendor metric and report that metric after delivery.',
       filters: { channels: ['display'] },
     });
 
     const firstProduct = (result.products as Array<Record<string, unknown>>)[0] as {
-      vendor_metric_optimization?: { supported_metrics?: Array<{ metric_id?: string }> };
+      vendor_metric_optimization?: { supported_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> };
     };
-    expect(firstProduct.vendor_metric_optimization?.supported_metrics?.some(entry => entry.metric_id === 'attention_score')).toBe(true);
+    expect(firstProduct.vendor_metric_optimization?.supported_metrics?.some(entry =>
+      entry.vendor?.domain === 'scope3.example' && entry.metric_id === 'gco2e_per_impression',
+    )).toBe(true);
   });
 
   it('rejects vendor_metric optimization_goal whose metric is not in supported_metrics', async () => {
@@ -2330,6 +2545,48 @@ describe('create_media_buy handler', () => {
 
     expect(result.code).toBe('INVALID_REQUEST');
     expect(result.field).toBe('packages[0].optimization_goals[0].target.kind');
+  });
+
+  it.each([
+    {
+      name: 'missing value',
+      target: { kind: 'threshold_rate' },
+    },
+    {
+      name: 'negative value',
+      target: { kind: 'threshold_rate', value: -1 },
+    },
+  ])('rejects vendor_metric optimization_goal when target has $name', async ({ target }) => {
+    const { productId, pricingOptionId } = findProductWithVendorMetric();
+    const account = { brand: { domain: 'malformed-vendor-target-value.example' }, operator: 'malformed-vendor-target-value.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'malformed-vendor-target-value.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+        bid_price: 5.0,
+        optimization_goals: [{
+          kind: 'vendor_metric',
+          vendor: { domain: 'attentionvendor.example' },
+          metric_id: 'attention_score',
+          target,
+        }],
+        committed_metrics: [{
+          scope: 'vendor',
+          vendor: { domain: 'attentionvendor.example' },
+          metric_id: 'attention_score',
+        }],
+      }],
+    });
+
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.field).toBe('packages[0].optimization_goals[0].target.value');
   });
 });
 
