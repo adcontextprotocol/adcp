@@ -34,6 +34,7 @@ server/node_modules
 *.tsbuildinfo
 .codex/
 .claude/scheduled_tasks.lock
+.claude/worktrees/
 
 # Misc
 .DS_Store
