@@ -1496,6 +1496,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   const refinementApplied: RefinementAppliedEntry[] = [];
   const proposalOmitIds = new Set<string>();
   if (buyingMode === 'refine' && req.refine) {
+    const refineOps = req.refine as unknown as RefineEntry[];
     const previousProducts = session.lastGetProductsContext?.products || products;
     const previousProposals = session.lastGetProductsContext?.proposals || getProposals();
     const omitIds = new Set<string>();
@@ -1504,7 +1505,29 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     const askAckNotes = (ask?: string) =>
       ask ? { notes: `Ask acknowledged but not applied by training agent: ${ask}` } : {};
 
-    for (const op of req.refine as unknown as RefineEntry[]) {
+    // Validate proposal references before applying any refinements. This keeps
+    // failed multi-entry refine calls from partially finalizing earlier entries.
+    for (let opIndex = 0; opIndex < refineOps.length; opIndex++) {
+      const op = refineOps[opIndex];
+      if (op.scope !== 'proposal') continue;
+      let proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
+      if (!proposal && isThreeZeroStoryboardCompat(ctx) && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
+        proposal = resolveThreeZeroProposalAlias([...previousProposals, ...getProposals()]);
+      }
+      if (!proposal) {
+        return {
+          errors: [{
+            code: 'PROPOSAL_NOT_FOUND',
+            message: `Proposal not found: ${op.proposal_id}`,
+            field: `refine[${opIndex}].proposal_id`,
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
+    }
+
+    for (let opIndex = 0; opIndex < refineOps.length; opIndex++) {
+      const op = refineOps[opIndex];
       if (op.scope === 'product') {
         const action = op.action ?? 'include';
         if (action === 'omit') {
@@ -1532,10 +1555,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
         if (!proposal && isThreeZeroStoryboardCompat(ctx) && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
           proposal = resolveThreeZeroProposalAlias([...previousProposals, ...getProposals()]);
         }
-        if (!proposal) {
-          refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'unable', notes: `Proposal not found: ${op.proposal_id}` });
-          continue;
-        }
+        if (!proposal) continue;
         if (action === 'omit') {
           proposalOmitIds.add(op.proposal_id);
           refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied' });
@@ -1984,7 +2004,12 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     }
     if (!proposal) {
       return {
-        errors: [{ code: 'INVALID_REQUEST', message: `Proposal not found: ${req.proposal_id}` }] as TaskError[],
+        errors: [{
+          code: 'PROPOSAL_NOT_FOUND',
+          message: `Proposal not found: ${req.proposal_id}`,
+          field: 'proposal_id',
+          recovery: 'correctable',
+        }] as TaskError[],
       };
     }
 
