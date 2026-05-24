@@ -147,7 +147,7 @@
               },
               "notification_configs": {
                 "type": "array",
-                "description": "Applied notification subscribers for this account, echoed after the seller diffs the requested state against persisted state. Present on `created`, `updated`, and `unchanged` results when the buyer included `notification_configs` in the request or any persisted entries exist on the account. `authentication.credentials` is omitted on every entry (write-only).",
+                "description": "Applied notification subscribers for this account after declarative replacement and activation-proof checks. Present on `created`, `updated`, and `unchanged` results when the buyer included `notification_configs` in the request or any persisted entries exist on the account. Entries are keyed by account-scoped `subscriber_id`; re-sending an existing `subscriber_id` replaces that subscriber's config rather than creating a duplicate. Only configs that the seller has persisted are echoed. `authentication.credentials` is omitted on every entry (write-only).",
                 "items": {
                   "$ref": "/schemas/core/notification-config.json"
                 },

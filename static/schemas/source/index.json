@@ -413,6 +413,14 @@
         "wholesale-feed-webhook": {
           "$ref": "/schemas/core/wholesale-feed-webhook.json",
           "description": "Webhook payload carrying a wholesale feed change event"
+        },
+        "webhook-challenge": {
+          "$ref": "/schemas/core/webhook-challenge.json",
+          "description": "Proof-of-control challenge payload for account-level notification_configs[] endpoint activation"
+        },
+        "webhook-challenge-response": {
+          "$ref": "/schemas/core/webhook-challenge-response.json",
+          "description": "Receiver response body for account-level notification_configs[] endpoint proof-of-control challenges"
         }
       },
       "requirements": {
