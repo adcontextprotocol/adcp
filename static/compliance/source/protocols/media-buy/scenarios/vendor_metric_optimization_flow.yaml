@@ -4,6 +4,16 @@ title: "Vendor-metric optimization-goal: acceptance and rejection"
 category: media_buy_seller
 summary: "Verifies that a seller supporting vendor_metric_optimization accepts a media buy whose optimization_goal has kind 'vendor_metric' when all preconditions are met, and rejects goals that fail either the capability check or the reporting-coherence check."
 track: media_buy
+
+# Gate: scenario runs only when the seller declares vendor-metric
+# optimization support and the threshold_rate target kind. The product-level
+# vendor_metric_optimization block remains the authoritative per-product
+# capability; this seller-level rollup keeps optional-capability sellers
+# not_applicable instead of failing.
+requires_capability:
+  path: media_buy.vendor_metric_optimization.supported_targets
+  contains: "threshold_rate"
+
 required_tools:
   - get_products
   - create_media_buy
@@ -27,13 +37,14 @@ narrative: |
        published measurement.metrics[] catalog. This check is SHOULD-level in 3.1
        while measurement-vendor adoption of AdCP-conformant capability publication
        catches up; it tightens to MUST at the next minor. Sellers MAY reject with
-       INVALID_REQUEST on a catalog miss; sellers that accept do not fail this
+       TERMS_REJECTED on a catalog miss; sellers that accept do not fail this
        storyboard.
 
   This storyboard covers:
     - Positive path: goal accepted when all preconditions are met
     - Negative path A: goal rejected when (vendor, metric_id) not in supported_metrics
-    - Negative path B: goal rejected when package committed_metrics lacks vendor-scope entry
+    - Negative path B: goal rejected when target.kind is not in supported_targets
+    - Negative path C: goal rejected when package committed_metrics lacks vendor-scope entry
 
   The existing vendor_metric_accountability storyboard (declaration → filter →
   delivery emission) is unchanged and exercises a separate contract.
@@ -76,6 +87,9 @@ fixtures:
           - vendor:
               domain: "attentionvendor.example"
             metric_id: "attention_score"
+          - vendor:
+              domain: "attentionvendor.example"
+            metric_id: "attention_units"
       vendor_metric_optimization:
         supported_metrics:
           - vendor:
@@ -235,10 +249,10 @@ phases:
   - id: reject_unsupported_capability
     title: "Reject vendor_metric goal when (vendor, metric_id) not in supported_metrics"
     narrative: |
-      The buyer sends a goal for emissions_score from attentionvendor.example —
-      a (vendor, metric_id) pair that does not appear in the product's
+      The buyer sends a goal for attention_units from attentionvendor.example —
+      a reportable (vendor, metric_id) pair that does not appear in the product's
       vendor_metric_optimization.supported_metrics[]. Per the spec, the seller
-      MUST reject such goals. The correct code is INVALID_REQUEST; error.field
+      MUST reject such goals. The correct code is TERMS_REJECTED; error.field
       should point at the offending goal's metric_id path.
     steps:
       - id: create_media_buy_unsupported_metric
@@ -252,8 +266,9 @@ phases:
         negative_path: payload_well_formed
         stateful: false
         expected: |
-          Reject with INVALID_REQUEST. The goal references emissions_score for
-          attentionvendor.example, which is not in supported_metrics — the
+          Reject with TERMS_REJECTED. The goal references attention_units for
+          attentionvendor.example, which is reportable but not in
+          vendor_metric_optimization.supported_metrics — the optimization
           capability precondition fails. media_buy_id is not allocated.
         sample_request:
           brand:
@@ -272,18 +287,82 @@ phases:
                 - kind: "vendor_metric"
                   vendor:
                     domain: "attentionvendor.example"
-                  metric_id: "emissions_score"
+                  metric_id: "attention_units"
                   priority: 1
               committed_metrics:
                 - scope: "vendor"
                   vendor:
                     domain: "attentionvendor.example"
-                  metric_id: "emissions_score"
+                  metric_id: "attention_units"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_opt_bad_capability"
         validations:
           - check: error_code
-            allowed_values: ["INVALID_REQUEST"]
-            description: "Seller rejects unsupported (vendor, metric_id) with INVALID_REQUEST"
+            allowed_values: ["TERMS_REJECTED"]
+            description: "Seller rejects unsupported (vendor, metric_id) with TERMS_REJECTED"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].optimization_goals[0].metric_id"
+            description: "Error.field points at the offending metric_id path"
+
+  - id: reject_unsupported_target_kind
+    title: "Reject vendor_metric goal when target.kind is not in supported_targets"
+    narrative: |
+      The buyer sends a goal for attention_score (a supported vendor metric)
+      but asks for cost_per when the product only declares threshold_rate in
+      vendor_metric_optimization.supported_metrics[].supported_targets. Per the
+      spec, the seller MUST reject such goals with TERMS_REJECTED and point at
+      the unsupported target kind.
+    steps:
+      - id: create_media_buy_unsupported_target
+        title: "Submit goal with target.kind not in supported_targets"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject with TERMS_REJECTED. The goal references a supported vendor
+          metric, but target.kind cost_per is not declared in supported_targets.
+          media_buy_id is not allocated.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 5000
+              optimization_goals:
+                - kind: "vendor_metric"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_score"
+                  target:
+                    kind: "cost_per"
+                    value: 0.20
+                  priority: 1
+              committed_metrics:
+                - scope: "vendor"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_score"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_opt_bad_target"
+        validations:
+          - check: error_code
+            allowed_values: ["TERMS_REJECTED"]
+            description: "Seller rejects unsupported target.kind with TERMS_REJECTED"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].optimization_goals[0].target.kind"
+            description: "Error.field points at the offending target.kind path"
 
   - id: reject_missing_committed_metric
     title: "Reject vendor_metric goal when package lacks vendor-scope committed_metrics entry"
@@ -291,13 +370,7 @@ phases:
       The buyer submits a goal for attention_score (a valid capability on the
       product) but omits the vendor-scope committed_metrics[] entry from the
       package. Per the spec, optimization without committed reporting is
-      unverifiable and MUST be rejected with INVALID_REQUEST.
-
-      This is a reporting-coherence precondition failure on the optimization
-      goal, not a committed_metrics over-proposal rejection. TERMS_REJECTED
-      covers a committed_metrics[] entry the seller cannot honor; INVALID_REQUEST
-      covers a vendor_metric optimization goal that lacks the required
-      committed_metrics pairing.
+      unverifiable and MUST be rejected with TERMS_REJECTED.
     steps:
       - id: create_media_buy_missing_committed
         title: "Submit goal without matching vendor-scope committed_metrics entry"
@@ -310,7 +383,7 @@ phases:
         negative_path: payload_well_formed
         stateful: false
         expected: |
-          Reject with INVALID_REQUEST. The optimization goal targets attention_score
+          Reject with TERMS_REJECTED. The optimization goal targets attention_score
           but the package's committed_metrics[] has no vendor-scope entry for
           (attentionvendor.example, attention_score). Optimizing for a metric the
           seller will not commit to reporting is disallowed. media_buy_id is not allocated.
@@ -339,5 +412,9 @@ phases:
           idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_opt_no_committed"
         validations:
           - check: error_code
-            allowed_values: ["INVALID_REQUEST"]
-            description: "Seller rejects goal missing reporting-coherence with INVALID_REQUEST"
+            allowed_values: ["TERMS_REJECTED"]
+            description: "Seller rejects goal missing reporting-coherence with TERMS_REJECTED"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].committed_metrics"
+            description: "Error.field points at the missing committed_metrics pairing"

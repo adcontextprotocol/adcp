@@ -167,6 +167,10 @@ interface VendorMetricOptimizationView {
   supported_metrics?: VendorMetricRefView[];
 }
 
+interface ReportingCapabilitiesView {
+  vendor_metrics?: VendorMetricRefView[];
+}
+
 function vendorMetricKey(entry: VendorMetricRefView | undefined): string | null {
   const domain = entry?.vendor?.domain;
   const metricId = entry?.metric_id;
@@ -1478,8 +1482,12 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
         const channelScore = briefChannels.size > 0
           ? (p.channels?.filter(c => briefChannels.has(c)).length ?? 0) * 10
           : 0;
-        const totalScore = channelScore + keywordScore;
-        return totalScore > 0 ? { product: p, totalScore, channelScore, keywordScore } : null;
+        const wantsVendorMetricOptimization =
+          (briefLower.includes('attention') || briefLower.includes('vendor'))
+          && Boolean((p as Product & { vendor_metric_optimization?: VendorMetricOptimizationView }).vendor_metric_optimization);
+        const vendorMetricScore = wantsVendorMetricOptimization ? 20 : 0;
+        const totalScore = channelScore + keywordScore + vendorMetricScore;
+        return totalScore > 0 ? { product: p, totalScore, channelScore, keywordScore, vendorMetricScore } : null;
       })
       .filter((s): s is NonNullable<typeof s> => s !== null)
       .sort((a, b) => b.totalScore - a.totalScore);
@@ -1488,7 +1496,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     const MAX_BRIEF_RESULTS = 5;
     products = scored.slice(0, MAX_BRIEF_RESULTS).map(s => ({
       ...s.product,
-      brief_relevance: `Matches ${s.channelScore > 0 ? `${s.channelScore / 10} channel(s)` : 'keywords only'}. ${s.product.description}`,
+      brief_relevance: `Matches ${s.channelScore > 0 ? `${s.channelScore / 10} channel(s)` : 'keywords only'}${s.vendorMetricScore > 0 ? ' with vendor-metric optimization' : ''}. ${s.product.description}`,
     }));
 
     // If no keyword matches, return top products as suggestions
@@ -2013,6 +2021,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         ? productMap.get(pkg.product_id) as (Product & { vendor_metric_optimization?: VendorMetricOptimizationView }) | undefined
         : undefined;
       const supportedMetrics = product?.vendor_metric_optimization?.supported_metrics;
+      const reportableMetrics = (product?.reporting_capabilities as ReportingCapabilitiesView | undefined)?.vendor_metrics;
       const committedMetrics = Array.isArray(pkg.committed_metrics)
         ? (pkg.committed_metrics as VendorMetricRefView[])
         : [];
@@ -2028,7 +2037,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         if (!supported) {
           return {
             errors: [{
-              code: 'INVALID_REQUEST',
+              code: 'TERMS_REJECTED',
               message: `vendor_metric goal "${goal.metric_id}" is not in product's vendor_metric_optimization.supported_metrics`,
               field: `packages[${i}].optimization_goals[${j}].metric_id`,
             }] as TaskError[],
@@ -2043,7 +2052,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
           if (!supportedTargets.includes(targetKind)) {
             return {
               errors: [{
-                code: 'INVALID_REQUEST',
+                code: 'TERMS_REJECTED',
                 message: `vendor_metric target.kind "${targetKind}" is not in product's vendor_metric_optimization.supported_targets`,
                 field: `packages[${i}].optimization_goals[${j}].target.kind`,
               }] as TaskError[],
@@ -2057,8 +2066,21 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         if (!hasCommittedMetric) {
           return {
             errors: [{
-              code: 'INVALID_REQUEST',
+              code: 'TERMS_REJECTED',
               message: `vendor_metric goal "${goal.metric_id}" requires a matching vendor-scope committed_metrics entry`,
+              field: `packages[${i}].committed_metrics`,
+            }] as TaskError[],
+          };
+        }
+
+        const hasReportableMetric = Array.isArray(reportableMetrics)
+          ? reportableMetrics.some(entry => vendorMetricKey(entry) === key)
+          : false;
+        if (!hasReportableMetric) {
+          return {
+            errors: [{
+              code: 'TERMS_REJECTED',
+              message: `committed_metrics entry for vendor_metric goal "${goal.metric_id}" is not in product's reporting_capabilities.vendor_metrics`,
               field: `packages[${i}].committed_metrics`,
             }] as TaskError[],
           };
@@ -3379,6 +3401,9 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
         supported_event_types: ['purchase', 'add_to_cart', 'lead', 'page_view'],
         supported_hashed_identifiers: ['hashed_email'],
         supported_action_sources: ['website', 'app'],
+      },
+      vendor_metric_optimization: {
+        supported_targets: ['threshold_rate'],
       },
       // Seller-level rollup of metric-optimization capabilities. Honest
       // union across catalog products (product-factory.ts assigns these
