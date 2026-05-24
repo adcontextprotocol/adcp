@@ -181,6 +181,9 @@ fi
 
 REGRESSED=0
 SUMMARY=""
+REQUIRED_CLEAN_CURRENT_SALES=(
+  "media_buy_seller/canonical_formats"
+)
 
 for entry in "${TENANTS[@]}"; do
   tenant="${entry%%:*}"
@@ -224,6 +227,21 @@ for entry in "${TENANTS[@]}"; do
     else
       failed_floor="passing steps ${passed} < ${min_passed}"
     fi
+  fi
+
+  if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "sales" ]; then
+    for storyboard_id in "${REQUIRED_CLEAN_CURRENT_SALES[@]}"; do
+      if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" "${log}" >/dev/null; then
+        echo "  ✓ required-clean ${storyboard_id}"
+      else
+        status="✗"
+        if [ -n "${failed_floor}" ]; then
+          failed_floor="${failed_floor}; required-clean ${storyboard_id} did not pass"
+        else
+          failed_floor="required-clean ${storyboard_id} did not pass"
+        fi
+      fi
+    done
   fi
 
   echo "  ${status} clean=${clean} passed=${passed}"
