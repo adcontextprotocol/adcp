@@ -2,13 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/signal-definition.json",
   "title": "Signal Definition",
-  "description": "Definition of a signal in a data provider's catalog, published via adagents.json",
+  "description": "Definition of a signal in a published adagents.json signal catalog. The catalog's publishing domain supplies the namespace, so this definition carries a local id rather than a signal_ref. Media-buy products reference this definition with signal_ref scope 'data_provider', data_provider_domain set to the catalog domain, and signal_id set to this id.",
   "type": "object",
   "properties": {
     "id": {
       "type": "string",
       "pattern": "^[a-zA-Z0-9_-]+$",
-      "description": "Signal identifier within this data provider's catalog"
+      "description": "Signal identifier within this published signal catalog"
     },
     "name": {
       "type": "string",
