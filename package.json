@@ -18,6 +18,7 @@
     "build:schemas": "node scripts/build-schemas.cjs",
     "build:compliance": "node scripts/build-compliance.cjs",
     "build:protocol-tarball": "node scripts/build-protocol-tarball.cjs",
+    "backfill:cdn-artifacts": "bash scripts/backfill-cdn-artifacts.sh",
     "build:mintlify": "cd mintlify-docs && mintlify build",
     "deploy:mintlify": "mintlify deploy",
     "typecheck": "tsc --project server/tsconfig.json --noEmit",
