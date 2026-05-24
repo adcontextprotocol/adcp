@@ -9,6 +9,7 @@ import type { TenantConfig } from '@adcp/sdk/server';
 import { TrainingCreativeBuilderPlatform } from '../v6-creative-builder-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildCreativeComplyConfig } from './comply.js';
+import { listAccountsTool } from './account-tools.js';
 
 const TENANT_ID = 'creative-builder';
 
@@ -26,6 +27,9 @@ export function buildCreativeBuilderTenantConfig(host: string): {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       platform: new TrainingCreativeBuilderPlatform() as any,
       serverOptions: {
+        customTools: {
+          list_accounts: listAccountsTool(),
+        },
         complyTest: buildCreativeComplyConfig(),
       },
     },

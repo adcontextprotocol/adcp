@@ -8,6 +8,8 @@ on:
       - 'server/tests/manual/run-storyboards.ts'
       - 'package.json'
       - 'package-lock.json'
+      - 'scripts/build-compliance.cjs'
+      - 'scripts/overlay-compliance-cache.sh'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
       - 'static/compliance/source/**'
@@ -20,6 +22,8 @@ on:
       - 'server/tests/manual/run-storyboards.ts'
       - 'package.json'
       - 'package-lock.json'
+      - 'scripts/build-compliance.cjs'
+      - 'scripts/overlay-compliance-cache.sh'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
       - 'static/compliance/source/**'
@@ -133,7 +137,9 @@ jobs:
         # The storyboard runner loads from @adcp/sdk's bundled compliance
         # cache (a snapshot synced from this repo's static/compliance/source/
         # on each SDK publish). To grade current-PR fixtures rather than
-        # the published snapshot, copy the source tree onto the cache.
+        # the published snapshot, rebuild the development compliance bundle
+        # and copy that generated bundle onto the cache so index.json includes
+        # newly-added storyboards.
         # Logic lives in scripts/overlay-compliance-cache.sh so the
         # pre-push hook (scripts/run-storyboards-matrix.sh) and CI grade
         # against the same overlay.

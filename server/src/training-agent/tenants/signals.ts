@@ -18,6 +18,7 @@ import type { TenantConfig } from '@adcp/sdk/server';
 import { TrainingPlatform } from '../v6-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { customToolFor } from './custom-tool-helper.js';
+import { listAccountsTool } from './account-tools.js';
 import { handleSyncGovernance } from '../account-handlers.js';
 
 const TENANT_ID = 'signals';
@@ -58,6 +59,7 @@ export function buildSignalsTenantConfig(host: string): {
       platform: new TrainingPlatform() as any,
       serverOptions: {
         customTools: {
+          list_accounts: listAccountsTool(),
           sync_governance: customToolFor(
             'sync_governance',
             'Register governance agent endpoints on accounts. The seller calls these agents via check_governance during signal activation. Uses replace semantics: each call replaces previously synced agents on the specified accounts.',
