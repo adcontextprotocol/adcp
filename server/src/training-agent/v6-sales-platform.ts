@@ -188,6 +188,9 @@ export class TrainingSalesPlatform
     // the SDK ships the seller-level field; until then both surfaces
     // declare it manually for parity.
     supported_optimization_metrics: ['clicks' as const, 'views' as const, 'completed_views' as const, 'engagements' as const, 'reach' as const],
+    vendor_metric_optimization: {
+      supported_targets: ['threshold_rate' as const],
+    },
     supportedBillings: ['agent', 'operator'] as const,
     // Auto-derives `compliance_testing.scenarios[]` from the adapters
     // wired in `serverOptions.complyTest`. Empty block opts in; the
