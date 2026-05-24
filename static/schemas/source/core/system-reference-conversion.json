@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/system-reference-conversion.json",
   "title": "System Reference Conversion",
-  "description": "Describes the conversion from a source reference system to the destination's native system. Used by two surfaces: (1) signal deployments — when a destination remaps a signal's market / identity / taxonomy / measurement reference; (2) delivery measurement — when a measurement vendor projects, infers, or upscales from one methodology source to another (e.g. set-top-box panel → P18-49 currency). REQUIRED when the surrounding fidelity is `converted`; OPTIONAL surfacing when fidelity is `approximated` (lets consumers see WHY a deployment or report is approximated, not just that it is). Lets buyer agents and measurement consumers reason about source, destination, and conversion method without parsing free-text. The conversion claim itself (`from` system → `to` system, by `method`) is self-reported by the seller / measurement vendor; third-party verification of the claim is a future attestation concern (decision D3 in #4616; see #3877 `completion_source` for shipped prior art on the seller-attested vs vendor-attested split).",
+  "description": "Describes the conversion from a source reference system to the destination's native system. Used by two surfaces: (1) signal deployments — when a destination remaps a signal's market / identity / taxonomy / measurement reference; (2) delivery measurement — when a measurement vendor projects, infers, or upscales from one methodology source to another (e.g. set-top-box panel → P18-49 currency). REQUIRED when the surrounding fidelity is `converted`; OPTIONAL surfacing when fidelity is `approximated` (lets consumers see WHY a deployment or report is approximated, not just that it is). Lets buyer agents and measurement consumers reason about source, destination, and conversion method without parsing free-text. The conversion claim itself (`from` system → `to` system, by `method`) is self-reported by the seller / measurement vendor; third-party verification of the claim is a future attestation concern (decision D3 in #4616; see #3877 `completion_source` for shipped prior art on the seller-attested vs vendor-attested split). **Per the #4616 thread consensus (@bokelley / @lukasz-pubx / @SimonaNemes / Addie):** the protocol carries structured-where-verifiable fields (source / destination / method) and link-out fields (`method_doc_url`) for claims that need external attestation; consuming row-level schemas that adopt this primitive MAY add their own row-level `last_updated` field on the row itself to surface signal-record freshness (which IS verifiable: the seller published this record on this date, even if the underlying methodology freshness isn't).",
   "type": "object",
   "properties": {
     "from": {
@@ -48,9 +48,19 @@
         "TTD"
       ]
     },
+    "method_doc_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional URI of an attested document describing the conversion methodology (e.g. the seller's published mapping reference, the vendor's identity-graph methodology page, the published crosswalk specification). The 'link out to attested document' anchor per @bokelley's #4616 framing and the ads.txt-pattern recommendation that emerged from the @bokelley / @lukasz-pubx / @SimonaNemes thread: structured-where-verifiable, link-to-doc-where-it's-a-claim. Strictly informational on the wire — buyer agents MAY treat its presence as a transparency signal and follow the link out-of-band to verify the seller's conversion claim, but MUST NOT branch on its content programmatically. Consuming row-level schemas that want to require methodology disclosure SHOULD mark this field required in their row's binding; the primitive keeps it optional so it doesn't burden adopters who don't need it.",
+      "examples": [
+        "https://docs.liveramp.com/abilitec-graph/methodology",
+        "https://iabtechlab.com/wp-content/uploads/audience-taxonomy/v2-to-v3-migration.pdf",
+        "https://www.nielsen.com/measurement/local-tv/dma-comscore-crosswalk-2024.pdf"
+      ]
+    },
     "method_details": {
       "type": "string",
-      "description": "Free-text vendor-specific elaboration on the method (e.g. graph version, crosswalk publication date, match-rate floor, model name, sample size). Strictly informational; buyer agents MUST NOT branch on this field. Useful for human triage and audit log surfacing.",
+      "description": "Free-text vendor-specific elaboration on the method (e.g. graph version, crosswalk publication date, match-rate floor, model name, sample size). Strictly informational; buyer agents MUST NOT branch on this field. Complements `method_doc_url` — use `method_doc_url` to point at the canonical methodology document; use `method_details` for short inline elaboration buyers can read at triage time without following the link.",
       "maxLength": 1024
     }
   },
@@ -69,6 +79,7 @@
       "to":   { "system": "ramp_id", "value": "RA-9876" },
       "method": "id_graph",
       "method_provider": "LiveRamp",
+      "method_doc_url": "https://docs.liveramp.com/abilitec-graph/methodology",
       "method_details": "LiveRamp graph v2026.05. Coverage ~94% in US, ~71% in EU."
     },
     {
