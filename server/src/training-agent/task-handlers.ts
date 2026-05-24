@@ -1026,6 +1026,20 @@ const BRIEF_CHANNEL_ALIASES: Record<string, string> = {
   'radio': 'radio',
 };
 
+const VENDOR_METRIC_OPTIMIZATION_BRIEF_TERMS = [
+  'attention',
+  'vendor',
+  'emission',
+  'scope3',
+  'carbon',
+  'sustainability',
+  'brand lift',
+  'brand-lift',
+  'awareness',
+  'incremental',
+  'panel',
+];
+
 // ── Shared schema fragments ──────────────────────────────────────
 
 const ACCOUNT_REF_SCHEMA = {
@@ -1482,9 +1496,13 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
         const channelScore = briefChannels.size > 0
           ? (p.channels?.filter(c => briefChannels.has(c)).length ?? 0) * 10
           : 0;
+        const hasVendorMetricOptimization = Boolean(
+          (p as Product & { vendor_metric_optimization?: VendorMetricOptimizationView })
+            .vendor_metric_optimization?.supported_metrics?.length,
+        );
         const wantsVendorMetricOptimization =
-          (briefLower.includes('attention') || briefLower.includes('vendor'))
-          && Boolean((p as Product & { vendor_metric_optimization?: VendorMetricOptimizationView }).vendor_metric_optimization);
+          hasVendorMetricOptimization
+          && VENDOR_METRIC_OPTIMIZATION_BRIEF_TERMS.some(term => briefLower.includes(term));
         const vendorMetricScore = wantsVendorMetricOptimization ? 20 : 0;
         const totalScore = channelScore + keywordScore + vendorMetricScore;
         return totalScore > 0 ? { product: p, totalScore, channelScore, keywordScore, vendorMetricScore } : null;
@@ -2017,6 +2035,9 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       };
       const goals = pkg?.optimization_goals;
       if (!Array.isArray(goals)) continue;
+      // Product existence is validated later as PRODUCT_NOT_FOUND. This
+      // precondition block mirrors the sibling metric_optimization validator:
+      // a missing product map entry presents here as a capability miss first.
       const product = pkg.product_id
         ? productMap.get(pkg.product_id) as (Product & { vendor_metric_optimization?: VendorMetricOptimizationView }) | undefined
         : undefined;
@@ -2037,6 +2058,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         if (!supported) {
           return {
             errors: [{
+              // Vendor-metric optimization is negotiated against vendor
+              // measurement/reporting terms. The normative docs route
+              // capability and reporting-coherence misses through
+              // TERMS_REJECTED, even though legacy seller-native metric
+              // shape checks above still use INVALID_REQUEST.
               code: 'TERMS_REJECTED',
               message: `vendor_metric goal "${goal.metric_id}" is not in product's vendor_metric_optimization.supported_metrics`,
               field: `packages[${i}].optimization_goals[${j}].metric_id`,
@@ -2044,8 +2070,19 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
           };
         }
 
-        const targetKind = goal.target?.kind;
-        if (typeof targetKind === 'string') {
+        const target = goal.target;
+        if (target !== undefined && (target === null || typeof target !== 'object' || typeof (target as { kind?: unknown }).kind !== 'string')) {
+          return {
+            errors: [{
+              code: 'INVALID_REQUEST',
+              message: 'vendor_metric target.kind is required when target is present',
+              field: `packages[${i}].optimization_goals[${j}].target.kind`,
+            }] as TaskError[],
+          };
+        }
+
+        const targetKind = (target as { kind?: string } | undefined)?.kind;
+        if (targetKind) {
           const supportedTargets = Array.isArray(supported.supported_targets)
             ? supported.supported_targets
             : [];
@@ -2053,7 +2090,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
             return {
               errors: [{
                 code: 'TERMS_REJECTED',
-                message: `vendor_metric target.kind "${targetKind}" is not in product's vendor_metric_optimization.supported_targets`,
+                message: `vendor_metric target.kind "${targetKind}" is not in product's vendor_metric_optimization.supported_metrics[].supported_targets`,
                 field: `packages[${i}].optimization_goals[${j}].target.kind`,
               }] as TaskError[],
             };

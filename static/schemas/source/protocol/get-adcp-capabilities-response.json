@@ -566,6 +566,26 @@
           "minItems": 1,
           "uniqueItems": true
         },
+        "vendor_metric_optimization": {
+          "type": "object",
+          "description": "Seller-level rollup of vendor-metric optimization capabilities supported by at least one product. Product-level vendor_metric_optimization.supported_metrics[] remains authoritative for the specific (vendor, metric_id) pairs and target kinds a buyer may bind on a package; this seller-level object exists so buyers and compliance runners can discover whether vendor_metric goals are in scope before walking the catalog. Sellers MUST keep this in sync with product-level vendor_metric_optimization declarations.",
+          "properties": {
+            "supported_targets": {
+              "type": "array",
+              "description": "Target kinds this seller can support for vendor_metric optimization goals on at least one product. Values match optimization_goals[].target.kind for kind: vendor_metric. A target-less vendor_metric goal maximizes the metric within budget and does not require a target-kind declaration.",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "cost_per",
+                  "threshold_rate"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
         "conversion_tracking": {
           "type": "object",
           "description": "Seller-level conversion tracking capabilities. Presence of this object indicates the seller supports sync_event_sources and log_event for conversion event tracking.",

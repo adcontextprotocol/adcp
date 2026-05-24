@@ -562,6 +562,9 @@ function buildProduct(
     } as NonNullable<Product['reporting_capabilities']>,
     ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as CatalogType[] }),
     ...(metricOptimization && { metric_optimization: metricOptimization }),
+    // Vendor-metric optimization is a publisher/inventory capability, not
+    // auction-only. Guaranteed products can still steer allocation/pacing
+    // toward the vendor signal, so do not gate this on delivery_type.
     ...(pub.vendorMetricOptimization && { vendor_metric_optimization: pub.vendorMetricOptimization }),
     ...(forecast && { forecast }),
     ...(conversionTracking && { conversion_tracking: conversionTracking }),
