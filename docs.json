@@ -585,7 +585,8 @@
                     },
                     "pages": [
                       "docs/registry/index",
-                      "docs/registry/registering-an-agent"
+                      "docs/registry/registering-an-agent",
+                      "docs/registry/maintaining-your-agent"
                     ]
                   },
                   "docs/reference/gmsf-reference",
@@ -1156,7 +1157,8 @@
                 },
                 "pages": [
                   "docs/registry/index",
-                  "docs/registry/registering-an-agent"
+                  "docs/registry/registering-an-agent",
+                  "docs/registry/maintaining-your-agent"
                 ]
               },
               "docs/reference/gmsf-reference",
