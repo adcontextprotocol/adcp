@@ -37,6 +37,9 @@ dist/compliance/latest
 .context
 .changeset
 .gemini-clipboard
+Dockerfile*
+docker-compose*.yml
+compose*.yml
 
 # Not needed in server build
 images

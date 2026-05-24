@@ -76,6 +76,10 @@ if [ "$remaining" -gt 0 ]; then
   exit 1
 fi
 rm /repos/clone.sh
+# Only markdown/MDX files are indexed by search_repos at runtime. Keep this
+# in sync with EXTERNAL_REPOS indexPatterns if non-markdown sources are added.
+find /repos -type f ! \( -name "*.md" -o -name "*.mdx" \) -delete
+find /repos -type d -empty -delete
 CLONE
 
 # hadolint ignore=DL3003
@@ -97,7 +101,9 @@ COPY package*.json ./
 
 # --ignore-scripts blocks arbitrary postinstall lifecycle scripts from the full
 # dep tree; native deps are rebuilt explicitly per-package.
-RUN npm ci --omit=dev --ignore-scripts && npm rebuild sharp
+RUN npm ci --omit=dev --ignore-scripts \
+ && npm rebuild sharp \
+ && npm cache clean --force
 
 # Copy built files from builder. Runtime assets under server/src/** (JSON
 # format catalogs, SQL migrations, Addie rule markdown, etc.) are mirrored
@@ -125,6 +131,8 @@ COPY --from=repos /repos ./.addie-repos
 ENV NODE_ENV=production
 ENV PORT=8080
 ENV TZ=UTC
+# Repos are pre-cloned in the image and stripped of .git metadata above.
+ENV SKIP_REPO_SYNC=true
 
 # Expose port
 EXPOSE 8080

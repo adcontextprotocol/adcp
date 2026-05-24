@@ -360,12 +360,20 @@ function getReposDir(): string {
     path.join(process.env.TMPDIR || '/tmp', 'addie-repos'),
   ];
 
-  // Use the first path that exists or can be created
+  // Prefer an existing cache. In Docker, the source-layout path resolves to
+  // `/.addie-repos` from compiled dist output; creating that would hide the
+  // baked `/app/.addie-repos` cache.
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      reposDir = p;
+      return reposDir;
+    }
+  }
+
+  // If no cache exists yet, use the first path that can be created.
   for (const p of possiblePaths) {
     try {
-      if (!fs.existsSync(p)) {
-        fs.mkdirSync(p, { recursive: true });
-      }
+      fs.mkdirSync(p, { recursive: true });
       reposDir = p;
       return reposDir;
     } catch {
