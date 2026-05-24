@@ -232,7 +232,7 @@ Configure automated delivery reporting for this media buy:
 | `pacing` | string | Updated pacing strategy |
 | `bid_price` | number | Updated bid price (auction products only). This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
 | `optimization_goals` | OptimizationGoal[] | Replace all optimization goals for this package. Uses replacement semantics — omit to leave goals unchanged. |
-| `targeting_overlay` | TargetingOverlay | Updated targeting restrictions |
+| `targeting_overlay` | TargetingOverlay | Updated targeting restrictions. Uses replacement semantics; changing `signal_targeting_groups` can alter priced signal selection, so sellers MAY reject with `REQUOTE_REQUIRED` when the selected signal, group expression, or signal `pricing_option_id` falls outside the original quote. Sellers SHOULD reject attempts to change fixed signal selections and MUST echo applied fixed/default signal groups on the resulting package state. |
 | `catalogs` | Catalog[] | Replace the catalogs this package promotes. Uses replacement semantics — omit to leave unchanged. |
 | `keyword_targets_add` | KeywordTarget[] | Keyword targets to add or upsert by (keyword, match_type) identity. On create, these are set as `keyword_targets` inside `targeting_overlay`. |
 | `keyword_targets_remove` | KeywordTarget[] | Keyword targets to remove by (keyword, match_type) identity. |
@@ -735,7 +735,7 @@ Common errors and resolutions:
 | `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
 | `BUDGET_EXCEEDED` | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
 | `CONFLICT` | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
-| `REQUOTE_REQUIRED` | Requested change (budget, dates, volume, targeting) falls outside the envelope the original quote was priced against | Call `get_products` with `buying_mode: "refine"` against the existing `proposal_id` to obtain a fresh quote, then resubmit the update against the new `proposal_id`. Seller's `error.details.envelope_field` names which fields breached. |
+| `REQUOTE_REQUIRED` | Requested change (budget, dates, volume, targeting, or signal targeting price) falls outside the envelope the original quote was priced against | Call `get_products` with `buying_mode: "refine"` against the existing `proposal_id` to obtain a fresh quote, then resubmit the update against the new `proposal_id`. Seller's `error.details.envelope_field` names which fields breached. |
 | `VALIDATION_ERROR` | Request format or business rule violation | Check error `field` and `message` for specifics |
 
 Example error response:

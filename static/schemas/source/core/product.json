@@ -147,15 +147,38 @@
     },
     "data_provider_signals": {
       "type": "array",
-      "description": "Data provider signals available for this product. Buyers fetch signal definitions from each data provider's adagents.json and can verify agent authorization.",
+      "description": "Deprecated. Legacy/non-selectable metadata for data-provider catalog signals already bundled into or associated with this product. This field does not provide buyer-selectable options, prices, or seller activation handles. Buyers can fetch definitions from each data provider's adagents.json and verify seller authorization. New selectable or seller-applied package-level signal surfaces use signal_targeting_options.",
+      "deprecated": true,
       "items": {
         "$ref": "/schemas/core/data-provider-signal-selector.json"
       }
     },
+    "signal_targeting_options": {
+      "type": "array",
+      "description": "Inline seller-offered signals that may be applied to packages for this product at create_media_buy time. Each entry references a named signal definition with signal_ref scope 'product' for a product-local signal option or scope 'data_provider' for an external published adagents.json signal catalog the seller is authorized to apply. Use this field when the selectable menu is product-specific, has product-specific pricing or activation handles, or should be rendered without an additional get_signals call. For products whose selectable menu is the seller's broader signals feed, set signal_targeting_options_source to 'get_signals' instead of duplicating the feed here. Buyers select eligible signals through packages[].targeting_overlay.signal_targeting_groups when signal_targeting_rules allow; fixed/default entries are applied by the seller and echoed on the package state. Sellers MUST set signal_targeting_allowed to true whenever this field is present. Bundled, non-selectable signal metadata belongs in product terms; legacy data_provider_signals may appear only for backwards compatibility.",
+      "items": {
+        "$ref": "/schemas/core/product-signal-targeting-option.json"
+      },
+      "minItems": 1
+    },
+    "signal_targeting_options_source": {
+      "type": "string",
+      "description": "Where buyers should discover the selectable signals for this product. 'product' means use signal_targeting_options returned on the product. 'get_signals' means call get_signals, typically with discovery_mode='wholesale', and apply product-level signal_targeting_rules plus seller validation instead of expecting the full menu inline. 'product_and_get_signals' means signal_targeting_options contains product-specific overrides, defaults, pricing, or a curated subset, while get_signals remains the broader selectable feed. Omit when signal_targeting_allowed is false.",
+      "enum": [
+        "product",
+        "get_signals",
+        "product_and_get_signals"
+      ],
+      "default": "product"
+    },
+    "signal_targeting_rules": {
+      "$ref": "/schemas/core/signal-targeting-rules.json",
+      "description": "Composition rules for selecting signals on this product. The selectable signal menu may come from inline signal_targeting_options, from get_signals when signal_targeting_options_source is 'get_signals', or from both surfaces when signal_targeting_options_source is 'product_and_get_signals'. This is product-scoped because products may be backed by different ad servers with different Boolean targeting support and group limits."
+    },
     "signal_targeting_allowed": {
       "type": "boolean",
       "default": false,
-      "description": "Whether buyers can filter this product to a subset of its data_provider_signals. When false (default), the product includes all listed signals as a bundle. When true, buyers can target specific signals."
+      "description": "Whether this product has a package-level signal_targeting_groups surface. When false (default), signals are bundled into the product terms and cannot be selected or explicitly echoed as package signal groups. When true, eligible signals from signal_targeting_options and/or get_signals may be buyer-selected or seller-applied according to signal_targeting_rules and are represented through packages[].targeting_overlay.signal_targeting_groups. Editability is controlled by signal_targeting_rules; fixed/default-only products still set this to true when applied signal groups are echoed."
     },
     "catalog_types": {
       "type": "array",
@@ -518,6 +541,63 @@
     "delivery_type",
     "pricing_options",
     "reporting_capabilities"
+  ],
+  "allOf": [
+    {
+      "description": "Products with package-level signal targeting options, an options source, or rules MUST declare the signal targeting surface explicitly.",
+      "if": {
+        "anyOf": [
+          { "required": ["signal_targeting_options"] },
+          { "required": ["signal_targeting_options_source"] },
+          { "required": ["signal_targeting_rules"] }
+        ]
+      },
+      "then": {
+        "properties": {
+          "signal_targeting_allowed": {
+            "const": true
+          }
+        },
+        "required": ["signal_targeting_allowed"]
+      }
+    },
+    {
+      "description": "Signal targeting rules require either inline signal_targeting_options or an explicit get_signals-backed options source.",
+      "if": {
+        "allOf": [
+          { "required": ["signal_targeting_rules"] },
+          { "not": { "required": ["signal_targeting_options"] } }
+        ]
+      },
+      "then": {
+        "properties": {
+          "signal_targeting_options_source": {
+            "enum": [
+              "get_signals",
+              "product_and_get_signals"
+            ]
+          }
+        },
+        "required": ["signal_targeting_options_source"]
+      }
+    },
+    {
+      "description": "An explicit product-backed options source requires inline signal_targeting_options.",
+      "if": {
+        "properties": {
+          "signal_targeting_options_source": {
+            "enum": [
+              "product",
+              "product_and_get_signals"
+            ]
+          }
+        },
+        "required": ["signal_targeting_options_source"]
+      },
+      "then": {
+        "required": ["signal_targeting_options"]
+      }
+    }
   ],
   "anyOf": [
     {

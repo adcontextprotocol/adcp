@@ -532,6 +532,89 @@ Include the `catalogs` field in a package to make it catalog-driven. Each catalo
 
 The platform distributes budget across catalog items based on performance. For per-item reporting, use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) which returns `by_catalog_item` breakdowns. Creative variants for catalog-driven packages represent individual catalog items rendered as ads.
 
+**Package with explicit signal targeting:**
+
+Use `targeting_overlay.signal_targeting_groups` when the buyer wants seller-offered signals applied to a specific package. The selected product must make the signal eligible through inline `signal_targeting_options`, through `get_signals` when `signal_targeting_options_source` includes `"get_signals"`, and through `signal_targeting_rules`. The grouped expression shape is always used: top-level `operator: "all"` with child groups using `operator: "any"` for include groups and `operator: "none"` for exclusion groups. For simple include-only targeting, send one `any` group. For binary signals, send `value: true` in both include and exclusion groups; exclusion is expressed by the parent `none` group, not by `value: false`. Signals are referenced with `signal_ref`: use `scope: "product"` for a product-local signal option, or `scope: "data_provider"` with `data_provider_domain` for a signal defined by a data provider's published adagents.json signal catalog. This is distinct from `audience_include` / `audience_exclude`, which only reference first-party audiences registered through `sync_audiences`. Send `signal_agent_segment_id` only when the selected product option or `get_signals` result exposed it as a separate execution handle required by the seller.
+
+```json test=false
+{
+  "brand": { "domain": "acmecorp.com" },
+  "packages": [{
+    "product_id": "retail_video_premium",
+    "pricing_option_id": "media_cpm_usd",
+    "budget": 25000,
+    "targeting_overlay": {
+      "signal_targeting_groups": {
+        "operator": "all",
+        "groups": [{
+          "operator": "any",
+          "signals": [{
+            "signal_ref": {
+              "scope": "data_provider",
+              "data_provider_domain": "pinnacle-data.example",
+              "signal_id": "auto_intenders"
+            },
+            "value_type": "binary",
+            "value": true,
+            "pricing_option_id": "signal_cpm_usd_250",
+            "signal_agent_segment_id": "seller_sig_auto_intenders"
+          }]
+        }]
+      }
+    }
+  }],
+  "start_time": "asap",
+  "end_time": "2026-09-30T23:59:59Z"
+}
+```
+
+Include plus exclusion example:
+
+```json test=false
+{
+  "brand": { "domain": "acmecorp.com" },
+  "packages": [{
+    "product_id": "retail_video_premium",
+    "pricing_option_id": "media_cpm_usd",
+    "budget": 25000,
+    "targeting_overlay": {
+      "signal_targeting_groups": {
+        "operator": "all",
+        "groups": [
+          {
+            "operator": "any",
+            "signals": [
+              {
+                "signal_ref": { "scope": "product", "signal_id": "high_intent_shoppers" },
+                "value_type": "binary",
+                "value": true
+              },
+              {
+                "signal_ref": { "scope": "product", "signal_id": "loyalty_members" },
+                "value_type": "binary",
+                "value": true
+              }
+            ]
+          },
+          {
+            "operator": "none",
+            "signals": [
+              {
+                "signal_ref": { "scope": "product", "signal_id": "recent_purchasers" },
+                "value_type": "binary",
+                "value": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }],
+  "start_time": "asap",
+  "end_time": "2026-09-30T23:59:59Z"
+}
+```
+
 ### Campaign with Inline Creatives
 
 Upload creatives at the same time as creating the campaign:

@@ -22,7 +22,7 @@ The `activate_signal` task handles the entire activation lifecycle, including:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `idempotency_key` | string | Yes | Client-generated unique key for this request. Prevents duplicate activations on retries. MUST be unique per (seller, request) pair. Min 16 chars. See [Idempotency](/docs/building/implementation/security#idempotency) for normative semantics. |
-| `signal_agent_segment_id` | string | Yes | The universal identifier for the signal to activate |
+| `signal_agent_segment_id` | string | Yes | Opaque signal handle from `get_signals` for the signal to activate |
 | `action` | string | No | `"activate"` (default) or `"deactivate"`. Deactivating removes segments from downstream platforms for data governance compliance (GDPR, CCPA). |
 | `destinations` | Destination[] | Yes | Target destination(s) for activation (see Destination Object below) |
 | `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account for this activation. Associates with a commercial relationship established via `sync_accounts`. |
@@ -135,7 +135,7 @@ The activation key tells the buyer how to reference the signal on the destinatio
 
 **Platform destinations** — The `activation_key` contains a `segment_id`, a platform-native identifier. The signal agent pushed segment data to the DSP; the buyer references this key when configuring campaign targeting on that platform. The buyer is responsible for ensuring the activation platform matches where it will run campaigns.
 
-**Agent destinations** — The `activation_key` confirms the signal is live on the sales agent. The SA records the activation internally and applies signal-based targeting when fulfilling media buys through `create_media_buy`. The buyer does not need to know which DSP the SA uses — downstream platform coordination is the SA's responsibility.
+**Agent destinations** — The `activation_key` confirms the signal is live on the sales agent. The SA records the activation internally and can apply signal-based targeting when fulfilling media buys through `create_media_buy`. When the seller exposes selectable signals through inline `Product.signal_targeting_options` or through `get_signals` via `signal_targeting_options_source: "get_signals"`, the buyer selects those signals in `packages[].targeting_overlay.signal_targeting_groups`, carrying the selected `signal_ref`, `pricing_option_id` when required, and any separate seller execution handle required by the product option or signal result. The buyer does not need to know which DSP the SA uses — downstream platform coordination is the SA's responsibility.
 
 **Choosing a destination type**: Use `type: "platform"` when buying directly on a DSP. Use `type: "agent"` when buying through a Sales Agent — the SA coordinates its own DSP targeting as an implementation detail.
 

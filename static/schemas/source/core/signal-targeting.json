@@ -11,8 +11,8 @@
       "type": "object",
       "description": "Binary signal targeting - user either matches or doesn't",
       "properties": {
-        "signal_id": {
-          "$ref": "/schemas/core/signal-id.json",
+        "signal_ref": {
+          "$ref": "/schemas/core/signal-ref.json",
           "description": "The signal to target"
         },
         "value_type": {
@@ -25,15 +25,15 @@
           "description": "Whether to include (true) or exclude (false) users matching this signal"
         }
       },
-      "required": ["signal_id", "value_type", "value"],
+      "required": ["signal_ref", "value_type", "value"],
       "additionalProperties": true
     },
     {
       "type": "object",
       "description": "Categorical signal targeting - target users with specific values",
       "properties": {
-        "signal_id": {
-          "$ref": "/schemas/core/signal-id.json",
+        "signal_ref": {
+          "$ref": "/schemas/core/signal-ref.json",
           "description": "The signal to target"
         },
         "value_type": {
@@ -50,15 +50,15 @@
           "minItems": 1
         }
       },
-      "required": ["signal_id", "value_type", "values"],
+      "required": ["signal_ref", "value_type", "values"],
       "additionalProperties": true
     },
     {
       "type": "object",
       "description": "Numeric signal targeting - target users within a value range. If min_value is provided, it must be <= max_value. Values should be within the signal's defined range (see signal definition).",
       "properties": {
-        "signal_id": {
-          "$ref": "/schemas/core/signal-id.json",
+        "signal_ref": {
+          "$ref": "/schemas/core/signal-ref.json",
           "description": "The signal to target"
         },
         "value_type": {
@@ -75,7 +75,7 @@
           "description": "Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both are provided. Should be <= signal's range.max if defined."
         }
       },
-      "required": ["signal_id", "value_type"],
+      "required": ["signal_ref", "value_type"],
       "additionalProperties": true
     }
   ]

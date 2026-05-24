@@ -387,7 +387,7 @@ A pharmaceutical company is always pharma (identity), but a general awareness ca
 
 ### Audience constraints
 
-Plans can declare `audience.include` and `audience.exclude` arrays using audience selectors. Each selector is either a signal reference (pointing to a specific data provider signal) or a natural language description.
+Plans can declare `audience.include` and `audience.exclude` arrays using audience selectors. Each selector is either a `signal_ref` or a natural language description.
 
 The governance agent evaluates these constraints against seller targeting in `check_governance`:
 1. Compare `planned_delivery.audience_targeting` against the plan's `audience.include`/`exclude`

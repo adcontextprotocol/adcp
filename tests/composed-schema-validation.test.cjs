@@ -627,6 +627,166 @@ async function runTests() {
 
   log('');
 
+  log('SignalRef scope hygiene:', 'info');
+  await testSchemaValidation(
+    '/schemas/core/signal-ref.json',
+    { scope: 'product', signal_id: 'high_intent_shoppers' },
+    'SignalRef product scope accepts product-local signal_id'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'product', signal_id: 'high_intent_shoppers', data_provider_domain: 'pinnacle-data.example' },
+    'SignalRef product scope rejects data_provider_domain carry-over'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'product', signal_id: 'high_intent_shoppers', signal_source_url: 'https://signals.example/.well-known/adcp/signals' },
+    'SignalRef product scope rejects signal_source_url carry-over'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'product', signal_id: 'high_intent_shoppers', source: 'agent' },
+    'SignalRef product scope rejects SignalId source carry-over'
+  );
+  await testSchemaValidation(
+    '/schemas/core/signal-ref.json',
+    { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'auto_intenders' },
+    'SignalRef data_provider scope accepts provider catalog signal'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'auto_intenders', agent_url: 'https://signals.example' },
+    'SignalRef data_provider scope rejects agent_url carry-over'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'auto_intenders', signal_source_url: 'https://signals.example/.well-known/adcp/signals' },
+    'SignalRef data_provider scope rejects signal_source_url carry-over'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'auto_intenders', id: 'legacy_id' },
+    'SignalRef data_provider scope rejects SignalId id carry-over'
+  );
+  await testSchemaValidation(
+    '/schemas/core/signal-ref.json',
+    { scope: 'signal_source', signal_source_url: 'https://signals.example/.well-known/adcp/signals', signal_id: 'custom_model_run_123' },
+    'SignalRef signal_source scope accepts source-native signal'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'signal_source', signal_source_url: 'https://signals.example/.well-known/adcp/signals', signal_id: 'custom_model_run_123', data_provider_domain: 'pinnacle-data.example' },
+    'SignalRef signal_source scope rejects data_provider_domain carry-over'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'signal_source', signal_source_url: 'https://signals.example/.well-known/adcp/signals', signal_id: 'custom_model_run_123', source: 'agent' },
+    'SignalRef signal_source scope rejects SignalId source carry-over'
+  );
+  log('');
+
+  log('product signal targeting invariants:', 'info');
+  const productBase = {
+    product_id: 'signal_targeting_product',
+    name: 'Signal Targeting Product',
+    description: 'Test',
+    publisher_properties: [
+      { publisher_domain: 'example.com', selection_type: 'all' }
+    ],
+    format_ids: [{ agent_url: 'https://creative.example.com', id: 'video_30s' }],
+    delivery_type: 'guaranteed',
+    delivery_measurement: { provider: 'Test' },
+    pricing_options: [{ pricing_option_id: 'cpm', pricing_model: 'cpm', rate: 10, currency: 'USD', is_fixed: true }],
+    reporting_capabilities: {
+      available_reporting_frequencies: ['daily'],
+      expected_delay_minutes: 240,
+      timezone: 'UTC',
+      supports_webhooks: false,
+      available_metrics: ['impressions'],
+      date_range_support: 'date_range'
+    }
+  };
+  const productSignalOption = {
+    signal_ref: { scope: 'product', signal_id: 'high_intent_shoppers' },
+    name: 'High intent shoppers',
+    value_type: 'binary'
+  };
+
+  await testSchemaValidation(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options: [productSignalOption],
+      signal_targeting_rules: { resolution_model: 'seller_planned', selection_mode: 'optional' }
+    },
+    'Product accepts signal_targeting_options and seller-planned resolution when signal_targeting_allowed is true'
+  );
+  await testSchemaValidation(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options_source: 'get_signals',
+      signal_targeting_rules: { resolution_model: 'direct_targeting', selection_mode: 'optional' }
+    },
+    'Product accepts signal_targeting_rules without inline options when options source is get_signals'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options: [productSignalOption],
+      signal_targeting_rules: { resolution_model: 'buyer_planned', selection_mode: 'optional' }
+    },
+    'Product rejects invalid signal_targeting_rules resolution_model'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_options: [productSignalOption]
+    },
+    'Product rejects signal_targeting_options without signal_targeting_allowed: true'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: false,
+      signal_targeting_options: [productSignalOption]
+    },
+    'Product rejects signal_targeting_options with signal_targeting_allowed: false'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_options_source: 'get_signals'
+    },
+    'Product rejects signal_targeting_options_source without signal_targeting_allowed: true'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options_source: 'product'
+    },
+    'Product rejects product-backed signal_targeting_options_source without inline options'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_rules: { selection_mode: 'optional' }
+    },
+    'Product rejects signal_targeting_rules without inline options or get_signals options source'
+  );
+  log('');
+
   // Product `publisher_properties` rejects `publisher_domains[]` compact form (#4508):
   //
   // What's being exercised: the rejection comes from the `allOf` clause in
