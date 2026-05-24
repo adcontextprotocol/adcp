@@ -1105,8 +1105,8 @@
       // Membership gate — Professional+ required for content submission.
       if (contentSubmissionEligible === false) {
         alert(
-          'Publishing perspectives is a benefit of Professional-tier membership and above.\n\n' +
-          'To submit content, upgrade your membership at:\nhttps://agenticadvertising.org/dashboard/membership'
+          'Publishing perspectives is a benefit of Professional, Builder, Partner, or Leader membership.\n\n' +
+          'To submit content, upgrade at:\nhttps://agenticadvertising.org/dashboard/membership'
         );
         return;
       }
@@ -1331,12 +1331,12 @@
           const err = await response.json();
           // Detect the Professional+ tier gate (HTTP 403 from the propose endpoint)
           // and show a persistent upgrade nudge instead of a generic error.
-          if (!id && response.status === 403 && err.message?.includes('Professional-tier membership')) {
+          if (!id && response.status === 403 && err.message?.includes('/dashboard/membership')) {
             contentSubmissionEligible = false;
             closeModal();
             alert(
-              'Publishing perspectives is a benefit of Professional-tier membership and above.\n\n' +
-              'To submit content, upgrade your membership at:\nhttps://agenticadvertising.org/dashboard/membership'
+              'Publishing perspectives is a benefit of Professional, Builder, Partner, or Leader membership.\n\n' +
+              'To submit content, upgrade at:\nhttps://agenticadvertising.org/dashboard/membership'
             );
             btn.disabled = false;
             btn.textContent = 'Save';

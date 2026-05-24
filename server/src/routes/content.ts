@@ -401,14 +401,15 @@ export async function proposeContentForUser(
   }
 
   // Membership tier gate — Professional+ required for content submission.
-  // System users (system:* prefix) are exempt, matching the rate-limiter carve-out.
-  if (!user.id.startsWith('system:')) {
+  // System users (system:* prefix) and site admins are exempt, matching the
+  // rate-limiter carve-out and the existing admin bypass pattern below.
+  if (!user.id.startsWith('system:') && !(await isWebUserAAOAdmin(user.id))) {
     const eligible = await checkContentSubmissionTier(user.id);
     if (!eligible) {
       logger.warn({ userId: user.id }, 'proposeContentForUser blocked — insufficient membership tier');
       return {
         success: false,
-        error: 'Publishing perspectives is a benefit of Professional-tier membership and above. To submit content, upgrade your membership at https://agenticadvertising.org/dashboard/membership.',
+        error: 'Publishing perspectives is a benefit of Professional, Builder, Partner, or Leader membership. To submit content, upgrade at https://agenticadvertising.org/dashboard/membership.',
       };
     }
   }
@@ -1201,7 +1202,7 @@ export function createContentRouter(): Router {
 
       if (!result.success) {
         // Map errors to appropriate HTTP status codes
-        const isTierGate = result.error?.includes('Professional-tier membership');
+        const isTierGate = result.error?.includes('/dashboard/membership');
         const status = result.error?.includes('not found') ? 404
                      : (result.error?.includes('must be a member') || isTierGate) ? 403
                      : 400;

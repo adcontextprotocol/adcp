@@ -1,5 +1,4 @@
 ---
-"adcontextprotocol": patch
 ---
 
 Add Professional+ membership tier gate to content submission (propose_content tool and UI).

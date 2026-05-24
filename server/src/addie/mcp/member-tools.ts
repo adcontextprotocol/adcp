@@ -2636,20 +2636,6 @@ export function createMemberToolHandlers(
       return 'You need to be logged in to create content. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
-    // Membership tier gate — Professional+ required for content submission.
-    // We do a fast pre-check here using the already-resolved memberContext so
-    // the user gets a clear, actionable message before the DB round-trip in
-    // proposeContentForUser. The function-level gate in proposeContentForUser
-    // still runs as the authoritative check.
-    const userId = memberContext.workos_user.workos_user_id;
-    if (!userId.startsWith('system:')) {
-      const tier = memberContext.organization?.membership_tier ?? null;
-      const { isApiAccessTier } = await import('../../services/membership-tiers.js');
-      if (!memberContext.is_member || !isApiAccessTier(tier)) {
-        return 'Publishing perspectives is a benefit of Professional-tier membership and above. To submit content, upgrade your membership at https://agenticadvertising.org/dashboard/membership.';
-      }
-    }
-
     const title = input.title as string;
     const subtitle = input.subtitle as string | undefined;
     const contentBody = input.content as string | undefined;
