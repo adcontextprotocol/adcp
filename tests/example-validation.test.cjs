@@ -282,13 +282,20 @@ const exampleData = {
   },
   
   getSignalsResponse: {
+    "status": "completed",
+    "cache_scope": "public",
     "signals": [
       {
+        "signal_ref": {
+          "scope": "data_provider",
+          "data_provider_domain": "pinnacle-data.example",
+          "signal_id": "luxury_auto_intenders"
+        },
         "signal_agent_segment_id": "luxury_auto_intenders",
         "name": "Luxury Automotive Intenders",
         "description": "High-income individuals researching luxury vehicles",
         "signal_type": "marketplace",
-        "data_provider": "Experian",
+        "data_provider": "Pinnacle Data",
         "coverage_percentage": 12,
         "deployments": [
           {

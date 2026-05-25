@@ -138,6 +138,7 @@ asyncio.run(discover_with_filters())
 | `account` | AccountRef | No | Account reference for account-specific pricing. Returns products with pricing from this account's rate card. |
 | `catalog` | [Catalog](/docs/creative/catalogs) | No | Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Requires `brand`. See [Catalog discovery](#catalog-discovery) below. |
 | `filters` | Filters | No | Structured filters (see below) |
+| `fields` | string[] | No | Specific product fields to include in the response for lightweight discovery. When requesting signal metadata, buyers SHOULD request `included_signals` for non-selectable bundled/planned signals, and `signal_targeting_allowed`, `signal_targeting_options`, and `signal_targeting_rules` for package-level signal selection. |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
 | `pagination` | PaginationRequest | No | Cursor-based pagination for large product result sets and wholesale product feeds (see below) |
 | `if_wholesale_feed_version` | string | No | Opaque `wholesale_feed_version` token from a prior `get_products` response. When provided, the seller compares against its current wholesale product feed version and MAY return `unchanged: true` (with `products` omitted) if nothing has changed. Versions are scoped to the (agent, account, filters, `buying_mode`, `property_list`, `catalog`) tuple. See [Wholesale feed versioning](#wholesale-feed-versioning). |
@@ -176,9 +177,42 @@ The seller must declare `features.property_list_filtering: true` in [`get_adcp_c
 | `postal_areas` | object[] | Filter by postal area coverage. Each entry: `{ system, values }` (e.g., `[{ "system": "us_zip", "values": ["10001"] }]`) |
 | `geo_proximity` | object[] | Filter by proximity to geographic points. Each entry uses exactly one boundary method: `radius`, `travel_time` + `transport_mode`, or `geometry` |
 | `keywords` | object[] | Filter by keyword relevance for search/retail media. Each entry: `{ keyword, match_type? }`. `match_type` defaults to `broad` if omitted |
+| `signal_targeting` | SignalTargeting[] | Discovery filter for products where the requested signals are buyer-selectable and jointly composable: available through inline `signal_targeting_options` and/or the seller's `get_signals` feed for wholesale products that allow signal targeting but omit inline options, with `signal_targeting_allowed: true`, and compatible under the product's `signal_targeting_rules`. Each entry uses `signal_ref` (`signal_id` is accepted only as a deprecated migration bridge) and may include `targeting_mode: "include"` or `"exclude"` to require support for `any` or `none` groups; omitted means `"include"`. `scope: "product"` is seller-local exact option matching only, not a portable semantic identifier across products or sellers; buyers wanting portable discovery should use `scope: "data_provider"` or `get_signals`. `included_signals` and deprecated `data_provider_signals` metadata do not satisfy this filter because they cannot be selected on `create_media_buy`. This filter is not the buy-time request shape; package selection always uses `packages[].targeting_overlay.signal_targeting_groups`. |
 | `required_performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | Filter to products that can meet the buyer's performance standard requirements. Each entry specifies a metric, threshold, and vendor (e.g., "DoubleVerify for viewability at 70% MRC"). Products that cannot meet these thresholds or do not support the specified vendors are excluded. |
 | `required_metrics` | string[] ([metric vocabulary](/docs/media-buy/media-buys/optimization-reporting)) | Filter to products whose `reporting_capabilities.available_metrics` is a superset of these metrics — i.e., products that commit to reporting all listed metrics in delivery. Use for capability discovery (e.g., `["completed_views"]` for a CTV CPCV buy). Sellers MUST silently exclude products that cannot meet the list — filter-not-fail; do not return an error. The product's declared `available_metrics` becomes the binding reporting contract carried into the resulting media buy. |
 | `required_vendor_metrics` | object[] | Filter to products whose `reporting_capabilities.vendor_metrics` covers vendor-defined metrics (proprietary attention, emissions, panel demographics, brand-lift surveys, etc.). Each entry pins `vendor` (BrandRef) and/or `metric_id` — at least one. Cross-vendor discovery (e.g., "any attention measurement") is the buyer agent's responsibility: resolve which vendors offer a category via the vendors' `brand.json` records, then enumerate them as filter entries. Same filter-not-fail semantics as `required_metrics`. |
+
+Signal-targeting filter example:
+
+```json
+{
+  "$schema": "/schemas/media-buy/get-products-request.json",
+  "buying_mode": "wholesale",
+  "filters": {
+    "signal_targeting": [
+      {
+        "signal_ref": {
+          "scope": "data_provider",
+          "data_provider_domain": "pinnacle-data.example",
+          "signal_id": "auto_intenders"
+        },
+        "value_type": "binary",
+        "value": true,
+        "targeting_mode": "include"
+      }
+    ]
+  },
+  "fields": [
+    "product_id",
+    "name",
+    "included_signals",
+    "signal_targeting_allowed",
+    "signal_targeting_options",
+    "signal_targeting_rules",
+    "pricing_options"
+  ]
+}
+```
 
 ### Budget Range Object
 
@@ -269,6 +303,11 @@ Returns an array of `products` and optionally `proposals`.
 | `pricing_options` | PricingOption[] | Available pricing models (CPM, CPCV, etc.). Auction options may include `floor_price` and optional `price_guidance`. Bid-based auction models (CPM, vCPM, CPC, CPCV, CPV) may also include optional `max_bid` (boolean). |
 | `shows` | CollectionSelector[] | (Optional) Collections available in this product. Each entry has `publisher_domain` and `collection_ids`. Buyers resolve full collection objects from the referenced `adagents.json`. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments). |
 | `collection_targeting_allowed` | boolean | (Optional, default: false) Whether buyers can target a subset of this product's shows. When false, the product is a bundle. |
+| `data_provider_signals` | DataProviderSignalSelector[] | (Optional, deprecated) Legacy/non-selectable metadata for data-provider catalog signals already bundled into or associated with this product. New implementations should use `included_signals`. |
+| `included_signals` | SignalListing[] | (Optional) Non-selectable signal metadata for signals already included in, bundled with, or planned into this product. These describe what the product is; buyers do not select them in package `signal_targeting_groups`. Data-provider and signal-source refs may be reference-only; product-local refs include inline `name` and `value_type`. |
+| `signal_targeting_allowed` | boolean | (Optional, default: false) Whether this product has a package-level signal targeting surface. Editability is controlled by `signal_targeting_rules`; fixed/default-only products still set this to true when applied signal groups are echoed. |
+| `signal_targeting_options` | ProductSignalTargetingOption[] | (Optional) Inline product-scoped signal options the buyer may select, or the seller may apply when fixed/default, through `packages[].targeting_overlay.signal_targeting_groups`. May include per-signal `pricing_options`; product-scoped prices are authoritative for this product. Data-provider and signal-source refs may be reference-only; product-local refs include inline `name` and `value_type`. |
+| `signal_targeting_rules` | SignalTargetingRules | (Optional) Product-scoped composition rules for selectable signals, such as direct vs seller-planned resolution, optional, required, maximum, mutually exclusive, fixed selections, and group size limits. These limits belong on the product, not seller-wide `get_adcp_capabilities`, because products may be backed by different ad servers or seller planning layers. Fixed/default selections are applied by the seller and echoed on the resulting package state. |
 | `brief_relevance` | string | Why this product matches the brief (when brief provided) |
 | `measurement_readiness` | [MeasurementReadiness](/docs/media-buy/conversion-tracking/#measurement-readiness) | (Optional) Whether the buyer's event setup is sufficient for this product's optimization. Only present when the seller can evaluate the buyer's account context. |
 | `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | (Optional) Seller's default billing measurement and makegood terms. Buyers may propose different terms at `create_media_buy`. |
@@ -316,7 +355,7 @@ Pagination is optional. When omitted, the server returns all results (or a serve
 | `incomplete` | [IncompleteEntry[]](#incomplete-array) | Declares what the seller could not finish within the `time_budget` or due to internal limits. Each entry identifies a scope with a human-readable explanation. Absent when the response is fully complete. See [incomplete array](#incomplete-array) below. |
 | `filter_diagnostics` | object | Optional non-fatal observability block describing how `filters` narrowed the candidate set — `total_candidates` plus per-filter `excluded_by` counts (keyed by filter name). Disambiguates "no inventory" from "your filter excluded everything" when the result list is empty or unexpectedly small. Counts only — never product names — to avoid leaking competitive intelligence. See [filter_diagnostics](#filter_diagnostics) below. |
 | `wholesale_feed_version` | string | Opaque token representing the version of the wholesale product feed state used to compose this response. Sellers implementing conditional-fetch (`if_wholesale_feed_version`) MUST return this on every response so buyers can cache and probe later. Treat as opaque — no format, no ordering, no inspection. See [Wholesale feed versioning](#wholesale-feed-versioning). |
-| `pricing_version` | string | Optional opaque token representing the version of the pricing layer. When the seller supports independent pricing versioning, `pricing_version` changes when prices move but `wholesale_feed_version` changes only when structure/metadata moves. Sellers not separating these MAY omit `pricing_version` and use `wholesale_feed_version` for both. |
+| `pricing_version` | string | Optional opaque token representing the version of the pricing layer, including product `pricing_options` and nested `signal_targeting_options[].pricing_options`. When the seller supports independent pricing versioning, `pricing_version` changes when prices move but `wholesale_feed_version` changes only when structure/metadata moves. Sellers not separating these MAY omit `pricing_version` and use `wholesale_feed_version` for both. |
 | `cache_scope` | string | `"public"` or `"account"`. **REQUIRED on every response** (schema-enforced — the safety property of the two-layer cache depends on it). When the request had no `account`, MUST be `"public"`. When the request had `account`, the seller declares either `"public"` (account prices off the rate card — buyer dedupes) or `"account"` (account-specific overrides). See [Cache layering](#cache-layering). |
 | `unchanged` | boolean | Present and `true` ONLY when the request carried `if_wholesale_feed_version` (and/or `if_pricing_version`) matching the seller's current version for the buyer's `cache_scope`, in which case `products[]` MUST be omitted; `wholesale_feed_version`, `cache_scope`, and `pricing_version` (when used) MUST still be echoed. Sellers MUST NOT emit `unchanged: false` — absence of the field IS the "response carries products" signal (one shape per state). Buyers receiving `unchanged: true` MUST NOT mutate their local wholesale product mirror. |
 

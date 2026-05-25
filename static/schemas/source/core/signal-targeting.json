@@ -11,9 +11,14 @@
       "type": "object",
       "description": "Binary signal targeting - user either matches or doesn't",
       "properties": {
+        "signal_ref": {
+          "$ref": "/schemas/core/signal-ref.json",
+          "description": "The signal to target. New targeting constraints SHOULD use signal_ref."
+        },
         "signal_id": {
           "$ref": "/schemas/core/signal-id.json",
-          "description": "The signal to target"
+          "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older clients.",
+          "deprecated": true
         },
         "value_type": {
           "type": "string",
@@ -25,16 +30,25 @@
           "description": "Whether to include (true) or exclude (false) users matching this signal"
         }
       },
-      "required": ["signal_id", "value_type", "value"],
+      "required": ["value_type", "value"],
+      "anyOf": [
+        { "required": ["signal_ref"] },
+        { "required": ["signal_id"] }
+      ],
       "additionalProperties": true
     },
     {
       "type": "object",
       "description": "Categorical signal targeting - target users with specific values",
       "properties": {
+        "signal_ref": {
+          "$ref": "/schemas/core/signal-ref.json",
+          "description": "The signal to target. New targeting constraints SHOULD use signal_ref."
+        },
         "signal_id": {
           "$ref": "/schemas/core/signal-id.json",
-          "description": "The signal to target"
+          "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older clients.",
+          "deprecated": true
         },
         "value_type": {
           "type": "string",
@@ -50,16 +64,25 @@
           "minItems": 1
         }
       },
-      "required": ["signal_id", "value_type", "values"],
+      "required": ["value_type", "values"],
+      "anyOf": [
+        { "required": ["signal_ref"] },
+        { "required": ["signal_id"] }
+      ],
       "additionalProperties": true
     },
     {
       "type": "object",
       "description": "Numeric signal targeting - target users within a value range. If min_value is provided, it must be <= max_value. Values should be within the signal's defined range (see signal definition).",
       "properties": {
+        "signal_ref": {
+          "$ref": "/schemas/core/signal-ref.json",
+          "description": "The signal to target. New targeting constraints SHOULD use signal_ref."
+        },
         "signal_id": {
           "$ref": "/schemas/core/signal-id.json",
-          "description": "The signal to target"
+          "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older clients.",
+          "deprecated": true
         },
         "value_type": {
           "type": "string",
@@ -75,7 +98,11 @@
           "description": "Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both are provided. Should be <= signal's range.max if defined."
         }
       },
-      "required": ["signal_id", "value_type"],
+      "required": ["value_type"],
+      "anyOf": [
+        { "required": ["signal_ref"] },
+        { "required": ["signal_id"] }
+      ],
       "additionalProperties": true
     }
   ]
