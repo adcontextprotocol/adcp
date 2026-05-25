@@ -62,6 +62,10 @@ Each deployment target uses a `type` field to discriminate between platform-base
 | `max_cpm` | number | No | Maximum CPM price filter. Excludes signals where all CPM-based pricing options exceed this value. Signals without CPM-based pricing options are not affected by this filter. |
 | `min_coverage_percentage` | number | No | Minimum coverage requirement |
 
+<Note>
+`catalog_types`, the `catalog_signals` capability flag, and the deprecated `signal_id.source: "catalog"` value are legacy wire terms. In new prose, read them as provider-published signal definitions in adagents.json `signals[]`. They remain on the wire for 3.x compatibility and require a coordinated major-version rename if changed.
+</Note>
+
 ## Response Structure
 
 All AdCP responses include:
@@ -668,7 +672,7 @@ A sales agent that owns or is authorized to apply targeting signals exposes buy-
 - `get_signals` optionally returns cross-product signal metadata, including `signal_ref`, `signal_agent_segment_id`, value metadata, and any default or account-scoped `pricing_options`.
 - `create_media_buy` selects the signal for a package in `packages[].targeting_overlay.signal_targeting_groups`, carrying the selected signal `pricing_option_id`, `signal_ref`, and any separate seller execution handle when required.
 
-This gives buyers a product-first buy-time eligibility path without forcing products to duplicate a large wholesale signal feed: use the selected product's `signal_targeting_options_source`, inline `signal_targeting_options`, and `signal_targeting_rules` to determine what may be applied on that package. When both surfaces include pricing, the product-scoped `signal_targeting_options[].pricing_options` price is authoritative for that product. For product-local signals exposed on both surfaces, `signal_ref.signal_id` in the product option MUST match the seller's `get_signals.signals[].signal_ref.signal_id` for the same signal.
+This gives buyers a product-first buy-time eligibility path without forcing products to duplicate a large wholesale signal feed: use the selected product's `signal_targeting_options_source`, inline `signal_targeting_options`, and `signal_targeting_rules` to determine what may be applied on that package. When the product points to `get_signals`, use `get_signals` for candidate discovery and activation metadata, then use `get_products.filters.signal_targeting` or a product-specific `get_products` query to confirm the candidate set is selectable and jointly composable for the intended product before calling `create_media_buy`. When both surfaces include pricing, the product-scoped `signal_targeting_options[].pricing_options` price is authoritative for that product. For product-local signals exposed on both surfaces, `signal_ref.signal_id` in the product option MUST match the seller's `get_signals.signals[].signal_ref.signal_id` for the same signal.
 
 For media-buy product targeting, product options and package groups use the same `signal_ref` identity: `scope: "product"` for product-local signal options, `scope: "data_provider"` with `data_provider_domain` for signals defined in published adagents.json `signals[]`, or `scope: "signal_source"` for source-native custom signals that are not published in adagents.json `signals[]`. When a provider-published signal is selected, buyers can verify the seller's authorization by checking the provider's `adagents.json` `authorized_agents` rules for the signal id or tags. The older Signals Protocol `signal_id.source` shape is deprecated and retained only for backwards compatibility.
 

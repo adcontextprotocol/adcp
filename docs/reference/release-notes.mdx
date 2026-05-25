@@ -67,6 +67,14 @@ See [`brand.json` § Distributed publishing](/docs/brand-protocol/brand-json) fo
 
 Additive over 3.0. Existing sellers continue to validate; buyers ignoring the new fields keep working. Buyers SHOULD upgrade reach-summation logic to gate on `reach_window` semantics.
 
+### Signal definitions — enrichment, taxonomy, and product targeting follow-up
+
+Signal definitions in adagents.json `signals[]` can now carry definition-side enrichment for taxonomy mappings, DTS-style source and methodology disclosure, modeling metadata, jurisdiction and consent applicability, and per-signal data-subject-rights routing. Taxonomy remains metadata on `SignalDefinition`, not a new `value_type`; package targeting continues to use binary, categorical, and numeric value grammar. Categorical signals can map their `allowed_values[]` strings to stable taxonomy nodes through `taxonomy.value_mappings`.
+
+Modeled signals now have explicit validation hooks: `methodology: "modeled"` and `audience_expansion: true` require `modeling`; modeled training data jurisdictions must be non-empty; and a required modeling disclosure must name the jurisdictions where the disclosure applies.
+
+Product signal targeting also clarifies the broad-feed workflow. Products may point to `get_signals` with `signal_targeting_options_source: "get_signals"` instead of duplicating a wholesale signal feed inline. Buyers use `get_signals` for candidate discovery, then confirm product eligibility and composability with `get_products.filters.signal_targeting` or a product-specific `get_products` response before sending `packages[].targeting_overlay.signal_targeting_groups`.
+
 ### Wire conformance — idempotency & envelope tolerance (#4399 / #4399b, #2911, #4227, #4371, #4418, #4107, #4196, #4043)
 
 A bundle of normative clarifications that codify deployed behavior and close ambiguities that surfaced from real adopter integrations. None require code changes for SDK-using integrators; hand-rolled MCP clients should review the universal-idempotency staged enforcement curve before the 3.2 cut.

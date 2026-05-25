@@ -127,6 +127,68 @@ The signal definition is not itself a `signal_ref`. In `adagents.json`, the host
 | `range` | object | For numeric signals: `{ min, max, unit }` |
 | `restricted_attributes` | array | Restricted attribute categories this signal touches (e.g., `["health_data"]`). Enables structural governance matching. |
 | `policy_categories` | array | Policy categories this signal is sensitive for (e.g., `["children_directed"]`). Enables structural governance matching. |
+| `taxonomy` | object | External taxonomy metadata for discovery, review, and translation. Does not change `value_type` or package targeting grammar. |
+| `data_sources` | array | IAB Data Transparency Standard-aligned source categories used to compile the signal. |
+| `methodology` | enum | How membership or attribute values were determined: `observed`, `declared`, `derived`, `inferred`, or `modeled`. |
+| `modeling` | object | Required when `methodology` is `modeled` or `audience_expansion` is `true`. Includes seed source, training jurisdictions, AI risk class, and disclosure notes. |
+| `countries` | array | ISO 3166-1 alpha-2 countries where the signal is applicable. |
+| `consent_basis` | array | Declared lawful or consent basis for processing this signal's data. |
+| `data_subject_rights` | object | Per-signal rights-routing channels for access, erasure, objection, and related requests. |
+
+### Definition Enrichment
+
+Use enrichment fields when buyers, sellers, governance agents, or regulators need more than a name and value type:
+
+| Purpose | Fields | When to use |
+|---------|--------|-------------|
+| Discovery and taxonomy | `taxonomy`, `taxonomy.values`, `taxonomy.value_mappings`, `taxonomy.parent_match_behavior` | The signal maps to an external audience, content, retail-media, or provider-owned taxonomy. For categorical signals, `value_mappings` maps each package-targeting `allowed_values[]` string to a stable taxonomy node. |
+| Source and methodology | `data_sources`, `methodology`, `segmentation_criteria`, `criteria_url`, `refresh_cadence`, `lookback_window`, `onboarder` | The provider wants DTS-style transparency. `onboarder` is required for offline or public-record sources. |
+| Modeling and disclosure | `modeling`, `audience_expansion`, `device_expansion` | Required when `methodology` is `modeled` or `audience_expansion` is `true`. `modeling.training_data_jurisdictions` must be non-empty. If `modeling.disclosure.required` is `true`, `modeling.disclosure.jurisdictions` is required. |
+| Privacy and governance | `countries`, `consent_basis`, `restricted_attributes`, `policy_categories`, `art9_basis` | The signal may be jurisdictionally limited, policy-sensitive, or subject to special-category review. |
+| Rights routing | `data_subject_rights` | Rights requests route differently by signal or upstream source. Each routing block must include a channel supporting at least one of access, erasure, or objection. |
+
+```json
+{
+  "id": "vehicle_ownership",
+  "name": "Current vehicle ownership",
+  "description": "Declared or inferred current household vehicle ownership.",
+  "value_type": "categorical",
+  "allowed_values": ["luxury_ev", "luxury_non_ev", "mid_range", "economy", "none"],
+  "taxonomy": {
+    "ref": "https://taxonomy.example.com/audience/v1",
+    "version": "1.0",
+    "values": [
+      { "id": "auto.vehicle_ownership", "path": "Automotive > Vehicle ownership" }
+    ],
+    "value_mappings": [
+      {
+        "value": "luxury_ev",
+        "taxonomy_value_id": "auto.vehicle_ownership.luxury_ev",
+        "path": "Automotive > Vehicle ownership > Luxury EV"
+      }
+    ],
+    "parent_match_behavior": "exact_only"
+  },
+  "data_sources": ["online_survey", "transaction"],
+  "methodology": "derived",
+  "subject_type": "household",
+  "resolution_method": "mixed",
+  "countries": ["US"],
+  "consent_basis": ["consent"],
+  "data_subject_rights": {
+    "channels": [
+      {
+        "rights": ["access", "erasure", "objection"],
+        "url": "https://privacy.pinnacle-data.example/requests",
+        "countries": ["US"]
+      }
+    ],
+    "response_sla_days": 30
+  }
+}
+```
+
+Taxonomy parent nodes do not imply targeting expansion by themselves. If `parent_match_behavior` is `descendants_supported`, the seller may expand known, version-pinned parent nodes internally, typically by ORing children in its execution system. Package targeting still uses the signal's declared `value_type`.
 
 ## Signal Value Types
 
@@ -299,7 +361,7 @@ Based on `value_type`, buyers construct targeting expressions:
 
 ## Local and External Signal References
 
-Not all signals come from third-party data provider catalogs. Sellers and publishers can also define their own signals - custom models, first-party data, or composite segments - the same way they define other named resources in `adagents.json`. When those signals are meant to be portable and externally referenceable, publish them in the `signals` array and reference them from products with `scope: "data_provider"` using the seller's own catalog domain. When they are only meaningful within one product/package context, expose them only as product-local `signal_targeting_options` with `scope: "product"`.
+Not all signals come from third-party data providers. Sellers and publishers can also define their own signals - custom models, first-party data, or composite segments - the same way they define other named resources in `adagents.json`. When those signals are meant to be portable and externally referenceable, publish them in the `signals` array and reference them from products with `scope: "data_provider"` using the seller's own publishing domain. When they are only meaningful within one product/package context, expose them only as product-local `signal_targeting_options` with `scope: "product"`.
 
 Use `signal_ref` for `get_signals`, media-buy product targeting, and package-level buy-time targeting:
 

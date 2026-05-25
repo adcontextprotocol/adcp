@@ -123,6 +123,37 @@
             "additionalProperties": false
           }
         },
+        "value_mappings": {
+          "type": "array",
+          "description": "For categorical signals, maps package-targeting allowed_values[] strings to stable taxonomy node identifiers. The allowed_values[] strings remain the wire values buyers submit; this mapping explains how those strings resolve into the published taxonomy.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string",
+                "description": "Categorical value from allowed_values[]."
+              },
+              "taxonomy_value_id": {
+                "type": "string",
+                "description": "Taxonomy node identifier corresponding to this categorical value."
+              },
+              "path": {
+                "type": "string",
+                "description": "Optional human-readable or taxonomy-native path for display and review."
+              },
+              "modifiers": {
+                "type": "array",
+                "description": "Optional taxonomy-specific modifiers that qualify the mapped value.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["value", "taxonomy_value_id"],
+            "additionalProperties": false
+          }
+        },
         "parent_match_behavior": {
           "type": "string",
           "description": "Whether this signal definition supports treating a parent taxonomy node as matching descendant nodes for discovery/filtering or seller-side expansion. 'exact_only' means only explicitly listed node ids match. 'descendants_supported' means the seller can expand known, version-pinned parent nodes to descendants internally, typically by ORing the children in its execution system. 'unknown' means the provider has not declared parent-node behavior. This field is metadata about discovery/translation behavior, not a package targeting operator.",
@@ -299,6 +330,7 @@
         },
         "training_data_jurisdictions": {
           "type": "array",
+          "minItems": 1,
           "items": {
             "type": "string",
             "pattern": "^[A-Z]{2}$"
@@ -425,6 +457,19 @@
     {
       "if": { "properties": { "value_type": { "const": "categorical" } }, "required": ["value_type"] },
       "then": { "required": ["allowed_values"] }
+    },
+    {
+      "if": {
+        "properties": { "value_type": { "const": "categorical" } },
+        "required": ["value_type", "taxonomy"]
+      },
+      "then": {
+        "properties": {
+          "taxonomy": {
+            "required": ["value_mappings"]
+          }
+        }
+      }
     },
     {
       "if": { "properties": { "value_type": { "const": "numeric" } }, "required": ["value_type"] },

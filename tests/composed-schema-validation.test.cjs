@@ -934,16 +934,46 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/signal-definition.json',
     {
-      id: 'jic_panel_coviewing_households',
-      name: 'JIC panel co-viewing households',
-      description: 'Panel-derived TV audience signal where household co-viewing is part of the measurement methodology.',
+      id: 'panel_derived_households',
+      name: 'Panel-derived households',
+      description: 'Panel-derived TV audience signal where panel recruitment is part of the measurement methodology.',
       value_type: 'binary',
       data_sources: ['panel', 'tv_ott_or_stb_device'],
       methodology: 'derived',
       subject_type: 'household',
       resolution_method: 'mixed'
     },
-    'Panel/JIC-derived signal accepts panel as a data source'
+    'Panel-derived signal accepts panel as a data source'
+  );
+  await testSchemaValidation(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'vehicle_ownership',
+      name: 'Current vehicle ownership',
+      value_type: 'categorical',
+      allowed_values: ['luxury_ev', 'luxury_non_ev', 'mid_range', 'economy', 'none'],
+      taxonomy: {
+        ref: 'https://taxonomy.example.com/audience/v1',
+        version: '1.0',
+        values: [
+          { id: 'auto.vehicle_ownership', path: 'Automotive > Vehicle ownership' }
+        ],
+        value_mappings: [
+          {
+            value: 'luxury_ev',
+            taxonomy_value_id: 'auto.vehicle_ownership.luxury_ev',
+            path: 'Automotive > Vehicle ownership > Luxury EV'
+          },
+          {
+            value: 'luxury_non_ev',
+            taxonomy_value_id: 'auto.vehicle_ownership.luxury_non_ev',
+            path: 'Automotive > Vehicle ownership > Luxury non-EV'
+          }
+        ],
+        parent_match_behavior: 'exact_only'
+      }
+    },
+    'Categorical signal accepts taxonomy value mappings for allowed_values'
   );
   await testSchemaRejection(
     '/schemas/core/signal-definition.json',
@@ -967,6 +997,61 @@ async function runTests() {
       methodology: 'modeled'
     },
     'Rejects modeled methodology without modeling block'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'modeled_empty_training_jurisdictions',
+      name: 'Modeled empty training jurisdictions',
+      value_type: 'binary',
+      methodology: 'modeled',
+      modeling: {
+        method: 'lookalike',
+        seed_source: {
+          type: 'first_party_crm',
+          provider_signed: true
+        },
+        training_data_jurisdictions: [],
+        ai_act_risk_class: 'limited'
+      }
+    },
+    'Rejects modeled signal with empty training_data_jurisdictions'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'modeled_disclosure_missing_jurisdictions',
+      name: 'Modeled disclosure missing jurisdictions',
+      value_type: 'binary',
+      methodology: 'modeled',
+      modeling: {
+        method: 'lookalike',
+        seed_source: {
+          type: 'first_party_crm',
+          provider_signed: true
+        },
+        training_data_jurisdictions: ['US'],
+        ai_act_risk_class: 'limited',
+        disclosure: {
+          required: true
+        }
+      }
+    },
+    'Rejects required modeling disclosure without jurisdictions'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'categorical_taxonomy_missing_mapping',
+      name: 'Categorical taxonomy missing mapping',
+      value_type: 'categorical',
+      allowed_values: ['luxury_ev'],
+      taxonomy: {
+        ref: 'https://taxonomy.example.com/audience/v1',
+        values: [{ id: 'auto.vehicle_ownership' }]
+      }
+    },
+    'Rejects categorical taxonomy metadata without value_mappings'
   );
   await testSchemaRejection(
     '/schemas/core/signal-definition.json',

@@ -55,5 +55,18 @@
     }
   },
   "required": ["required"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "required": { "const": true }
+        },
+        "required": ["required"]
+      },
+      "then": {
+        "required": ["jurisdictions"]
+      }
+    }
+  ],
   "additionalProperties": false
 }

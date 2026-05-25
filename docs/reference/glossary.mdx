@@ -295,7 +295,7 @@ Percentage of available ad inventory allocated to a specific advertiser in DOOH 
 A server (via MCP or A2A) that provides signal discovery and activation services. Enables natural language audience discovery and deploys signals to decisioning platforms. Can be private (owned by a single buyer and visible only to that buyer's accounts) or marketplace (licensing data across multiple accounts). Signal agents are authorized by data providers via `adagents.json` to resell specific signals. Examples: LiveRamp, The Trade Desk, Peer39.
 
 **Signal Definition**
-A single signal entry in a data provider's `adagents.json` `signals[]`, containing: `id` (unique identifier), `name` (human-readable), `value_type` (binary, categorical, or numeric), and optional fields like `description`, `tags`, `allowed_values`, and `range`.
+A single signal entry in a data provider's `adagents.json` `signals[]`. The required fields are `id`, `name`, and `value_type` (`binary`, `categorical`, or `numeric`). Optional enrichment can describe taxonomy mappings, DTS-style source and methodology disclosures, modeling disclosures, jurisdiction and consent metadata, governance-sensitive categories, and per-signal rights-routing channels.
 
 **Signal Discovery**
 The process of finding relevant data signals (audiences, contextual, geographical, temporal) using natural language descriptions or structured `signal_ref` lookup.
