@@ -39,7 +39,7 @@
         "source": {
           "type": "string",
           "const": "agent",
-          "description": "Discriminator indicating this signal is native to the signal source identified by agent_url, not from a data provider catalog."
+          "description": "Discriminator indicating this signal is native to the signal source identified by agent_url, not from a data provider's published signal definitions."
         },
         "agent_url": {
           "type": "string",

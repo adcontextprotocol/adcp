@@ -10,12 +10,12 @@
   "oneOf": [
     {
       "type": "object",
-      "description": "Product-scoped signal option. The signal_id is meaningful only within the selected product/package context and MUST match a Product.signal_targeting_options[].signal_ref.signal_id for that product.",
+      "description": "Product-scoped signal. The signal_id is meaningful only within the selected product/package context and MUST match a Product.included_signals[].signal_ref.signal_id or Product.signal_targeting_options[].signal_ref.signal_id for that product, depending on whether the signal is descriptive or selectable.",
       "properties": {
         "scope": {
           "type": "string",
           "const": "product",
-          "description": "Discriminator indicating the signal resolves through the selected product's signal_targeting_options."
+          "description": "Discriminator indicating the signal resolves through the selected product's included_signals or signal_targeting_options."
         },
         "signal_id": {
           "type": "string",

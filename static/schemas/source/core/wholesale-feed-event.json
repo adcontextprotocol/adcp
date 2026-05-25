@@ -517,6 +517,11 @@
       "type": "object",
       "title": "Wholesale signal object",
       "description": "One signal entry using the same wire shape as an item in get_signals.signals[].",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/signal-listing.json"
+        }
+      ],
       "properties": {
         "signal_ref": {
           "$ref": "/schemas/core/signal-ref.json",

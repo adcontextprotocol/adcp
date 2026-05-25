@@ -204,6 +204,7 @@
           "metric_optimization",
           "conversion_tracking",
           "data_provider_signals",
+          "included_signals",
           "signal_targeting_allowed",
           "signal_targeting_options",
           "signal_targeting_rules",

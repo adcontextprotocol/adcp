@@ -18,6 +18,11 @@
       "description": "Array of matching signals",
       "items": {
         "type": "object",
+        "allOf": [
+          {
+            "$ref": "/schemas/core/signal-listing.json"
+          }
+        ],
         "properties": {
           "signal_id": {
             "$ref": "/schemas/core/signal-id.json",

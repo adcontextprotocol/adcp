@@ -22,6 +22,8 @@ Publishers then return products that include the targeting capabilities to reach
 
 When the buyer wants package-level control over specific selectable signals that the seller offers, use `targeting_overlay.signal_targeting_groups` on the package. Buy-time eligibility comes from the selected product's signal targeting contract: `signal_targeting_allowed`, inline `Product.signal_targeting_options` when present, the seller's `get_signals` feed for wholesale products that omit inline options, and `signal_targeting_rules`. Signals are named targetable dimensions, referenced with `signal_ref`: `scope: "product"` for product-local signal options, `scope: "data_provider"` with `data_provider_domain` for signals defined in a data provider's published adagents.json `signals[]`, or `scope: "signal_source"` with `signal_source_url` for source-native signals that are not published in adagents.json `signals[]`. `signal_ref.scope` is the buy-time resolution path, not provenance, and authoritative enrichment lives on the seller, data provider, or source signal definition. Do not overload `audience_include` or `audience_exclude` for this purpose; those fields are only for first-party audiences registered through `sync_audiences`.
 
+Products can also expose `included_signals` for signals already bundled into or planned into the product. Those signals are descriptive product metadata, not package-level targeting controls, and buyers do not echo them in `signal_targeting_groups`.
+
 ## Why Brief-Based Targeting?
 
 ### Eliminates Targeting Conflicts

@@ -2,63 +2,32 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/product-signal-targeting-option.json",
   "title": "Product Signal Targeting Option",
-  "description": "A signal the seller makes available inline for package-level signal composition on this product. Signals are targetable dimensions with a value_type (binary, categorical, or numeric). Product.signal_targeting_options is used when the product needs product-scoped pricing, activation handles, defaults, grouping hints, a brief/refine-selected subset, or a curated inline menu. Wholesale products can instead omit inline options when the selectable menu is the broader seller get_signals feed.",
+  "description": "A signal the seller makes available inline for package-level signal composition on this product. Product.signal_targeting_options is used when the product needs product-scoped pricing, activation handles, defaults, grouping hints, a brief/refine-selected subset, or a curated inline menu. Wholesale products can instead omit inline options when the selectable menu is the broader get_signals feed. Product-local signals define their name and value_type inline through the shared signal-listing fields; data-provider and signal-source refs may omit those definition fields when the referenced definition or source is authoritative.",
   "type": "object",
-  "properties": {
-    "signal_ref": {
-      "$ref": "/schemas/core/signal-ref.json",
-      "description": "Named signal reference. Use scope 'product' for a product-local signal option; use scope 'data_provider' with data_provider_domain for a signal defined in a data provider's published adagents.json signals[]."
+  "allOf": [
+    {
+      "$ref": "/schemas/core/signal-listing.json"
     },
+    {
+      "description": "Signals that require activation need an operational handle the buyer can pass to activate_signal before package selection.",
+      "if": {
+        "properties": {
+          "activation_status": {
+            "const": "requires_activation"
+          }
+        },
+        "required": ["activation_status"]
+      },
+      "then": {
+        "required": ["signal_agent_segment_id"]
+      }
+    }
+  ],
+  "properties": {
     "signal_agent_segment_id": {
       "type": "string",
       "description": "Optional opaque seller execution handle for this signal. Omit when signal_ref is sufficient for the seller to resolve the signal. Include only when the seller exposes a distinct runtime or activation handle that buyers must echo in packages[].targeting_overlay.signal_targeting_groups.groups[].signals[].signal_agent_segment_id.",
       "x-entity": "signal_activation_id"
-    },
-    "name": {
-      "type": "string",
-      "description": "Human-readable product-context signal name. For data_provider signal_ref entries, authoritative enrichment remains on the data provider's signal definition; this field is the seller's display label for this product option."
-    },
-    "description": {
-      "type": "string",
-      "description": "Short product-context description of the signal. For data_provider signal_ref entries, this MUST NOT replace the provider's authoritative definition; use it only for product-specific context."
-    },
-    "methodology_url": {
-      "type": "string",
-      "format": "uri",
-      "description": "Optional link to a published methodology, media-kit, or data documentation page for this signal. For data_provider signal_ref entries, the provider's signal definition is authoritative and this URL SHOULD match or point to product-specific supplemental context. This is an informational pointer for review/onboarding; buyers SHOULD NOT branch programmatically on the content of the linked document."
-    },
-    "last_updated": {
-      "type": "string",
-      "format": "date-time",
-      "description": "When this signal option record was last updated by the seller. This indicates freshness of the published record, not an attestation that the underlying data or model was refreshed at that time."
-    },
-    "value_type": {
-      "$ref": "/schemas/enums/signal-value-type.json",
-      "description": "The data type of this signal's values."
-    },
-    "categories": {
-      "type": "array",
-      "description": "Valid values for categorical signals. Present when value_type is 'categorical'.",
-      "items": {
-        "type": "string"
-      },
-      "minItems": 1
-    },
-    "range": {
-      "type": "object",
-      "description": "Valid range for numeric signals. Present when value_type is 'numeric'.",
-      "properties": {
-        "min": {
-          "type": "number",
-          "description": "Minimum value, inclusive."
-        },
-        "max": {
-          "type": "number",
-          "description": "Maximum value, inclusive."
-        }
-      },
-      "required": ["min", "max"],
-      "additionalProperties": false
     },
     "activation_status": {
       "type": "string",
@@ -103,26 +72,5 @@
       "minItems": 1
     }
   },
-  "required": [
-    "signal_ref",
-    "name",
-    "value_type"
-  ],
-  "allOf": [
-    {
-      "description": "Signals that require activation need an operational handle the buyer can pass to activate_signal before package selection.",
-      "if": {
-        "properties": {
-          "activation_status": {
-            "const": "requires_activation"
-          }
-        },
-        "required": ["activation_status"]
-      },
-      "then": {
-        "required": ["signal_agent_segment_id"]
-      }
-    }
-  ],
   "additionalProperties": true
 }

@@ -711,6 +711,9 @@ async function runTests() {
     name: 'High intent shoppers',
     value_type: 'binary'
   };
+  const dataProviderSignalRefOnly = {
+    signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'auto_intenders' }
+  };
 
   await testSchemaValidation(
     '/schemas/core/product.json',
@@ -721,6 +724,40 @@ async function runTests() {
       signal_targeting_rules: { resolution_model: 'seller_planned', selection_mode: 'optional' }
     },
     'Product accepts signal_targeting_options and seller-planned resolution when signal_targeting_allowed is true'
+  );
+  await testSchemaValidation(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      included_signals: [dataProviderSignalRefOnly]
+    },
+    'Product accepts included_signals as non-targetable data-provider refs without redefining signal metadata'
+  );
+  await testSchemaValidation(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options: [dataProviderSignalRefOnly]
+    },
+    'Product accepts data-provider signal_targeting_options without redefining name or value_type'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      included_signals: [{ signal_ref: { scope: 'product', signal_id: 'seller_defined_signal' } }]
+    },
+    'Product rejects product-local included_signals without inline name and value_type'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options: [{ signal_ref: { scope: 'product', signal_id: 'seller_defined_signal' } }]
+    },
+    'Product rejects product-local signal_targeting_options without inline name and value_type'
   );
   await testSchemaValidation(
     '/schemas/core/product.json',

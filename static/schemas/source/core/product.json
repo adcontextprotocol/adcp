@@ -147,15 +147,23 @@
     },
     "data_provider_signals": {
       "type": "array",
-      "description": "Deprecated. Legacy/non-selectable metadata for data-provider signals already bundled into or associated with this product. This field does not provide buyer-selectable options, prices, or seller activation handles. Buyers can fetch definitions from each data provider's adagents.json and verify seller authorization. New selectable or seller-applied package-level signal surfaces use signal_targeting_options.",
+      "description": "Deprecated. Legacy/non-selectable metadata for data-provider signals already bundled into or associated with this product. This field does not provide buyer-selectable options, prices, or seller activation handles. Use included_signals for non-selectable product signal metadata, or signal_targeting_options for selectable package-level signal groups.",
       "deprecated": true,
       "items": {
         "$ref": "/schemas/core/data-provider-signal-selector.json"
       }
     },
+    "included_signals": {
+      "type": "array",
+      "description": "Non-selectable signal metadata for signals already included in, bundled with, or planned into this product. These signals describe what the product is; buyers do not select them in packages[].targeting_overlay.signal_targeting_groups and this field does not imply package-level signal targeting. Use signal_ref scope 'data_provider' or 'signal_source' to reference externally defined signals without redefining their name or value_type. Use signal_ref scope 'product' with name and value_type when the included signal is defined only by this product.",
+      "items": {
+        "$ref": "/schemas/core/signal-listing.json"
+      },
+      "minItems": 1
+    },
     "signal_targeting_options": {
       "type": "array",
-      "description": "Inline seller-offered signals that may be applied to packages for this product at create_media_buy time. Each entry references a named signal definition with signal_ref scope 'product' for a product-local signal option or scope 'data_provider' for an external signal definition published in adagents.json signals[] that the seller is authorized to apply. Use this field when the selectable menu is product-specific, has product-specific pricing or activation handles, is the relevant subset for a brief/refine result, or should be rendered without an additional get_signals call. Wholesale products may omit this field and rely on get_signals for the selectable signal feed. Buyers select eligible signals through packages[].targeting_overlay.signal_targeting_groups when signal_targeting_rules allow; fixed/default entries are applied by the seller and echoed on the package state. Sellers MUST set signal_targeting_allowed to true whenever this field is present. Bundled, non-selectable signal metadata belongs in product terms; legacy data_provider_signals may appear only for backwards compatibility.",
+      "description": "Inline seller-offered signals that may be applied to packages for this product at create_media_buy time. Each entry references a named signal definition with signal_ref scope 'product' for a product-local signal option, scope 'data_provider' for an external signal definition published in adagents.json signals[] that the seller is authorized to apply, or scope 'signal_source' for a source-native signal. Product-local options define name and value_type inline; data-provider and signal-source options may omit those fields when the referenced definition or source is authoritative. Use this field when the selectable menu is product-specific, has product-specific pricing or activation handles, is the relevant subset for a brief/refine result, or should be rendered without an additional get_signals call. Wholesale products may omit this field and rely on get_signals for the selectable signal feed. Buyers select eligible signals through packages[].targeting_overlay.signal_targeting_groups when signal_targeting_rules allow; fixed/default entries are applied by the seller and echoed on the package state. Sellers MUST set signal_targeting_allowed to true whenever this field is present. Bundled, non-selectable signal metadata belongs in included_signals; legacy data_provider_signals may appear only for backwards compatibility.",
       "items": {
         "$ref": "/schemas/core/product-signal-targeting-option.json"
       },

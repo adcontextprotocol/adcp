@@ -362,6 +362,10 @@
           "$ref": "/schemas/core/signal-ref.json",
           "description": "Named signal reference for media-buy product targeting: scope 'product' for product-local signal options or scope 'data_provider' for external signals published in adagents.json signals[]"
         },
+        "signal-listing": {
+          "$ref": "/schemas/core/signal-listing.json",
+          "description": "Shared signal_ref plus optional definition metadata used by get_signals and media products"
+        },
         "signal-definition": {
           "$ref": "/schemas/core/signal-definition.json",
           "description": "Signal definition published in a data provider's adagents.json signals[]"

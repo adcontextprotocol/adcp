@@ -791,7 +791,7 @@
           "properties": {
             "catalog_signals": {
               "type": "boolean",
-              "description": "Supports signals from data provider catalogs with structured signal_ref references"
+              "description": "Legacy wire flag name for structured signal_ref references to provider-published signal definitions"
             }
           },
           "additionalProperties": {

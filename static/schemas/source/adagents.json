@@ -675,7 +675,7 @@
         },
         "signals": {
           "type": "array",
-          "description": "Signal catalog published by this domain. Each entry defines a signal id within this file's publishing-domain namespace; entries do not include signal_ref objects. Signals Protocol discovery and media-buy product targeting reference these through signal_ref scope 'data_provider', with data_provider_domain set to this file's publishing domain and signal_id set to signals[].id.",
+          "description": "Signal definitions published by this domain. Each entry defines a signal id within this file's publishing-domain namespace; entries do not include signal_ref objects. Signals Protocol discovery and media-buy product targeting reference these through signal_ref scope 'data_provider', with data_provider_domain set to this file's publishing domain and signal_id set to signals[].id.",
           "items": {
             "$ref": "/schemas/core/signal-definition.json"
           },

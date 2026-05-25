@@ -33,7 +33,8 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `expires_at` (datetime, optional): If `is_custom`, the time the product is no longer valid.
 - `property_targeting_allowed` (bool, optional, default: false): Whether buyers can filter this product to a subset of its `publisher_properties`. When `false` (default), the product is "all or nothing" - buyers must accept all properties or the product is excluded from `property_list` filtering results. See [Property Targeting](#property-targeting).
 - `collection_targeting_allowed` (bool, optional, default: false): Whether buyers can target a subset of this product's `shows`. When `false` (default), the product is a bundle — buyers get all listed shows. When `true`, buyers can select specific shows in the media buy.
-- `data_provider_signals` (list[DataProviderSignalSelector], **deprecated**): Legacy/non-selectable metadata for data-provider signals already bundled into or associated with this product. This field does not provide buyer-selectable options, prices, or seller activation handles; new implementations should use product terms for bundled metadata and `signal_targeting_options` for selectable or seller-applied package signal groups.
+- `data_provider_signals` (list[DataProviderSignalSelector], **deprecated**): Legacy/non-selectable metadata for data-provider signals already bundled into or associated with this product. New implementations should use `included_signals`.
+- `included_signals` (list[SignalListing], optional): Non-selectable signal metadata for signals already included in, bundled with, or planned into this product. These describe what the product is; buyers do not select them in package `signal_targeting_groups`.
 - `signal_targeting_allowed` (bool, optional, default: false): Whether this product has a package-level signal targeting surface. Editability is controlled by `signal_targeting_rules`.
 - `signal_targeting_options` (list[ProductSignalTargetingOption], optional): Inline seller-offered signals that may be buyer-selected or seller-applied for this product. These may be product-local signal options or data-provider signals the seller is authorized to apply. See [Signal Targeting](#signal-targeting).
 - `signal_targeting_rules` (SignalTargetingRules, optional): Composition rules such as single/multi-select limits for the selectable signals.
@@ -397,14 +398,15 @@ When a buyer calls `get_products` with a `property_list` containing only `tech` 
 
 ### Signal Targeting
 
-Products use two different signal fields with different meanings:
+Products use three different signal fields with different meanings:
 
-- **`data_provider_signals`** is deprecated legacy/non-selectable metadata for data-provider signals already bundled into or associated with the product. It has no per-product price and no seller activation handle. New implementations should describe bundled signal metadata in product terms instead of adding this field.
+- **`data_provider_signals`** is deprecated legacy/non-selectable metadata for data-provider signals already bundled into or associated with the product. New implementations should use `included_signals`.
+- **`included_signals`** is the structured, non-selectable surface. Use it when a signal is already bundled into, included in, or planned into the product. It has no per-product targeting price and no seller activation handle.
 - **`signal_targeting_options`** is the inline selectable/composable surface. Use it when a seller-offered signal can appear on a package and the product needs to expose a product-specific menu, price, activation handle, default/fixed choice, grouping hint, or brief/refine-selected subset.
 
-`Product.signal_targeting_allowed` and `signal_targeting_rules` are the canonical product contract for signal composition. `get_signals` is the canonical broad signal discovery surface; wholesale products can use `signal_targeting_allowed: true` with no inline `signal_targeting_options` to tell buyers to call `get_signals` for the selectable signal feed. Brief/refine responses can return inline `signal_targeting_options` for the relevant subset or product-specific overrides. Sellers do not need to expose product-local options through `get_signals` unless they also want those signals to be discoverable outside this product. Sellers MUST set `signal_targeting_allowed: true` whenever they return `signal_targeting_options` or `signal_targeting_rules`, and MUST omit `signal_targeting_options` for signals that are bundled but not represented as package signal groups.
+`Product.signal_targeting_allowed` and `signal_targeting_rules` are the canonical product contract for signal composition. `get_signals` is the canonical broad signal discovery surface; wholesale products can use `signal_targeting_allowed: true` with no inline `signal_targeting_options` to tell buyers to call `get_signals` for the selectable signal feed. Brief/refine responses can return inline `signal_targeting_options` for the relevant subset or product-specific overrides. Sellers do not need to expose product-local options through `get_signals` unless they also want those signals to be discoverable outside this product. Sellers MUST set `signal_targeting_allowed: true` whenever they return `signal_targeting_options` or `signal_targeting_rules`, and MUST use `included_signals` rather than `signal_targeting_options` for signals that are bundled but not represented as package signal groups.
 
-Signals are named targetable dimensions, similar to feature values. A signal definition declares `value_type` (`binary`, `categorical`, or `numeric`) and may carry richer metadata over time. Product targeting uses `signal_ref` with an explicit buy-time scope: `{ "scope": "product", "signal_id": "..." }` refers to a product-local signal option, while `{ "scope": "data_provider", "data_provider_domain": "...", "signal_id": "..." }` refers to a signal defined in a data provider's published adagents.json `signals[]`. `signal_ref.scope` is the buy-time resolution path, not provenance, and authoritative enrichment lives on the seller or data-provider signal definition. For product-local signals exposed on both `get_signals` and `get_products`, `signal_ref.signal_id` MUST match the seller's `get_signals.signals[].signal_ref.signal_id` for the same signal. Detailed methodology and quality claims belong in linked documentation such as `methodology_url`, not in self-attested protocol fields; the protocol carries the reference, product availability, pricing, and operational targeting rules.
+Signals are named targetable dimensions, similar to feature values. A signal definition declares `value_type` (`binary`, `categorical`, or `numeric`) and may carry richer metadata over time. Product signal listings use `signal_ref` with an explicit resolution scope: `{ "scope": "product", "signal_id": "..." }` refers to a product-local signal defined by the listing, while `{ "scope": "data_provider", "data_provider_domain": "...", "signal_id": "..." }` refers to a signal defined in a data provider's published adagents.json `signals[]`. `signal_ref.scope` is the resolution path, not provenance, and authoritative enrichment lives on the seller, signal source, or data-provider signal definition. For `scope: "product"`, the product listing MUST include `name` and `value_type` because the product is the definition boundary. For `scope: "data_provider"` or `scope: "signal_source"`, `signal_ref` is sufficient and any inline name, description, value type, range, or methodology is contextual, not authoritative. For product-local signals exposed on both `get_signals` and `get_products`, `signal_ref.signal_id` MUST match the seller's `get_signals.signals[].signal_ref.signal_id` for the same signal.
 
 Signal targeting composition is declared on each product, not in seller-wide `get_adcp_capabilities`, because one seller can sell products backed by different ad servers or platforms with different include/exclude and grouping limits. Buyers should read any inline `signal_targeting_options` and `signal_targeting_rules` from the specific product they are composing.
 
@@ -443,11 +445,6 @@ Signal targeting composition is declared on each product, not in seller-wide `ge
         "data_provider_domain": "pinnacle-data.example",
         "signal_id": "auto_intenders"
       },
-      "name": "Auto intenders",
-      "description": "Households showing recent auto purchase intent",
-      "methodology_url": "https://pinnacle-data.example/signals/auto-intenders",
-      "last_updated": "2026-05-20T12:00:00Z",
-      "value_type": "binary",
       "selection_group": "retail_audience",
       "allowed_targeting_modes": ["include", "exclude"],
       "activation_status": "ready",
@@ -464,6 +461,27 @@ Signal targeting composition is declared on each product, not in seller-wide `ge
   ]
 }
 ```
+
+A product can also disclose included, non-selectable signals without opening a package-level signal targeting surface:
+
+```json
+{
+  "product_id": "broadcast_auto_intenders_weekly_reach",
+  "name": "Broadcast Auto Intenders Weekly Reach",
+  "signal_targeting_allowed": false,
+  "included_signals": [
+    {
+      "signal_ref": {
+        "scope": "data_provider",
+        "data_provider_domain": "pinnacle-data.example",
+        "signal_id": "auto_intenders"
+      }
+    }
+  ]
+}
+```
+
+Here the buyer can inspect or verify the Pinnacle Data signal definition through the referenced provider's adagents.json `signals[]`, but cannot add or remove that signal in `create_media_buy`.
 
 A wholesale product with a large or account-specific signal menu can point buyers to `get_signals` instead of inlining every option:
 
