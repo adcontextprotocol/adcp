@@ -930,6 +930,14 @@
             </div>
           </div>
 
+          <div style="background: var(--color-bg-subtle); border: 2px solid var(--color-border); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+            <div class="form-group" style="margin: 0;">
+              <label>Catalog ETag <span style="font-weight: normal; font-size: 13px; color: var(--color-text-muted);">(optional)</span></label>
+              <input type="text" id="catalog-etag" placeholder="e.g., 2026-05-25T18:30:00Z or deploy hash" oninput="updateJsonPreview()" style="width: 100%; box-sizing: border-box;" />
+              <p style="margin: 8px 0 0 0; font-size: 13px; color: var(--color-text-muted);">Update this token whenever properties, collections, placements, formats, signals, or tags change.</p>
+            </div>
+          </div>
+
           <!-- Inline Configuration Section (visible by default) -->
           <div id="inline-configuration">
             <!-- Tabs -->
@@ -2110,6 +2118,7 @@
       const state = {
         domain: '',
         contact: {},
+        catalogEtag: '',
         properties: [],
         agents: [],
         tags: [],
@@ -2282,6 +2291,9 @@
           const contact = getContactFromForm();
           if (contact) adagents.contact = contact;
 
+          const catalogEtag = getCatalogEtagFromForm();
+          if (catalogEtag) adagents.catalog_etag = catalogEtag;
+
           if (state.properties.length > 0) {
             adagents.properties = state.properties;
           }
@@ -2369,6 +2381,16 @@
         if (sellerId) contact.seller_id = sellerId;
         if (tagId) contact.tag_id = tagId;
         return Object.keys(contact).length > 0 ? contact : null;
+      }
+
+      function getCatalogEtagFromForm() {
+        return document.getElementById('catalog-etag')?.value.trim() || '';
+      }
+
+      function populateCatalogEtag(value) {
+        const input = document.getElementById('catalog-etag');
+        if (input) input.value = value || '';
+        state.catalogEtag = value || '';
       }
 
       function populateContactForm(contact) {
@@ -4639,6 +4661,7 @@
               state.collections = data.collections || [];
               state.placements = data.placements || [];
               state.formats = data.formats || [];
+              populateCatalogEtag(data.catalog_etag || '');
 
               // Load contact info
               state.contact = data.contact || {};
@@ -4735,6 +4758,9 @@
           // Contact metadata
           const contact = getContactFromForm();
           if (contact) data.contact = contact;
+
+          const catalogEtag = getCatalogEtagFromForm();
+          if (catalogEtag) data.catalog_etag = catalogEtag;
 
           // Only include properties if there are any
           if (state.properties.length > 0) {
@@ -4877,6 +4903,7 @@
         state.formats = [];
         state.placements = [];
         state.placementTags = {};
+        populateCatalogEtag('');
 
         // Disable input while loading
         const startBtn = document.getElementById('start-btn');
@@ -4950,6 +4977,7 @@
             }
 
             // Parse contact and property_features (v3)
+            populateCatalogEtag(result.data.validation.raw_data.catalog_etag || '');
             if (result.data.validation.raw_data.contact) {
               state.contact = result.data.validation.raw_data.contact;
               populateContactForm(result.data.validation.raw_data.contact);
@@ -5315,6 +5343,10 @@
           // Only include properties if there are any
           if (properties.length > 0) {
             requestBody.properties = properties;
+          }
+          const catalogEtag = getCatalogEtagFromForm();
+          if (catalogEtag) {
+            requestBody.catalog_etag = catalogEtag;
           }
           if (state.formats.length > 0) {
             requestBody.formats = state.formats;

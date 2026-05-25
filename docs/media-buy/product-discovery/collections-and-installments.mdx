@@ -452,7 +452,7 @@ A product can reference a collection without listing installments. This means "i
   "name": "Pinnacle Challenge Run of Show",
   "collections": [{ "publisher_domain": "acmestreaming.example.com", "collection_ids": ["pinnacle_challenge"] }],
   "placements": [
-    { "placement_id": "pre_roll", "name": "Pre-roll" }
+    { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll", "mode": "targetable" }
   ],
   "delivery_type": "non_guaranteed",
   "pricing_options": [
@@ -520,8 +520,8 @@ Products reference collections via `collections` selectors — the same pattern 
         }
       ],
       "placements": [
-        { "placement_id": "pre_roll", "name": "Pre-roll" },
-        { "placement_id": "mid_roll", "name": "Mid-roll" }
+        { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll", "mode": "targetable" },
+        { "kind": "seller_inline", "placement_id": "mid_roll", "name": "Mid-roll", "mode": "targetable" }
       ],
       "delivery_type": "guaranteed",
       "pricing_options": [
@@ -615,8 +615,8 @@ A streaming platform selling sponsorships against a known collection with upcomi
         }
       ],
       "placements": [
-        { "placement_id": "pre_roll", "name": "Pre-roll (15s)" },
-        { "placement_id": "mid_roll", "name": "Mid-roll (30s)" }
+        { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll (15s)", "mode": "targetable" },
+        { "kind": "seller_inline", "placement_id": "mid_roll", "name": "Mid-roll (30s)", "mode": "targetable" }
       ],
       "delivery_type": "guaranteed",
       "pricing_options": [
@@ -657,7 +657,7 @@ A streaming platform offering a main collection and its companion after-collecti
         }
       ],
       "placements": [
-        { "placement_id": "pre_roll", "name": "Pre-roll (15s)" }
+        { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll (15s)", "mode": "targetable" }
       ],
       "delivery_type": "non_guaranteed",
       "pricing_options": [
@@ -703,8 +703,8 @@ A podcast network selling across multiple distribution platforms. The collection
         }
       ],
       "placements": [
-        { "placement_id": "pre_roll", "name": "Pre-roll (30s)" },
-        { "placement_id": "mid_roll", "name": "Mid-roll host read (60s)" }
+        { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll (30s)", "mode": "targetable" },
+        { "kind": "seller_inline", "placement_id": "mid_roll", "name": "Mid-roll host read (60s)", "mode": "targetable" }
       ],
       "delivery_type": "guaranteed",
       "pricing_options": [
@@ -761,8 +761,8 @@ A sports league selling sponsorships against a live event series. Live broadcast
         }
       ],
       "placements": [
-        { "placement_id": "in_game_overlay", "name": "In-game overlay (10s)" },
-        { "placement_id": "halftime", "name": "Halftime feature (60s)" }
+        { "kind": "seller_inline", "placement_id": "in_game_overlay", "name": "In-game overlay (10s)", "mode": "targetable" },
+        { "kind": "seller_inline", "placement_id": "halftime", "name": "Halftime feature (60s)", "mode": "targetable" }
       ],
       "delivery_type": "guaranteed",
       "exclusivity": "category",
@@ -987,9 +987,9 @@ A magazine publisher selling display ads across upcoming issues. Each issue is a
         }
       ],
       "placements": [
-        { "placement_id": "full_page", "name": "Full Page" },
-        { "placement_id": "dps", "name": "Double Page Spread" },
-        { "placement_id": "ifc", "name": "Inside Front Cover" }
+        { "kind": "seller_inline", "placement_id": "full_page", "name": "Full Page", "mode": "targetable" },
+        { "kind": "seller_inline", "placement_id": "dps", "name": "Double Page Spread", "mode": "targetable" },
+        { "kind": "seller_inline", "placement_id": "ifc", "name": "Inside Front Cover", "mode": "targetable" }
       ],
       "delivery_type": "guaranteed",
       "delivery_measurement": {

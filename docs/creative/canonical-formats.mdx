@@ -366,9 +366,9 @@ buyer wants: full ProductFormatDeclaration for each format_options entry,
 
 The Product on hand carries `format_options: [{ publisher_domain: "meta.example", format_option_id: "meta_reels" }]`. The buyer agent now knows the FULL declaration: `format_kind: video_hosted`, vertical 9:16, 3-90s duration, the full Meta CTA enum, plus the `v1_format_ref[]` array for v1-wire dual emission.
 
-**Step 5 — Resolve placement references (if any).** If the publisher catalog includes `placements[]` and a placement carries `format_options: [{ format_option_id: "meta_reels" }]`, the buyer resolves the format_option_id against the SAME file's top-level `formats[]` (same-file scope; cross-file lookup is not supported by design). When the reference is broken — format_option_id not present in `formats[]` — the SDK MUST surface `FORMAT_OPTION_UNRESOLVED` on the response `errors[]` and fail closed for that placement.
+**Step 5 — Resolve placement references (if any).** If the publisher catalog includes `placements[]` and a placement carries `format_options: [{ format_option_id: "meta_reels" }]`, the buyer resolves the format_option_id against the SAME file's top-level `formats[]`. Cross-file lookup is not supported by design because same-file resolution keeps validators bounded and prevents one file from squatting on another publisher's `format_option_id`. When the reference is broken — format_option_id not present in `formats[]` — the SDK MUST surface `FORMAT_OPTION_UNRESOLVED` on the response `errors[]` and fail closed for that placement.
 
-**Step 6 — Multi-tier discovery cache.** Buyer SDK caches the file by `<resolved URL>@<sha256>` for the duration the publisher honors (typically `Cache-Control: max-age`, capped at 24h). Subsequent products from the same publisher reuse the cached file without re-fetching.
+**Step 6 — Multi-tier discovery cache.** Buyer SDK caches the file by resolved URL plus `catalog_etag` when present, falling back to HTTP validators (`ETag`/`Last-Modified`) and then a bounded TTL. Subsequent products from the same publisher reuse the cached file until the catalog token or HTTP validator changes, then re-resolve placement and format references.
 
 **Concrete payload sequence** (Meta Reels, scoped to Instagram):
 

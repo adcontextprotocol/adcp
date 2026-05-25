@@ -21,7 +21,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `channels` (list[string], optional): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD declare `channels` on products that span non-obvious channels, particularly retail media, CTV/OLV, and multi-channel bundles. Product channels SHOULD be a subset of the union of their properties' `supported_channels`. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
 - `format_ids` (list[FormatID], conditional): v1 structured format ID references. Products must include `format_ids`, `format_options`, or both. See [Creative Formats](/docs/creative/formats).
 - `format_options` (list[ProductFormatDeclaration], conditional): canonical-formats v2 declarations accepted by this product. Buyers prefer `format_options` when both format fields are present. Product-level formats are the upper bound for the sellable product; placement-level formats can narrow this set but cannot add formats the product does not accept. Buyer `FormatOptionRef` selectors use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-catalog-backed options and `{scope: "product", format_option_id}` for product-local options.
-- `placements` (list[Placement], optional): Specific public ad placements within this product. Placements can be `targetable` or `included`; seller-private delivery objects are not exposed here. See [Placements](#placements).
+- `placements` (list[Placement], optional): Specific public ad placements within this product. Each placement declares `kind` (`catalog`, `seller_inline`, or `community_mirror`) and `mode` (`targetable` or `included`); seller-private delivery objects are not exposed here. See [Placements](#placements).
 - `shows` (list[CollectionSelector], optional): Shows covered by this product, grouped by publisher. Each entry has `publisher_domain` and `collection_ids` referencing shows in the publisher's `adagents.json`. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments).
 - `episodes` (list[Episode], optional): Specific episodes available within this product. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
@@ -181,8 +181,11 @@ Defines creative requirements and restrictions:
 
 ### Placements
 
-Products can optionally declare specific public ad placements within their inventory. Placement IDs are publisher-scoped. When a placement exists in a publisher's `adagents.json` placement catalog, the product placement should reference that catalog entry with `publisher_domain` and `placement_id`. When no public catalog entry exists, the sales agent may define an inline placement with buyer-facing fields such as `name`, `description`, formats, and tags; its `placement_id` is still interpreted in the publisher namespace, or in the seller agent's own publisher namespace when `publisher_domain` is omitted.
+Products can optionally declare specific public ad placements within their inventory. Placement IDs are publisher-scoped. When a placement exists in a publisher's `adagents.json` placement catalog, the product placement references that catalog entry with `kind: "catalog"`, `publisher_domain`, and `placement_id`. The product may omit `name` in that case because the catalog entry resolves the name and other public metadata. When no public catalog entry exists, the sales agent defines an inline placement with `kind: "seller_inline"` and buyer-facing fields such as `name`, `description`, formats, and tags; its `placement_id` is still interpreted in the publisher namespace, or in the seller agent's own publisher namespace when `publisher_domain` is omitted.
 
+- **`kind: "catalog"`** - Authoritative publisher placement from the named publisher's `adagents.json`; requires `publisher_domain`
+- **`kind: "seller_inline"`** - Public buyer-facing placement metadata defined inline by the sales agent; requires `name`
+- **`kind: "community_mirror"`** - Community-maintained placement declaration used until the publisher hosts its own catalog; requires `publisher_domain`
 - **`publisher_domain`** - Domain whose `adagents.json` defines the catalog placement. New multi-publisher products SHOULD include it so the placement namespace is explicit.
 - **`placement_id`** - Placement ID in the publisher namespace. Buyers reference it with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `placement_ids` strings are only unambiguous in single-publisher contexts.
 - **`mode: "targetable"`** - The buyer may reference this publisher-scoped placement when assigning creatives or otherwise selecting placements within the product
@@ -195,7 +198,7 @@ Products can optionally declare specific public ad placements within their inven
 - **Preserve registry semantics** - When a product references a registered placement, it is referring to that same placement. The product may narrow `format_ids` or `format_options`, or add operational detail, but it should not change the placement's meaning incompatibly
 - **Tags stay useful at product level** - Product placements can carry `tags` for grouping and should align with registry tags when the placement comes from the publisher registry
 
-For legacy products where `placements[]` entries omit `mode`, buyers may treat the placement as targetable for creative assignment. New sellers SHOULD emit `mode` explicitly.
+`mode` is required for new senders as of May 25, 2026. During the six-month migration window ending November 25, 2026, buyers may tolerate legacy products where `placements[]` entries omit `mode` and treat those placements as targetable for creative assignment. After November 25, 2026, buyers should fail closed on missing `mode`.
 
 Publishers can authorize agents for specific placements in `adagents.json` with `authorized_agents[].placement_ids` or `authorized_agents[].placement_tags`. Sales agents should only return catalog-backed product placements they are authorized to sell.
 
@@ -210,6 +213,7 @@ If both product and placement format declarations are present, buyers compute th
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/placement.json",
+  "kind": "catalog",
   "publisher_domain": "daily-pulse.example",
   "placement_id": "homepage_banner",
   "name": "Homepage Banner",
@@ -236,6 +240,7 @@ If both product and placement format declarations are present, buyers compute th
   ],
   "placements": [
     {
+      "kind": "catalog",
       "placement_id": "homepage_banner",
       "publisher_domain": "daily-pulse.example",
       "name": "Homepage Banner",
@@ -244,6 +249,7 @@ If both product and placement format declarations are present, buyers compute th
       "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"}]
     },
     {
+      "kind": "catalog",
       "placement_id": "article_sidebar",
       "publisher_domain": "daily-pulse.example",
       "name": "Article Sidebar",
@@ -252,6 +258,7 @@ If both product and placement format declarations are present, buyers compute th
       "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}]
     },
     {
+      "kind": "seller_inline",
       "placement_id": "premium_rotation",
       "name": "Premium rotation",
       "mode": "included",

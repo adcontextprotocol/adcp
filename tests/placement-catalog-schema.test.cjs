@@ -50,11 +50,13 @@ function validProduct(overrides = {}) {
     ],
     placements: [
       {
+        kind: 'seller_inline',
         placement_id: 'homepage_leaderboard',
         name: 'Homepage leaderboard',
         mode: 'targetable'
       },
       {
+        kind: 'seller_inline',
         placement_id: 'sponsorship_lockup',
         name: 'Sponsorship lockup',
         mode: 'included'
@@ -131,6 +133,7 @@ test('product placements support targetable and included modes', async () => {
 
   assert.equal(
     validate({
+      kind: 'seller_inline',
       placement_id: 'homepage_leaderboard',
       name: 'Homepage leaderboard',
       mode: 'targetable'
@@ -141,6 +144,7 @@ test('product placements support targetable and included modes', async () => {
 
   assert.equal(
     validate({
+      kind: 'seller_inline',
       placement_id: 'sponsorship_lockup',
       name: 'Sponsorship lockup',
       mode: 'included'
@@ -155,8 +159,65 @@ test('catalog-backed product placements can use publisher-scoped placement IDs',
 
   assert.equal(
     validate({
+      kind: 'catalog',
       placement_id: 'homepage_banner',
       publisher_domain: 'daily-pulse.example',
+      mode: 'targetable'
+    }),
+    true,
+    JSON.stringify(validate.errors, null, 2)
+  );
+});
+
+test('product placements require explicit mode and kind for new senders', async () => {
+  const validate = await compile('/schemas/core/placement.json');
+
+  assert.equal(
+    validate({
+      kind: 'seller_inline',
+      placement_id: 'homepage_leaderboard',
+      name: 'Homepage leaderboard'
+    }),
+    false
+  );
+
+  assert.equal(
+    validate({
+      placement_id: 'homepage_leaderboard',
+      name: 'Homepage leaderboard',
+      mode: 'targetable'
+    }),
+    false
+  );
+});
+
+test('placement kind constrains required catalog and inline fields', async () => {
+  const validate = await compile('/schemas/core/placement.json');
+
+  assert.equal(
+    validate({
+      kind: 'catalog',
+      placement_id: 'homepage_banner',
+      mode: 'targetable'
+    }),
+    false
+  );
+
+  assert.equal(
+    validate({
+      kind: 'seller_inline',
+      publisher_domain: 'daily-pulse.example',
+      placement_id: 'sponsor_rotation',
+      mode: 'included'
+    }),
+    false
+  );
+
+  assert.equal(
+    validate({
+      kind: 'community_mirror',
+      publisher_domain: 'community.example',
+      placement_id: 'short_video_feed',
       mode: 'targetable'
     }),
     true,
@@ -167,8 +228,10 @@ test('catalog-backed product placements can use publisher-scoped placement IDs',
 test('product placements reject private operational fields', async () => {
   const validate = await compile('/schemas/core/placement.json');
   const basePlacement = {
+    kind: 'seller_inline',
     placement_id: 'homepage_leaderboard',
-    name: 'Homepage leaderboard'
+    name: 'Homepage leaderboard',
+    mode: 'targetable'
   };
 
   for (const forbidden of [
@@ -203,6 +266,7 @@ test('product placements can narrow product format options', async () => {
     format_options: [imageFormat],
     placements: [
       {
+        kind: 'seller_inline',
         placement_id: 'homepage_mrec',
         name: 'Homepage MREC',
         mode: 'targetable',
@@ -219,6 +283,7 @@ test('products can include publisher-scoped catalog placements', async () => {
   const product = validProduct({
     placements: [
       {
+        kind: 'catalog',
         placement_id: 'homepage_banner',
         publisher_domain: 'daily-pulse.example',
         mode: 'targetable'
@@ -227,6 +292,38 @@ test('products can include publisher-scoped catalog placements', async () => {
   });
 
   assert.equal(validate(product), true, JSON.stringify(validate.errors, null, 2));
+});
+
+test('adagents.json supports catalog_etag for cache/version validation', async () => {
+  const validate = await compile('/schemas/adagents.json');
+  const adagents = {
+    catalog_etag: '2026-05-25T18:30:00Z',
+    properties: [
+      {
+        property_id: 'daily_pulse',
+        property_type: 'website',
+        name: 'Daily Pulse',
+        identifiers: [{ type: 'domain', value: 'daily-pulse.example' }]
+      }
+    ],
+    placements: [
+      {
+        placement_id: 'homepage_banner',
+        name: 'Homepage banner',
+        property_ids: ['daily_pulse']
+      }
+    ],
+    authorized_agents: [
+      {
+        url: 'https://seller.example/adcp',
+        authorized_for: 'all_inventory',
+        authorization_type: 'property_ids',
+        property_ids: ['daily_pulse']
+      }
+    ]
+  };
+
+  assert.equal(validate(adagents), true, JSON.stringify(validate.errors, null, 2));
 });
 
 test('creative assignments support structured placement refs', async () => {

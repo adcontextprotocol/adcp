@@ -2,9 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/placement.json",
   "title": "Placement",
-  "description": "Represents a specific ad placement within a product's inventory. Placement IDs are scoped by publisher domain, matching the placement catalog in that publisher's adagents.json. New product placements SHOULD carry `publisher_domain`; when omitted on legacy products, buyers MAY interpret the placement ID relative to the seller agent's own publisher domain. Buyers reference placements in creative assignments with structured PlacementRef objects (`publisher_domain` + `placement_id`) when a product spans multiple publishers or the namespace is otherwise ambiguous. Reusing a registered placement preserves the registry's semantic identity; product-level placement objects may narrow format_ids/format_options or add operational detail, but SHOULD NOT redefine the placement's meaning incompatibly.",
+  "description": "Represents a specific public ad placement within a product's inventory. Placement IDs are scoped by publisher domain, matching the placement catalog in that publisher's adagents.json or a community mirror. `kind` is the provenance discriminator: `catalog` means `{publisher_domain, placement_id}` resolves to an authoritative publisher catalog entry; `community_mirror` means it resolves to a community-maintained mirror entry; `seller_inline` means the seller is defining public buyer-facing placement metadata inline. The schema accepts either `name` or `publisher_domain` because catalog-backed placements can omit `name` only when the catalog lookup supplies it; seller-inline placements carry `name` directly. Buyers reference placements in creative assignments with structured PlacementRef objects (`publisher_domain` + `placement_id`) when a product spans multiple publishers or the namespace is otherwise ambiguous. Reusing a registered placement preserves the registry's semantic identity; product-level placement objects may narrow format_ids/format_options or add operational detail, but SHOULD NOT redefine the placement's meaning incompatibly.",
   "type": "object",
   "properties": {
+    "kind": {
+      "type": "string",
+      "enum": ["catalog", "seller_inline", "community_mirror"],
+      "description": "Placement provenance discriminator. `catalog` identifies an authoritative publisher placement from the named publisher's adagents.json; `seller_inline` identifies buyer-facing placement metadata defined inline by the sales agent (still in the named publisher namespace when `publisher_domain` is present, or the seller's own namespace in legacy single-publisher contexts); `community_mirror` identifies a community-maintained mirror declaration used until the publisher hosts its own catalog."
+    },
     "placement_id": {
       "type": "string",
       "description": "Placement identifier in the publisher namespace. When `publisher_domain` is present, this matches a placement ID in that publisher's adagents.json catalog or a seller-defined inline placement in that publisher namespace. Buyers use this with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `creative_assignments[].placement_ids` strings are only unambiguous in single-publisher contexts."
@@ -12,11 +17,11 @@
     "publisher_domain": {
       "type": "string",
       "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
-      "description": "Publisher domain whose adagents.json placement catalog defines this placement. Omitted only for legacy single-publisher seller contexts where the seller agent's own publisher domain is the namespace."
+      "description": "Publisher domain whose adagents.json placement catalog or community mirror defines this placement. Required for `kind: \"catalog\"` and `kind: \"community_mirror\"`. Omitted only for `kind: \"seller_inline\"` in legacy single-publisher seller contexts where the seller agent's own publisher domain is the namespace."
     },
     "name": {
       "type": "string",
-      "description": "Human-readable name for the placement (e.g., 'Homepage Banner', 'Article Sidebar')"
+      "description": "Human-readable name for the placement (e.g., 'Homepage Banner', 'Article Sidebar'). Required for `kind: \"seller_inline\"`. May be omitted for catalog-backed placements because buyers resolve the name from the publisher catalog entry identified by `{publisher_domain, placement_id}`."
     },
     "description": {
       "type": "string",
@@ -25,7 +30,7 @@
     "mode": {
       "type": "string",
       "enum": ["targetable", "included"],
-      "description": "Product-level relationship to this placement. `targetable` means the buyer may reference this placement_id when assigning creatives or otherwise selecting placements within the product. `included` means the placement is part of the product's public delivery composition but the buyer cannot cherry-pick it by placement_id. When omitted on legacy products, buyers may treat the placement as targetable for creative assignment, but new sellers SHOULD emit this field explicitly. Seller-private delivery objects MUST NOT be exposed here; keep those mappings in seller-internal systems."
+      "description": "Required product-level relationship to this placement. `targetable` means the buyer may reference this placement_id when assigning creatives or otherwise selecting placements within the product. `included` means the placement is part of the product's public delivery composition but the buyer cannot cherry-pick it by placement_id. During the migration window ending 2026-11-25, buyers MAY tolerate legacy products that omit `mode` and treat them as targetable; after that date buyers SHOULD fail closed. Seller-private delivery objects MUST NOT be exposed here; keep those mappings in seller-internal systems."
     },
     "tags": {
       "type": "array",
@@ -53,8 +58,11 @@
     }
   },
   "required": [
-    "placement_id"
+    "kind",
+    "placement_id",
+    "mode"
   ],
+  "$comment": "The anyOf(name OR publisher_domain) is a schema-local proxy for the cross-document invariant: catalog-backed placements can omit name only because {publisher_domain, placement_id} resolves to an adagents.json placement that supplies the name. Seller-inline placements carry name directly.",
   "anyOf": [
     {
       "required": ["name"]
@@ -65,6 +73,7 @@
   ],
   "allOf": [
     {
+      "$comment": "Public product placements must not leak seller-private delivery mapping fields. Consumers that detect this leak should surface PRIVATE_FIELD_IN_PUBLIC_PLACEMENT for monitoring.",
       "not": {
         "anyOf": [
           { "required": ["visibility"] },
@@ -72,6 +81,39 @@
           { "required": ["origin"] },
           { "required": ["delivery_mappings"] }
         ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": { "type": "string", "const": "catalog" }
+        },
+        "required": ["kind"]
+      },
+      "then": {
+        "required": ["publisher_domain"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": { "type": "string", "const": "community_mirror" }
+        },
+        "required": ["kind"]
+      },
+      "then": {
+        "required": ["publisher_domain"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": { "type": "string", "const": "seller_inline" }
+        },
+        "required": ["kind"]
+      },
+      "then": {
+        "required": ["name"]
       }
     }
   ],

@@ -37,7 +37,7 @@
     },
     {
       "title": "Product-Local Format Option Reference",
-      "description": "Selects a product-local format option by ID within the enclosing package/product context.",
+      "description": "Selects a product-local format option by ID within the enclosing package/product context. This branch deliberately forbids `publisher_domain` (`publisher_domain: false` in the schema) because product-local references are namespaced by the enclosing product only; include `scope: \"publisher\"` when the selector must cross into a publisher catalog.",
       "type": "object",
       "properties": {
         "scope": {

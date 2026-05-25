@@ -134,6 +134,7 @@ export interface AdAgentsJsonInline {
     seller_id?: string;
     tag_id?: string;
   };
+  catalog_etag?: string;
   last_updated?: string;
 }
 
@@ -173,6 +174,7 @@ export interface CreateAdAgentsJsonOptions {
   placements?: PlacementDefinition[];
   placementTags?: Record<string, { name: string; description: string }>;
   formats?: FormatDefinition[];
+  catalogEtag?: string;
   signals?: SignalDefinition[];
   signalTags?: Record<string, { name: string; description: string }>;
 }
@@ -608,6 +610,14 @@ export class AdAgentsManager {
     data.authorized_agents.forEach((agent: any, index: number) => {
       this.validateAgent(agent, index, result);
     });
+
+    if (data.catalog_etag !== undefined && typeof data.catalog_etag !== 'string') {
+      result.errors.push({
+        field: 'catalog_etag',
+        message: 'catalog_etag must be a string',
+        severity: 'error'
+      });
+    }
 
     // Validate signals array if present (for data providers)
     if (data.signals !== undefined) {
@@ -1755,6 +1765,10 @@ export class AdAgentsManager {
       adagents.properties = opts.properties;
     }
 
+    if (opts.catalogEtag) {
+      adagents.catalog_etag = opts.catalogEtag;
+    }
+
     if (opts.formats && opts.formats.length > 0) {
       adagents.formats = opts.formats;
     }
@@ -1798,6 +1812,7 @@ export class AdAgentsManager {
       $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
       authorized_agents: opts.agents,
       ...(opts.properties && opts.properties.length > 0 ? { properties: opts.properties } : {}),
+      ...(opts.catalogEtag ? { catalog_etag: opts.catalogEtag } : {}),
       ...(opts.formats && opts.formats.length > 0 ? { formats: opts.formats } : {}),
       ...(opts.placements && opts.placements.length > 0 ? { placements: opts.placements } : {}),
       ...(opts.placementTags && Object.keys(opts.placementTags).length > 0 ? { placement_tags: opts.placementTags } : {}),

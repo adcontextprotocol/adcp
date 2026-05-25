@@ -139,6 +139,11 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
   - **`tag_id`** *(optional)*: TAG Certified Against Fraud ID
   - **`privacy_policy_url`** *(optional)*: URL to entity's privacy policy for consumer consent flows
 
+**`catalog_etag`** *(optional)*: Opaque cache/version token for the public catalog portions of this file
+  - Publishers SHOULD change it whenever `properties`, `collections`, `placements`, `formats`, `signals`, or their tag metadata changes
+  - Buyer SDKs SHOULD cache resolved references by URL plus `catalog_etag` and re-resolve catalog references when the value changes
+  - If absent, buyers fall back to HTTP validators such as `ETag`/`Last-Modified`, then a bounded TTL
+
 **`properties`** *(optional)*: Array of properties covered by this file (canonical property definitions)
   - **`supported_channels`** *(optional)*: Advertising channels this property supports (e.g., `["display", "olv", "social"]`). See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
 
@@ -165,6 +170,8 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 
 The `placements[]` array is the publisher's public placement catalog. It defines stable, semantic placement IDs that products and authorization rules can reference. A buyer should not have to interpret a raw ad-server ad unit path, delivery placement ID, video-ad-server zone, or other seller-internal delivery identifier to understand what a product offers.
 
+Publishers that expose placement, format, collection, property, or signal catalogs should publish `catalog_etag` and update it whenever those catalog entries change. This lets buyer SDKs cache catalog lookups without silently resolving the same `{publisher_domain, placement_id}` or `{publisher_domain, format_option_id}` to different metadata after a publisher deployment.
+
 At minimum, a public placement should describe:
 
 - stable `placement_id`
@@ -184,6 +191,7 @@ Placement catalog formats describe what the public placement can support. When a
 
 ```json
 {
+  "catalog_etag": "daily-pulse-2026-05-25",
   "formats": [
     {
       "format_kind": "html5",

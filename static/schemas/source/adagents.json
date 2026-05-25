@@ -82,6 +82,12 @@
           ],
           "additionalProperties": true
         },
+        "catalog_etag": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Opaque publisher-controlled cache validator for the public catalog portions of this file (`properties[]`, `collections[]`, `placements[]`, `formats[]`, `signals[]`, and tag metadata). Publishers SHOULD change this value whenever any catalog entry or catalog-scoped authorization changes, even when the hosting URL and HTTP validators stay the same. Buyer SDKs SHOULD cache resolved catalog lookups by URL plus `catalog_etag` (falling back to HTTP ETag/Last-Modified, then bounded TTL when absent) and re-resolve placement, format, collection, property, and signal references when it changes. This value is not a cryptographic digest; it is a compact version token such as a deployment hash, revision ID, or ISO timestamp."
+        },
         "properties": {
           "type": "array",
           "description": "Array of all properties covered by this adagents.json file. Defines the canonical property list that authorized agents reference.",

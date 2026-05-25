@@ -1053,6 +1053,7 @@ registry.registerPath({
             include_schema: z.boolean().optional(),
             include_timestamp: z.boolean().optional(),
             properties: z.array(z.unknown()).optional(),
+            catalog_etag: z.string().optional(),
             formats: z.array(z.unknown()).optional(),
             placements: z.array(z.unknown()).optional(),
             placement_tags: z.record(z.string(), z.unknown()).optional(),
@@ -3995,6 +3996,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         include_schema = true,
         include_timestamp = true,
         properties,
+        catalog_etag,
         formats,
         placements,
         placement_tags,
@@ -4019,6 +4021,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       logger.info({
         agentCount: authorized_agents.length,
         propertyCount: properties?.length || 0,
+        hasCatalogEtag: Boolean(catalog_etag),
         formatCount: formats?.length || 0,
         placementCount: placements?.length || 0,
       }, "Creating adagents.json");
@@ -4026,6 +4029,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       const validation = adagentsManager.validateProposed({
         agents: authorized_agents,
         properties,
+        catalogEtag: catalog_etag,
         formats,
         placements,
         placementTags: placement_tags,
@@ -4043,6 +4047,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         includeSchema: include_schema,
         includeTimestamp: include_timestamp,
         properties,
+        catalogEtag: catalog_etag,
         formats,
         placements,
         placementTags: placement_tags,

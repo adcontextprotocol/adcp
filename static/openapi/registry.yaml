@@ -4221,6 +4221,8 @@ paths:
                 properties:
                   type: array
                   items: {}
+                catalog_etag:
+                  type: string
                 formats:
                   type: array
                   items: {}
