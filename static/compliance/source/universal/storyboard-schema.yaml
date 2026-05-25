@@ -577,12 +577,14 @@
 # `lint-storyboard-auth-shape.cjs` (rule `literal_value`) fails the build on this
 # shape. Use `from_test_kit` or `value_strategy` instead. See #2720.
 #
-# omit_idempotency_key: boolean (optional — when true on a mutating-task step,
-#   the runner skips `applyIdempotencyInvariant` and signals the SDK client via
+# omit_idempotency_key: boolean (optional — when true on a task step, the runner
+#   skips `applyIdempotencyInvariant` and signals the SDK client via
 #   `skipIdempotencyAutoInject` so the request reaches the agent WITHOUT an
 #   `idempotency_key`. Use for missing-key rejection vectors — without this flag
-#   the SDK auto-injects a key and the agent never sees the missing-key path.
-#   Applies only to mutating tasks (create/update/cancel); ignored on reads.)
+#   the SDK may auto-inject a key and the agent never sees the missing-key path.
+#   3.0 used this only for mutating tasks. 3.1 extends `idempotency_key` to every
+#   request, so read-tool omission probes SHOULD also set this flag to prevent
+#   current or future runner/client auto-injection from masking the vector.)
 #
 # contributes_to: string (optional — marks this step as contributing a named flag
 #                         that a later assert_contribution step can require)

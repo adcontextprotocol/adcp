@@ -11,6 +11,7 @@
 import { z } from 'zod';
 import { wrapEnvelope } from '@adcp/sdk/server';
 import type { AdcpCustomToolConfig } from '@adcp/sdk/server';
+import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
 import type { ToolArgs, TrainingContext } from '../types.js';
@@ -32,7 +33,12 @@ interface InlineError {
   recovery?: string;
 }
 
-function toAdaptedResponse(result: unknown, callerContext: unknown): AdaptedResponse {
+interface CustomToolOptions {
+  annotations?: ToolAnnotations;
+  responseSummary?: (result: Record<string, unknown>) => string | undefined;
+}
+
+function toAdaptedResponse(result: unknown, callerContext: unknown, options: CustomToolOptions): AdaptedResponse {
   const errsField = (result as { errors?: unknown[] } | null | undefined)?.errors;
   if (Array.isArray(errsField) && errsField.length > 0) {
     const first = errsField[0] as InlineError;
@@ -55,7 +61,7 @@ function toAdaptedResponse(result: unknown, callerContext: unknown): AdaptedResp
   });
   const response = withEnvelope as Record<string, unknown>;
   return {
-    content: [{ type: 'text', text: JSON.stringify(response) }],
+    content: [{ type: 'text', text: options.responseSummary?.(inner) ?? JSON.stringify(response) }],
     structuredContent: response,
   };
 }
@@ -82,11 +88,17 @@ type LegacyHandler = (args: ToolArgs, ctx: TrainingContext) => object | Promise<
  * `(args, extra)` adaptation, session-context wrapping, and envelope
  * shaping.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function customToolFor(name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, handler: LegacyHandler): AdcpCustomToolConfig<any, undefined> {
+export function customToolFor(
+  name: string,
+  description: string,
+  inputSchema: Record<string, z.ZodTypeAny>,
+  handler: LegacyHandler,
+  options: CustomToolOptions = {},
+): AdcpCustomToolConfig<Record<string, z.ZodTypeAny>, undefined> {
   return {
     description,
     inputSchema,
+    ...(options.annotations ? { annotations: options.annotations } : {}),
     handler: async (args: unknown, extra: unknown) => {
       const params = (args as Record<string, unknown>) ?? {};
       const authInfo = ((extra as { authInfo?: { clientId?: string } } | undefined)?.authInfo) ?? undefined;
@@ -109,7 +121,7 @@ export function customToolFor(name: string, description: string, inputSchema: Re
           logger.error({ err, tool: name }, 'custom-tool flushDirtySessions threw');
           return serviceUnavailable(err, callerContext);
         }
-        return toAdaptedResponse(result, callerContext);
+        return toAdaptedResponse(result, callerContext, options);
       });
     },
   };
