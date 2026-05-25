@@ -154,12 +154,12 @@ test('product placements support targetable and included modes', async () => {
   );
 });
 
-test('catalog-backed product placements can use publisher-scoped placement IDs', async () => {
+test('publisher-referenced product placements can use publisher-scoped placement IDs', async () => {
   const validate = await compile('/schemas/core/placement.json');
 
   assert.equal(
     validate({
-      kind: 'catalog',
+      kind: 'publisher_ref',
       placement_id: 'homepage_banner',
       publisher_domain: 'daily-pulse.example',
       mode: 'targetable'
@@ -191,12 +191,12 @@ test('product placements require explicit mode and kind for new senders', async 
   );
 });
 
-test('placement kind constrains required catalog and inline fields', async () => {
+test('placement kind constrains required publisher reference and inline fields', async () => {
   const validate = await compile('/schemas/core/placement.json');
 
   assert.equal(
     validate({
-      kind: 'catalog',
+      kind: 'publisher_ref',
       placement_id: 'homepage_banner',
       mode: 'targetable'
     }),
@@ -215,8 +215,8 @@ test('placement kind constrains required catalog and inline fields', async () =>
 
   assert.equal(
     validate({
-      kind: 'community_mirror',
-      publisher_domain: 'community.example',
+      kind: 'publisher_ref',
+      publisher_domain: 'daily-pulse.example',
       placement_id: 'short_video_feed',
       mode: 'targetable'
     }),
@@ -278,12 +278,12 @@ test('product placements can narrow product format options', async () => {
   assert.equal(validate(product), true, JSON.stringify(validate.errors, null, 2));
 });
 
-test('products can include publisher-scoped catalog placements', async () => {
+test('products can include publisher-scoped referenced placements', async () => {
   const validate = await compile('/schemas/core/product.json');
   const product = validProduct({
     placements: [
       {
-        kind: 'catalog',
+        kind: 'publisher_ref',
         placement_id: 'homepage_banner',
         publisher_domain: 'daily-pulse.example',
         mode: 'targetable'

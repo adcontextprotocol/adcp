@@ -153,14 +153,14 @@ When a product defines multiple buyer-targetable placements, buyers can assign d
 
 **Key Points:**
 - **Packages buy the product** - product-level `placements[].mode` says which publisher-scoped placements are buyer-targetable
-- **Placement identity is publisher-scoped** - catalog-backed placements resolve as `{publisher_domain, placement_id}` against the publisher's `adagents.json`
-- **Inline placements are still allowed** - if there is no public catalog placement, the sales agent may define an inline placement with `name`, formats, and public buyer-facing detail; its `placement_id` is still interpreted in the named publisher namespace, or in the seller agent's own publisher namespace when `publisher_domain` is omitted in a single-publisher legacy context
+- **Placement identity is publisher-scoped** - publisher-referenced placements resolve as `{publisher_domain, placement_id}` against the publisher's `adagents.json`
+- **Inline placements are still allowed** - if there is no public publisher placement declaration, the sales agent may define an inline placement with `name`, formats, and public buyer-facing detail; its `placement_id` is still interpreted in the named publisher namespace, or in the seller agent's own publisher namespace when `publisher_domain` is omitted in a single-publisher legacy context
 - Placement targeting happens at the creative assignment level unless a future product explicitly defines another targeting surface
 - Creatives without `placement_refs` or `placement_ids` run on all buyer-targetable placements in the package
 - If both `placement_refs` and legacy `placement_ids` are present, `placement_refs` wins and sellers ignore `placement_ids`
 - Placements with `mode: "included"` are part of the product's public composition and cannot be referenced in `creative_assignments[].placement_refs`
 - Use `placement_refs` for multi-publisher products. `placement_ids` remains a legacy shorthand only when the placement namespace is unambiguous.
-- Publishers can authorize agents for specific placements using `authorized_agents[].placement_ids` or governed `placement_tags` in `adagents.json`; the seller should only return catalog-backed placements it is authorized to sell
+- Publishers can authorize agents for specific placements using `authorized_agents[].placement_ids` or governed `placement_tags` in `adagents.json`; the seller should only return publisher-referenced placements it is authorized to sell
 
 **Example Workflow:**
 
@@ -170,7 +170,7 @@ When a product defines multiple buyer-targetable placements, buyers can assign d
   "product_id": "network_premium",
   "placements": [
     {
-      "kind": "catalog",
+      "kind": "publisher_ref",
       "publisher_domain": "daily-pulse.example",
       "placement_id": "homepage_banner",
       "name": "Homepage Banner",
@@ -178,7 +178,7 @@ When a product defines multiple buyer-targetable placements, buyers can assign d
       "format_ids": [{"agent_url": "...", "id": "display_728x90"}]
     },
     {
-      "kind": "catalog",
+      "kind": "publisher_ref",
       "publisher_domain": "metro-report.example",
       "placement_id": "homepage_banner",
       "name": "Homepage Banner",
