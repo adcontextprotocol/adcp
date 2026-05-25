@@ -180,7 +180,7 @@ At minimum, a public placement should describe:
 - supported `format_options`, which can reference publisher-owned formats and canonical formats
 - optional `channels`
 
-Placement format support is a new 3.1 catalog feature and uses the canonical-formats v2 model only:
+Placement format support is a new 3.1 catalog feature and uses the 3.1+ canonical format-option model only:
 
 - `format_options[]` may reference declarations in the same file's top-level `formats[]` by `format_option_id`. Those top-level declarations can be publisher-owned custom formats or narrowed canonical formats.
 - `format_options[]` may also carry an inline canonical `ProductFormatDeclaration` when the placement-specific narrowing is not worth a reusable top-level format entry.

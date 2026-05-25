@@ -185,8 +185,8 @@ npx @adcp/sdk@latest \
 |-----------|------|----------|-------------|
 | `product_id` | string | Yes | Product ID from `get_products` |
 | `pricing_option_id` | string | Yes | Pricing option ID from product's `pricing_options` array |
-| `format_ids` | FormatID[] | No | v1 path. Format IDs that will be used — must be supported by product. When omitted (and no v2 format option selector is present), defaults to all formats supported by the product. V2-native buyer SDKs targeting a heterogeneous seller population SHOULD dual-emit this alongside `format_option_refs` so v1-only sellers receive an explicit format set rather than defaulting to all-formats. |
-| `format_option_refs` | FormatOptionRef[] | No | v2 path. Structured references to entries in the package's target product `format_options[]`: `{scope: "publisher", publisher_domain, format_option_id}` for publisher-catalog-backed options, or `{scope: "product", format_option_id}` for product-local options (see [canonical formats](/docs/creative/canonical-formats)). When present, `format_option_refs` wins over `format_ids`. Sellers MUST reject with `UNSUPPORTED_FEATURE` (field path `packages[i].format_option_refs[j]`) when an entry doesn't match a `format_options[]` entry, when the product is v1-only, or when the product's `format_options[]` entries don't publish selectable `format_option_id` values. |
+| `format_ids` | FormatID[] | No | Legacy named-format selector. Format IDs that will be used — must be supported by product. When omitted (and no 3.1+ format-option selector is present), defaults to all formats supported by the product. Format-option-aware buyer SDKs targeting a heterogeneous seller population SHOULD dual-emit this alongside `format_option_refs` so legacy-format-only sellers receive an explicit format set rather than defaulting to all-formats. |
+| `format_option_refs` | FormatOptionRef[] | No | 3.1+ format-option selector. Structured references to entries in the package's target product `format_options[]`: `{scope: "publisher", publisher_domain, format_option_id}` for publisher-catalog-backed options, or `{scope: "product", format_option_id}` for product-local options (see [canonical formats](/docs/creative/canonical-formats)). When present, `format_option_refs` wins over `format_ids`. Sellers MUST reject with `UNSUPPORTED_FEATURE` (field path `packages[i].format_option_refs[j]`) when an entry doesn't match a `format_options[]` entry, when the product is legacy-format-only, or when the product's `format_options[]` entries don't publish selectable `format_option_id` values. |
 | `budget` | number | Yes | Budget in currency specified by pricing option |
 | `impressions` | number | No | Impression goal for this package |
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
@@ -918,7 +918,7 @@ Common errors and resolutions:
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
 | `PRODUCT_NOT_FOUND` | Invalid product_id | Verify product exists via `get_products` |
-| `UNSUPPORTED_FEATURE` | Format not supported by the product — covers both v1 (`format_ids[]` not in the product's accepted formats) and v2 (`format_option_refs[]` entries that do not resolve against the product's `format_options[]`, v1-only products with no `format_options[]`, or product `format_options[]` entries that do not publish selectable `format_option_id` values) | Check the product's `format_ids` and/or `format_options[]` from `get_products` — re-author against a supported format, or pick a `format_option_ref` from the product's published `format_options[]` |
+| `UNSUPPORTED_FEATURE` | Format not supported by the product — covers both legacy named-format selectors (`format_ids[]` not in the product's accepted formats) and 3.1+ format-option selectors (`format_option_refs[]` entries that do not resolve against the product's `format_options[]`, legacy-format-only products with no `format_options[]`, or product `format_options[]` entries that do not publish selectable `format_option_id` values) | Check the product's `format_ids` and/or `format_options[]` from `get_products` — re-author against a supported format, or pick a `format_option_ref` from the product's published `format_options[]` |
 | `BUDGET_TOO_LOW` | Budget below product minimum | Increase budget or choose different product |
 | `TARGETING_TOO_NARROW` | Targeting yields zero inventory | Broaden geographic or audience criteria |
 | `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
@@ -942,16 +942,16 @@ Example error response:
 
 ### Format Specification
 
-Each package SHOULD specify the formats it will use, via either `format_ids[]` (v1 path — structured `{agent_url, id}` references) or `format_option_refs[]` (v2 path — references into the product's `format_options[]`). Omitting all format selectors defaults to all formats supported by the product. Specifying lets the system:
+Each package SHOULD specify the formats it will use, via either `format_ids[]` (legacy named-format path — structured `{agent_url, id}` references) or `format_option_refs[]` (3.1+ format-option path — references into the product's `format_options[]`). Omitting all format selectors defaults to all formats supported by the product. Specifying lets the system:
 
 - Publish placeholder creatives in ad servers
 - Pin exactly what creative assets are needed
 - Validate that the product supports the requested formats
 - Track which assets are missing
 
-Use `format_option_refs[]` when the buyer's codebase is V2-native (reads `Product.format_options[]`); use `format_ids[]` when integrating with v1-only sellers or libraries. Dual-emission is allowed and recommended for buyer SDKs targeting a mixed seller population — see the `format_ids` row above.
+Use `format_option_refs[]` when the buyer's codebase reads `Product.format_options[]`; use `format_ids[]` when integrating with legacy-format-only sellers or libraries. Dual-emission is allowed and recommended for buyer SDKs targeting a mixed seller population — see the `format_ids` row above.
 
-V2-path example (buyer authoring against a publisher-scoped `Product.format_options[]` entry):
+3.1+ format-option example (buyer authoring against a publisher-scoped `Product.format_options[]` entry):
 
 ```json test=false
 {
@@ -1042,7 +1042,7 @@ Publishers MUST validate:
 - Format specifications match `list_creative_formats` output
 - Creative requirements can be fulfilled within timeline
 
-Invalid format example (v1 path):
+Invalid legacy named-format example:
 
 ```json
 {
@@ -1058,7 +1058,7 @@ Invalid format example (v1 path):
 }
 ```
 
-Invalid format option example (v2 path):
+Invalid 3.1+ format-option example:
 
 ```json
 {
