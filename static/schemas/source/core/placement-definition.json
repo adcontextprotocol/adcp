@@ -68,7 +68,6 @@
             "title": "Format option reference",
             "description": "Reference an entry in the file's top-level `formats[]` by `format_option_id`. Resolved at validation time. additionalProperties: true so placement-local fields (display_name, etc.) carry through without forcing a full inline declaration.",
             "required": ["format_option_id"],
-            "not": { "required": ["capability_id"] },
             "properties": {
               "format_option_id": {
                 "type": "string",
