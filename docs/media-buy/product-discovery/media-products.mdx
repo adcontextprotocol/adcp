@@ -508,6 +508,8 @@ Backend execution kind is not part of signal identity. A GAM-backed seller can e
 
 For seller-planned guaranteed products, such as linear broadcast audio schedules, the selected audience can be portable while the plan is not. In that case, publish the shared audience as a `scope: "data_provider"` signal if it appears across products, set `resolution_model: "seller_planned"` on products where the seller resolves that audience against time-based avails or reach goals, and use `selection_mode: "required"` or `selection_group_rules[].selection_mode: "required"` when an audience choice is mandatory for the package. For non-guaranteed products where selected signals are applied as ordinary targeting predicates, use the default `resolution_model: "direct_targeting"` and point the product to `get_signals` when the wholesale signal menu should not be duplicated inline.
 
+The `seller_planned` model applies to any supply type where inventory is scheduled in advance and constrained by time-bound availability rather than continuously auctioned: live sports, political programming, and tentpole broadcasts follow the same pattern as linear broadcast audio.
+
 ### Custom & Account-Specific Products
 
 A server can offer a general catalog, but it can also return:

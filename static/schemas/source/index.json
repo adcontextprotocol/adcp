@@ -360,7 +360,7 @@
         },
         "signal-ref": {
           "$ref": "/schemas/core/signal-ref.json",
-          "description": "Named signal reference for media-buy product targeting: scope 'product' for product-local signal options or scope 'data_provider' for external signals published in adagents.json signals[]"
+          "description": "Named signal reference for discovery, activation, and media-buy product targeting: scope 'product' for product-local signal options, scope 'data_provider' for published adagents.json signals[], or scope 'signal_source' for source-native signals"
         },
         "signal-listing": {
           "$ref": "/schemas/core/signal-listing.json",
