@@ -19,8 +19,9 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `description` (string, required)
 - `publisher_properties` (list[PublisherPropertySelector], required): Publisher properties covered by this product. See [Property Targeting](#property-targeting).
 - `channels` (list[string], optional): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD declare `channels` on products that span non-obvious channels, particularly retail media, CTV/OLV, and multi-channel bundles. Product channels SHOULD be a subset of the union of their properties' `supported_channels`. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
-- `format_ids` (list[FormatID], required): Structured format ID references. See [Creative Formats](/docs/creative/formats).
-- `placements` (list[Placement], optional): Specific ad placements within this product. When provided, buyers can target individual placements when assigning creatives. See [Placements](#placements).
+- `format_ids` (list[FormatID], conditional): v1 structured format ID references. Products must include `format_ids`, `format_options`, or both. See [Creative Formats](/docs/creative/formats).
+- `format_options` (list[ProductFormatDeclaration], conditional): canonical-formats v2 declarations accepted by this product. Buyers prefer `format_options` when both format fields are present. Product-level formats are the upper bound for the sellable product; placement-level formats can narrow this set but cannot add formats the product does not accept. Buyer `FormatOptionRef` selectors use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-catalog-backed options and `{scope: "product", format_option_id}` for product-local options.
+- `placements` (list[Placement], optional): Specific public ad placements within this product. Placements can be `targetable` or `included`; seller-private delivery objects are not exposed here. See [Placements](#placements).
 - `shows` (list[CollectionSelector], optional): Shows covered by this product, grouped by publisher. Each entry has `publisher_domain` and `collection_ids` referencing shows in the publisher's `adagents.json`. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments).
 - `episodes` (list[Episode], optional): Specific episodes available within this product. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
@@ -180,23 +181,40 @@ Defines creative requirements and restrictions:
 
 ### Placements
 
-Products can optionally declare specific ad placements within their inventory. When placements are provided:
+Products can optionally declare specific public ad placements within their inventory. Placement IDs are publisher-scoped. When a placement exists in a publisher's `adagents.json` placement catalog, the product placement should reference that catalog entry with `publisher_domain` and `placement_id`. When no public catalog entry exists, the sales agent may define an inline placement with buyer-facing fields such as `name`, `description`, formats, and tags; its `placement_id` is still interpreted in the publisher namespace, or in the seller agent's own publisher namespace when `publisher_domain` is omitted.
 
-- **Buyers purchase the entire product** - Packages always target the whole product, not individual placements
-- **Placement targeting happens at creative assignment** - Different creatives can be assigned to different placements
-- **Omitting placement targeting** - Creatives without placement_ids run on all placements in the package
-- **Reuse registered IDs when available** - If the publisher declares canonical `placements` in `adagents.json`, product placements SHOULD reuse those `placement_id` values
-- **Preserve registry semantics** - When a product reuses a registered `placement_id`, it is referring to that same placement. The product may narrow `format_ids` or add operational detail, but it should not change the placement's meaning incompatibly
+- **`publisher_domain`** - Domain whose `adagents.json` defines the catalog placement. New multi-publisher products SHOULD include it so the placement namespace is explicit.
+- **`placement_id`** - Placement ID in the publisher namespace. Buyers reference it with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `placement_ids` strings are only unambiguous in single-publisher contexts.
+- **`mode: "targetable"`** - The buyer may reference this publisher-scoped placement when assigning creatives or otherwise selecting placements within the product
+- **`mode: "included"`** - The public placement is part of the product's described composition, but the buyer cannot cherry-pick it by `placement_id`
+- **Public catalog rule** - Catalog-backed product placements resolve to `{publisher_domain, placement_id}` in the publisher's `adagents.json`
+- **Private inventory rule** - Seller-private delivery objects, ad-server mappings, and source/origin details must stay out of `get_products`
+- **Creative assignment** - Different creatives can be assigned to targetable placements
+- **Omitting placement targeting** - Creatives without `placement_refs` or legacy `placement_ids` run on all buyer-targetable placements in the package, and the seller still controls included-only delivery composition
+- **Use registered IDs when available** - If the publisher declares canonical `placements` in `adagents.json`, product placements SHOULD use the catalog ID as `placement_id`
+- **Preserve registry semantics** - When a product references a registered placement, it is referring to that same placement. The product may narrow `format_ids` or `format_options`, or add operational detail, but it should not change the placement's meaning incompatibly
 - **Tags stay useful at product level** - Product placements can carry `tags` for grouping and should align with registry tags when the placement comes from the publisher registry
+
+For legacy products where `placements[]` entries omit `mode`, buyers may treat the placement as targetable for creative assignment. New sellers SHOULD emit `mode` explicitly.
+
+Publishers can authorize agents for specific placements in `adagents.json` with `authorized_agents[].placement_ids` or `authorized_agents[].placement_tags`. Sales agents should only return catalog-backed product placements they are authorized to sell.
+
+#### Format precedence with placements
+
+Product-level `format_ids` and `format_options` define the creative formats accepted by the product as a whole. Placement-level `format_ids` or `format_options`, whether returned inline on the product placement or inherited from a public placement catalog entry, only narrow that product-wide set for the specific placement.
+
+If both product and placement format declarations are present, buyers compute the effective accepted formats for that placement as their intersection. For v1 `format_ids`, compare the structured format ID after URL canonicalization and include only matching or narrower parameterized variants. For v2 `format_options`, match publisher-catalog-backed options by `{publisher_domain, format_option_id}`, match product-local options by `format_option_id` when `publisher_domain` is omitted, and otherwise match declarations with the same `format_kind` whose placement parameters narrow the product declaration. If a placement has no format declaration, it inherits the product-level formats. A placement-only format that is absent from the product-level declaration is a seller conformance error, not an expansion of the product's creative contract; buyers should fail closed for that format and not treat it as accepted.
 
 #### Placement Object Structure
 
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/placement.json",
+  "publisher_domain": "daily-pulse.example",
   "placement_id": "homepage_banner",
   "name": "Homepage Banner",
   "description": "Above-the-fold banner on the homepage",
+  "mode": "targetable",
   "tags": ["homepage", "display", "premium"],
   "format_ids": [
     {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
@@ -219,15 +237,25 @@ Products can optionally declare specific ad placements within their inventory. W
   "placements": [
     {
       "placement_id": "homepage_banner",
+      "publisher_domain": "daily-pulse.example",
       "name": "Homepage Banner",
+      "mode": "targetable",
       "tags": ["homepage", "display", "premium"],
       "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"}]
     },
     {
       "placement_id": "article_sidebar",
+      "publisher_domain": "daily-pulse.example",
       "name": "Article Sidebar",
+      "mode": "targetable",
       "tags": ["article", "display"],
       "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}]
+    },
+    {
+      "placement_id": "premium_rotation",
+      "name": "Premium rotation",
+      "mode": "included",
+      "tags": ["premium"]
     }
   ],
   "delivery_type": "guaranteed",
@@ -245,11 +273,21 @@ When creating a media buy, buyers can assign different creatives to different pl
       "creative_assignments": [
         {
           "creative_id": "creative_1",
-          "placement_ids": ["homepage_banner"]
+          "placement_refs": [
+            {
+              "publisher_domain": "daily-pulse.example",
+              "placement_id": "homepage_banner"
+            }
+          ]
         },
         {
           "creative_id": "creative_2",
-          "placement_ids": ["article_sidebar"]
+          "placement_refs": [
+            {
+              "publisher_domain": "daily-pulse.example",
+              "placement_id": "article_sidebar"
+            }
+          ]
         }
       ]
     }

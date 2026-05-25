@@ -92,6 +92,16 @@ export const PROPERTY_TOOLS: AddieTool[] = [
           },
           description: 'Array of properties (inventory types)',
         },
+        formats: {
+          type: 'array',
+          items: { type: 'object' },
+          description: 'Optional adagents.json formats[] publisher catalog entries',
+        },
+        placements: {
+          type: 'array',
+          items: { type: 'object' },
+          description: 'Optional adagents.json placements[] entries',
+        },
         contact: {
           type: 'object',
           properties: {
@@ -386,6 +396,8 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
 
     const authorizedAgents = args.authorized_agents as Array<{ url: string; authorized_for?: string }> || [];
     const properties = args.properties as Array<{ type: string; name: string }> || [];
+    const formats = args.formats as Array<Record<string, unknown>> | undefined;
+    const placements = args.placements as Array<Record<string, unknown>> | undefined;
     const contact = args.contact as { name?: string; email?: string } | undefined;
     const sourceType = (args.source_type as string) || 'community';
 
@@ -397,6 +409,12 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
 
     if (contact) {
       adagentsJson.contact = contact;
+    }
+    if (formats) {
+      adagentsJson.formats = formats;
+    }
+    if (placements) {
+      adagentsJson.placements = placements;
     }
 
     // Check if property already exists
@@ -425,6 +443,12 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
         }
         if (!args.properties && existingAdagents.properties) {
           mergedAdagents.properties = existingAdagents.properties;
+        }
+        if (!args.formats && existingAdagents.formats) {
+          mergedAdagents.formats = existingAdagents.formats;
+        }
+        if (!args.placements && existingAdagents.placements) {
+          mergedAdagents.placements = existingAdagents.placements;
         }
         if (!args.contact && existingAdagents.contact) {
           mergedAdagents.contact = existingAdagents.contact;

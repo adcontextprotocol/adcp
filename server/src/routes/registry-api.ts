@@ -1053,6 +1053,9 @@ registry.registerPath({
             include_schema: z.boolean().optional(),
             include_timestamp: z.boolean().optional(),
             properties: z.array(z.unknown()).optional(),
+            formats: z.array(z.unknown()).optional(),
+            placements: z.array(z.unknown()).optional(),
+            placement_tags: z.record(z.string(), z.unknown()).optional(),
           }),
         },
       },
@@ -3992,6 +3995,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         include_schema = true,
         include_timestamp = true,
         properties,
+        formats,
+        placements,
+        placement_tags,
       } = req.body;
 
       if (!authorized_agents || !Array.isArray(authorized_agents)) {
@@ -4010,9 +4016,20 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         });
       }
 
-      logger.info({ agentCount: authorized_agents.length, propertyCount: properties?.length || 0 }, "Creating adagents.json");
+      logger.info({
+        agentCount: authorized_agents.length,
+        propertyCount: properties?.length || 0,
+        formatCount: formats?.length || 0,
+        placementCount: placements?.length || 0,
+      }, "Creating adagents.json");
 
-      const validation = adagentsManager.validateProposed(authorized_agents);
+      const validation = adagentsManager.validateProposed({
+        agents: authorized_agents,
+        properties,
+        formats,
+        placements,
+        placementTags: placement_tags,
+      });
       if (!validation.valid) {
         return res.status(400).json({
           success: false,
@@ -4021,12 +4038,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         });
       }
 
-      const adagentsJson = adagentsManager.createAdAgentsJson(
-        authorized_agents,
-        include_schema,
-        include_timestamp,
-        properties
-      );
+      const adagentsJson = adagentsManager.createAdAgentsJson({
+        agents: authorized_agents,
+        includeSchema: include_schema,
+        includeTimestamp: include_timestamp,
+        properties,
+        formats,
+        placements,
+        placementTags: placement_tags,
+      });
 
       return res.json({
         success: true,

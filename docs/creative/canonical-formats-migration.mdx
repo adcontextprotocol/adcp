@@ -458,7 +458,7 @@ A transformation agent that takes a buyer's brief or script and produces a rende
 }
 ```
 
-Two distinct capabilities — brief-to-audio (creative direction → produced ad) and script-to-audio (deterministic TTS from verbatim script) — declared as two `supported_formats` entries sharing `format_kind: audio_hosted` but with different `asset_source` values. `capability_id` disambiguates which capability the buyer is invoking when they call `build_creative`.
+Two distinct creative-agent capabilities — brief-to-audio (creative direction → produced ad) and script-to-audio (deterministic TTS from verbatim script) — declared as two `supported_formats` entries sharing `format_kind: audio_hosted` but with different `asset_source` values. `capability_id` disambiguates which build path the buyer is invoking when they call `build_creative`. This is separate from media-buy `format_option_id`, which selects a buyable product or publisher-catalog format option.
 
 #### Server-side hooks for creative agents
 

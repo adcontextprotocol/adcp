@@ -60,7 +60,7 @@ Products describe sellable inventory along three independent dimensions:
 - **Collections and installments** — WHAT CONTENT the ad runs in or around (a series, podcast, or live event)
 - **Placements** — WHAT POSITION the ad appears in (pre-roll, mid-roll, host read)
 
-Each product also includes audience targeting, creative format requirements, pricing, and delivery characteristics. When products reference collections, buyers resolve full collection metadata (talent, genre, content ratings, distribution identifiers) from the collection creator's or publisher's `adagents.json`.
+Each product also includes audience targeting, creative format requirements, pricing, and delivery characteristics. Buyers see the products the seller chooses to return for the request; sales-agent routing decisions such as direct-only, wholesale, or storefront availability stay internal to the seller. When products reference collections or registered placements, buyers resolve full metadata from the publisher's `adagents.json`.
 
 Understand the complete product structure in [Media Products](/docs/media-buy/product-discovery/media-products). For collection-centric inventory like podcasts, CTV series, and live events, see [Collections and Installments](/docs/media-buy/product-discovery/collections-and-installments).
 
@@ -73,8 +73,8 @@ For compliance-filtered discovery, pass a `property_list` on `get_products` to r
 ### Format Discovery Integration
 Product discovery works hand-in-hand with creative planning:
 
-1. **Products return format IDs** for required creative specifications
-2. **Use [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats)** to get detailed format requirements
+1. **Products return `format_ids`, `format_options`, or both** for required creative specifications
+2. **Use [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats)** for v1 named-format details, and use product `format_options[]` directly for canonical-format declarations
 3. **Plan creative production** based on discovered format needs
 
 ## Brief Examples & Patterns

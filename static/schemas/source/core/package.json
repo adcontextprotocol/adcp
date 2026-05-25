@@ -51,10 +51,18 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Format IDs active for this package. Echoed from the create_media_buy request; omitted means all formats for the product are active.",
+      "description": "v1 format IDs active for this package. Echoed from the create_media_buy request; omitted means all formats for the product are active unless `format_option_refs` narrows the v2 format set.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }
+    },
+    "format_option_refs": {
+      "type": "array",
+      "description": "Structured v2 format option references active for this package, echoed from the create_media_buy request. Publisher-catalog-backed options are identified by `{ scope: \"publisher\", publisher_domain, format_option_id }`; product-local options are identified by `{ scope: \"product\", format_option_id }` and resolve only against this package's target product. Omitted means all v2 formats for the product are active unless `format_ids` narrows the set.",
+      "items": {
+        "$ref": "/schemas/core/format-option-ref.json"
+      },
+      "minItems": 1
     },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"

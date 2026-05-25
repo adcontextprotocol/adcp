@@ -191,6 +191,7 @@
           "publisher_properties",
           "channels",
           "format_ids",
+          "format_options",
           "placements",
           "delivery_type",
           "exclusivity",

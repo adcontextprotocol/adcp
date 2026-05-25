@@ -959,6 +959,9 @@
                 <button class="tab-btn" onclick="switchTab('placements')" id="placements-tab">
                   📍 Placements (<span id="placements-count">0</span>)
                 </button>
+                <button class="tab-btn" onclick="switchTab('formats')" id="formats-tab">
+                  🎨 Formats (<span id="formats-count">0</span>)
+                </button>
               </div>
             </div>
 
@@ -1242,6 +1245,11 @@
                   <label>Placement tags <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">for grouping and authorization (comma-separated)</span></label>
                   <input type="text" id="pl-tags" placeholder="homepage, native, premium" style="width: 100%; box-sizing: border-box;" />
                 </div>
+                <div class="form-group" style="margin: 0; grid-column: 1 / -1;">
+                  <label>Format option IDs <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">from the Formats tab (comma-separated)</span></label>
+                  <input type="text" id="pl-format-option-ids" placeholder="homepage_mrec_image, homepage_mrec_html5" style="width: 100%; box-sizing: border-box;" />
+                  <p id="pl-format-options-note" style="display: none; margin: 6px 0 0 0; font-size: 12px; color: var(--color-text-muted);">This placement has inline or advanced format_options; they will be preserved unless you enter IDs here.</p>
+                </div>
               </div>
               <div style="display: flex; gap: 8px;">
                 <button class="btn" onclick="savePlacementForm()" style="padding: 8px 16px;">Save</button>
@@ -1265,6 +1273,27 @@
                 <button class="btn" onclick="createPlacementTag()">➕ Create tag</button>
               </div>
             </div>
+          </div>
+
+          <!-- Formats Tab Content -->
+          <div id="formats-tab-content" class="tab-content" style="display: none">
+            <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 12px;">
+              Publisher-authoritative canonical format catalog. Paste a JSON array of ProductFormatDeclaration objects with
+              <code>format_option_id</code>; placements can reference these IDs.
+            </p>
+            <textarea
+              id="formats-json"
+              placeholder='[
+  {
+    "format_option_id": "homepage_mrec_image",
+    "format_kind": "image",
+    "params": { "width": 300, "height": 250 }
+  }
+]'
+              oninput="syncFormatsFromTextarea({ silent: true }); updateCounts(); updateJsonPreview();"
+              style="width: 100%; min-height: 280px; box-sizing: border-box; font-family: monospace; font-size: 13px; line-height: 1.45;"
+            ></textarea>
+            <div id="formats-json-error" style="display: none; color: var(--color-error-500); font-size: 13px; margin-top: 8px;"></div>
           </div>
 
           </div>
@@ -2090,6 +2119,7 @@
         collections: [],
         placements: [],
         placementTags: {},
+        formats: [],
         fileFound: false,
         bulkSelectMode: false,
         selectedPropertyIds: [],
@@ -2150,7 +2180,50 @@
       // State Management & Rendering
       // ============================================================================
 
+      function syncFormatsFromTextarea(options = {}) {
+        const textarea = document.getElementById('formats-json');
+        const errorEl = document.getElementById('formats-json-error');
+        if (!textarea || !errorEl) return true;
+
+        const raw = textarea.value.trim();
+        if (!raw) {
+          state.formats = [];
+          errorEl.style.display = 'none';
+          errorEl.textContent = '';
+          return true;
+        }
+
+        try {
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) {
+            throw new Error('Formats must be a JSON array.');
+          }
+          state.formats = parsed;
+          errorEl.style.display = 'none';
+          errorEl.textContent = '';
+          return true;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          errorEl.textContent = `Invalid formats JSON: ${message}`;
+          errorEl.style.display = 'block';
+          if (!options.silent) alert(errorEl.textContent);
+          return false;
+        }
+      }
+
+      function renderFormats() {
+        const textarea = document.getElementById('formats-json');
+        if (!textarea || document.activeElement === textarea) return;
+        textarea.value = state.formats.length > 0 ? JSON.stringify(state.formats, null, 2) : '';
+        const errorEl = document.getElementById('formats-json-error');
+        if (errorEl) {
+          errorEl.style.display = 'none';
+          errorEl.textContent = '';
+        }
+      }
+
       function updateJsonPreview() {
+        syncFormatsFromTextarea({ silent: true });
         const fileType = document.querySelector('input[name="file-type"]:checked').value;
         let adagents;
 
@@ -2213,6 +2286,10 @@
             adagents.properties = state.properties;
           }
 
+          if (state.formats.length > 0) {
+            adagents.formats = state.formats;
+          }
+
           // Add signals if present
           if (state.signals.length > 0) {
             adagents.signals = state.signals;
@@ -2262,6 +2339,7 @@
         document.getElementById('property-features-count').textContent = state.propertyFeatures.length;
         document.getElementById('collections-count').textContent = state.collections.length;
         document.getElementById('placements-count').textContent = state.placements.length;
+        document.getElementById('formats-count').textContent = state.formats.length;
       }
 
       function toggleContactSection() {
@@ -2629,6 +2707,18 @@
             info.appendChild(tagsEl);
           }
 
+          if (Array.isArray(pl.format_options) && pl.format_options.length > 0) {
+            const formatEl = document.createElement('div');
+            formatEl.style.cssText = 'font-size: 12px; color: var(--color-text-muted); margin-top: 4px;';
+            const refIds = pl.format_options
+              .map(f => f && typeof f === 'object' ? f.format_option_id : null)
+              .filter(Boolean);
+            formatEl.textContent = refIds.length === pl.format_options.length
+              ? `Formats: ${refIds.join(', ')}`
+              : `Formats: ${pl.format_options.length} advanced entr${pl.format_options.length === 1 ? 'y' : 'ies'}`;
+            info.appendChild(formatEl);
+          }
+
           if (pl.description) {
             const descEl = document.createElement('div');
             descEl.style.cssText = 'font-size: 12px; color: var(--color-text-muted); margin-top: 4px;';
@@ -2745,6 +2835,8 @@
           document.getElementById('pl-description').value = '';
           document.getElementById('pl-property-tags').value = '';
           document.getElementById('pl-tags').value = '';
+          document.getElementById('pl-format-option-ids').value = '';
+          document.getElementById('pl-format-options-note').style.display = 'none';
         } else {
           const pl = state.placements[index];
           document.getElementById('pl-id').value = pl.placement_id || '';
@@ -2752,6 +2844,13 @@
           document.getElementById('pl-description').value = pl.description || '';
           document.getElementById('pl-property-tags').value = (pl.property_tags || []).join(', ');
           document.getElementById('pl-tags').value = (pl.tags || []).join(', ');
+          const simpleRefs = Array.isArray(pl.format_options)
+            && pl.format_options.every(f => f && typeof f === 'object' && f.format_option_id && !f.format_kind);
+          document.getElementById('pl-format-option-ids').value = simpleRefs
+            ? pl.format_options.map(f => f.format_option_id).join(', ')
+            : '';
+          document.getElementById('pl-format-options-note').style.display =
+            Array.isArray(pl.format_options) && !simpleRefs ? 'block' : 'none';
         }
         document.getElementById('placement-form').style.display = 'block';
         document.getElementById('pl-id').focus();
@@ -2793,7 +2892,13 @@
           return;
         }
 
-        const pl = { placement_id: id, name };
+        const existingPlacement = index === -1 ? {} : state.placements[index];
+        const pl = { ...existingPlacement, placement_id: id, name };
+        delete pl.property_ids;
+        delete pl.property_tags;
+        delete pl.description;
+        delete pl.tags;
+
         if (propertyIds.length > 0) pl.property_ids = propertyIds;
         if (propertyTags.length > 0) pl.property_tags = propertyTags;
 
@@ -2801,6 +2906,17 @@
         if (description) pl.description = description;
 
         if (tags.length > 0) pl.tags = tags;
+
+        const formatOptionIds = document.getElementById('pl-format-option-ids').value
+          .split(',')
+          .map(id => id.trim())
+          .filter(Boolean);
+        if (formatOptionIds.length > 0) {
+          pl.format_options = formatOptionIds.map(format_option_id => ({ format_option_id }));
+        } else if (Array.isArray(existingPlacement.format_options)
+          && existingPlacement.format_options.every(f => f && typeof f === 'object' && f.format_option_id && !f.format_kind)) {
+          delete pl.format_options;
+        }
 
         // Auto-register any new placement tags preserving metadata
         tags.forEach(tag => {
@@ -3181,6 +3297,7 @@
         renderCollections();
         renderPlacements();
         renderPlacementTags();
+        renderFormats();
         updateCounts();
         updateJsonPreview();
       }
@@ -4521,6 +4638,7 @@
               state.propertyFeatures = data.property_features || [];
               state.collections = data.collections || [];
               state.placements = data.placements || [];
+              state.formats = data.formats || [];
 
               // Load contact info
               state.contact = data.contact || {};
@@ -4586,6 +4704,7 @@
       }
 
       function exportFile() {
+        if (!syncFormatsFromTextarea({ silent: false })) return;
         const fileType = document.querySelector('input[name="file-type"]:checked').value;
         let data;
 
@@ -4620,6 +4739,10 @@
           // Only include properties if there are any
           if (state.properties.length > 0) {
             data.properties = state.properties;
+          }
+
+          if (state.formats.length > 0) {
+            data.formats = state.formats;
           }
 
           // Include signals if there are any
@@ -4709,6 +4832,7 @@
 
       function copyJson() {
         if (blockIfAgentsMissScope('copy')) return;
+        if (!syncFormatsFromTextarea({ silent: false })) return;
         updateJsonPreview();
         const textarea = document.getElementById('json-output');
         textarea.select();
@@ -4750,6 +4874,9 @@
 
         const normalizedDomain = domainInput.replace(/^https?:\/\//, '').replace(/\/$/, '');
         state.domain = normalizedDomain;
+        state.formats = [];
+        state.placements = [];
+        state.placementTags = {};
 
         // Disable input while loading
         const startBtn = document.getElementById('start-btn');
@@ -4829,6 +4956,9 @@
             }
             if (result.data.validation.raw_data.property_features) {
               state.propertyFeatures = result.data.validation.raw_data.property_features;
+            }
+            if (result.data.validation.raw_data.formats) {
+              state.formats = result.data.validation.raw_data.formats;
             }
 
             // Parse collections and placements (v3)
@@ -5085,6 +5215,7 @@
       }
 
       async function generateAdAgentsJson() {
+        if (!syncFormatsFromTextarea({ silent: false })) return;
         const agentEntries = document.querySelectorAll('.agent-entry');
         const authorizedAgents = [];
 
@@ -5184,6 +5315,15 @@
           // Only include properties if there are any
           if (properties.length > 0) {
             requestBody.properties = properties;
+          }
+          if (state.formats.length > 0) {
+            requestBody.formats = state.formats;
+          }
+          if (state.placements.length > 0) {
+            requestBody.placements = state.placements;
+          }
+          if (Object.keys(state.placementTags).length > 0) {
+            requestBody.placement_tags = { ...state.placementTags };
           }
 
           const response = await fetch('/api/adagents/create', {
@@ -5363,6 +5503,9 @@
         state.domain = '';
         state.properties = [];
         state.agents = [];
+        state.formats = [];
+        state.placements = [];
+        state.placementTags = {};
         state.fileFound = false;
 
         // Clear form data
