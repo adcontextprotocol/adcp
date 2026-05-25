@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/product-signal-targeting-option.json",
   "title": "Product Signal Targeting Option",
-  "description": "A signal the seller makes available inline for package-level signal composition on this product. Signals are targetable dimensions with a value_type (binary, categorical, or numeric). Product.signal_targeting_options is used when the product needs product-scoped pricing, activation handles, defaults, grouping hints, or a curated inline menu. Products can instead point buyers to get_signals with signal_targeting_options_source: 'get_signals' when the selectable menu is the broader seller signal feed.",
+  "description": "A signal the seller makes available inline for package-level signal composition on this product. Signals are targetable dimensions with a value_type (binary, categorical, or numeric). Product.signal_targeting_options is used when the product needs product-scoped pricing, activation handles, defaults, grouping hints, a brief/refine-selected subset, or a curated inline menu. Wholesale products can instead omit inline options when the selectable menu is the broader seller get_signals feed.",
   "type": "object",
   "properties": {
     "signal_ref": {

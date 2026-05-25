@@ -73,7 +73,7 @@ Signal definitions in adagents.json `signals[]` can now carry definition-side en
 
 Modeled signals now have explicit validation hooks: `methodology: "modeled"` and `audience_expansion: true` require `modeling`; modeled training data jurisdictions must be non-empty; and a required modeling disclosure must name the jurisdictions where the disclosure applies.
 
-Product signal targeting also clarifies the broad-feed workflow. Products may point to `get_signals` with `signal_targeting_options_source: "get_signals"` instead of duplicating a wholesale signal feed inline. Buyers use `get_signals` for candidate discovery, then confirm product eligibility and composability with `get_products.filters.signal_targeting` or a product-specific `get_products` response before sending `packages[].targeting_overlay.signal_targeting_groups`.
+Product signal targeting also clarifies the broad-feed workflow. Products may set `signal_targeting_allowed: true` and omit inline `signal_targeting_options` instead of duplicating a wholesale signal feed inline. Buyers use `get_signals` for candidate discovery, then confirm product eligibility and composability with `get_products.filters.signal_targeting` or a product-specific `get_products` response before sending `packages[].targeting_overlay.signal_targeting_groups`.
 
 ### Wire conformance — idempotency & envelope tolerance (#4399 / #4399b, #2911, #4227, #4371, #4418, #4107, #4196, #4043)
 
