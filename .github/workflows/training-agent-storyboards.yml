@@ -279,3 +279,21 @@ jobs:
             regression_help "passing steps" "${PASSED}" "${MIN_PASSED}"
             exit 1
           fi
+
+      - name: Enforce required-clean storyboards
+        if: matrix.surface == 'current' && matrix.tenant == 'sales'
+        run: |
+          set -euo pipefail
+          required_clean=(
+            "media_buy_seller/canonical_formats"
+          )
+          for storyboard_id in "${required_clean[@]}"; do
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
+              echo "Required-clean storyboard passed: ${storyboard_id}"
+            else
+              echo "::error::Required-clean storyboard did not pass on /sales current surface: ${storyboard_id}"
+              echo "Last matching log lines:"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
