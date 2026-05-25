@@ -235,6 +235,31 @@ jobs:
             echo "No stale console machines found"
           fi
 
+      - name: Setup Node.js for artifact build
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies for artifact build
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+        run: npm ci
+
+      - name: Publish latest artifacts to R2
+        env:
+          ADCP_ARTIFACT_R2_BUCKET: ${{ vars.ADCP_ARTIFACT_R2_BUCKET || 'adcp-artifacts' }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${R2_ACCOUNT_ID:-}" ] || [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            echo "::error::Missing R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, or R2_SECRET_ACCESS_KEY secret."
+            exit 1
+          fi
+          npm run backfill:cdn-artifacts -- --bucket "${ADCP_ARTIFACT_R2_BUCKET}" --build-latest --quiet
+
       # On any failure (hard or fallback-with-degraded-gates), snapshot Fly
       # state so the next-turn investigator doesn't have to fetch it
       # manually. v2760 on 2026-05-19 cost an extra debugging cycle because

@@ -19,6 +19,8 @@ Options:
   --aws-dry-run       Execute AWS with --dryrun. Very verbose: AWS prints
                       every object it would upload.
   --build-latest      Rebuild dist/*/latest and dist/protocol/latest.tgz first.
+  --skip-latest       Upload only versioned artifacts; do not update mutable
+                      schemas/latest, compliance/latest, or protocol/latest.
   --apply-cors        Apply public read CORS config to the bucket via Wrangler.
   --quiet             Pass --only-show-errors to aws s3 operations.
   -h, --help          Show this help.
@@ -42,6 +44,7 @@ env_file=""
 dry_run=0
 aws_dry_run=0
 build_latest=0
+skip_latest=0
 apply_cors=0
 quiet=0
 
@@ -84,6 +87,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --build-latest)
       build_latest=1
+      shift
+      ;;
+    --skip-latest)
+      skip_latest=1
       shift
       ;;
     --apply-cors)
@@ -172,7 +179,7 @@ for dir in dist/schemas dist/compliance dist/protocol; do
   fi
 done
 
-if [[ ! -d dist/schemas/latest || ! -d dist/compliance/latest || ! -f dist/protocol/latest.tgz ]]; then
+if [[ "$skip_latest" -eq 0 && ( ! -d dist/schemas/latest || ! -d dist/compliance/latest || ! -f dist/protocol/latest.tgz ) ]]; then
   cat >&2 <<'WARN'
 Warning: one or more latest artifacts are missing.
 Run with --build-latest if this checkout has not already run the artifact build.
@@ -335,12 +342,12 @@ immutable_cache="public, max-age=31536000, immutable"
 revalidate_cache="public, no-cache, must-revalidate"
 
 exclude_latest=1 sync_schema_tree dist/schemas schemas "$immutable_cache"
-if [[ -d dist/schemas/latest ]]; then
+if [[ "$skip_latest" -eq 0 && -d dist/schemas/latest ]]; then
   cp_schema_tree dist/schemas/latest schemas/latest "$revalidate_cache"
 fi
 
 exclude_latest=1 sync_compliance_tree dist/compliance compliance "$immutable_cache"
-if [[ -d dist/compliance/latest ]]; then
+if [[ "$skip_latest" -eq 0 && -d dist/compliance/latest ]]; then
   cp_compliance_tree dist/compliance/latest compliance/latest "$revalidate_cache"
 fi
 
@@ -349,16 +356,16 @@ exclude_latest=1 sync_filtered dist/protocol protocol "$immutable_cache" "text/p
 exclude_latest=1 sync_filtered dist/protocol protocol "$immutable_cache" "application/octet-stream" "*.sig"
 exclude_latest=1 sync_filtered dist/protocol protocol "$immutable_cache" "application/x-pem-file" "*.crt"
 
-if [[ -f dist/protocol/latest.tgz ]]; then
+if [[ "$skip_latest" -eq 0 && -f dist/protocol/latest.tgz ]]; then
   cp_file dist/protocol/latest.tgz protocol/latest.tgz "$revalidate_cache" "application/gzip"
 fi
-if [[ -f dist/protocol/latest.tgz.sha256 ]]; then
+if [[ "$skip_latest" -eq 0 && -f dist/protocol/latest.tgz.sha256 ]]; then
   cp_file dist/protocol/latest.tgz.sha256 protocol/latest.tgz.sha256 "$revalidate_cache" "text/plain; charset=utf-8"
 fi
-if [[ -f dist/protocol/latest.tgz.sig ]]; then
+if [[ "$skip_latest" -eq 0 && -f dist/protocol/latest.tgz.sig ]]; then
   cp_file dist/protocol/latest.tgz.sig protocol/latest.tgz.sig "$revalidate_cache" "application/octet-stream"
 fi
-if [[ -f dist/protocol/latest.tgz.crt ]]; then
+if [[ "$skip_latest" -eq 0 && -f dist/protocol/latest.tgz.crt ]]; then
   cp_file dist/protocol/latest.tgz.crt protocol/latest.tgz.crt "$revalidate_cache" "application/x-pem-file"
 fi
 
