@@ -718,9 +718,19 @@ async function runTests() {
       ...productBase,
       signal_targeting_allowed: true,
       signal_targeting_options: [productSignalOption],
-      signal_targeting_rules: { selection_mode: 'optional' }
+      signal_targeting_rules: { resolution_model: 'seller_planned', selection_mode: 'optional' }
     },
-    'Product accepts signal_targeting_options when signal_targeting_allowed is true'
+    'Product accepts signal_targeting_options and seller-planned resolution when signal_targeting_allowed is true'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options: [productSignalOption],
+      signal_targeting_rules: { resolution_model: 'buyer_planned', selection_mode: 'optional' }
+    },
+    'Product rejects invalid signal_targeting_rules resolution_model'
   );
   await testSchemaRejection(
     '/schemas/core/product.json',
