@@ -478,6 +478,11 @@ A2A returns results as artifacts with the same data structure:
             "context_id": "ctx-signals-123",
             "signals": [
               {
+                "signal_ref": {
+                  "scope": "data_provider",
+                  "data_provider_domain": "experian.com",
+                  "signal_id": "luxury_auto_intenders"
+                },
                 "signal_agent_segment_id": "luxury_auto_intenders",
                 "name": "Luxury Automotive Intenders",
                 "description": "High-income individuals researching luxury vehicles",
@@ -911,6 +916,11 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
   "context_id": "ctx-signals-abc123",
   "signals": [
     {
+      "signal_ref": {
+        "scope": "data_provider",
+        "data_provider_domain": "acme-data.com",
+        "signal_id": "affluent_shoppers"
+      },
       "signal_agent_segment_id": "acme_affluent_shoppers",
       "name": "Affluent Shoppers",
       "description": "Users with demonstrated luxury purchase behavior",

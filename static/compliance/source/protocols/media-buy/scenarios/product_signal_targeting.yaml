@@ -101,7 +101,7 @@ phases:
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
-        stateful: false
+        stateful: true
         expected: |
           Return a product with signal_targeting_allowed: true and product-scoped
           signal_targeting_rules. Inline signal_targeting_options may be omitted
