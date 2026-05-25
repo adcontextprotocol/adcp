@@ -15,7 +15,12 @@
         },
         "signal_ref": {
           "$ref": "/schemas/core/signal-ref.json",
-          "description": "The signal to target"
+          "description": "The signal to target. New selectors SHOULD use signal_ref."
+        },
+        "signal_id": {
+          "$ref": "/schemas/core/signal-id.json",
+          "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older clients.",
+          "deprecated": true
         },
         "value_type": {
           "type": "string",
@@ -27,7 +32,11 @@
           "description": "Whether to include (true) or exclude (false) users matching this signal"
         }
       },
-      "required": ["type", "signal_ref", "value_type", "value"],
+      "required": ["type", "value_type", "value"],
+      "anyOf": [
+        { "required": ["signal_ref"] },
+        { "required": ["signal_id"] }
+      ],
       "additionalProperties": true
     },
     {
@@ -41,7 +50,12 @@
         },
         "signal_ref": {
           "$ref": "/schemas/core/signal-ref.json",
-          "description": "The signal to target"
+          "description": "The signal to target. New selectors SHOULD use signal_ref."
+        },
+        "signal_id": {
+          "$ref": "/schemas/core/signal-id.json",
+          "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older clients.",
+          "deprecated": true
         },
         "value_type": {
           "type": "string",
@@ -57,7 +71,11 @@
           "minItems": 1
         }
       },
-      "required": ["type", "signal_ref", "value_type", "values"],
+      "required": ["type", "value_type", "values"],
+      "anyOf": [
+        { "required": ["signal_ref"] },
+        { "required": ["signal_id"] }
+      ],
       "additionalProperties": true
     },
     {
@@ -71,7 +89,12 @@
         },
         "signal_ref": {
           "$ref": "/schemas/core/signal-ref.json",
-          "description": "The signal to target"
+          "description": "The signal to target. New selectors SHOULD use signal_ref."
+        },
+        "signal_id": {
+          "$ref": "/schemas/core/signal-id.json",
+          "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older clients.",
+          "deprecated": true
         },
         "value_type": {
           "type": "string",
@@ -87,7 +110,11 @@
           "description": "Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both are provided."
         }
       },
-      "required": ["type", "signal_ref", "value_type"],
+      "required": ["type", "value_type"],
+      "anyOf": [
+        { "required": ["signal_ref"] },
+        { "required": ["signal_id"] }
+      ],
       "additionalProperties": true
     },
     {

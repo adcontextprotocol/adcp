@@ -525,7 +525,12 @@
       "properties": {
         "signal_ref": {
           "$ref": "/schemas/core/signal-ref.json",
-          "description": "Canonical signal reference for this wholesale signal."
+          "description": "Canonical signal reference for this wholesale signal. New events SHOULD use signal_ref."
+        },
+        "signal_id": {
+          "$ref": "/schemas/core/signal-id.json",
+          "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older clients.",
+          "deprecated": true
         },
         "signal_agent_segment_id": {
           "type": "string",
@@ -596,15 +601,16 @@
         }
       },
       "required": [
-        "signal_ref",
         "signal_agent_segment_id",
         "name",
         "description",
         "signal_type",
-        "data_provider",
         "coverage_percentage",
-        "deployments",
-        "pricing_options"
+        "deployments"
+      ],
+      "anyOf": [
+        { "required": ["signal_ref"] },
+        { "required": ["signal_id"] }
       ],
       "additionalProperties": true
     }

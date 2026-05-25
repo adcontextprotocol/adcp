@@ -122,8 +122,8 @@ The response structure is identical across protocols, with only the transport wr
 ### Field Descriptions
 
 - **signals**: Array of matching signals
-  - **signal_ref**: Canonical signal reference. Use `scope: "data_provider"` for signals resolved through adagents.json `signals[]`, `scope: "signal_source"` for source-native signals that are not published in adagents.json `signals[]`, and `scope: "product"` only in product-contextual responses.
-  - **signal_id**: Deprecated legacy SignalId object. New clients should read `signal_ref`.
+  - **signal_ref**: Canonical signal reference. Use `scope: "data_provider"` for signals resolved through adagents.json `signals[]`, `scope: "signal_source"` for source-native signals that are not published in adagents.json `signals[]`, and `scope: "product"` only in product-contextual responses. New responses SHOULD include this field.
+  - **signal_id**: Deprecated legacy SignalId object. New clients should read `signal_ref`; during the migration window, older responses may include only `signal_id`.
   - **signal_agent_segment_id**: Opaque signal handle issued by this signal source. Use it verbatim for `activate_signal`; do not treat it as a globally portable signal ID. For package-level `signal_targeting_groups`, `signal_ref` is the buy-time identity and this handle is echoed only when the selected product option exposes it as a separate execution handle.
   - **name**: Human-readable signal name
   - **description**: Detailed signal description

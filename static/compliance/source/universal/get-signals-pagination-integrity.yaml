@@ -14,7 +14,7 @@ narrative: |
   universal/pagination-integrity) gates this endpoint too.
 
   This storyboard sends a deliberately broad `signal_spec` ("audience") so
-  any non-trivial signal catalog matches more than one entry, then asks
+  any non-trivial signal set matches more than one entry, then asks
   for `pagination.max_results: 1`. Conformant agents MUST report
   `has_more: true` with a `cursor` on this page — an agent that caps
   internally and reports `has_more: false` while more candidates match
@@ -22,7 +22,7 @@ narrative: |
   storyboard exists to catch.
 
   After capturing the cursor, the storyboard follows it on the second
-  call. The terminal state of that page depends on the agent's catalog
+  call. The terminal state of that page depends on the agent's signal set
   size and is not pinned — the second-page validations check
   response-schema conformance only. The cursor↔has_more invariant on
   any single page is enforced statically across all schema and storyboard
@@ -30,7 +30,7 @@ narrative: |
   job is the runtime catch on the page where the agent first decides
   whether to honor `max_results`.
 
-  Catalog sizing: agents whose catalogs return zero or one match for
+  Signal set sizing: agents whose signal sets return zero or one match for
   "audience" SHOULD declare themselves outside the catalog_signals
   capability rather than passing this storyboard with a one-page result —
   a signal marketplace with a single audience signal isn't a marketplace.
@@ -51,7 +51,7 @@ caller:
 
 prerequisites:
   description: |
-    No fixtures required. The agent's signal catalog is treated as given —
+    No fixtures required. The agent's signal set is treated as given —
     the storyboard sends a broad query and asserts pagination shape
     invariants on whatever match set the agent returns. Any agent
     declaring catalog_signals SHOULD have a non-trivial signal set matching
@@ -101,7 +101,7 @@ phases:
     title: "Walk pages with a small max_results"
     narrative: |
       A broad `signal_spec` ("audience") against any non-trivial signals
-      catalog matches more than one entry. With `max_results: 1` the
+      signal set matches more than one entry. With `max_results: 1` the
       first call MUST return a continuation page; the second call follows
       the captured cursor.
 
@@ -152,7 +152,7 @@ phases:
           - check: field_value
             path: "pagination.has_more"
             value: true
-            description: "A broad query against any non-trivial signal catalog must yield more than one match — first page is non-terminal"
+            description: "A broad query against any non-trivial signal set must yield more than one match — first page is non-terminal"
           - check: field_present
             path: "pagination.cursor"
             description: "has_more=true requires a cursor — without one the caller cannot continue"
@@ -170,7 +170,7 @@ phases:
         narrative: |
           The buyer follows the captured cursor under the same broad
           query. The terminal state of this page depends on the agent's
-          catalog size — some agents exhaust the result set in two
+          signal set size — some agents exhaust the result set in two
           pages, others continue paginating — so we do not pin
           `has_more` here. Schema conformance MUST hold; the
           cursor↔has_more invariant on this page is enforced by

@@ -366,6 +366,10 @@
           "$ref": "/schemas/core/signal-listing.json",
           "description": "Shared signal_ref plus optional definition metadata used by get_signals and media products"
         },
+        "product-signal-targeting-option": {
+          "$ref": "/schemas/core/product-signal-targeting-option.json",
+          "description": "Product-scoped signal option available for package-level signal_targeting_groups"
+        },
         "signal-definition": {
           "$ref": "/schemas/core/signal-definition.json",
           "description": "Signal definition published in a data provider's adagents.json signals[]"
@@ -386,9 +390,25 @@
           "$ref": "/schemas/core/signal-targeting.json",
           "description": "Signals Protocol targeting constraint using signal_ref - discriminated union by value_type (binary, categorical, numeric)"
         },
+        "signal-targeting-rules": {
+          "$ref": "/schemas/core/signal-targeting-rules.json",
+          "description": "Product-scoped composition rules for package-level signal_targeting_groups"
+        },
         "signal-targeting-expression": {
           "$ref": "/schemas/core/signal-targeting-expression.json",
           "description": "Media-buy product targeting expression using signal_ref - discriminated union by value_type (binary, categorical, numeric)"
+        },
+        "package-signal-targeting": {
+          "$ref": "/schemas/core/package-signal-targeting.json",
+          "description": "One selected signal inside a package signal targeting group"
+        },
+        "package-signal-targeting-group": {
+          "$ref": "/schemas/core/package-signal-targeting-group.json",
+          "description": "One include or exclude child group inside package-level signal_targeting_groups"
+        },
+        "package-signal-targeting-groups": {
+          "$ref": "/schemas/core/package-signal-targeting-groups.json",
+          "description": "Portable package-level signal composition: top-level all with child any/none groups"
         },
         "event": {
           "$ref": "/schemas/core/event.json",

@@ -714,6 +714,21 @@ async function runTests() {
   const dataProviderSignalRefOnly = {
     signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'auto_intenders' }
   };
+  const legacySignalId = {
+    source: 'catalog',
+    data_provider_domain: 'pinnacle-data.example',
+    id: 'auto_intenders'
+  };
+  const signalListingCore = {
+    signal_agent_segment_id: 'sig_auto_intenders',
+    name: 'Auto intenders',
+    description: 'People likely to be in market for a vehicle.',
+    signal_type: 'marketplace',
+    coverage_percentage: 12,
+    deployments: [
+      { type: 'platform', platform: 'example_dsp', is_live: true }
+    ]
+  };
 
   await testSchemaValidation(
     '/schemas/core/product.json',
@@ -758,6 +773,15 @@ async function runTests() {
       signal_targeting_options: [{ signal_ref: { scope: 'product', signal_id: 'seller_defined_signal' } }]
     },
     'Product rejects product-local signal_targeting_options without inline name and value_type'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options: [{ signal_id: legacySignalId }]
+    },
+    'Product signal_targeting_options require canonical signal_ref even though shared listings accept legacy signal_id'
   );
   await testSchemaValidation(
     '/schemas/core/product.json',
@@ -811,6 +835,65 @@ async function runTests() {
       signal_targeting_rules: { selection_mode: 'optional' }
     },
     'Product rejects signal_targeting_rules with signal_targeting_allowed: false'
+  );
+  log('');
+
+  log('SignalId compatibility during SignalRef migration:', 'info');
+  await testSchemaValidation(
+    '/schemas/signals/get-signals-response.json',
+    {
+      status: 'completed',
+      cache_scope: 'public',
+      signals: [
+        {
+          signal_id: legacySignalId,
+          ...signalListingCore
+        }
+      ]
+    },
+    'get_signals response accepts deprecated signal_id without signal_ref during migration window'
+  );
+  await testSchemaValidation(
+    '/schemas/core/audience-selector.json',
+    {
+      type: 'signal',
+      signal_id: legacySignalId,
+      value_type: 'binary',
+      value: true
+    },
+    'AudienceSelector accepts deprecated signal_id without signal_ref during migration window'
+  );
+  await testSchemaValidation(
+    '/schemas/core/targeting.json',
+    {
+      signal_targeting: [
+        {
+          signal_id: legacySignalId,
+          value_type: 'binary',
+          value: true
+        }
+      ]
+    },
+    'Targeting overlay accepts deprecated flat signal_targeting during migration window'
+  );
+  await testSchemaValidation(
+    '/schemas/core/wholesale-feed-event.json',
+    {
+      event_id: '018f4f28-6b5d-7f50-9d57-111111111111',
+      event_type: 'signal.created',
+      entity_type: 'signal',
+      entity_id: 'sig_auto_intenders',
+      created_at: '2026-05-25T10:00:00Z',
+      payload: {
+        signal_agent_segment_id: 'sig_auto_intenders',
+        applies_to: { scope: 'public' },
+        signal: {
+          signal_id: legacySignalId,
+          ...signalListingCore
+        }
+      }
+    },
+    'Wholesale signal event accepts deprecated signal_id and relaxed data_provider/pricing_options'
   );
   log('');
 

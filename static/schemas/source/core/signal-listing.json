@@ -2,12 +2,17 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/signal-listing.json",
   "title": "Signal Listing",
-  "description": "Shared signal identity and definition metadata used when a signal is listed outside its authoritative definition. Every listing carries signal_ref. Product-local signals use the listing as the definition boundary and MUST include name and value_type. Data-provider and signal-source refs MAY omit definition metadata when the buyer can resolve it from the referenced provider-published definition or source; any supplied name, description, value_type, categories, range, methodology_url, or last_updated is product/account/source context and does not replace the authoritative definition.",
+  "description": "Shared signal identity and definition metadata used when a signal is listed outside its authoritative definition. New listings carry signal_ref; legacy listings may carry deprecated signal_id during the SignalRef migration window. Product-local signals use the listing as the definition boundary and MUST include name and value_type. Data-provider and signal-source refs MAY omit definition metadata when the buyer can resolve it from the referenced provider-published definition or source; any supplied name, description, value_type, categories, range, methodology_url, or last_updated is product/account/source context and does not replace the authoritative definition.",
   "type": "object",
   "properties": {
     "signal_ref": {
       "$ref": "/schemas/core/signal-ref.json",
       "description": "Canonical signal reference. Use scope 'product' for a product-local signal defined by this listing; use scope 'data_provider' with data_provider_domain for a signal defined in a data provider's published adagents.json signals[]; use scope 'signal_source' with signal_source_url for a source-native signal."
+    },
+    "signal_id": {
+      "$ref": "/schemas/core/signal-id.json",
+      "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older Signals Protocol clients.",
+      "deprecated": true
     },
     "name": {
       "type": "string",
@@ -56,7 +61,10 @@
       "additionalProperties": false
     }
   },
-  "required": ["signal_ref"],
+  "anyOf": [
+    { "required": ["signal_ref"] },
+    { "required": ["signal_id"] }
+  ],
   "allOf": [
     {
       "description": "Product-local signal listings define the signal inline, so they need a display name and value type.",

@@ -23,6 +23,7 @@
       }
     }
   ],
+  "required": ["signal_ref"],
   "properties": {
     "signal_agent_segment_id": {
       "type": "string",

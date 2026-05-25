@@ -107,13 +107,16 @@
           }
         },
         "required": [
-          "signal_ref",
           "signal_agent_segment_id",
           "name",
           "description",
           "signal_type",
           "coverage_percentage",
           "deployments"
+        ],
+        "anyOf": [
+          { "required": ["signal_ref"] },
+          { "required": ["signal_id"] }
         ],
         "additionalProperties": true
       }
