@@ -63,7 +63,7 @@ Each deployment target uses a `type` field to discriminate between platform-base
 | `min_coverage_percentage` | number | No | Minimum coverage requirement |
 
 <Note>
-`catalog_types`, the `catalog_signals` capability flag, and the deprecated `signal_id.source: "catalog"` value are legacy wire terms. In new prose, read them as provider-published signal definitions in adagents.json `signals[]`. They remain on the wire for 3.x compatibility and require a coordinated major-version rename if changed.
+`catalog_types`, the deprecated `catalog_signals` capability flag, and the deprecated `signal_id.source: "catalog"` value are legacy wire terms. In new prose, read them as provider-published signal definitions in adagents.json `signals[]`. Existing 3.x agents may continue to accept or emit them for compatibility, but new callers SHOULD use `signal_ref` and MUST NOT require `signals.features.catalog_signals` before using the Signals protocol.
 </Note>
 
 ## Response Structure

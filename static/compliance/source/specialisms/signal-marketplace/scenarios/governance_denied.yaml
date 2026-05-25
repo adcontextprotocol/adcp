@@ -30,7 +30,6 @@ context:
 agent:
   interaction_model: marketplace_catalog
   capabilities:
-    - catalog_signals
     - governance_aware
   examples:
     - "Any signal agent that honors governance before activation"

@@ -359,10 +359,10 @@ Signals protocol capabilities. Only present if `signals` is in `supported_protoc
 |-------|------|-------------|
 | `data_provider_domains` | string[] | Data provider domains this signals agent is authorized to resell. Buyers should fetch each provider's `adagents.json` for signal definitions and to verify authorization. |
 | `discovery_modes` | string[] | Discovery modes the agent supports on `get_signals`. `"brief"` (semantic discovery via `signal_spec` / `signal_refs`, with deprecated `signal_ids` accepted for older clients) is implicit and always supported. Declare `"wholesale"` to advertise that callers can omit `signal_spec` / `signal_refs` / `signal_ids` and enumerate the full priced signals feed. Agents not declaring `"wholesale"` MAY return `INVALID_REQUEST` for wholesale calls. Absent declaration is treated as `["brief"]`. |
-| `features.catalog_signals` | boolean | Legacy wire flag name for structured `signal_ref` references to provider-published signal definitions in adagents.json `signals[]`. |
+| `features.catalog_signals` | boolean | **Deprecated.** Legacy wire flag for structured `signal_ref` references to provider-published signal definitions in adagents.json `signals[]`. |
 
 <Note>
-`catalog_signals` remains on the wire for 3.x compatibility. New documentation describes the same capability as structured `signal_ref` references to provider-published signal definitions.
+`catalog_signals` is deprecated. Existing 3.x agents may continue to emit it for compatibility, but new agents SHOULD omit it and callers MUST NOT require it before using `signal_ref`. Treat `supported_protocols: ["signals"]`, `signals.data_provider_domains`, `signals.discovery_modes`, and the actual `get_signals` response as the capability surface.
 </Note>
 
 ### creative

@@ -31,17 +31,16 @@ narrative: |
   whether to honor `max_results`.
 
   Signal set sizing: agents whose signal sets return zero or one match for
-  "audience" SHOULD declare themselves outside the catalog_signals
-  capability rather than passing this storyboard with a one-page result —
-  a signal marketplace with a single audience signal isn't a marketplace.
+  "audience" SHOULD avoid claiming signal-marketplace behavior rather than
+  passing this storyboard with a one-page result — a signal marketplace with
+  a single audience signal isn't a marketplace.
   When such an agent runs the storyboard the first-page assertion fails
   loud, which is the right grading: this is not a `not_applicable` case,
-  it's a too-thin catalog claiming a capability it can't honor.
+  it's a too-thin signal set claiming behavior it can't honor.
 
 agent:
   interaction_model: marketplace_catalog
-  capabilities:
-    - catalog_signals
+  capabilities: []
   examples:
     - "Any AdCP agent that exposes a paginated get_signals over a non-trivial signal set"
 
@@ -54,7 +53,7 @@ prerequisites:
     No fixtures required. The agent's signal set is treated as given —
     the storyboard sends a broad query and asserts pagination shape
     invariants on whatever match set the agent returns. Any agent
-    declaring catalog_signals SHOULD have a non-trivial signal set matching
+    claiming signal-marketplace behavior SHOULD have a non-trivial signal set matching
     "audience".
   test_kit: "test-kits/acme-outdoor.yaml"
 
@@ -110,9 +109,9 @@ phases:
         title: "Request the first page with max_results=1"
         narrative: |
           The buyer asks for up to one signal under a broad
-          natural-language query. Agents whose catalogs contain more than
+          natural-language query. Agents whose signal sets contain more than
           one match (the expected case for any agent claiming
-          catalog_signals) MUST report `has_more=true` and a `cursor` the
+          signal-marketplace behavior) MUST report `has_more=true` and a `cursor` the
           buyer can follow.
 
           The runner captures `pagination.cursor` into

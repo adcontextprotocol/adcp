@@ -791,7 +791,8 @@
           "properties": {
             "catalog_signals": {
               "type": "boolean",
-              "description": "Legacy wire flag name for structured signal_ref references to provider-published signal definitions"
+              "description": "DEPRECATED. Legacy wire flag for structured signal_ref references to provider-published signal definitions. New agents SHOULD omit this flag; callers MUST NOT require it before using signal_ref with the Signals protocol.",
+              "deprecated": true
             }
           },
           "additionalProperties": {
