@@ -23,7 +23,7 @@ A hashed identifier record representing one person in a CRM audience. Contains a
 Plan-level include/exclude rules that structurally prevent prohibited targeting patterns. Each constraint is an [Audience Selector](#audience-selector). The governance agent evaluates `check_governance` requests against these constraints to detect prohibited targeting before any ad is served.
 
 **Audience Selector**
-A discriminated union describing one targeting criterion — either a signal reference (pointing to a specific `signal_id`) or a natural language description. Audience selectors appear in plan audience constraints and `planned_delivery.audience_targeting`.
+A discriminated union describing one targeting criterion - either a `signal_ref` or a natural language description. Audience selectors appear in plan audience constraints and `planned_delivery.audience_targeting`.
 
 **Action Source**
 Where an event physically occurred: `website`, `app`, `in_store`, `phone_call`, `chat`, `email`, `offline`, `system_generated`, or `other`. Set on each event in `log_event` and declared at the product level in `conversion_tracking.action_sources`.
@@ -170,6 +170,9 @@ A unique, unguessable identifier (UUID v4 or equivalent CSPRNG output) attached 
 **Impressions** (Media Buy Protocol)
 The number of times an ad is displayed, used for pricing and delivery tracking.
 
+**Included Signals**
+Non-selectable signal metadata on a product. `included_signals` describes signals already bundled into, included in, or seller-planned into the product; buyers do not add or remove these signals in package `signal_targeting_groups`. Use `signal_targeting_options` for buyer-selectable signal controls.
+
 **Individuals** (Signals Protocol)
 Size unit representing unique people, best for frequency capping and demographic targeting.
 
@@ -237,6 +240,9 @@ A specific pricing model offered by a publisher for a product, including rate, c
 **Product**
 Advertising inventory available for purchase, discovered through natural language queries.
 
+**Product Signal Targeting Option**
+A signal a seller makes selectable, defaulted, or fixed for a specific product through `signal_targeting_options`. Product-local options define their name and `value_type` inline; data-provider and signal-source options can use `signal_ref` as a reference to an authoritative external definition. Buyers select eligible options through package `signal_targeting_groups`.
+
 **Prompt**
 Natural language description used to discover relevant signals (e.g., "high-income sports enthusiasts", "premium automotive content", "users in urban areas during evening hours").
 
@@ -259,6 +265,9 @@ The number or percentage of unique individuals exposed to an advertisement at le
 **Relationship** (brand.json field)
 Field on brand.json properties declaring how the brand relates to a property: `owned` (default), `direct`, `delegated`, or `ad_network`. Uses the same values as `delegation_type` in adagents.json. Non-owned properties create bilateral verification — the operator declares the relationship in brand.json, the publisher confirms by authorizing the operator's agent in adagents.json. The AdCP equivalent of sellers.json.
 
+**Resolution Model**
+Product-level signal targeting rule that tells buyers how selected signals are applied. `direct_targeting` means selected signals behave like targeting predicates on the package inventory. `seller_planned` means selected signals are planning inputs the seller resolves against product-specific inventory, timing, availability, reach, or pacing constraints.
+
 **Restricted Attribute**
 A personal data category (e.g., `health_data`, `racial_ethnic_origin`) that must not be used for targeting under one or more policy categories. Restricted attributes are defined at the registry level (GDPR Article 9 categories) and self-declared on signal definitions. Governance agents match restricted attributes structurally — if a signal carries a restricted attribute that a plan's policy categories prohibit, targeting with that signal is denied.
 
@@ -278,6 +287,9 @@ An MCP server that exposes publisher inventory for discovery and purchase. Handl
 
 **Seller**
 The AdCP participant role that provides advertising inventory. A seller exposes products, accepts media buys, manages creative delivery, and (optionally) provides conversion tracking capabilities. In AdCP schemas, "seller" is the standard term for this role (not "platform"). The seller's technical capabilities are declared via `get_adcp_capabilities`.
+
+**Selection Group**
+A product-defined composability bucket on `signal_targeting_options`. Sellers use `selection_group` and `selection_group_rules` to declare which signals can be OR-combined in one package signal group and which must be represented as separate ANDed clauses.
 
 **Screen Time**
 Total duration an ad was displayed across all DOOH screens, measured in seconds. Used for DOOH delivery reporting.
@@ -311,6 +323,12 @@ A source that issues or activates signals. Source-native signals that are not pu
 
 **Signal Tags**
 Tags used to group related signals within a data provider's published signal definitions. Enable efficient authorization (authorize "all automotive signals" rather than listing individual IDs). Tags must be lowercase alphanumeric with underscores/hyphens.
+
+**Signal Targeting Groups**
+The package-level grouped expression for buyer-selected seller-offered signals. `targeting_overlay.signal_targeting_groups` has top-level `operator: "all"` and child `any` groups for inclusion or `none` groups for exclusion.
+
+**Signal Targeting Rules**
+Product-level rules that govern package signal selection: resolution model, optional/required/fixed selection, min/max counts, selection group limits, and group-count limits. These rules live on the product because one seller may route different products through different ad servers or planning layers.
 
 **Signal Type**
 Classification of signals as "marketplace" (third-party), "owned" (first-party), "destination" (bundled with media), "contextual", "geographical", or "temporal".

@@ -152,7 +152,7 @@ if [ "${OVERLAY}" -eq 1 ]; then
   # against current-PR fixtures, not the SDK-published snapshot. Without
   # this, edits under static/compliance/source/ would silently no-op
   # locally and only surface in CI.
-  bash "${SCRIPT_DIR}/overlay-compliance-cache.sh" || true
+  bash "${SCRIPT_DIR}/overlay-compliance-cache.sh"
 else
   echo "Skipping compliance source overlay (${LABEL})."
 fi
@@ -181,6 +181,9 @@ fi
 
 REGRESSED=0
 SUMMARY=""
+REQUIRED_CLEAN_CURRENT_SALES=(
+  "media_buy_seller/canonical_formats"
+)
 
 for entry in "${TENANTS[@]}"; do
   tenant="${entry%%:*}"
@@ -224,6 +227,21 @@ for entry in "${TENANTS[@]}"; do
     else
       failed_floor="passing steps ${passed} < ${min_passed}"
     fi
+  fi
+
+  if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "sales" ]; then
+    for storyboard_id in "${REQUIRED_CLEAN_CURRENT_SALES[@]}"; do
+      if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" "${log}" >/dev/null; then
+        echo "  ✓ required-clean ${storyboard_id}"
+      else
+        status="✗"
+        if [ -n "${failed_floor}" ]; then
+          failed_floor="${failed_floor}; required-clean ${storyboard_id} did not pass"
+        else
+          failed_floor="required-clean ${storyboard_id} did not pass"
+        fi
+      fi
+    done
   fi
 
   echo "  ${status} clean=${clean} passed=${passed}"

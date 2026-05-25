@@ -877,6 +877,23 @@ async function runTests() {
     'Targeting overlay accepts deprecated flat signal_targeting during migration window'
   );
   await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'wholesale',
+      filters: {
+        signal_targeting: [
+          {
+            signal_id: legacySignalId,
+            value_type: 'binary',
+            value: true,
+            targeting_mode: 'include'
+          }
+        ]
+      }
+    },
+    'get_products filters.signal_targeting accepts deprecated signal_id during SignalRef migration window'
+  );
+  await testSchemaValidation(
     '/schemas/core/wholesale-feed-event.json',
     {
       event_id: '018f4f28-6b5d-7f50-9d57-111111111111',

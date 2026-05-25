@@ -7,7 +7,7 @@
   "properties": {
     "operator": {
       "type": "string",
-      "const": "all",
+      "enum": ["all"],
       "description": "Groups-level operator. Required even though v1 only supports 'all': every child group must be satisfied."
     },
     "groups": {

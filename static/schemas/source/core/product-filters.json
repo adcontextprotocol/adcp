@@ -202,12 +202,12 @@
     },
     "signal_targeting": {
       "type": "array",
-      "description": "Filter to products where the requested signals are buyer-selectable and jointly composable: the signals are available through inline signal_targeting_options and/or through get_signals for wholesale products that allow signal targeting but omit inline options, signal_targeting_allowed is true, and the requested set can coexist under the product's signal_targeting_rules. Each filter entry may include targeting_mode='include' or 'exclude' to require the product option or product rules to support that use. When targeting_mode is omitted, include is assumed. SignalRef scope 'product' is seller-local exact option matching only, not a portable semantic identifier across products or sellers; buyers wanting portable discovery should use scope 'data_provider' or get_signals. Deprecated bundled/non-selectable data_provider_signals do not satisfy this filter because they cannot be selected on create_media_buy.",
+      "description": "Filter to products where the requested signals are buyer-selectable and jointly composable: the signals are available through inline signal_targeting_options and/or through get_signals for wholesale products that allow signal targeting but omit inline options, signal_targeting_allowed is true, and the requested set can coexist under the product's signal_targeting_rules. Each filter entry uses signal_ref, with deprecated signal_id accepted during the SignalRef migration window, and may include targeting_mode='include' or 'exclude' to require the product option or product rules to support that use. When targeting_mode is omitted, include is assumed. SignalRef scope 'product' is seller-local exact option matching only, not a portable semantic identifier across products or sellers; buyers wanting portable discovery should use scope 'data_provider' or get_signals. included_signals and deprecated bundled/non-selectable data_provider_signals do not satisfy this filter because they cannot be selected on create_media_buy.",
       "items": {
         "type": "object",
         "allOf": [
           {
-            "$ref": "/schemas/core/signal-targeting-expression.json"
+            "$ref": "/schemas/core/signal-targeting.json"
           }
         ],
         "properties": {
