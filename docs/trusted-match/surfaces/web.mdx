@@ -182,6 +182,46 @@ The TMP Prebid module is a Real-Time Data (RTD) module that replaces vendor-spec
 
 The temporal decorrelation between context and identity requests is a privacy measure. Random delay alone is insufficient — fixed ordering (Identity always after Context) leaks the pairing through ordering. The module randomizes both the delay and which request is sent first.
 
+### Impression ID Substitution
+
+In the web/Prebid surface the **Prebid TMP module is the decision layer** in the three-layer [`{IMPRESSION_ID}` minting hierarchy](/docs/creative/universal-macros#tmp-impression-identification) — publisher first, decision layer second, buyer-at-TMPX-decode last. The module checks whether the publisher has already supplied an impression_id (via `adUnit.tmp.impressionId` or an equivalent first-party hook); if so, it passes that value through. If not, the module mints its own. Either way, it exposes the value on the GAM ad request as the targeting key `tmp_impression_id`. This is the value the buyer's impression pixel uses as the cross-identity dedup key — essential for context-only impressions where `{TMPX}` is absent, and useful even when `{TMPX}` is present so the buyer's dedup path stays uniform.
+
+**Format is implementation choice.** The Prebid module MAY use ULID, UUID (any version), or any collision-resistant identifier scheme — the protocol does not pin a format.
+
+**Optional optimization.** When Prebid's `enableTIDs` config is `true`, the module MAY reuse `adUnit.transactionId` as the impression_id rather than minting a separate one. Since `enableTIDs` is opt-out in Prebid.js 8+ (for privacy reasons), most deployments need to mint their own.
+
+```javascript
+import { ulid } from 'ulid';
+
+// In the TMP Prebid module, at auctionInit.
+// Resolve the impression_id in priority order:
+//   1. publisher pre-mint (e.g., server-side, attached as adUnit.tmp.impressionId)
+//   2. Prebid transactionId (decision-layer reuse) when enableTIDs is on
+//   3. fresh decision-layer mint (ULID, UUID, or any collision-resistant scheme)
+function resolveImpressionId(adUnit) {
+  if (adUnit.tmp?.impressionId) {
+    return adUnit.tmp.impressionId;  // publisher-side mint — highest priority
+  }
+  if (pbjs.getConfig('enableTIDs') && adUnit.transactionId) {
+    return adUnit.transactionId;     // reuse Prebid's tid when available
+  }
+  return ulid();                     // decision-layer fresh mint
+}
+const impId = resolveImpressionId(adUnit);
+pbjs.setTargeting(adUnit.code, { tmp_impression_id: impId });
+```
+
+The buyer's creative tracking URL, trafficked through GAM, references the targeting key via the standard GAM macro:
+
+```
+https://buyer.example/imp
+  ?imp_id=%%PATTERN:tmp_impression_id%%
+  &tmpx=%%PATTERN:tmp_tmpx%%
+  &cb=%%CACHEBUSTER%%
+```
+
+At render, GAM substitutes the KVs and the buyer's impression tracker receives the impression_id as an opaque string. The KV name `tmp_impression_id` deliberately avoids the `hb_*` prefix (Prebid's own namespace) and mirrors the `adcp_*` convention used elsewhere on this page for TMP-emitted targeting.
+
 ## Sequence Diagram
 
 ```

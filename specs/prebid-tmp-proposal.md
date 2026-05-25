@@ -119,19 +119,27 @@ var adUnits = [{
 
 ### What Prebid.js does internally
 
-1. **On auction init**: For each ad unit with `tmp` config, call
-   `buildContextMatchRequest()` from `@adcp/client/tmp` and send to the router.
+1. **On auction init**: For each ad unit with `tmp` config, resolve the per-impression
+   identifier (`tmp_impression_id`) in priority order — (1) publisher-supplied value
+   via `adUnit.tmp.impressionId`, (2) reuse of `adUnit.transactionId` when
+   `enableTIDs` is true, or (3) a fresh decision-layer mint (ULID, UUID, or any
+   collision-resistant scheme). Call `buildContextMatchRequest()` from
+   `@adcp/client/tmp` and send to the router.
 2. **On context match response**: Store offers and signals per ad unit.
 3. **After temporal delay** (randomized): Call `buildIdentityMatchRequest()` with
    the user's token (from existing identity module) and ALL active package IDs.
    Send to the router.
 4. **On identity match response**: Call `joinResults()` to intersect offers with
    eligibility. Call `toTargetingKVs()` to flatten to key-values.
-5. **Set targeting**: Apply key-values to the ad unit before bid requests go out.
-   GAM line items match on `adcp_pkg` and `adcp_seg`. Signals also flow to
-   bidders via `ortb2.site.ext` and `ortb2.user.data` — the same injection
-   points RTD modules use today. Bidders see enriched bid requests without
-   needing to know TMP exists.
+5. **Set targeting**: Apply key-values to the ad unit before bid requests go out,
+   including `tmp_impression_id` so the buyer's creative tracking URL can
+   substitute it via `%%PATTERN:tmp_impression_id%%`. GAM line items match on
+   `adcp_pkg` and `adcp_seg`. Signals also flow to bidders via
+   `ortb2.site.ext` and `ortb2.user.data` — the same injection points RTD
+   modules use today. Bidders see enriched bid requests without needing to
+   know TMP exists.
+
+See [Impression ID Substitution](/docs/trusted-match/surfaces/web#impression-id-substitution) for the full rationale, the `enableTIDs` reuse optimization, and the GAM creative URL pattern.
 
 The `@adcp/client/tmp` package handles steps 1, 3, and 4 as pure functions. Prebid
 handles the HTTP calls, timing, and ad unit targeting — exactly what Prebid is
@@ -410,6 +418,24 @@ import {
   joinResults,
   toTargetingKVs,
 } from '@adcp/client/tmp';
+import { ulid } from 'ulid';
+
+// Resolve the per-impression identifier in priority order:
+//   1. publisher-side mint (e.g., server-side, attached as adUnit.tmp.impressionId)
+//   2. Prebid transactionId (decision-layer reuse) when enableTIDs is on
+//   3. fresh decision-layer mint (ULID, UUID, or any collision-resistant scheme)
+// The buyer's impression tracker is the third layer of fallback at TMPX decode
+// time; that's invisible to this module — we just emit whatever value we
+// resolved here.
+function resolveImpressionId(adUnit) {
+  if (adUnit.tmp?.impressionId) {
+    return adUnit.tmp.impressionId;
+  }
+  if (getGlobal().getConfig('enableTIDs') && adUnit.transactionId) {
+    return adUnit.transactionId;
+  }
+  return ulid();
+}
 
 // Register as a Prebid subsystem
 function init(config, userConsent) {
@@ -422,8 +448,12 @@ function init(config, userConsent) {
 
     if (!tmpUnits.length) return next.call(this, bidRequestConfig);
 
-    // Phase 1: Context Match (all units in parallel)
+    // Phase 1: Context Match (all units in parallel).
+    // Mint a per-impression identifier per unit at auction init so it survives
+    // through any join path (identity-bearing or context-only).
     const contextPromises = tmpUnits.map(unit => {
+      unit.tmpImpressionId = resolveImpressionId(unit);
+
       const req = buildContextMatchRequest({
         propertyRid,
         propertyType,
@@ -469,6 +499,7 @@ function init(config, userConsent) {
 
                 const result = joinResults(contextRes, idRes);
                 const kvs = toTargetingKVs(result);
+                kvs.tmp_impression_id = unit.tmpImpressionId;
                 setTargetingForAdUnit(unit.code, kvs);
               }
               next.call(this, bidRequestConfig);
@@ -492,6 +523,7 @@ function applyContextOnly(contextMap, tmpUnits, next, bidRequestConfig) {
 
     // Without identity, activate all offered packages
     const kvs = {};
+    kvs.tmp_impression_id = unit.tmpImpressionId;
     kvs.adcp_pkg = contextRes.offers.map(o => o.package_id);
     if (contextRes.signals?.segments) kvs.adcp_seg = contextRes.signals.segments;
     if (contextRes.signals?.targeting_kvs) {
