@@ -497,6 +497,16 @@ export const TOOL_DEFINITIONS = [
           },
           description: "Property inventory types",
         },
+        formats: {
+          type: "array",
+          items: { type: "object" },
+          description: "Optional adagents.json formats[] publisher catalog entries",
+        },
+        placements: {
+          type: "array",
+          items: { type: "object" },
+          description: "Optional adagents.json placements[] entries",
+        },
         contact: {
           type: "object",
           properties: {
@@ -1775,6 +1785,8 @@ export class MCPToolHandler {
 
         const authorizedAgents = args?.authorized_agents as Array<{ url: string; authorized_for?: string }> || [];
         const propertyItems = args?.properties as Array<{ type: string; name: string }> || [];
+        const formats = args?.formats as Array<Record<string, unknown>> | undefined;
+        const placements = args?.placements as Array<Record<string, unknown>> | undefined;
         const contact = args?.contact as { name?: string; email?: string } | undefined;
 
         // Validate agent URLs
@@ -1802,6 +1814,12 @@ export class MCPToolHandler {
         };
         if (contact) {
           adagentsJson.contact = contact;
+        }
+        if (formats) {
+          adagentsJson.formats = formats;
+        }
+        if (placements) {
+          adagentsJson.placements = placements;
         }
 
         try {

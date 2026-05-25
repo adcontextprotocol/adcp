@@ -41,7 +41,7 @@
   "format_options": [
     {
       "format_kind": "video_hosted",
-      "capability_id": "meta_reels",
+      "format_option_id": "meta_reels",
       "v1_format_ref": [
         {
           "agent_url": "https://creative.adcontextprotocol.org/translated/meta",

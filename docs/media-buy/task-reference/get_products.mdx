@@ -182,6 +182,21 @@ The seller must declare `features.property_list_filtering: true` in [`get_adcp_c
 | `required_metrics` | string[] ([metric vocabulary](/docs/media-buy/media-buys/optimization-reporting)) | Filter to products whose `reporting_capabilities.available_metrics` is a superset of these metrics — i.e., products that commit to reporting all listed metrics in delivery. Use for capability discovery (e.g., `["completed_views"]` for a CTV CPCV buy). Sellers MUST silently exclude products that cannot meet the list — filter-not-fail; do not return an error. The product's declared `available_metrics` becomes the binding reporting contract carried into the resulting media buy. |
 | `required_vendor_metrics` | object[] | Filter to products whose `reporting_capabilities.vendor_metrics` covers vendor-defined metrics (proprietary attention, emissions, panel demographics, brand-lift surveys, etc.). Each entry pins `vendor` (BrandRef) and/or `metric_id` — at least one. Cross-vendor discovery (e.g., "any attention measurement") is the buyer agent's responsibility: resolve which vendors offer a category via the vendors' `brand.json` records, then enumerate them as filter entries. Same filter-not-fail semantics as `required_metrics`. |
 
+### Placement fields
+
+`get_products` returns product placement data when the seller includes `placements` or the buyer asks for it through `fields`. Placement IDs are publisher-scoped. Product placements should reference the publisher's public `adagents.json` placement declarations with `{publisher_domain, placement_id}` when a publisher declaration exists. Seller-private placement IDs, source/origin details, and delivery-system mappings must stay out of the response.
+
+Each returned placement may carry:
+
+| Field | Meaning |
+|-------|---------|
+| `placement_id` | Placement identifier in the publisher namespace. Buyers reference this with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `placement_ids` strings are only unambiguous in single-publisher contexts. |
+| `publisher_domain` | Domain whose `adagents.json` defines the publisher-referenced placement. New multi-publisher products SHOULD include it. When omitted on legacy products, buyers may interpret `placement_id` relative to the seller agent's own publisher domain. |
+| `mode` | `targetable` means the buyer may reference the publisher-scoped placement, for example in `creative_assignments[].placement_refs`. `included` means the placement is part of the product composition but not buyer-selectable. |
+| `format_ids` / `format_options` | Placement-specific creative support. Product-level formats are the upper bound; placement-level formats narrow the effective accepted set for that placement and must not add formats the product does not accept. |
+
+Publishers can authorize sales agents for specific publisher placements using `authorized_agents[].placement_ids` or `authorized_agents[].placement_tags` in `adagents.json`. Sellers should only return publisher-referenced placements they are authorized to sell.
+
 Signal-targeting filter example:
 
 ```json

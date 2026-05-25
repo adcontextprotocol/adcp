@@ -149,63 +149,103 @@ Week 3 is intentionally omitted — a dark period for lift measurement. Each fli
 
 ### Creative Assignment and Placement Targeting
 
-When a product defines multiple placements, buyers can assign different creatives to different placements while still purchasing the entire product.
+When a product defines multiple buyer-targetable placements, buyers can assign different creatives to those placements while still purchasing the product as a package.
 
 **Key Points:**
-- **Packages buy the entire product** - you cannot target individual placements at the package level
-- Placement targeting happens **only at the creative assignment level**
-- Creatives without `placement_ids` run on **all placements** in the product
+- **Packages buy the product** - product-level `placements[].mode` says which publisher-scoped placements are buyer-targetable
+- **Placement identity is publisher-scoped** - publisher-referenced placements resolve as `{publisher_domain, placement_id}` against the publisher's `adagents.json`
+- **Inline placements are still allowed** - if there is no public publisher placement declaration, the sales agent may define an inline placement with `name`, formats, and public buyer-facing detail; its `placement_id` is still interpreted in the named publisher namespace, or in the seller agent's own publisher namespace when `publisher_domain` is omitted in a single-publisher legacy context
+- Placement targeting happens at the creative assignment level unless a future product explicitly defines another targeting surface
+- Creatives without `placement_refs` or `placement_ids` run on all buyer-targetable placements in the package
+- If both `placement_refs` and legacy `placement_ids` are present, `placement_refs` wins and sellers ignore `placement_ids`
+- Placements with `mode: "included"` are part of the product's public composition and cannot be referenced in `creative_assignments[].placement_refs`
+- Use `placement_refs` for multi-publisher products. `placement_ids` remains a legacy shorthand only when the placement namespace is unambiguous.
+- Publishers can authorize agents for specific placements using `authorized_agents[].placement_ids` or governed `placement_tags` in `adagents.json`; the seller should only return publisher-referenced placements it is authorized to sell
 
 **Example Workflow:**
 
-1. **Product defines placements:**
+1. **Product returns targetable placements:**
 ```json
 {
-  "product_id": "news_site_premium",
+  "product_id": "network_premium",
   "placements": [
     {
+      "kind": "publisher_ref",
+      "publisher_domain": "daily-pulse.example",
       "placement_id": "homepage_banner",
       "name": "Homepage Banner",
+      "mode": "targetable",
       "format_ids": [{"agent_url": "...", "id": "display_728x90"}]
     },
     {
+      "kind": "publisher_ref",
+      "publisher_domain": "metro-report.example",
+      "placement_id": "homepage_banner",
+      "name": "Homepage Banner",
+      "mode": "targetable",
+      "format_ids": [{"agent_url": "...", "id": "display_728x90"}]
+    },
+    {
+      "kind": "seller_inline",
+      "publisher_domain": "daily-pulse.example",
       "placement_id": "article_sidebar",
       "name": "Article Sidebar",
+      "mode": "targetable",
       "format_ids": [{"agent_url": "...", "id": "display_300x250"}]
+    },
+    {
+      "kind": "seller_inline",
+      "publisher_domain": "daily-pulse.example",
+      "placement_id": "sponsorship_lockup",
+      "name": "Sponsorship lockup",
+      "mode": "included"
     }
   ]
 }
 ```
+
+The first two placements both use `placement_id: "homepage_banner"`, but they are distinct because each is scoped by a different `publisher_domain`. The third placement is inline because it has no catalog reference; it still carries `publisher_domain` because this product spans multiple publisher namespaces.
 
 2. **Buyer creates package (buys entire product) and assigns different creatives to each placement:**
 ```json
 {
-  "product_id": "news_site_premium",
+  "product_id": "network_premium",
   "creative_assignments": [
     {
-      "creative_id": "creative_homepage",
-      "placement_ids": ["homepage_banner"]
+      "creative_id": "creative_daily_pulse",
+      "placement_refs": [
+        {
+          "publisher_domain": "daily-pulse.example",
+          "placement_id": "homepage_banner"
+        }
+      ]
     },
     {
-      "creative_id": "creative_article",
-      "placement_ids": ["article_sidebar"]
+      "creative_id": "creative_metro_report",
+      "placement_refs": [
+        {
+          "publisher_domain": "metro-report.example",
+          "placement_id": "homepage_banner"
+        }
+      ]
     }
   ]
 }
 ```
 
-3. **Or assign one creative to all placements (omit placement_ids):**
+3. **Or assign one creative to all targetable placements (omit placement_refs and placement_ids):**
 ```json
 {
-  "product_id": "news_site_premium",
+  "product_id": "network_premium",
   "creative_assignments": [
     {
       "creative_id": "creative_universal"
-      // No placement_ids = runs on all placements in the product
     }
   ]
 }
 ```
+
+Omitting both `placement_refs` and legacy `placement_ids` means the creative runs on all buyer-targetable placements in the package.
 
 **Use Cases:**
 - **Format-specific placements**: Homepage takes 728x90, sidebar takes 300x250

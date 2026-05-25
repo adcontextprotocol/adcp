@@ -270,6 +270,14 @@
           "$ref": "/schemas/core/placement.json",
           "description": "Represents a specific ad placement within a product's inventory"
         },
+        "placement-ref": {
+          "$ref": "/schemas/core/placement-ref.json",
+          "description": "Reference to a publisher-scoped placement"
+        },
+        "format-option-ref": {
+          "$ref": "/schemas/core/format-option-ref.json",
+          "description": "Reference to a publisher-scoped format option"
+        },
         "placement-definition": {
           "$ref": "/schemas/core/placement-definition.json",
           "description": "Canonical placement definition published in a publisher's adagents.json"
