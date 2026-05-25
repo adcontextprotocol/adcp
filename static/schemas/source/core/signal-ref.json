@@ -37,7 +37,7 @@
     },
     {
       "type": "object",
-      "description": "Data-provider-scoped signal. The signal_id resolves through the data provider's published adagents.json signals[] and can be authorization-verified against that file's authorized_agents rules.",
+      "description": "Data-provider-scoped signal. The signal_id resolves through the data provider's published adagents.json signals[] and can be authorization-verified there.",
       "properties": {
         "scope": {
           "type": "string",
@@ -46,12 +46,12 @@
         },
         "data_provider_domain": {
           "type": "string",
-          "description": "Domain that publishes the signal definition in adagents.json signals[].",
+          "description": "Domain that publishes the signal definition in its adagents.json signals[].",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
         },
         "signal_id": {
           "type": "string",
-          "description": "Signal identifier within the data provider's published signal definitions.",
+          "description": "Signal identifier within the data provider's published adagents.json signals[].",
           "pattern": "^[a-zA-Z0-9_-]+$"
         }
       },
@@ -68,7 +68,7 @@
     },
     {
       "type": "object",
-      "description": "Signal-source-scoped signal. Use this for source-native signals that are not published in upstream adagents.json signals[]. The buyer trusts the issuing signal source for this identity; use scope 'data_provider' instead when the signal is published in adagents.json signals[], even if the publishing domain is also the seller or signal source.",
+      "description": "Signal-source-scoped signal. Use this for source-native signals that are not published in upstream adagents.json signals[]. The buyer trusts the issuing signal source for this identity; use scope 'data_provider' instead when the signal is published in adagents.json signals[], even if the publisher is also the seller or signal source.",
       "properties": {
         "scope": {
           "type": "string",

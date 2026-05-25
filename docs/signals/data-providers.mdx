@@ -107,7 +107,7 @@ Following [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) well-known U
 
 Each signal in the `signals` array describes a targetable segment:
 
-The signal definition is not itself a `signal_ref`. In `adagents.json`, the hosting domain supplies the namespace, so the definition only needs its local `id`. A media-buy product that makes this provider-published signal selectable points back to it with `signal_ref: { "scope": "data_provider", "data_provider_domain": "<this adagents.json domain>", "signal_id": "<signals[].id>" }`. If a seller publishes its own signal definitions, the seller can be the data-provider domain for these references; `scope: "data_provider"` means `adagents.json`-resolved, not necessarily third-party.
+The signal definition is not itself a `signal_ref`. In `adagents.json`, the hosting domain supplies the namespace, so the definition only needs its local `id`. A media-buy product that makes this provider-published signal selectable points back to it with `signal_ref: { "scope": "data_provider", "data_provider_domain": "<this adagents.json domain>", "signal_id": "<signals[].id>" }`. If a seller publishes its own `signals[]`, the seller can be the data-provider domain for these references; `scope: "data_provider"` means adagents.json-resolved, not necessarily third-party.
 
 ### Required Fields
 
@@ -299,15 +299,15 @@ Based on `value_type`, buyers construct targeting expressions:
 
 ## Local and External Signal References
 
-Not all signals come from third-party data providers. Sellers and publishers can also define their own signals - custom models, first-party data, or composite segments - the same way they define other named resources in `adagents.json`. When those signals are meant to be portable and externally referenceable, publish them in the `signals` array and reference them from products with `scope: "data_provider"` using the seller's own publishing domain. When they are only meaningful within one product/package context, expose them only as product-local `signal_targeting_options` with `scope: "product"`.
+Not all signals come from third-party data provider catalogs. Sellers and publishers can also define their own signals - custom models, first-party data, or composite segments - the same way they define other named resources in `adagents.json`. When those signals are meant to be portable and externally referenceable, publish them in the `signals` array and reference them from products with `scope: "data_provider"` using the seller's own catalog domain. When they are only meaningful within one product/package context, expose them only as product-local `signal_targeting_options` with `scope: "product"`.
 
 Use `signal_ref` for `get_signals`, media-buy product targeting, and package-level buy-time targeting:
 
 | Reference | Meaning |
 |--------|--------|
 | `{ "scope": "product", "signal_id": "high_intent_shoppers" }` | Product-local signal option, meaningful inside the selected product/package context |
-| `{ "scope": "data_provider", "data_provider_domain": "pinnacle-data.example", "signal_id": "auto_intenders" }` | Signal defined by a data provider's published `adagents.json` `signals[]` |
-| `{ "scope": "signal_source", "signal_source_url": "https://signals.example/.well-known/adcp/signals", "signal_id": "custom_model_run_123" }` | Source-native signal not published in upstream `adagents.json` `signals[]` |
+| `{ "scope": "data_provider", "data_provider_domain": "pinnacle-data.example", "signal_id": "auto_intenders" }` | Signal defined in a data provider's published adagents.json `signals[]` |
+| `{ "scope": "signal_source", "signal_source_url": "https://signals.example/.well-known/adcp/signals", "signal_id": "custom_model_run_123" }` | Source-native signal not published in upstream adagents.json `signals[]` |
 
 ```json
 {

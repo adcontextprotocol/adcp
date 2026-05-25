@@ -722,6 +722,16 @@ async function runTests() {
     },
     'Product accepts signal_targeting_options and seller-planned resolution when signal_targeting_allowed is true'
   );
+  await testSchemaValidation(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options_source: 'get_signals',
+      signal_targeting_rules: { resolution_model: 'direct_targeting', selection_mode: 'optional' }
+    },
+    'Product accepts signal_targeting_rules without inline options when options source is get_signals'
+  );
   await testSchemaRejection(
     '/schemas/core/product.json',
     {
@@ -753,10 +763,27 @@ async function runTests() {
     '/schemas/core/product.json',
     {
       ...productBase,
+      signal_targeting_options_source: 'get_signals'
+    },
+    'Product rejects signal_targeting_options_source without signal_targeting_allowed: true'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options_source: 'product'
+    },
+    'Product rejects product-backed signal_targeting_options_source without inline options'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
       signal_targeting_allowed: true,
       signal_targeting_rules: { selection_mode: 'optional' }
     },
-    'Product rejects signal_targeting_rules without signal_targeting_options'
+    'Product rejects signal_targeting_rules without inline options or get_signals options source'
   );
   log('');
 

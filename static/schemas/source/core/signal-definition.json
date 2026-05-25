@@ -2,13 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/signal-definition.json",
   "title": "Signal Definition",
-  "description": "Definition of a signal published in adagents.json signals[]. The publishing domain supplies the namespace, so this definition carries a local id rather than a signal_ref. Media-buy products reference this definition with signal_ref scope 'data_provider', data_provider_domain set to the publishing domain, and signal_id set to this id. The signal definition is the authoritative place for stable signal meaning, disclosure metadata, taxonomy references, and data-subject-rights routing. Buy-time product composition rules live on product signal targeting options, not here.",
+  "description": "Definition of a signal in published adagents.json signals[]. The publishing domain supplies the namespace, so this definition carries a local id rather than a signal_ref. Media-buy products reference this definition with signal_ref scope 'data_provider', data_provider_domain set to the publishing domain, and signal_id set to this id.",
   "type": "object",
   "properties": {
     "id": {
       "type": "string",
       "pattern": "^[a-zA-Z0-9_-]+$",
-      "description": "Signal identifier within this domain's published signal definitions"
+      "description": "Signal identifier within the publishing domain's adagents.json signals[]"
     },
     "name": {
       "type": "string",

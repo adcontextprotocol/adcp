@@ -791,7 +791,7 @@
           "properties": {
             "catalog_signals": {
               "type": "boolean",
-              "description": "Supports signals published in data provider adagents.json signals[] with structured signal_ref references"
+              "description": "Supports signals from data provider catalogs with structured signal_ref references"
             }
           },
           "additionalProperties": {

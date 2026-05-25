@@ -205,6 +205,7 @@
           "conversion_tracking",
           "data_provider_signals",
           "signal_targeting_allowed",
+          "signal_targeting_options_source",
           "signal_targeting_options",
           "signal_targeting_rules",
           "max_optimization_goals",

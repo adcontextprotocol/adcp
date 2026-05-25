@@ -73,13 +73,13 @@ Signals use `signal_ref.scope` as the identity discriminator:
 
 | Scope | Fields | Verification |
 |--------|--------|--------------|
-| `data_provider` | `data_provider_domain` + `signal_id` | Verifiable via the publisher domain's `adagents.json` `signals[]` |
+| `data_provider` | `data_provider_domain` + `signal_id` | Verifiable via the publisher domain's adagents.json `signals[]` |
 | `signal_source` | `signal_source_url` + `signal_id` | Trust-based — buyer trusts the issuing signal source |
 | `product` | `signal_id` | Product-local; meaningful only in the selected product/package context |
 
-**Data-provider signals** come from external data providers who publish definitions at `/.well-known/adagents.json`. Buyers can independently verify that a seller or signal source is authorized to resell them.
+**Data-provider signals** come from external data providers who publish their offerings at `/.well-known/adagents.json`. Buyers can independently verify that a seller or signal source is authorized to resell them.
 
-**Signal-source signals** are proprietary to a signal source and use `scope: "signal_source"` with that source's `signal_source_url` when they are not published in `adagents.json` `signals[]`.
+**Signal-source signals** are proprietary to a signal source and use `scope: "signal_source"` with that source's `signal_source_url` when they are not published in adagents.json `signals[]`.
 
 The legacy `signal_id.source` object is deprecated. New `get_signals`, product targeting, and buy-time references use `signal_ref`.
 
@@ -138,8 +138,8 @@ Once signals are activated on a platform, all usage reporting, billing, and camp
 
 Data providers control who can resell their signals via the `authorized_agents` array in their `adagents.json`. Two patterns:
 
-- **Signal IDs**: Authorize specific local `signals[].id` values in the data provider's published signal definitions — fine-grained control
-- **Signal tags**: Authorize all signals with certain tags — scales as the signal set grows
+- **Signal IDs**: Authorize specific local `signals[].id` values in the data provider's catalog — fine-grained control
+- **Signal tags**: Authorize all signals with certain tags — scales as catalogs grow
 
 Buyers can verify authorization by fetching the data provider's `adagents.json` and checking whether the seller or signal source appears in `authorized_agents`.
 

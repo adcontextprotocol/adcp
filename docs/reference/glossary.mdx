@@ -89,7 +89,7 @@ Direct advertiser or agency account with specific seat access and negotiated rat
 An organization that owns and publishes audience or contextual data (e.g., Polk, Experian, Acxiom). Data providers publish signal definitions via `/.well-known/adagents.json` on their domain, enabling discovery and authorization verification. See [Data Provider Guide](/docs/signals/data-providers).
 
 **Data Provider Domain**
-The domain where a data provider publishes signal definitions (e.g., `polk.com`). Used in `signal_ref` objects to reference provider-published signals: `{ "scope": "data_provider", "data_provider_domain": "polk.com", "signal_id": "likely_tesla_buyers" }`.
+The domain where a data provider publishes adagents.json `signals[]` definitions (e.g., `polk.com`). Used in `signal_ref` objects to reference provider-published signals: `{ "scope": "data_provider", "data_provider_domain": "polk.com", "signal_id": "likely_tesla_buyers" }`.
 
 **Daypart**
 Specific time-of-day segment for time-based advertising, commonly used in DOOH (e.g., morning_commute, evening_prime, overnight).
@@ -304,10 +304,10 @@ The process of finding relevant data signals (audiences, contextual, geographica
 Deprecated structured identifier previously used by the Signals Protocol for discovery and activation. New discovery, activation, product targeting, and buy-time surfaces use [Signal Ref](#signal-ref).
 
 **Signal Ref**
-A structured signal reference using `scope` as the discriminator. `scope: "data_provider"` references a signal published in `adagents.json` `signals[]` (`data_provider_domain` + `signal_id`, verifiable). `scope: "signal_source"` references a source-native signal (`signal_source_url` + `signal_id`, trust-based). `scope: "product"` references a product-local signal option meaningful only inside the selected product/package context.
+A structured signal reference using `scope` as the discriminator. `scope: "data_provider"` references a signal published in adagents.json `signals[]` (`data_provider_domain` + `signal_id`, verifiable). `scope: "signal_source"` references a source-native signal (`signal_source_url` + `signal_id`, trust-based). `scope: "product"` references a product-local signal option meaningful only inside the selected product/package context.
 
 **Signal Source**
-A source that issues or activates signals. Source-native signals that are not published in `adagents.json` `signals[]` use `signal_ref.scope: "signal_source"` with `signal_source_url`.
+A source that issues or activates signals. Source-native signals that are not published in adagents.json `signals[]` use `signal_ref.scope: "signal_source"` with `signal_source_url`.
 
 **Signal Tags**
 Tags used to group related signals within a data provider's published signal definitions. Enable efficient authorization (authorize "all automotive signals" rather than listing individual IDs). Tags must be lowercase alphanumeric with underscores/hyphens.

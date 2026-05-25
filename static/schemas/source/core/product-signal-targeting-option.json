@@ -2,12 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/product-signal-targeting-option.json",
   "title": "Product Signal Targeting Option",
-  "description": "A signal the seller makes available for package-level signal composition on this product. Signals are targetable dimensions with a value_type (binary, categorical, or numeric). Product.signal_targeting_options is the canonical buy-time discovery surface for which named signals may be buyer-selected or seller-applied on this product, with product-scoped pricing and rules. get_signals remains an optional cross-product discovery and activation surface.",
+  "description": "A signal the seller makes available inline for package-level signal composition on this product. Signals are targetable dimensions with a value_type (binary, categorical, or numeric). Product.signal_targeting_options is used when the product needs product-scoped pricing, activation handles, defaults, grouping hints, or a curated inline menu. Products can instead point buyers to get_signals with signal_targeting_options_source: 'get_signals' when the selectable menu is the broader seller signal feed.",
   "type": "object",
   "properties": {
     "signal_ref": {
       "$ref": "/schemas/core/signal-ref.json",
-      "description": "Named signal reference. Use scope 'product' for a product-local signal option; use scope 'data_provider' with data_provider_domain for a signal defined by a data provider's published adagents.json signals[]."
+      "description": "Named signal reference. Use scope 'product' for a product-local signal option; use scope 'data_provider' with data_provider_domain for a signal defined in a data provider's published adagents.json signals[]."
     },
     "signal_agent_segment_id": {
       "type": "string",
