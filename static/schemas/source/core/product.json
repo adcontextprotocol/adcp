@@ -147,7 +147,7 @@
     },
     "data_provider_signals": {
       "type": "array",
-      "description": "Deprecated. Legacy/non-selectable metadata for data-provider catalog signals already bundled into or associated with this product. This field does not provide buyer-selectable options, prices, or seller activation handles. Buyers can fetch definitions from each data provider's adagents.json and verify seller authorization. New selectable or seller-applied package-level signal surfaces use signal_targeting_options.",
+      "description": "Deprecated. Legacy/non-selectable metadata for data-provider signals already bundled into or associated with this product. This field does not provide buyer-selectable options, prices, or seller activation handles. Buyers can fetch definitions from each data provider's adagents.json and verify seller authorization. New selectable or seller-applied package-level signal surfaces use signal_targeting_options.",
       "deprecated": true,
       "items": {
         "$ref": "/schemas/core/data-provider-signal-selector.json"
@@ -155,7 +155,7 @@
     },
     "signal_targeting_options": {
       "type": "array",
-      "description": "Seller-offered signals that may be applied to packages for this product at create_media_buy time. Each entry references a named signal definition with signal_ref scope 'product' for a product-local signal option or scope 'data_provider' for an external published adagents.json signal catalog the seller is authorized to apply. This is the canonical buy-time discovery surface for product signal composition; get_signals remains an optional cross-product discovery and activation surface. Buyers select entries through packages[].targeting_overlay.signal_targeting_groups when signal_targeting_rules allow; fixed/default entries are applied by the seller and echoed on the package state. Sellers MUST set signal_targeting_allowed to true whenever this field is present. Bundled, non-selectable signal metadata belongs in product terms; legacy data_provider_signals may appear only for backwards compatibility.",
+      "description": "Seller-offered signals that may be applied to packages for this product at create_media_buy time. Each entry references a named signal definition with signal_ref scope 'product' for a product-local signal option or scope 'data_provider' for an external signal definition published in adagents.json signals[] that the seller is authorized to apply. This is the canonical buy-time discovery surface for product signal composition; get_signals remains an optional cross-product discovery and activation surface. Buyers select entries through packages[].targeting_overlay.signal_targeting_groups when signal_targeting_rules allow; fixed/default entries are applied by the seller and echoed on the package state. Sellers MUST set signal_targeting_allowed to true whenever this field is present. Bundled, non-selectable signal metadata belongs in product terms; legacy data_provider_signals may appear only for backwards compatibility.",
       "items": {
         "$ref": "/schemas/core/product-signal-targeting-option.json"
       },

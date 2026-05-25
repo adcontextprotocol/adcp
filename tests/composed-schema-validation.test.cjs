@@ -651,7 +651,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/signal-ref.json',
     { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'auto_intenders' },
-    'SignalRef data_provider scope accepts provider catalog signal'
+    'SignalRef data_provider scope accepts provider-published signal'
   );
   await testSchemaRejection(
     '/schemas/core/signal-ref.json',
@@ -830,6 +830,151 @@ async function runTests() {
       }
     },
     'Product with compact form on `all` selector rejected'
+  );
+  log('');
+
+  // Signal definition enrichment: taxonomy is metadata on the signal
+  // definition, not a fourth value_type or package-targeting expression branch.
+  log('Signal Definition enrichment:', 'info');
+  await testSchemaValidation(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'likely_ev_buyers',
+      name: 'Likely EV buyers',
+      description: 'Modeled audience for likely electric-vehicle purchase intent.',
+      value_type: 'binary',
+      taxonomy: {
+        ref: 'https://taxonomy.example.com/audience/v1',
+        version: '1.0',
+        values: [
+          { id: 'auto.ev_intenders', path: 'Automotive > EV intenders' }
+        ],
+        parent_match_behavior: 'descendants_supported'
+      },
+      data_sources: ['web_usage', 'online_ecommerce'],
+      methodology: 'modeled',
+      audience_expansion: true,
+      countries: ['US'],
+      consent_basis: ['consent'],
+      modeling: {
+        method: 'lookalike',
+        seed_source: {
+          type: 'first_party_crm',
+          provider_signed: true
+        },
+        training_data_jurisdictions: ['US'],
+        ai_act_risk_class: 'limited',
+        disclosure: {
+          required: true,
+          jurisdictions: [
+            {
+              country: 'US',
+              region: 'CA',
+              regulation: 'state_ai_disclosure',
+              disclosure_text: 'Modeled audience segment.',
+              audience: 'buyer'
+            }
+          ]
+        }
+      },
+      data_subject_rights: {
+        upstream_source_domain: 'signals.example.com',
+        channels: [
+          {
+            rights: ['access', 'erasure', 'objection'],
+            url: 'https://privacy.signals.example.com/requests',
+            languages: ['en-US'],
+            countries: ['US']
+          }
+        ],
+        response_sla_days: 30,
+        gpc_honored: true,
+        ccpa_opt_out_url: 'https://privacy.signals.example.com/opt-out'
+      }
+    },
+    'Binary signal accepts taxonomy metadata, modeling disclosure, and channel-based DSR routing'
+  );
+  await testSchemaValidation(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'jic_panel_coviewing_households',
+      name: 'JIC panel co-viewing households',
+      description: 'Panel-derived TV audience signal where household co-viewing is part of the measurement methodology.',
+      value_type: 'binary',
+      data_sources: ['panel', 'tv_ott_or_stb_device'],
+      methodology: 'derived',
+      subject_type: 'household',
+      resolution_method: 'mixed'
+    },
+    'Panel/JIC-derived signal accepts panel as a data source'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'taxonomy_as_type_rejected',
+      name: 'Taxonomy as value type rejected',
+      value_type: 'taxonomy',
+      taxonomy: {
+        ref: 'https://taxonomy.example.com/audience/v1',
+        values: [{ id: 'auto' }]
+      }
+    },
+    'Rejects taxonomy as value_type; taxonomy belongs in signal-definition metadata'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'modeled_missing_block',
+      name: 'Modeled missing block',
+      value_type: 'binary',
+      methodology: 'modeled'
+    },
+    'Rejects modeled methodology without modeling block'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'offline_missing_onboarder',
+      name: 'Offline missing onboarder',
+      value_type: 'binary',
+      data_sources: ['offline_transaction']
+    },
+    'Rejects offline/public-record data source without onboarder disclosure'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'dsr_no_core_right',
+      name: 'DSR without core right',
+      value_type: 'binary',
+      data_subject_rights: {
+        channels: [
+          {
+            rights: ['portability'],
+            email: 'privacy@example.com'
+          }
+        ]
+      }
+    },
+    'Rejects DSR routing that declares no access, erasure, or objection channel'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'categorical_missing_values',
+      name: 'Categorical missing values',
+      value_type: 'categorical'
+    },
+    'Rejects categorical signal definition without allowed_values'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'numeric_missing_range',
+      name: 'Numeric missing range',
+      value_type: 'numeric'
+    },
+    'Rejects numeric signal definition without range'
   );
   log('');
 

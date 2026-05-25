@@ -277,9 +277,9 @@ Conversational brand experiences in AI assistants. SI defines how AI assistants 
 
 ---
 
-### Signal catalogs for data providers
+### Published signal definitions for data providers
 
-Data providers can publish signal catalogs via `adagents.json`, following the same pattern as publishers declaring properties.
+Data providers can publish signal definitions via `adagents.json` `signals[]`, following the same pattern as publishers declaring properties.
 
 | Publishers | Data providers |
 |------------|----------------|
@@ -287,10 +287,10 @@ Data providers can publish signal catalogs via `adagents.json`, following the sa
 | Use `property_ids` / `property_tags` | Use `signal_ids` / `signal_tags` |
 | Buyers verify via `publisher_domain` | Buyers verify via `data_provider_domain` |
 
-Signals now have explicit `value_type` (binary, categorical, numeric) with typed targeting, and structured `signal_id` objects that reference the data provider's catalog.
+Signals now have explicit `value_type` (binary, categorical, numeric) with typed targeting, and structured `signal_id` objects that reference the data provider's published definitions.
 
 <Card title="Data provider guide" icon="arrow-right" href="/docs/signals/data-providers">
-  Complete implementation guide for publishing signal catalogs.
+  Complete implementation guide for publishing signal definitions.
 </Card>
 
 ---
@@ -882,13 +882,13 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
   </Accordion>
 
   <Accordion title="Data providers (new in v3)">
-    Publish signal catalogs via `adagents.json`. See [Data Provider Guide](/docs/signals/data-providers).
+    Publish signal definitions via `adagents.json`. See [Data Provider Guide](/docs/signals/data-providers).
 
-    - [ ] Create signal catalog in `/.well-known/adagents.json`
+    - [ ] Create published signal definitions in `/.well-known/adagents.json`
     - [ ] Define signals with `id`, `name`, `value_type`, and optional metadata
     - [ ] Add `signal_tags` for grouping and efficient authorization
     - [ ] Authorize signals agents using `signal_ids` or `signal_tags` authorization types
-    - [ ] Validate catalog using AdAgents.json Builder
+    - [ ] Validate the file using AdAgents.json Builder
   </Accordion>
 
   <Accordion title="Creative agents (creative management, DCO providers)">

@@ -360,11 +360,15 @@
         },
         "signal-ref": {
           "$ref": "/schemas/core/signal-ref.json",
-          "description": "Named signal reference for media-buy product targeting: scope 'product' for product-local signal options or scope 'data_provider' for external published adagents.json signal catalogs"
+          "description": "Named signal reference for media-buy product targeting: scope 'product' for product-local signal options or scope 'data_provider' for external signal definitions published in adagents.json signals[]"
         },
         "signal-definition": {
           "$ref": "/schemas/core/signal-definition.json",
-          "description": "Signal definition published in a data provider's adagents.json catalog"
+          "description": "Signal definition published in a data provider's adagents.json signals[]"
+        },
+        "signal-modeling-disclosure": {
+          "$ref": "/schemas/core/signal-modeling-disclosure.json",
+          "description": "Signal-specific modeling and AI-use disclosure metadata for data signals"
         },
         "data-provider-signal-selector": {
           "$ref": "/schemas/core/data-provider-signal-selector.json",
@@ -610,7 +614,7 @@
         },
         "signal-catalog-type": {
           "$ref": "/schemas/enums/signal-catalog-type.json",
-          "description": "Types of signal catalogs (marketplace, custom, owned)"
+          "description": "Commercial/provenance types for signals (marketplace, custom, owned)"
         },
         "metric-type": {
           "$ref": "/schemas/enums/metric-type.json",
@@ -1558,7 +1562,7 @@
       "description": "Agent authorization file format specification for publishers and data providers",
       "$ref": "/schemas/adagents.json",
       "file_location": "/.well-known/adagents.json",
-      "purpose": "Declares authorized agents. Publishers use it for sales agent authorization over properties. Data providers use it to publish signal catalogs and authorize signals agents to resell their data."
+      "purpose": "Declares authorized agents. Publishers use it for sales agent authorization over properties. Data providers use it to publish signal definitions and authorize signals agents to resell their data."
     },
     "brand": {
       "description": "Brand identity claim file format specification",

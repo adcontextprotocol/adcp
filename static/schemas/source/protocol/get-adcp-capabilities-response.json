@@ -762,7 +762,7 @@
       "properties": {
         "data_provider_domains": {
           "type": "array",
-          "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for signal catalog definitions and to verify authorization.",
+          "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for published signal definitions and to verify authorization.",
           "items": {
             "type": "string",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
@@ -791,7 +791,7 @@
           "properties": {
             "catalog_signals": {
               "type": "boolean",
-              "description": "Supports signals from data provider catalogs with structured signal_ref references"
+              "description": "Supports signals published in data provider adagents.json signals[] with structured signal_ref references"
             }
           },
           "additionalProperties": {

@@ -7,7 +7,7 @@
   "properties": {
     "signal_ref": {
       "$ref": "/schemas/core/signal-ref.json",
-      "description": "Named signal reference. Use scope 'product' for a product-local signal option; use scope 'data_provider' with data_provider_domain for a signal defined by a data provider's published adagents.json signal catalog."
+      "description": "Named signal reference. Use scope 'product' for a product-local signal option; use scope 'data_provider' with data_provider_domain for a signal defined by a data provider's published adagents.json signals[]."
     },
     "signal_agent_segment_id": {
       "type": "string",

@@ -26,7 +26,7 @@
           },
           "signal_ref": {
             "$ref": "/schemas/core/signal-ref.json",
-            "description": "Canonical signal reference for discovery, activation, and media-buy targeting. Data-provider catalog signals use scope 'data_provider'. Source-native custom signals that are not catalog-published use scope 'signal_source'. Product-local refs are only meaningful when the response is explicitly scoped to a product context."
+            "description": "Canonical signal reference for discovery, activation, and media-buy targeting. Signals published in adagents.json signals[] use scope 'data_provider'. Source-native custom signals that are not published in adagents.json signals[] use scope 'signal_source'. Product-local refs are only meaningful when the response is explicitly scoped to a product context."
           },
           "signal_agent_segment_id": {
             "type": "string",

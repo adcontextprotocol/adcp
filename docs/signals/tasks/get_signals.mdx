@@ -118,7 +118,7 @@ The response structure is identical across protocols, with only the transport wr
 ### Field Descriptions
 
 - **signals**: Array of matching signals
-  - **signal_ref**: Canonical signal reference. Use `scope: "data_provider"` for signals resolved through an adagents.json signal catalog, `scope: "signal_source"` for source-native signals that are not catalog-published, and `scope: "product"` only in product-contextual responses.
+  - **signal_ref**: Canonical signal reference. Use `scope: "data_provider"` for signals resolved through published `adagents.json` `signals[]`, `scope: "signal_source"` for source-native signals that are not published in `adagents.json` `signals[]`, and `scope: "product"` only in product-contextual responses.
   - **signal_id**: Deprecated legacy SignalId object. New clients should read `signal_ref`.
   - **signal_agent_segment_id**: Opaque signal handle issued by this signal source. Use it verbatim for `activate_signal`; do not treat it as a globally portable signal ID. For package-level `signal_targeting_groups`, `signal_ref` is the buy-time identity and this handle is echoed only when the selected product option exposes it as a separate execution handle.
   - **name**: Human-readable signal name
@@ -662,7 +662,7 @@ Discover all available deployments across platforms:
 
 ## Seller-offered signals on media products
 
-A sales agent that owns or is authorized to apply targeting signals exposes buy-time product eligibility through `get_products`. It can also expose a broader cross-product signal catalog through `get_signals` when buyers need discovery or activation before package selection:
+A sales agent that owns or is authorized to apply targeting signals exposes buy-time product eligibility through `get_products`. It can also expose broader cross-product signal discovery through `get_signals` when buyers need discovery or activation before package selection:
 
 - `get_products` returns the subset selectable or seller-applied on a product in `products[].signal_targeting_options`, with product-scoped `pricing_options` when the signal has a product-specific price.
 - `get_signals` optionally returns cross-product signal metadata, including `signal_ref`, `signal_agent_segment_id`, value metadata, and any default or account-scoped `pricing_options`.
@@ -670,7 +670,7 @@ A sales agent that owns or is authorized to apply targeting signals exposes buy-
 
 This gives buyers a product-first buy-time eligibility path, with `get_signals` available only when broader discovery or activation is needed: use the selected product's `signal_targeting_options` and `signal_targeting_rules` to determine what may be applied on that package. When both surfaces include pricing, the product-scoped `signal_targeting_options[].pricing_options` price is authoritative for that product. For product-local signals exposed on both surfaces, `signal_ref.signal_id` in the product option MUST match the seller's `get_signals.signals[].signal_ref.signal_id` for the same signal.
 
-For media-buy product targeting, product options and package groups use the same `signal_ref` identity: `scope: "product"` for product-local signal options, `scope: "data_provider"` with `data_provider_domain` for signals defined by a published adagents.json signal catalog, or `scope: "signal_source"` for source-native custom signals that are not catalog-published. When a data-provider catalog signal is selected, buyers can verify the seller's authorization by checking the provider's `adagents.json` `authorized_agents` rules for the signal id or tags. The older Signals Protocol `signal_id.source` shape is deprecated and retained only for backwards compatibility.
+For media-buy product targeting, product options and package groups use the same `signal_ref` identity: `scope: "product"` for product-local signal options, `scope: "data_provider"` with `data_provider_domain` for signals defined in published `adagents.json` `signals[]`, or `scope: "signal_source"` for source-native custom signals that are not published in `adagents.json` `signals[]`. When a provider-published signal is selected, buyers can verify the seller's authorization by checking the provider's `adagents.json` `authorized_agents` rules for the signal id or tags. The older Signals Protocol `signal_id.source` shape is deprecated and retained only for backwards compatibility.
 
 ## Wholesale signals feed
 
