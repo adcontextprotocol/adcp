@@ -247,8 +247,8 @@
             "signal_agent_segment_id": {
               "type": "string"
             },
-            "signal_id": {
-              "$ref": "/schemas/core/signal-id.json"
+            "signal_ref": {
+              "$ref": "/schemas/core/signal-ref.json"
             },
             "applies_to": {
               "$ref": "#/$defs/appliesTo",
@@ -286,8 +286,8 @@
             "signal_agent_segment_id": {
               "type": "string"
             },
-            "signal_id": {
-              "$ref": "/schemas/core/signal-id.json"
+            "signal_ref": {
+              "$ref": "/schemas/core/signal-ref.json"
             },
             "changed_fields": {
               "type": "array",
@@ -331,8 +331,8 @@
             "signal_agent_segment_id": {
               "type": "string"
             },
-            "signal_id": {
-              "$ref": "/schemas/core/signal-id.json"
+            "signal_ref": {
+              "$ref": "/schemas/core/signal-ref.json"
             },
             "pricing_options": {
               "type": "array",
@@ -388,8 +388,8 @@
             "signal_agent_segment_id": {
               "type": "string"
             },
-            "signal_id": {
-              "$ref": "/schemas/core/signal-id.json"
+            "signal_ref": {
+              "$ref": "/schemas/core/signal-ref.json"
             },
             "removal_reason": {
               "$ref": "#/$defs/removalReason"
@@ -517,10 +517,20 @@
       "type": "object",
       "title": "Wholesale signal object",
       "description": "One signal entry using the same wire shape as an item in get_signals.signals[].",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/signal-listing.json"
+        }
+      ],
       "properties": {
+        "signal_ref": {
+          "$ref": "/schemas/core/signal-ref.json",
+          "description": "Canonical signal reference for this wholesale signal. New events SHOULD use signal_ref."
+        },
         "signal_id": {
           "$ref": "/schemas/core/signal-id.json",
-          "description": "Universal signal identifier referencing the data provider signal definition."
+          "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older clients.",
+          "deprecated": true
         },
         "signal_agent_segment_id": {
           "type": "string",
@@ -591,15 +601,16 @@
         }
       },
       "required": [
-        "signal_id",
         "signal_agent_segment_id",
         "name",
         "description",
         "signal_type",
-        "data_provider",
         "coverage_percentage",
-        "deployments",
-        "pricing_options"
+        "deployments"
+      ],
+      "anyOf": [
+        { "required": ["signal_ref"] },
+        { "required": ["signal_id"] }
       ],
       "additionalProperties": true
     }

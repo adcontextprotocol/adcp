@@ -13,6 +13,7 @@ import type { TenantConfig } from '@adcp/sdk/server';
 import { TrainingGovernancePlatform } from '../v6-governance-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildGovernanceComplyConfig } from './comply.js';
+import { listAccountsTool } from './account-tools.js';
 
 const TENANT_ID = 'governance';
 
@@ -30,6 +31,9 @@ export function buildGovernanceTenantConfig(host: string): {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       platform: new TrainingGovernancePlatform() as any,
       serverOptions: {
+        customTools: {
+          list_accounts: listAccountsTool(),
+        },
         complyTest: buildGovernanceComplyConfig(),
       },
     },

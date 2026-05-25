@@ -28,6 +28,7 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | `error-compliance` | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
 | `error-compliance-signals` | Error handling for signals protocol — nonexistent signal IDs, missing fields, VERSION_UNSUPPORTED, transport binding; gated on `get_signals` + `activate_signal` |
 | `idempotency` | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
+| `read-tool-idempotency` | Read-only task wrappers accept the 3.1 every-request `idempotency_key` envelope without strict request-wrapper rejection; includes the 3.1 omitted-key grace probe. |
 | `security` | **Authentication baseline — unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding.** See [Authentication](/docs/building/by-layer/L2/authentication). |
 | `webhook-emission` | Outbound webhook conformance — stable `idempotency_key` across retries; RFC 9421 webhook signing (or HMAC fallback if the buyer opted in). Runs for any agent that accepts `push_notification_config` on any operation. |
 | `notification-config-event-scope` | `sync_accounts.accounts[].notification_configs[]` semantic validation — account-level subscribers reject media-buy-anchored notification types (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) even though they are valid values in the shared notification-type enum. |
@@ -331,7 +332,7 @@ The `signal_type` enum in signal responses has three values:
 
 - `marketplace` — the signal agent is reselling segments published by a third-party data provider (Experian, Peer39, etc.). Buyers can verify authorization via the provider's `/.well-known/adagents.json`.
 - `owned` — the signal agent exposes its own first-party segments derived from directly owned data (retailer purchase data, publisher behavioral data, telco location data).
-- `custom` — the signal agent builds the segment on demand from models, composites, or buyer-supplied inputs. Use this when no `adagents.json` authorization chain applies — the segment is agent-native, not attributable to a standing upstream provider.
+- `custom` — the signal source builds the segment on demand from models, composites, or buyer-supplied inputs. Use this when no `adagents.json` authorization chain applies — the segment is source-native, not attributable to a standing upstream provider.
 
 ## Source of truth
 

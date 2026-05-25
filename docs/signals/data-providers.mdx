@@ -107,6 +107,8 @@ Following [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) well-known U
 
 Each signal in the `signals` array describes a targetable segment:
 
+The signal definition is not itself a `signal_ref`. In `adagents.json`, the hosting domain supplies the namespace, so the definition only needs its local `id`. A media-buy product that makes this catalog signal selectable points back to it with `signal_ref: { "scope": "data_provider", "data_provider_domain": "<this adagents.json domain>", "signal_id": "<signals[].id>" }`. If a seller publishes its own signal catalog, the seller can be the data-provider domain for these references; `scope: "data_provider"` means catalog-resolved, not necessarily third-party.
+
 ### Required Fields
 
 | Field | Type | Description |
@@ -183,6 +185,8 @@ User has a score or measurement within a range.
 
 Authorize specific signals by ID:
 
+Here `signal_ids` means local catalog IDs from this `adagents.json` `signals[]` array, not the deprecated `SignalId` object used by older Signals Protocol payloads.
+
 ```json
 {
   "authorized_agents": [
@@ -247,7 +251,7 @@ The `signal_tags` object provides metadata for tags used in signals:
 
 Buyers call `get_signals` on a signals agent. The agent may use your catalog for:
 - Natural language matching ("find automotive purchase intent signals")
-- Structured lookup by `signal_id`
+- Structured lookup by `signal_ref`
 
 ### 2. Authorization Verification
 
@@ -255,9 +259,10 @@ When a buyer receives a signal, they can verify authorization:
 
 ```json
 {
-  "signal_id": {
+  "signal_ref": {
+    "scope": "data_provider",
     "data_provider_domain": "pinnacle-auto-data.com",
-    "id": "likely_ev_buyers"
+    "signal_id": "likely_ev_buyers"
   }
 }
 ```
@@ -274,64 +279,59 @@ Based on `value_type`, buyers construct targeting expressions:
 ```json
 // Binary targeting
 {
-  "signal_id": { "source": "catalog", "data_provider_domain": "pinnacle-auto-data.com", "id": "likely_ev_buyers" },
+  "signal_ref": { "scope": "data_provider", "data_provider_domain": "pinnacle-auto-data.com", "signal_id": "likely_ev_buyers" },
   "value_type": "binary",
   "value": true
 }
 
 // Categorical targeting
 {
-  "signal_id": { "source": "catalog", "data_provider_domain": "pinnacle-auto-data.com", "id": "vehicle_ownership" },
+  "signal_ref": { "scope": "data_provider", "data_provider_domain": "pinnacle-auto-data.com", "signal_id": "vehicle_ownership" },
   "value_type": "categorical",
   "values": ["luxury_ev", "luxury_non_ev"]
 }
 
 // Numeric targeting
 {
-  "signal_id": { "source": "catalog", "data_provider_domain": "pinnacle-auto-data.com", "id": "purchase_propensity" },
+  "signal_ref": { "scope": "data_provider", "data_provider_domain": "pinnacle-auto-data.com", "signal_id": "purchase_propensity" },
   "value_type": "numeric",
   "min_value": 0.7
 }
 ```
 
-## Agent-Native Signals
+## Local and External Signal References
 
-Not all signals come from data provider catalogs. Signals agents may also offer **agent-native signals** - custom signals they've created themselves (proprietary models, first-party data, etc.).
+Not all signals come from third-party data provider catalogs. Sellers and publishers can also define their own signals - custom models, first-party data, or composite segments - the same way they define other named resources in `adagents.json`. When those signals are meant to be portable and externally referenceable, publish them in the `signals` array and reference them from products with `scope: "data_provider"` using the seller's own catalog domain. When they are only meaningful within one product/package context, expose them only as product-local `signal_targeting_options` with `scope: "product"`.
 
-### Signal ID Structure
+Use `signal_ref` for `get_signals`, media-buy product targeting, and package-level buy-time targeting:
 
-Signal IDs use `source` as a discriminator:
-
-| Source | Fields | Verification |
-|--------|--------|--------------|
-| `catalog` | `data_provider_domain` + `id` | Verifiable via data provider's adagents.json |
-| `agent` | `agent_url` + `id` | Trust-based - buyer trusts the agent |
-
-### Example: Agent-Native Signal
+| Reference | Meaning |
+|--------|--------|
+| `{ "scope": "product", "signal_id": "high_intent_shoppers" }` | Product-local signal option, meaningful inside the selected product/package context |
+| `{ "scope": "data_provider", "data_provider_domain": "pinnacle-data.example", "signal_id": "auto_intenders" }` | Signal defined by a data provider's published adagents.json signal catalog |
+| `{ "scope": "signal_source", "signal_source_url": "https://signals.example/.well-known/adcp/signals", "signal_id": "custom_model_run_123" }` | Source-native signal not published in an upstream adagents.json signal catalog |
 
 ```json
 {
-  "signal_id": {
-    "source": "agent",
-    "agent_url": "https://luminary-data.com/.well-known/adcp/signals",
-    "id": "custom_auto_intenders"
+  "signal_ref": { "scope": "product", "signal_id": "custom_auto_intenders" },
+  "value_type": "binary",
+  "value": true
+}
+```
+
+```json
+{
+  "signal_ref": {
+    "scope": "data_provider",
+    "data_provider_domain": "pinnacle-data.example",
+    "signal_id": "auto_intenders"
   },
   "value_type": "binary",
   "value": true
 }
 ```
 
-### When to Use Each
-
-**Use `source: "catalog"`** when:
-- Signal comes from an external data provider (Pinnacle Data, Meridian Analytics, etc.)
-- Authorization verification is important
-- You want to reference the canonical signal definition
-
-**Use `source: "agent"`** when:
-- Signal is proprietary to the signals agent
-- No external data provider to verify against
-- Agent has created custom models or first-party segments
+The older `signal_id.source` shape is deprecated and retained only for backwards compatibility with older Signals Protocol clients. New discovery, activation, and media-buy targeting surfaces use `signal_ref`. For product-local signals exposed on both `get_products` and a product-contextual `get_signals` response, `signal_ref.signal_id` MUST match across both surfaces.
 
 ## Complete Example
 
