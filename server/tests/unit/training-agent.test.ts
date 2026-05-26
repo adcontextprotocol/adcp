@@ -6198,6 +6198,31 @@ describe('get_adcp_capabilities handler', () => {
     expect(tasks).not.toContain('get_adcp_capabilities');
   });
 
+  it('advertises the compliance test controller scenarios it implements', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+
+    const complianceTesting = result.compliance_testing as Record<string, unknown>;
+    const scenarios = complianceTesting.scenarios as string[];
+    expect(scenarios).toEqual(expect.arrayContaining([
+      'force_creative_status',
+      'force_account_status',
+      'force_media_buy_status',
+      'force_create_media_buy_arm',
+      'force_task_completion',
+      'force_session_status',
+      'simulate_delivery',
+      'simulate_budget_spend',
+      'seed_product',
+      'seed_pricing_option',
+      'seed_creative',
+      'seed_plan',
+      'seed_media_buy',
+      'seed_creative_format',
+      'seed_measurement_catalog',
+    ]));
+  });
+
   it('derives channels from the publisher catalog', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
@@ -9080,6 +9105,84 @@ describe('cross-machine session persistence', () => {
     const buys = fetched.result.media_buys as Array<{ media_buy_id: string }>;
     expect(buys.length).toBe(1);
     expect(buys[0]!.media_buy_id).toBe(mediaBuyId);
+  });
+
+  it('seeded measurement catalogs survive across server instances', async () => {
+    const account = { brand: { domain: 'catalog-machine-test.example' }, operator: 'pinnacle-agency.com' };
+    const brand = { domain: 'catalog-machine-test.example' };
+
+    const serverA = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(serverA, 'comply_test_controller', {
+      account,
+      brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'catalog_machine_product',
+        fixture: {
+          delivery_type: 'non_guaranteed',
+          channels: ['display'],
+          reporting_capabilities: {
+            available_metrics: ['impressions', 'clicks', 'spend'],
+            vendor_metrics: [{ vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_probe' }],
+          },
+          vendor_metric_optimization: {
+            supported_metrics: [{
+              vendor: { domain: 'attentionvendor.example' },
+              metric_id: 'attention_probe',
+              supported_targets: ['threshold_rate'],
+            }],
+          },
+        },
+      },
+    });
+    await simulateCallTool(serverA, 'comply_test_controller', {
+      account,
+      brand,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: 'catalog_machine_product',
+        pricing_option_id: 'catalog_machine_cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 5 },
+      },
+    });
+    const seededCatalog = await simulateCallTool(serverA, 'comply_test_controller', {
+      account,
+      brand,
+      scenario: 'seed_measurement_catalog',
+      params: {
+        vendor: { domain: 'attentionvendor.example' },
+        metrics: [{ metric_id: 'attention_baseline' }],
+      },
+    });
+    expect(seededCatalog.result.success).toBe(true);
+
+    const serverB = createTrainingAgentServer(DEFAULT_CTX);
+    const created = await simulateCallTool(serverB, 'create_media_buy', {
+      account,
+      brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: 'catalog_machine_product',
+        pricing_option_id: 'catalog_machine_cpm',
+        bid_price: 8,
+        budget: 1000,
+        optimization_goals: [{
+          kind: 'vendor_metric',
+          vendor: { domain: 'attentionvendor.example' },
+          metric_id: 'attention_probe',
+          target: { kind: 'threshold_rate', value: 70 },
+        }],
+        committed_metrics: [{
+          scope: 'vendor',
+          vendor: { domain: 'attentionvendor.example' },
+          metric_id: 'attention_probe',
+        }],
+      }],
+    });
+
+    expect(created.result.code).toBe('TERMS_REJECTED');
+    expect(created.result.field).toBe('packages[0].optimization_goals[0].metric_id');
   });
 });
 

@@ -47,6 +47,95 @@ if [ -z "$DST" ] || [ ! -d "$DST" ]; then
 fi
 
 if [ "${SRC}" = "dist/compliance/latest" ]; then
+  # Current storyboard source may reference request/response schema additions
+  # from the same PR. Stage the development schema bundle into the SDK key that
+  # the overlaid compliance index advertises below; otherwise the runner grades
+  # new current YAML against the SDK-published schema snapshot.
+  echo "Building development schema bundle for SDK schema cache overlay"
+  node scripts/build-schemas.cjs
+  CACHE_VERSION="${PINNED_VERSION:-$(basename "$DST")}"
+  SCHEMA_STAGE_DIR=$(mktemp -d -t "adcp-schema-overlay.XXXXXX")
+  (cd "dist/schemas/latest" && tar -cf - .) | (cd "$SCHEMA_STAGE_DIR" && tar -xf -)
+  node - <<'NODE' "$SCHEMA_STAGE_DIR" "$CACHE_VERSION"
+const fs = require('node:fs');
+const path = require('node:path');
+const [root, version] = process.argv.slice(2);
+
+function walk(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walk(file);
+    } else if (entry.isFile() && entry.name.endsWith('.json')) {
+      const body = fs.readFileSync(file, 'utf8')
+        .replaceAll('/schemas/latest/', `/schemas/${version}/`)
+        .replaceAll('/schemas/latest"', `/schemas/${version}"`);
+      if (file.split(path.sep).includes('bundled')) {
+        const schema = JSON.parse(body);
+        stripNestedIds(schema, true);
+        fs.writeFileSync(file, `${JSON.stringify(schema, null, 2)}\n`);
+      } else {
+        fs.writeFileSync(file, body);
+      }
+    }
+  }
+}
+
+function stripNestedIds(value, isRoot = false) {
+  if (!value || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    for (const item of value) stripNestedIds(item, false);
+    return;
+  }
+  if (!isRoot) delete value.$id;
+  for (const child of Object.values(value)) stripNestedIds(child, false);
+}
+
+walk(root);
+const indexPath = path.join(root, 'index.json');
+const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+index.version = version;
+index.published_version = version;
+index.adcp_version = version;
+fs.writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`);
+NODE
+  bash "$(dirname "$0")/stage-sdk-schema-bundle.sh" "$SCHEMA_STAGE_DIR" "$CACHE_VERSION"
+  rm -rf "$SCHEMA_STAGE_DIR"
+
+  # The storyboard runner still imports @adcp/sdk's generated Zod validators for
+  # response checks. Those files are produced from the SDK-published schema
+  # snapshot at package build time, so staging the current JSON Schema bundle is
+  # not enough for same-PR compliance_testing.scenarios additions. Patch the
+  # installed generated validators for the local/CI current-source run; released
+  # 3.0 compatibility runs skip this overlay and keep the SDK snapshot intact.
+  node - <<'NODE'
+const fs = require('node:fs');
+
+function patchFile(file) {
+  if (!fs.existsSync(file)) return;
+  const backup = `${file}.adcp-overlay-backup`;
+  if (!fs.existsSync(backup)) {
+    fs.copyFileSync(file, backup);
+  }
+  let text = fs.readFileSync(file, 'utf8');
+  const legacyCapabilities =
+    'zod_1.z.literal("force_creative_status"), zod_1.z.literal("force_account_status"), zod_1.z.literal("force_media_buy_status"), zod_1.z.literal("force_session_status"), zod_1.z.literal("simulate_delivery"), zod_1.z.literal("simulate_budget_spend")]))';
+  const partialCapabilities =
+    'zod_1.z.literal("force_creative_status"), zod_1.z.literal("force_account_status"), zod_1.z.literal("force_media_buy_status"), zod_1.z.literal("force_create_media_buy_arm"), zod_1.z.literal("force_task_completion"), zod_1.z.literal("force_session_status"), zod_1.z.literal("simulate_delivery"), zod_1.z.literal("simulate_budget_spend"), zod_1.z.literal("seed_measurement_catalog")]))';
+  const currentCapabilities =
+    'zod_1.z.literal("force_creative_status"), zod_1.z.literal("force_account_status"), zod_1.z.literal("force_media_buy_status"), zod_1.z.literal("force_create_media_buy_arm"), zod_1.z.literal("force_task_completion"), zod_1.z.literal("force_session_status"), zod_1.z.literal("simulate_delivery"), zod_1.z.literal("simulate_budget_spend"), zod_1.z.literal("seed_product"), zod_1.z.literal("seed_pricing_option"), zod_1.z.literal("seed_creative"), zod_1.z.literal("seed_plan"), zod_1.z.literal("seed_media_buy"), zod_1.z.literal("seed_creative_format"), zod_1.z.literal("seed_measurement_catalog"), zod_1.z.literal("query_upstream_traffic"), zod_1.z.literal("force_upstream_unavailable")]))';
+  text = text.replace(legacyCapabilities, currentCapabilities);
+  text = text.replace(partialCapabilities, currentCapabilities);
+  text = text.replaceAll(
+    'zod_1.z.literal("seed_creative_format")]))',
+    'zod_1.z.literal("seed_creative_format"), zod_1.z.literal("seed_measurement_catalog")]))',
+  );
+  fs.writeFileSync(file, text);
+}
+
+patchFile('node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js');
+NODE
+
   echo "Building development compliance bundle for SDK cache overlay"
   node scripts/build-compliance.cjs
 fi
@@ -57,13 +146,18 @@ echo "Overlaying $SRC onto $DST"
   mkdir -p "$(dirname "$target")"
   cp "$SRC/${rel#./}" "$target"
 done
-node - <<'NODE' "$DST/index.json" "$PINNED_VERSION"
+if [ "${SRC}" = "dist/compliance/latest" ] && [ -n "${PINNED_VERSION:-}" ] && [ -f "$DST/index.json" ]; then
+  # The development bundle is published as `latest`, but SDK 8 validates
+  # `adcp_version` as a real version string when loading the cache. The cache
+  # directory is already the SDK's pinned version, so stamp the copied index to
+  # match while keeping the current-source storyboard contents.
+  node - <<'NODE' "$DST/index.json" "$PINNED_VERSION"
 const fs = require('node:fs');
-const [indexPath, pinnedVersion] = process.argv.slice(2);
-if (!indexPath || !pinnedVersion || !fs.existsSync(indexPath)) process.exit(0);
-const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
-if (index.adcp_version === 'latest') index.adcp_version = pinnedVersion;
-if (index.published_version === 'latest') index.published_version = pinnedVersion;
-fs.writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`);
+const [file, version] = process.argv.slice(2);
+const index = JSON.parse(fs.readFileSync(file, 'utf8'));
+index.published_version = version;
+index.adcp_version = version;
+fs.writeFileSync(file, `${JSON.stringify(index, null, 2)}\n`);
 NODE
+fi
 echo "Overlay complete."

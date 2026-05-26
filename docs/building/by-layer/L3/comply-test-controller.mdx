@@ -79,6 +79,7 @@ Sellers that implement compliance test controller MUST:
           "seed_plan",
           "seed_media_buy",
           "seed_creative_format",
+          "seed_measurement_catalog",
           "query_upstream_traffic",
           "force_upstream_unavailable"
         ],
@@ -86,7 +87,7 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} — task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {creative_format_id, fixture?}. query_upstream_traffic: {since_timestamp?, tool?, purpose_filter?}. force_upstream_unavailable: {tool, upstream_name?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} — task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?}. seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, tool?, purpose_filter?}. force_upstream_unavailable: {tool, upstream_name?}."
       }
     },
     "required": ["scenario"]
@@ -382,6 +383,8 @@ Creates (or upserts) a product fixture with a caller-supplied `product_id` so su
 | `product_id` | string | Yes | Stable identifier the storyboard will reference |
 | `fixture` | object | No | Product shape. Minimum useful fields: `delivery_type`, `channels`, `pricing_options[]`, `format_ids[]`. Sellers MAY fill in defaults for omitted fields. |
 
+For vendor-metric precondition tests, prefer `seed_measurement_catalog` for the external vendor catalog. A product fixture may also carry `measurement_catalogs[]` entries shaped as `{ vendor, metrics[] }` as a compatibility fallback for local harnesses that need the product contract and referenced measurement snapshot in one fixture. If both are supplied for the same vendor, the explicit `seed_measurement_catalog` snapshot takes precedence for that compliance session.
+
 **Example:**
 
 ```json
@@ -510,9 +513,38 @@ Creates a media buy fixture at a specified lifecycle state, bypassing the `creat
 }
 ```
 
+### `seed_measurement_catalog`
+
+Seeds a measurement vendor's `get_adcp_capabilities.measurement.metrics[]` snapshot for the compliance session, when the seller's controller advertises this scenario. Media-buy storyboards use an explicit `comply_test_controller` step with this scenario to distinguish a product-level vendor metric capability from the external vendor-catalog discovery precondition. Storyboards may also carry this snapshot in `seed_product.fixture.measurement_catalogs[]` as a compatibility fallback for controllers whose SDK adapter set has not adopted the scenario yet. When both sources are present for the same vendor, the explicit `seed_measurement_catalog` seed is authoritative.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `vendor` | BrandRef | Yes | Measurement vendor whose catalog is being seeded |
+| `metrics` | object[] | Yes | Catalog entries; each entry must include `metric_id` and may include the optional fields from `measurement.metrics[]` |
+
+**Example:**
+
+```json
+{
+  "scenario": "seed_measurement_catalog",
+  "params": {
+    "vendor": { "domain": "attentionvendor.example" },
+    "metrics": [
+      {
+        "metric_id": "attention_catalog_baseline",
+        "unit": "score",
+        "description": "Baseline attention metric present in this vendor catalog."
+      }
+    ]
+  }
+}
+```
+
 ### Seeding semantics and ordering
 
-- **Fixture shape.** `fixture` is kept permissive (`additionalProperties: true`) so storyboard authors can declare the minimum shape each test needs. Fixtures SHOULD conform to the corresponding domain schema (`core/product.json` for `seed_product`, `core/pricing-option.json` for `seed_pricing_option`, `media-buy/sync-creatives-request.json` creative-item shape for `seed_creative`, `core/media-buy.json` for `seed_media_buy`, the plan schema for `seed_plan`). Sellers MAY reject clearly malformed fixtures with `INVALID_PARAMS`.
+- **Fixture shape.** `fixture` is kept permissive (`additionalProperties: true`) so storyboard authors can declare the minimum shape each test needs. Fixtures SHOULD conform to the corresponding domain schema (`core/product.json` for `seed_product`, `core/pricing-option.json` for `seed_pricing_option`, `media-buy/sync-creatives-request.json` creative-item shape for `seed_creative`, `core/media-buy.json` for `seed_media_buy`, the plan schema for `seed_plan`). `seed_measurement_catalog.metrics[]` mirrors `get_adcp_capabilities.measurement.metrics[]`. Sellers MAY reject clearly malformed fixtures with `INVALID_PARAMS`.
 - **Idempotency on re-seed.** A second call with the same primary ID and a `fixture` equivalent to the first SHOULD succeed and return `success: true` with `previous_state: "existing"`. A second call with a **diverging** fixture MUST return `INVALID_PARAMS` with `error_detail` explaining which fields diverged — sellers MUST NOT merge or update silently. Storyboards that need to change fixture state mid-run MUST use `force_*` scenarios, not a re-seed. This keeps the same storyboard deterministic across sellers.
 - **Foreign-key ordering.** The runner seeds fixtures in dependency order so sellers receive referenced parents before their children. The dependency DAG:
 

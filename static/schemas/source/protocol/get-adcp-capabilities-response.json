@@ -1516,6 +1516,7 @@
               "seed_plan",
               "seed_media_buy",
               "seed_creative_format",
+              "seed_measurement_catalog",
               "query_upstream_traffic",
               "force_upstream_unavailable"
             ]

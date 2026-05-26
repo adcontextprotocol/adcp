@@ -29,6 +29,7 @@ import {
   handleSyncCreatives,
   handleListCreatives,
   handleListCreativeFormats,
+  hasAdcpSuccessPayload,
 } from './task-handlers.js';
 import {
   handleProvidePerformanceFeedback,
@@ -48,6 +49,54 @@ interface TrainingSalesMeta {
 
 interface TrainingSalesConfig {
   strict: boolean;
+}
+
+export const TRAINING_SALES_CAPABILITIES = {
+  specialisms: ['sales-non-guaranteed', 'sales-guaranteed'] as const,
+  creative_agents: [],
+  channels: [] as const,
+  pricingModels: ['cpm', 'cpa'] as const,
+  targeting: {
+    geo_countries: true,
+    geo_regions: true,
+    geo_metros: { nielsen_dma: true },
+    geo_postal_areas: { us_zip: true },
+    language: true,
+    keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] as const },
+    negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] as const },
+  },
+  audience_targeting: {
+    supported_identifier_types: ['hashed_email' as const],
+    minimum_audience_size: 100,
+  },
+  conversion_tracking: {
+    supported_event_types: ['purchase' as const, 'add_to_cart' as const, 'lead' as const, 'page_view' as const],
+    supported_hashed_identifiers: ['hashed_email' as const],
+    supported_action_sources: ['website' as const, 'app' as const],
+  },
+  // Seller-level rollup of metric-optimization capabilities. Honest union
+  // across catalog products (product-factory.ts assigns these by channel mix).
+  // The tenant router projects these fields onto get_adcp_capabilities until
+  // the SDK exposes them directly (adcp-client#1818).
+  supported_optimization_metrics: ['clicks' as const, 'views' as const, 'completed_views' as const, 'engagements' as const, 'reach' as const],
+  vendor_metric_optimization: {
+    supported_targets: ['threshold_rate' as const],
+  },
+  supportedBillings: ['agent', 'operator'] as const,
+  // Auto-derives `compliance_testing.scenarios[]` from the adapters wired in
+  // `serverOptions.complyTest`. Empty block opts in; the capability/adapter
+  // consistency check at construction throws if adapters aren't supplied.
+  compliance_testing: {},
+  config: { strict: false },
+};
+
+export function salesCapabilityProjection() {
+  return {
+    supported_optimization_metrics: [...TRAINING_SALES_CAPABILITIES.supported_optimization_metrics],
+    vendor_metric_optimization: {
+      supported_targets: [...TRAINING_SALES_CAPABILITIES.vendor_metric_optimization.supported_targets],
+    },
+  };
 }
 
 /** Build a TrainingContext from a v6 RequestContext.Account.authInfo. */
@@ -78,8 +127,8 @@ function brandDomainFromCtx(account: unknown): string | undefined {
  * v5 → v6 envelope translator. v5 handlers return `{ errors: [...] }` for
  * structured rejection; v6 platform methods throw `AdcpError`.
  */
-function translateV5Result<T extends object>(result: unknown): T {
-  const errs = (result as {
+function translateV5Result<T extends object>(result: unknown, options: { allowAdvisories?: boolean } = {}): T {
+  const resultObj = result as (Record<string, unknown> & {
     errors?: Array<{
       code: string;
       message: string;
@@ -87,8 +136,10 @@ function translateV5Result<T extends object>(result: unknown): T {
       details?: unknown;
       recovery?: string;
     }>;
-  } | undefined)?.errors;
-  if (Array.isArray(errs) && errs.length > 0) {
+  } | undefined);
+  const errs = resultObj?.errors;
+  const hasAdvisorySuccessPayload = options.allowAdvisories === true && hasAdcpSuccessPayload(resultObj);
+  if (Array.isArray(errs) && errs.length > 0 && !hasAdvisorySuccessPayload) {
     const first = errs[0]!;
     const recovery = (first.recovery === 'transient' || first.recovery === 'correctable' || first.recovery === 'terminal')
       ? first.recovery
@@ -157,48 +208,7 @@ export class TrainingSalesPlatform
 {
   constructor(private readonly storyboardCompat?: TrainingContext['storyboardCompat']) {}
 
-  capabilities = {
-    specialisms: ['sales-non-guaranteed', 'sales-guaranteed'] as const,
-    creative_agents: [],
-    channels: [] as const,
-    pricingModels: ['cpm', 'cpa'] as const,
-    targeting: {
-      geo_countries: true,
-      geo_regions: true,
-      geo_metros: { nielsen_dma: true },
-      geo_postal_areas: { us_zip: true },
-      language: true,
-      keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] as const },
-      negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] as const },
-    },
-    audience_targeting: {
-      supported_identifier_types: ['hashed_email' as const],
-      minimum_audience_size: 100,
-    },
-    conversion_tracking: {
-      supported_event_types: ['purchase' as const, 'add_to_cart' as const, 'lead' as const, 'page_view' as const],
-      supported_hashed_identifiers: ['hashed_email' as const],
-      supported_action_sources: ['website' as const, 'app' as const],
-    },
-    // Seller-level rollup of metric-optimization capabilities. Honest
-    // union across catalog products (product-factory.ts assigns these
-    // by channel mix). Mirrors the same declaration on the legacy /mcp
-    // route (task-handlers.ts handleGetAdcpCapabilities). adcp-client#1818
-    // will auto-derive this from product-level supported_metrics once
-    // the SDK ships the seller-level field; until then both surfaces
-    // declare it manually for parity.
-    supported_optimization_metrics: ['clicks' as const, 'views' as const, 'completed_views' as const, 'engagements' as const, 'reach' as const],
-    vendor_metric_optimization: {
-      supported_targets: ['threshold_rate' as const],
-    },
-    supportedBillings: ['agent', 'operator'] as const,
-    // Auto-derives `compliance_testing.scenarios[]` from the adapters
-    // wired in `serverOptions.complyTest`. Empty block opts in; the
-    // capability/adapter consistency check at construction throws if
-    // adapters aren't supplied alongside.
-    compliance_testing: {},
-    config: { strict: false },
-  };
+  capabilities = TRAINING_SALES_CAPABILITIES;
 
   statusMappers = {};
   accounts: AccountStore<TrainingSalesMeta> = trainingSalesAccounts;
@@ -208,7 +218,7 @@ export class TrainingSalesPlatform
   sales: SalesPlatform<TrainingSalesMeta> = {
     getProducts: async (req, ctx) => {
       const result = await handleGetProducts(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
-      return translateV5Result(result);
+      return translateV5Result(result, { allowAdvisories: true });
     },
 
     createMediaBuy: async (req, ctx) => {

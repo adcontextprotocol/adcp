@@ -178,10 +178,11 @@ describe('comply_test_controller', () => {
         'force_create_media_buy_arm',
         'force_task_completion',
         'seed_creative_format',
+        'seed_measurement_catalog',
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(9);
+      expect(scenarios.length).toBe(10);
       // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });
@@ -250,6 +251,70 @@ describe('comply_test_controller', () => {
       expect(found.some(b => b.media_buy_id === 'seeded_mb_1')).toBe(true);
     });
 
+    it('seed_media_buy preserves available_actions and enforces non-self-serve mode mismatch', async () => {
+      const { result, isError } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_media_buy',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          media_buy_id: 'seeded_action_surface_mb',
+          fixture: {
+            status: 'active',
+            currency: 'USD',
+            start_time: '2026-05-01T00:00:00Z',
+            end_time: '2026-07-31T23:59:59Z',
+            available_actions: [{
+              action: 'extend_flight',
+              mode: 'requires_proposal',
+              sla: { response_max: 'PT4H', completion_max: 'P2D' },
+            }],
+            packages: [{
+              package_id: 'seeded_action_surface_pkg',
+              product_id: 'seeded_product',
+              pricing_option_id: 'seeded_pricing',
+              budget: 10000,
+              creative_assignments: ['seeded_creative_1'],
+              start_time: '2026-05-01T00:00:00Z',
+              end_time: '2026-07-31T23:59:59Z',
+            }],
+          },
+        },
+      });
+      expect(isError).toBeFalsy();
+      expect(result.success).toBe(true);
+
+      const { result: buys } = await simulateCallTool(server, 'get_media_buys', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: ['seeded_action_surface_mb'],
+      });
+      const buy = (buys as any).media_buys?.[0];
+      expect(buy.available_actions).toEqual([{
+        action: 'extend_flight',
+        mode: 'requires_proposal',
+        sla: { response_max: 'PT4H', completion_max: 'P2D' },
+      }]);
+      expect(buy.packages[0].package_id).toBe('seeded_action_surface_pkg');
+
+      const { result: rejected } = await simulateCallTool(server, 'update_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_id: 'seeded_action_surface_mb',
+        end_time: '2026-08-15T23:59:59Z',
+      });
+      const error = (rejected as any).errors?.[0];
+      expect(error?.code).toBe('ACTION_NOT_ALLOWED');
+      expect(error?.details).toEqual({
+        attempted_action: 'extend_flight',
+        reason: 'mode_mismatch',
+        currently_available_actions: [{
+          action: 'extend_flight',
+          mode: 'requires_proposal',
+          sla: { response_max: 'PT4H', completion_max: 'P2D' },
+        }],
+      });
+    });
+
     it('seed_* requires params (per spec allOf clause)', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'seed_creative',
@@ -303,6 +368,384 @@ describe('comply_test_controller', () => {
       const pkgs = result.packages as Array<Record<string, unknown>>;
       expect(pkgs).toHaveLength(1);
       expect(pkgs[0].package_id).toBe('pkg-0');
+    });
+
+    it('seed_measurement_catalog lets vendor_metric create reject a catalog miss after product preconditions pass', async () => {
+      const seedProd = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'seeded_vendor_catalog_product',
+          fixture: {
+            delivery_type: 'non_guaranteed',
+            channels: ['display'],
+            reporting_capabilities: {
+              available_metrics: ['impressions', 'clicks', 'spend'],
+              vendor_metrics: [
+                {
+                  vendor: { domain: 'attentionvendor.example' },
+                  metric_id: 'attention_catalog_probe',
+                },
+              ],
+            },
+            vendor_metric_optimization: {
+              supported_metrics: [
+                {
+                  vendor: { domain: 'attentionvendor.example' },
+                  metric_id: 'attention_catalog_probe',
+                  supported_targets: ['threshold_rate'],
+                },
+              ],
+            },
+          },
+        },
+      });
+      expect((seedProd.result as any).success).toBe(true);
+
+      const seedPricing = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_pricing_option',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'seeded_vendor_catalog_product',
+          pricing_option_id: 'seeded_vendor_catalog_cpm',
+          fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 5.0 },
+        },
+      });
+      expect((seedPricing.result as any).success).toBe(true);
+
+      const seedCatalog = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_measurement_catalog',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          vendor: { domain: 'attentionvendor.example' },
+          metrics: [
+            { metric_id: 'attention_catalog_baseline', unit: 'score' },
+            { metric_id: 'attention_catalog_secondary', unit: 'score' },
+          ],
+        },
+      });
+      expect((seedCatalog.result as any).success).toBe(true);
+
+      const replayCatalog = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_measurement_catalog',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          metrics: [
+            { unit: 'score', metric_id: 'attention_catalog_secondary' },
+            { unit: 'score', metric_id: 'attention_catalog_baseline' },
+          ],
+          vendor: { domain: 'attentionvendor.example' },
+        },
+      });
+      expect((replayCatalog.result as any).success).toBe(true);
+      expect((replayCatalog.result as any).message).toBe('Fixture re-seeded (equivalent)');
+
+      const divergentCatalog = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_measurement_catalog',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          vendor: { domain: 'attentionvendor.example' },
+          metrics: [{ metric_id: 'attention_catalog_other', unit: 'score' }],
+        },
+      });
+      expect((divergentCatalog.result as any).success).toBe(false);
+      expect((divergentCatalog.result as any).error).toBe('INVALID_PARAMS');
+
+      const { result } = await simulateCallTool(server, 'create_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: 'seeded_vendor_catalog_product',
+          pricing_option_id: 'seeded_vendor_catalog_cpm',
+          bid_price: 8.50,
+          budget: 10000,
+          optimization_goals: [
+            {
+              kind: 'vendor_metric',
+              vendor: { domain: 'attentionvendor.example' },
+              metric_id: 'attention_catalog_probe',
+              target: { kind: 'threshold_rate', value: 70 },
+            },
+          ],
+          committed_metrics: [
+            {
+              scope: 'vendor',
+              vendor: { domain: 'attentionvendor.example' },
+              metric_id: 'attention_catalog_probe',
+            },
+          ],
+        }],
+      });
+
+      expect((result as any).code).toBe('TERMS_REJECTED');
+      expect((result as any).field).toBe('packages[0].optimization_goals[0].metric_id');
+      expect((result as any).message).toMatch(/measurement\.metrics catalog/);
+    });
+
+    it('seed_measurement_catalog rejects an empty metrics catalog', async () => {
+      const result = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_measurement_catalog',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          vendor: { domain: 'attentionvendor.example' },
+          metrics: [],
+        },
+      });
+
+      expect((result.result as any).success).toBe(false);
+      expect((result.result as any).error).toBe('INVALID_PARAMS');
+      expect((result.result as any).error_detail).toMatch(/at least one metric/);
+    });
+
+    it('create_media_buy resolves product allowed_actions into buy available_actions and enforcement', async () => {
+      const seedProd = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'seeded_action_product',
+          fixture: {
+            delivery_type: 'guaranteed',
+            channels: ['display'],
+            allowed_actions: [
+              {
+                action: 'increase_budget',
+                modes: ['self_serve'],
+                sla: { response_max: 'PT5M', completion_max: 'PT1H' },
+              },
+              {
+                action: 'extend_flight',
+                modes: ['requires_proposal'],
+                sla: { response_max: 'PT4H', completion_max: 'P2D' },
+              },
+              {
+                action: 'decrease_budget',
+                modes: ['self_serve'],
+                allowed_statuses: ['active'],
+              },
+            ],
+          },
+        },
+      });
+      expect((seedProd.result as any).success).toBe(true);
+
+      const seedPricing = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_pricing_option',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'seeded_action_product',
+          pricing_option_id: 'seeded_action_cpm',
+          fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 8.0 },
+        },
+      });
+      expect((seedPricing.result as any).success).toBe(true);
+
+      const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_id: 'created_from_allowed_actions',
+        start_time: 'asap',
+        end_time: '2099-07-01T00:00:00Z',
+        packages: [{
+          product_id: 'seeded_action_product',
+          pricing_option_id: 'seeded_action_cpm',
+          budget: 10000,
+        }],
+      });
+      expect((created as any).errors).toBeUndefined();
+      expect(created.available_actions).toEqual([
+        {
+          action: 'increase_budget',
+          mode: 'self_serve',
+          sla: { response_max: 'PT5M', completion_max: 'PT1H' },
+        },
+        {
+          action: 'extend_flight',
+          mode: 'requires_proposal',
+          sla: { response_max: 'PT4H', completion_max: 'P2D' },
+        },
+      ]);
+
+      const { result: listed } = await simulateCallTool(server, 'get_media_buys', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: ['created_from_allowed_actions'],
+      });
+      expect((listed as any).media_buys?.[0]?.available_actions).toEqual(created.available_actions);
+
+      const packageId = ((created as any).packages as Array<{ package_id: string }>)[0].package_id;
+      const { result: updated } = await simulateCallTool(server, 'update_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_id: 'created_from_allowed_actions',
+        packages: [{ package_id: packageId, budget: 12000 }],
+      });
+      expect((updated as any).errors).toBeUndefined();
+      expect(updated.available_actions).toEqual(created.available_actions);
+
+      const { result: rejectedWrongStatus } = await simulateCallTool(server, 'update_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_id: 'created_from_allowed_actions',
+        packages: [{ package_id: packageId, budget: 11000 }],
+      });
+      expect((rejectedWrongStatus as any).errors?.[0]?.code).toBe('ACTION_NOT_ALLOWED');
+      expect((rejectedWrongStatus as any).errors?.[0]?.recovery).toBe('correctable');
+      expect((rejectedWrongStatus as any).errors?.[0]?.details).toMatchObject({
+        attempted_action: 'decrease_budget',
+        reason: 'wrong_status',
+        currently_available_actions: created.available_actions,
+      });
+
+      const { result: rejectedPause } = await simulateCallTool(server, 'update_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_id: 'created_from_allowed_actions',
+        paused: true,
+      });
+      expect((rejectedPause as any).errors?.[0]?.code).toBe('ACTION_NOT_ALLOWED');
+      expect((rejectedPause as any).errors?.[0]?.details).toMatchObject({
+        attempted_action: 'pause',
+        reason: 'not_supported_on_product',
+        currently_available_actions: created.available_actions,
+      });
+    });
+
+    it('enforces product allowed_actions against the affected package product', async () => {
+      for (const productId of ['mixed_action_product', 'mixed_no_action_product']) {
+        const seedProd = await simulateCallTool(server, 'comply_test_controller', {
+          scenario: 'seed_product',
+          account: ACCOUNT,
+          brand: BRAND,
+          params: {
+            product_id: productId,
+            fixture: {
+              delivery_type: 'guaranteed',
+              channels: ['display'],
+              ...(productId === 'mixed_action_product' && {
+                allowed_actions: [{ action: 'increase_budget', modes: ['self_serve'] }],
+              }),
+            },
+          },
+        });
+        expect((seedProd.result as any).success).toBe(true);
+
+        const seedPricing = await simulateCallTool(server, 'comply_test_controller', {
+          scenario: 'seed_pricing_option',
+          account: ACCOUNT,
+          brand: BRAND,
+          params: {
+            product_id: productId,
+            pricing_option_id: `${productId}_cpm`,
+            fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 8.0 },
+          },
+        });
+        expect((seedPricing.result as any).success).toBe(true);
+      }
+
+      const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_id: 'mixed_allowed_actions_buy',
+        start_time: 'asap',
+        end_time: '2099-07-01T00:00:00Z',
+        packages: [
+          {
+            product_id: 'mixed_action_product',
+            pricing_option_id: 'mixed_action_product_cpm',
+            budget: 10000,
+          },
+          {
+            product_id: 'mixed_no_action_product',
+            pricing_option_id: 'mixed_no_action_product_cpm',
+            budget: 10000,
+          },
+        ],
+      });
+      expect((created as any).errors).toBeUndefined();
+      expect(created.available_actions).toEqual([{ action: 'increase_budget', mode: 'self_serve' }]);
+
+      const packages = (created as any).packages as Array<{ package_id: string }>;
+      const { result: rejected } = await simulateCallTool(server, 'update_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_id: 'mixed_allowed_actions_buy',
+        packages: [{ package_id: packages[1].package_id, budget: 12000 }],
+      });
+      expect((rejected as any).errors?.[0]?.code).toBe('ACTION_NOT_ALLOWED');
+      expect((rejected as any).errors?.[0]?.details).toMatchObject({
+        attempted_action: 'increase_budget',
+        reason: 'not_supported_on_product',
+        currently_available_actions: created.available_actions,
+      });
+    });
+
+    it('re-resolves product-derived available_actions for terminal reads', async () => {
+      const seedProd = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'self_serve_cancel_product',
+          fixture: {
+            delivery_type: 'guaranteed',
+            channels: ['display'],
+            allowed_actions: [{ action: 'cancel', modes: ['self_serve'] }],
+          },
+        },
+      });
+      expect((seedProd.result as any).success).toBe(true);
+
+      const seedPricing = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_pricing_option',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'self_serve_cancel_product',
+          pricing_option_id: 'self_serve_cancel_cpm',
+          fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 8.0 },
+        },
+      });
+      expect((seedPricing.result as any).success).toBe(true);
+
+      const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_id: 'self_serve_cancel_buy',
+        start_time: 'asap',
+        end_time: '2099-07-01T00:00:00Z',
+        packages: [{
+          product_id: 'self_serve_cancel_product',
+          pricing_option_id: 'self_serve_cancel_cpm',
+          budget: 10000,
+        }],
+      });
+      expect(created.available_actions).toEqual([{ action: 'cancel', mode: 'self_serve' }]);
+
+      const { result: canceled } = await simulateCallTool(server, 'update_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_id: 'self_serve_cancel_buy',
+        canceled: true,
+      });
+      expect((canceled as any).errors).toBeUndefined();
+      expect(canceled.available_actions).toEqual([]);
+
+      const { result: listed } = await simulateCallTool(server, 'get_media_buys', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: ['self_serve_cancel_buy'],
+      });
+      expect((listed as any).media_buys?.[0]?.available_actions).toEqual([]);
     });
   });
 

@@ -356,8 +356,12 @@
 #           status: "active"
 #   Each top-level key maps to a seed_* scenario (products → seed_product,
 #   pricing_options → seed_pricing_option, creatives → seed_creative,
-#   plans → seed_plan, media_buys → seed_media_buy). Foreign-key dependency DAG
-#   the runner MUST honor when auto-seeding:
+#   plans → seed_plan, media_buys → seed_media_buy). Storyboards that need an
+#   external measurement vendor catalog SHOULD add an explicit
+#   comply_test_controller step with scenario: seed_measurement_catalog. Product
+#   fixtures may carry `measurement_catalogs[]` entries only as a compatibility
+#   fallback when a storyboard needs to keep that snapshot beside the product
+#   contract. Foreign-key dependency DAG the runner MUST honor when auto-seeding:
 #
 #     product ──┬─→ pricing_option
 #               ├─→ plan
@@ -390,8 +394,17 @@
 #     id                 string (short identifier)
 #     auth.api_key       string (`demo-<kit>-v1` pattern; the demo Bearer the
 #                        runner sends on positive api-key probes)
+#       OR
+#     auth.basic         object (the demo HTTP Basic credential the runner sends
+#                        on positive Basic probes). Shape is either:
+#                          username: string
+#                          password: string
+#                        or:
+#                          credentials: string
+#                        where `credentials` is the unencoded `username:password`
+#                        pair used to build the Authorization header.
 #     auth.probe_task    string (the protected read the runner calls under
-#                        `auth: none` and with a random-invalid key)
+#                        `auth: none` and with random-invalid credentials)
 #     brand              object (house + brand_id + names + logos + colors +
 #                        fonts + tone — full brand.json payload)
 #     + optional products, creatives, pricing_options, destinations, etc.
@@ -419,9 +432,10 @@
 #   "no credentials" property is temporal, not structural.
 #
 # Enforcement. `scripts/lint-storyboard-test-kits.cjs` fails the build if a
-# kit under `test-kits/` declares neither `auth.api_key` nor `applies_to` —
-# that's the bimodal partition this section describes. The lint tolerates
-# kits that declare both (the future-branded-runner case above).
+# kit under `test-kits/` declares none of `auth.api_key`, `auth.basic`, or
+# `applies_to` — that's the bimodal partition this section describes. The lint
+# tolerates kits that declare both a credential marker and `applies_to` (the
+# future-branded-runner case above).
 #
 # Composition. Storyboards that need BOTH a brand identity AND a harness
 # contract declare the brand kit in `prerequisites.test_kit` and opt into the
@@ -443,9 +457,9 @@
 # docs).
 #
 # `test_kit=<path>` in the contradiction-lint fingerprint disambiguates the
-# two flavors — `auth=kit_default` resolves to the kit's api_key for brand
-# kits and to no-credential for runner contracts, but the two never collide
-# because the `test_kit=` component separates them.
+# two flavors — `auth=kit_default` resolves to the kit's static credential for
+# brand kits and to no-credential for runner contracts, but the two never
+# collide because the `test_kit=` component separates them.
 #
 # Future: if a storyboard ever needs to compose TWO runner contracts
 # simultaneously (e.g., signed-requests + substitution-observer), the step-
@@ -567,6 +581,10 @@
 #   auth: { type: api_key, value_strategy: random_invalid }
 #                                                         → use a per-run random bogus API key (for invalid-key probes).
 #                                                           Runner generates `invalid-<32 random bytes>` per run.
+#   auth: { type: basic, from_test_kit: "auth.basic" }   → use the Basic credential at `auth.basic` in the test kit
+#   auth: { type: basic, value_strategy: random_invalid }
+#                                                         → use a per-run random bogus Basic credential (for invalid-Basic probes).
+#                                                           Runner generates random username/password bytes per run.
 #   auth: { type: oauth_bearer, value_strategy: random_invalid_jwt }
 #                                                         → use a per-run random JWT-shaped bogus Bearer token.
 #                                                           Runner generates `<base64url random>.<base64url random>.<base64url random>` per run.

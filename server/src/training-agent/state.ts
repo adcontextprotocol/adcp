@@ -178,6 +178,7 @@ function createSession(): SessionState {
       seededProducts: new Map(),
       seededPricingOptions: new Map(),
       seededCreativeFormats: new Map(),
+      seededMeasurementCatalogs: new Map(),
     },
     createdAt: now,
     lastAccessedAt: now,
@@ -389,6 +390,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
       seededProducts: asMap(hydratedComply.seededProducts, fresh.complyExtensions.seededProducts),
       seededPricingOptions: asMap(hydratedComply.seededPricingOptions, fresh.complyExtensions.seededPricingOptions),
       seededCreativeFormats: asMap(hydratedComply.seededCreativeFormats, fresh.complyExtensions.seededCreativeFormats),
+      seededMeasurementCatalogs: asMap(hydratedComply.seededMeasurementCatalogs, fresh.complyExtensions.seededMeasurementCatalogs),
       forcedCreateMediaBuyArm: hydratedComply.forcedCreateMediaBuyArm,
     },
     lastGetProductsContext: (hydrated.lastGetProductsContext as SessionState['lastGetProductsContext']) ?? undefined,
@@ -610,4 +612,3 @@ export async function clearSessions(): Promise<void> {
   }
   // Other AdcpStateStore implementations: no-op. Tests should inject a known store.
 }
-

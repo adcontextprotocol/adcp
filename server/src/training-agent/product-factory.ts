@@ -29,7 +29,16 @@ type CollectionSelector = {
   publisher_domain: string;
   collection_ids: string[];
 };
-type TrainingProduct = Product & {
+type ProductCardManifest = {
+  format_id: FormatID;
+  manifest: {
+    format_id: FormatID;
+    assets: Record<string, unknown>;
+  };
+};
+type TrainingProduct = Omit<Product, 'product_card' | 'product_card_detailed'> & {
+  product_card?: Product['product_card'] | ProductCardManifest;
+  product_card_detailed?: Product['product_card_detailed'] | ProductCardManifest;
   collections?: CollectionSelector[];
   installments?: Installment[];
   exclusivity?: 'exclusive' | 'category';
@@ -629,7 +638,7 @@ function buildProduct(
   };
 
   return {
-    product: product as Product,
+    product: product as unknown as Product,
     publisherId: pub.id,
     trainingTier: tierForProduct(pub, template.deliveryType, template.channels),
     scenarioTags: scenarioTagsForProduct(pub, template.deliveryType, template.channels),

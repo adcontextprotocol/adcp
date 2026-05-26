@@ -217,6 +217,11 @@ export interface ComplyBudgetSimulation {
   budget: { amount: number; currency: string };
 }
 
+export interface SeededMeasurementCatalog {
+  vendor: { domain: string; brand_id?: string };
+  metrics: Array<{ metric_id: string; [key: string]: unknown }>;
+}
+
 export interface ComplyExtensions {
   accountStatuses: Map<string, string>;
   siSessions: Map<string, { status: string; terminationReason?: string }>;
@@ -233,6 +238,11 @@ export interface ComplyExtensions {
    * giving storyboards a deterministic, size-controlled result set for
    * pagination-integrity assertions. Keyed by the format's id string. */
   seededCreativeFormats: Map<string, Record<string, unknown>>;
+  /** Measurement vendor catalogs seeded via comply_test_controller.seed_measurement_catalog.
+   * Keyed by `(vendor.domain, vendor.brand_id)` so vendor_metric optimization
+   * storyboards can distinguish product/reporting preconditions from the
+   * external measurement.metrics[] discovery precondition. */
+  seededMeasurementCatalogs: Map<string, SeededMeasurementCatalog>;
   /** Single-shot directive registered via comply_test_controller.force_create_media_buy_arm.
    * Consumed by the next create_media_buy call from this session and cleared. A second
    * force_create_media_buy_arm before consumption overwrites the directive. Buyer-side
@@ -326,6 +336,27 @@ export interface MediaBuyHistoryEntry {
   packageId?: string;
 }
 
+export interface MediaBuyAvailableActionState {
+  action: string;
+  mode: 'self_serve' | 'conditional_self_serve' | 'requires_proposal' | 'requires_approval';
+  sla?: {
+    response_max?: string;
+    completion_max?: string;
+  };
+  terms_ref?: string;
+}
+
+export interface MediaBuyProductAllowedActionState {
+  action: string;
+  modes: MediaBuyAvailableActionState['mode'][];
+  allowed_statuses?: string[];
+  sla?: {
+    response_max?: string;
+    completion_max?: string;
+  };
+  terms_ref?: string;
+}
+
 export interface MediaBuyState {
   mediaBuyId: string;
   accountRef: AccountRef;
@@ -333,6 +364,8 @@ export interface MediaBuyState {
   status: string;
   currency: string;
   packages: PackageState[];
+  productAllowedActions?: MediaBuyProductAllowedActionState[];
+  availableActions?: MediaBuyAvailableActionState[];
   startTime: string;
   endTime: string;
   revision: number;
