@@ -2953,12 +2953,29 @@ describe('get_media_buys handler', () => {
     clearSessions();
   });
 
-  it('returns empty array when no media buys exist', async () => {
+  it('falls back to active compliance media-buy fixtures when no media buys exist', async () => {
+    const account = { brand: { domain: 'demo.example.com' }, operator: 'demo.example.com' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'get_media_buys', {});
+    const { result } = await simulateCallTool(server, 'get_media_buys', { account });
 
     expect(Array.isArray(result.media_buys)).toBe(true);
-    expect((result.media_buys as unknown[]).length).toBe(0);
+    const buys = result.media_buys as Array<Record<string, unknown>>;
+    expect(buys.map(b => b.media_buy_id)).toEqual(['seed_mb_display_q2']);
+    expect(buys[0].status).toBe('active');
+  });
+
+  it('skips compliance fixture fallback when media_buy_ids filter is explicit', async () => {
+    const account = { brand: { domain: 'demo.example.com' }, operator: 'demo.example.com' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      media_buy_ids: ['mb_nonexistent'],
+    });
+
+    expect(result.media_buys).toEqual([]);
+    const pg = result.pagination as Record<string, unknown>;
+    expect(pg.has_more).toBe(false);
+    expect(pg.total_count).toBe(0);
   });
 
   it('returns created media buys', async () => {
@@ -4742,6 +4759,25 @@ describe('get_media_buy_delivery handler', () => {
     });
 
     expect(result.code).toBe('MEDIA_BUY_NOT_FOUND');
+  });
+
+  it('falls back to compliance media-buy fixtures for delivery lookups', async () => {
+    const account = { brand: { domain: 'demo.example.com' }, operator: 'demo.example.com' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: 'seed_mb_display_q2',
+    });
+
+    expect(result.errors).toBeUndefined();
+    const deliveries = result.media_buy_deliveries as Array<Record<string, unknown>>;
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0].media_buy_id).toBe('seed_mb_display_q2');
+    const packages = deliveries[0].by_package as Array<Record<string, unknown>>;
+    expect(packages.map(pkg => pkg.package_id)).toEqual([
+      'seed_pkg_display_q2_a',
+      'seed_pkg_display_q2_b',
+    ]);
   });
 
   it('looks up by media_buy_id', async () => {

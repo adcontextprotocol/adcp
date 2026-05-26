@@ -11,6 +11,7 @@ required_tools:
 requires_scenarios:
   - media_buy_seller/proposal_finalize
   - media_buy_seller/proposal_finalize_asap_timing
+  - media_buy_seller/proposal_not_found_errors
   - media_buy_seller/delivery_reporting
   - media_buy_seller/measurement_terms_rejected
   - media_buy_seller/pending_creatives_to_start
