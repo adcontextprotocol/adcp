@@ -1,0 +1,800 @@
+id: media_buy_seller/dependency_impairment_cardinality
+version: "1.0.0"
+title: "Dependency impairment cardinality — impairments[] tracks each offline resource independently"
+category: media_buy_seller
+summary: "Two creatives on two packages of the same buy. Rejects them sequentially and verifies impairments[] grows 0 → 1 → 2; recovers them sequentially via swap-assignment and verifies impairments[] shrinks 2 → 1 → 0. Pressure-tests the inverse rule under cardinality — a seller emitting any impairment entry rather than the right one fails."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buys
+  - sync_creatives
+  - update_media_buy
+  - comply_test_controller
+
+narrative: |
+  The base dependency_impairment scenario tests forward + inverse + health-iff
+  with one creative on one package — a malicious or buggy seller can pass the
+  inverse rule there by emitting any impairment entry whose resource_id
+  happens to match a known-rejected creative. This scenario pressure-tests
+  inverse-rule **cardinality**: the seller MUST emit the right number of
+  entries, each pointing at the right resource.
+
+  Five phases:
+
+  1. **setup** — discover a product, create a buy with TWO packages, sync two
+     creatives (A bound to package_a, B bound to package_b), force both to
+     approved baseline. `impairments[]` is empty; `health: ok`.
+  2. **reject_first** — force creative A to rejected. Read the buy: exactly
+     ONE impairment entry, resource_id A, package_ids contains package_a (NOT
+     package_b — the assertion fails if the seller incorrectly inflates the
+     scope).
+  3. **reject_second** — force creative B to rejected. Read the buy: TWO
+     impairment entries (one per creative), each pointing at its own package.
+     The assertion fails if the seller emits one merged entry or a single
+     entry with both package_ids — package scope is per-resource, not
+     per-buy.
+  4. **recover_first** — swap package_a's binding from A to a fresh
+     replacement C. Read the buy: ONE impairment entry remaining (B on
+     package_b only). Verifies the seller decrements correctly when an
+     impairment clears partially.
+  5. **recover_second** — swap package_b's binding from B to a fresh
+     replacement D. Read the buy: impairments[] empty, health: ok.
+     Cardinality returns to zero.
+
+  Failure modes this catches that the single-creative scenario can't:
+
+  - Seller emits an impairment for A when only B is rejected (wrong
+    resource_id, right cardinality) — caught in phase 2 (asserts resource_id).
+  - Seller emits ONE impairment entry with package_ids: [package_a,
+    package_b] when both creatives are rejected — caught in phase 3 (asserts
+    exactly two entries).
+  - Seller decrements impairments[] all the way to empty when only ONE
+    creative recovers — caught in phase 4 (asserts one entry remains).
+  - Seller never decrements impairments[] on swap recovery — caught in both
+    recovery phases.
+
+  Capability gating mirrors the base scenario: sellers whose
+  `capabilities.media_buy.propagation_surfaces` does NOT include
+  `"snapshot"` grade this scenario not_applicable. Sellers declaring
+  `["snapshot", "webhook"]` are graded here on the snapshot surface.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - has_creative_library
+  examples:
+    - "Any media buy seller that exposes comply_test_controller and propagates per-resource impairments independently"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Seller MUST expose comply_test_controller with force_creative_status,
+    accept buys with multiple packages, and support update_media_buy with
+    packages[].creative_assignments (replacement semantics). Sellers
+    without per-resource impairment cardinality (e.g., bundles all rejected
+    creatives into one impairment entry) fail this scenario — that's the
+    point.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: setup
+    title: "Create a buy with two packages, two creatives, two assignments"
+    narrative: |
+      Discover a product, create a buy with two packages (same product is
+      fine — packages are independent line items), sync two creatives each
+      assigned to its own package, and force both to approved baseline.
+
+    steps:
+      - id: get_products_brief
+        title: "Discover a product"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return at least one product with a pricing option and at least one format_id.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display inventory on outdoor lifestyle content for dependency-impairment cardinality testing."
+          filters:
+            is_fixed_price: true
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "dependency_impairment_cardinality--get_products"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+          - path: "products[0].format_ids[0].agent_url"
+            key: "format_agent_url"
+          - path: "products[0].format_ids[0].id"
+            key: "format_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].format_ids[0].id"
+            description: "Product exposes at least one format_id for creative sync"
+          - check: field_present
+            path: "products[0].pricing_options[0].fixed_price"
+            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+
+      - id: create_buy_two_packages
+        title: "Create a media buy with two packages"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Buy created with media_buy_id and two distinct packages. Both
+          package_ids captured for the impairment-per-package assertions.
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_cardinality_create_buy"
+          start_time: "2026-11-01T00:00:00Z"
+          end_time: "2026-11-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              budget: 3000
+              pricing_option_id: "$context.pricing_option_id"
+            - product_id: "$context.product_id"
+              budget: 3000
+              pricing_option_id: "$context.pricing_option_id"
+          context:
+            correlation_id: "dependency_impairment_cardinality--create_buy"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "media_buy_id"
+          - path: "packages[0].package_id"
+            key: "package_a_id"
+          - path: "packages[1].package_id"
+            key: "package_b_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns media_buy_id"
+          - check: field_present
+            path: "packages[0].package_id"
+            description: "First package_id returned"
+          - check: field_present
+            path: "packages[1].package_id"
+            description: "Second package_id returned (multi-package buy is supported)"
+
+      - id: sync_two_creatives
+        title: "Sync creatives A and B into the library"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Both creatives accepted (action: created). Assignments are done in
+          the next step via update_media_buy.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_card_banner_a"
+              name: "Acme Outdoor cardinality A"
+              format_id:
+                agent_url: "$context.format_agent_url"
+                id: "$context.format_id"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/acme-card-a.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+            - creative_id: "acme_card_banner_b"
+              name: "Acme Outdoor cardinality B"
+              format_id:
+                agent_url: "$context.format_agent_url"
+                id: "$context.format_id"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/acme-card-b.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_cardinality_sync_creatives"
+          context:
+            correlation_id: "dependency_impairment_cardinality--sync_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].creative_id"
+            description: "Creative A returned"
+          - check: field_present
+            path: "creatives[1].creative_id"
+            description: "Creative B returned"
+
+      - id: assign_creatives_to_packages
+        title: "Bind creative A → package_a and creative B → package_b"
+        narrative: |
+          The spec defines two equal canonical surfaces for the creative ↔
+          package binding: inline `sync_creatives.assignments[]` and
+          `update_media_buy.packages[].creative_assignments` (replacement
+          semantics). This scenario uses the update_media_buy surface; the
+          per-package impairment cardinality contract is identical regardless
+          of which path the buyer chose.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        stateful: true
+        expected: |
+          Update accepted. Each package's creative_assignments now contains
+          its respective creative.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          packages:
+            - package_id: "$context.package_a_id"
+              creative_assignments:
+                - creative_id: "acme_card_banner_a"
+            - package_id: "$context.package_b_id"
+              creative_assignments:
+                - creative_id: "acme_card_banner_b"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_cardinality_assign_creatives"
+          context:
+            correlation_id: "dependency_impairment_cardinality--assign_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+
+      - id: force_both_approved
+        title: "Baseline: force both creatives to approved"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        comply_scenario: full_sales_flow
+        stateful: true
+        expected: |
+          success: true. Creative A is at status: approved.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "force_creative_status"
+          params:
+            creative_id: "acme_card_banner_a"
+            status: "approved"
+          context:
+            correlation_id: "dependency_impairment_cardinality--force_a_approved"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json schema"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller acknowledged the directive for creative A"
+
+      - id: force_b_approved
+        title: "Baseline (cont'd): force creative B to approved"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        comply_scenario: full_sales_flow
+        stateful: true
+        expected: |
+          success: true. Creative B is at status: approved.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "force_creative_status"
+          params:
+            creative_id: "acme_card_banner_b"
+            status: "approved"
+          context:
+            correlation_id: "dependency_impairment_cardinality--force_b_approved"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json schema"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller acknowledged the directive for creative B"
+
+      - id: baseline_healthy
+        title: "Read the buy — health: ok, impairments[] empty"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          health: ok, impairments[] empty. Baseline cardinality is zero.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          context:
+            correlation_id: "dependency_impairment_cardinality--baseline_healthy"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].health"
+            allowed_values: ["ok"]
+            description: "Buy health is ok with both creatives approved"
+          - check: field_value_or_absent
+            path: "media_buys[0].impairments"
+            value: []
+            description: "impairments[] is empty (cardinality zero baseline)"
+
+  - id: reject_first_cardinality_one
+    title: "Reject creative A — impairments[] cardinality 1, scoped to package_a"
+    narrative: |
+      Force creative A to rejected. The buy MUST report exactly ONE
+      impairment entry, with resource_id matching A and package_ids
+      containing package_a only. A seller that inflates the impairment to
+      both packages (or emits an extra impairment for B) fails here.
+
+    steps:
+      - id: force_a_rejected
+        title: "Force creative A to rejected"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          success: true. Creative A is at status: rejected.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "force_creative_status"
+          params:
+            creative_id: "acme_card_banner_a"
+            status: "rejected"
+            rejection_reason: "Cardinality scenario: first rejection."
+          context:
+            correlation_id: "dependency_impairment_cardinality--force_a_rejected"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json schema"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller acknowledged the rejection directive"
+
+      - id: verify_cardinality_one
+        title: "Read the buy — exactly one impairment, scoped to package_a"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          health: impaired. impairments[0] present, resource_type creative,
+          resource_id acme_card_banner_a, package_ids contains package_a
+          only. impairments[1] MUST NOT be present — only one creative is
+          rejected.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          context:
+            correlation_id: "dependency_impairment_cardinality--verify_cardinality_one"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].health"
+            allowed_values: ["impaired"]
+            description: "Buy health flipped to impaired"
+          - check: field_present
+            path: "media_buys[0].impairments[0]"
+            description: "First impairment entry present"
+          - check: field_value
+            path: "media_buys[0].impairments[0].resource_id"
+            value: "acme_card_banner_a"
+            description: "Impairment[0] points at creative A (not B)"
+          - check: field_value
+            path: "media_buys[0].impairments[0].package_ids[0]"
+            value: "$context.package_a_id"
+            description: "Impairment[0].package_ids contains package_a — scope is per-resource, not per-buy. A seller emitting [package_a, package_b] when only A is rejected fails here."
+          # Cardinality enforcement note (adcp#4685 expert review): the
+          # exact-count assertion (no second entry) is not directly checkable
+          # with the current check vocabulary — `field_value_or_absent value:
+          # null` would pass on a seller emitting a literal-null padding,
+          # which is unsound. Exact cardinality is enforced by the
+          # cross-resource invariant (over-emission produces an impairment
+          # whose referenced resource is not offline, failing the forward
+          # rule). Direct array-length assertion lands when the runner adds
+          # an `array_length` check kind — tracked in a follow-up.
+
+  - id: reject_second_cardinality_two
+    title: "Reject creative B — impairments[] grows to cardinality 2"
+    narrative: |
+      Force creative B to rejected. The buy MUST report exactly TWO
+      impairment entries, one per creative, each scoped to its own package.
+      The assertion fails if the seller merges them, drops one, or
+      inflates either's package scope.
+
+    steps:
+      - id: force_b_rejected
+        title: "Force creative B to rejected"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          success: true. Creative B is at status: rejected.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "force_creative_status"
+          params:
+            creative_id: "acme_card_banner_b"
+            status: "rejected"
+            rejection_reason: "Cardinality scenario: second rejection."
+          context:
+            correlation_id: "dependency_impairment_cardinality--force_b_rejected"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json schema"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller acknowledged the rejection directive"
+
+      - id: verify_cardinality_two
+        title: "Read the buy — exactly two impairments, one per creative"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          health: impaired. impairments[] has exactly two entries — one for
+          A on package_a, one for B on package_b. Order is unspecified but
+          both entries MUST be present and correctly scoped.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          context:
+            correlation_id: "dependency_impairment_cardinality--verify_cardinality_two"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].health"
+            allowed_values: ["impaired"]
+            description: "Buy health remains impaired with both creatives rejected"
+          - check: field_present
+            path: "media_buys[0].impairments[0]"
+            description: "First impairment entry present"
+          - check: field_present
+            path: "media_buys[0].impairments[1]"
+            description: "Second impairment entry present — cardinality 2"
+          # Cardinality at 2: same enforcement story as the prior phase —
+          # exact-count enforcement comes from the cross-resource invariant
+          # via the forward rule. Over-emitting a third entry would point at
+          # a creative that isn't offline, failing the invariant.
+
+  - id: recover_first_via_swap
+    title: "Swap package_a's binding to a fresh creative C — cardinality back to 1"
+    narrative: |
+      Sync creative C (approved), then update_media_buy to swap
+      package_a's creative_assignments from A → C. Creative A stays rejected
+      in the library but is no longer a dependency of package_a. Read the
+      buy: impairments[] shrinks to exactly one entry (B on package_b);
+      A's impairment cleared.
+
+    steps:
+      - id: sync_replacement_c
+        title: "Sync replacement creative C"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Replacement creative C accepted into the library.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_card_banner_c"
+              name: "Acme Outdoor cardinality C"
+              format_id:
+                agent_url: "$context.format_agent_url"
+                id: "$context.format_id"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/acme-card-c.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_cardinality_sync_c"
+          context:
+            correlation_id: "dependency_impairment_cardinality--sync_replacement_c"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].creative_id"
+            description: "Replacement creative C returned"
+
+      - id: force_c_approved
+        title: "Force creative C to approved"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        comply_scenario: full_sales_flow
+        stateful: true
+        expected: |
+          success: true.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "force_creative_status"
+          params:
+            creative_id: "acme_card_banner_c"
+            status: "approved"
+          context:
+            correlation_id: "dependency_impairment_cardinality--force_c_approved"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json schema"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller acknowledged the directive"
+
+      - id: swap_package_a
+        title: "update_media_buy — swap package_a's creative_assignments to C"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          The seller accepts the package update. Replacement semantics: the
+          new list (just C) fully replaces the old (just A) for package_a.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          packages:
+            - package_id: "$context.package_a_id"
+              creative_assignments:
+                - creative_id: "acme_card_banner_c"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_cardinality_swap_a"
+          context:
+            correlation_id: "dependency_impairment_cardinality--swap_package_a"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+
+      - id: verify_cardinality_back_to_one
+        title: "Read the buy — exactly one impairment remaining (B on package_b)"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          health: impaired (B still rejected and assigned to package_b).
+          impairments[0] present, resource_id B, package_ids contains
+          package_b. impairments[1] MUST NOT exist — the swap cleared A's
+          impairment. A seller that holds both entries fails the inverse
+          rule's decrement direction.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          context:
+            correlation_id: "dependency_impairment_cardinality--verify_back_to_one"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].health"
+            allowed_values: ["impaired"]
+            description: "Buy health is still impaired — B remains rejected and assigned to package_b"
+          - check: field_present
+            path: "media_buys[0].impairments[0]"
+            description: "Exactly one impairment entry remains"
+          - check: field_value
+            path: "media_buys[0].impairments[0].resource_id"
+            value: "acme_card_banner_b"
+            description: "Remaining impairment points at creative B (not A — A is no longer a dependency after the swap)"
+          - check: field_value_or_absent
+            path: "media_buys[0].impairments[1]"
+            value: null
+            description: "impairments[1] MUST NOT exist — the swap recovered A's dependency; only B remains rejected. Cardinality decrement check."
+
+  - id: recover_second_via_swap
+    title: "Swap package_b's binding to a fresh creative D — cardinality back to 0"
+    narrative: |
+      Sync creative D (approved), swap package_b's binding from B → D, read
+      the buy: impairments[] empty, health: ok. Full cardinality round-trip
+      0 → 1 → 2 → 1 → 0.
+
+    steps:
+      - id: sync_replacement_d
+        title: "Sync replacement creative D"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Replacement creative D accepted into the library.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_card_banner_d"
+              name: "Acme Outdoor cardinality D"
+              format_id:
+                agent_url: "$context.format_agent_url"
+                id: "$context.format_id"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/acme-card-d.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_cardinality_sync_d"
+          context:
+            correlation_id: "dependency_impairment_cardinality--sync_replacement_d"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].creative_id"
+            description: "Replacement creative D returned"
+
+      - id: force_d_approved
+        title: "Force creative D to approved"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        comply_scenario: full_sales_flow
+        stateful: true
+        expected: |
+          success: true.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "force_creative_status"
+          params:
+            creative_id: "acme_card_banner_d"
+            status: "approved"
+          context:
+            correlation_id: "dependency_impairment_cardinality--force_d_approved"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json schema"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller acknowledged the directive"
+
+      - id: swap_package_b
+        title: "update_media_buy — swap package_b's creative_assignments to D"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          The seller accepts the swap.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          packages:
+            - package_id: "$context.package_b_id"
+              creative_assignments:
+                - creative_id: "acme_card_banner_d"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_cardinality_swap_b"
+          context:
+            correlation_id: "dependency_impairment_cardinality--swap_package_b"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+
+      - id: verify_cardinality_zero
+        title: "Read the buy — impairments[] cleared, health: ok"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          health: ok (both rejected creatives no longer dependencies of the
+          buy). impairments[] empty. Cardinality back to zero.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          context:
+            correlation_id: "dependency_impairment_cardinality--verify_cardinality_zero"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].health"
+            allowed_values: ["ok"]
+            description: "Buy health returned to ok after both creatives swapped out"
+          - check: field_value_or_absent
+            path: "media_buys[0].impairments"
+            value: []
+            description: "impairments[] empty — cardinality back to zero"

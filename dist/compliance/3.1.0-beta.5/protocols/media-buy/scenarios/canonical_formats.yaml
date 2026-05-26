@@ -1,0 +1,211 @@
+id: media_buy_seller/canonical_formats
+version: "1.0.0"
+title: "Canonical formats producer scenario"
+category: media_buy_seller
+summary: "Validates that get_products can expose a seeded product through both v1 format_ids and v2 canonical format_options without drift."
+track: products
+required_tools:
+  - get_products
+  - comply_test_controller
+
+narrative: |
+  AdCP 3.1 introduces canonical product-bound format declarations on
+  `products[].format_options[]` while preserving the v1 `format_ids[]`
+  fallback during the migration window. Producers that dual-emit both shapes
+  MUST describe the same underlying creative requirement in each path.
+
+  This scenario is an opt-in canonical-format track, not a universal 3.x
+  requirement: 3.x products may still carry `format_ids`, `format_options`, or
+  both. It exercises the dual-emission contract only after the runner seeds a
+  product that deliberately carries both shapes.
+
+  The scenario seeds a deterministic display product that accepts a
+  300x250 image creative and declares a unique vendor metric so the buyer can
+  isolate that product with a structured filter. The buyer requests the
+  wholesale product feed and verifies that the seeded product is discoverable
+  as an image canonical, carries the expected v2 parameters, and links that
+  declaration back to the same v1 format identifier exposed in `format_ids[]`.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - exposes_canonical_formats
+  examples:
+    - "Any media-buy seller adopting canonical product format declarations"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The runner seeds a canonical-format product before the product feed read.
+    Agents without deterministic seeding support skip this storyboard until
+    they expose a test surface that can merge seeded catalog entries.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "canonical_formats_mrec_display"
+      name: "Canonical Formats MREC Display"
+      description: "Seeded wholesale product for canonical image dual-emission validation."
+      publisher_properties:
+        - publisher_domain: "outdoormagazine.example"
+          selection_type: "all"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_ids:
+        - agent_url: "https://creative.adcontextprotocol.org/"
+          id: "display_300x250_image"
+      format_options:
+        - format_kind: "image"
+          format_option_id: "canonical_formats_image_mrec"
+          display_name: "Canonical Formats Image MREC"
+          v1_format_ref:
+            - agent_url: "https://creative.adcontextprotocol.org/"
+              id: "display_300x250_image"
+          params:
+            width: 300
+            height: 250
+            max_file_size_kb: 200
+            image_formats: ["jpg", "png"]
+            ssl_required: true
+            asset_source: "buyer_uploaded"
+            buyer_asset_acceptance: "accepted"
+            composition_model: "deterministic"
+            slots:
+              - asset_group_id: "image_main"
+                asset_type: "image"
+                required: true
+      pricing_options:
+        - pricing_option_id: "canonical_formats_mrec_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 12
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "clicks", "spend"]
+        vendor_metrics:
+          - vendor:
+              domain: "prism.example"
+            metric_id: "canonical_format_storyboard_probe"
+        date_range_support: "date_range"
+
+phases:
+  - id: canonical_product_discovery
+    title: "Canonical product discovery"
+    narrative: |
+      The buyer reads the wholesale product feed with a vendor-metric filter
+      that isolates the seeded product. The returned product MUST be present
+      with both v1 and v2 format declarations: `format_ids[]` for legacy
+      buyers, `format_options[]` for canonical-format buyers.
+
+    steps:
+      - id: get_seeded_canonical_product
+        title: "Read products with canonical format declarations"
+        narrative: |
+          Request the wholesale product feed so seeded catalog entries are
+          returned without brief-mode ranking or curation. A required vendor
+          metric filter narrows the response to the seeded product. The
+          response schema validates the full product shape, while the field
+          checks verify the canonical declaration and its v1 projection link.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: true
+        expected: |
+          Return products including the seeded canonical_formats_mrec_display
+          product with:
+          - format_ids[] containing the display_300x250_image v1 fallback from https://creative.adcontextprotocol.org/
+          - format_options[] containing an image declaration
+          - v1_format_ref[] linking the image declaration back to that fallback
+          - params.width = 300 and params.height = 250
+
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            delivery_type: "guaranteed"
+            required_vendor_metrics:
+              - vendor:
+                  domain: "prism.example"
+                metric_id: "canonical_format_storyboard_probe"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "canonical_formats--get_seeded_canonical_product"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "canonical_formats_mrec_display"
+            description: "The vendor-metric filter isolates the seeded canonical-format product"
+          - check: field_value
+            path: "products[0].reporting_capabilities.vendor_metrics[0].vendor.domain"
+            value: "prism.example"
+            description: "Matched product declares the filtering vendor metric"
+          - check: field_value
+            path: "products[0].reporting_capabilities.vendor_metrics[0].metric_id"
+            value: "canonical_format_storyboard_probe"
+            description: "Matched product declares the filtering metric id"
+          - check: field_value
+            path: "products[0].format_ids[0].agent_url"
+            value: "https://creative.adcontextprotocol.org/"
+            description: "v1 fallback format_id names the AAO creative-format catalog"
+          - check: field_value
+            path: "products[0].format_ids[0].id"
+            value: "display_300x250_image"
+            description: "v1 fallback format_id is present"
+          - check: field_value
+            path: "products[0].format_options[0].format_kind"
+            value: "image"
+            description: "Seeded product advertises the image canonical"
+          - check: field_value
+            path: "products[0].format_options[0].format_option_id"
+            value: "canonical_formats_image_mrec"
+            description: "Seeded canonical declaration carries a stable format_option_id"
+          - check: field_value
+            path: "products[0].format_options[0].v1_format_ref[0].agent_url"
+            value: "https://creative.adcontextprotocol.org/"
+            description: "Canonical declaration links back to the AAO creative-format catalog"
+          - check: field_value
+            path: "products[0].format_options[0].v1_format_ref[0].id"
+            value: "display_300x250_image"
+            description: "Canonical declaration links back to the same v1 format identifier"
+          - check: field_value
+            path: "products[0].format_options[0].params.width"
+            value: 300
+            description: "Canonical image params include the expected width"
+          - check: field_value
+            path: "products[0].format_options[0].params.height"
+            value: 250
+            description: "Canonical image params include the expected height"
+          - check: refs_resolve
+            description: "Every v1_format_ref advertised by the returned product's format_options resolves to a format_id on that product"
+            source:
+              from: current_step
+              path: "products[0].format_options[*].v1_format_ref[*]"
+            target:
+              from: current_step
+              path: "products[0].format_ids[*]"
+            match_keys: [agent_url, id]
+            on_out_of_scope: fail
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "canonical_formats--get_seeded_canonical_product"
+            description: "Context correlation_id returned unchanged"
