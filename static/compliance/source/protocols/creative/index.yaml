@@ -99,13 +99,15 @@ phases:
         comply_scenario: creative_lifecycle
         stateful: false
         expected: |
-          Return all creative formats your platform accepts:
+          Return the first page of creative formats your platform accepts:
           - format_id with your agent_url and unique id
           - Asset requirements (dimensions, file sizes, mime types)
           - Render dimensions
-          - At least two formats (e.g., display and video)
+          - Up to five formats on this compliance request; callers paginate for the rest when needed
 
         sample_request:
+          pagination:
+            max_results: 5
           context:
             correlation_id: "creative_lifecycle--list_formats"
 

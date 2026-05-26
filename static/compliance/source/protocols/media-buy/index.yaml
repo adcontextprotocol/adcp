@@ -257,8 +257,9 @@ phases:
         title: "Send a brief"
         narrative: |
           The buyer describes what they want in natural language. Your platform returns
-          products that match the brief, including pricing options, delivery forecasts,
-          and creative format requirements.
+          up to five representative products that match the brief, including pricing
+          options, delivery forecasts, and creative format requirements. Exhaustive
+          catalog enumeration is not required for this compliance step.
 
           This call may take up to 60 seconds — your platform is running AI inference
           against your inventory catalog. If the brief is ambiguous, you can return
@@ -270,7 +271,7 @@ phases:
         comply_scenario: full_sales_flow
         stateful: false
         expected: |
-          Return products matching the brief. Each product should include:
+          Return up to five products matching the brief. Each product should include:
           - product_id: unique identifier
           - name and description
           - delivery_type: guaranteed or non_guaranteed
@@ -287,6 +288,8 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium video inventory on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US and Canada."
+          pagination:
+            max_results: 5
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -579,9 +582,10 @@ phases:
       - id: list_formats
         title: "Check creative format requirements"
         narrative: |
-          The buyer confirms what creative formats the confirmed packages require.
-          Your platform returns format specs with asset requirements, dimensions,
-          and constraints.
+          The buyer confirms the first creative format referenced by the discovered
+          product. Your platform returns that format spec with asset requirements,
+          dimensions, and constraints. This is a bounded integrity check, not a
+          full format-catalog dump.
         task: list_creative_formats
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
@@ -589,12 +593,16 @@ phases:
         comply_scenario: creative_lifecycle
         stateful: false
         expected: |
-          Return creative formats your platform accepts. Each format should define:
+          Return the creative format referenced by the discovered product. The format should define:
           - format_id with your agent_url and unique id
           - Asset requirements (dimensions, file sizes, mime types)
           - Render dimensions
 
         sample_request:
+          format_ids:
+            - "$context.product_format_id"
+          pagination:
+            max_results: 1
           context:
             correlation_id: "media_buy_seller--list_formats"
 
@@ -619,8 +627,8 @@ phases:
             description: "Context correlation_id returned unchanged"
           - check: refs_resolve
             description: |
-              Every format_id returned on products resolves to a format in this
-              agent's list_creative_formats. Broken references here surface as a
+              The captured format_id returned on the first product resolves to a
+              format in this agent's list_creative_formats. Broken references here surface as a
               grading failure instead of a silent mismatch that only breaks at
               sync_creatives time, after the buy is committed. Third-party
               format_ids (agent_url pointing at a different creative agent)
@@ -628,7 +636,7 @@ phases:
               observations rather than failures.
             source:
               from: context
-              path: "products[*].format_ids[*]"
+              path: "product_format_id"
             target:
               from: current_step
               path: "formats[*].format_id"
