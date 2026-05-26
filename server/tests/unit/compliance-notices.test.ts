@@ -142,7 +142,7 @@ describe('complianceResultToDbInput — notices pass-through', () => {
     expect(dbInput.notices_json).toBeNull();
   });
 
-  it('sets notices_json to null when summary.notices is an empty array', () => {
+  it('preserves an empty summary.notices array', () => {
     const result = baseResult({ notices: [] });
 
     const dbInput = complianceResultToDbInput(
@@ -151,11 +151,6 @@ describe('complianceResultToDbInput — notices pass-through', () => {
       'production',
     );
 
-    // Empty array is falsy via `?? null` — acceptable: no notices to show
-    // (null and [] are both "no notices" in the API/dashboard logic)
-    expect(dbInput.notices_json == null || Array.isArray(dbInput.notices_json)).toBe(true);
-    if (Array.isArray(dbInput.notices_json)) {
-      expect(dbInput.notices_json).toHaveLength(0);
-    }
+    expect(dbInput.notices_json).toEqual([]);
   });
 });

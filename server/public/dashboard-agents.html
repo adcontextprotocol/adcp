@@ -1714,9 +1714,9 @@
     // Build the notices section HTML for a compliance status object.
     // Forward-compat: unknown severity values render with a neutral style
     // rather than being dropped (runner-output-contract.yaml).
-    // XSS note: all notice text fields (message, code, etc.) are rendered
-    // via DOM textContent or escapeHtml — NOT innerHTML — because these
-    // strings originate from storyboard authors, not AAO.
+    // XSS note: all notice text fields (message, code, etc.) are escaped
+    // before being included in the rendered HTML because these strings
+    // originate from storyboard authors, not AAO.
     function buildNoticesSectionHtml(cs) {
       const notices = Array.isArray(cs && cs.notices) ? cs.notices : [];
       if (notices.length === 0) return '';
@@ -1729,7 +1729,8 @@
 
       const noticesHtml = notices.map(notice => {
         const severityClass = SEVERITY_CLASS[notice.severity] || 'compliance-notice-severity--unknown';
-        // All text content rendered via escapeHtml (storyboard-author-controlled)
+        // All text content is storyboard-author-controlled; escape before
+        // including it in HTML or attribute contexts.
         const severityLabel = escapeHtml(String(notice.severity ?? ''));
         const codeLabel = escapeHtml(String(notice.code ?? ''));
         const messageText = escapeHtml(String(notice.message ?? ''));
