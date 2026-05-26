@@ -4,6 +4,7 @@ title: "Vendor-metric optimization-goal: acceptance and rejection"
 category: media_buy_seller
 summary: "Verifies that a seller supporting vendor_metric_optimization accepts a media buy whose optimization_goal has kind 'vendor_metric' when all preconditions are met, and rejects goals that fail either the capability check or the reporting-coherence check."
 track: media_buy
+introduced_in: "3.1"
 
 # Gate: scenario runs only when the seller declares vendor-metric
 # optimization support. The product-level vendor_metric_optimization block
@@ -225,6 +226,9 @@ phases:
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
+        auth:
+          type: api_key
+          from_test_kit: true
         stateful: true
         expected: |
           Accept the buy. The optimization goal is valid: attention_score is in
@@ -285,6 +289,9 @@ phases:
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
+        auth:
+          type: api_key
+          from_test_kit: true
         stateful: true
         expected: |
           Accept the buy. The optimization goal has no target, so supported_targets
@@ -340,6 +347,9 @@ phases:
         comply_scenario: create_media_buy
         expect_error: true
         negative_path: payload_well_formed
+        auth:
+          type: api_key
+          from_test_kit: true
         stateful: false
         expected: |
           Reject with TERMS_REJECTED. The goal references attention_units for
@@ -398,6 +408,9 @@ phases:
         comply_scenario: create_media_buy
         expect_error: true
         negative_path: payload_well_formed
+        auth:
+          type: api_key
+          from_test_kit: true
         stateful: false
         expected: |
           Reject with TERMS_REJECTED. The goal references a supported vendor
@@ -457,6 +470,9 @@ phases:
         comply_scenario: create_media_buy
         expect_error: true
         negative_path: payload_well_formed
+        auth:
+          type: api_key
+          from_test_kit: true
         stateful: false
         expected: |
           Reject with TERMS_REJECTED. The optimization goal targets attention_score
@@ -513,6 +529,9 @@ phases:
         comply_scenario: create_media_buy
         expect_error: true
         negative_path: payload_well_formed
+        auth:
+          type: api_key
+          from_test_kit: true
         stateful: false
         expected: |
           Reject with TERMS_REJECTED. The product can optimize toward

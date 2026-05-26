@@ -402,6 +402,39 @@ interface TaskError {
   field?: string;
   details?: unknown;
   recovery?: string;
+  source?: 'producer' | 'sdk';
+  sdk_id?: string;
+}
+
+const RESPONSE_ENVELOPE_KEYS = new Set([
+  'errors',
+  'context',
+  'ext',
+  'status',
+  'context_id',
+  'task_id',
+  'timestamp',
+  'message',
+  'replayed',
+  'adcp_error',
+  'push_notification_config',
+  'governance_context',
+  'adcp_version',
+  'adcp_major_version',
+]);
+
+export function hasAdcpSuccessPayload(resultObj: Record<string, unknown> | undefined): boolean {
+  if (!resultObj) return false;
+  if (resultObj.status === 'submitted' && typeof resultObj.task_id === 'string') return true;
+  return Object.keys(resultObj).some(key => !RESPONSE_ENVELOPE_KEYS.has(key) && resultObj[key] !== undefined);
+}
+
+function permitsAdvisoryErrors(toolName: string, resultObj: Record<string, unknown> | undefined): boolean {
+  if (toolName === 'get_products') return hasAdcpSuccessPayload(resultObj);
+  if (toolName === 'create_media_buy') {
+    return resultObj?.status === 'submitted' && typeof resultObj.task_id === 'string';
+  }
+  return false;
 }
 
 /** Signal deployment entry in get_signals response. */
@@ -910,13 +943,14 @@ function backfillTrainingProductDefaults(product: Product, ownAgentUrl: string):
     description?: string;
     publisher_properties?: Array<{ publisher_domain: string; selection_type: string }>;
     format_ids?: Array<{ agent_url?: string; id?: string }>;
+    format_options?: unknown[];
     pricing_options?: unknown[];
     reporting_capabilities?: Record<string, unknown>;
   };
-  if (!Array.isArray(p.format_ids) || p.format_ids.length === 0) {
+  if ((!Array.isArray(p.format_ids) || p.format_ids.length === 0) && (!Array.isArray(p.format_options) || p.format_options.length === 0)) {
     p.format_ids = [{ agent_url: ownAgentUrl, id: 'display_300x250' }];
   } else {
-    for (const fid of p.format_ids) {
+    for (const fid of p.format_ids ?? []) {
       if (typeof fid === 'object' && fid !== null && !fid.agent_url) {
         fid.agent_url = ownAgentUrl;
       }
@@ -1278,6 +1312,82 @@ function overlaySeededProducts(
     backfillTrainingProductDefaults(merged as Product, ownAgentUrl);
     productMap.set(productId, merged as Product);
   }
+}
+
+type CanonicalFormatRef = { agent_url?: string; id?: string };
+type CanonicalFormatOption = {
+  format_option_id?: string;
+  format_kind?: string;
+  v1_format_ref?: CanonicalFormatRef[];
+};
+
+function collectCanonicalFormatAdvisories(products: Product[]): TaskError[] {
+  const errors: TaskError[] = [];
+
+  for (let productIndex = 0; productIndex < products.length; productIndex++) {
+    const product = products[productIndex] as Product & {
+      format_ids?: CanonicalFormatRef[];
+      format_options?: CanonicalFormatOption[];
+    };
+    if (!Array.isArray(product.format_ids) || !Array.isArray(product.format_options)) continue;
+    if (product.format_ids.length === 0 || product.format_options.length === 0) continue;
+
+    const declaredRefs = new Set(
+      product.format_ids
+        .filter((ref): ref is Required<CanonicalFormatRef> =>
+          typeof ref.agent_url === 'string' && typeof ref.id === 'string',
+        )
+        .map(ref => `${canonicalizeAgentUrl(ref.agent_url)}#${ref.id}`),
+    );
+    const missingRefs: Array<{
+      format_option_index: number;
+      ref_index: number;
+      agent_url: string;
+      id: string;
+      format_option_id?: string;
+      format_kind?: string;
+    }> = [];
+
+    product.format_options.forEach((option, optionIndex) => {
+      if (!Array.isArray(option.v1_format_ref)) return;
+      option.v1_format_ref.forEach((ref, refIndex) => {
+        if (typeof ref.agent_url !== 'string' || typeof ref.id !== 'string') return;
+        const key = `${canonicalizeAgentUrl(ref.agent_url)}#${ref.id}`;
+        if (!declaredRefs.has(key)) {
+          const missingRef: (typeof missingRefs)[number] = {
+            format_option_index: optionIndex,
+            ref_index: refIndex,
+            agent_url: ref.agent_url,
+            id: ref.id,
+          };
+          if (typeof option.format_option_id === 'string') {
+            missingRef.format_option_id = option.format_option_id;
+          }
+          if (typeof option.format_kind === 'string') {
+            missingRef.format_kind = option.format_kind;
+          }
+          missingRefs.push(missingRef);
+        }
+      });
+    });
+
+    if (missingRefs.length > 0) {
+      errors.push({
+        code: 'FORMAT_DECLARATION_DIVERGENT',
+        message: `Product ${product.product_id} dual-emits format_options v1_format_ref entries that are absent from format_ids.`,
+        field: `products[${productIndex}].format_options`,
+        recovery: 'correctable',
+        source: 'producer',
+        details: {
+          product_id: product.product_id,
+          divergence_reason: 'v1_format_ref_not_declared_on_product',
+          missing_refs: missingRefs,
+        },
+      });
+    }
+  }
+
+  return errors;
 }
 
 // ── Channel aliases for brief matching (module-scoped for perf) ──
@@ -2029,17 +2139,22 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
           : alloc;
       }),
     }));
+  const canonicalFormatAdvisories = collectCanonicalFormatAdvisories(products);
 
   // Store context for refine
   session.lastGetProductsContext = { products, proposals };
 
-  return {
+  const response = {
     status: 'completed' as const,
     products,
-    cache_scope: req.account ? 'account' : 'public',
+    cache_scope: req.account ? 'account' as const : 'public' as const,
     ...(proposals.length > 0 && { proposals }),
     ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
+    ...(canonicalFormatAdvisories.length > 0 && {
+      errors: canonicalFormatAdvisories as unknown as GetProductsResponse['errors'],
+    }),
   };
+  return response;
 }
 
 export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
@@ -5184,17 +5299,21 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       }
     }
 
-    // Execute the tool handler. Structured AdCP errors (handler returns
-    // { errors: [...] }) are well-formed responses — the task completes
-    // successfully with an adcp_error envelope. Only thrown exceptions
-    // mark the task as failed.
+    // Execute the tool handler. Structured AdCP error-only bodies (handler
+    // returns { errors: [...] }) are well-formed responses — the task
+    // completes successfully with an adcp_error envelope. Some response
+    // schemas also permit non-fatal advisories in errors[] alongside a
+    // populated success body; those must stay on the success response.
     if (skipHandler) {
       // toolResult already set from idempotency replay path above
     } else try {
       const result = await Promise.resolve(handler((handlerArgs as ToolArgs) || {}, ctx));
-      const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }> };
-      const hasErrors = resultObj.errors && resultObj.errors.length > 0;
-      if (hasErrors) {
+      const resultObj = result as Record<string, unknown> & {
+        errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }>;
+      };
+      const hasErrors = Array.isArray(resultObj.errors) && resultObj.errors.length > 0;
+      const hasAdvisorySuccessPayload = permitsAdvisoryErrors(name, resultObj);
+      if (hasErrors && !hasAdvisorySuccessPayload) {
         // Error-in-body responses are errors from the buyer's POV — do NOT
         // cache (security.mdx rule 3). cachableResponse stays null so the
         // post-dispatch gate below never inserts this into the replay cache.
@@ -5270,7 +5389,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     }
 
     // Resolve the in-flight claim from check(). Cache only successful inner
-    // responses (security.mdx rule 2+3); errors, structured { errors: [...] }
+    // responses (security.mdx rule 2+3); errors, structured error-only
     // bodies, and exceptions all release the claim so a retry re-executes.
     if (idempotencyClaimed && typeof idempotencyKey === 'string') {
       const store = getIdempotencyStore();

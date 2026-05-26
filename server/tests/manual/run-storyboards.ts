@@ -528,7 +528,6 @@ async function main() {
           ];
       for (const variant of strictVariants) {
         const variantLabel = `${storyboard.id}${variant.routeSuffix.replace('/mcp', '')}`;
-        process.stdout.write(`  ${variantLabel.padEnd(40)} `);
         try {
           const targetUrl = agentUrl.replace(/\/mcp$/, variant.routeSuffix);
           const result = await runStoryboard(targetUrl, storyboard, {
@@ -561,16 +560,15 @@ async function main() {
             ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
             : `✗ ${summary.passed}P / ${summary.failed}F / ${summary.skipped}S / ${summary.not_applicable}N/A`;
           // eslint-disable-next-line no-console
-          console.log(pill);
+          console.log(`  ${variantLabel.padEnd(40)} ${pill}`);
         } catch (err) {
           const summary = { ...summarize(storyboard, { error: err instanceof Error ? err.message : String(err) }), id: variantLabel };
           results.push(summary);
           // eslint-disable-next-line no-console
-          console.log(`⚠ ${summary.error}`);
+          console.log(`  ${variantLabel.padEnd(40)} ⚠ ${summary.error}`);
         }
       }
     } else {
-      process.stdout.write(`  ${storyboard.id.padEnd(40)} `);
       try {
         // The default `/mcp` route is the public sandbox (bearer OR signed,
         // no `required_for` enforcement). Every storyboard other than
@@ -596,12 +594,12 @@ async function main() {
           ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
           : `✗ ${summary.passed}P / ${summary.failed}F / ${summary.skipped}S / ${summary.not_applicable}N/A`;
         // eslint-disable-next-line no-console
-        console.log(pill);
+        console.log(`  ${storyboard.id.padEnd(40)} ${pill}`);
       } catch (err) {
         const summary = summarize(storyboard, { error: err instanceof Error ? err.message : String(err) });
         results.push(summary);
         // eslint-disable-next-line no-console
-        console.log(`⚠ ${summary.error}`);
+        console.log(`  ${storyboard.id.padEnd(40)} ⚠ ${summary.error}`);
       }
     }
   }
