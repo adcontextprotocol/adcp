@@ -388,7 +388,60 @@ async function runTests() {
     return true;
   });
 
-  // Test 8: Validate schema examples against their schemas
+  // Test 8: Validate media-buy available_actions SLAWindow wire shape
+  await test('get_media_buys available_actions uses generated SLAWindow duration shape', async () => {
+    const responseSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/get-media-buys-response.json'));
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validate = await testAjv.compileAsync(responseSchema);
+    const baseResponse = {
+      status: 'completed',
+      media_buys: [{
+        media_buy_id: 'mb_available_actions',
+        status: 'active',
+        currency: 'USD',
+        total_budget: 10000,
+        packages: [],
+        available_actions: [{
+          action: 'increase_budget',
+          mode: 'self_serve',
+          sla: {
+            response_max: 'PT5M',
+            completion_max: 'PT1H'
+          }
+        }]
+      }],
+      pagination: { has_more: false }
+    };
+
+    if (!validate(baseResponse)) {
+      return `Generated SLAWindow shape failed validation: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const legacyResponse = structuredClone(baseResponse);
+    legacyResponse.media_buys[0].available_actions[0].sla = {
+      unit: 'hours',
+      value: 1,
+      response_max: 5
+    };
+    if (validate(legacyResponse)) {
+      return 'Legacy { unit, value, response_max:number } SLA shape unexpectedly validated';
+    }
+    const legacyErrorText = validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
+    if (!legacyErrorText.includes('/available_actions/0/sla')) {
+      return `Legacy SLA rejection did not point at sla: ${legacyErrorText}`;
+    }
+    return true;
+  });
+
+  // Test 9: Validate schema examples against their schemas
   await test('Schema examples validate against their own schemas', async () => {
     // Skip schemas that require format-aware validation (creative manifests need format context)
     const FORMAT_AWARE_SCHEMAS = ['sync-creatives-request.json', 'list-creatives-response.json'];

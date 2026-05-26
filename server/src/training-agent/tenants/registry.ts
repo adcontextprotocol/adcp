@@ -191,10 +191,11 @@ function pickStateStore(): AdcpStateStore {
   return new PostgresStateStore(lazyPool);
 }
 
-function buildDefaultServerOptions(): CreateAdcpServerFromPlatformOptions {
+function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboardCompat']): CreateAdcpServerFromPlatformOptions {
   return {
     name: 'adcp-training-agent',
     version: '1.0.0',
+    ...(storyboardCompat?.version === '3.0' && { adcpVersion: '3.0' }),
     idempotency: getIdempotencyStore(),
     webhooks: getWebhookSigningMaterial(),
     taskRegistry: pickTaskRegistry(),
@@ -255,7 +256,7 @@ export function createRegistryHolder(options: { storyboardCompat?: TrainingConte
         logger.info('Tenant registry init starting');
         const hostBase = buildHostBaseUrl();
         const reg = createTenantRegistry({
-          defaultServerOptions: buildDefaultServerOptions(),
+          defaultServerOptions: buildDefaultServerOptions(options.storyboardCompat),
           jwksValidator: noopJwksValidator,
           autoValidate: true,
         });

@@ -15,6 +15,7 @@ requires_scenarios:
   - media_buy_seller/inventory_list_targeting
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/product_signal_targeting
+  - media_buy_seller/available_actions
   - media_buy_seller/invalid_transitions
   - media_buy_seller/creative_fate_after_cancellation
   - media_buy_seller/create_media_buy_async

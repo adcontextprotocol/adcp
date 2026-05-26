@@ -18,7 +18,7 @@ import { PostgresTaskStore } from '@adcp/sdk';
 import { mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting } from './types.js';
+import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting } from './types.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
   Product,
@@ -37,7 +37,6 @@ import type {
   ActivateSignalRequest,
   GetCreativeDeliveryRequest,
   GetAdCPCapabilitiesRequest,
-  BuildCreativeResponse,
   ListCreativesResponse,
   PreviewCreativeResponse,
   CreativeManifest as AdcpCreativeManifest,
@@ -223,6 +222,7 @@ import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import {
   getSession, sessionKeyFromArgs,
+  findSessionMatching,
   runWithSessionContext, flushDirtySessions,
   getComplianceCreatives, getComplianceCreative,
   getComplianceMediaBuys, getComplianceMediaBuy,
@@ -579,6 +579,261 @@ function validActionsForStatus(status: string): string[] {
     default:
       return [];
   }
+}
+
+function availableActionsForStatus(status: string, explicit?: MediaBuyAvailableActionState[]): MediaBuyAvailableActionState[] {
+  if (explicit !== undefined) return explicit;
+  return validActionsForStatus(status).map(action => ({
+    action,
+    mode: 'self_serve' as const,
+  }));
+}
+
+const NON_TERMINAL_MEDIA_BUY_STATUSES = new Set(['pending_creatives', 'pending_start', 'active', 'paused']);
+
+function allowedActionAppliesToStatus(action: MediaBuyProductAllowedActionState, status: string): boolean {
+  if (action.allowed_statuses?.length) return action.allowed_statuses.includes(status);
+  return NON_TERMINAL_MEDIA_BUY_STATUSES.has(status);
+}
+
+function normalizeProductAllowedActions(product: Product | undefined): MediaBuyProductAllowedActionState[] {
+  const rawActions = (product as unknown as { allowed_actions?: unknown } | undefined)?.allowed_actions;
+  if (!Array.isArray(rawActions)) return [];
+
+  const normalized: MediaBuyProductAllowedActionState[] = [];
+  const seen = new Set<string>();
+  for (const rawAction of rawActions) {
+    if (!rawAction || typeof rawAction !== 'object' || Array.isArray(rawAction)) continue;
+    const src = rawAction as Record<string, unknown>;
+    if (typeof src.action !== 'string' || seen.has(src.action)) continue;
+    if (!Array.isArray(src.modes)) continue;
+    const modes = src.modes.filter((mode): mode is MediaBuyAvailableActionState['mode'] =>
+      mode === 'self_serve'
+      || mode === 'conditional_self_serve'
+      || mode === 'requires_proposal'
+      || mode === 'requires_approval',
+    );
+    if (modes.length === 0) continue;
+    const sla = src.sla && typeof src.sla === 'object' && !Array.isArray(src.sla)
+      ? src.sla as Record<string, unknown>
+      : undefined;
+    normalized.push({
+      action: src.action,
+      modes,
+      ...(Array.isArray(src.allowed_statuses) && {
+        allowed_statuses: src.allowed_statuses.filter(status => typeof status === 'string') as string[],
+      }),
+      ...(sla && {
+        sla: {
+          ...(typeof sla.response_max === 'string' && { response_max: sla.response_max }),
+          ...(typeof sla.completion_max === 'string' && { completion_max: sla.completion_max }),
+        },
+      }),
+      ...(typeof src.terms_ref === 'string' && { terms_ref: src.terms_ref }),
+    });
+    seen.add(src.action);
+  }
+  return normalized;
+}
+
+function deriveProductAllowedActionsForPackages(
+  packages: PackageState[],
+  productMap: Map<string, Product>,
+): MediaBuyProductAllowedActionState[] | undefined {
+  const actions: MediaBuyProductAllowedActionState[] = [];
+  const seen = new Set<string>();
+  for (const pkg of packages) {
+    for (const action of normalizeProductAllowedActions(productMap.get(pkg.productId))) {
+      if (seen.has(action.action)) continue;
+      actions.push(action);
+      seen.add(action.action);
+    }
+  }
+  return actions.length ? actions : undefined;
+}
+
+function deriveAvailableActionsFromProductAllowedActions(
+  allowedActions: MediaBuyProductAllowedActionState[] | undefined,
+  status: string,
+): MediaBuyAvailableActionState[] | undefined {
+  if (!allowedActions) return undefined;
+  return allowedActions
+    .filter(action => allowedActionAppliesToStatus(action, status))
+    .map(action => ({
+      action: action.action,
+      mode: action.modes[0],
+      ...(action.sla && { sla: action.sla }),
+      ...(action.terms_ref && { terms_ref: action.terms_ref }),
+    }));
+}
+
+function availableActionsForMediaBuy(mb: MediaBuyState, status: string): MediaBuyAvailableActionState[] {
+  const productDerived = deriveAvailableActionsFromProductAllowedActions(mb.productAllowedActions, status);
+  if (productDerived !== undefined) return productDerived;
+  return availableActionsForStatus(status, mb.availableActions);
+}
+
+type AttemptedMediaBuyAction =
+  | 'pause'
+  | 'resume'
+  | 'cancel'
+  | 'extend_flight'
+  | 'shorten_flight'
+  | 'update_flight_dates'
+  | 'increase_budget'
+  | 'decrease_budget'
+  | 'reallocate_budget'
+  | 'update_targeting'
+  | 'update_pacing'
+  | 'update_frequency_caps'
+  | 'replace_creative'
+  | 'update_creative_assignments'
+  | 'add_packages'
+  | 'remove_packages';
+
+interface AttemptedMediaBuyActionEntry {
+  action: AttemptedMediaBuyAction;
+  packageId?: string;
+}
+
+function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): AttemptedMediaBuyActionEntry[] {
+  const actions: AttemptedMediaBuyActionEntry[] = [];
+  const seen = new Set<string>();
+  const addAction = (action: AttemptedMediaBuyAction, packageId?: string) => {
+    const key = `${packageId ?? '*'}:${action}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    actions.push({ action, ...(packageId && { packageId }) });
+  };
+
+  if (req.paused === true) addAction('pause');
+  if (req.paused === false) addAction('resume');
+  if (req.canceled === true) addAction('cancel');
+
+  const currentStart = new Date(mb.startTime).getTime();
+  const currentEnd = new Date(mb.endTime).getTime();
+  const requestedStart = req.start_time as unknown;
+  if (typeof requestedStart === 'string') {
+    const nextStart = new Date(requestedStart).getTime();
+    if (!Number.isNaN(nextStart) && nextStart !== currentStart) addAction('update_flight_dates');
+  } else if (requestedStart && typeof requestedStart === 'object' && typeof (requestedStart as { datetime?: unknown }).datetime === 'string') {
+    const nextStart = new Date((requestedStart as { datetime: string }).datetime).getTime();
+    if (!Number.isNaN(nextStart) && nextStart !== currentStart) addAction('update_flight_dates');
+  }
+  if (typeof req.end_time === 'string') {
+    const nextEnd = new Date(req.end_time).getTime();
+    if (!Number.isNaN(nextEnd)) {
+      if (nextEnd > currentEnd) addAction('extend_flight');
+      if (nextEnd < currentEnd) addAction('shorten_flight');
+    }
+  }
+
+  if (req.packages?.length) {
+    let totalBefore = 0;
+    let totalAfter = 0;
+    let sawBudget = false;
+    for (const update of req.packages as PackageUpdateExt[]) {
+      const pkgId = update.package_id || '';
+      const pkg = mb.packages.find(p => p.packageId === pkgId);
+      if (!pkg) continue;
+      totalBefore += pkg.budget;
+      totalAfter += update.budget ?? pkg.budget;
+      if (update.budget !== undefined) {
+        sawBudget = true;
+        if (update.budget > pkg.budget) addAction('increase_budget', pkgId);
+        if (update.budget < pkg.budget) addAction('decrease_budget', pkgId);
+      }
+      if (update.start_time) addAction('update_flight_dates', pkgId);
+      if (update.end_time) {
+        const currentPackageEnd = new Date(pkg.endTime).getTime();
+        const nextPackageEnd = new Date(update.end_time).getTime();
+        if (!Number.isNaN(nextPackageEnd)) {
+          if (nextPackageEnd > currentPackageEnd) addAction('extend_flight', pkgId);
+          if (nextPackageEnd < currentPackageEnd) addAction('shorten_flight', pkgId);
+        }
+      }
+      if (update.targeting_overlay || update.targeting || update.keyword_targets_add || update.keyword_targets_remove || update.negative_keywords_add || update.negative_keywords_remove) addAction('update_targeting', pkgId);
+      if (update.pacing) addAction('update_pacing', pkgId);
+      if (
+        update.targeting_overlay
+        && typeof update.targeting_overlay === 'object'
+        && 'frequency_cap' in (update.targeting_overlay as Record<string, unknown>)
+      ) addAction('update_frequency_caps', pkgId);
+      if (update.creative_assignments) addAction('update_creative_assignments', pkgId);
+      if (update.creatives) addAction('replace_creative', pkgId);
+      if (update.canceled === true) addAction('remove_packages', pkgId);
+    }
+    if (sawBudget && totalAfter === totalBefore && seenHasAction(seen, 'increase_budget') && seenHasAction(seen, 'decrease_budget')) {
+      addAction('reallocate_budget');
+    }
+  }
+
+  if (req.new_packages?.length) addAction('add_packages');
+  return actions;
+}
+
+function seenHasAction(seen: Set<string>, action: AttemptedMediaBuyAction): boolean {
+  for (const key of seen) {
+    if (key.endsWith(`:${action}`)) return true;
+  }
+  return false;
+}
+
+function actionNotAllowedError(
+  attemptedAction: string,
+  reason: 'wrong_status' | 'not_supported_on_product' | 'not_supported_on_buy' | 'mode_mismatch',
+  availableActions: MediaBuyAvailableActionState[],
+  context?: unknown,
+): { errors: TaskError[]; context?: unknown } {
+  return {
+    errors: [{
+      code: 'ACTION_NOT_ALLOWED',
+      message: `Action ${attemptedAction} is not available through direct update_media_buy`,
+      recovery: reason === 'wrong_status' || reason === 'mode_mismatch' ? 'correctable' : 'terminal',
+      details: {
+        attempted_action: attemptedAction,
+        reason,
+        currently_available_actions: availableActions,
+      },
+    }],
+    ...(context !== undefined && { context }),
+  };
+}
+
+function rejectUnavailableAction(
+  mb: MediaBuyState,
+  req: UpdateMediaBuyArgs,
+  status: string,
+  productMap: Map<string, Product>,
+): { errors: TaskError[]; context?: unknown } | null {
+  if (!mb.productAllowedActions && !mb.availableActions) return null;
+
+  const availableActions = availableActionsForMediaBuy(mb, status);
+  for (const attempt of actionsForUpdateRequest(mb, req)) {
+    const packageAllowedActions = attempt.packageId
+      ? normalizeProductAllowedActions(productMap.get(mb.packages.find(pkg => pkg.packageId === attempt.packageId)?.productId ?? ''))
+      : undefined;
+    const scopedAvailableActions = packageAllowedActions
+      ? deriveAvailableActionsFromProductAllowedActions(packageAllowedActions, status) ?? []
+      : availableActions;
+    const advertised = new Map(scopedAvailableActions.map(entry => [entry.action, entry]));
+    const entry = advertised.get(attempt.action);
+    if (!entry) {
+      const productAction = packageAllowedActions
+        ? packageAllowedActions.find(action => action.action === attempt.action)
+        : mb.productAllowedActions?.find(action => action.action === attempt.action);
+      const reason = productAction
+        ? 'wrong_status'
+        : packageAllowedActions || mb.productAllowedActions
+          ? 'not_supported_on_product'
+          : 'not_supported_on_buy';
+      return actionNotAllowedError(attempt.action, reason, availableActions, req.context);
+    }
+    if (entry.mode !== 'self_serve' && entry.mode !== 'conditional_self_serve') {
+      return actionNotAllowedError(attempt.action, 'mode_mismatch', availableActions, req.context);
+    }
+  }
+  return null;
 }
 
 // ── Cached catalog and formats (built once at first use) ──────────
@@ -1779,7 +2034,9 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   session.lastGetProductsContext = { products, proposals };
 
   return {
+    status: 'completed' as const,
     products,
+    cache_scope: req.account ? 'account' : 'public',
     ...(proposals.length > 0 && { proposals }),
     ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
   };
@@ -2195,7 +2452,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
           const supportedTargets = Array.isArray(supported.supported_targets)
             ? supported.supported_targets
             : [];
-          if (!supportedTargets.includes(targetKind)) {
+          if (!supportedTargets.includes(targetKind as (typeof supportedTargets)[number])) {
             return {
               errors: [{
                 code: 'TERMS_REJECTED',
@@ -2516,6 +2773,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   // Persist governance_context if provided (spec: sellers MUST persist and return on get_media_buys)
   const governanceContext = govCtx && govCtx.length <= 4096 ? govCtx : undefined;
+  const productAllowedActions = deriveProductAllowedActionsForPackages(createdPackages, productMap);
 
   const mediaBuy: MediaBuyState = {
     mediaBuyId,
@@ -2524,6 +2782,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     status: 'active',
     currency: 'USD',
     packages: createdPackages,
+    ...(productAllowedActions && { productAllowedActions }),
     startTime: resolvedStart,
     endTime: buyEnd,
     revision: 1,
@@ -2537,6 +2796,8 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
   const status = deriveStatus(mediaBuy);
+  const productAvailableActions = deriveAvailableActionsFromProductAllowedActions(productAllowedActions, status);
+  if (productAvailableActions !== undefined) mediaBuy.availableActions = productAvailableActions;
   // Emit `media_buy_status` (canonical 3.1 field per #4895). Body-level
   // `status` carrying MediaBuyStatus is deprecated and removed in 3.2
   // (#4906) — emitting it here would collide with envelope `status`
@@ -2550,6 +2811,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     revision: mediaBuy.revision,
     confirmed_at: mediaBuy.confirmedAt,
     valid_actions: validActionsForStatus(status),
+    available_actions: availableActionsForMediaBuy(mediaBuy, status),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
       product_id: pkg.productId,
@@ -2567,7 +2829,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   };
 }
 
-export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const req = args as unknown as GetMediaBuysArgs;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.media_buy_ids;
@@ -2646,6 +2908,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
         created_at: mb.createdAt,
         updated_at: mb.updatedAt,
         valid_actions: validActionsForStatus(status),
+        available_actions: availableActionsForMediaBuy(mb, status),
         currency: mb.currency,
         total_budget: totalBudget,
         start_time: mb.startTime,
@@ -2710,6 +2973,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
       return buy;
     }),
     pagination: paginationBlock,
+    ...(req.context !== undefined && { context: req.context }),
   };
 }
 
@@ -3133,6 +3397,13 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   const filterIds = req.creative_ids || req.filters?.creative_ids;
 
   let creatives = Array.from(session.creatives.values());
+  if (creatives.length === 0) {
+    // Controller-seeded creative storyboards can write under the test-kit
+    // brand session while the list request keys by account_id. Prefer that
+    // freshly seeded library over falling back to static compliance fixtures.
+    const seededSession = await findSessionMatching(s => s.creatives.size > 0);
+    if (seededSession) creatives = Array.from(seededSession.creatives.values());
+  }
   if (filterIds?.length) {
     creatives = creatives.filter(c => filterIds.includes(c.creativeId));
   } else if (creatives.length === 0) {
@@ -3239,7 +3510,7 @@ function getCreativePricing(account: { account_id?: string }, creative: import('
   };
 }
 
-export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
+export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const req = args as unknown as UpdateMediaBuyArgs;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const mediaBuyId = req.media_buy_id || '';
@@ -3260,6 +3531,12 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       : `Media buy is ${currentStatus} and cannot be updated`;
     return { errors: [{ code, message }] };
   }
+
+  const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+  overlaySeededProducts(session, productMap);
+
+  const actionRejection = rejectUnavailableAction(mb, req, currentStatus, productMap);
+  if (actionRejection) return actionRejection;
 
   // Revision check for optimistic concurrency
   const reqRevision = req.revision;
@@ -3292,7 +3569,9 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       media_buy_status: status,
       revision: mb.revision,
       valid_actions: validActionsForStatus(status),
+      available_actions: availableActionsForMediaBuy(mb, status),
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
+      ...(req.context !== undefined && { context: req.context }),
     };
   }
 
@@ -3443,9 +3722,6 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         errors: [{ code: 'LIMIT_EXCEEDED', message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}.` }] as TaskError[],
       };
     }
-    const catalog = getCatalog();
-    const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
-
     for (let i = 0; i < newPackages.length; i++) {
       const npkg = newPackages[i];
       const productId = npkg.product_id;
@@ -3477,6 +3753,12 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       mb.packages.push(newPkg);
       mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_added', summary: `New package ${pkgId} added (product: ${productId})`, packageId: pkgId });
     }
+    const updatedAllowedActions = deriveProductAllowedActionsForPackages(mb.packages, productMap);
+    if (updatedAllowedActions) {
+      mb.productAllowedActions = updatedAllowedActions;
+    } else {
+      delete mb.productAllowedActions;
+    }
   }
 
   mb.updatedAt = now;
@@ -3491,6 +3773,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     media_buy_status: status,
     revision: mb.revision,
     valid_actions: validActionsForStatus(status),
+    available_actions: availableActionsForMediaBuy(mb, status),
     ...(mb.canceledAt && {
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
     }),
@@ -3508,6 +3791,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       }),
     })),
     ...(warnings.length > 0 && { warnings }),
+    ...(req.context !== undefined && { context: req.context }),
   };
   return result;
 }
@@ -4110,7 +4394,7 @@ function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
   return { serving_tag: { asset_type: 'html', content: html } };
 }
 
-export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
+export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const req = args as unknown as BuildCreativeArgs;
   const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();

@@ -202,9 +202,20 @@ jobs:
             echo "::error::Compliance bundle not found at ${DIR}"
             exit 1
           fi
+          git archive "origin/${RELEASE_BASE_REF}" "dist/schemas/${VERSION}" | tar -x -C "${TMP_DIR}"
+          SCHEMA_DIR="${TMP_DIR}/dist/schemas/${VERSION}"
+          if [ ! -f "${SCHEMA_DIR}/index.json" ]; then
+            echo "::error::Schema bundle not found at ${SCHEMA_DIR}"
+            exit 1
+          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "dir=${DIR}" >> "$GITHUB_OUTPUT"
+          echo "schema_dir=${SCHEMA_DIR}" >> "$GITHUB_OUTPUT"
           echo "Using ${DIR}"
+
+      - name: Stage latest released 3.0.x schema bundle
+        if: matrix.surface == '3.0-compat'
+        run: bash scripts/stage-sdk-schema-bundle.sh "${{ steps.compat-bundle.outputs.schema_dir }}" "${{ steps.compat-bundle.outputs.version }}"
 
       - name: Run storyboards against /${{ matrix.tenant }}
         id: run

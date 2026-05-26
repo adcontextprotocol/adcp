@@ -326,6 +326,27 @@ export interface MediaBuyHistoryEntry {
   packageId?: string;
 }
 
+export interface MediaBuyAvailableActionState {
+  action: string;
+  mode: 'self_serve' | 'conditional_self_serve' | 'requires_proposal' | 'requires_approval';
+  sla?: {
+    response_max?: string;
+    completion_max?: string;
+  };
+  terms_ref?: string;
+}
+
+export interface MediaBuyProductAllowedActionState {
+  action: string;
+  modes: MediaBuyAvailableActionState['mode'][];
+  allowed_statuses?: string[];
+  sla?: {
+    response_max?: string;
+    completion_max?: string;
+  };
+  terms_ref?: string;
+}
+
 export interface MediaBuyState {
   mediaBuyId: string;
   accountRef: AccountRef;
@@ -333,6 +354,8 @@ export interface MediaBuyState {
   status: string;
   currency: string;
   packages: PackageState[];
+  productAllowedActions?: MediaBuyProductAllowedActionState[];
+  availableActions?: MediaBuyAvailableActionState[];
   startTime: string;
   endTime: string;
   revision: number;
