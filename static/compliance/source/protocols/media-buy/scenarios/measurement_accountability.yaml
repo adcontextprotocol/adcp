@@ -119,6 +119,7 @@ phases:
           brief: "CTV inventory with completed-view reporting for a Q2 CPCV campaign."
           filters:
             channels: ["ctv"]
+            is_fixed_price: true
             required_metrics:
               - "completed_views"
           account:
@@ -139,6 +140,9 @@ phases:
           - check: field_present
             path: "products[0].reporting_capabilities.available_metrics"
             description: "Matched product declares its available_metrics — schema validation confirms the superset relationship via the closed enum"
+          - check: field_present
+            path: "products[0].pricing_options[0].fixed_price"
+            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
 
   - id: create_media_buy
     title: "Commit the media buy"

@@ -163,7 +163,7 @@ The seller must declare `features.property_list_filtering: true` in [`get_adcp_c
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `delivery_type` | string | Filter by `"guaranteed"` or `"non_guaranteed"` |
-| `is_fixed_price` | boolean | Filter for fixed price vs auction products |
+| `is_fixed_price` | boolean | Filter for fixed-price vs auction products. Products with both pricing types can match either value, but the returned `pricing_options` array must include only options matching the requested pricing type so buyers can select deterministically from discovery. |
 | `format_ids` | FormatID[] | Filter by specific format IDs |
 | `standard_formats_only` | boolean | Only return products accepting IAB standard formats |
 | `min_exposures` | integer | Minimum exposures needed for measurement validity |

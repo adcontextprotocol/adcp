@@ -56,6 +56,8 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content. Q3 flight."
+          filters:
+            is_fixed_price: true
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -73,6 +75,9 @@ phases:
           - check: field_present
             path: "products[0].format_ids[0].id"
             description: "Product declares a format_id for creative sync"
+          - check: field_present
+            path: "products[0].pricing_options[0].fixed_price"
+            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
 
   - id: create_without_creatives
     title: "Create media buy without creative_assignments"

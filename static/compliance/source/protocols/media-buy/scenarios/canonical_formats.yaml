@@ -61,7 +61,7 @@ fixtures:
           id: "display_300x250_image"
       format_options:
         - format_kind: "image"
-          capability_id: "canonical_formats_image_mrec"
+          format_option_id: "canonical_formats_image_mrec"
           display_name: "Canonical Formats Image MREC"
           v1_format_ref:
             - agent_url: "https://creative.adcontextprotocol.org/"
@@ -173,9 +173,9 @@ phases:
             value: "image"
             description: "Seeded product advertises the image canonical"
           - check: field_value
-            path: "products[0].format_options[0].capability_id"
+            path: "products[0].format_options[0].format_option_id"
             value: "canonical_formats_image_mrec"
-            description: "Seeded canonical declaration carries a stable capability_id"
+            description: "Seeded canonical declaration carries a stable format_option_id"
           - check: field_value
             path: "products[0].format_options[0].v1_format_ref[0].agent_url"
             value: "https://creative.adcontextprotocol.org/"

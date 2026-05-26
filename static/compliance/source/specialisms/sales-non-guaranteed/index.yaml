@@ -35,9 +35,9 @@ narrative: |
   require IOs or human approval — the buyer sets a bid price and budget, and your platform
   runs the auction. Delivery is best-effort based on bid competitiveness.
 
-  The buyer discovers products with floor prices and bid guidance, creates a buy with bid
-  prices per package, monitors win rates and pacing, and adjusts bids or budgets in-flight
-  to optimize performance.
+  The buyer discovers products with bid guidance and any declared floors, creates a buy
+  with bid prices per package, monitors win rates and pacing, and adjusts bids or budgets
+  in-flight to optimize performance.
 
   This storyboard covers the non-guaranteed buying path — fast setup, no human approval,
   real-time optimization through bid and budget adjustments.
@@ -84,11 +84,17 @@ fixtures:
       pricing_model: "cpm"
       currency: "USD"
       floor_price: 5.0
+      price_guidance:
+        p50: 6.0
+        p75: 7.0
     - product_id: "outdoor_video_auction"
       pricing_option_id: "cpm_auction"
       pricing_model: "cpm"
       currency: "USD"
       floor_price: 15.0
+      price_guidance:
+        p50: 16.0
+        p75: 18.0
 
 phases:
   - id: capability_discovery
@@ -131,7 +137,7 @@ phases:
     title: "Discover auction-based products"
     narrative: |
       The buyer sends a brief to discover your non-guaranteed inventory. Products
-      come back with delivery_type: non_guaranteed, floor prices, and bid guidance
+      come back with delivery_type: non_guaranteed, bid guidance, and any declared floors
       that helps the buyer set competitive bids.
 
     steps:
@@ -152,7 +158,7 @@ phases:
           - product_id: unique identifier
           - name and description
           - delivery_type: non_guaranteed
-          - pricing_models: auction-based pricing with floor_price and recommended bid range
+          - pricing_models: auction-based pricing with bid guidance and any declared floor_price
           - forecast: estimated impressions at different bid levels (best-effort)
           - creative_format_ids: required creative formats
           - targeting: available audiences and contexts
@@ -160,6 +166,9 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Display and video inventory across sports and outdoor lifestyle sites. Q2 flight, $25K budget. Adults 25-54, US. Auction-based, looking for competitive CPMs."
+          filters:
+            delivery_type: "non_guaranteed"
+            is_fixed_price: false
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -167,6 +176,23 @@ phases:
 
           context:
             correlation_id: "sales_non_guaranteed--get_products_brief"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "first_product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "first_pricing_option_id"
+          - path: "products[0].pricing_options[0].price_guidance.p50"
+            key: "first_bid_price"
+          - path: "products[0].pricing_options[0].price_guidance.p75"
+            key: "first_updated_bid_price"
+          - path: "products[1].product_id"
+            key: "second_product_id"
+          - path: "products[1].pricing_options[0].pricing_option_id"
+            key: "second_pricing_option_id"
+          - path: "products[1].pricing_options[0].price_guidance.p50"
+            key: "second_bid_price"
+          - path: "products[1].pricing_options[0].price_guidance.p75"
+            key: "second_updated_bid_price"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -179,6 +205,21 @@ phases:
           - check: field_present
             path: "products[0].delivery_type"
             description: "Each product declares delivery_type: non_guaranteed"
+          - check: field_present
+            path: "products[1].product_id"
+            description: "At least two auction products are available for the multi-package buy"
+          - check: field_present
+            path: "products[0].pricing_options[0].price_guidance.p50"
+            description: "First auction pricing option declares median bid guidance used as the initial bid"
+          - check: field_present
+            path: "products[0].pricing_options[0].price_guidance.p75"
+            description: "First auction pricing option declares higher bid guidance used for the update"
+          - check: field_present
+            path: "products[1].pricing_options[0].price_guidance.p50"
+            description: "Second auction pricing option declares median bid guidance used as the initial bid"
+          - check: field_present
+            path: "products[1].pricing_options[0].price_guidance.p75"
+            description: "Second auction pricing option declares higher bid guidance used for the update"
 
           - check: field_present
             path: "context"
@@ -228,7 +269,8 @@ phases:
           - packages: confirmed line items with bid prices acknowledged
           - valid_actions: pause, update_bid, get_delivery
 
-          Bids below floor_price should be rejected with a clear error.
+          Bids below floor_price should be rejected with a clear error when the
+          pricing option declares a floor_price.
 
         sample_request:
           brand:
@@ -240,16 +282,16 @@ phases:
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
-            - product_id: "sports_display_auction"
+            - product_id: "$context.first_product_id"
               budget: 10000
-              bid_price: 8.50
-              pricing_option_id: "cpm_auction"
+              bid_price: "$context.first_bid_price"
+              pricing_option_id: "$context.first_pricing_option_id"
               creative_assignments:
                 - creative_id: "display_trail_pro_300x250"
-            - product_id: "outdoor_video_auction"
+            - product_id: "$context.second_product_id"
               budget: 15000
-              bid_price: 22.00
-              pricing_option_id: "cpm_auction"
+              bid_price: "$context.second_bid_price"
+              pricing_option_id: "$context.second_pricing_option_id"
               creative_assignments:
                 - creative_id: "video_30s_trail_pro"
 
@@ -373,10 +415,10 @@ phases:
           media_buy_id: "$context.media_buy_id"
           packages:
             - package_id: "$context.first_package_id"
-              bid_price: 10.00
+              bid_price: "$context.first_updated_bid_price"
               budget: 12000
             - package_id: "$context.second_package_id"
-              bid_price: 20.00
+              bid_price: "$context.second_updated_bid_price"
               budget: 13000
 
           idempotency_key: "$generate:uuid_v4#sales_non_guaranteed_adjust_bids_update_media_buy"

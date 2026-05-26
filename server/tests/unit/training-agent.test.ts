@@ -1228,6 +1228,100 @@ describe('get_products handler', () => {
     }
   });
 
+  it('filters fixed-price products and returns only fixed pricing options', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      filters: { is_fixed_price: true },
+    });
+
+    const products = result.products as Array<{ pricing_options: Array<Record<string, unknown>> }>;
+    expect(products.length).toBeGreaterThan(0);
+    for (const p of products) {
+      expect(p.pricing_options.length).toBeGreaterThan(0);
+      expect(p.pricing_options.every(po => po.fixed_price !== undefined)).toBe(true);
+      expect(p.pricing_options[0].fixed_price).toBeDefined();
+    }
+  });
+
+  it('filters auction products and returns only auction pricing options', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      filters: { is_fixed_price: false },
+    });
+
+    const products = result.products as Array<{ pricing_options: Array<Record<string, unknown>> }>;
+    expect(products.length).toBeGreaterThan(0);
+    for (const p of products) {
+      expect(p.pricing_options.length).toBeGreaterThan(0);
+      expect(p.pricing_options.every(po => po.fixed_price === undefined)).toBe(true);
+      expect(p.pricing_options[0].fixed_price).toBeUndefined();
+    }
+  });
+
+  it('keeps fixed-price filtering when brief mode falls back to suggestions', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'xyznonexistentkeyword',
+      filters: { is_fixed_price: true },
+    });
+
+    const products = result.products as Array<{ pricing_options: Array<Record<string, unknown>> }>;
+    expect(products.length).toBeGreaterThan(0);
+    for (const p of products) {
+      expect(p.pricing_options.every(po => po.fixed_price !== undefined)).toBe(true);
+      expect(p.pricing_options[0].fixed_price).toBeDefined();
+    }
+  });
+
+  it('keeps proposal allocation pricing aligned with filtered fixed-price options', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      filters: { is_fixed_price: true },
+    });
+
+    const products = result.products as Array<{ product_id: string; pricing_options: Array<Record<string, unknown>> }>;
+    const proposals = result.proposals as Array<{ allocations: Array<{ product_id: string; pricing_option_id?: string }> }> | undefined;
+    expect(proposals?.length).toBeGreaterThan(0);
+
+    const productsById = new Map(products.map(p => [p.product_id, p]));
+    for (const proposal of proposals ?? []) {
+      for (const allocation of proposal.allocations) {
+        const product = productsById.get(allocation.product_id);
+        expect(product).toBeDefined();
+        const selected = product?.pricing_options.find(po => po.pricing_option_id === allocation.pricing_option_id);
+        expect(selected).toBeDefined();
+        expect(selected?.fixed_price).toBeDefined();
+      }
+    }
+  });
+
+  it('keeps proposal allocation pricing aligned with filtered auction options', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      filters: { is_fixed_price: false },
+    });
+
+    const products = result.products as Array<{ product_id: string; pricing_options: Array<Record<string, unknown>> }>;
+    const proposals = result.proposals as Array<{ allocations: Array<{ product_id: string; pricing_option_id?: string }> }> | undefined;
+    expect(proposals?.length).toBeGreaterThan(0);
+
+    const productsById = new Map(products.map(p => [p.product_id, p]));
+    for (const proposal of proposals ?? []) {
+      for (const allocation of proposal.allocations) {
+        const product = productsById.get(allocation.product_id);
+        expect(product).toBeDefined();
+        const selected = product?.pricing_options.find(po => po.pricing_option_id === allocation.pricing_option_id);
+        expect(selected).toBeDefined();
+        expect(selected?.fixed_price).toBeUndefined();
+      }
+    }
+  });
+
   it('returns products in brief mode with keyword matching', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_products', {
@@ -1372,6 +1466,62 @@ describe('create_media_buy handler', () => {
     expect(result.media_buy_status).toBe('pending_creatives');
     // Error field should not be present on success
     expect(result.errors).toBeUndefined();
+  });
+
+  it('creates a media buy from fixed-price discovery without bid_price', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: discovery } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      filters: { is_fixed_price: true },
+    });
+    const product = (discovery.products as Array<{ product_id: string; pricing_options: Array<Record<string, unknown>> }>)[0];
+    const pricing = product.pricing_options[0];
+    expect(pricing.fixed_price).toBeDefined();
+
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account: { brand: { domain: 'fixed.example' }, operator: 'fixed.example' },
+      brand: { domain: 'fixed.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: Math.max(50000, Number(pricing.min_spend_per_package ?? 0)),
+      }],
+    });
+
+    expect(isError).not.toBe(true);
+    expect(result.errors).toBeUndefined();
+    expect(typeof result.media_buy_id).toBe('string');
+  });
+
+  it('creates a media buy from auction discovery with a floor-derived bid_price', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: discovery } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      filters: { is_fixed_price: false },
+    });
+    const product = (discovery.products as Array<{ product_id: string; pricing_options: Array<Record<string, unknown>> }>)[0];
+    const pricing = product.pricing_options[0];
+    expect(pricing.fixed_price).toBeUndefined();
+
+    const floorPrice = Number(pricing.floor_price ?? 1);
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account: { brand: { domain: 'auction.example' }, operator: 'auction.example' },
+      brand: { domain: 'auction.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricing.pricing_option_id,
+        budget: Math.max(50000, Number(pricing.min_spend_per_package ?? 0)),
+        bid_price: floorPrice,
+      }],
+    });
+
+    expect(isError).not.toBe(true);
+    expect(result.errors).toBeUndefined();
+    expect(typeof result.media_buy_id).toBe('string');
   });
 
   it('derives status from flight dates', async () => {
@@ -4478,6 +4628,88 @@ describe('get_products refine mode', () => {
     expect(refinementApplied[0].status).toBe('applied');
     expect(refinementApplied[0].scope).toBe('product');
     expect(refinementApplied[0].product_id).toBe(firstProductId);
+  });
+
+  it('preserves fixed-price option filtering when refine includes a product', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'refine-fixed.example' }, operator: 'refine-fixed.example' };
+    const productId = 'mixed_refine_pricing_product';
+
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          name: 'Mixed refine pricing product',
+          description: 'Seeded product with both auction and fixed pricing',
+          delivery_type: 'guaranteed',
+          channels: ['display'],
+          format_ids: [{ id: 'display_300x250' }],
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: productId,
+        pricing_option_id: 'mixed_fixed_cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 12 },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: productId,
+        pricing_option_id: 'mixed_auction_cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 8 },
+      },
+    });
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      filters: { is_fixed_price: true },
+      refine: [{ scope: 'product', product_id: productId }],
+    });
+
+    const refinedProducts = refined.products as Array<{ product_id: string; pricing_options: Array<Record<string, unknown>> }>;
+    const selected = refinedProducts.find(p => p.product_id === productId);
+    expect(selected).toBeDefined();
+    expect(selected!.pricing_options.length).toBeGreaterThan(0);
+    expect(selected!.pricing_options.every(po => po.fixed_price !== undefined)).toBe(true);
+  });
+
+  it('preserves auction option filtering when refine expands with more_like_this', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'refine-auction.example' }, operator: 'refine-auction.example' };
+
+    const { result: initial } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+    });
+    const sourceProduct = (initial.products as Array<{ product_id: string; pricing_options: Array<Record<string, unknown>> }>).find(p =>
+      p.pricing_options.some(po => po.fixed_price === undefined),
+    );
+    expect(sourceProduct).toBeDefined();
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      filters: { is_fixed_price: false },
+      refine: [{ scope: 'product', action: 'more_like_this', product_id: sourceProduct!.product_id }],
+    });
+
+    const refinedProducts = refined.products as Array<{ pricing_options: Array<Record<string, unknown>> }>;
+    expect(refinedProducts.length).toBeGreaterThan(0);
+    for (const product of refinedProducts) {
+      expect(product.pricing_options.length).toBeGreaterThan(0);
+      expect(product.pricing_options.every(po => po.fixed_price === undefined)).toBe(true);
+    }
   });
 
   it('defaults missing action to include on proposal scope and echoes proposal_id', async () => {

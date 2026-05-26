@@ -77,12 +77,13 @@ async function runTests() {
 
   log('AcquireRightsRejected (brand/acquire-rights-response.json)');
   const rejected = {
+    status: 'completed',
     rights_id: 'rgt_123',
-    status: 'rejected',
+    rights_status: 'rejected',
     brand_id: 'brnd_456',
     reason: 'Denied by governance plan plan_strict: Proposed spend 1250 USD exceeds plan budget 50 USD.'
   };
-  await expectAccept('/schemas/brand/acquire-rights-response.json', rejected, 'canonical AcquireRightsRejected (status + reason, no errors[])');
+  await expectAccept('/schemas/brand/acquire-rights-response.json', rejected, 'canonical AcquireRightsRejected (envelope status + rights_status + reason, no errors[])');
 
   await expectReject('/schemas/brand/acquire-rights-response.json', {
     ...rejected,
@@ -91,11 +92,12 @@ async function runTests() {
 
   log('\nCreativeRejected (brand/creative-approval-response.json)');
   const creativeRejected = {
-    status: 'rejected',
+    status: 'completed',
+    approval_status: 'rejected',
     rights_id: 'rgt_123',
     reason: 'Creative violates the seller advertising_policies: depiction of competitor brand.'
   };
-  await expectAccept('/schemas/brand/creative-approval-response.json', creativeRejected, 'canonical CreativeRejected (status + reason, no errors[])');
+  await expectAccept('/schemas/brand/creative-approval-response.json', creativeRejected, 'canonical CreativeRejected (envelope status + approval_status + reason, no errors[])');
 
   await expectReject('/schemas/brand/creative-approval-response.json', {
     ...creativeRejected,
