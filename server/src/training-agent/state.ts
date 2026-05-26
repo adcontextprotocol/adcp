@@ -479,7 +479,7 @@ function safeKey(value: string | undefined, max: number, pattern: RegExp): strin
  * the spec's `account` invariant on every step).
  */
 export function sessionKeyFromArgs(
-  args: { account?: AccountRef; brand?: BrandRef; plans?: unknown },
+  args: { account?: AccountRef; brand?: BrandRef; plans?: unknown; accounts?: unknown },
   mode: 'open' | 'training',
   userId?: string,
   moduleId?: string,
@@ -510,6 +510,15 @@ export function sessionKeyFromArgs(
     if (safePlanDomain) return `open:${safePlanDomain.toLowerCase()}`;
     if (planDomain && !safePlanDomain) {
       logger.debug({ domain: planDomain }, 'Rejected plans[0].brand.domain as session key; falling back');
+    }
+  }
+  if (Array.isArray(args.accounts) && args.accounts.length > 0) {
+    const first = args.accounts[0] as { brand?: BrandRef; account?: AccountRef } | undefined;
+    const accountDomain = first?.brand?.domain ?? first?.account?.brand?.domain;
+    const safeAccountDomain = safeKey(accountDomain, MAX_DOMAIN_LEN, SAFE_DOMAIN_RE);
+    if (safeAccountDomain) return `open:${safeAccountDomain.toLowerCase()}`;
+    if (accountDomain && !safeAccountDomain) {
+      logger.debug({ domain: accountDomain }, 'Rejected accounts[0].brand.domain as session key; falling back');
     }
   }
   return 'open:default';

@@ -52,25 +52,32 @@ function trainingCtxFromResolveCtx(ctx: ResolveContext | undefined): TrainingCon
 
 export const syncAccountsUpsert: NonNullable<AccountStore['upsert']> = async (refs, ctx) => {
   const trainingCtx = trainingCtxFromResolveCtx(ctx);
-  // The SDK's `refs` argument intentionally narrows entries to account
-  // references. AdCP 3.1 settings-update fields such as
-  // `notification_configs[]` live only on the full wire body, so prefer
-  // `ctx.input.accounts[]` when it lines up with the normalized refs.
+  // The `refs as unknown[]` cast assumes v5 and v6 `AccountReference`
+  // wire shapes are compatible — both carry `{ brand, operator, billing,
+  // payment_terms?, billing_entity?, sandbox? }` with the same field
+  // names. If the v6 SDK ever diverges (e.g., renames `billing` to
+  // `billing_party`), this cast hides the break and the v5 handler will
+  // see a different shape than it validated against.
   //
-  // `dry_run` is also dropped from the v6 typed signature
-  // (adcp-client#1842). Lift it off `ctx.input` so the v5 handler skips
-  // persistence and returns the would-be result rows. `delete_missing` is
-  // on the SDK's drop list too but `handleSyncAccounts` doesn't implement
-  // it yet, so threading it would be inert — wire when v5 grows support.
+  // `dry_run` is dropped from the v6 typed signature (adcp-client#1842).
+  // Lift it off `ctx.input` so the v5 handler skips persistence and
+  // returns the would-be result rows. `delete_missing` is on the SDK's
+  // drop list too but `handleSyncAccounts` doesn't implement it yet, so
+  // threading it would be inert — wire when v5 grows support.
   const fromInput = pickFromInput(ctx?.input, ['dry_run'] as const);
-  const rawAccounts = Array.isArray((ctx?.input as { accounts?: unknown })?.accounts)
-    ? ((ctx?.input as { accounts: unknown[] }).accounts)
-    : null;
-  const accounts = rawAccounts?.length === refs.length
-    ? rawAccounts
-    : refs as unknown[];
+  const rawAccounts = (ctx?.input && typeof ctx.input === 'object' && Array.isArray((ctx.input as { accounts?: unknown }).accounts))
+    ? (ctx.input as { accounts: Array<Record<string, unknown>> }).accounts
+    : undefined;
+  const refsWithRawConfig = rawAccounts && rawAccounts.length === refs.length
+    ? refs.map((ref, i) => ({
+        ...(ref as Record<string, unknown>),
+        ...(rawAccounts[i].notification_configs !== undefined && {
+          notification_configs: rawAccounts[i].notification_configs,
+        }),
+      }))
+    : refs;
   const v5Result = await handleSyncAccounts(
-    { accounts, ...fromInput } as ToolArgs,
+    { accounts: refsWithRawConfig as unknown[], ...fromInput } as ToolArgs,
     trainingCtx,
   );
   const topLevelErrors = (v5Result as { errors?: Array<{ code: string; message: string }> }).errors;

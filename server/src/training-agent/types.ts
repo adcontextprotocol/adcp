@@ -31,6 +31,8 @@ export interface TrainingContext {
   strict?: boolean;
   /** Local storyboard-runner compatibility shims. Never set in deployed routes. */
   storyboardCompat?: { version: '3.0' };
+  /** Whether creative usage is billed through AdCP. Defaults to true for legacy/shared routes. */
+  creativeBillsThroughAdcp?: boolean;
   /**
    * `covers_content_digest` mode advertised by this route. Only meaningful
    * when `strict` is true. Defaults to `'either'` (the `/mcp-strict` route).
@@ -194,6 +196,9 @@ export interface ComplyDeliveryAccumulator {
   clicks: number;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
+  isFinal?: boolean;
+  finalizedAt?: string;
+  measurementWindow?: string;
   reach?: number;
   frequency?: number;
   reachWindow?: {
@@ -455,12 +460,35 @@ export interface CreativeManifest {
 
 export interface CreativeState {
   creativeId: string;
+  accountId?: string;
+  accountRef?: AccountRef;
   formatId: FormatID;
   name?: string;
   status: string;
   syncedAt: string;
   manifest?: CreativeManifest;
   pricingOptionId?: string;
+  purge?: {
+    kind: 'soft';
+    at: string;
+    reasonCode: string;
+  };
+  webhookActivity?: CreativeWebhookActivityRecord[];
+}
+
+export interface CreativeWebhookActivityRecord {
+  idempotency_key: string;
+  subscriber_id: string;
+  fired_at: string;
+  completed_at: string;
+  notification_type: 'creative.status_changed' | 'creative.purged';
+  attempt: number;
+  status: 'success' | 'failed';
+  url: string;
+  http_status_code?: number;
+  response_time_ms?: number;
+  payload_size_bytes?: number;
+  error_message?: string | null;
 }
 
 export interface UsageRecord {
@@ -472,6 +500,9 @@ export interface UsageRecord {
   mediaSpend?: number;
   vendorCost: number;
   currency: string;
+  final?: boolean;
+  finalizedAt?: string;
+  measurementWindow?: string;
   reportedAt: string;
 }
 

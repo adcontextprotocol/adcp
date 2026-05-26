@@ -18,7 +18,7 @@ import { PostgresTaskStore } from '@adcp/sdk';
 import { mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting } from './types.js';
+import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting, AccountRef } from './types.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
   Product,
@@ -39,6 +39,7 @@ import type {
   GetAdCPCapabilitiesRequest,
   ListCreativesResponse,
   PreviewCreativeResponse,
+  BuildCreativeResponse,
   CreativeManifest as AdcpCreativeManifest,
 } from '@adcp/sdk';
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
@@ -240,6 +241,26 @@ function isThreeZeroStoryboardCompat(ctx: TrainingContext): boolean {
   return ctx.storyboardCompat?.version === '3.0';
 }
 
+function productForThreeZeroStoryboardCompat(product: Product): Product {
+  const {
+    product_card: _productCard,
+    product_card_detailed: _productCardDetailed,
+    ...rest
+  } = product as Product & {
+    product_card?: unknown;
+    product_card_detailed?: unknown;
+  };
+  return rest as Product;
+}
+
+function includeThreeOneFields(ctx: TrainingContext): boolean {
+  return !isThreeZeroStoryboardCompat(ctx);
+}
+
+function creativeBillsThroughAdcp(ctx: TrainingContext): boolean {
+  return ctx.creativeBillsThroughAdcp !== false;
+}
+
 function resolveThreeZeroProposalAlias(proposals: Proposal[]): Proposal | undefined {
   return proposals.find(p => p.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_TARGET_ID);
 }
@@ -293,6 +314,7 @@ import {
   ACCOUNT_TOOLS,
   SUPPORTED_BILLINGS,
   handleListAccounts,
+  resolveAccountIdForRef,
   handleSyncAccounts,
   handleSyncGovernance,
 } from './account-handlers.js';
@@ -378,7 +400,10 @@ function toolSupportsTask(toolName: string): boolean {
  * from seeing each other's idempotency outcomes.
  */
 function deriveAccountScope(args: Record<string, unknown>): string | undefined {
-  const account = (args.account as { account_id?: string; brand?: { domain?: string } } | undefined);
+  const usageAccount = Array.isArray(args.usage)
+    ? (args.usage[0] as { account?: unknown } | undefined)?.account
+    : undefined;
+  const account = (args.account ?? usageAccount) as { account_id?: string; brand?: { domain?: string } } | undefined;
   if (account?.account_id && typeof account.account_id === 'string') {
     return `a:${account.account_id}`;
   }
@@ -388,6 +413,17 @@ function deriveAccountScope(args: Record<string, unknown>): string | undefined {
     return `b:${domain.toLowerCase()}`;
   }
   return undefined;
+}
+
+function withUsageAccountScope<T extends Record<string, unknown>>(req: T): T {
+  if (req.account !== undefined) return req;
+  const usageAccount = Array.isArray(req.usage)
+    ? (req.usage[0] as { account?: unknown } | undefined)?.account
+    : undefined;
+  if (usageAccount && typeof usageAccount === 'object') {
+    return { ...req, account: usageAccount };
+  }
+  return req;
 }
 
 /** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
@@ -1686,6 +1722,9 @@ const TOOLS = [
         media_buy_id: { type: 'string' },
         include_pricing: { type: 'boolean', description: 'Include pricing from the account rate card on each creative (default: false). Requires account.' },
         include_snapshot: { type: 'boolean', description: 'Include delivery snapshot per creative' },
+        include_purged: { type: 'boolean', description: 'Include soft-purged creative tombstones' },
+        include_webhook_activity: { type: 'boolean', description: 'Include recent lifecycle webhook activity per creative' },
+        webhook_activity_limit: { type: 'integer', minimum: 1, maximum: 200 },
         filters: { type: 'object', properties: { creative_ids: { type: 'array', items: { type: 'string' } }, statuses: { type: 'array', items: { type: 'string' } } } },
         // See list_creative_formats above — declared so legacy dispatch keeps
         // `pagination` on the wire.
@@ -1859,6 +1898,9 @@ const TOOLS = [
               media_spend: { type: 'number' },
               vendor_cost: { type: 'number' },
               currency: { type: 'string' },
+              final: { type: 'boolean' },
+              finalized_at: { type: 'string' },
+              measurement_window: { type: 'string' },
             },
             required: ['account', 'vendor_cost', 'currency'],
           },
@@ -1884,6 +1926,17 @@ const TOOLS = [
 export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
+  const brief = (req as Record<string, unknown>).brief;
+  if (brief !== undefined && typeof brief !== 'string') {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'brief must be a string.',
+        field: 'brief',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
@@ -1931,8 +1984,8 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   const filteredProducts = products;
 
   // Brief mode: channel-aware keyword matching
-  if (buyingMode === 'brief' && req.brief) {
-    const briefLower = req.brief.toLowerCase();
+  if (buyingMode === 'brief' && brief) {
+    const briefLower = brief.toLowerCase();
     const terms = briefLower.split(/\s+/);
 
     // Extract channel names mentioned in the brief — these get heavy weight
@@ -2169,12 +2222,15 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   const canonicalFormatAdvisories = collectCanonicalFormatAdvisories(products);
 
   // Store context for refine
-  session.lastGetProductsContext = { products, proposals };
+  const responseProducts = isThreeZeroStoryboardCompat(ctx)
+    ? products.map(productForThreeZeroStoryboardCompat)
+    : products;
+  session.lastGetProductsContext = { products: responseProducts, proposals };
 
   const response = {
     status: 'completed' as const,
-    products,
-    cache_scope: req.account ? 'account' as const : 'public' as const,
+    products: responseProducts,
+    cache_scope: req.account ? ('account' as const) : ('public' as const),
     ...(proposals.length > 0 && { proposals }),
     ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
     ...(canonicalFormatAdvisories.length > 0 && {
@@ -3259,6 +3315,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       model: pricingModel, // #1525: alias for @adcp/sdk < 4.11.0
       rate,
       currency: mb.currency,
+      ...(includeThreeOneFields(ctx) && simDeliveryEarly?.isFinal !== undefined ? { is_final: simDeliveryEarly.isFinal } : {}),
+      ...(includeThreeOneFields(ctx) && simDeliveryEarly?.isFinal === true && simDeliveryEarly.finalizedAt ? { finalized_at: simDeliveryEarly.finalizedAt } : {}),
+      ...(includeThreeOneFields(ctx) && simDeliveryEarly?.measurementWindow ? { measurement_window: simDeliveryEarly.measurementWindow } : {}),
       paused: false,
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
       // vendor_metric_values are media-buy-scoped in simulate_delivery, so they
@@ -3378,6 +3437,8 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     media_buy_deliveries: [{
       media_buy_id: mb.mediaBuyId,
       status: deriveStatus(mb),
+      ...(includeThreeOneFields(ctx) && simDelivery?.isFinal !== undefined ? { is_final: simDelivery.isFinal } : {}),
+      ...(includeThreeOneFields(ctx) && simDelivery?.isFinal === true && simDelivery.finalizedAt ? { finalized_at: simDelivery.finalizedAt } : {}),
       totals: {
         impressions: totalImpressions,
         spend: roundedSpend,
@@ -3417,8 +3478,10 @@ function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/
 
 export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCreativesRequest & ToolArgs & { dry_run?: boolean };
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(sessionKey);
   const isDryRun = req.dry_run === true;
+  const accountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
   if (!req.creatives?.length) {
     return {
@@ -3495,16 +3558,22 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     }
 
     const existing = session.creatives.has(creativeId);
+    const existingCreative = session.creatives.get(creativeId);
 
     if (!isDryRun) {
       session.creatives.set(creativeId, {
         creativeId,
+        accountId: accountId ?? existingCreative?.accountId,
+        accountRef: req.account ?? existingCreative?.accountRef,
         formatId,
         name: creative.name,
-        status: 'approved',
+        status: existingCreative?.status ?? 'approved',
         syncedAt: new Date().toISOString(),
         // manifest is a training-agent extension, not in SDK CreativeAsset type
         manifest: (creative as unknown as { manifest?: CreativeManifest }).manifest,
+        pricingOptionId: existingCreative?.pricingOptionId,
+        purge: existingCreative?.purge,
+        webhookActivity: existingCreative?.webhookActivity,
       });
     }
 
@@ -3550,13 +3619,34 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   };
 }
 
+function accountRefsOverlap(stored: AccountRef | undefined, requested: AccountRef): boolean {
+  if (!stored) return false;
+  if (requested.account_id || stored.account_id) {
+    return Boolean(requested.account_id && stored.account_id && requested.account_id === stored.account_id);
+  }
+  if (requested.brand?.domain && stored.brand?.domain && requested.brand.domain !== stored.brand.domain) return false;
+  if (requested.operator || stored.operator) {
+    return Boolean(requested.operator && stored.operator && requested.operator === stored.operator);
+  }
+  return Boolean(requested.brand?.domain && stored.brand?.domain && requested.brand.domain === stored.brand.domain);
+}
+
 export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[]; include_pricing?: boolean; include_snapshot?: boolean };
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const req = args as unknown as ListCreativesRequest & ToolArgs & {
+    creative_ids?: string[];
+    include_pricing?: boolean;
+    include_snapshot?: boolean;
+    include_purged?: boolean;
+    include_webhook_activity?: boolean;
+    webhook_activity_limit?: number;
+  };
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(sessionKey);
   const filterIds = req.creative_ids || req.filters?.creative_ids;
+  const requestedAccountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
   let creatives = Array.from(session.creatives.values());
-  if (creatives.length === 0) {
+  if (creatives.length === 0 && !req.include_webhook_activity) {
     // Controller-seeded creative storyboards can write under the test-kit
     // brand session while the list request keys by account_id. Prefer that
     // freshly seeded library over falling back to static compliance fixtures.
@@ -3571,6 +3661,24 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     // resolve without the SDK's controller_seeding auto-fire. Sessions that
     // have synced their own creatives return only those — no mixing.
     creatives = getComplianceCreatives();
+  }
+  if (req.include_webhook_activity) {
+    creatives = req.account && requestedAccountId
+      ? creatives.filter(c => Boolean(c.accountId) && c.accountId === requestedAccountId)
+      : [];
+  } else if (req.account) {
+    creatives = creatives.filter(c => {
+      if (requestedAccountId && c.accountId) return c.accountId === requestedAccountId;
+      if (c.accountRef) return accountRefsOverlap(c.accountRef, req.account!);
+      return !req.include_webhook_activity;
+    });
+  }
+  if (!req.include_purged) {
+    creatives = creatives.filter(c => !c.purge);
+  }
+  if (req.filters?.statuses?.length) {
+    const statuses = new Set<string>(req.filters.statuses as string[]);
+    creatives = creatives.filter(c => statuses.has(c.status));
   }
 
   const totalMatching = creatives.length;
@@ -3597,7 +3705,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   // Spec today says "When false or omitted, pricing is not computed"; the
   // emission-on-omit behaviour here is deliberate per the has_creative_library
   // gate in #2847 and tracks the spec-side clarification referenced there.
-  const emitPricing = Boolean(req.account) && req.include_pricing !== false;
+  const emitPricing = creativeBillsThroughAdcp(ctx) && Boolean(req.account) && req.include_pricing !== false;
   const agentUrl = getAgentUrl();
 
   return {
@@ -3638,6 +3746,17 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       }
       if (req.include_snapshot) {
         base.snapshot_unavailable_reason = 'SNAPSHOT_UNSUPPORTED';
+      }
+      if (c.purge) {
+        base.purge = {
+          kind: c.purge.kind,
+          at: c.purge.at,
+          reason_code: c.purge.reasonCode,
+        };
+      }
+      if (req.include_webhook_activity) {
+        const limit = Math.min(Math.max(req.webhook_activity_limit ?? 50, 1), 200);
+        base.webhook_activity = (c.webhookActivity ?? []).slice(0, limit);
       }
       return base;
     }),
@@ -3980,6 +4099,24 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
   const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethod(op));
   const protocolMethodsRequiredFor = signingCap.required_for.filter(isProtocolMethod);
   const protocolMethodsSupportedFor = signingCap.supported_for?.filter(isProtocolMethod) ?? [];
+  const complianceScenarios = [
+    'force_creative_status',
+    'force_account_status',
+    'force_media_buy_status',
+    'force_create_media_buy_arm',
+    'force_task_completion',
+    ...(!isThreeZeroStoryboardCompat(ctx) ? ['force_creative_purge'] : []),
+    'force_session_status',
+    'simulate_delivery',
+    'simulate_budget_spend',
+    'seed_product',
+    'seed_pricing_option',
+    'seed_creative',
+    'seed_plan',
+    'seed_media_buy',
+    'seed_creative_format',
+    'seed_measurement_catalog',
+  ];
   return {
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
@@ -4050,6 +4187,7 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
       supports_transformation: true,
       supports_compliance: false,
       has_creative_library: true,
+      ...(includeThreeOneFields(ctx) ? { bills_through_adcp: creativeBillsThroughAdcp(ctx) } : {}),
     },
     account: {
       require_operator_auth: false,
@@ -4062,23 +4200,7 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
       sandbox: true,
     },
     compliance_testing: {
-      scenarios: [
-        'force_creative_status',
-        'force_account_status',
-        'force_media_buy_status',
-        'force_create_media_buy_arm',
-        'force_task_completion',
-        'force_session_status',
-        'simulate_delivery',
-        'simulate_budget_spend',
-        'seed_product',
-        'seed_pricing_option',
-        'seed_creative',
-        'seed_plan',
-        'seed_media_buy',
-        'seed_creative_format',
-        'seed_measurement_catalog',
-      ],
+      scenarios: complianceScenarios,
     },
     agent: {
       name: 'AdCP Training Agent',
@@ -4562,7 +4684,11 @@ function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
   return { serving_tag: { asset_type: 'html', content: html } };
 }
 
-export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
+function buildCreativeCompleted<T extends object>(payload: T): T & { status: 'completed' } {
+  return { status: 'completed', ...payload };
+}
+
+export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
   const req = args as unknown as BuildCreativeArgs;
   const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
@@ -4583,9 +4709,9 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
   if (req.creative_id) {
     const creative = session.creatives.get(req.creative_id) ?? getComplianceCreative(req.creative_id);
     if (!creative) {
-      return {
+      return buildCreativeCompleted({
         errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative "${req.creative_id}" not found. Use sync_creatives to upload or list_creatives to browse.` }],
-      };
+      });
     }
 
     const formatId = targetIds[0] || creative.formatId;
@@ -4597,23 +4723,23 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
         format_id: { agent_url: agentUrl, id: formatId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
       },
-      };
+    };
 
     // Return pricing when account is provided (paid creative agent mode)
-    if (req.account) {
+    if (creativeBillsThroughAdcp(ctx) && req.account) {
       const pricing = getCreativePricing(req.account, creative);
       creative.pricingOptionId = pricing.pricing_option_id;
-      return {
+      return buildCreativeCompleted({
         ...base,
         pricing_option_id: pricing.pricing_option_id,
         vendor_cost: 0, // CPM-priced: cost accrues at serve time
         currency: pricing.currency,
         consumption: {},
         ...(governanceContext && { governance_context: governanceContext }),
-      };
+      });
     }
 
-    return { ...base, ...(governanceContext && { governance_context: governanceContext }) };
+    return buildCreativeCompleted({ ...base, ...(governanceContext && { governance_context: governanceContext }) });
   }
 
   // Mode 2: Stateless transformation (creative_manifest + target_format_id)
@@ -4639,7 +4765,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
         };
       });
 
-      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }) };
+      return buildCreativeCompleted({ creative_manifests, ...(governanceContext && { governance_context: governanceContext }) });
     }
 
     // Single format response
@@ -4647,13 +4773,13 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     const format = validFormatIds.get(fmtId.id);
     const { w, h } = getDimensions(format);
 
-    return {
+    return buildCreativeCompleted({
       creative_manifest: {
         format_id: { agent_url: agentUrl, id: fmtId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssetCount}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
       ...(governanceContext && { governance_context: governanceContext }),
-      };
+    });
   }
 
   // Mode 3: Generative build (target_format_id + message, no manifest or library creative)
@@ -4667,25 +4793,25 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
           assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
         };
       });
-      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }) };
+      return buildCreativeCompleted({ creative_manifests, ...(governanceContext && { governance_context: governanceContext }) });
     }
 
     const fmtId = targetIds[0];
     const format = validFormatIds.get(fmtId.id);
     const { w, h } = getDimensions(format);
 
-    return {
+    return buildCreativeCompleted({
       creative_manifest: {
         format_id: { agent_url: agentUrl, id: fmtId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
       ...(governanceContext && { governance_context: governanceContext }),
-      };
+    });
   }
 
-  return {
+  return buildCreativeCompleted({
     errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_id (library mode), creative_manifest (transformation mode), or target_format_id (generative mode).' }],
-  };
+  });
 }
 
 // ── Preview creative handler ────────────────────────────────────
@@ -4806,6 +4932,7 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
 
 interface ReportUsageArgs extends ToolArgs {
   idempotency_key?: string;
+  account?: { account_id?: string; brand?: { domain: string }; operator?: string };
   reporting_period: { start: string; end: string };
   usage: Array<{
     account: { account_id?: string; brand?: { domain: string }; operator?: string };
@@ -4816,6 +4943,9 @@ interface ReportUsageArgs extends ToolArgs {
     media_spend?: number;
     vendor_cost: number;
     currency: string;
+    final?: boolean;
+    finalized_at?: string;
+    measurement_window?: string;
   }>;
 }
 
@@ -4985,7 +5115,8 @@ function pickBuyerNominatedVerifierUrl(provenance: Record<string, unknown> | und
 
 export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ReportUsageArgs;
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const sessionScopeReq = withUsageAccountScope(req as unknown as Record<string, unknown>) as unknown as ToolArgs;
+  const session = await getSession(sessionKeyFromArgs(sessionScopeReq, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!req.reporting_period || !req.usage?.length) {
     return { errors: [{ code: 'INVALID_USAGE_DATA', message: 'reporting_period and at least one usage record are required.' }] };
@@ -4996,7 +5127,7 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   }
 
   let accepted = 0;
-  const errors: Array<{ code: string; message: string; field?: string }> = [];
+  const errors: Array<{ code: string; message: string; field?: string; recovery?: string }> = [];
 
   for (let i = 0; i < req.usage.length; i++) {
     const record = req.usage[i];
@@ -5025,6 +5156,16 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
 
     // Validate creative_id exists if provided
     if (record.creative_id) {
+      if (!creativeBillsThroughAdcp(ctx)) {
+        errors.push({
+          code: 'BILLING_OUT_OF_BAND',
+          message: 'Creative usage for this account bills out of band; do not retry report_usage for billing reconciliation.',
+          field: `usage[${i}]`,
+          recovery: 'terminal',
+        });
+        continue;
+      }
+
       const creative = session.creatives.get(record.creative_id) ?? getComplianceCreative(record.creative_id);
       if (!creative) {
         errors.push({ code: 'CREATIVE_NOT_FOUND', message: `Creative "${record.creative_id}" not found in session.`, field: `usage[${i}].creative_id` });
@@ -5061,6 +5202,9 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
       mediaSpend: record.media_spend,
       vendorCost: record.vendor_cost,
       currency: record.currency,
+      final: record.final,
+      finalizedAt: record.finalized_at,
+      measurementWindow: record.measurement_window,
       reportedAt: new Date().toISOString(),
     });
     accepted++;
@@ -5071,9 +5215,9 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   // When all records are rejected (accepted === 0), return as errors for
   // proper error signaling.
   if (accepted === 0 && errors.length) {
-    return { accepted: 0, errors };
+    return { status: 'completed', accepted: 0, errors };
   }
-  const result: Record<string, unknown> = { accepted };
+  const result: Record<string, unknown> = { status: 'completed', accepted };
   if (errors.length) result.rejected = errors;
   return result;
 }

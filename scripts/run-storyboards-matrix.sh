@@ -200,11 +200,15 @@ fi
 REGRESSED=0
 SUMMARY=""
 REQUIRED_CLEAN_CURRENT_SALES=(
+  "media_buy_seller/billing_finality_delivery"
   "media_buy_seller/canonical_formats"
   "media_buy_seller/vendor_metric_catalog_precondition"
   "notification_config_event_scope"
   "notification_config_lifecycle"
   "notification_config_rejections"
+)
+REQUIRED_CLEAN_CURRENT_CREATIVE=(
+  "creative/billing_out_of_band"
 )
 
 storyboard_passed() {
@@ -285,6 +289,21 @@ for entry in "${TENANTS[@]}"; do
 
   if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "sales" ]; then
     for storyboard_id in "${REQUIRED_CLEAN_CURRENT_SALES[@]}"; do
+      if storyboard_passed "${storyboard_id}" "${log}"; then
+        echo "  ✓ required-clean ${storyboard_id}"
+      else
+        status="✗"
+        if [ -n "${failed_floor}" ]; then
+          failed_floor="${failed_floor}; required-clean ${storyboard_id} did not pass"
+        else
+          failed_floor="required-clean ${storyboard_id} did not pass"
+        fi
+      fi
+    done
+  fi
+
+  if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "creative" ]; then
+    for storyboard_id in "${REQUIRED_CLEAN_CURRENT_CREATIVE[@]}"; do
       if storyboard_passed "${storyboard_id}" "${log}"; then
         echo "  ✓ required-clean ${storyboard_id}"
       else

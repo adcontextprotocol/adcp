@@ -1494,11 +1494,11 @@
     },
     "compliance_testing": {
       "type": "object",
-      "description": "Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via comply_test_controller for lifecycle state machine validation. Omit the block entirely if the agent does not support compliance testing.",
+      "description": "Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via comply_test_controller for lifecycle state machine validation. Omit the block entirely if the agent does not support compliance testing. Sellers SHOULD list every canonical controller scenario they implement so buyers and runners can distinguish full deterministic coverage from partial coverage without probing each scenario one by one; the runtime source of truth remains comply_test_controller with scenario: 'list_scenarios'.",
       "properties": {
         "scenarios": {
           "type": "array",
-          "description": "Compliance testing scenarios this agent supports. Must be non-empty — at least one scenario. Callers can also use comply_test_controller with scenario: 'list_scenarios' to discover supported scenarios at runtime.",
+          "description": "Compliance testing scenarios this agent supports. Must be non-empty — at least one scenario. Values mirror the canonical scenario enum in compliance/comply-test-controller-request.json, excluding list_scenarios because that value is a discovery operation rather than a test capability. Callers can also use comply_test_controller with scenario: 'list_scenarios' to discover supported scenarios at runtime.",
           "items": {
             "type": "string",
             "enum": [
@@ -1507,6 +1507,7 @@
               "force_media_buy_status",
               "force_create_media_buy_arm",
               "force_task_completion",
+              "force_creative_purge",
               "force_session_status",
               "simulate_delivery",
               "simulate_budget_spend",

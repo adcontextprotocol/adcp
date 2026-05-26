@@ -40,6 +40,7 @@ export function listAccountsTool(storyboardCompat?: TrainingContext['storyboardC
     handleListAccounts,
     {
       annotations: { readOnlyHint: true, idempotentHint: true },
+      ...(storyboardCompat && { trainingContext: { storyboardCompat } }),
     },
   );
 }

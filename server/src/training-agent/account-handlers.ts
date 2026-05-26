@@ -46,7 +46,7 @@ interface AccountState {
   creditLimit?: { amount: number; currency: string };
   governanceAgents: GovernanceAgentEntry[];
   notificationConfigs: NotificationConfigState[];
-  notificationConfigsTouched: boolean;
+  notificationConfigsTouched?: boolean;
   syncedAt: string;
 }
 
@@ -55,15 +55,27 @@ interface GovernanceAgentEntry {
 }
 
 interface NotificationConfigInput {
-  subscriber_id: string;
-  url: string;
-  event_types: string[];
-  authentication?: { schemes?: string[]; credentials?: string };
+  subscriber_id?: string;
+  url?: string;
+  event_types?: string[];
+  authentication?: {
+    schemes?: string[];
+    credentials?: string;
+  };
   active?: boolean;
-  ext?: Record<string, unknown>;
+  ext?: unknown;
 }
 
-type NotificationConfigState = NotificationConfigInput;
+export interface NotificationConfigState {
+  subscriberId: string;
+  url: string;
+  eventTypes: string[];
+  authentication?: {
+    schemes: string[];
+    credentials?: string;
+  };
+  active: boolean;
+}
 
 interface SyncGovernanceInput extends ToolArgs {
   accounts: SyncGovernanceAccountInput[];
@@ -86,24 +98,20 @@ interface GovernanceAgentInput {
 // This avoids modifying the shared SessionState interface.
 const accountStore = new Map<string, Map<string, AccountState>>();
 
-function safePrincipalKey(principal: string | undefined): string {
-  return (principal ?? 'anonymous').replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 128) || 'anonymous';
+function principalScope(principal: string | undefined): string {
+  return principal && principal.length > 0 ? principal : 'anonymous';
 }
 
-function accountSessionKey(
-  args: { account?: AccountRef; brand?: AccountRef['brand']; plans?: unknown },
-  ctx: TrainingContext,
-): string {
-  const base = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
-  if (ctx.mode === 'training') return base;
-  return `${base}:principal:${safePrincipalKey(ctx.principal)}`;
+function scopedStoreKey(sessionKey: string, principal: string | undefined): string {
+  return `${principalScope(principal)}\u001F${sessionKey}`;
 }
 
-function getAccountMap(sessionKey: string): Map<string, AccountState> {
-  let map = accountStore.get(sessionKey);
+function getAccountMap(sessionKey: string, principal?: string): Map<string, AccountState> {
+  const key = scopedStoreKey(sessionKey, principal);
+  let map = accountStore.get(key);
   if (!map) {
     map = new Map();
-    accountStore.set(sessionKey, map);
+    accountStore.set(key, map);
   }
   return map;
 }
@@ -126,6 +134,51 @@ function findAccountByRef(accounts: Map<string, AccountState>, ref: AccountRef):
   return undefined;
 }
 
+function findAccountByIdAcrossSessions(accountId: string, principal?: string): AccountState | undefined {
+  const prefix = `${principalScope(principal)}\u001F`;
+  for (const [key, accounts] of accountStore) {
+    if (!key.startsWith(prefix)) continue;
+    for (const acct of accounts.values()) {
+      if (acct.accountId === accountId) return acct;
+    }
+  }
+  return undefined;
+}
+
+function accountsForPrincipal(principal?: string): AccountState[] {
+  const prefix = `${principalScope(principal)}\u001F`;
+  const accounts: AccountState[] = [];
+  for (const [key, scopedAccounts] of accountStore) {
+    if (!key.startsWith(prefix)) continue;
+    accounts.push(...scopedAccounts.values());
+  }
+  return accounts;
+}
+
+function accountStateFromWire(wire: AccountWireShape, now: string): AccountState {
+  return {
+    accountId: wire.account_id,
+    brand: wire.brand,
+    operator: wire.operator,
+    billing: wire.billing,
+    paymentTerms: wire.payment_terms ?? 'net_30',
+    status: wire.status,
+    accountScope: wire.account_scope,
+    sandbox: wire.sandbox === true,
+    rateCard: wire.rate_card,
+    creditLimit: wire.credit_limit,
+    governanceAgents: [],
+    notificationConfigs: [],
+    notificationConfigsTouched: false,
+    syncedAt: now,
+  };
+}
+
+function findComplianceAccountById(accountId: string, now: string): AccountState | undefined {
+  const fixture = getComplianceAccounts().find(account => account.account_id === accountId);
+  return fixture ? accountStateFromWire(fixture, now) : undefined;
+}
+
 /** Exported for testing — clear all account state */
 export function clearAccountStore(): void {
   accountStore.clear();
@@ -145,31 +198,9 @@ interface AccountWireShape {
   payment_terms?: string;
   rate_card?: string;
   credit_limit?: { amount: number; currency: string };
-  notification_configs?: NotificationConfigInput[];
   sandbox?: true;
+  notification_configs?: Array<Record<string, unknown>>;
 }
-
-const MEDIA_BUY_ANCHORED_NOTIFICATION_TYPES = new Set([
-  'scheduled',
-  'final',
-  'delayed',
-  'adjusted',
-  'impairment',
-]);
-
-const ACCOUNT_ANCHORED_NOTIFICATION_TYPES = new Set([
-  'creative.status_changed',
-  'creative.purged',
-  'product.created',
-  'product.updated',
-  'product.priced',
-  'product.removed',
-  'signal.created',
-  'signal.updated',
-  'signal.priced',
-  'signal.removed',
-  'wholesale_feed.bulk_change',
-]);
 
 function accountStateToWire(account: AccountState): AccountWireShape {
   const advertiser = account.brand.name ?? account.brand.domain;
@@ -195,32 +226,46 @@ function accountStateToWire(account: AccountState): AccountWireShape {
   };
   if (account.rateCard) wire.rate_card = account.rateCard;
   if (account.creditLimit) wire.credit_limit = account.creditLimit;
-  if (account.notificationConfigsTouched || account.notificationConfigs.length > 0) {
+  if (account.sandbox) wire.sandbox = true;
+  if (account.notificationConfigs.length > 0 || account.notificationConfigsTouched) {
     wire.notification_configs = sanitizeNotificationConfigs(account.notificationConfigs);
   }
-  if (account.sandbox) wire.sandbox = true;
   return wire;
 }
 
-function sanitizeNotificationConfigs(configs: NotificationConfigInput[]): NotificationConfigInput[] {
-  return configs.map(config => {
-    const sanitized: NotificationConfigInput = {
-      subscriber_id: config.subscriber_id,
-      url: config.url,
-      event_types: [...config.event_types],
-    };
-    if (config.active !== undefined) sanitized.active = config.active;
-    if (config.authentication) {
-      const { credentials: _credentials, ...authentication } = config.authentication;
-      sanitized.authentication = authentication;
-    }
-    if (config.ext) sanitized.ext = config.ext;
-    return sanitized;
-  });
+const ACCOUNT_ANCHORED_NOTIFICATION_TYPES = new Set([
+  'creative.status_changed',
+  'creative.purged',
+  'product.created',
+  'product.updated',
+  'product.priced',
+  'product.removed',
+  'signal.created',
+  'signal.updated',
+  'signal.priced',
+  'signal.removed',
+  'wholesale_feed.bulk_change',
+]);
+
+function sanitizeNotificationConfigs(configs: NotificationConfigState[]): Array<Record<string, unknown>> {
+  return configs.map(config => ({
+    subscriber_id: config.subscriberId,
+    url: config.url,
+    event_types: [...config.eventTypes],
+    ...(config.authentication?.schemes?.length
+      ? { authentication: { schemes: [...config.authentication.schemes] } }
+      : {}),
+    active: config.active,
+  }));
 }
 
-function validationError(field: string, message: string): { code: string; message: string; field: string; recovery: string } {
-  return { code: 'INVALID_REQUEST', message, field, recovery: 'correctable' };
+function validationFailure(input: SyncAccountInput, field: string, message: string): Record<string, unknown> {
+  return {
+    ...(input.account ? { account: input.account } : { brand: input.brand, operator: input.operator }),
+    action: 'failed',
+    status: 'rejected',
+    errors: [{ code: 'VALIDATION_ERROR', field, message }],
+  };
 }
 
 function durableAccountIdentityError(ctx: TrainingContext): { errors: Array<{ code: string; message: string; recovery: string }> } | null {
@@ -236,98 +281,151 @@ function durableAccountIdentityError(ctx: TrainingContext): { errors: Array<{ co
   return null;
 }
 
-async function validateNotificationConfigs(configs: NotificationConfigInput[] | undefined): Promise<{ field: string; message: string } | null> {
-  if (configs === undefined) return null;
-  if (!Array.isArray(configs)) {
-    return { field: 'notification_configs', message: 'notification_configs must be an array when present' };
+async function normalizeNotificationConfigs(input: SyncAccountInput): Promise<NotificationConfigState[] | { error: Record<string, unknown> } | undefined> {
+  if (input.notification_configs === undefined) return undefined;
+  if (!Array.isArray(input.notification_configs)) {
+    return { error: validationFailure(input, 'notification_configs', 'notification_configs must be an array') };
   }
-  if (configs.length > 16) {
-    return { field: 'notification_configs', message: 'notification_configs may contain at most 16 subscribers' };
+  if (input.notification_configs.length > 16) {
+    return { error: validationFailure(input, 'notification_configs', 'notification_configs must contain at most 16 entries') };
   }
 
   const seen = new Set<string>();
-  for (let i = 0; i < configs.length; i += 1) {
-    const config = configs[i];
-    const prefix = `notification_configs[${i}]`;
+  const out: NotificationConfigState[] = [];
+  for (let i = 0; i < input.notification_configs.length; i++) {
+    const config = input.notification_configs[i];
+    const field = `notification_configs[${i}]`;
+    if (!config || typeof config !== 'object') {
+      return { error: validationFailure(input, field, 'notification config must be an object') };
+    }
     if (!config.subscriber_id) {
-      return { field: `${prefix}.subscriber_id`, message: 'notification_configs[].subscriber_id is required' };
+      return { error: validationFailure(input, `${field}.subscriber_id`, 'subscriber_id is required') };
     }
     if (seen.has(config.subscriber_id)) {
-      return {
-        field: `${prefix}.subscriber_id`,
-        message: `Duplicate notification_configs subscriber_id '${config.subscriber_id}' in one request`,
-      };
+      return { error: validationFailure(input, `${field}.subscriber_id`, 'subscriber_id must be unique within an account') };
     }
     seen.add(config.subscriber_id);
-
+    if (!config.url) {
+      return { error: validationFailure(input, `${field}.url`, 'url is required') };
+    }
     let parsed: URL;
     try {
       parsed = new URL(config.url);
     } catch {
-      return { field: `${prefix}.url`, message: 'notification_configs[].url must be a valid URL' };
+      return { error: validationFailure(input, `${field}.url`, 'url must be a valid URL') };
     }
-    if (parsed.protocol !== 'https:') {
-      return { field: `${prefix}.url`, message: 'notification_configs[].url must use HTTPS' };
+    const isLocalWebhook = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
+    if (parsed.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && isLocalWebhook)) {
+      return { error: validationFailure(input, `${field}.url`, 'url must use HTTPS') };
     }
     if (parsed.username || parsed.password) {
-      return { field: `${prefix}.url`, message: 'notification_configs[].url must not include userinfo credentials' };
+      return { error: validationFailure(input, `${field}.url`, 'url must not include userinfo credentials') };
     }
-    try {
-      await assertPublicTarget(parsed);
-    } catch (err) {
-      if (err instanceof SsrfRefusedError) {
-        return { field: `${prefix}.url`, message: `notification_configs[].url rejected by SSRF guard: ${err.reason}` };
+    const isDocumentationHost = parsed.hostname === 'example.com' || parsed.hostname.endsWith('.example.com');
+    if (parsed.protocol === 'https:' && !isDocumentationHost) {
+      try {
+        await assertPublicTarget(parsed);
+      } catch (err) {
+        const reason = err instanceof SsrfRefusedError ? err.reason : 'localhost or private network target';
+        return { error: validationFailure(input, `${field}.url`, `url rejected by SSRF guard: ${reason}`) };
       }
-      return { field: `${prefix}.url`, message: 'notification_configs[].url must not target localhost or private network ranges' };
     }
-
     if (!Array.isArray(config.event_types) || config.event_types.length === 0) {
-      return { field: `${prefix}.event_types`, message: 'notification_configs[].event_types must not be empty' };
+      return { error: validationFailure(input, `${field}.event_types`, 'event_types must contain at least one notification type') };
     }
     const seenEventTypes = new Set<string>();
     for (let j = 0; j < config.event_types.length; j += 1) {
       const eventType = config.event_types[j];
       if (seenEventTypes.has(eventType)) {
-        return {
-          field: `${prefix}.event_types[${j}]`,
-          message: `Duplicate notification_configs event_type '${eventType}' in one subscriber`,
-        };
+        return { error: validationFailure(input, `${field}.event_types[${j}]`, 'event_types must be unique within a subscriber') };
       }
       seenEventTypes.add(eventType);
-      if (MEDIA_BUY_ANCHORED_NOTIFICATION_TYPES.has(eventType)) {
-        return {
-          field: `${prefix}.event_types[${j}]`,
-          message: `Notification type '${eventType}' is media-buy anchored and cannot be registered on account-level notification_configs`,
-        };
-      }
-      if (!ACCOUNT_ANCHORED_NOTIFICATION_TYPES.has(eventType)) {
-        return {
-          field: `${prefix}.event_types[${j}]`,
-          message: `Notification type '${eventType}' is not an account-level notification type`,
-        };
-      }
     }
-    if (config.authentication !== undefined) {
-      const schemes = config.authentication.schemes;
-      if (!Array.isArray(schemes) || schemes.length === 0) {
-        return { field: `${prefix}.authentication.schemes`, message: 'notification_configs[].authentication.schemes is required when authentication is present' };
-      }
-      if (schemes.length !== 1 || !['Bearer', 'HMAC-SHA256'].includes(schemes[0])) {
-        return { field: `${prefix}.authentication.schemes`, message: 'notification_configs[].authentication.schemes must contain exactly one supported legacy scheme' };
-      }
-      if (typeof config.authentication.credentials !== 'string' || config.authentication.credentials.length < 32) {
-        return { field: `${prefix}.authentication.credentials`, message: 'notification_configs[].authentication.credentials must be at least 32 characters when authentication is present' };
-      }
-    }
-    if (config.active === true) {
+    const invalidIndex = config.event_types.findIndex(t => !ACCOUNT_ANCHORED_NOTIFICATION_TYPES.has(t));
+    if (invalidIndex !== -1) {
       return {
-        field: `${prefix}.active`,
-        message: 'notification_configs[].active: true requires endpoint proof-of-control, which the training agent does not implement',
+        error: validationFailure(
+          input,
+          `${field}.event_types[${invalidIndex}]`,
+          `${config.event_types[invalidIndex]} is not valid on account-level notification_configs[]`,
+        ),
       };
     }
-  }
+    if (config.authentication?.schemes?.length && !config.authentication.credentials) {
+      return { error: validationFailure(input, `${field}.authentication.credentials`, 'authentication.credentials is required when authentication.schemes is present') };
+    }
+    if (config.authentication?.schemes?.length) {
+      const supportedSchemes = ['Bearer', 'HMAC-SHA256'];
+      if (config.authentication.schemes.length !== 1 || !supportedSchemes.includes(config.authentication.schemes[0])) {
+        return { error: validationFailure(input, `${field}.authentication.schemes`, 'authentication.schemes must contain exactly one supported legacy scheme') };
+      }
+      if (typeof config.authentication.credentials !== 'string' || config.authentication.credentials.length < 32) {
+        return { error: validationFailure(input, `${field}.authentication.credentials`, 'authentication.credentials must be at least 32 characters') };
+      }
+    }
 
-  return null;
+    out.push({
+      subscriberId: config.subscriber_id,
+      url: config.url,
+      eventTypes: [...config.event_types],
+      authentication: config.authentication?.schemes?.length
+        ? {
+            schemes: [...config.authentication.schemes],
+            credentials: config.authentication.credentials,
+          }
+        : undefined,
+      active: config.active === true,
+    });
+  }
+  return out;
+}
+
+export interface AccountNotificationSubscriber {
+  accountId: string;
+  subscriberId: string;
+  url: string;
+  eventTypes: string[];
+  authentication?: NotificationConfigState['authentication'];
+}
+
+export function getAccountNotificationSubscribers(
+  sessionKey: string,
+  notificationType: 'creative.status_changed' | 'creative.purged',
+  principal?: string,
+  accountId?: string,
+  accountRef?: AccountRef,
+): AccountNotificationSubscriber[] {
+  const accounts = accountStore.get(scopedStoreKey(sessionKey, principal));
+  if (!accounts) return [];
+  const canUseNaturalKey = Boolean(accountRef?.brand?.domain && accountRef.operator);
+  if (!accountId && !canUseNaturalKey && accounts.size !== 1) return [];
+  const out: AccountNotificationSubscriber[] = [];
+  for (const account of accounts.values()) {
+    if (accountId && account.accountId !== accountId) continue;
+    if (!accountId && canUseNaturalKey && accountKey(accountRef!.brand!, accountRef!.operator!) !== accountKey(account.brand, account.operator)) continue;
+    for (const config of account.notificationConfigs) {
+      if (!config.active || !config.eventTypes.includes(notificationType)) continue;
+      out.push({
+        accountId: account.accountId,
+        subscriberId: config.subscriberId,
+        url: config.url,
+        eventTypes: [...config.eventTypes],
+        authentication: config.authentication,
+      });
+    }
+  }
+  return out;
+}
+
+export function resolveAccountIdForRef(
+  sessionKey: string,
+  principal: string | undefined,
+  ref: AccountRef | undefined,
+): string | undefined {
+  if (!ref) return undefined;
+  const account = findAccountByRef(getAccountMap(sessionKey, principal), ref)
+    ?? (ref.account_id ? findAccountByIdAcrossSessions(ref.account_id, principal) : undefined);
+  return account?.accountId;
 }
 
 // Compliance fixture pool — used when the session has no synced accounts, so
@@ -343,16 +441,18 @@ function getComplianceAccounts(): AccountWireShape[] {
       billing: 'operator',
       account_scope: 'operator_brand',
       status: 'active',
+      sandbox: true,
     },
     {
       account_id: 'acc_pagination_integrity_2',
-      name: 'Acme Outdoor Trail c/o Pinnacle',
+      name: 'Acme Outdoor Trail c/o Trailhead',
       advertiser: 'Acme Outdoor',
       brand: { domain: 'acmeoutdoor.example', brand_id: 'acme_outdoor' },
       operator: 'trailhead-agency.example',
       billing: 'operator',
       account_scope: 'operator_brand',
       status: 'active',
+      sandbox: true,
     },
     {
       account_id: 'acc_pagination_integrity_3',
@@ -363,6 +463,7 @@ function getComplianceAccounts(): AccountWireShape[] {
       billing: 'operator',
       account_scope: 'brand',
       status: 'active',
+      sandbox: true,
     },
   ];
 }
@@ -443,7 +544,6 @@ export const ACCOUNT_TOOLS = [
           items: {
             type: 'object',
             properties: {
-              account: ACCOUNT_REF_SCHEMA,
               brand: {
                 type: 'object',
                 properties: {
@@ -453,6 +553,7 @@ export const ACCOUNT_TOOLS = [
                 },
                 required: ['domain'],
               },
+              account: ACCOUNT_REF_SCHEMA,
               operator: { type: 'string' },
               billing: { type: 'string', enum: ['operator', 'agent', 'advertiser'] },
               billing_entity: { type: 'object' },
@@ -473,17 +574,24 @@ export const ACCOUNT_TOOLS = [
                         schemes: { type: 'array', items: { type: 'string' } },
                         credentials: { type: 'string' },
                       },
+                      required: ['schemes', 'credentials'],
                     },
                     active: { type: 'boolean' },
-                    ext: { type: 'object' },
                   },
                   required: ['subscriber_id', 'url', 'event_types'],
                 },
               },
             },
             oneOf: [
-              { required: ['brand', 'operator', 'billing'] },
-              { required: ['account'] },
+              { required: ['brand', 'operator', 'billing'], not: { required: ['account'] } },
+              {
+                required: ['account'],
+                allOf: [
+                  { not: { required: ['brand'] } },
+                  { not: { required: ['operator'] } },
+                  { not: { required: ['billing'] } },
+                ],
+              },
             ],
           },
         },
@@ -564,8 +672,8 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
-  const sessionKey = accountSessionKey(req, ctx);
-  const accounts = getAccountMap(sessionKey);
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const accounts = getAccountMap(sessionKey, ctx.principal);
   const agentUrl = getAgentUrl();
   const now = new Date().toISOString();
   const results: Record<string, unknown>[] = [];
@@ -580,8 +688,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       ].filter(Boolean);
       if (mixedProvisioningFields.length > 0) {
         results.push({
-          brand: input.account.brand ?? input.brand ?? { domain: 'unknown.example' },
-          operator: input.account.operator ?? input.operator ?? 'unknown.example',
+          account: input.account,
           action: 'failed',
           status: 'rejected',
           errors: [{
@@ -593,101 +700,72 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         });
         continue;
       }
-
-      const acct = findAccountByRef(accounts, input.account);
-      const resultBrand = acct?.brand ?? input.account.brand ?? { domain: 'unknown.example' };
-      const resultOperator = acct?.operator ?? input.account.operator ?? 'unknown.example';
-
-      if (!acct) {
+      const existing = findAccountByRef(accounts, input.account)
+        ?? (input.account.account_id ? findAccountByIdAcrossSessions(input.account.account_id, ctx.principal) : undefined)
+        ?? (input.account.account_id ? findComplianceAccountById(input.account.account_id, now) : undefined);
+      if (!existing) {
         results.push({
-          brand: resultBrand,
-          operator: resultOperator,
+          account: input.account,
           action: 'failed',
           status: 'rejected',
           errors: [{
             code: 'ACCOUNT_NOT_FOUND',
-            message: 'Account does not exist. Call sync_accounts in provisioning mode first or use a listed account_id.',
-            field: 'account',
-            recovery: 'correctable',
+            message: 'Account not found. Settings-update mode can only update accounts previously provisioned or discovered by this caller.',
           }],
         });
         continue;
       }
+      if (!req.dry_run && !findAccountByRef(accounts, input.account)) {
+        accounts.set(accountKey(existing.brand, existing.operator), existing);
+      }
 
       if (input.payment_terms && !SUPPORTED_PAYMENT_TERMS.includes(input.payment_terms)) {
         results.push({
-          brand: resultBrand,
-          operator: resultOperator,
+          account: input.account,
           action: 'failed',
           status: 'rejected',
           errors: [{
             code: 'PAYMENT_TERMS_NOT_SUPPORTED',
             message: `Payment terms '${input.payment_terms}' are not available. Supported: ${SUPPORTED_PAYMENT_TERMS.join(', ')}.`,
-            field: 'payment_terms',
-            recovery: 'correctable',
           }],
         });
         continue;
       }
 
-      const notificationConfigError = await validateNotificationConfigs(input.notification_configs);
-      if (notificationConfigError) {
-        results.push({
-          brand: resultBrand,
-          operator: resultOperator,
-          action: 'failed',
-          status: 'rejected',
-          errors: [validationError(notificationConfigError.field, notificationConfigError.message)],
-        });
+      const notificationConfigs = await normalizeNotificationConfigs(input);
+      if (notificationConfigs && 'error' in notificationConfigs) {
+        results.push(notificationConfigs.error);
         continue;
       }
-
-      if (req.dry_run) {
-        results.push({
-          account_id: acct.accountId,
-          brand: resultBrand,
-          operator: resultOperator,
-          action: 'updated',
-          status: acct.status,
-          billing: acct.billing,
-          account_scope: acct.accountScope,
-          sandbox: acct.sandbox || undefined,
-          ...(input.notification_configs !== undefined && {
-            notification_configs: sanitizeNotificationConfigs(input.notification_configs),
-          }),
-        });
-        continue;
-      }
-
-      if (input.billing_entity) acct.billingEntity = input.billing_entity;
-      if (input.payment_terms) acct.paymentTerms = input.payment_terms;
-      if (input.notification_configs !== undefined) {
-        acct.notificationConfigs = input.notification_configs;
-        acct.notificationConfigsTouched = true;
-      }
-      acct.syncedAt = now;
+      const notificationConfigsProvided = Array.isArray(notificationConfigs);
+      const nextNotificationConfigs = notificationConfigsProvided
+        ? notificationConfigs
+        : existing.notificationConfigs;
 
       const result: Record<string, unknown> = {
-        account_id: acct.accountId,
-        brand: resultBrand,
-        operator: resultOperator,
-        name: accountStateToWire(acct).name,
+        account_id: existing.accountId,
+        account: input.account,
+        brand: existing.brand,
+        operator: existing.operator,
         action: 'updated',
-        status: acct.status,
-        billing: acct.billing,
-        account_scope: acct.accountScope,
-        payment_terms: acct.paymentTerms,
-        rate_card: acct.rateCard,
+        status: existing.status,
+        billing: existing.billing,
+        account_scope: existing.accountScope,
+        payment_terms: input.payment_terms ?? existing.paymentTerms,
+        notification_configs: sanitizeNotificationConfigs(nextNotificationConfigs),
       };
-      if (acct.creditLimit) result.credit_limit = acct.creditLimit;
-      if (acct.sandbox) result.sandbox = true;
-      if (input.notification_configs !== undefined || acct.notificationConfigs.length > 0) {
-        result.notification_configs = sanitizeNotificationConfigs(acct.notificationConfigs);
+      if (req.dry_run) {
+        results.push(result);
+        continue;
       }
-      if (input.billing_entity) {
-        const { bank, ...safe } = input.billing_entity as Record<string, unknown>;
-        result.billing_entity = safe;
+
+      if (input.payment_terms) existing.paymentTerms = input.payment_terms;
+      if (input.billing_entity) existing.billingEntity = input.billing_entity;
+      if (notificationConfigsProvided) {
+        existing.notificationConfigs = notificationConfigs;
+        existing.notificationConfigsTouched = true;
       }
+      existing.syncedAt = now;
       results.push(result);
       continue;
     }
@@ -710,17 +788,6 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         action: 'failed',
         status: 'rejected',
         errors: [{ code: 'INVALID_REQUEST', message: 'operator is required' }],
-      });
-      continue;
-    }
-
-    if (!input.billing) {
-      results.push({
-        brand: input.brand,
-        operator: input.operator,
-        action: 'failed',
-        status: 'rejected',
-        errors: [{ code: 'INVALID_REQUEST', message: 'billing is required' }],
       });
       continue;
     }
@@ -774,7 +841,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
     // billing) onboarding state. Recovery advice: same as the
     // capability gate (try the next-most-permissive value the seller's
     // supported_billing allows).
-    if (isPerAccountBillingRestricted(input.operator, input.billing)) {
+    if (isPerAccountBillingRestricted(input.operator, input.billing!)) {
       results.push({
         brand: input.brand,
         operator: input.operator,
@@ -824,21 +891,14 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       continue;
     }
 
-    const notificationConfigError = await validateNotificationConfigs(input.notification_configs);
-    if (notificationConfigError) {
-      results.push({
-        brand: input.brand,
-        operator: input.operator,
-        action: 'failed',
-        status: 'rejected',
-        errors: [validationError(notificationConfigError.field, notificationConfigError.message)],
-      });
-      continue;
-    }
-
     const key = accountKey(input.brand, input.operator);
     const existing = accounts.get(key);
     const isSandbox = input.sandbox === true;
+    const notificationConfigs = await normalizeNotificationConfigs(input);
+    if (notificationConfigs && 'error' in notificationConfigs) {
+      results.push(notificationConfigs.error);
+      continue;
+    }
 
     if (req.dry_run) {
       results.push({
@@ -849,6 +909,13 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         billing: input.billing,
         account_scope: 'operator_brand',
         sandbox: isSandbox || undefined,
+        ...(
+          Array.isArray(notificationConfigs)
+            ? { notification_configs: sanitizeNotificationConfigs(notificationConfigs) }
+            : existing?.notificationConfigs?.length
+              ? { notification_configs: sanitizeNotificationConfigs(existing.notificationConfigs) }
+              : {}
+        ),
       });
       continue;
     }
@@ -863,7 +930,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       accountId,
       brand: input.brand,
       operator: input.operator,
-      billing: input.billing,
+      billing: input.billing!,
       billingEntity: input.billing_entity,
       paymentTerms: input.payment_terms || 'net_30',
       status,
@@ -872,8 +939,12 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       rateCard: isSandbox ? 'sandbox' : 'standard',
       creditLimit: isSandbox ? undefined : { amount: 100000, currency: 'USD' },
       governanceAgents: existing?.governanceAgents || [],
-      notificationConfigs: input.notification_configs ?? existing?.notificationConfigs ?? [],
-      notificationConfigsTouched: input.notification_configs !== undefined || existing?.notificationConfigsTouched === true,
+      notificationConfigs: Array.isArray(notificationConfigs)
+        ? notificationConfigs
+        : existing?.notificationConfigs || [],
+      notificationConfigsTouched: Array.isArray(notificationConfigs)
+        ? true
+        : existing?.notificationConfigsTouched,
       syncedAt: now,
     };
 
@@ -906,7 +977,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       result.sandbox = true;
     }
 
-    if (input.notification_configs !== undefined || state.notificationConfigs.length > 0) {
+    if (state.notificationConfigs.length > 0 || input.notification_configs !== undefined) {
       result.notification_configs = sanitizeNotificationConfigs(state.notificationConfigs);
     }
 
@@ -948,24 +1019,30 @@ export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object
   const req = args as unknown as ListAccountsRequest;
   const identityError = durableAccountIdentityError(ctx);
   if (identityError) return identityError;
-  const sessionKey = accountSessionKey({}, ctx);
-  const accountMap = getAccountMap(sessionKey);
+  const sessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
+  const accountMap = getAccountMap(sessionKey, ctx.principal);
+  const preferFixtureAccounts = ctx.storyboardCompat?.version === '3.0';
+  const scopedAccounts = req.account && !preferFixtureAccounts ? accountsForPrincipal(ctx.principal) : [];
 
-  const sessionAccounts = Array.from(accountMap.values()).map(accountStateToWire);
-  let accounts: AccountWireShape[] = sessionAccounts.length > 0 ? sessionAccounts : getComplianceAccounts();
+  let accounts: AccountWireShape[] = preferFixtureAccounts
+    ? getComplianceAccounts()
+    : scopedAccounts.length > 0
+      ? scopedAccounts.map(accountStateToWire)
+      : accountMap.size > 0
+        ? Array.from(accountMap.values()).map(accountStateToWire)
+        : getComplianceAccounts();
 
-  if (req.account) {
+  if (!preferFixtureAccounts && req.account) {
     accounts = accounts.filter(a => wireAccountMatchesRef(a, req.account!));
   }
-  if (req.status) {
+  if (!preferFixtureAccounts && req.status) {
     accounts = accounts.filter(a => a.status === req.status);
   }
-  if (typeof req.sandbox === 'boolean') {
+  if (!preferFixtureAccounts && typeof req.sandbox === 'boolean') {
     accounts = req.sandbox
       ? accounts.filter(a => a.sandbox === true)
       : accounts.filter(a => !a.sandbox);
   }
-  accounts.sort((a, b) => a.account_id.localeCompare(b.account_id));
 
   const totalMatching = accounts.length;
   const requestedMax = req.pagination?.max_results;
@@ -1016,13 +1093,14 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
-  const sessionKey = accountSessionKey(req, ctx);
-  const accounts = getAccountMap(sessionKey);
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const accounts = getAccountMap(sessionKey, ctx.principal);
   const results: Record<string, unknown>[] = [];
 
   for (const input of req.accounts) {
     const acctRef = input.account;
-    const acct = findAccountByRef(accounts, acctRef);
+    const acct = findAccountByRef(accounts, acctRef)
+      ?? (acctRef.account_id ? findAccountByIdAcrossSessions(acctRef.account_id, ctx.principal) : undefined);
 
     if (!acct) {
       // Account not found — return a useful error

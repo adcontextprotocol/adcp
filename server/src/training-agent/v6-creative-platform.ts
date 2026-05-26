@@ -41,6 +41,7 @@ function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undef
   return {
     mode: 'open',
     principal: account?.authInfo?.principal ?? 'anonymous',
+    creativeBillsThroughAdcp: false,
   };
 }
 

@@ -273,43 +273,34 @@ describe('buildCatalog', () => {
   });
 
   describe('product cards on every product', () => {
-    it('has product_card with valid format_id and manifest', () => {
+    it('has inline product_card fields', () => {
       for (const cp of catalog) {
         const card = cp.product.product_card as Record<string, unknown> | undefined;
         expect(card, `${cp.product.product_id} missing product_card`).toBeDefined();
-        const fid = card!.format_id as { agent_url: string; id: string };
-        expect(fid.id).toBe('product_card_standard');
-        expect(fid.agent_url).toBeTruthy();
-        const manifest = card!.manifest as { assets: Record<string, unknown> };
-        expect(manifest.assets).toBeDefined();
-        expect((manifest.assets as Record<string, { content?: string }>).product_name?.content).toBeTruthy();
+        expect(card!.title, `${cp.product.product_id} missing product_card title`).toBeTruthy();
+        expect(card!.description, `${cp.product.product_id} missing product_card description`).toBeTruthy();
+        expect(card!.cta_label).toBe('View details');
       }
     });
 
-    it('has product_card_detailed with valid format_id and manifest', () => {
+    it('has inline product_card_detailed fields', () => {
       for (const cp of catalog) {
         const card = cp.product.product_card_detailed as Record<string, unknown> | undefined;
         expect(card, `${cp.product.product_id} missing product_card_detailed`).toBeDefined();
-        const fid = card!.format_id as { agent_url: string; id: string };
-        expect(fid.id).toBe('product_card_detailed');
+        expect(card!.title, `${cp.product.product_id} missing product_card_detailed title`).toBeTruthy();
+        expect(card!.description, `${cp.product.product_id} missing product_card_detailed description`).toBeTruthy();
+        expect(card!.specifications, `${cp.product.product_id} missing product_card_detailed specifications`).toBeDefined();
       }
     });
 
     it('includes product_image url on cards when publisher has heroImageUrl', () => {
       for (const cp of catalog) {
-        const card = cp.product.product_card as { manifest: { assets: Record<string, { url?: string }> } };
-        const imageAsset = card.manifest.assets.product_image;
+        const card = cp.product.product_card as { image?: { url?: string; width?: number; height?: number } };
+        const imageAsset = card.image;
         // All publishers now have heroImageUrl
         expect(imageAsset?.url, `${cp.product.product_id} missing product_image`).toBeTruthy();
-      }
-    });
-
-    it('includes click_url on cards', () => {
-      for (const cp of catalog) {
-        const card = cp.product.product_card as { manifest: { assets: Record<string, { url?: string }> } };
-        const clickAsset = card.manifest.assets.click_url;
-        expect(clickAsset?.url, `${cp.product.product_id} missing click_url`).toBeTruthy();
-        expect(clickAsset!.url).toContain(cp.product.product_id as string);
+        expect(imageAsset?.width, `${cp.product.product_id} missing product_image width`).toBeGreaterThan(0);
+        expect(imageAsset?.height, `${cp.product.product_id} missing product_image height`).toBeGreaterThan(0);
       }
     });
   });
@@ -1358,6 +1349,19 @@ describe('get_products handler', () => {
 
     const products = result.products as Array<Record<string, unknown>>;
     expect(products.length).toBeGreaterThan(0);
+  });
+
+  it('rejects non-string brief instead of throwing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'brief',
+      brief: { text: 'video sports streaming' },
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.field).toBe('brief');
+    expect(result.message).toContain('brief must be a string');
   });
 
   it('every product in response has all schema-required fields', async () => {
@@ -6219,6 +6223,7 @@ describe('get_adcp_capabilities handler', () => {
       'force_media_buy_status',
       'force_create_media_buy_arm',
       'force_task_completion',
+      'force_creative_purge',
       'force_session_status',
       'simulate_delivery',
       'simulate_budget_spend',

@@ -17,6 +17,7 @@ import {
   handleTestControllerRequest,
 } from '@adcp/sdk';
 import type { TestControllerStore } from '@adcp/sdk';
+import type { WebhookAuthentication, WebhookEmitResult } from '@adcp/sdk/server';
 import type { BrandReference } from '@adcp/sdk';
 import type {
   TrainingContext,
@@ -35,6 +36,8 @@ import type {
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
+import { getAccountNotificationSubscribers } from './account-handlers.js';
+import { emitAccountNotificationWebhook } from './webhooks.js';
 
 // ── State machine transition tables ───────────────────────────────
 
@@ -107,6 +110,9 @@ function getOrCreateDeliveryAccumulator(session: SessionState, mediaBuyId: strin
 }
 
 function applyExtendedDeliveryParams(cumulative: ComplyDeliveryAccumulator, params: Record<string, unknown>) {
+  if (typeof params.is_final === 'boolean') cumulative.isFinal = params.is_final;
+  if (typeof params.finalized_at === 'string') cumulative.finalizedAt = params.finalized_at;
+  if (typeof params.measurement_window === 'string') cumulative.measurementWindow = params.measurement_window;
   if (typeof params.reach === 'number') cumulative.reach = params.reach;
   if (typeof params.frequency === 'number') cumulative.frequency = params.frequency;
   if (params.reach_window && typeof params.reach_window === 'object' && !Array.isArray(params.reach_window)) {
@@ -119,6 +125,9 @@ function applyExtendedDeliveryParams(cumulative: ComplyDeliveryAccumulator, para
 
 function extendedDeliverySnapshot(cumulative: ComplyDeliveryAccumulator): Record<string, unknown> {
   return {
+    ...(cumulative.isFinal !== undefined ? { is_final: cumulative.isFinal } : {}),
+    ...(cumulative.finalizedAt ? { finalized_at: cumulative.finalizedAt } : {}),
+    ...(cumulative.measurementWindow ? { measurement_window: cumulative.measurementWindow } : {}),
     ...(cumulative.reach !== undefined ? { reach: cumulative.reach } : {}),
     ...(cumulative.frequency !== undefined ? { frequency: cumulative.frequency } : {}),
     ...(cumulative.reachWindow ? { reach_window: cumulative.reachWindow } : {}),
@@ -267,7 +276,124 @@ function validateTransition(
 
 // ── TestControllerStore factory ───────────────────────────────────
 
-function createStore(session: SessionState): TestControllerStore {
+function lifecycleReasonCode(prev: string, status: string): string {
+  if (status === 'approved') return 'review_passed';
+  if (status === 'pending_review') return 'seller_rereview';
+  if (status === 'archived') return 'seller_archive';
+  if (status === 'rejected') {
+    if (prev === 'processing') return 'processing_failure';
+    if (prev === 'pending_review') return 'review_failure';
+    return 'policy_revocation';
+  }
+  return 'policy_revocation';
+}
+
+function webhookAuthenticationFromConfig(
+  auth: { schemes: string[]; credentials?: string } | undefined,
+): WebhookAuthentication | undefined {
+  if (!auth?.credentials) return undefined;
+  const schemes = auth.schemes.map(s => s.toLowerCase().replace(/-/g, '_'));
+  if (schemes.includes('bearer')) return { type: 'bearer', token: auth.credentials };
+  if (schemes.includes('hmac_sha256')) return { type: 'hmac_sha256', secret: auth.credentials };
+  return undefined;
+}
+
+function redactWebhookActivityUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.username = '';
+    parsed.password = '';
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return '[invalid-url]';
+  }
+}
+
+function recordWebhookActivityResult(
+  creative: CreativeState,
+  base: Omit<NonNullable<CreativeState['webhookActivity']>[number], 'completed_at' | 'attempt' | 'status' | 'url' | 'http_status_code' | 'response_time_ms' | 'error_message'>,
+  subscriberUrl: string,
+  result: WebhookEmitResult | undefined,
+  error: unknown,
+): void {
+  const errorMessage = error instanceof Error ? error.message : (error ? String(error) : undefined);
+  recordCreativeWebhookActivity(creative, {
+    ...base,
+    completed_at: new Date().toISOString(),
+    attempt: result?.attempts ?? 1,
+    status: result?.delivered ? 'success' : 'failed',
+    url: redactWebhookActivityUrl(subscriberUrl),
+    ...(result?.final_status && { http_status_code: result.final_status }),
+    response_time_ms: 0,
+    payload_size_bytes: base.payload_size_bytes,
+    error_message: errorMessage ?? (result?.errors.length ? result.errors.join('; ') : null),
+  });
+}
+
+async function emitCreativeStatusChanged(
+  sessionKey: string,
+  principal: string | undefined,
+  creative: CreativeState,
+  prev: string,
+  status: string,
+  reasonDetail?: string,
+): Promise<void> {
+  if (!['processing', 'pending_review', 'approved'].includes(prev)) return;
+  const subscribers = getAccountNotificationSubscribers(sessionKey, 'creative.status_changed', principal, creative.accountId, creative.accountRef);
+  if (subscribers.length === 0) return;
+  const firedAt = new Date().toISOString();
+  const notificationId = `cs_${creative.creativeId}_${randomUUID()}`;
+  for (const subscriber of subscribers) {
+    const idempotencyKey = randomUUID();
+    const payload: Record<string, unknown> = {
+      idempotency_key: idempotencyKey,
+      notification_id: notificationId,
+      notification_type: 'creative.status_changed',
+      fired_at: firedAt,
+      subscriber_id: subscriber.subscriberId,
+      account_id: subscriber.accountId,
+      creative_id: creative.creativeId,
+      transition: {
+        from: prev,
+        to: status,
+        observed_at: firedAt,
+      },
+      reason_code: lifecycleReasonCode(prev, status),
+      ...(reasonDetail && { reason_detail: reasonDetail }),
+      initiator: 'seller',
+    };
+    const activityBase = {
+      idempotency_key: idempotencyKey,
+      subscriber_id: subscriber.subscriberId,
+      fired_at: firedAt,
+      notification_type: 'creative.status_changed',
+      payload_size_bytes: Buffer.byteLength(JSON.stringify(payload), 'utf8'),
+    } as const;
+    try {
+      const result = await emitAccountNotificationWebhook({
+        url: subscriber.url,
+        payload,
+        operationId: `${subscriber.accountId}:${subscriber.subscriberId}:${notificationId}:${idempotencyKey}`,
+        notificationType: 'creative.status_changed',
+        authentication: webhookAuthenticationFromConfig(subscriber.authentication),
+      });
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, result, undefined);
+    } catch (err) {
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, undefined, err);
+    }
+  }
+}
+
+function recordCreativeWebhookActivity(
+  creative: CreativeState,
+  record: NonNullable<CreativeState['webhookActivity']>[number],
+): void {
+  creative.webhookActivity = [record, ...(creative.webhookActivity ?? [])].slice(0, 50);
+}
+
+function createStore(session: SessionState, sessionKey: string, principal?: string): TestControllerStore {
   return {
     async forceCreativeStatus(creativeId, status, rejectionReason) {
       const creative = session.creatives.get(creativeId);
@@ -288,6 +414,7 @@ function createStore(session: SessionState): TestControllerStore {
 
       creative.status = status;
       propagateCreativeImpairment(session, creativeId, prev, status, rejectionReason);
+      await emitCreativeStatusChanged(sessionKey, principal, creative, prev, status, rejectionReason);
       return { success: true, previous_state: prev, current_state: status, message: `Creative ${creativeId} transitioned from ${prev} to ${status}` };
     },
 
@@ -410,6 +537,9 @@ function createStore(session: SessionState): TestControllerStore {
       if (typedParams.frequency !== undefined) simulated.frequency = typedParams.frequency;
       if (typedParams.reach_window !== undefined) simulated.reach_window = typedParams.reach_window;
       if (typedParams.viewability !== undefined) simulated.viewability = typedParams.viewability;
+      if (typedParams.is_final !== undefined) simulated.is_final = typedParams.is_final;
+      if (typedParams.finalized_at !== undefined) simulated.finalized_at = typedParams.finalized_at;
+      if (typedParams.measurement_window !== undefined) simulated.measurement_window = typedParams.measurement_window;
 
       return {
         success: true,
@@ -622,7 +752,13 @@ function createStore(session: SessionState): TestControllerStore {
  * adcontextprotocol/adcp-client — the dedup below means it is safe to leave this
  * entry in place during the transition; remove once a release has landed and the
  * cross-impl tests no longer rely on it). */
-const LOCAL_SCENARIOS = ['force_create_media_buy_arm', 'force_task_completion', 'seed_creative_format', 'seed_measurement_catalog'] as const;
+const LOCAL_SCENARIOS = ['force_create_media_buy_arm', 'force_task_completion', 'force_creative_purge', 'seed_creative_format', 'seed_measurement_catalog'] as const;
+
+function localScenariosFor(ctx: TrainingContext): string[] {
+  return ctx.storyboardCompat?.version === '3.0'
+    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge')
+    : [...LOCAL_SCENARIOS];
+}
 
 // ── Tool definition ───────────────────────────────────────────────
 
@@ -713,6 +849,16 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   if (scenario === 'force_task_completion') {
     return handleForceTaskCompletion(sessionKey, rawArgs);
   }
+  if (scenario === 'force_creative_purge') {
+    if (ctx.storyboardCompat?.version === '3.0') {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: 'force_creative_purge is not available in AdCP 3.0 compatibility mode',
+      };
+    }
+    return handleForceCreativePurge(session, sessionKey, ctx.principal, rawArgs);
+  }
   if (scenario === 'seed_measurement_catalog') {
     return handleSeedMeasurementCatalog(session, rawArgs);
   }
@@ -775,7 +921,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     }
   }
 
-  const store = createStore(session);
+  const store = createStore(session, sessionKey, ctx.principal);
   const sdkResponse = await handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
 
   if (
@@ -792,6 +938,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     if (params.frequency !== undefined) simulatedExtras.frequency = params.frequency;
     if (params.reach_window !== undefined) simulatedExtras.reach_window = params.reach_window;
     if (params.viewability !== undefined) simulatedExtras.viewability = params.viewability;
+    if (params.is_final !== undefined) simulatedExtras.is_final = params.is_final;
+    if (params.finalized_at !== undefined) simulatedExtras.finalized_at = params.finalized_at;
+    if (params.measurement_window !== undefined) simulatedExtras.measurement_window = params.measurement_window;
     if (Object.keys(simulatedExtras).length > 0 || cumulative) {
       const response = sdkResponse as unknown as Record<string, unknown>;
       return {
@@ -820,7 +969,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     && Array.isArray((sdkResponse as { scenarios?: unknown }).scenarios)
   ) {
     const r = sdkResponse as unknown as { success: true; scenarios: string[] } & Record<string, unknown>;
-    return { ...r, scenarios: Array.from(new Set([...r.scenarios, ...LOCAL_SCENARIOS])) };
+    return { ...r, scenarios: Array.from(new Set([...r.scenarios, ...localScenariosFor(ctx)])) };
   }
 
   return sdkResponse;
@@ -941,6 +1090,132 @@ function handleSeedMeasurementCatalog(session: SessionState, rawArgs: Record<str
   return {
     success: true,
     message: `Measurement catalog for ${vendorDomain} seeded with ${metrics.length} metric(s)`,
+  };
+}
+
+function purgeReasonCode(kind: 'soft' | 'hard', supplied: unknown): string {
+  if (typeof supplied === 'string' && supplied.length > 0) return supplied;
+  return kind === 'hard' ? 'legal_erasure' : 'retention_expired';
+}
+
+async function emitCreativePurged(
+  sessionKey: string,
+  principal: string | undefined,
+  creative: CreativeState,
+  purgeKind: 'soft' | 'hard',
+  reasonCode: string,
+  purgedAt: string,
+  reasonDetail?: string,
+): Promise<void> {
+  const subscribers = getAccountNotificationSubscribers(sessionKey, 'creative.purged', principal, creative.accountId, creative.accountRef);
+  if (subscribers.length === 0) return;
+  const notificationId = `cp_${creative.creativeId}_${randomUUID()}`;
+  for (const subscriber of subscribers) {
+    const idempotencyKey = randomUUID();
+    const payload: Record<string, unknown> = {
+      idempotency_key: idempotencyKey,
+      notification_id: notificationId,
+      notification_type: 'creative.purged',
+      fired_at: purgedAt,
+      subscriber_id: subscriber.subscriberId,
+      account_id: subscriber.accountId,
+      creative_id: creative.creativeId,
+      purge_kind: purgeKind,
+      purged_at: purgedAt,
+      reason_code: reasonCode,
+      ...(reasonDetail && { reason_detail: reasonDetail }),
+      initiator: purgeKind === 'hard' ? 'seller' : 'system',
+    };
+    const activityBase = {
+      idempotency_key: idempotencyKey,
+      subscriber_id: subscriber.subscriberId,
+      fired_at: purgedAt,
+      notification_type: 'creative.purged',
+      payload_size_bytes: Buffer.byteLength(JSON.stringify(payload), 'utf8'),
+    } as const;
+    try {
+      const result = await emitAccountNotificationWebhook({
+        url: subscriber.url,
+        payload,
+        operationId: `${subscriber.accountId}:${subscriber.subscriberId}:${notificationId}:${idempotencyKey}`,
+        notificationType: 'creative.purged',
+        authentication: webhookAuthenticationFromConfig(subscriber.authentication),
+      });
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, result, undefined);
+    } catch (err) {
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, undefined, err);
+    }
+  }
+}
+
+async function handleForceCreativePurge(session: SessionState, sessionKey: string, principal: string | undefined, rawArgs: Record<string, unknown>): Promise<object> {
+  const params = rawArgs.params as Record<string, unknown> | undefined;
+  if (!params || typeof params !== 'object') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'force_creative_purge requires params',
+    };
+  }
+
+  const creativeId = params.creative_id;
+  if (typeof creativeId !== 'string' || creativeId.length === 0) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'creative_id is required',
+    };
+  }
+  const creative = session.creatives.get(creativeId);
+  if (!creative) {
+    return {
+      success: false,
+      error: 'NOT_FOUND',
+      current_state: null,
+      error_detail: `Creative ${creativeId} not found`,
+    };
+  }
+
+  const rawKind = params.purge_kind ?? 'soft';
+  if (rawKind !== 'soft' && rawKind !== 'hard') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      current_state: creative.status,
+      error_detail: "purge_kind must be 'soft' or 'hard'",
+    };
+  }
+  const purgeKind = rawKind;
+  const reasonCode = purgeReasonCode(purgeKind, params.reason_code);
+  const reasonDetail = typeof params.reason_detail === 'string' ? params.reason_detail : undefined;
+  const purgedAt = new Date().toISOString();
+  const previousState = creative.purge ? 'purged' : creative.status;
+  if (creative.purge) {
+    return {
+      success: true,
+      previous_state: previousState,
+      current_state: 'purged',
+      message: `Creative ${creativeId} is already purged`,
+    };
+  }
+
+  if (purgeKind === 'hard') {
+    session.creatives.delete(creativeId);
+  } else {
+    creative.purge = {
+      kind: 'soft',
+      at: purgedAt,
+      reasonCode,
+    };
+  }
+  await emitCreativePurged(sessionKey, principal, creative, purgeKind, reasonCode, purgedAt, reasonDetail);
+
+  return {
+    success: true,
+    previous_state: previousState,
+    current_state: 'purged',
+    purged: { creative_id: creativeId, purge_kind: purgeKind, purged_at: purgedAt, reason_code: reasonCode },
+    message: `Creative ${creativeId} purged (${purgeKind})`,
   };
 }
 

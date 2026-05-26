@@ -20,12 +20,20 @@ const SALES_CURRENT_SCENARIOS = [
   'simulate_budget_spend',
   'force_create_media_buy_arm',
   'force_task_completion',
+  'force_creative_purge',
   'seed_product',
   'seed_pricing_option',
   'seed_creative',
   'seed_media_buy',
   'seed_creative_format',
   'seed_measurement_catalog',
+];
+
+const SALES_CAPABILITY_SCENARIOS = [
+  'force_creative_status',
+  'force_media_buy_status',
+  'simulate_delivery',
+  'simulate_budget_spend',
 ];
 
 const SALES_THREE_ZERO_COMPAT_SCENARIOS = [
@@ -71,6 +79,41 @@ function stageLatestThreeZeroSchemaBundle(): void {
   execFileSync('bash', ['scripts/stage-sdk-schema-bundle.sh', path.join(schemasRoot, latest), '3.0'], {
     stdio: 'ignore',
   });
+}
+
+async function initializeTenant(url: string): Promise<void> {
+  await fetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json',
+      authorization: 'Bearer test-token',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { protocolVersion: '2025-03-26', clientInfo: { name: 'x', version: '1' }, capabilities: {} },
+    }),
+  });
+}
+
+async function callTenantTool(url: string, id: number, name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json',
+      authorization: 'Bearer test-token',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id,
+      method: 'tools/call',
+      params: { name, arguments: args },
+    }),
+  });
+  return response.json() as Promise<Record<string, unknown>>;
 }
 
 describe('tenant routing smoke', () => {
@@ -195,7 +238,7 @@ describe('tenant routing smoke', () => {
       const mediaBuy = body.result?.structuredContent?.media_buy;
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
-      expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(expect.arrayContaining(SALES_CURRENT_SCENARIOS));
+      expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(SALES_CAPABILITY_SCENARIOS);
     } finally {
       await close();
     }
@@ -303,7 +346,7 @@ describe('tenant routing smoke', () => {
       const capabilitiesBody = await capabilities.json() as {
         result?: { structuredContent?: { compliance_testing?: { scenarios?: string[] } } };
       };
-      expect(capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios).toEqual(SALES_THREE_ZERO_COMPAT_SCENARIOS);
+      expect(capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios).toEqual(SALES_CAPABILITY_SCENARIOS);
       expect(capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios).not.toContain('seed_measurement_catalog');
 
       const list = await fetch(url, {
@@ -351,6 +394,53 @@ describe('tenant routing smoke', () => {
         error?: unknown;
       };
       expect(directSeedBody.result?.structuredContent?.success).not.toBe(true);
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('does not advertise creative billing discriminator in 3.0 storyboard compat mode', async () => {
+    stageLatestThreeZeroSchemaBundle();
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      const url = `${baseUrl}/creative/mcp`;
+      await initializeTenant(url);
+      const capabilitiesBody = await callTenantTool(url, 2, 'get_adcp_capabilities', {}) as {
+        result?: { structuredContent?: { creative?: Record<string, unknown> } };
+      };
+      expect(capabilitiesBody.result?.structuredContent?.creative ?? {}).not.toHaveProperty('bills_through_adcp');
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('enforces idempotency on tenant report_usage custom tools', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const payload = {
+        account: { brand: { domain: 'tenant-usage.example' }, operator: 'tenant-usage.example' },
+        idempotency_key: 'tenant-report-usage-0001',
+        reporting_period: { start: '2026-03-01T00:00:00Z', end: '2026-03-31T23:59:59Z' },
+        usage: [{
+          account: { brand: { domain: 'tenant-usage.example' }, operator: 'tenant-usage.example' },
+          vendor_cost: 25,
+          currency: 'USD',
+        }],
+      };
+
+      const first = await callTenantTool(url, 2, 'report_usage', payload) as {
+        result?: { structuredContent?: { accepted?: number; replayed?: boolean } };
+      };
+      const second = await callTenantTool(url, 3, 'report_usage', payload) as {
+        result?: { structuredContent?: { accepted?: number; replayed?: boolean } };
+      };
+
+      expect(first.result?.structuredContent?.accepted).toBe(1);
+      expect(first.result?.structuredContent?.replayed).toBeUndefined();
+      expect(second.result?.structuredContent?.accepted).toBe(1);
+      expect(second.result?.structuredContent?.replayed).toBe(true);
     } finally {
       await close();
     }

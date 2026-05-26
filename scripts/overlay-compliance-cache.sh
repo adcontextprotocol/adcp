@@ -38,6 +38,7 @@ else
     | grep -v '\.previous$' \
     | sort \
     | head -1)
+  PINNED_VERSION=$(basename "$DST")
 fi
 
 if [ -z "$DST" ] || [ ! -d "$DST" ]; then

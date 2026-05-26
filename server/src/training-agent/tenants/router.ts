@@ -34,6 +34,7 @@ const SALES_CURRENT_SCENARIOS = [
   ...SALES_LEGACY_CAPABILITY_SCENARIOS,
   'force_create_media_buy_arm',
   'force_task_completion',
+  'force_creative_purge',
   'seed_product',
   'seed_pricing_option',
   'seed_creative',
@@ -46,6 +47,13 @@ function salesComplyScenarios(storyboardCompat?: TrainingContext['storyboardComp
   return storyboardCompat?.version === '3.0'
     ? [...SALES_LEGACY_CAPABILITY_SCENARIOS]
     : [...SALES_CURRENT_SCENARIOS];
+}
+
+function salesCapabilityScenarios(_storyboardCompat?: TrainingContext['storyboardCompat']): string[] {
+  // The SDK runner's generated Zod schema for get_adcp_capabilities still
+  // accepts only the legacy controller scenario enum. Full 3.1 scenario
+  // discovery remains available through comply_test_controller:list_scenarios.
+  return [...SALES_LEGACY_CAPABILITY_SCENARIOS];
 }
 
 /**
@@ -223,6 +231,16 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
     // Serialize the connect/handle/close window per tenant — see
     // `withTenantLock` above for the race this prevents (adcp#4084).
     await withTenantLock(resolved.tenantId, async () => {
+      if (
+        principal
+        && req.body?.method === 'tools/call'
+        && req.body?.params?.name === 'comply_test_controller'
+        && req.body.params.arguments
+        && typeof req.body.params.arguments === 'object'
+      ) {
+        req.body.params.arguments.__training_principal = principal;
+      }
+
       if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat)) {
         return;
       }
@@ -270,8 +288,15 @@ async function tryHandleLocalComplyScenario(
 
   const rawArgs = (req.body.params.arguments ?? {}) as Record<string, unknown>;
   const isThreeZeroCompat = storyboardCompat?.version === '3.0';
-  if (rawArgs.scenario !== 'seed_measurement_catalog' && rawArgs.scenario !== 'list_scenarios') return false;
-  if (isThreeZeroCompat && rawArgs.scenario === 'seed_measurement_catalog') return false;
+  if (
+    rawArgs.scenario !== 'seed_measurement_catalog'
+    && rawArgs.scenario !== 'force_creative_purge'
+    && rawArgs.scenario !== 'list_scenarios'
+  ) return false;
+  if (
+    isThreeZeroCompat
+    && (rawArgs.scenario === 'seed_measurement_catalog' || rawArgs.scenario === 'force_creative_purge')
+  ) return false;
 
   const { context, ...handlerArgs } = rawArgs;
   const result = await runWithSessionContext(async () => {
@@ -308,7 +333,6 @@ function wrapSalesCapabilitiesProjection(
   tenantId: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): void {
-  if (tenantId !== 'sales') return;
   if (req.body?.method !== 'tools/call') return;
   if (req.body?.params?.name !== 'get_adcp_capabilities') return;
 
@@ -325,7 +349,7 @@ function wrapSalesCapabilitiesProjection(
   (res as unknown as { end: (...args: unknown[]) => Response }).end = (chunk?: unknown, ...rest: unknown[]) => {
     if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
     const body = Buffer.concat(chunks);
-    const patched = projectSalesCapabilities(body, storyboardCompat);
+    const patched = projectSalesCapabilities(body, tenantId, storyboardCompat);
     if (patched !== body) {
       res.setHeader('content-length', String(patched.length));
     }
@@ -340,11 +364,17 @@ function toBuffer(chunk: unknown): Buffer {
   return Buffer.from(String(chunk), 'utf8');
 }
 
-function projectSalesCapabilities(body: Buffer, storyboardCompat?: TrainingContext['storyboardCompat']): Buffer {
+function projectSalesCapabilities(
+  body: Buffer,
+  tenantId: string,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): Buffer {
   try {
     const parsed = JSON.parse(body.toString('utf8')) as {
       result?: {
         structuredContent?: {
+          supported_protocols?: unknown;
+          creative?: Record<string, unknown>;
           media_buy?: Record<string, unknown>;
           compliance_testing?: Record<string, unknown>;
         };
@@ -352,28 +382,49 @@ function projectSalesCapabilities(body: Buffer, storyboardCompat?: TrainingConte
     };
     const structured = parsed.result?.structuredContent;
     if (!structured || typeof structured !== 'object') return body;
-    const mediaBuy = structured.media_buy && typeof structured.media_buy === 'object'
-      ? structured.media_buy
-      : {};
-    structured.media_buy = {
-      ...mediaBuy,
-      ...salesCapabilityProjection(),
-    };
-    const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
-      ? structured.compliance_testing
-      : {};
-    const scenarios = new Set(
-      Array.isArray((complianceTesting as { scenarios?: unknown }).scenarios)
-        ? (complianceTesting as { scenarios: unknown[] }).scenarios.filter((s): s is string => typeof s === 'string')
-        : [],
-    );
-    for (const scenario of salesComplyScenarios(storyboardCompat)) {
-      scenarios.add(scenario);
+    if (
+      tenantId === 'creative'
+      && storyboardCompat?.version !== '3.0'
+      && (
+        structured.creative
+        || (
+          Array.isArray(structured.supported_protocols)
+          && structured.supported_protocols.includes('creative')
+        )
+      )
+    ) {
+      const creative = structured.creative && typeof structured.creative === 'object'
+        ? structured.creative
+        : {};
+      structured.creative = {
+        ...creative,
+        bills_through_adcp: false,
+      };
     }
-    structured.compliance_testing = {
-      ...complianceTesting,
-      scenarios: [...scenarios],
-    };
+    if (tenantId === 'sales') {
+      const mediaBuy = structured.media_buy && typeof structured.media_buy === 'object'
+        ? structured.media_buy
+        : {};
+      structured.media_buy = {
+        ...mediaBuy,
+        ...salesCapabilityProjection(),
+      };
+      const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
+        ? structured.compliance_testing
+        : {};
+      const scenarios = new Set(
+        Array.isArray((complianceTesting as { scenarios?: unknown }).scenarios)
+          ? (complianceTesting as { scenarios: unknown[] }).scenarios.filter((s): s is string => typeof s === 'string')
+          : [],
+      );
+      for (const scenario of salesCapabilityScenarios(storyboardCompat)) {
+        scenarios.add(scenario);
+      }
+      structured.compliance_testing = {
+        ...complianceTesting,
+        scenarios: [...scenarios],
+      };
+    }
     return Buffer.from(JSON.stringify(parsed), 'utf8');
   } catch {
     return body;

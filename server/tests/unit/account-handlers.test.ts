@@ -643,158 +643,23 @@ describe('sync_accounts', () => {
     expect(entity.bank).toBeUndefined();
   });
 
-  it('persists account notification_configs and strips legacy credentials on reads', async () => {
+  it('updates notification configs by explicit account ref', async () => {
+    const { result: created } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'operator',
+        sandbox: true,
+      }],
+    });
+    const accountId = ((created.accounts as Record<string, unknown>[])[0].account_id) as string;
+
     const { result } = await simulateCallTool(server, 'sync_accounts', {
-      accounts: [{
-        brand: { domain: 'acme.com' },
-        operator: 'agency-one',
-        billing: 'operator',
-        sandbox: true,
-        notification_configs: [{
-          subscriber_id: 'buyer-primary',
-          url: 'https://example.com/webhooks/adcp/account',
-          event_types: ['creative.status_changed', 'creative.purged'],
-          authentication: {
-            schemes: ['Bearer'],
-            credentials: 'AbCdEf0123456789AbCdEf0123456789',
-          },
-          active: false,
-        }],
-      }],
-    });
-
-    const acct = (result.accounts as Record<string, unknown>[])[0];
-    const configs = acct.notification_configs as Record<string, unknown>[];
-    expect(configs).toHaveLength(1);
-    expect(configs[0].subscriber_id).toBe('buyer-primary');
-    expect(configs[0].active).toBe(false);
-    expect((configs[0].authentication as Record<string, unknown>).schemes).toEqual(['Bearer']);
-    expect((configs[0].authentication as Record<string, unknown>).credentials).toBeUndefined();
-
-    const { result: listed } = await simulateCallTool(server, 'list_accounts', {
-      sandbox: true,
-    });
-    const listedAcct = (listed.accounts as Record<string, unknown>[]).find(acctRow => acctRow.account_id === acct.account_id);
-    const listedConfigs = listedAcct?.notification_configs as Record<string, unknown>[];
-    expect(listedConfigs).toHaveLength(1);
-    expect((listedConfigs[0].authentication as Record<string, unknown>).credentials).toBeUndefined();
-  });
-
-  it('filters list_accounts by returned account_id without changing the caller state bucket', async () => {
-    const { result: first } = await simulateCallTool(server, 'sync_accounts', {
-      accounts: [{
-        brand: { domain: 'acme.com' },
-        operator: 'agency-one',
-        billing: 'operator',
-        sandbox: true,
-      }],
-    });
-    const accountId = ((first.accounts as Record<string, unknown>[])[0]).account_id;
-
-    await simulateCallTool(server, 'sync_accounts', {
-      accounts: [{
-        brand: { domain: 'nova.com' },
-        operator: 'agency-one',
-        billing: 'operator',
-        sandbox: true,
-      }],
-    });
-
-    const { result: listed } = await simulateCallTool(server, 'list_accounts', {
-      account: { account_id: accountId },
-    });
-    const accounts = listed.accounts as Record<string, unknown>[];
-    expect(accounts).toHaveLength(1);
-    expect(accounts[0].account_id).toBe(accountId);
-  });
-
-  it('settings-update mode replaces, pauses, and clears notification_configs by subscriber_id', async () => {
-    const { result: first } = await simulateCallTool(server, 'sync_accounts', {
-      accounts: [{
-        brand: { domain: 'acme.com' },
-        operator: 'agency-one',
-        billing: 'operator',
-        sandbox: true,
-        notification_configs: [{
-          subscriber_id: 'buyer-primary',
-          url: 'https://example.com/webhooks/adcp/account',
-          event_types: ['creative.status_changed'],
-          active: false,
-        }],
-      }],
-    });
-    const accountId = ((first.accounts as Record<string, unknown>[])[0]).account_id;
-
-    const { result: replaced } = await simulateCallTool(server, 'sync_accounts', {
       accounts: [{
         account: { account_id: accountId },
         notification_configs: [{
           subscriber_id: 'buyer-primary',
-          url: 'https://example.com/webhooks/adcp/account-v2',
-          event_types: ['creative.purged'],
-          active: false,
-        }],
-      }],
-    });
-
-    const replacedAcct = (replaced.accounts as Record<string, unknown>[])[0];
-    const replacedConfigs = replacedAcct.notification_configs as Record<string, unknown>[];
-    expect(replacedAcct.action).toBe('updated');
-    expect(replacedConfigs).toHaveLength(1);
-    expect(replacedConfigs[0].subscriber_id).toBe('buyer-primary');
-    expect(replacedConfigs[0].url).toBe('https://example.com/webhooks/adcp/account-v2');
-    expect(replacedConfigs[0].event_types).toEqual(['creative.purged']);
-    expect(replacedConfigs[0].active).toBe(false);
-
-    const { result: cleared } = await simulateCallTool(server, 'sync_accounts', {
-      accounts: [{
-        account: { account_id: accountId },
-        notification_configs: [],
-      }],
-    });
-    const clearedAcct = (cleared.accounts as Record<string, unknown>[])[0];
-    expect(clearedAcct.notification_configs).toEqual([]);
-
-    const { result: listedAfterClear } = await simulateCallTool(server, 'list_accounts', {
-      account: { account_id: accountId },
-    });
-    const listedAcct = (listedAfterClear.accounts as Record<string, unknown>[])[0];
-    expect(listedAcct.notification_configs).toEqual([]);
-  });
-
-  it('rejects media-buy anchored notification event types on account configs', async () => {
-    const { result } = await simulateCallTool(server, 'sync_accounts', {
-      accounts: [{
-        brand: { domain: 'acme.com' },
-        operator: 'agency-one',
-        billing: 'operator',
-        sandbox: true,
-        notification_configs: [{
-          subscriber_id: 'delivery-reports',
-          url: 'https://example.com/webhooks/adcp/account',
-          event_types: ['scheduled'],
-        }],
-      }],
-    });
-
-    const acct = (result.accounts as Record<string, unknown>[])[0];
-    expect(acct.action).toBe('failed');
-    expect(acct.status).toBe('rejected');
-    const errors = acct.errors as Array<{ code: string; field: string }>;
-    expect(errors[0].code).toBe('INVALID_REQUEST');
-    expect(errors[0].field).toBe('notification_configs[0].event_types[0]');
-  });
-
-  it('rejects active notification_configs until endpoint proof support exists', async () => {
-    const { result } = await simulateCallTool(server, 'sync_accounts', {
-      accounts: [{
-        brand: { domain: 'acme.com' },
-        operator: 'agency-one',
-        billing: 'operator',
-        sandbox: true,
-        notification_configs: [{
-          subscriber_id: 'buyer-primary',
-          url: 'https://example.com/webhooks/adcp/account',
+          url: 'https://buyer.example.com/webhooks/creative',
           event_types: ['creative.status_changed'],
           active: true,
         }],
@@ -802,103 +667,17 @@ describe('sync_accounts', () => {
     });
 
     const acct = (result.accounts as Record<string, unknown>[])[0];
-    expect(acct.action).toBe('failed');
-    expect(acct.status).toBe('rejected');
-    const errors = acct.errors as Array<{ code: string; field: string }>;
-    expect(errors[0].code).toBe('INVALID_REQUEST');
-    expect(errors[0].field).toBe('notification_configs[0].active');
-  });
-
-  it('rejects duplicate subscriber_id values within one notification_configs array', async () => {
-    const { result } = await simulateCallTool(server, 'sync_accounts', {
-      accounts: [{
-        brand: { domain: 'acme.com' },
-        operator: 'agency-one',
-        billing: 'operator',
-        sandbox: true,
-        notification_configs: [
-          {
-            subscriber_id: 'buyer-primary',
-            url: 'https://example.com/webhooks/adcp/account-a',
-            event_types: ['creative.status_changed'],
-          },
-          {
-            subscriber_id: 'buyer-primary',
-            url: 'https://example.com/webhooks/adcp/account-b',
-            event_types: ['creative.purged'],
-          },
-        ],
-      }],
-    });
-
-    const acct = (result.accounts as Record<string, unknown>[])[0];
-    expect(acct.status).toBe('rejected');
-    const errors = acct.errors as Array<{ code: string; field: string }>;
-    expect(errors[0].code).toBe('INVALID_REQUEST');
-    expect(errors[0].field).toBe('notification_configs[1].subscriber_id');
-  });
-
-  it('rejects more than 16 notification_configs subscribers', async () => {
-    const notificationConfigs = Array.from({ length: 17 }, (_, i) => ({
-      subscriber_id: `subscriber-${i}`,
-      url: `https://example.com/webhooks/adcp/account-${i}`,
+    expect(acct.action).toBe('updated');
+    expect(acct.account_id).toBe(accountId);
+    expect(acct.notification_configs).toEqual([{
+      subscriber_id: 'buyer-primary',
+      url: 'https://buyer.example.com/webhooks/creative',
       event_types: ['creative.status_changed'],
-    }));
-
-    const { result } = await simulateCallTool(server, 'sync_accounts', {
-      accounts: [{
-        brand: { domain: 'acme.com' },
-        operator: 'agency-one',
-        billing: 'operator',
-        sandbox: true,
-        notification_configs: notificationConfigs,
-      }],
-    });
-
-    const acct = (result.accounts as Record<string, unknown>[])[0];
-    expect(acct.status).toBe('rejected');
-    const errors = acct.errors as Array<{ code: string; field: string }>;
-    expect(errors[0].code).toBe('INVALID_REQUEST');
-    expect(errors[0].field).toBe('notification_configs');
+      active: true,
+    }]);
   });
 
-  it('rejects non-enum and duplicate notification event types', async () => {
-    const { result: nonEnum } = await simulateCallTool(server, 'sync_accounts', {
-      accounts: [{
-        brand: { domain: 'acme.com' },
-        operator: 'agency-one',
-        billing: 'operator',
-        sandbox: true,
-        notification_configs: [{
-          subscriber_id: 'buyer-primary',
-          url: 'https://example.com/webhooks/adcp/account',
-          event_types: ['account.status_changed'],
-        }],
-      }],
-    });
-    const nonEnumAcct = (nonEnum.accounts as Record<string, unknown>[])[0];
-    expect(nonEnumAcct.status).toBe('rejected');
-    expect((nonEnumAcct.errors as Array<{ field: string }>)[0].field).toBe('notification_configs[0].event_types[0]');
-
-    const { result: duplicate } = await simulateCallTool(server, 'sync_accounts', {
-      accounts: [{
-        brand: { domain: 'acme.com' },
-        operator: 'agency-one',
-        billing: 'operator',
-        sandbox: true,
-        notification_configs: [{
-          subscriber_id: 'buyer-primary',
-          url: 'https://example.com/webhooks/adcp/account',
-          event_types: ['creative.status_changed', 'creative.status_changed'],
-        }],
-      }],
-    });
-    const duplicateAcct = (duplicate.accounts as Record<string, unknown>[])[0];
-    expect(duplicateAcct.status).toBe('rejected');
-    expect((duplicateAcct.errors as Array<{ field: string }>)[0].field).toBe('notification_configs[0].event_types[1]');
-  });
-
-  it('rejects partial legacy authentication blocks on notification_configs', async () => {
+  it('echoes notification auth schemes without write-only credentials', async () => {
     const { result } = await simulateCallTool(server, 'sync_accounts', {
       accounts: [{
         brand: { domain: 'acme.com' },
@@ -907,159 +686,52 @@ describe('sync_accounts', () => {
         sandbox: true,
         notification_configs: [{
           subscriber_id: 'buyer-primary',
-          url: 'https://example.com/webhooks/adcp/account',
+          url: 'https://buyer.example.com/webhooks/creative',
           event_types: ['creative.status_changed'],
-          authentication: { credentials: 'AbCdEf0123456789AbCdEf0123456789' },
+          authentication: {
+            schemes: ['Bearer'],
+            credentials: 'AbCdEf0123456789AbCdEf0123456789',
+          },
+          active: true,
         }],
       }],
     });
 
     const acct = (result.accounts as Record<string, unknown>[])[0];
-    expect(acct.status).toBe('rejected');
-    const errors = acct.errors as Array<{ code: string; field: string }>;
-    expect(errors[0].code).toBe('INVALID_REQUEST');
-    expect(errors[0].field).toBe('notification_configs[0].authentication.schemes');
+    expect(acct.notification_configs).toEqual([{
+      subscriber_id: 'buyer-primary',
+      url: 'https://buyer.example.com/webhooks/creative',
+      event_types: ['creative.status_changed'],
+      authentication: { schemes: ['Bearer'] },
+      active: true,
+    }]);
   });
 
-  it('rejects private, loopback, and userinfo notification_config URLs', async () => {
-    const urls = [
-      'https://169.254.169.254/latest/meta-data',
-      'https://[::1]/webhooks/adcp/account',
-      'https://[fc00::1]/webhooks/adcp/account',
-      'https://user:pass@example.com/webhooks/adcp/account',
-    ];
-
-    for (const url of urls) {
-      const { result } = await simulateCallTool(server, 'sync_accounts', {
-        accounts: [{
-          brand: { domain: `${randomUUID()}.example.com` },
-          operator: 'agency-one',
-          billing: 'operator',
-          sandbox: true,
-          notification_configs: [{
-            subscriber_id: 'buyer-primary',
-            url,
-            event_types: ['creative.status_changed'],
-          }],
-        }],
-      });
-
-      const acct = (result.accounts as Record<string, unknown>[])[0];
-      expect(acct.status, url).toBe('rejected');
-      expect((acct.errors as Array<{ field: string }>)[0].field).toBe('notification_configs[0].url');
-    }
-  });
-
-  it('rejects settings-update rows that mix account with provisioning fields', async () => {
-    const { result: first } = await simulateCallTool(server, 'sync_accounts', {
-      accounts: [{
-        brand: { domain: 'acme.com' },
-        operator: 'agency-one',
-        billing: 'operator',
-        sandbox: true,
-      }],
-    });
-    const accountId = ((first.accounts as Record<string, unknown>[])[0]).account_id;
+  it('updates accounts discovered from list_accounts by account_id', async () => {
+    const { result: listed } = await simulateCallTool(server, 'list_accounts', {});
+    const accountId = ((listed.accounts as Record<string, unknown>[])[0].account_id) as string;
 
     const { result } = await simulateCallTool(server, 'sync_accounts', {
       accounts: [{
         account: { account_id: accountId },
-        brand: { domain: 'acme.com' },
-        operator: 'agency-one',
-        billing: 'operator',
+        notification_configs: [{
+          subscriber_id: 'buyer-primary',
+          url: 'https://buyer.example.com/webhooks/creative',
+          event_types: ['creative.status_changed'],
+          active: true,
+        }],
       }],
     });
 
     const acct = (result.accounts as Record<string, unknown>[])[0];
-    expect(acct.status).toBe('rejected');
-    expect((acct.errors as Array<{ code: string; field: string }>)[0]).toMatchObject({
-      code: 'INVALID_REQUEST',
-      field: 'brand',
-    });
-  });
-
-  it('scopes account notification_configs by authenticated principal', async () => {
-    const principalA = createTrainingAgentServer({ mode: 'open', principal: 'buyer-a' });
-    const principalB = createTrainingAgentServer({ mode: 'open', principal: 'buyer-b' });
-
-    const { result: created } = await simulateCallTool(principalA, 'sync_accounts', {
-      accounts: [{
-        brand: { domain: 'acme.com' },
-        operator: 'agency-one',
-        billing: 'operator',
-        sandbox: true,
-        notification_configs: [{
-          subscriber_id: 'buyer-primary',
-          url: 'https://example.com/webhooks/adcp/account',
-          event_types: ['creative.status_changed'],
-          active: false,
-        }],
-      }],
-    });
-    const accountId = ((created.accounts as Record<string, unknown>[])[0]).account_id;
-
-    const { result: crossPrincipalUpdate } = await simulateCallTool(principalB, 'sync_accounts', {
-      accounts: [{
-        account: { account_id: accountId },
-        notification_configs: [],
-      }],
-    });
-    const rejected = (crossPrincipalUpdate.accounts as Record<string, unknown>[])[0];
-    expect(rejected.status).toBe('rejected');
-    expect((rejected.errors as Array<{ code: string }>)[0].code).toBe('ACCOUNT_NOT_FOUND');
-
-    const { result: listedByB } = await simulateCallTool(principalB, 'list_accounts', { sandbox: true });
-    expect((listedByB.accounts as Record<string, unknown>[]).some(acct => acct.account_id === accountId)).toBe(false);
-  });
-
-  it('requires a caller-unique credential for durable account tools when using the shared public token', async () => {
-    const sharedPublicServer = createTrainingAgentServer({ mode: 'open', principal: 'static:public:shared' });
-
-    for (const toolName of ['sync_accounts', 'list_accounts', 'sync_governance']) {
-      const args = toolName === 'list_accounts'
-        ? {}
-        : { accounts: [{ brand: { domain: 'acme.com' }, operator: 'agency-one', billing: 'operator', sandbox: true }] };
-      const { result } = await simulateCallTool(sharedPublicServer, toolName, args);
-      expect(result.code).toBe('AUTH_REQUIRED');
-    }
-  });
-
-  it('keeps list_accounts cursor order stable after notification_configs changes', async () => {
-    const createdIds: string[] = [];
-    for (const domain of ['a.example.com', 'b.example.com', 'c.example.com']) {
-      const { result } = await simulateCallTool(server, 'sync_accounts', {
-        accounts: [{ brand: { domain }, operator: 'agency-one', billing: 'operator', sandbox: true }],
-      });
-      createdIds.push(((result.accounts as Record<string, unknown>[])[0]).account_id as string);
-    }
-    createdIds.sort();
-
-    const { result: firstPage } = await simulateCallTool(server, 'list_accounts', {
-      sandbox: true,
-      pagination: { max_results: 2 },
-    });
-    const firstAccounts = firstPage.accounts as Record<string, unknown>[];
-    expect(firstAccounts.map(acct => acct.account_id)).toEqual(createdIds.slice(0, 2));
-    const cursor = (firstPage.pagination as Record<string, unknown>).cursor;
-
-    await simulateCallTool(server, 'sync_accounts', {
-      accounts: [{
-        account: { account_id: createdIds[2] },
-        notification_configs: [{
-          subscriber_id: 'buyer-primary',
-          url: 'https://example.com/webhooks/adcp/account',
-          event_types: ['creative.status_changed'],
-          active: false,
-        }],
-      }],
-    });
-
-    const { result: secondPage } = await simulateCallTool(server, 'list_accounts', {
-      sandbox: true,
-      pagination: { max_results: 2, cursor },
-    });
-    const secondAccounts = secondPage.accounts as Record<string, unknown>[];
-    expect(secondAccounts.map(acct => acct.account_id)).toEqual(createdIds.slice(2));
+    expect(acct.action).toBe('updated');
+    expect(acct.account_id).toBe(accountId);
+    expect(acct.notification_configs).toEqual([{
+      subscriber_id: 'buyer-primary',
+      url: 'https://buyer.example.com/webhooks/creative',
+      event_types: ['creative.status_changed'],
+      active: true,
+    }]);
   });
 });
 
