@@ -171,6 +171,11 @@ interface ReportingCapabilitiesView {
   vendor_metrics?: VendorMetricRefView[];
 }
 
+interface MeasurementCatalogView {
+  vendor?: { domain?: unknown; brand_id?: unknown };
+  metrics?: Array<{ metric_id?: unknown }>;
+}
+
 function vendorMetricKey(entry: VendorMetricRefView | undefined): string | null {
   const domain = entry?.vendor?.domain;
   const metricId = entry?.metric_id;
@@ -179,6 +184,28 @@ function vendorMetricKey(entry: VendorMetricRefView | undefined): string | null 
   }
   const brandId = typeof entry?.vendor?.brand_id === 'string' ? entry.vendor.brand_id : '';
   return `${domain.toLowerCase()}|${brandId}|${metricId}`;
+}
+
+function vendorCatalogKey(entry: VendorMetricRefView | undefined): string | null {
+  const domain = entry?.vendor?.domain;
+  if (typeof domain !== 'string' || domain.length === 0) return null;
+  const brandId = typeof entry?.vendor?.brand_id === 'string' ? entry.vendor.brand_id : '';
+  return `${domain.toLowerCase()}|${brandId}`;
+}
+
+function productMeasurementCatalogForGoal(product: Product | undefined, goal: VendorMetricRefView): MeasurementCatalogView | undefined {
+  if (!product) return undefined;
+  const catalogKey = vendorCatalogKey(goal);
+  if (!catalogKey) return undefined;
+  const catalogs = (product as Product & {
+    measurement_catalogs?: unknown;
+    measurement_catalog?: unknown;
+  }).measurement_catalogs ?? (product as Product & { measurement_catalog?: unknown }).measurement_catalog;
+  const list = Array.isArray(catalogs) ? catalogs : catalogs ? [catalogs] : [];
+  return list.find((entry): entry is MeasurementCatalogView => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    return vendorCatalogKey(entry as MeasurementCatalogView) === catalogKey;
+  });
 }
 
 function hasFixedPrice(option: PricingOption): boolean {
@@ -2603,6 +2630,23 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
             }] as TaskError[],
           };
         }
+
+        const catalogKey = vendorCatalogKey(goal);
+        const seededCatalog = catalogKey ? session.complyExtensions.seededMeasurementCatalogs.get(catalogKey) : undefined;
+        const productCatalog = productMeasurementCatalogForGoal(product, goal);
+        const catalogMetrics = seededCatalog?.metrics ?? productCatalog?.metrics;
+        if (
+          Array.isArray(catalogMetrics)
+          && !catalogMetrics.some(entry => entry?.metric_id === goal.metric_id)
+        ) {
+          return {
+            errors: [{
+              code: 'TERMS_REJECTED',
+              message: `vendor_metric goal "${goal.metric_id}" is not in ${goal.vendor?.domain}'s measurement.metrics catalog`,
+              field: `packages[${i}].optimization_goals[${j}].metric_id`,
+            }] as TaskError[],
+          };
+        }
       }
     }
   }
@@ -4022,9 +4066,18 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
         'force_creative_status',
         'force_account_status',
         'force_media_buy_status',
+        'force_create_media_buy_arm',
+        'force_task_completion',
         'force_session_status',
         'simulate_delivery',
         'simulate_budget_spend',
+        'seed_product',
+        'seed_pricing_option',
+        'seed_creative',
+        'seed_plan',
+        'seed_media_buy',
+        'seed_creative_format',
+        'seed_measurement_catalog',
       ],
     },
     agent: {

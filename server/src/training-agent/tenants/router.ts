@@ -18,9 +18,35 @@ import { buildSignedRevocationList } from '../governance-revocations.js';
 import { getTenantResponseSigningMaterial } from './signing.js';
 import { wrapResponseForSigning } from '../response-signing.js';
 import { salesCapabilityProjection } from '../v6-sales-platform.js';
+import { handleComplyTestController } from '../comply-test-controller.js';
 import type { TrainingContext } from '../types.js';
 
 const logger = createLogger('training-agent-tenant-router');
+
+const SALES_LEGACY_CAPABILITY_SCENARIOS = [
+  'force_creative_status',
+  'force_media_buy_status',
+  'simulate_delivery',
+  'simulate_budget_spend',
+] as const;
+
+const SALES_CURRENT_SCENARIOS = [
+  ...SALES_LEGACY_CAPABILITY_SCENARIOS,
+  'force_create_media_buy_arm',
+  'force_task_completion',
+  'seed_product',
+  'seed_pricing_option',
+  'seed_creative',
+  'seed_media_buy',
+  'seed_creative_format',
+  'seed_measurement_catalog',
+] as const;
+
+function salesComplyScenarios(storyboardCompat?: TrainingContext['storyboardCompat']): string[] {
+  return storyboardCompat?.version === '3.0'
+    ? [...SALES_LEGACY_CAPABILITY_SCENARIOS]
+    : [...SALES_CURRENT_SCENARIOS];
+}
 
 /**
  * Per-tenant connect-handle-close serializer.
@@ -88,7 +114,7 @@ function setCORSHeaders(res: Response): void {
  * (`test-agent.adcontextprotocol.org/sales/mcp`) and the local mount
  * (`/api/training-agent/sales/mcp`).
  */
-function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
+function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCompat?: TrainingContext['storyboardCompat']) {
   return async (req: Request, res: Response): Promise<void> => {
     setCORSHeaders(res);
 
@@ -99,7 +125,7 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
     // responses pass through unsigned.
     const responseSigner = getTenantResponseSigningMaterial(tenantId);
     wrapResponseForSigning(req, res, responseSigner.signerKey, tenantId);
-    wrapSalesCapabilitiesProjection(req, res, tenantId);
+    wrapSalesCapabilitiesProjection(req, res, tenantId, storyboardCompat);
 
     // Bridge `res.locals.trainingPrincipal` (set by the upstream
     // `requireAuth` middleware) onto `req.auth` so the framework's MCP
@@ -197,6 +223,10 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
     // Serialize the connect/handle/close window per tenant — see
     // `withTenantLock` above for the race this prevents (adcp#4084).
     await withTenantLock(resolved.tenantId, async () => {
+      if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat)) {
+        return;
+      }
+
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
@@ -227,7 +257,57 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
   };
 }
 
-function wrapSalesCapabilitiesProjection(req: Request, res: Response, tenantId: string): void {
+async function tryHandleLocalComplyScenario(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  principal: string | undefined,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): Promise<boolean> {
+  if (tenantId !== 'sales') return false;
+  if (req.body?.method !== 'tools/call') return false;
+  if (req.body?.params?.name !== 'comply_test_controller') return false;
+
+  const rawArgs = (req.body.params.arguments ?? {}) as Record<string, unknown>;
+  const isThreeZeroCompat = storyboardCompat?.version === '3.0';
+  if (rawArgs.scenario !== 'seed_measurement_catalog' && rawArgs.scenario !== 'list_scenarios') return false;
+  if (isThreeZeroCompat && rawArgs.scenario === 'seed_measurement_catalog') return false;
+
+  const { context, ...handlerArgs } = rawArgs;
+  const result = await runWithSessionContext(async () => {
+    const body = rawArgs.scenario === 'list_scenarios'
+      ? {
+          success: true,
+          scenarios: salesComplyScenarios(storyboardCompat),
+        }
+      : await handleComplyTestController(handlerArgs, {
+          mode: 'open',
+          principal: principal ?? 'anonymous',
+        });
+    await flushDirtySessions();
+    return body as Record<string, unknown>;
+  });
+  const structuredContent = {
+    ...result,
+    ...(context !== undefined && { context }),
+  };
+  res.json({
+    jsonrpc: '2.0',
+    id: req.body.id ?? null,
+    result: {
+      content: [{ type: 'text', text: JSON.stringify(structuredContent) }],
+      structuredContent,
+    },
+  });
+  return true;
+}
+
+function wrapSalesCapabilitiesProjection(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): void {
   if (tenantId !== 'sales') return;
   if (req.body?.method !== 'tools/call') return;
   if (req.body?.params?.name !== 'get_adcp_capabilities') return;
@@ -245,7 +325,7 @@ function wrapSalesCapabilitiesProjection(req: Request, res: Response, tenantId: 
   (res as unknown as { end: (...args: unknown[]) => Response }).end = (chunk?: unknown, ...rest: unknown[]) => {
     if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
     const body = Buffer.concat(chunks);
-    const patched = projectSalesCapabilities(body);
+    const patched = projectSalesCapabilities(body, storyboardCompat);
     if (patched !== body) {
       res.setHeader('content-length', String(patched.length));
     }
@@ -260,12 +340,13 @@ function toBuffer(chunk: unknown): Buffer {
   return Buffer.from(String(chunk), 'utf8');
 }
 
-function projectSalesCapabilities(body: Buffer): Buffer {
+function projectSalesCapabilities(body: Buffer, storyboardCompat?: TrainingContext['storyboardCompat']): Buffer {
   try {
     const parsed = JSON.parse(body.toString('utf8')) as {
       result?: {
         structuredContent?: {
           media_buy?: Record<string, unknown>;
+          compliance_testing?: Record<string, unknown>;
         };
       };
     };
@@ -277,6 +358,21 @@ function projectSalesCapabilities(body: Buffer): Buffer {
     structured.media_buy = {
       ...mediaBuy,
       ...salesCapabilityProjection(),
+    };
+    const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
+      ? structured.compliance_testing
+      : {};
+    const scenarios = new Set(
+      Array.isArray((complianceTesting as { scenarios?: unknown }).scenarios)
+        ? (complianceTesting as { scenarios: unknown[] }).scenarios.filter((s): s is string => typeof s === 'string')
+        : [],
+    );
+    for (const scenario of salesComplyScenarios(storyboardCompat)) {
+      scenarios.add(scenario);
+    }
+    structured.compliance_testing = {
+      ...complianceTesting,
+      scenarios: [...scenarios],
     };
     return Buffer.from(JSON.stringify(parsed), 'utf8');
   } catch {
@@ -338,7 +434,7 @@ export function mountTenantRoutes(
       setCORSHeaders(res);
       res.status(204).end();
     });
-    parent.post(`/${tenantId}/mcp`, ...mw, tenantMcpHandler(holder, tenantId));
+    parent.post(`/${tenantId}/mcp`, ...mw, tenantMcpHandler(holder, tenantId, middleware.storyboardCompat));
     parent.get(`/${tenantId}/mcp`, (_req, res) => {
       setCORSHeaders(res);
       res.setHeader('Allow', 'POST, OPTIONS');

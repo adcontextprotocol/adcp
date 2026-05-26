@@ -2,7 +2,7 @@ id: media_buy_seller/vendor_metric_catalog_precondition
 version: "1.0.0"
 title: "Vendor-metric external catalog precondition"
 category: media_buy_seller
-summary: "Exercises the 3.1 SHOULD-window behavior for vendor_metric goals whose external vendor catalog membership is not proven by the harness."
+summary: "Exercises the 3.1 SHOULD-window behavior for vendor_metric goals whose metric_id is absent from a seeded measurement.metrics[] catalog."
 track: media_buy
 introduced_in: "3.1"
 
@@ -26,15 +26,14 @@ narrative: |
   conformant capability catalogs. The next minor tightens this discovery
   precondition to MUST.
 
-  This storyboard seeds a product whose `attention_catalog_probe` metric is
-  valid by the seller's product-level capability and reporting contract. The
-  current runner does not fetch or seed an external measurement-agent
-  `measurement.metrics[]` catalog for `attentionvendor.example`, so this
-  storyboard does not certify real vendor-catalog discovery. It captures the
-  3.1 compatibility window for catalog-unproven metrics: a seller may accept the
-  request, or it may reject with `TERMS_REJECTED`. A future 3.2 storyboard should
-  add a real measurement-catalog fixture and make the reject path required for
-  true catalog misses.
+  This storyboard seeds two facts that intentionally diverge. The seller product
+  can optimize and report `attention_catalog_probe`, satisfying the product
+  capability and reporting-coherence preconditions. The measurement vendor
+  catalog seeded for `attentionvendor.example` publishes only
+  `attention_catalog_baseline`, so `attention_catalog_probe` is a deterministic
+  external catalog miss. The storyboard captures the 3.1 compatibility window:
+  a seller may accept the request, or it may reject with `TERMS_REJECTED`. The
+  3.2 storyboard cut should collapse this branch set to the reject path only.
 
 agent:
   interaction_model: media_buy_seller
@@ -52,10 +51,10 @@ caller:
 prerequisites:
   description: |
     The runner seeds a product that can optimize and report the
-    attention_catalog_probe metric. The runner does not currently provide an
-    external measurement.metrics[] catalog for attentionvendor.example, so this
-    scenario exercises 3.1 behavior for a catalog-unproven metric rather than a
-    verified catalog miss.
+    attention_catalog_probe metric, with an attentionvendor.example
+    measurement.metrics[] fixture that deliberately omits that metric_id. The
+    request is therefore valid by product capability and reporting coherence,
+    but is a deterministic external catalog miss.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
@@ -120,19 +119,63 @@ phases:
             path: "accounts[0].account_id"
             description: "Account has a platform-assigned ID"
 
+  - id: seed_measurement_catalog
+    title: "Seed the measurement vendor catalog"
+    narrative: |
+      The product fixture proves the seller-side vendor_metric capability and
+      reporting contract. This controller step separately seeds the external
+      measurement vendor catalog so the later create_media_buy request is a
+      deterministic catalog miss rather than merely catalog-unproven.
+
+    steps:
+      - id: seed_attention_vendor_catalog
+        title: "Seed attentionvendor.example without the requested metric"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The controller stores attentionvendor.example's measurement.metrics[]
+          catalog for this compliance session.
+        sample_request:
+          account:
+            sandbox: true
+          brand:
+            domain: "acmeoutdoor.example"
+          scenario: "seed_measurement_catalog"
+          params:
+            vendor:
+              domain: "attentionvendor.example"
+            metrics:
+              - metric_id: "attention_catalog_baseline"
+                unit: "score"
+                description: "Baseline attention metric present in the seeded vendor catalog."
+          context:
+            correlation_id: "vendor_metric_catalog_precondition--seed_catalog"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Measurement catalog seeding succeeds"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "vendor_metric_catalog_precondition--seed_catalog"
+            description: "Context correlation_id returned unchanged"
+
   - id: catalog_miss_accept_path
-    title: "3.1 catalog-unproven metric — accept path"
+    title: "3.1 catalog-miss metric — accept path"
     narrative: |
       The seller may accept the buy during the 3.1 SHOULD window even though
-      the harness has not proven attention_catalog_probe exists in the vendor's
-      external catalog.
+      attention_catalog_probe is absent from the seeded vendor catalog.
     optional: true
     branch_set:
       id: vendor_metric_catalog_miss_handled
       semantics: any_of
     steps:
       - id: create_media_buy_catalog_miss_accept
-        title: "Accept vendor_metric with unproven catalog membership during 3.1 SHOULD window"
+        title: "Accept vendor_metric with catalog miss during 3.1 SHOULD window"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -145,7 +188,7 @@ phases:
         contributes: true
         expected: |
           3.1 compatibility behavior: accept the buy even though the metric is
-          not proven by a vendor measurement.metrics[] catalog in this harness.
+          absent from the seeded vendor measurement.metrics[] catalog.
         sample_request:
           brand:
             domain: "acmeoutdoor.example"
@@ -176,13 +219,13 @@ phases:
           idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_catalog_precondition_accept"
         validations:
           - check: response_schema
-            description: "Response matches create-media-buy-response.json schema for the 3.1 catalog-unproven accept branch"
+            description: "Response matches create-media-buy-response.json schema for the 3.1 catalog-miss accept branch"
           - check: field_present
             path: "media_buy_id"
-            description: "Seller returns a media_buy_id during the 3.1 catalog-unproven SHOULD window"
+            description: "Seller returns a media_buy_id during the 3.1 catalog-miss SHOULD window"
 
   - id: catalog_miss_reject_path
-    title: "3.1 catalog-unproven metric — reject path"
+    title: "3.1 catalog-miss metric — reject path"
     narrative: |
       The seller may also reject the same request in 3.1. This is the
       recommended behavior ahead of the 3.2 MUST boundary.
@@ -192,7 +235,7 @@ phases:
       semantics: any_of
     steps:
       - id: create_media_buy_catalog_miss_reject
-        title: "Reject vendor_metric with unproven catalog membership using TERMS_REJECTED"
+        title: "Reject vendor_metric with catalog miss using TERMS_REJECTED"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -207,7 +250,7 @@ phases:
         contributes: true
         expected: |
           Recommended 3.1 behavior and required 3.2 behavior: reject with
-          TERMS_REJECTED because the metric is not proven by the vendor's
+          TERMS_REJECTED because the metric is absent from the vendor's seeded
           measurement.metrics[] catalog.
         sample_request:
           brand:
@@ -240,16 +283,15 @@ phases:
         validations:
           - check: error_code
             allowed_values: ["TERMS_REJECTED"]
-            description: "Seller may reject catalog-unproven vendor metrics with TERMS_REJECTED in 3.1; true catalog misses become required rejections at 3.2"
+            description: "Seller may reject catalog-miss vendor metrics with TERMS_REJECTED in 3.1; catalog misses become required rejections at 3.2"
 
   - id: catalog_miss_assertion
-    title: "Require catalog-unproven metric handling"
+    title: "Require catalog-miss metric handling"
     narrative: |
       Synthetic assertion over the accept and reject branches. In 3.1, either
       compatibility acceptance or recommended TERMS_REJECTED rejection satisfies
-      the catalog-unproven metric behavior. The 3.2 storyboard cut should add a
-      real measurement-catalog fixture and collapse true catalog misses to the
-      reject branch only.
+      the catalog-miss metric behavior. The 3.2 storyboard cut should collapse
+      this branch set to the reject branch only.
     steps:
       - id: assert_vendor_metric_catalog_miss_handled
         title: "Require catalog-miss handling from either branch"
@@ -262,4 +304,4 @@ phases:
         validations:
           - check: any_of
             allowed_values: ["vendor_metric_catalog_miss_handled"]
-            description: "Agent must either accept the catalog-unproven metric during the 3.1 SHOULD window or reject it with TERMS_REJECTED."
+            description: "Agent must either accept the catalog-miss metric during the 3.1 SHOULD window or reject it with TERMS_REJECTED."

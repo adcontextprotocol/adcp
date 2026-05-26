@@ -178,10 +178,11 @@ describe('comply_test_controller', () => {
         'force_create_media_buy_arm',
         'force_task_completion',
         'seed_creative_format',
+        'seed_measurement_catalog',
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(9);
+      expect(scenarios.length).toBe(10);
       // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });
@@ -367,6 +368,141 @@ describe('comply_test_controller', () => {
       const pkgs = result.packages as Array<Record<string, unknown>>;
       expect(pkgs).toHaveLength(1);
       expect(pkgs[0].package_id).toBe('pkg-0');
+    });
+
+    it('seed_measurement_catalog lets vendor_metric create reject a catalog miss after product preconditions pass', async () => {
+      const seedProd = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'seeded_vendor_catalog_product',
+          fixture: {
+            delivery_type: 'non_guaranteed',
+            channels: ['display'],
+            reporting_capabilities: {
+              available_metrics: ['impressions', 'clicks', 'spend'],
+              vendor_metrics: [
+                {
+                  vendor: { domain: 'attentionvendor.example' },
+                  metric_id: 'attention_catalog_probe',
+                },
+              ],
+            },
+            vendor_metric_optimization: {
+              supported_metrics: [
+                {
+                  vendor: { domain: 'attentionvendor.example' },
+                  metric_id: 'attention_catalog_probe',
+                  supported_targets: ['threshold_rate'],
+                },
+              ],
+            },
+          },
+        },
+      });
+      expect((seedProd.result as any).success).toBe(true);
+
+      const seedPricing = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_pricing_option',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'seeded_vendor_catalog_product',
+          pricing_option_id: 'seeded_vendor_catalog_cpm',
+          fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 5.0 },
+        },
+      });
+      expect((seedPricing.result as any).success).toBe(true);
+
+      const seedCatalog = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_measurement_catalog',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          vendor: { domain: 'attentionvendor.example' },
+          metrics: [
+            { metric_id: 'attention_catalog_baseline', unit: 'score' },
+            { metric_id: 'attention_catalog_secondary', unit: 'score' },
+          ],
+        },
+      });
+      expect((seedCatalog.result as any).success).toBe(true);
+
+      const replayCatalog = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_measurement_catalog',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          metrics: [
+            { unit: 'score', metric_id: 'attention_catalog_secondary' },
+            { unit: 'score', metric_id: 'attention_catalog_baseline' },
+          ],
+          vendor: { domain: 'attentionvendor.example' },
+        },
+      });
+      expect((replayCatalog.result as any).success).toBe(true);
+      expect((replayCatalog.result as any).message).toBe('Fixture re-seeded (equivalent)');
+
+      const divergentCatalog = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_measurement_catalog',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          vendor: { domain: 'attentionvendor.example' },
+          metrics: [{ metric_id: 'attention_catalog_other', unit: 'score' }],
+        },
+      });
+      expect((divergentCatalog.result as any).success).toBe(false);
+      expect((divergentCatalog.result as any).error).toBe('INVALID_PARAMS');
+
+      const { result } = await simulateCallTool(server, 'create_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: 'seeded_vendor_catalog_product',
+          pricing_option_id: 'seeded_vendor_catalog_cpm',
+          bid_price: 8.50,
+          budget: 10000,
+          optimization_goals: [
+            {
+              kind: 'vendor_metric',
+              vendor: { domain: 'attentionvendor.example' },
+              metric_id: 'attention_catalog_probe',
+              target: { kind: 'threshold_rate', value: 70 },
+            },
+          ],
+          committed_metrics: [
+            {
+              scope: 'vendor',
+              vendor: { domain: 'attentionvendor.example' },
+              metric_id: 'attention_catalog_probe',
+            },
+          ],
+        }],
+      });
+
+      expect((result as any).code).toBe('TERMS_REJECTED');
+      expect((result as any).field).toBe('packages[0].optimization_goals[0].metric_id');
+      expect((result as any).message).toMatch(/measurement\.metrics catalog/);
+    });
+
+    it('seed_measurement_catalog rejects an empty metrics catalog', async () => {
+      const result = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_measurement_catalog',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          vendor: { domain: 'attentionvendor.example' },
+          metrics: [],
+        },
+      });
+
+      expect((result.result as any).success).toBe(false);
+      expect((result.result as any).error).toBe('INVALID_PARAMS');
+      expect((result.result as any).error_detail).toMatch(/at least one metric/);
     });
 
     it('create_media_buy resolves product allowed_actions into buy available_actions and enforcement', async () => {

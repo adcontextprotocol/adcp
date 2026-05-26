@@ -124,6 +124,7 @@ const SALES_COMPLY_INPUT_SCHEMA = {
     brand: z.object({ domain: z.string().optional() }).passthrough().optional(),
     sandbox: z.boolean().optional(),
   }).passthrough().optional(),
+  brand: z.object({ domain: z.string().optional() }).passthrough().optional(),
 };
 
 /**

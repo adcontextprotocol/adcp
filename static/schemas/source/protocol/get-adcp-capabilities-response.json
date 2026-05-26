@@ -1505,9 +1505,20 @@
               "force_creative_status",
               "force_account_status",
               "force_media_buy_status",
+              "force_create_media_buy_arm",
+              "force_task_completion",
               "force_session_status",
               "simulate_delivery",
-              "simulate_budget_spend"
+              "simulate_budget_spend",
+              "seed_product",
+              "seed_pricing_option",
+              "seed_creative",
+              "seed_plan",
+              "seed_media_buy",
+              "seed_creative_format",
+              "seed_measurement_catalog",
+              "query_upstream_traffic",
+              "force_upstream_unavailable"
             ]
           },
           "minItems": 1
