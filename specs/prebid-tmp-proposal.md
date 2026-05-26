@@ -521,7 +521,8 @@ function applyContextOnly(contextMap, tmpUnits, next, bidRequestConfig) {
     const contextRes = contextMap.get(unit.code);
     if (!contextRes) continue;
 
-    // Without identity, activate all offered packages
+    // Without identity, activate all offered packages. `tmpImpressionId` was
+    // resolved at auction init so context-only impressions still carry a dedup key.
     const kvs = {};
     kvs.tmp_impression_id = unit.tmpImpressionId;
     kvs.adcp_pkg = contextRes.offers.map(o => o.package_id);

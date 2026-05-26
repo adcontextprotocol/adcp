@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": patch
+"adcontextprotocol": minor
 ---
 
 Add `IMPRESSION_ID` universal macro for impression-level deduplication
