@@ -3,7 +3,7 @@ import pg from 'pg';
 import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
-const pool = new pg.Pool({ connectionString: 'postgresql://adcp:localdev@localhost:62576/adcp_registry' });
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
 const IDS = [
   '4e16de85-8a3e-4a1c-a9c8-0968479ce9fd',
