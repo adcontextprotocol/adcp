@@ -1,3 +1,5 @@
+-- Migration 495: A2 module uses fictional brand domains in demo scenarios and exercises.
+--
 -- A2 module: use fictional brand domains in demo scenarios and exercises.
 -- Sage was picking real member company domains (e.g. scope3.com) when generating
 -- demo briefs because the lesson plan content gave no guidance on which brand to
