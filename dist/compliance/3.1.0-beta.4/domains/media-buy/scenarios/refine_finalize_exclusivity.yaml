@@ -352,6 +352,7 @@ phases:
     skip_if: "!context.proposal_id_2"
     steps:
       - id: assert_multi_finalize
+        title: "Assert multi-finalize path contributed"
         task: assert_contribution
         validations:
           - check: any_of
