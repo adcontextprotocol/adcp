@@ -1,4 +1,6 @@
--- Fix B1 certification: sync_catalogs is buyer-to-seller (issue #4964)
+-- Migration 494: fix B1 certification sync_catalogs direction (issue #4964)
+--
+-- sync_catalogs is buyer-to-seller.
 --
 -- Migration 274 introduced B1 teaching notes that wrote from the seller's
 -- reception perspective ("Accept feeds from Google Merchant Center...") without
