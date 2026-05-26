@@ -29,7 +29,7 @@ export function buildSalesTenantConfig(host: string, options: { storyboardCompat
       platform: new TrainingSalesPlatform(options.storyboardCompat) as any,
       serverOptions: {
         customTools: {
-          list_accounts: listAccountsTool(),
+          list_accounts: listAccountsTool(options.storyboardCompat),
         },
         complyTest: buildSalesComplyConfig(),
       },

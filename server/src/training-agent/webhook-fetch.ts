@@ -89,7 +89,7 @@ function isNumericHostname(hostname: string): boolean {
   return false;
 }
 
-async function assertPublicTarget(url: URL): Promise<void> {
+export async function assertPublicTarget(url: URL): Promise<void> {
   // Scheme refusal is handled by the wrapper before this is called (so it
   // applies unconditionally, including under `allowPrivateIp: true`). By the
   // time we get here the URL is already known to be http(s).

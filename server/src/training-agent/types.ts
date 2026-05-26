@@ -317,7 +317,7 @@ export interface ToolArgs { account?: AccountRef; brand?: BrandRef }
 
 export interface AccountRef {
   account_id?: string;
-  brand?: { domain: string };
+  brand?: { domain: string; brand_id?: string };
   operator?: string;
   sandbox?: boolean;
 }

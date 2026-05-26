@@ -202,6 +202,9 @@ SUMMARY=""
 REQUIRED_CLEAN_CURRENT_SALES=(
   "media_buy_seller/canonical_formats"
   "media_buy_seller/vendor_metric_catalog_precondition"
+  "notification_config_event_scope"
+  "notification_config_lifecycle"
+  "notification_config_rejections"
 )
 
 storyboard_passed() {

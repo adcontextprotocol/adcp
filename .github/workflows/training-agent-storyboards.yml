@@ -298,6 +298,9 @@ jobs:
           required_clean=(
             "media_buy_seller/canonical_formats"
             "media_buy_seller/vendor_metric_catalog_precondition"
+            "notification_config_event_scope"
+            "notification_config_lifecycle"
+            "notification_config_rejections"
           )
           for storyboard_id in "${required_clean[@]}"; do
             if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then

@@ -82,6 +82,7 @@ export const TRAINING_SALES_CAPABILITIES = {
   vendor_metric_optimization: {
     supported_targets: ['threshold_rate' as const],
   },
+  requireOperatorAuth: false,
   supportedBillings: ['agent', 'operator'] as const,
   // Auto-derives `compliance_testing.scenarios[]` from the adapters wired in
   // `serverOptions.complyTest`. Empty block opts in; the capability/adapter

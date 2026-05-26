@@ -24,9 +24,10 @@
 export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   // accounts — sync_accounts is auto-registered by the framework on every
   // tenant whose `accounts.upsert` is wired (see v6-account-helpers.ts).
-  // list_accounts rides a custom read-tool wrapper so it can keep the v5
-  // training-agent pagination shape while the v6 AccountStore.list path is
-  // still preview.
+  // list_accounts rides a custom read-tool wrapper so it preserves the v5
+  // training-agent pagination envelope. Do not also wire `accounts.list`;
+  // the SDK treats list_accounts as first-class and rejects duplicate
+  // customTools registration.
   sync_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand'],
   list_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand'],
 

@@ -12,6 +12,7 @@ import { getAgentUrl } from './config.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import { getCommercialRelationship } from './commercial-relationships.js';
 import { isPerAccountBillingRestricted } from './account-billing-relationships.js';
+import { assertPublicTarget, SsrfRefusedError } from './webhook-fetch.js';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -21,12 +22,14 @@ interface SyncAccountsInput extends ToolArgs {
 }
 
 interface SyncAccountInput {
-  brand: { domain: string; brand_id?: string; name?: string };
-  operator: string;
-  billing: 'operator' | 'agent' | 'advertiser';
+  account?: AccountRef;
+  brand?: { domain: string; brand_id?: string; name?: string };
+  operator?: string;
+  billing?: 'operator' | 'agent' | 'advertiser';
   billing_entity?: Record<string, unknown>;
   payment_terms?: string;
   sandbox?: boolean;
+  notification_configs?: NotificationConfigInput[];
 }
 
 interface AccountState {
@@ -42,12 +45,25 @@ interface AccountState {
   rateCard?: string;
   creditLimit?: { amount: number; currency: string };
   governanceAgents: GovernanceAgentEntry[];
+  notificationConfigs: NotificationConfigState[];
+  notificationConfigsTouched: boolean;
   syncedAt: string;
 }
 
 interface GovernanceAgentEntry {
   url: string;
 }
+
+interface NotificationConfigInput {
+  subscriber_id: string;
+  url: string;
+  event_types: string[];
+  authentication?: { schemes?: string[]; credentials?: string };
+  active?: boolean;
+  ext?: Record<string, unknown>;
+}
+
+type NotificationConfigState = NotificationConfigInput;
 
 interface SyncGovernanceInput extends ToolArgs {
   accounts: SyncGovernanceAccountInput[];
@@ -69,6 +85,19 @@ interface GovernanceAgentInput {
 // module-level Map keyed by session key → account key → AccountState.
 // This avoids modifying the shared SessionState interface.
 const accountStore = new Map<string, Map<string, AccountState>>();
+
+function safePrincipalKey(principal: string | undefined): string {
+  return (principal ?? 'anonymous').replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 128) || 'anonymous';
+}
+
+function accountSessionKey(
+  args: { account?: AccountRef; brand?: AccountRef['brand']; plans?: unknown },
+  ctx: TrainingContext,
+): string {
+  const base = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
+  if (ctx.mode === 'training') return base;
+  return `${base}:principal:${safePrincipalKey(ctx.principal)}`;
+}
 
 function getAccountMap(sessionKey: string): Map<string, AccountState> {
   let map = accountStore.get(sessionKey);
@@ -116,8 +145,31 @@ interface AccountWireShape {
   payment_terms?: string;
   rate_card?: string;
   credit_limit?: { amount: number; currency: string };
+  notification_configs?: NotificationConfigInput[];
   sandbox?: true;
 }
+
+const MEDIA_BUY_ANCHORED_NOTIFICATION_TYPES = new Set([
+  'scheduled',
+  'final',
+  'delayed',
+  'adjusted',
+  'impairment',
+]);
+
+const ACCOUNT_ANCHORED_NOTIFICATION_TYPES = new Set([
+  'creative.status_changed',
+  'creative.purged',
+  'product.created',
+  'product.updated',
+  'product.priced',
+  'product.removed',
+  'signal.created',
+  'signal.updated',
+  'signal.priced',
+  'signal.removed',
+  'wholesale_feed.bulk_change',
+]);
 
 function accountStateToWire(account: AccountState): AccountWireShape {
   const advertiser = account.brand.name ?? account.brand.domain;
@@ -143,8 +195,139 @@ function accountStateToWire(account: AccountState): AccountWireShape {
   };
   if (account.rateCard) wire.rate_card = account.rateCard;
   if (account.creditLimit) wire.credit_limit = account.creditLimit;
+  if (account.notificationConfigsTouched || account.notificationConfigs.length > 0) {
+    wire.notification_configs = sanitizeNotificationConfigs(account.notificationConfigs);
+  }
   if (account.sandbox) wire.sandbox = true;
   return wire;
+}
+
+function sanitizeNotificationConfigs(configs: NotificationConfigInput[]): NotificationConfigInput[] {
+  return configs.map(config => {
+    const sanitized: NotificationConfigInput = {
+      subscriber_id: config.subscriber_id,
+      url: config.url,
+      event_types: [...config.event_types],
+    };
+    if (config.active !== undefined) sanitized.active = config.active;
+    if (config.authentication) {
+      const { credentials: _credentials, ...authentication } = config.authentication;
+      sanitized.authentication = authentication;
+    }
+    if (config.ext) sanitized.ext = config.ext;
+    return sanitized;
+  });
+}
+
+function validationError(field: string, message: string): { code: string; message: string; field: string; recovery: string } {
+  return { code: 'INVALID_REQUEST', message, field, recovery: 'correctable' };
+}
+
+function durableAccountIdentityError(ctx: TrainingContext): { errors: Array<{ code: string; message: string; recovery: string }> } | null {
+  if (ctx.mode === 'open' && ctx.principal === 'static:public:shared') {
+    return {
+      errors: [{
+        code: 'AUTH_REQUIRED',
+        message: 'Durable account tools require a caller-unique credential; the published public test token is shared.',
+        recovery: 'correctable',
+      }],
+    };
+  }
+  return null;
+}
+
+async function validateNotificationConfigs(configs: NotificationConfigInput[] | undefined): Promise<{ field: string; message: string } | null> {
+  if (configs === undefined) return null;
+  if (!Array.isArray(configs)) {
+    return { field: 'notification_configs', message: 'notification_configs must be an array when present' };
+  }
+  if (configs.length > 16) {
+    return { field: 'notification_configs', message: 'notification_configs may contain at most 16 subscribers' };
+  }
+
+  const seen = new Set<string>();
+  for (let i = 0; i < configs.length; i += 1) {
+    const config = configs[i];
+    const prefix = `notification_configs[${i}]`;
+    if (!config.subscriber_id) {
+      return { field: `${prefix}.subscriber_id`, message: 'notification_configs[].subscriber_id is required' };
+    }
+    if (seen.has(config.subscriber_id)) {
+      return {
+        field: `${prefix}.subscriber_id`,
+        message: `Duplicate notification_configs subscriber_id '${config.subscriber_id}' in one request`,
+      };
+    }
+    seen.add(config.subscriber_id);
+
+    let parsed: URL;
+    try {
+      parsed = new URL(config.url);
+    } catch {
+      return { field: `${prefix}.url`, message: 'notification_configs[].url must be a valid URL' };
+    }
+    if (parsed.protocol !== 'https:') {
+      return { field: `${prefix}.url`, message: 'notification_configs[].url must use HTTPS' };
+    }
+    if (parsed.username || parsed.password) {
+      return { field: `${prefix}.url`, message: 'notification_configs[].url must not include userinfo credentials' };
+    }
+    try {
+      await assertPublicTarget(parsed);
+    } catch (err) {
+      if (err instanceof SsrfRefusedError) {
+        return { field: `${prefix}.url`, message: `notification_configs[].url rejected by SSRF guard: ${err.reason}` };
+      }
+      return { field: `${prefix}.url`, message: 'notification_configs[].url must not target localhost or private network ranges' };
+    }
+
+    if (!Array.isArray(config.event_types) || config.event_types.length === 0) {
+      return { field: `${prefix}.event_types`, message: 'notification_configs[].event_types must not be empty' };
+    }
+    const seenEventTypes = new Set<string>();
+    for (let j = 0; j < config.event_types.length; j += 1) {
+      const eventType = config.event_types[j];
+      if (seenEventTypes.has(eventType)) {
+        return {
+          field: `${prefix}.event_types[${j}]`,
+          message: `Duplicate notification_configs event_type '${eventType}' in one subscriber`,
+        };
+      }
+      seenEventTypes.add(eventType);
+      if (MEDIA_BUY_ANCHORED_NOTIFICATION_TYPES.has(eventType)) {
+        return {
+          field: `${prefix}.event_types[${j}]`,
+          message: `Notification type '${eventType}' is media-buy anchored and cannot be registered on account-level notification_configs`,
+        };
+      }
+      if (!ACCOUNT_ANCHORED_NOTIFICATION_TYPES.has(eventType)) {
+        return {
+          field: `${prefix}.event_types[${j}]`,
+          message: `Notification type '${eventType}' is not an account-level notification type`,
+        };
+      }
+    }
+    if (config.authentication !== undefined) {
+      const schemes = config.authentication.schemes;
+      if (!Array.isArray(schemes) || schemes.length === 0) {
+        return { field: `${prefix}.authentication.schemes`, message: 'notification_configs[].authentication.schemes is required when authentication is present' };
+      }
+      if (schemes.length !== 1 || !['Bearer', 'HMAC-SHA256'].includes(schemes[0])) {
+        return { field: `${prefix}.authentication.schemes`, message: 'notification_configs[].authentication.schemes must contain exactly one supported legacy scheme' };
+      }
+      if (typeof config.authentication.credentials !== 'string' || config.authentication.credentials.length < 32) {
+        return { field: `${prefix}.authentication.credentials`, message: 'notification_configs[].authentication.credentials must be at least 32 characters when authentication is present' };
+      }
+    }
+    if (config.active === true) {
+      return {
+        field: `${prefix}.active`,
+        message: 'notification_configs[].active: true requires endpoint proof-of-control, which the training agent does not implement',
+      };
+    }
+  }
+
+  return null;
 }
 
 // Compliance fixture pool — used when the session has no synced accounts, so
@@ -153,30 +336,30 @@ function getComplianceAccounts(): AccountWireShape[] {
   return [
     {
       account_id: 'acc_pagination_integrity_1',
-      name: 'Acme c/o Pinnacle',
-      advertiser: 'Acme Corp',
-      brand: { domain: 'acme-corp.com' },
-      operator: 'pinnacle-media.com',
+      name: 'Acme Outdoor c/o Pinnacle',
+      advertiser: 'Acme Outdoor',
+      brand: { domain: 'acmeoutdoor.example', brand_id: 'acme_outdoor' },
+      operator: 'pinnacle-agency.example',
       billing: 'operator',
       account_scope: 'operator_brand',
       status: 'active',
     },
     {
       account_id: 'acc_pagination_integrity_2',
-      name: 'Nova c/o Pinnacle',
-      advertiser: 'Nova Brands',
-      brand: { domain: 'nova-brands.com' },
-      operator: 'pinnacle-media.com',
+      name: 'Acme Outdoor Trail c/o Pinnacle',
+      advertiser: 'Acme Outdoor',
+      brand: { domain: 'acmeoutdoor.example', brand_id: 'acme_outdoor' },
+      operator: 'trailhead-agency.example',
       billing: 'operator',
       account_scope: 'operator_brand',
       status: 'active',
     },
     {
       account_id: 'acc_pagination_integrity_3',
-      name: 'Pinnacle',
-      advertiser: 'Pinnacle Media',
-      brand: { domain: 'pinnacle-media.com' },
-      operator: 'pinnacle-media.com',
+      name: 'Acme Outdoor Direct',
+      advertiser: 'Acme Outdoor',
+      brand: { domain: 'acmeoutdoor.example', brand_id: 'acme_outdoor' },
+      operator: 'acmeoutdoor.example',
       billing: 'operator',
       account_scope: 'brand',
       status: 'active',
@@ -189,14 +372,27 @@ function getComplianceAccounts(): AccountWireShape[] {
 export const ACCOUNT_REF_SCHEMA = {
   type: 'object',
   oneOf: [
-    { properties: { account_id: { type: 'string' } }, required: ['account_id'] },
+    {
+      properties: { account_id: { type: 'string' } },
+      required: ['account_id'],
+      additionalProperties: false,
+    },
     {
       properties: {
-        brand: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
+        brand: {
+          type: 'object',
+          properties: {
+            domain: { type: 'string' },
+            brand_id: { type: 'string' },
+          },
+          required: ['domain'],
+          additionalProperties: false,
+        },
         operator: { type: 'string' },
         sandbox: { type: 'boolean' },
       },
-      required: ['brand'],
+      required: ['brand', 'operator'],
+      additionalProperties: false,
     },
   ],
 };
@@ -214,6 +410,10 @@ export const ACCOUNT_TOOLS = [
           type: 'string',
           enum: ['active', 'pending_approval', 'rejected', 'payment_required', 'suspended', 'closed'],
           description: 'Filter accounts by status. Omit to return accounts in all statuses.',
+        },
+        account: {
+          ...ACCOUNT_REF_SCHEMA,
+          description: 'Optional exact account filter. Use account_id or a brand/operator natural key to return one matching account visible to the caller.',
         },
         sandbox: {
           type: 'boolean',
@@ -243,6 +443,7 @@ export const ACCOUNT_TOOLS = [
           items: {
             type: 'object',
             properties: {
+              account: ACCOUNT_REF_SCHEMA,
               brand: {
                 type: 'object',
                 properties: {
@@ -257,8 +458,33 @@ export const ACCOUNT_TOOLS = [
               billing_entity: { type: 'object' },
               payment_terms: { type: 'string', enum: ['net_15', 'net_30', 'net_45', 'net_60', 'net_90', 'prepay'] },
               sandbox: { type: 'boolean' },
+              notification_configs: {
+                type: 'array',
+                maxItems: 16,
+                items: {
+                  type: 'object',
+                  properties: {
+                    subscriber_id: { type: 'string' },
+                    url: { type: 'string', format: 'uri' },
+                    event_types: { type: 'array', items: { type: 'string' } },
+                    authentication: {
+                      type: 'object',
+                      properties: {
+                        schemes: { type: 'array', items: { type: 'string' } },
+                        credentials: { type: 'string' },
+                      },
+                    },
+                    active: { type: 'boolean' },
+                    ext: { type: 'object' },
+                  },
+                  required: ['subscriber_id', 'url', 'event_types'],
+                },
+              },
             },
-            required: ['brand', 'operator', 'billing'],
+            oneOf: [
+              { required: ['brand', 'operator', 'billing'] },
+              { required: ['account'] },
+            ],
           },
         },
         dry_run: { type: 'boolean' },
@@ -327,8 +553,10 @@ const SUPPORTED_PAYMENT_TERMS = ['net_15', 'net_30', 'net_45', 'net_60', 'net_90
 export const SUPPORTED_BILLINGS = ['agent', 'operator', 'advertiser'] as const;
 type SupportedBilling = typeof SUPPORTED_BILLINGS[number];
 
-export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
+export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncAccountsInput;
+  const identityError = durableAccountIdentityError(ctx);
+  if (identityError) return identityError;
 
   if (!req.accounts || !Array.isArray(req.accounts) || req.accounts.length === 0) {
     return {
@@ -336,13 +564,134 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
-  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const sessionKey = accountSessionKey(req, ctx);
   const accounts = getAccountMap(sessionKey);
   const agentUrl = getAgentUrl();
   const now = new Date().toISOString();
   const results: Record<string, unknown>[] = [];
 
   for (const input of req.accounts) {
+    if (input.account) {
+      const mixedProvisioningFields = [
+        input.brand !== undefined && 'brand',
+        input.operator !== undefined && 'operator',
+        input.billing !== undefined && 'billing',
+        input.sandbox !== undefined && 'sandbox',
+      ].filter(Boolean);
+      if (mixedProvisioningFields.length > 0) {
+        results.push({
+          brand: input.account.brand ?? input.brand ?? { domain: 'unknown.example' },
+          operator: input.account.operator ?? input.operator ?? 'unknown.example',
+          action: 'failed',
+          status: 'rejected',
+          errors: [{
+            code: 'INVALID_REQUEST',
+            message: `Settings-update mode must not include provisioning fields: ${mixedProvisioningFields.join(', ')}`,
+            field: String(mixedProvisioningFields[0]),
+            recovery: 'correctable',
+          }],
+        });
+        continue;
+      }
+
+      const acct = findAccountByRef(accounts, input.account);
+      const resultBrand = acct?.brand ?? input.account.brand ?? { domain: 'unknown.example' };
+      const resultOperator = acct?.operator ?? input.account.operator ?? 'unknown.example';
+
+      if (!acct) {
+        results.push({
+          brand: resultBrand,
+          operator: resultOperator,
+          action: 'failed',
+          status: 'rejected',
+          errors: [{
+            code: 'ACCOUNT_NOT_FOUND',
+            message: 'Account does not exist. Call sync_accounts in provisioning mode first or use a listed account_id.',
+            field: 'account',
+            recovery: 'correctable',
+          }],
+        });
+        continue;
+      }
+
+      if (input.payment_terms && !SUPPORTED_PAYMENT_TERMS.includes(input.payment_terms)) {
+        results.push({
+          brand: resultBrand,
+          operator: resultOperator,
+          action: 'failed',
+          status: 'rejected',
+          errors: [{
+            code: 'PAYMENT_TERMS_NOT_SUPPORTED',
+            message: `Payment terms '${input.payment_terms}' are not available. Supported: ${SUPPORTED_PAYMENT_TERMS.join(', ')}.`,
+            field: 'payment_terms',
+            recovery: 'correctable',
+          }],
+        });
+        continue;
+      }
+
+      const notificationConfigError = await validateNotificationConfigs(input.notification_configs);
+      if (notificationConfigError) {
+        results.push({
+          brand: resultBrand,
+          operator: resultOperator,
+          action: 'failed',
+          status: 'rejected',
+          errors: [validationError(notificationConfigError.field, notificationConfigError.message)],
+        });
+        continue;
+      }
+
+      if (req.dry_run) {
+        results.push({
+          account_id: acct.accountId,
+          brand: resultBrand,
+          operator: resultOperator,
+          action: 'updated',
+          status: acct.status,
+          billing: acct.billing,
+          account_scope: acct.accountScope,
+          sandbox: acct.sandbox || undefined,
+          ...(input.notification_configs !== undefined && {
+            notification_configs: sanitizeNotificationConfigs(input.notification_configs),
+          }),
+        });
+        continue;
+      }
+
+      if (input.billing_entity) acct.billingEntity = input.billing_entity;
+      if (input.payment_terms) acct.paymentTerms = input.payment_terms;
+      if (input.notification_configs !== undefined) {
+        acct.notificationConfigs = input.notification_configs;
+        acct.notificationConfigsTouched = true;
+      }
+      acct.syncedAt = now;
+
+      const result: Record<string, unknown> = {
+        account_id: acct.accountId,
+        brand: resultBrand,
+        operator: resultOperator,
+        name: accountStateToWire(acct).name,
+        action: 'updated',
+        status: acct.status,
+        billing: acct.billing,
+        account_scope: acct.accountScope,
+        payment_terms: acct.paymentTerms,
+        rate_card: acct.rateCard,
+      };
+      if (acct.creditLimit) result.credit_limit = acct.creditLimit;
+      if (acct.sandbox) result.sandbox = true;
+      if (input.notification_configs !== undefined || acct.notificationConfigs.length > 0) {
+        result.notification_configs = sanitizeNotificationConfigs(acct.notificationConfigs);
+      }
+      if (input.billing_entity) {
+        const { bank, ...safe } = input.billing_entity as Record<string, unknown>;
+        result.billing_entity = safe;
+      }
+      results.push(result);
+      continue;
+    }
+
     if (!input.brand?.domain) {
       results.push({
         brand: input.brand,
@@ -361,6 +710,17 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         action: 'failed',
         status: 'rejected',
         errors: [{ code: 'INVALID_REQUEST', message: 'operator is required' }],
+      });
+      continue;
+    }
+
+    if (!input.billing) {
+      results.push({
+        brand: input.brand,
+        operator: input.operator,
+        action: 'failed',
+        status: 'rejected',
+        errors: [{ code: 'INVALID_REQUEST', message: 'billing is required' }],
       });
       continue;
     }
@@ -464,6 +824,18 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       continue;
     }
 
+    const notificationConfigError = await validateNotificationConfigs(input.notification_configs);
+    if (notificationConfigError) {
+      results.push({
+        brand: input.brand,
+        operator: input.operator,
+        action: 'failed',
+        status: 'rejected',
+        errors: [validationError(notificationConfigError.field, notificationConfigError.message)],
+      });
+      continue;
+    }
+
     const key = accountKey(input.brand, input.operator);
     const existing = accounts.get(key);
     const isSandbox = input.sandbox === true;
@@ -500,6 +872,8 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       rateCard: isSandbox ? 'sandbox' : 'standard',
       creditLimit: isSandbox ? undefined : { amount: 100000, currency: 'USD' },
       governanceAgents: existing?.governanceAgents || [],
+      notificationConfigs: input.notification_configs ?? existing?.notificationConfigs ?? [],
+      notificationConfigsTouched: input.notification_configs !== undefined || existing?.notificationConfigsTouched === true,
       syncedAt: now,
     };
 
@@ -532,6 +906,10 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       result.sandbox = true;
     }
 
+    if (input.notification_configs !== undefined || state.notificationConfigs.length > 0) {
+      result.notification_configs = sanitizeNotificationConfigs(state.notificationConfigs);
+    }
+
     if (status === 'pending_approval') {
       result.setup = {
         url: `${agentUrl.replace('/mcp', '')}/account-setup/${accountId}`,
@@ -550,20 +928,35 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
 }
 
 interface ListAccountsRequest extends ToolArgs {
+  account?: AccountRef;
   status?: string;
   sandbox?: boolean;
   pagination?: { max_results?: number; cursor?: string };
 }
 
+function wireAccountMatchesRef(account: AccountWireShape, ref: AccountRef): boolean {
+  if (ref.account_id) return account.account_id === ref.account_id;
+  if (!ref.brand?.domain || !ref.operator) return false;
+  if (account.brand.domain !== ref.brand.domain) return false;
+  if (ref.brand.brand_id !== undefined && account.brand.brand_id !== ref.brand.brand_id) return false;
+  if (account.operator !== ref.operator) return false;
+  if (typeof ref.sandbox === 'boolean') return (account.sandbox === true) === ref.sandbox;
+  return true;
+}
+
 export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object {
   const req = args as unknown as ListAccountsRequest;
-  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const identityError = durableAccountIdentityError(ctx);
+  if (identityError) return identityError;
+  const sessionKey = accountSessionKey({}, ctx);
   const accountMap = getAccountMap(sessionKey);
 
-  let accounts: AccountWireShape[] = accountMap.size > 0
-    ? Array.from(accountMap.values()).map(accountStateToWire)
-    : getComplianceAccounts();
+  const sessionAccounts = Array.from(accountMap.values()).map(accountStateToWire);
+  let accounts: AccountWireShape[] = sessionAccounts.length > 0 ? sessionAccounts : getComplianceAccounts();
 
+  if (req.account) {
+    accounts = accounts.filter(a => wireAccountMatchesRef(a, req.account!));
+  }
   if (req.status) {
     accounts = accounts.filter(a => a.status === req.status);
   }
@@ -572,6 +965,7 @@ export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object
       ? accounts.filter(a => a.sandbox === true)
       : accounts.filter(a => !a.sandbox);
   }
+  accounts.sort((a, b) => a.account_id.localeCompare(b.account_id));
 
   const totalMatching = accounts.length;
   const requestedMax = req.pagination?.max_results;
@@ -596,6 +990,8 @@ export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object
 
 export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncGovernanceInput;
+  const identityError = durableAccountIdentityError(ctx);
+  if (identityError) return identityError;
 
   if (!req.accounts || !Array.isArray(req.accounts) || req.accounts.length === 0) {
     return {
@@ -620,7 +1016,7 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
-  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const sessionKey = accountSessionKey(req, ctx);
   const accounts = getAccountMap(sessionKey);
   const results: Record<string, unknown>[] = [];
 
