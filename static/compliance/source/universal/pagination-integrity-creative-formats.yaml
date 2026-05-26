@@ -17,9 +17,11 @@ narrative: |
 
   The runner seeds two creative formats into the agent's session ahead of
   time so the result set has a knowable size at storyboard-author time. A
-  request with `max_results=1` MUST trigger a continuation page on the
-  first call (`has_more=true` with a cursor). Following that cursor MUST
-  produce a terminal page (`has_more=false` with no cursor).
+  request filtered to those seeded names with `max_results=1` MUST trigger a
+  continuation page on the first call (`has_more=true` with a cursor).
+  Following that cursor MUST produce a terminal page (`has_more=false` with
+  no cursor). The unique name prefix narrows the result set to the seeded
+  fixtures so production catalogs are not swept during the pagination check.
 
   The `list-creative-formats-response.json` schema does not define a
   `query_summary` field, so this storyboard only asserts the
@@ -155,18 +157,19 @@ phases:
   - id: pagination_walk
     title: "Walk pages with max_results=1"
     narrative: |
-      With two formats seeded and `max_results: 1`, the first call MUST
-      return a continuation page (has_more=true with a cursor). The runner
-      then follows the cursor; the second call MUST return a terminal page
-      (has_more=false with no cursor).
+      With two matching seeded formats and `max_results: 1`, the first call
+      MUST return a continuation page (has_more=true with a cursor). The
+      runner then follows the cursor; the second call MUST return a terminal
+      page (has_more=false with no cursor).
 
     steps:
       - id: first_page
         title: "Request the first page with max_results=1"
         narrative: |
-          The buyer asks for one format at a time. The agent has two seeded
-          formats, so the first page is non-terminal. The runner captures
-          `pagination.cursor` for the follow-up step.
+          The buyer asks for one matching test format at a time. The agent has
+          two seeded formats matching the name search, so the first page is
+          non-terminal. The runner captures `pagination.cursor` for the
+          follow-up step.
         task: list_creative_formats
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
@@ -184,6 +187,7 @@ phases:
         sample_request:
           account:
             account_id: "acct_pagination_integrity_formats"
+          name_search: "Pagination Integrity Format"
           pagination:
             max_results: 1
           context:
@@ -231,6 +235,7 @@ phases:
         sample_request:
           account:
             account_id: "acct_pagination_integrity_formats"
+          name_search: "Pagination Integrity Format"
           pagination:
             cursor: "$context.next_cursor"
             max_results: 1
