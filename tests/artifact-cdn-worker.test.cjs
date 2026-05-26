@@ -21,13 +21,17 @@ class MockBucket {
   constructor(entries, options = {}) {
     this.entries = new Map(entries);
     this.pageSize = options.pageSize ?? Infinity;
+    this.getCalls = new Map();
+    this.headCalls = new Map();
   }
 
   async get(key) {
+    this.getCalls.set(key, (this.getCalls.get(key) ?? 0) + 1);
     return this.entries.get(key) ?? null;
   }
 
   async head(key) {
+    this.headCalls.set(key, (this.headCalls.get(key) ?? 0) + 1);
     const object = this.entries.get(key);
     return object ? new MockR2Object(key, null, object.httpMetadata) : null;
   }
@@ -59,6 +63,24 @@ class MockBucket {
       truncated,
       cursor: truncated ? String(next) : undefined,
     };
+  }
+}
+
+class MockEdgeCache {
+  constructor() {
+    this.entries = new Map();
+    this.matches = 0;
+    this.puts = 0;
+  }
+
+  async match(request) {
+    this.matches += 1;
+    return this.entries.get(request.url)?.clone();
+  }
+
+  async put(request, response) {
+    this.puts += 1;
+    this.entries.set(request.url, response.clone());
   }
 }
 
@@ -136,6 +158,21 @@ async function fetchPath(path, init) {
   return handleRequest(new Request(`https://artifacts.example${path}`, init), env(), {});
 }
 
+async function withMockEdgeCache(cache, callback) {
+  const hadCaches = Object.hasOwn(globalThis, 'caches');
+  const previousCaches = globalThis.caches;
+  globalThis.caches = { default: cache };
+  try {
+    await callback();
+  } finally {
+    if (hadCaches) {
+      globalThis.caches = previousCaches;
+    } else {
+      delete globalThis.caches;
+    }
+  }
+}
+
 describe('artifact CDN Worker', () => {
   it('rewrites major aliases to the latest matching semver directory', async () => {
     const response = await fetchPath('/schemas/v3/foo.json');
@@ -181,6 +218,60 @@ describe('artifact CDN Worker', () => {
     assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
   });
 
+  it('uses edge cache for immutable versioned schema objects', async () => {
+    const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+    const testEnv = env();
+    const edgeCache = new MockEdgeCache();
+    const pending = [];
+    const ctx = { waitUntil: (promise) => pending.push(promise) };
+    clearVersionCacheForTests();
+
+    await withMockEdgeCache(edgeCache, async () => {
+      const first = await handleRequest(
+        new Request('https://artifacts.example/schemas/3.0.12/foo.json?cache_bust=1'),
+        testEnv,
+        ctx,
+      );
+      assert.equal(first.status, 200);
+      assert.deepEqual(await first.json(), { version: '3.0.12' });
+      await Promise.all(pending);
+
+      const second = await handleRequest(
+        new Request('https://artifacts.example/schemas/3.0.12/foo.json?cache_bust=2'),
+        testEnv,
+        ctx,
+      );
+      assert.equal(second.status, 200);
+      assert.deepEqual(await second.json(), { version: '3.0.12' });
+    });
+
+    assert.equal(testEnv.ARTIFACTS.getCalls.get('schemas/3.0.12/foo.json'), 1);
+    assert.equal(edgeCache.matches, 2);
+    assert.equal(edgeCache.puts, 1);
+  });
+
+  it('does not edge-cache movable aliases', async () => {
+    const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+    const testEnv = env();
+    const edgeCache = new MockEdgeCache();
+    const ctx = { waitUntil: () => assert.fail('aliases should not write to edge cache') };
+    clearVersionCacheForTests();
+
+    await withMockEdgeCache(edgeCache, async () => {
+      const first = await handleRequest(new Request('https://artifacts.example/schemas/v3/foo.json'), testEnv, ctx);
+      const second = await handleRequest(new Request('https://artifacts.example/schemas/v3/foo.json'), testEnv, ctx);
+
+      assert.equal(first.status, 200);
+      assert.equal(second.status, 200);
+      assert.deepEqual(await first.json(), { version: '3.1.0-beta.3' });
+      assert.deepEqual(await second.json(), { version: '3.1.0-beta.3' });
+    });
+
+    assert.equal(testEnv.ARTIFACTS.getCalls.get('schemas/3.1.0-beta.3/foo.json'), 2);
+    assert.equal(edgeCache.matches, 0);
+    assert.equal(edgeCache.puts, 0);
+  });
+
   it('redirects bare alias directories to concrete index.json paths', async () => {
     const response = await fetchPath('/schemas/v3/');
 
@@ -219,6 +310,30 @@ describe('artifact CDN Worker', () => {
     assert.equal(await response.text(), 'latest-tarball');
     assert.equal(response.headers.get('content-type'), 'application/gzip');
     assert.equal(response.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+  });
+
+  it('uses edge cache for pinned protocol tarballs', async () => {
+    const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+    const testEnv = env();
+    const edgeCache = new MockEdgeCache();
+    const pending = [];
+    const ctx = { waitUntil: (promise) => pending.push(promise) };
+    clearVersionCacheForTests();
+
+    await withMockEdgeCache(edgeCache, async () => {
+      const first = await handleRequest(new Request('https://artifacts.example/protocol/3.0.12.tgz'), testEnv, ctx);
+      assert.equal(first.status, 200);
+      assert.equal(await first.text(), 'pinned-tarball');
+      await Promise.all(pending);
+
+      const second = await handleRequest(new Request('https://artifacts.example/protocol/3.0.12.tgz'), testEnv, ctx);
+      assert.equal(second.status, 200);
+      assert.equal(await second.text(), 'pinned-tarball');
+    });
+
+    assert.equal(testEnv.ARTIFACTS.getCalls.get('protocol/3.0.12.tgz'), 1);
+    assert.equal(edgeCache.matches, 2);
+    assert.equal(edgeCache.puts, 1);
   });
 
   it('lists protocol tarballs for discovery', async () => {

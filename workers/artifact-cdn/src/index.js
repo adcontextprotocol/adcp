@@ -3,6 +3,8 @@ const VERSION_DIR_PATH = /^\/([^/]+)\/$/;
 const SEMVER_PATH = /^\/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\/|$)/;
 const PINNED_TARBALL = /(?:^|\/)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.tgz(?:\.sha256|\.sig|\.crt)?$/;
 
+const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+const REVALIDATE_CACHE_CONTROL = "public, no-cache, must-revalidate";
 const VERSION_CACHE_TTL_MS = 60 * 1000;
 const versionCache = new Map();
 
@@ -12,7 +14,7 @@ export default {
   },
 };
 
-export async function handleRequest(request, env, _ctx) {
+export async function handleRequest(request, env, ctx) {
   const url = new URL(request.url);
   const pathname = normalizePath(url.pathname);
 
@@ -37,24 +39,27 @@ export async function handleRequest(request, env, _ctx) {
   }
 
   if (pathname.startsWith("/schemas/")) {
-    return versionedArtifactResponse(request, env, "schemas", pathname);
+    return versionedArtifactResponse(request, env, ctx, "schemas", pathname);
   }
 
   if (pathname.startsWith("/compliance/")) {
-    return versionedArtifactResponse(request, env, "compliance", pathname);
+    return versionedArtifactResponse(request, env, ctx, "compliance", pathname);
   }
 
   if (pathname.startsWith("/protocol/")) {
     const key = pathname.slice(1);
-    return r2ArtifactResponse(request, env, key, cacheControlForProtocolPath(pathname), {
+    const cacheControl = cacheControlForProtocolPath(pathname);
+    return r2ArtifactResponse(request, env, key, cacheControl, {
+      edgeCache: cacheControl === IMMUTABLE_CACHE_CONTROL,
       overrideCacheControl: true,
+      ctx,
     });
   }
 
   return new Response("Not Found", { status: 404, headers: corsHeaders() });
 }
 
-async function versionedArtifactResponse(request, env, mount, pathname) {
+async function versionedArtifactResponse(request, env, ctx, mount, pathname) {
   const mountPrefix = `/${mount}`;
   const requestPath = pathname.slice(mountPrefix.length);
   const aliasMatch = requestPath.match(ALIAS_PATH);
@@ -88,12 +93,15 @@ async function versionedArtifactResponse(request, env, mount, pathname) {
     return redirect(`/${mount}${resolvedPath}index.json`, 302);
   }
 
-  const cacheControl = !isAlias && SEMVER_PATH.test(requestPath)
-    ? "public, max-age=31536000, immutable"
-    : "public, no-cache, must-revalidate";
+  const isImmutableArtifact = !isAlias && SEMVER_PATH.test(requestPath);
+  const cacheControl = isImmutableArtifact
+    ? IMMUTABLE_CACHE_CONTROL
+    : REVALIDATE_CACHE_CONTROL;
 
   return r2ArtifactResponse(request, env, `${mount}${resolvedPath}`, cacheControl, {
+    edgeCache: isImmutableArtifact,
     overrideCacheControl: true,
+    ctx,
   });
 }
 
@@ -164,6 +172,13 @@ async function protocolDiscoveryResponse(bucket) {
 }
 
 async function r2ArtifactResponse(request, env, key, fallbackCacheControl, options = {}) {
+  const cache = options.edgeCache && request.method === "GET" ? getEdgeCache() : null;
+  const cacheKey = cache ? edgeCacheKey(request) : null;
+  if (cache && cacheKey) {
+    const cached = await cache.match(cacheKey);
+    if (cached) return cached;
+  }
+
   const object = request.method === "HEAD"
     ? await env.ARTIFACTS.head(key)
     : await env.ARTIFACTS.get(key);
@@ -187,7 +202,17 @@ async function r2ArtifactResponse(request, env, key, fallbackCacheControl, optio
     headers.set("cache-control", fallbackCacheControl);
   }
 
-  return new Response(request.method === "HEAD" ? null : object.body, { headers });
+  const response = new Response(request.method === "HEAD" ? null : object.body, { headers });
+  if (cache && cacheKey) {
+    const put = cache.put(cacheKey, response.clone()).catch(() => undefined);
+    if (typeof options.ctx?.waitUntil === "function") {
+      options.ctx.waitUntil(put);
+    } else {
+      await put;
+    }
+  }
+
+  return response;
 }
 
 async function fallbackResponse(request, env) {
@@ -340,8 +365,18 @@ function compareVersions(left, right) {
 
 function cacheControlForProtocolPath(pathname) {
   return PINNED_TARBALL.test(pathname)
-    ? "public, max-age=31536000, immutable"
-    : "public, no-cache, must-revalidate";
+    ? IMMUTABLE_CACHE_CONTROL
+    : REVALIDATE_CACHE_CONTROL;
+}
+
+function getEdgeCache() {
+  return typeof caches !== "undefined" ? caches.default : null;
+}
+
+function edgeCacheKey(request) {
+  const url = new URL(request.url);
+  url.search = "";
+  return new Request(url.toString(), { method: "GET" });
 }
 
 function contentTypeForKey(key) {
@@ -368,7 +403,7 @@ function jsonResponse(body, status = 200) {
     status,
     headers: corsHeaders({
       "content-type": "application/json; charset=utf-8",
-      "cache-control": "public, no-cache, must-revalidate",
+      "cache-control": REVALIDATE_CACHE_CONTROL,
     }),
   });
 }
