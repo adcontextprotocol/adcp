@@ -1,0 +1,71 @@
+---
+title: Storyboards vs. scenarios — which is which
+sidebarTitle: Storyboards vs. Scenarios
+description: "Three things in AdCP share the word 'scenarios' and they aren't the same. Here's how to tell them apart."
+"og:title": "AdCP — Storyboards vs. scenarios"
+---
+
+If you're trying to figure out *how* to test an AdCP agent, three things in this ecosystem share overlapping vocabulary. They are not the same. Confusing them produces wrong conclusions — including the kind that get reported as protocol gaps that aren't actually gaps.
+
+## TL;DR
+
+| | What it is | Where it lives | Normative? |
+|---|---|---|---|
+| **Storyboards** | YAML files defining a workflow end-to-end + every wire-shape assertion. **The conformance specification.** | `/compliance/{version}/universal/*.yaml`, `protocols/*/*.yaml`, `specialisms/*/index.yaml` | ✅ Yes |
+| **`comply_test_controller` scenarios** | Protocol-level tool operations a seller exposes (`force_*`, `simulate_*`, `seed_*`) so storyboards can drive deterministic state. | The `scenario` parameter of the seller's `comply_test_controller` MCP tool. | ✅ Yes |
+| **`@adcp/sdk/testing/scenarios/*.ts`** | Legacy TypeScript test runners predating storyboard-driven `comply()`. | `node_modules/@adcp/sdk/dist/lib/testing/scenarios/*.js` | ❌ **No** |
+
+If you're reading a file at `node_modules/@adcp/sdk/dist/lib/testing/scenarios/media-buy.js` and trying to figure out what AdCP requires — **stop**. That's not the spec. Read [the storyboards](/dist/docs/3.1.0-beta.5/building/verification/conformance) instead.
+
+## Storyboards (normative)
+
+Storyboards are the conformance specification. Each one defines:
+- A workflow (e.g. *sales-guaranteed proposal/refine/finalize lifecycle*)
+- The exact tool calls a buyer agent makes
+- Every wire-shape assertion the seller's responses must satisfy
+- The `comply_test_controller` operations the runner uses to seed deterministic state
+
+[`conformance.mdx`](/dist/docs/3.1.0-beta.5/building/verification/conformance) calls these *"the truth"* — and means it. The AdCP Verified (Spec) badge is issued by running these YAML files through [`comply()`](/dist/docs/3.1.0-beta.5/building/verification/validate-your-agent) and observing every assertion pass.
+
+You'll see storyboards at:
+- `/compliance/{version}/universal/*.yaml` — every AdCP agent must pass
+- `/compliance/{version}/protocols/{protocol}/index.yaml` — anyone claiming the protocol
+- `/compliance/{version}/specialisms/{id}/index.yaml` — opt-in claims
+
+Run them via `npx @adcp/sdk storyboard run <id>` or interactively through [Addie](https://agenticadvertising.org).
+
+## `comply_test_controller` scenarios (normative — but different)
+
+The word "scenario" also appears in the `comply_test_controller` MCP tool that sellers expose to support deterministic testing. Storyboards call this tool with `scenario: <name>` to drive seller state without waiting for real time to pass: e.g. `force_task_completion` to finish a pending async media buy, `simulate_delivery` to inject impressions, `seed_product` to install a fixture.
+
+These are **protocol operations**, not test runners. They're documented at [comply_test_controller](/dist/docs/3.1.0-beta.5/building/by-layer/L3/comply-test-controller). Sellers MUST implement them to be testable; the storyboards MUST use them to stay deterministic.
+
+So when you hear "the seller doesn't support that scenario," it usually means: "the seller's `comply_test_controller` doesn't expose `force_X` yet." Not "no storyboard tests X."
+
+## `@adcp/sdk/testing/scenarios/*.ts` (NON-normative legacy)
+
+The SDK ships TypeScript files under `testing/scenarios/` — `media-buy.ts`, `signals.ts`, `creative.ts`, and a dozen siblings. These predate the storyboard-driven `comply()` engine. They are:
+
+- **Not the conformance spec.** Reading them to learn what AdCP requires will produce wrong answers.
+- **Not maintained in lockstep with storyboards.** A scenario file may hard-code parameters that the storyboard equivalent has long since corrected. *Example: `scenarios/media-buy.ts` hard-codes `buying_mode: 'brief'` at four call sites; the YAML storyboard for `sales-guaranteed` exercises `buying_mode: 'refine'` + `action: 'finalize'` via the `proposal_finalize` storyboard. Both are valid `buying_mode` values; the scenario file just doesn't cover the lifecycle.*
+- **Callable, but for different purposes.** Internal smoke tests in the SDK, integration-test fixtures for downstream tooling, and some legacy paths still use these. They are not what AAO Verified (Spec) runs against.
+
+If you find yourself grepping `testing/scenarios/*.ts` to understand AdCP, you've taken a wrong turn. The right path:
+
+1. Find the storyboard that matches your declared specialism: `npx @adcp/sdk storyboard list`
+2. Read the YAML: `npx @adcp/sdk storyboard show <id>`
+3. Run it: `npx @adcp/sdk storyboard run <id> --agent-url <url>`
+
+## Three-line decoder
+
+If you see…                                                | …you're looking at                                | Trust as spec?
+---|---|---
+A `.yaml` under `/compliance/{version}/...`               | A storyboard                                       | ✅ Yes
+A seller responding to `comply_test_controller` with a `scenario` parameter | A protocol-level test-control operation         | ✅ Yes (the contract is normative; the seller MAY refuse with `UNKNOWN_SCENARIO`)
+A `.ts` or `.js` under `@adcp/sdk/dist/lib/testing/scenarios/` | A legacy SDK test runner                          | ❌ No
+
+## Cross-repo
+
+The disambiguation work in the SDK itself — marking the legacy scenarios as `@deprecated`, mirroring the storyboard CLI verbs, or removing the export entirely — lives in [`adcp-client`](https://github.com/adcontextprotocol/adcp-client). The decision on whether `testing/scenarios/*` stays public-but-deprecated or becomes internal-only is tracked in [#4035](https://github.com/adcontextprotocol/adcp/issues/4035).
+
+For now: if you want to test an AdCP agent, the answer is storyboards. The other two things named "scenario" have their place, but they aren't it.

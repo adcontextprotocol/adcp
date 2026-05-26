@@ -1,0 +1,392 @@
+---
+title: verify_brand_claim
+description: "verify_brand_claim is the unified AdCP brand-protocol task for asking a brand-agent whether a specific claim about its identity is owned, pending, disputed, or licensed. One tool, four claim types — subsidiary, parent, property, trademark — discriminated by a claim_type field."
+"og:title": "AdCP — verify_brand_claim"
+testable: true
+---
+
+Ask a brand-agent a verification question about a facet of its identity. **This is a prerequisite gate — check before you proceed, not a signal you consume after a decision is locked in.** One tool with four claim types covers the verification dimensions:
+
+| `claim_type` | The question | Used at |
+|---|---|---|
+| `subsidiary` | "Is this brand a subsidiary of yours?" | Brand-relationship establishment, member-feature provisioning, governance-trust extension |
+| `parent` | "Is this brand your parent house?" (leaf-side mirror) | Mutual-assertion confirmation at the agent layer |
+| `property` | "Is this site / app / property one of yours?" | Inventory onboarding, creative clearance, fraud escalation |
+| `trademark` | "Is this trademark yours?" | Creative-clearance gates, licensee-posture confirmation |
+
+The brand-agent answers using its own data — which is brand.json plus the richer states (`pending_review`, `transferring`, `licensed_in`, etc.) that the static file can't express. The tool is one specific-question affordance on top of the same identity surface `get_brand_identity` reads.
+
+For high-volume verification (portfolio refresh, creative-clearance batches, crawler scans), use the bulk variant [`verify_brand_claims`](/dist/docs/3.1.0-beta.5/brand-protocol/tasks/verify_brand_claims) — same per-claim semantics, one round-trip and one rate-limit slot for the whole batch.
+
+## The trust rule — two calls, not one
+
+**A single signed `owned` response is NOT trust-extending. Mutual assertion remains the floor for positive trust.** This is the load-bearing rule of the asymmetric trust model — assertion direction requires both sides to agree. Consumers MUST call both sides when extending relationship trust:
+
+- For `subsidiary` claims, also call the leaf's brand-agent with `claim_type: "parent"` (or crawl the leaf's `brand.json` for its `house_domain`).
+- For `property` claims, cross-check against the brand's static `brand.json` `properties[]` and (for domains) DNS/TLS evidence.
+- For `trademark` claims, cross-check the public registry record. For `licensed_in` specifically, the licensor named in `details.licensor_domain` SHOULD reciprocate `licensed_out` for the same mark before the licensing relationship is trusted.
+- **Only rejections (`disputed` / `not_ours`) are authoritative on a single signed response** — a brand has standing to refuse association unilaterally.
+
+Shortcuts kill the trust model. Without the reciprocation step, a malicious or mistaken house could claim subsidiaries, properties, or licensed marks it doesn't actually have. See [`brand.json` § Agent-augmented verification](/dist/docs/3.1.0-beta.5/brand-protocol/brand-json#agent-augmented-verification) for the full normative trust table and the malicious-house walkthrough.
+
+## Schema
+
+- **Request**: [`verify-brand-claim-request.json`](https://adcontextprotocol.org/schemas/3.1.0-beta.5/brand/verify-brand-claim-request.json)
+- **Response**: [`verify-brand-claim-response.json`](https://adcontextprotocol.org/schemas/3.1.0-beta.5/brand/verify-brand-claim-response.json)
+
+## Capability discovery
+
+The brand-agent advertises this task in its `get_adcp_capabilities` response. An agent that supports only some claim types declares this via the per-tool capability extension:
+
+```json
+{
+  "supported_protocols": ["brand"],
+  "supported_tasks": [
+    "get_brand_identity",
+    "verify_brand_claim"
+  ],
+  "brand": {
+    "verify_brand_claim": {
+      "supported_claim_types": ["subsidiary", "parent", "trademark"]
+    }
+  }
+}
+```
+
+When `supported_claim_types` is omitted, the agent advertises support for all four. Consumers MUST check before relying on a specific claim type; unsupported types return `UNSUPPORTED_CLAIM_TYPE` (see [Error handling](#error-handling)).
+
+### Minimum viable adoption
+
+A brand-agent doesn't have to ship all four claim types at once. Pick the slice that matches the workflow:
+
+- **Property only** — creative-clearance and inventory-onboarding consumers; the smallest useful surface.
+- **Subsidiary + parent** — partners doing brand-relationship establishment or governance-trust extension; ship both halves at once so mutual assertion completes at the agent layer.
+- **Trademark only** — creative-clearance pipelines that need licensee posture (the differentiator from registry crawls).
+- **All four** — full coverage; recommended for AAO-hosted agents serving many member configurations.
+
+Advertise only the types you implement. Partners check `supported_claim_types` and route accordingly; unsupported types return `UNSUPPORTED_CLAIM_TYPE` cleanly.
+
+## Authorization tiers
+
+The public/authorized split per claim type:
+
+| Tier | What the agent returns |
+|---|---|
+| **Public** (no linked account) | `claim_type`, `status` (always). For applicable claim types: `details.brand_id`, `details.relationship`, `details.matched_registration`, `details.countries`, `details.nice_classes`. `context_note` when populated. |
+| **Authorized** (via [`sync_accounts`](/dist/docs/3.1.0-beta.5/accounts/tasks/sync_accounts)) | Everything above, plus: `details.first_observed_by_house_at`, `details.expected_resolution_window_days`, `details.use_case_authorization`, `details.licensor_domain` (when licensed_in). |
+
+Queue position, internal ticket state, and team routing are never exposed.
+
+## Per-claim-type request and response shapes
+
+The `details` field on the response varies by `claim_type`. Below: the request payload and the typed `details` fields each claim type returns.
+
+### `claim_type: "subsidiary"`
+
+House-side: a consumer detects `converse.com` claiming `house_domain: nikeinc.com`. Asks Nike's agent:
+
+```json
+{
+  "claim_type": "subsidiary",
+  "claim": {
+    "subsidiary_domain": "converse.com",
+    "subsidiary_brand_id": "converse",
+    "observed_at": "2026-05-14T10:00:00Z"
+  }
+}
+```
+
+```json
+{
+  "claim_type": "subsidiary",
+  "verification_status": "owned",
+  "details": { "brand_id": "converse" }
+}
+```
+
+The brand can also reject — rejection direction is authoritative on a single signed response, no reciprocation required:
+
+```json
+{
+  "claim_type": "subsidiary",
+  "verification_status": "not_ours",
+  "context_note": "We have no record of this brand; the leaf's claim is in error."
+}
+```
+
+Applicable statuses: `owned`, `pending_review`, `transferring`, `disputed`, `not_ours`, `archived`, `unknown`. (`licensed_in` / `licensed_out` don't apply — subsidiaries aren't licensed; brands and trademarks are.) `archived` means the brand once held this subsidiary (e.g., a divested business unit) but no longer does — distinct from `not_ours` (never owned).
+
+**Request `claim` fields:**
+
+| Field | Required | Notes |
+|---|---|---|
+| `subsidiary_domain` | Yes | Domain of the leaf brand whose `house_domain` claim is being verified. |
+| `subsidiary_brand_id` | No | Stable brand identifier the leaf uses for itself. Recommended; helps the agent disambiguate when multiple brands share a domain. |
+| `observed_at` | No | ISO 8601 timestamp — when the caller observed the leaf's claim. Helps the agent age claims and prioritize fresh ones in its internal queue. |
+
+**Response `details` fields:**
+
+| Field | Tier | Returned when | Notes |
+|---|---|---|---|
+| `brand_id` | Public | status ∈ {`owned`, `pending_review`, `transferring`} | The house's brand_id for this subsidiary. |
+| `first_observed_by_house_at` | Authorized | any | When the house first became aware of the claim. |
+| `expected_resolution_window_days` | Authorized | **REQUIRED** when status is `pending_review`; otherwise Authorized when present | The aging window. Enforcement is agent-side: the agent MUST transition the claim to a terminal status or `unknown` once the window elapses. When a `pending_review` response is older than its declared window, consumers SHOULD treat it as `unknown` and fall back to crawl. |
+
+### `claim_type: "parent"` (leaf-side mirror)
+
+Leaf-side: a consumer wants the leaf's authoritative answer about its parent. Asks Converse's agent:
+
+```json
+{
+  "claim_type": "parent",
+  "claim": {
+    "parent_domain": "nikeinc.com",
+    "claimant_says": "Nike's brand_refs[] lists converse.com"
+  }
+}
+```
+
+```json
+{
+  "claim_type": "parent",
+  "verification_status": "owned",
+  "details": { "house_domain": "nikeinc.com" }
+}
+```
+
+The leaf can also actively reject:
+
+```json
+{
+  "claim_type": "parent",
+  "verification_status": "disputed",
+  "context_note": "We are not a Nike subsidiary; their claim is in error."
+}
+```
+
+Applicable statuses: same as `subsidiary` (mirror).
+
+**Request `claim` fields:**
+
+| Field | Required | Notes |
+|---|---|---|
+| `parent_domain` | Yes | Domain of the house being claimed as this brand's parent. |
+| `claimant_says` | No | Free-text context about what the claimant published (e.g., "Nike's brand_refs[] lists converse.com"). Helps the agent disambiguate competing claims. |
+| `observed_at` | No | ISO 8601 timestamp — when the caller observed the parent claim. |
+
+**Response `details` fields:**
+
+| Field | Tier | Returned when | Notes |
+|---|---|---|---|
+| `house_domain` | Public | status ∈ {`owned`, `transferring`} | The brand's declared parent house. NOT returned for `pending_review` — the leaf hasn't yet accepted the parent claim. |
+| `first_observed_by_leaf_at` | Authorized | any | When the leaf first became aware of a third-party claim about its parentage. |
+
+When both `verify_brand_claim` with `claim_type: "subsidiary"` (on the house) AND with `claim_type: "parent"` (on the leaf) return `owned` for the same relationship, **mutual assertion is established at the agent layer** — no static-file crawl required. This is the cleanest path for trust extension.
+
+### `claim_type: "property"`
+
+The request asks about one property; the response describes the brand's relationship with that property, including all regions where the relationship applies (which may exceed the one named in the query).
+
+```json
+{
+  "claim_type": "property",
+  "claim": {
+    "property": {
+      "type": "website",
+      "identifier": "nike.cn",
+      "region": "CN"
+    },
+    "use_case": "advertising"
+  }
+}
+```
+
+```json
+{
+  "claim_type": "property",
+  "verification_status": "owned",
+  "details": {
+    "relationship": "owned",
+    "brand_id": "nike",
+    "regions": ["CN"],
+    "use_case_authorization": { "advertising": true }
+  },
+  "context_note": "Regional site for China market"
+}
+```
+
+A property that spans multiple regions (e.g., a global e-commerce surface) returns all of them:
+
+```json
+{
+  "claim_type": "property",
+  "claim": { "property": { "type": "website", "identifier": "nike.com" } }
+}
+→
+{
+  "claim_type": "property",
+  "verification_status": "owned",
+  "details": {
+    "relationship": "owned",
+    "brand_id": "nike",
+    "regions": ["US", "CA", "GB", "FR", "DE", "JP", "AU"]
+  }
+}
+```
+
+The brand can also reject — rejection direction is authoritative on a single signed response:
+
+```json
+{
+  "claim_type": "property",
+  "claim": { "property": { "type": "website", "identifier": "fake-nike-store.com" } }
+}
+→
+{
+  "claim_type": "property",
+  "verification_status": "not_ours",
+  "context_note": "Unaffiliated third-party site; we do not authorize use of our marks on it."
+}
+```
+
+Applicable statuses: `owned`, `transferring`, `disputed`, `not_ours`, `archived`, `unknown`. (`pending_review` is uncommon for properties; use `transferring` for in-flight ownership changes.) `archived` means the brand once operated this property (e.g., a sold-off domain) but no longer does.
+
+**Request `claim` fields:**
+
+| Field | Required | Notes |
+|---|---|---|
+| `property.type` | Yes | `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `streaming_audio`. |
+| `property.identifier` | Yes | Domain for websites/podcasts, bundle id for apps, etc. |
+| `property.store` | When type is an app | `apple`, `google`, `amazon`, `roku`, `fire_tv`, `samsung`, `lg`, `vizio`, `other`. |
+| `property.region` | No | Single ISO 3166-1 alpha-2 code (or `"global"`) — the region the caller cares about. The response's `details.regions` carries the full applicable set. |
+| `use_case` | No | Free-text use case (e.g., `"advertising"`). The agent MAY scope its answer accordingly. |
+
+**Response `details` fields:**
+
+| Field | Tier | Returned when | Notes |
+|---|---|---|---|
+| `relationship` | Public | status ∈ {`owned`, `transferring`} | `owned` / `direct` / `delegated` / `ad_network` — mirrors brand.json's `properties[].relationship`. |
+| `brand_id` | Public | status ∈ {`owned`, `transferring`} | The brand within the house that owns this property. |
+| `regions` | Public | status ∈ {`owned`, `transferring`} | ISO 3166-1 alpha-2 codes, or `["global"]` sentinel for no regional restriction. May include regions beyond the one the request named. |
+| `use_case_authorization` | Authorized | any | Per-use-case permission map. Registered keys: `advertising`, `endorsement`, `retail_listing`, `editorial`, `commercial_advertising`, `merchandise_resale`. Agents MAY add extensions. |
+
+### `claim_type: "trademark"`
+
+```json
+{
+  "claim_type": "trademark",
+  "claim": {
+    "mark": "AIR JORDAN",
+    "registry": "USPTO",
+    "number": "1234567"
+  }
+}
+```
+
+```json
+{
+  "claim_type": "trademark",
+  "verification_status": "owned",
+  "details": {
+    "matched_registration": {
+      "registry": "USPTO",
+      "number": "1234567",
+      "mark": "AIR JORDAN",
+      "registration_status": "active"
+    },
+    "countries": ["US"],
+    "nice_classes": [25, 41]
+  }
+}
+```
+
+```json
+{
+  "claim_type": "trademark",
+  "verification_status": "licensed_in",
+  "details": {
+    "matched_registration": { "registry": "EUIPO", "number": "EU98765", "mark": "CONVERSE", "registration_status": "active" },
+    "licensor_domain": "converseholdings-eu.com",
+    "countries": ["FR", "DE", "IT", "ES"],
+    "nice_classes": [25]
+  }
+}
+```
+
+**`licensed_in` reciprocation.** Consumers SHOULD treat `licensed_in` as **unverified** until the named `licensor_domain`'s brand-agent reciprocates `licensed_out` for the same mark (same mutual-assertion shape as ownership, just across the licensing edge). Without reciprocation, the brand could unilaterally claim a licensed relationship that doesn't exist.
+
+The brand can also reject — rejection direction is authoritative on a single signed response:
+
+```json
+{
+  "claim_type": "trademark",
+  "claim": { "mark": "AIR JORDAN", "registry": "EUIPO" }
+}
+→
+{
+  "claim_type": "trademark",
+  "verification_status": "disputed",
+  "context_note": "EU mark in this jurisdiction held by separate entity; we contest their registration and do not authorize use as ours."
+}
+```
+
+Applicable statuses: `owned`, `licensed_in`, `licensed_out`, `transferring`, `disputed`, `not_ours`, `archived`, `unknown`. (`pending_review` is uncommon — trademark registrations are public-record events with definitive ownership at any given time.) `archived` means the brand once held this mark (expired, cancelled, transferred to another party) but no longer does.
+
+**`details` fields:**
+
+| Field | Tier | Notes |
+|---|---|---|
+| `matched_registration` | Public | The registration the agent matched the query to. Returned when status is `owned`, `licensed_in`, `licensed_out`, or `transferring`. |
+| `licensor_domain` | Public | Domain of the licensor when status is `licensed_in`. |
+| `countries` | Public | ISO 3166-1 alpha-2 codes the response covers. |
+| `nice_classes` | Public | Nice Classification class numbers. Disambiguates cross-industry marks. |
+| `use_case_authorization` | Authorized | Per-use-case permission for this mark — the differentiator from registry crawls. |
+
+## Trust model
+
+The agent's response is signed under the brand's `adcp_use: "response-signing"` JWK. This is a payload-envelope JWS — the signature lives inside the response body, distinct from RFC 9421 §2.2.9 transport response signing (which AdCP 3.x does not define). `verify_brand_claim` is on the spec's [designated-task response-signing list](/dist/docs/3.1.0-beta.5/building/by-layer/L1/security#designated-task-response-signing); response signing on tasks outside that list is forbidden.
+
+The signature attests authorship of the response payload under the brand's published key at signing time; it is not a non-repudiation receipt and does not bind the brand to assertions beyond the direction-asymmetric semantics below. Replay protection ([#4716](https://github.com/adcontextprotocol/adcp/issues/4716)), per-brand JWK uniqueness ([#4717](https://github.com/adcontextprotocol/adcp/issues/4717)), and tenant binding on the envelope ([#4718](https://github.com/adcontextprotocol/adcp/issues/4718)) are tracked for 3.2 hardening — until then, verifiers SHOULD treat captured signed responses as freshness-unbound.
+
+The trust model is **direction-asymmetric**:
+
+- **Rejection direction** (agent says `disputed` / `not_ours`) is authoritative. A brand can refuse association unilaterally; no mutual reciprocation required.
+- **Assertion direction** (agent says `owned` / `pending_review` / `transferring` / `licensed_*`) is informative but NOT trust-extending on its own. The reciprocating side must still confirm before trust extends.
+
+When both the house-side and leaf-side agents speak (via `claim_type: "subsidiary"` and `claim_type: "parent"` respectively), **mutual assertion is established at the agent layer**. When only one side has an agent, fall back to crawl-based mutual-assertion inference per [`brand.json` § Mutual-assertion trust model](/dist/docs/3.1.0-beta.5/brand-protocol/brand-json#mutual-assertion-trust-model).
+
+See [`brand.json` § Agent-augmented verification](/dist/docs/3.1.0-beta.5/brand-protocol/brand-json#agent-augmented-verification) for the full trust table and the malicious-house walkthrough.
+
+## Caching
+
+Per-status:
+
+- `owned` / `not_ours` / `disputed` — stable. 24-72h.
+- `pending_review` — volatile. Max-age ≤1h.
+- `transferring` — volatile until transition. Max-age ≤4h.
+- `licensed_in` / `licensed_out` — moderately volatile. 24h.
+- `use_case_authorization` — most volatile. Re-check per session.
+- `unknown` — short cache (≤1h).
+
+Agents SHOULD set `Cache-Control: max-age=N`. Consumers MAY override downward but SHOULD NOT exceed agent-supplied `max-age`.
+
+## Error handling
+
+| Error code | Cause |
+|---|---|
+| `AUTH_INVALID` | Caller's signed envelope did not verify. |
+| `RATE_LIMITED` | Agent has rate-limited the caller per `{caller_identity, claim_type, claim-target}`. Agents SHOULD return `Retry-After` and prefer returning cached prior answer. |
+| `UNSUPPORTED_CLAIM_TYPE` | The agent does not implement the requested `claim_type`. Check `supported_claim_types` via `get_adcp_capabilities`. |
+| `INVALID_INPUT` | Required `claim` fields are missing or malformed (e.g., `subsidiary_domain` not a valid hostname). |
+| `AMBIGUOUS_MATCH` | For `claim_type: "trademark"` — multiple registrations match. Narrow with `registry`, `number`, or `countries`. |
+
+```json
+{
+  "errors": [
+    {
+      "code": "UNSUPPORTED_CLAIM_TYPE",
+      "message": "claim_type 'property' is not supported by this agent. Supported: subsidiary, parent, trademark."
+    }
+  ]
+}
+```

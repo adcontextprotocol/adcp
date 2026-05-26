@@ -1,0 +1,1564 @@
+---
+title: get_products
+description: "get_products task — discover advertising inventory in AdCP using natural language campaign briefs or structured filters. Returns matched products with pricing and formats."
+"og:title": "AdCP — get_products"
+testable: true
+---
+
+Discover available advertising products based on campaign requirements using natural language briefs or structured filters.
+
+<Info>
+**Why this shape.** Targeting, pricing, and curation are folded into one round-trip — the brief drives discovery, the publisher curates against it, and `pricing_options` carry firm prices the buyer commits against via `pricing_option_id`. We rejected a separate `get_price_quote` step between products and buy creation: it splits one expert decision into two underspecified ones and breaks the brief→curation contract. Iteration is `buying_mode: "refine"` with a typed change array — not a new task. → [Design principle: the brief drives discovery](/dist/docs/3.1.0-beta.5/protocol/design-principles#3-the-brief-drives-discovery-targeting-is-an-input-not-a-step).
+</Info>
+
+**Authentication**: Optional (returns limited results without credentials)
+
+**Response Time**: ~60 seconds (AI inference with back-end systems)
+
+**Request Schema**: [`/schemas/3.1.0-beta.5/media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/3.1.0-beta.5/media-buy/get-products-request.json)
+**Response Schema**: [`/schemas/3.1.0-beta.5/media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/3.1.0-beta.5/media-buy/get-products-response.json)
+
+## Quick Start
+
+Discover products with a natural language brief:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/sdk/testing';
+import { GetProductsResponseSchema } from '@adcp/sdk';
+
+const result = await testAgent.getProducts({
+  buying_mode: 'brief',
+  brief: 'Premium athletic footwear with innovative cushioning',
+  brand: {
+    domain: 'acmecorp.com'
+  }
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+// Validate response against schema
+const validated = GetProductsResponseSchema.parse(result.data);
+console.log(`Found ${validated.products.length} products`);
+
+// Access validated product fields
+for (const product of validated.products) {
+  console.log(`- ${product.name} (${product.delivery_type})`);
+  console.log(`  Formats: ${product.format_ids.map(f => f.id).join(', ')}`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def discover_products():
+    result = await test_agent.simple.get_products(
+        buying_mode='brief',
+        brief='Premium athletic footwear with innovative cushioning',
+        brand={
+            'domain': 'acmecorp.com'
+        }
+    )
+    print(f"Found {len(result.products)} products")
+
+asyncio.run(discover_products())
+```
+
+```bash CLI
+uvx adcp \
+  https://test-agent.adcontextprotocol.org/sales/mcp \
+  get_products \
+  '{"buying_mode":"brief","brief":"Premium athletic footwear with innovative cushioning","brand":{"domain":"acmecorp.com"}}' \
+  --auth $ADCP_AUTH_TOKEN
+```
+
+</CodeGroup>
+
+### Using Structured Filters
+
+You can also use structured filters instead of (or in addition to) a brief. In `brief` mode, filters act as hard constraints on top of the publisher's curation — the brief describes intent, filters enforce requirements:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/sdk/testing';
+
+const result = await testAgent.getProducts({
+  buying_mode: 'wholesale',
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  filters: {
+    channels: ['ctv'],
+    delivery_type: 'guaranteed',
+    standard_formats_only: true
+  }
+});
+
+if (result.success && result.data) {
+  console.log(`Found ${result.data.products.length} guaranteed CTV products`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def discover_with_filters():
+    result = await test_agent.simple.get_products(
+        buying_mode='wholesale',
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        filters={
+            'channels': ['ctv'],
+            'delivery_type': 'guaranteed',
+            'standard_formats_only': True
+        }
+    )
+    print(f"Found {len(result.products)} guaranteed CTV products")
+
+asyncio.run(discover_with_filters())
+```
+
+</CodeGroup>
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw product feed access for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on products and proposals from a previous response using the `refine` array of change requests. v3 clients MUST include `buying_mode`. Sellers receiving requests from pre-v3 clients without `buying_mode` SHOULD default to `"brief"`. **Timing semantics:** `"wholesale"` is a wholesale product feed read — sellers SHOULD return a synchronous response and MUST NOT route a `"wholesale"` request through the async/Submitted arm. Partial completion is signalled via [`incomplete[]`](#incomplete-array), not a task handoff. `"brief"` and `"refine"` MAY complete synchronously OR MAY return a `Submitted` envelope when curation requires upstream-system queries or HITL review the seller cannot complete inside `time_budget`. Buyers needing predictable fast wholesale product feed access MUST use `"wholesale"`. |
+| `brief` | string | Conditional | Natural language description of campaign requirements. Required when `buying_mode` is `"brief"`. Must not be provided when `buying_mode` is `"wholesale"` or `"refine"`. |
+| `refine` | [Refine[]](#refine-array) | Conditional | Array of change requests for iterating on products and proposals. Required when `buying_mode` is `"refine"`. Must not be provided when `buying_mode` is `"brief"` or `"wholesale"`. See [Refine array](#refine-array) below. |
+| `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
+| `account` | AccountRef | No | Account reference for account-specific pricing. Returns products with pricing from this account's rate card. |
+| `catalog` | [Catalog](/dist/docs/3.1.0-beta.5/creative/catalogs) | No | Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Requires `brand`. See [Catalog discovery](#catalog-discovery) below. |
+| `filters` | Filters | No | Structured filters (see below) |
+| `fields` | string[] | No | Specific product fields to include in the response for lightweight discovery. When requesting signal metadata, buyers SHOULD request `included_signals` for non-selectable bundled/planned signals, and `signal_targeting_allowed`, `signal_targeting_options`, and `signal_targeting_rules` for package-level signal selection. |
+| `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/dist/docs/3.1.0-beta.5/governance/property/tasks/property_lists) |
+| `pagination` | PaginationRequest | No | Cursor-based pagination for large product result sets and wholesale product feeds (see below) |
+| `if_wholesale_feed_version` | string | No | Opaque `wholesale_feed_version` token from a prior `get_products` response. When provided, the seller compares against its current wholesale product feed version and MAY return `unchanged: true` (with `products` omitted) if nothing has changed. Versions are scoped to the (agent, account, filters, `buying_mode`, `property_list`, `catalog`) tuple. See [Wholesale feed versioning](#wholesale-feed-versioning). |
+| `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_wholesale_feed_version`. Evaluation order: `if_wholesale_feed_version` mismatch → full payload; `if_wholesale_feed_version` matches but `if_pricing_version` mismatches → full payload (so the buyer sees updated `pricing_options`); both match → seller MAY return `unchanged: true`. Sellers that don't track pricing separately ignore this. |
+| `time_budget` | Duration | No | Maximum time the buyer will commit to this request. The seller returns the best results achievable within this budget and does not start processes (human approvals, expensive external queries) that cannot complete in time. When omitted, the seller decides timing. Example: `{"interval": 30, "unit": "seconds"}`. |
+
+<Note>
+**Property Governance**
+
+The `property_list` filter references a property list created via [`create_property_list`](/dist/docs/3.1.0-beta.5/governance/property/tasks/property_lists#create_property_list) on a property governance agent. Property lists define which publisher properties meet compliance requirements — COPPA-certified sites, sustainability-scored inventory, brand-safe publishers, etc.
+
+To use property list filtering:
+1. Call `get_adcp_capabilities` on a property governance agent to discover available `property_features`
+2. Create a property list via `create_property_list` with your feature requirements
+3. Pass the resulting `property_list_id` to `get_products` to filter inventory
+
+The seller must declare `features.property_list_filtering: true` in [`get_adcp_capabilities`](/dist/docs/3.1.0-beta.5/protocol/get_adcp_capabilities) to support this filter. See the [Property Governance overview](/dist/docs/3.1.0-beta.5/governance/property/index) for the full workflow.
+</Note>
+
+### Filters Object
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `delivery_type` | string | Filter by `"guaranteed"` or `"non_guaranteed"` |
+| `is_fixed_price` | boolean | Filter for fixed-price vs auction products. Products with both pricing types can match either value, but the returned `pricing_options` array must include only options matching the requested pricing type so buyers can select deterministically from discovery. |
+| `format_ids` | FormatID[] | Filter by specific format IDs |
+| `standard_formats_only` | boolean | Only return products accepting IAB standard formats |
+| `min_exposures` | integer | Minimum exposures needed for measurement validity |
+| `start_date` | string | Campaign start date in ISO 8601 format (YYYY-MM-DD) for availability checks |
+| `end_date` | string | Campaign end date in ISO 8601 format (YYYY-MM-DD) for availability checks |
+| `budget_range` | object | Budget range to filter appropriate products (see Budget Range Object below) |
+| `countries` | string[] | Filter by target countries using ISO 3166-1 alpha-2 codes (e.g., `["US", "CA", "GB"]`) |
+| `regions` | string[] | Filter by region coverage using ISO 3166-2 codes (e.g., `["US-NY", "GB-SCT"]`). Best for locally-bound inventory |
+| `metros` | object[] | Filter by metro coverage. Each entry: `{ system, code }` (e.g., `[{ "system": "nielsen_dma", "code": "501" }]`) |
+| `channels` | string[] | Filter by advertising channels (e.g., `["display", "ctv", "social", "streaming_audio"]`). See [Media Channel Taxonomy](/dist/docs/3.1.0-beta.5/reference/media-channel-taxonomy) |
+| `postal_areas` | object[] | Filter by postal area coverage. Each entry: `{ system, values }` (e.g., `[{ "system": "us_zip", "values": ["10001"] }]`) |
+| `geo_proximity` | object[] | Filter by proximity to geographic points. Each entry uses exactly one boundary method: `radius`, `travel_time` + `transport_mode`, or `geometry` |
+| `keywords` | object[] | Filter by keyword relevance for search/retail media. Each entry: `{ keyword, match_type? }`. `match_type` defaults to `broad` if omitted |
+| `signal_targeting` | SignalTargeting[] | Discovery filter for products where the requested signals are buyer-selectable and jointly composable: available through inline `signal_targeting_options` and/or the seller's `get_signals` feed for wholesale products that allow signal targeting but omit inline options, with `signal_targeting_allowed: true`, and compatible under the product's `signal_targeting_rules`. Each entry uses `signal_ref` (`signal_id` is accepted only as a deprecated migration bridge) and may include `targeting_mode: "include"` or `"exclude"` to require support for `any` or `none` groups; omitted means `"include"`. `scope: "product"` is seller-local exact option matching only, not a portable semantic identifier across products or sellers; buyers wanting portable discovery should use `scope: "data_provider"` or `get_signals`. `included_signals` and deprecated `data_provider_signals` metadata do not satisfy this filter because they cannot be selected on `create_media_buy`. This filter is not the buy-time request shape; package selection always uses `packages[].targeting_overlay.signal_targeting_groups`. |
+| `required_performance_standards` | [PerformanceStandard[]](/dist/docs/3.1.0-beta.5/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | Filter to products that can meet the buyer's performance standard requirements. Each entry specifies a metric, threshold, and vendor (e.g., "DoubleVerify for viewability at 70% MRC"). Products that cannot meet these thresholds or do not support the specified vendors are excluded. |
+| `required_metrics` | string[] ([metric vocabulary](/dist/docs/3.1.0-beta.5/media-buy/media-buys/optimization-reporting)) | Filter to products whose `reporting_capabilities.available_metrics` is a superset of these metrics — i.e., products that commit to reporting all listed metrics in delivery. Use for capability discovery (e.g., `["completed_views"]` for a CTV CPCV buy). Sellers MUST silently exclude products that cannot meet the list — filter-not-fail; do not return an error. The product's declared `available_metrics` becomes the binding reporting contract carried into the resulting media buy. |
+| `required_vendor_metrics` | object[] | Filter to products whose `reporting_capabilities.vendor_metrics` covers vendor-defined metrics (proprietary attention, emissions, panel demographics, brand-lift surveys, etc.). Each entry pins `vendor` (BrandRef) and/or `metric_id` — at least one. Cross-vendor discovery (e.g., "any attention measurement") is the buyer agent's responsibility: resolve which vendors offer a category via the vendors' `brand.json` records, then enumerate them as filter entries. Same filter-not-fail semantics as `required_metrics`. |
+
+### Placement fields
+
+`get_products` returns product placement data when the seller includes `placements` or the buyer asks for it through `fields`. Placement IDs are publisher-scoped. Product placements should reference the publisher's public `adagents.json` placement declarations with `{publisher_domain, placement_id}` when a publisher declaration exists. Seller-private placement IDs, source/origin details, and delivery-system mappings must stay out of the response.
+
+Each returned placement may carry:
+
+| Field | Meaning |
+|-------|---------|
+| `placement_id` | Placement identifier in the publisher namespace. Buyers reference this with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `placement_ids` strings are only unambiguous in single-publisher contexts. |
+| `publisher_domain` | Domain whose `adagents.json` defines the publisher-referenced placement. New multi-publisher products SHOULD include it. When omitted on legacy products, buyers may interpret `placement_id` relative to the seller agent's own publisher domain. |
+| `mode` | `targetable` means the buyer may reference the publisher-scoped placement, for example in `creative_assignments[].placement_refs`. `included` means the placement is part of the product composition but not buyer-selectable. |
+| `format_ids` / `format_options` | Placement-specific creative support. Product-level formats are the upper bound; placement-level formats narrow the effective accepted set for that placement and must not add formats the product does not accept. |
+
+Publishers can authorize sales agents for specific publisher placements using `authorized_agents[].placement_ids` or `authorized_agents[].placement_tags` in `adagents.json`. Sellers should only return publisher-referenced placements they are authorized to sell.
+
+Signal-targeting filter example:
+
+```json
+{
+  "$schema": "/schemas/3.1.0-beta.5/media-buy/get-products-request.json",
+  "buying_mode": "wholesale",
+  "filters": {
+    "signal_targeting": [
+      {
+        "signal_ref": {
+          "scope": "data_provider",
+          "data_provider_domain": "pinnacle-data.example",
+          "signal_id": "auto_intenders"
+        },
+        "value_type": "binary",
+        "value": true,
+        "targeting_mode": "include"
+      }
+    ]
+  },
+  "fields": [
+    "product_id",
+    "name",
+    "included_signals",
+    "signal_targeting_allowed",
+    "signal_targeting_options",
+    "signal_targeting_rules",
+    "pricing_options"
+  ]
+}
+```
+
+### Budget Range Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `currency` | string | Yes | ISO 4217 currency code (e.g., `"USD"`, `"EUR"`, `"GBP"`) |
+| `min` | number | No* | Minimum budget amount |
+| `max` | number | No* | Maximum budget amount |
+
+*At least one of `min` or `max` must be specified.
+
+### Refine array
+
+The `refine` array is a list of change requests. Each entry declares a `scope` and what the buyer is asking for. At least one entry is required. The seller considers all entries together when composing the response, and replies to each via `refinement_applied`.
+
+Each entry is a discriminated union on `scope`:
+
+#### scope: "request"
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `scope` | string | Yes | `"request"` |
+| `ask` | string | Yes | Direction for the selection as a whole (e.g., `"more video options"`, `"suggest how to combine these products"`). |
+
+#### scope: "product"
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `scope` | string | Yes | `"product"` |
+| `product_id` | string | Yes | Product ID from a previous `get_products` response |
+| `action` | string | No | `"include"` (default): return this product with updated pricing and data. `"omit"`: exclude from the response. `"more_like_this"`: find similar products (the original is also returned). When omitted, the seller treats the entry as `"include"`. |
+| `ask` | string | No | What the buyer is asking for. For `"include"`: specific changes (e.g., `"add 16:9 format"`). For `"more_like_this"`: what "similar" means (e.g., `"same audience but video format"`). Ignored when `action` is `"omit"`. |
+
+#### scope: "proposal"
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `scope` | string | Yes | `"proposal"` |
+| `proposal_id` | string | Yes | Proposal ID from a previous `get_products` response |
+| `action` | string | No | `"include"` (default): return with updated allocations and pricing. `"omit"`: exclude from the response. `"finalize"`: request firm pricing and inventory hold (transitions a draft proposal to committed). When omitted, the seller treats the entry as `"include"`. |
+| `ask` | string | No | What the buyer is asking for (e.g., `"shift more budget toward video"`, `"reduce total by 10%"`). Ignored when `action` is `"omit"`. |
+
+### refinement_applied (response)
+
+When the seller receives a `refine` array, the response includes `refinement_applied` — an array matched by position. Each entry reports whether the ask was fulfilled:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `scope` | string | Yes | Echoes the scope (`"request"` / `"product"` / `"proposal"`) from the corresponding `refine` entry. |
+| `product_id` | string | Yes when `scope` is `"product"` | Echoes `product_id` from the corresponding refine entry. |
+| `proposal_id` | string | Yes when `scope` is `"proposal"` | Echoes `proposal_id` from the corresponding refine entry. |
+| `status` | string | Yes | `"applied"`: ask fulfilled. `"partial"`: partially fulfilled. `"unable"`: could not fulfill. |
+| `notes` | string | No | Seller explanation. Recommended when status is `"partial"` or `"unable"`. |
+
+### Catalog discovery
+
+Pass a `catalog` to find advertising products that can promote your catalog items. The seller matches your catalog items against its inventory and returns products where matches exist. Supports all catalog types — a product catalog finds sponsored product slots, a job catalog finds job ad products, a flight catalog finds dynamic travel ads.
+
+The `catalog` field uses the same [Catalog](/dist/docs/3.1.0-beta.5/creative/catalogs) object used throughout AdCP. You can reference a synced catalog by `catalog_id`, provide inline items, or use selectors to filter:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | CatalogType | Catalog type (required) — `product`, `job`, `hotel`, `flight`, `offering`, etc. |
+| `catalog_id` | string | Reference a synced catalog by ID |
+| `ids` | string[] | Filter to specific item IDs |
+| `gtins` | string[] | Filter by GTIN for cross-retailer matching (product type only) |
+| `tags` | string[] | Filter by tags (OR logic) |
+| `category` | string | Filter by category |
+| `query` | string | Natural language filter |
+
+Products in the response include `catalog_types` (what catalog types they support) and `catalog_match` (which items matched).
+
+## Response
+
+Returns an array of `products` and optionally `proposals`.
+
+### Products Array
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `product_id` | string | Unique product identifier |
+| `name` | string | Human-readable product name |
+| `description` | string | Detailed product description |
+| `publisher_properties` | PublisherProperty[] | Array of publisher entries, each with `publisher_domain` and either `property_ids` or `property_tags` |
+| `format_ids` | FormatID[] | Supported creative format IDs |
+| `delivery_type` | string | `"guaranteed"` or `"non_guaranteed"` |
+| `delivery_measurement` | DeliveryMeasurement | (Optional) How delivery is measured (impressions, views, etc.) |
+| `pricing_options` | PricingOption[] | Available pricing models (CPM, CPCV, etc.). Auction options may include `floor_price` and optional `price_guidance`. Bid-based auction models (CPM, vCPM, CPC, CPCV, CPV) may also include optional `max_bid` (boolean). |
+| `shows` | CollectionSelector[] | (Optional) Collections available in this product. Each entry has `publisher_domain` and `collection_ids`. Buyers resolve full collection objects from the referenced `adagents.json`. See [Collections and installments](/dist/docs/3.1.0-beta.5/media-buy/product-discovery/collections-and-installments). |
+| `collection_targeting_allowed` | boolean | (Optional, default: false) Whether buyers can target a subset of this product's shows. When false, the product is a bundle. |
+| `data_provider_signals` | DataProviderSignalSelector[] | (Optional, deprecated) Legacy/non-selectable metadata for data-provider catalog signals already bundled into or associated with this product. New implementations should use `included_signals`. |
+| `included_signals` | SignalListing[] | (Optional) Non-selectable signal metadata for signals already included in, bundled with, or planned into this product. These describe what the product is; buyers do not select them in package `signal_targeting_groups`. Data-provider and signal-source refs may be reference-only; product-local refs include inline `name` and `value_type`. |
+| `signal_targeting_allowed` | boolean | (Optional, default: false) Whether this product has a package-level signal targeting surface. Editability is controlled by `signal_targeting_rules`; fixed/default-only products still set this to true when applied signal groups are echoed. |
+| `signal_targeting_options` | ProductSignalTargetingOption[] | (Optional) Inline product-scoped signal options the buyer may select, or the seller may apply when fixed/default, through `packages[].targeting_overlay.signal_targeting_groups`. May include per-signal `pricing_options`; product-scoped prices are authoritative for this product. Data-provider and signal-source refs may be reference-only; product-local refs include inline `name` and `value_type`. |
+| `signal_targeting_rules` | SignalTargetingRules | (Optional) Product-scoped composition rules for selectable signals, such as direct vs seller-planned resolution, optional, required, maximum, mutually exclusive, fixed selections, and group size limits. These limits belong on the product, not seller-wide `get_adcp_capabilities`, because products may be backed by different ad servers or seller planning layers. Fixed/default selections are applied by the seller and echoed on the resulting package state. |
+| `brief_relevance` | string | Why this product matches the brief (when brief provided) |
+| `measurement_readiness` | [MeasurementReadiness](/dist/docs/3.1.0-beta.5/media-buy/conversion-tracking/#measurement-readiness) | (Optional) Whether the buyer's event setup is sufficient for this product's optimization. Only present when the seller can evaluate the buyer's account context. |
+| `measurement_terms` | [MeasurementTerms](/dist/docs/3.1.0-beta.5/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | (Optional) Seller's default billing measurement and makegood terms. Buyers may propose different terms at `create_media_buy`. |
+| `performance_standards` | [PerformanceStandard[]](/dist/docs/3.1.0-beta.5/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | (Optional) Seller's default performance standards (viewability, IVT, completion rate, brand safety, attention score). Buyers may propose different standards at `create_media_buy`. |
+| `cancellation_policy` | [CancellationPolicy](/dist/docs/3.1.0-beta.5/media-buy/advanced-topics/pricing-models#cancellation-policy) | (Optional) Cancellation notice period and penalties for guaranteed products. Buyers accept these terms by creating a media buy against the product. |
+
+### Proposals Array (Optional)
+
+Publishers may return proposals alongside products - structured media plans with budget allocations. See [Proposals](/dist/docs/3.1.0-beta.5/media-buy/product-discovery/media-products#proposals) for details.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `proposal_id` | string | Unique identifier for executing this proposal via `create_media_buy` |
+| `name` | string | Human-readable name for the media plan |
+| `allocations` | ProductAllocation[] | Budget allocations across products (percentages must sum to 100). Each allocation may include optional `start_time` and `end_time` for per-flight scheduling. |
+| `forecast` | DeliveryForecast | Aggregate delivery forecast for the proposal. Contains forecast points with metric ranges. See [Delivery Forecasts](/dist/docs/3.1.0-beta.5/media-buy/product-discovery/media-products#delivery-forecasts) |
+| `total_budget_guidance` | object | Optional min/recommended/max budget guidance |
+| `brief_alignment` | string | How this proposal addresses the campaign brief |
+| `expires_at` | string | ISO 8601 timestamp when this proposal expires |
+
+### Pagination
+
+For large product result sets and wholesale product feeds, use cursor-based pagination:
+
+| Request Parameter | Type | Description |
+|---|---|---|
+| `pagination.max_results` | integer | Maximum products per page (1-100, default: 50) |
+| `pagination.cursor` | string | Cursor from previous response for next page |
+
+| Response Field | Type | Description |
+|---|---|---|
+| `pagination.has_more` | boolean | Whether more products are available |
+| `pagination.cursor` | string | Cursor to pass for the next page |
+| `pagination.total_count` | integer | Total matching products (optional, not all backends support this) |
+
+Pagination is optional. When omitted, the server returns all results (or a server-chosen default page). When the response includes `pagination.has_more: true`, pass `pagination.cursor` in the next request to get the next page.
+
+### Response Metadata
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `property_list_applied` | boolean | [AdCP 3.0] `true` if the agent filtered products based on the provided `property_list`. Absent or `false` if not provided or not supported. |
+| `catalog_applied` | boolean | `true` if the seller filtered results based on the provided `catalog`. Absent or `false` if no catalog was provided or the seller does not support catalog matching. |
+| `refinement_applied` | [RefinementResult[]](#refinement_applied-response) | Seller acknowledgment of each `refine` entry, matched by position. Only present when `buying_mode` is `"refine"`. See [refinement_applied](#refinement_applied-response) above. |
+| `incomplete` | [IncompleteEntry[]](#incomplete-array) | Declares what the seller could not finish within the `time_budget` or due to internal limits. Each entry identifies a scope with a human-readable explanation. Absent when the response is fully complete. See [incomplete array](#incomplete-array) below. |
+| `filter_diagnostics` | object | Optional non-fatal observability block describing how `filters` narrowed the candidate set — `total_candidates` plus per-filter `excluded_by` counts (keyed by filter name). Disambiguates "no inventory" from "your filter excluded everything" when the result list is empty or unexpectedly small. Counts only — never product names — to avoid leaking competitive intelligence. See [filter_diagnostics](#filter_diagnostics) below. |
+| `wholesale_feed_version` | string | Opaque token representing the version of the wholesale product feed state used to compose this response. Sellers implementing conditional-fetch (`if_wholesale_feed_version`) MUST return this on every response so buyers can cache and probe later. Treat as opaque — no format, no ordering, no inspection. See [Wholesale feed versioning](#wholesale-feed-versioning). |
+| `pricing_version` | string | Optional opaque token representing the version of the pricing layer, including product `pricing_options` and nested `signal_targeting_options[].pricing_options`. When the seller supports independent pricing versioning, `pricing_version` changes when prices move but `wholesale_feed_version` changes only when structure/metadata moves. Sellers not separating these MAY omit `pricing_version` and use `wholesale_feed_version` for both. |
+| `cache_scope` | string | `"public"` or `"account"`. **REQUIRED on every response** (schema-enforced — the safety property of the two-layer cache depends on it). When the request had no `account`, MUST be `"public"`. When the request had `account`, the seller declares either `"public"` (account prices off the rate card — buyer dedupes) or `"account"` (account-specific overrides). See [Cache layering](#cache-layering). |
+| `unchanged` | boolean | Present and `true` ONLY when the request carried `if_wholesale_feed_version` (and/or `if_pricing_version`) matching the seller's current version for the buyer's `cache_scope`, in which case `products[]` MUST be omitted; `wholesale_feed_version`, `cache_scope`, and `pricing_version` (when used) MUST still be echoed. Sellers MUST NOT emit `unchanged: false` — absence of the field IS the "response carries products" signal (one shape per state). Buyers receiving `unchanged: true` MUST NOT mutate their local wholesale product mirror. |
+
+### filter_diagnostics
+
+When the seller can attribute exclusions to specific filters, the response MAY include a `filter_diagnostics` block. This is observability — not error reporting; sellers still silently exclude unmatched products per the filter-not-fail convention. Buyers use this to triage empty/small results without depending on its presence. `total_candidates` and `excluded_by` are independently optional — sellers whose baseline candidate set size is sensitive MAY emit `excluded_by` without `total_candidates`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `semantics` | string | `"only"` (deterministic; counts products that would have been included if not for *this* filter alone — recommended for triage), `"any"` (counts products excluded by any filter; counts may overlap), or `"approximate"` (seller can't cleanly attribute exclusions to a single filter). Buyers SHOULD inspect `semantics` before doing arithmetic on counts. |
+| `total_candidates` | integer | Number of products considered before filters were applied. May be sampled or capped when the candidate pool is large. Optional. |
+| `excluded_by` | object | Keys are filter property names from the request (`required_metrics`, `required_geo_targeting`, `budget_range`, etc.). Each value is `{ count, values?, notes? }`. Only filters that meaningfully narrowed the set need appear. |
+| `excluded_by.<filter>.count` | integer | Count of products excluded by this filter, interpreted per the parent `semantics` field. |
+| `excluded_by.<filter>.values` | array | Optional list of the specific filter values that contributed to exclusions (e.g., `["completed_views"]` for `required_metrics`). Items are strings or objects depending on filter shape; opaque without filter-specific knowledge. |
+| `excluded_by.<filter>.notes` | string | Optional human-readable note about the narrowing. |
+
+```json
+{
+  "products": [],
+  "filter_diagnostics": {
+    "semantics": "only",
+    "total_candidates": 47,
+    "excluded_by": {
+      "required_metrics": { "count": 31, "values": ["completed_views"] },
+      "required_geo_targeting": { "count": 9 },
+      "budget_range": { "count": 7 }
+    }
+  }
+}
+```
+
+### incomplete array
+
+When the seller cannot complete all work within the `time_budget` (or due to its own internal limits), the response includes `incomplete` — an array declaring what is missing. Buyers can use `estimated_wait` to decide whether to retry with a larger budget.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `scope` | string | Yes | `"products"`: not all inventory sources were searched. `"pricing"`: products returned but pricing is absent or unconfirmed. `"forecast"`: products returned but forecast data is absent. `"proposals"`: proposals were not generated or are incomplete. `"wholesale_feed"`: in wholesale mode, full feed enumeration could not complete. |
+| `description` | string | Yes | Human-readable explanation of what is missing and why. |
+| `estimated_wait` | Duration | No | How much additional time would resolve this scope. |
+
+### Wholesale feed versioning
+
+A buyer that just synced a seller's wholesale product feed can ask "has anything changed since version X?" in one cheap call, regardless of feed size. Sellers return an opaque `wholesale_feed_version` on every response; buyers pass it back via `if_wholesale_feed_version` on the next call and the seller MAY short-circuit with `unchanged: true` — no products payload, no per-page diff. Patterned on HTTP `ETag` / `If-None-Match`.
+
+This is the seller-side wholesale product feed returned by `get_products`. It is not a `sync_catalogs` feed; `sync_catalogs` manages buyer-provided campaign input feeds on the seller account.
+
+**Unchanged response example:**
+
+Request:
+
+```json
+{
+  "$schema": "/schemas/3.1.0-beta.5/media-buy/get-products-request.json",
+  "buying_mode": "wholesale",
+  "if_wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412"
+}
+```
+
+Response (wholesale product feed unchanged):
+
+```json
+{
+  "$schema": "/schemas/3.1.0-beta.5/media-buy/get-products-response.json",
+  "status": "completed",
+  "message": "Wholesale product feed unchanged since v2026-05-18T08:00:00Z-acme-rev412.",
+  "context_id": "ctx-abc-789",
+  "unchanged": true,
+  "wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412",
+  "pricing_version": "v2026-05-18T08:00:00Z-acme-rev412",
+  "cache_scope": "public"
+}
+```
+
+Response (wholesale product feed changed — full payload returned, abbreviated):
+
+```json test=false
+{
+  "message": "Returning 50 of 312 products (wholesale feed version advanced).",
+  "context_id": "ctx-abc-790",
+  "wholesale_feed_version": "v2026-05-18T10:15:00Z-acme-rev415",
+  "pricing_version": "v2026-05-18T10:15:00Z-acme-rev415",
+  "cache_scope": "public",
+  "products": [
+    {
+      "product_id": "prod_premium_ctv_us",
+      "name": "Premium CTV — US",
+      "description": "Run-of-network CTV inventory across premium publishers.",
+      "publisher_properties": [{ "publisher_domain": "streamhaus.example.com", "property_ids": ["primetime_ctv"] }],
+      "format_ids": [{ "id": "video_ctv_1080p_30s" }],
+      "delivery_type": "guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "po_cpm_v2", "pricing_model": "cpm", "currency": "USD", "fixed_price": 18.50 }
+      ]
+    }
+  ],
+  "pagination": { "has_more": true, "cursor": "eyJvIjo1MH0=", "total_count": 312 }
+}
+```
+
+**Rules**
+
+- Tokens are **opaque**. No format, no ordering, no inspection.
+- A returned `wholesale_feed_version` is scoped to the request parameters that produced it. Buyers MUST cache the version alongside the `(account, filters, buying_mode, property_list, catalog)` tuple used.
+- `pricing_version` is an optional finer-grained token: when present, it changes when prices move but `wholesale_feed_version` changes only when structure/metadata moves. Common for rate-card sweeps that don't change product metadata.
+- **`if_pricing_version` requires `if_wholesale_feed_version`.** Pricing has no structural baseline of its own. Sending `if_pricing_version` without `if_wholesale_feed_version` is a schema-level error. The seller's evaluation is two-stage: wholesale feed mismatch returns the full payload (pricing is implicitly stale); wholesale feed match with pricing mismatch also returns the full payload (so the buyer sees updated `pricing_options`); both match → `unchanged: true`.
+- **`filters` canonicalization.** Sellers MUST treat the `filters` object as canonicalized before hashing into the `wholesale_feed_version` keyspace: keys MUST be sorted lexicographically, omitted-and-default values MUST be treated identically (a missing `delivery_type` key is the same scope as `delivery_type: null`), array values MUST be sorted where the filter has set semantics (e.g., `channels`, `format_ids`, `required_metrics`) and preserved-order where the filter has sequence semantics (e.g., `preferred_delivery_types`). Buyers that pass equivalent-but-differently-shaped filter objects MUST receive the same `wholesale_feed_version` from the seller. This rule prevents silent stale-mirror bugs from key-order or default-elision differences between buyer SDKs. **Forward-compat default:** new filter fields added in 3.x minor versions MUST declare set-vs-sequence semantics in their schema (via `x-canonicalization: set | sequence` or equivalent prose); absent an explicit declaration, the rule defaults to **set-semantics** (sort before hashing). Sellers and SDKs that drift on this default produce cache misses that consumers can't explain.
+- **Pagination interaction.** `wholesale_feed_version` describes the wholesale product feed as a whole, not individual pages. Sellers MUST return `wholesale_feed_version` on every paginated page (not only the first) when they declare `wholesale_feed_versioning.supported: true`; sellers that do not declare versioning SHOULD do the same. When the wholesale feed mutates between pages, the new version surfaces on the next page and the buyer MUST restart pagination from `cursor: null` — the partial pages they've already received describe a stale version. Sellers MAY alternatively snapshot the feed at the start of pagination and serve all pages from that snapshot under the original version; either implementation is conformant as long as `wholesale_feed_version` on a given page is the version that page belongs to.
+- **`unchanged: true` and in-progress pagination.** A buyer that is mid-pagination on `cursor: X` MAY send `if_wholesale_feed_version` matching the version their pages so far were drawn from. If the seller confirms `unchanged: true`, the response omits `products[]` and pagination envelope entirely; the buyer abandons their in-progress walk under that version with confidence that no further pages would have produced new data. Sellers MAY NOT use the conditional-fetch short-circuit to skip individual pages within an active pagination — `unchanged` is feed-versus-cached-version, not per-page.
+- Pre-v3.1 sellers that ignore `if_wholesale_feed_version` simply return the full payload — semantically correct, just inefficient (same as the unchanged-server path in HTTP).
+
+For pushed change tracking beyond conditional fetch, see `specs/wholesale-feed-webhooks.md`. Wholesale feed webhooks carry the changed product payload, pricing payload, removal tombstone, or bulk-change summary; `get_products` remains the repair and reconciliation read.
+
+### Cache layering
+
+Sellers publish two notional layers: a **public layer** (the rate-card / structural view) and **per-account overlays** (custom deals, account-specific rate cards). The conditional-fetch path is layer-aware via `cache_scope`.
+
+**Why this matters.** A buyer mirroring wholesale products across N accounts at one seller doesn't want to hold N copies of inventory that's actually identical for every buyer. The public layer is the seller's published rate card; most accounts at most sellers price off it directly. Premium custom deals are the exception.
+
+**Two-layer cache.**
+
+| Layer | Cache key | What's stored |
+|---|---|---|
+| Public | `(agent, buying_mode, filters, property_list, catalog)` | `wholesale_feed_version_public`, the wholesale product feed payload as seen without an account ref |
+| Account overlay | `(agent, buying_mode, filters, property_list, catalog, account_id)` | `wholesale_feed_version_account`, the wholesale product feed payload as seen WITH this account ref, when `cache_scope: "account"` was returned |
+
+**Behavior.**
+
+- Requests without `account` always return `cache_scope: "public"`. Buyers cache under the public key.
+- Requests with `account` return `cache_scope: "public"` OR `"account"` (seller MUST declare; no default).
+  - `"public"`: this account prices off the rate card. Buyer MAY dedupe — the version and payload are the same as the unauthenticated view. The buyer can serve subsequent requests for any account in `"public"` cache_scope from a single public-layer entry.
+  - `"account"`: this response carries account-specific overrides. Buyer caches under the account overlay key.
+- Sellers MAY downgrade an account from `"account"` back to `"public"` by returning `cache_scope: "public"` on a request that previously got `"account"` — buyers SHOULD interpret this as "this account no longer has overrides" and drop their account overlay.
+
+**Conditional fetch with `if_wholesale_feed_version`.** Send the token paired with whichever scope it was returned in. The seller compares against the current version for that scope. If the buyer's token belongs to an `"account"` scope but the seller responds with `cache_scope: "public"`, that's the downgrade signal — buyer drops the overlay.
+
+**Webhook invalidation.** Wholesale feed webhook events declare `applies_to.scope` on `*.priced` and `*.updated` payloads. Sellers MUST apply the same account/caller authorization predicate used by `get_products buying_mode: "wholesale"` when deciding which subscribers receive product webhooks:
+
+- `applies_to: { scope: "public" }` → invalidate the public-layer cache for the entity. All account overlays referencing that public version are also stale and SHOULD be refetched.
+- `applies_to: { scope: "account", account_ids: [...] }` → invalidate only the named accounts' overlays. The public layer is unaffected.
+- `applies_to: { scope: "account" }` without `account_ids` → the seller is withholding the affected set; the per-subscriber scope filter routes the event only to subscribers whose principal is in the affected set. Receiving the event means "your overlay is stale."
+
+See `specs/wholesale-feed-webhooks.md` §"Cache layering and event scoping" for the full webhook-side spec.
+
+**See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/3.1.0-beta.5/media-buy/get-products-response.json)
+
+## Common Scenarios
+
+### Time-budgeted discovery
+
+Declare a time budget when you need fast results and can accept partial data. The seller returns what it can within the budget and declares what is incomplete:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/sdk/testing';
+
+const result = await testAgent.getProducts({
+  buying_mode: 'brief',
+  brief: 'CTV and display for brand awareness',
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  time_budget: {
+    interval: 10,
+    unit: 'seconds'
+  }
+});
+
+if (result.success && result.data) {
+  console.log(`Found ${result.data.products.length} products`);
+
+  if (result.data.incomplete) {
+    for (const entry of result.data.incomplete) {
+      console.log(`Incomplete: ${entry.scope} — ${entry.description}`);
+      if (entry.estimated_wait) {
+        console.log(`  Would resolve in ${entry.estimated_wait.interval} ${entry.estimated_wait.unit}`);
+      }
+    }
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def discover_with_time_budget():
+    result = await test_agent.simple.get_products(
+        buying_mode='brief',
+        brief='CTV and display for brand awareness',
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        time_budget={
+            'interval': 10,
+            'unit': 'seconds'
+        }
+    )
+    print(f"Found {len(result.products)} products")
+
+    for entry in result.get('incomplete', []):
+        print(f"Incomplete: {entry['scope']} — {entry['description']}")
+        if 'estimated_wait' in entry:
+            wait = entry['estimated_wait']
+            print(f"  Would resolve in {wait['interval']} {wait['unit']}")
+
+asyncio.run(discover_with_time_budget())
+```
+
+</CodeGroup>
+
+A response with incomplete data — products are returned but some scopes are missing:
+
+```json test=false
+{
+  "products": [
+    {
+      "product_id": "prog-display-ros",
+      "name": "Programmatic Display — Run of Site",
+      "delivery_type": "non_guaranteed",
+      "pricing_options": [{ "pricing_option_id": "cpm-ros", "pricing_model": "cpm", "currency": "USD", "fixed_price": 12.00 }]
+    }
+  ],
+  "incomplete": [
+    {
+      "scope": "products",
+      "description": "Premium inventory not searched — requires publisher approval",
+      "estimated_wait": { "interval": 60, "unit": "minutes" }
+    },
+    {
+      "scope": "forecast",
+      "description": "Forecast model did not complete within budget",
+      "estimated_wait": { "interval": 45, "unit": "seconds" }
+    }
+  ]
+}
+```
+
+### Wholesale Product Discovery
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/sdk/testing';
+
+// wholesale mode: buyer applies their own audiences, no publisher curation
+const result = await testAgent.getProducts({
+  buying_mode: 'wholesale',
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  filters: {
+    delivery_type: 'non_guaranteed'
+  }
+});
+
+if (result.success && result.data) {
+  console.log(`Found ${result.data.products.length} standard wholesale products`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def discover_standard_wholesale_products():
+    # wholesale mode: buyer applies their own audiences, no publisher curation
+    result = await test_agent.simple.get_products(
+        buying_mode='wholesale',
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        filters={
+            'delivery_type': 'non_guaranteed'
+        }
+    )
+    print(f"Found {len(result.products)} standard wholesale products")
+
+asyncio.run(discover_standard_wholesale_products())
+```
+
+</CodeGroup>
+
+### Multi-Format Discovery
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/sdk/testing';
+
+// Find products supporting both video and display
+const result = await testAgent.getProducts({
+  buying_mode: 'brief',
+  brief: 'Brand awareness campaign with video and display',
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  filters: {
+    channels: ['display', 'ctv']
+  }
+});
+
+if (result.success && result.data) {
+  console.log(`Found ${result.data.products.length} products supporting video and display`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def discover_multi_format():
+    # Find products supporting both video and display
+    result = await test_agent.simple.get_products(
+        buying_mode='brief',
+        brief='Brand awareness campaign with video and display',
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        filters={
+            'channels': ['display', 'ctv']
+        }
+    )
+    print(f"Found {len(result.products)} products supporting video and display")
+
+asyncio.run(discover_multi_format())
+```
+
+</CodeGroup>
+
+### Budget and Date Filtering
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/sdk/testing';
+
+// Find products within budget and date range for specific countries and channels
+const result = await testAgent.getProducts({
+  buying_mode: 'brief',
+  brief: 'Q2 campaign for athletic footwear in North America',
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  filters: {
+    start_date: '2025-04-01',
+    end_date: '2025-06-30',
+    budget_range: {
+      min: 50000,
+      max: 100000,
+      currency: 'USD'
+    },
+    countries: ['US', 'CA'],
+    channels: ['display', 'ctv', 'podcast'],
+    delivery_type: 'guaranteed'
+  }
+});
+
+if (result.success && result.data) {
+  console.log(`Found ${result.data.products.length} products for Q2 within budget`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def discover_with_budget_and_dates():
+    # Find products within budget and date range for specific countries and channels
+    result = await test_agent.simple.get_products(
+        buying_mode='brief',
+        brief='Q2 campaign for athletic footwear in North America',
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        filters={
+            'start_date': '2025-04-01',
+            'end_date': '2025-06-30',
+            'budget_range': {
+                'min': 50000,
+                'max': 100000,
+                'currency': 'USD'
+            },
+            'countries': ['US', 'CA'],
+            'channels': ['display', 'ctv', 'podcast'],
+            'delivery_type': 'guaranteed'
+        }
+    )
+    print(f"Found {len(result.products)} products for Q2 within budget")
+
+asyncio.run(discover_with_budget_and_dates())
+```
+
+</CodeGroup>
+
+### Property Tag Resolution
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/sdk/testing';
+
+// Get products with property tags
+const result = await testAgent.getProducts({
+  buying_mode: 'brief',
+  brief: 'Sports content',
+  brand: {
+    domain: 'acmecorp.com'
+  }
+});
+
+if (result.success && result.data) {
+  // Products with property_tags in publisher_properties represent large networks
+  // Use get_adcp_capabilities to discover the agent's portfolio
+  const productsWithTags = result.data.products.filter(p =>
+    p.publisher_properties?.some(pub => pub.property_tags && pub.property_tags.length > 0)
+  );
+  console.log(`${productsWithTags.length} products use property tags (large networks)`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def discover_property_tags():
+    # Get products with property tags
+    result = await test_agent.simple.get_products(
+        buying_mode='brief',
+        brief='Sports content',
+        brand={
+            'domain': 'acmecorp.com'
+        }
+    )
+
+    # Products with property_tags in publisher_properties represent large networks
+    # Use get_adcp_capabilities to discover the agent's portfolio
+    products_with_tags = [p for p in result.products
+        if any(pub.get('property_tags') for pub in p.get('publisher_properties', []))]
+    print(f"{len(products_with_tags)} products use property tags (large networks)")
+
+asyncio.run(discover_property_tags())
+```
+
+</CodeGroup>
+
+### Guaranteed Delivery Products
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/sdk/testing';
+
+// Find guaranteed delivery products for measurement
+const result = await testAgent.getProducts({
+  buying_mode: 'brief',
+  brief: 'Guaranteed delivery for lift study',
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  filters: {
+    delivery_type: 'guaranteed',
+    min_exposures: 100000
+  }
+});
+
+if (result.success && result.data) {
+  console.log(`Found ${result.data.products.length} guaranteed products with 100k+ exposures`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def discover_guaranteed():
+    # Find guaranteed delivery products for measurement
+    result = await test_agent.simple.get_products(
+        buying_mode='brief',
+        brief='Guaranteed delivery for lift study',
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        filters={
+            'delivery_type': 'guaranteed',
+            'min_exposures': 100000
+        }
+    )
+    print(f"Found {len(result.products)} guaranteed products with 100k+ exposures")
+
+asyncio.run(discover_guaranteed())
+```
+
+</CodeGroup>
+
+### Standard Formats Only
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/sdk/testing';
+
+// Find products that only accept IAB standard formats
+const result = await testAgent.getProducts({
+  buying_mode: 'wholesale',
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  filters: {
+    standard_formats_only: true
+  }
+});
+
+if (result.success && result.data) {
+  console.log(`Found ${result.data.products.length} products with standard formats only`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def discover_standard_formats():
+    # Find products that only accept IAB standard formats
+    result = await test_agent.simple.get_products(
+        buying_mode='wholesale',
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        filters={
+            'standard_formats_only': True
+        }
+    )
+    print(f"Found {len(result.products)} products with standard formats only")
+
+asyncio.run(discover_standard_formats())
+```
+
+</CodeGroup>
+
+### Catalog-driven discovery
+
+Use `catalog` with a brand to discover advertising products that can promote your catalog items. The seller matches your items against its inventory and returns products where matches exist:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/sdk/testing';
+
+// Discover retail media products for specific catalog items
+const result = await testAgent.getProducts({
+  buying_mode: 'wholesale',
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  catalog: {
+    type: 'product',
+    tags: ['ketchup', 'organic'],
+    category: 'food/condiments'
+  },
+  filters: {
+    channels: ['retail_media']
+  }
+});
+
+if (result.success && result.data) {
+  if (result.data.catalog_applied) {
+    console.log(`Found ${result.data.products.length} products with catalog matches`);
+  } else {
+    console.log('Seller does not support catalog matching');
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def discover_commerce_products():
+    # Discover retail media products for specific catalog items
+    result = await test_agent.simple.get_products(
+        buying_mode='wholesale',
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        catalog={
+            'type': 'product',
+            'tags': ['ketchup', 'organic'],
+            'category': 'food/condiments'
+        },
+        filters={
+            'channels': ['retail_media']
+        }
+    )
+    if result.get('catalog_applied'):
+        print(f"Found {len(result.products)} products with catalog matches")
+    else:
+        print("Seller does not support catalog matching")
+
+asyncio.run(discover_commerce_products())
+```
+
+```bash CLI
+uvx adcp \
+  https://test-agent.adcontextprotocol.org/sales/mcp \
+  get_products \
+  '{"buying_mode":"wholesale","brand":{"domain":"acmecorp.com"},"catalog":{"type":"product","tags":["ketchup","organic"],"category":"food/condiments"},"filters":{"channels":["retail_media"]}}' \
+  --auth $ADCP_AUTH_TOKEN
+```
+
+</CodeGroup>
+
+You can also use GTIN matching, reference a synced catalog, or discover products for other catalog types:
+
+```json
+{
+  "catalog": {
+    "type": "product",
+    "gtins": ["00013000006040", "00013000006057"]
+  }
+}
+```
+
+```json
+{
+  "catalog": {
+    "catalog_id": "gmc-primary",
+    "type": "product"
+  }
+}
+```
+
+```json
+{
+  "catalog": {
+    "type": "job",
+    "catalog_id": "chef-vacancies"
+  }
+}
+```
+
+### Property List Filtering
+
+<Info>
+**AdCP 3.0** - Property list filtering requires governance agent support.
+</Info>
+
+Filter products to only those available on properties in your approved list:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/sdk/testing';
+
+// Filter products by property list from governance agent
+const result = await testAgent.getProducts({
+  buying_mode: 'brief',
+  brief: 'Brand-safe inventory for family brand',
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  property_list: {
+    agent_url: 'https://governance.example.com',
+    list_id: 'pl_brand_safe_2024'
+  }
+});
+
+if (result.success && result.data) {
+  // Check if filtering was actually applied
+  if (result.data.property_list_applied) {
+    console.log(`Found ${result.data.products.length} products on approved properties`);
+  } else {
+    console.log('Agent does not support property list filtering');
+    console.log(`Found ${result.data.products.length} products (unfiltered)`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def discover_with_property_list():
+    # Filter products by property list from governance agent
+    result = await test_agent.simple.get_products(
+        buying_mode='brief',
+        brief='Brand-safe inventory for family brand',
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        property_list={
+            'agent_url': 'https://governance.example.com',
+            'list_id': 'pl_brand_safe_2024'
+        }
+    )
+
+    # Check if filtering was actually applied
+    if result.get('property_list_applied'):
+        print(f"Found {len(result['products'])} products on approved properties")
+    else:
+        print("Agent does not support property list filtering")
+        print(f"Found {len(result['products'])} products (unfiltered)")
+
+asyncio.run(discover_with_property_list())
+```
+
+</CodeGroup>
+
+**Note**: If `property_list_applied` is absent or `false`, the sales agent did not filter products. This can happen if:
+- The agent doesn't support property governance features
+- The agent couldn't access the property list
+- The property list had no effect on the available inventory
+
+#### Property Targeting Behavior
+
+Products have a `property_targeting_allowed` flag that affects filtering:
+
+- **`property_targeting_allowed: false` (default)**: Product is "all or nothing" - excluded unless your list contains all of its properties
+- **`property_targeting_allowed: true`**: Product is included if there's any intersection between its properties and your list
+
+This allows publishers to offer run-of-network products that can't be cherry-picked alongside flexible inventory that buyers can filter.
+
+See [Property Targeting](/dist/docs/3.1.0-beta.5/media-buy/product-discovery/media-products#property-targeting) for more details and [Property Governance](/dist/docs/3.1.0-beta.5/governance/property/specification) for more on property lists.
+
+## Refinement
+
+After initial discovery, use `buying_mode: "refine"` to iterate on specific products and proposals. The `refine` array is a list of change requests — each entry declares a scope and what the buyer is asking for. The seller returns updated products with revised pricing and configurations, plus `refinement_applied` acknowledging each ask.
+
+See the [Refinement guide](/dist/docs/3.1.0-beta.5/media-buy/product-discovery/refinement) for the full walkthrough: scope types, action semantics, seller responses, and common patterns. The parameter shape is defined in the [Refine array](#refine-array) section above.
+
+Minimal example:
+
+```json test=false
+{
+  "buying_mode": "refine",
+  "refine": [
+    { "scope": "request",                                             "ask": "more video, less display" },
+    { "scope": "product",  "product_id":  "prod_premium_video",       "ask": "add 16:9 format option" },
+    { "scope": "product",  "product_id":  "prod_display_run_of_site", "action": "omit" },
+    { "scope": "proposal", "proposal_id": "prop_awareness_q2",        "ask": "reallocate display budget to video" }
+  ],
+  "filters": {
+    "start_date": "2026-04-01",
+    "end_date": "2026-04-30",
+    "budget_range": { "min": 200000, "max": 200000, "currency": "USD" }
+  }
+}
+```
+
+Key rules to know before sending:
+
+- **`refine` is only valid in `refine` mode.** Requests that include this field in `brief` or `wholesale` mode are rejected with `INVALID_REQUEST`.
+- **Filters are absolute**, not deltas. Always send the full filter set you want applied.
+- **Proposals are ephemeral.** Proposals typically include an `expires_at` timestamp. After expiration, the seller returns `PROPOSAL_EXPIRED`.
+- **Product IDs are stable catalog identifiers.** Custom products (`is_custom: true`) may have an `expires_at` timestamp, after which refinement returns `PRODUCT_NOT_FOUND`.
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `AUTH_MISSING` | No credentials presented | Provide credentials via auth header |
+| `AUTH_INVALID` | Credentials rejected (expired / revoked) | Human credential rotation required; do not auto-retry |
+| `INVALID_REQUEST` | Brief too long or malformed filters | Check request parameters |
+| `PRODUCT_NOT_FOUND` | One or more referenced product IDs are unknown or expired | Remove invalid IDs and retry, or re-discover with a `brief` request |
+| `PROPOSAL_EXPIRED` | A referenced proposal ID has passed its `expires_at` timestamp | Re-discover with a new `brief` or `wholesale` request |
+| `PROPOSAL_NOT_FOUND` | The referenced `proposal_id` is unknown to the seller (never finalized, wrong tenant, or evicted from cache) | Re-issue `get_products` in `refine` mode with `action: 'finalize'` to obtain a current proposal_id |
+| `MULTI_FINALIZE_UNSUPPORTED` | `refine[]` carried multiple `action: 'finalize'` entries but the seller cannot guarantee atomic multi-proposal commit | Sequence single-proposal finalize calls — one finalize entry per `get_products` call |
+| `POLICY_VIOLATION` | Category blocked for advertiser | See policy response message for details |
+
+### Authentication Comparison
+
+See the difference between authenticated and unauthenticated access:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent, testAgentNoAuth } from '@adcp/sdk/testing';
+
+// WITH authentication - full product results with pricing
+const fullProducts = await testAgent.getProducts({
+  buying_mode: 'brief',
+  brief: 'Premium CTV inventory for brand awareness',
+  brand: {
+    domain: 'acmecorp.com'
+  }
+});
+
+if (!fullProducts.success) {
+  throw new Error(`Failed to get products: ${fullProducts.error}`);
+}
+
+console.log(`With auth: ${fullProducts.data.products.length} products`);
+console.log(`First product pricing: ${fullProducts.data.products[0].pricing_options.length} options`);
+
+// WITHOUT authentication - limited public product results
+const publicProducts = await testAgentNoAuth.getProducts({
+  buying_mode: 'brief',
+  brief: 'Premium CTV inventory for brand awareness',
+  brand: {
+    domain: 'acmecorp.com'
+  }
+});
+
+if (!publicProducts.success) {
+  throw new Error(`Failed to get products: ${publicProducts.error}`);
+}
+
+console.log(`Without auth: ${publicProducts.data.products.length} products`);
+console.log(`First product pricing: ${publicProducts.data.products[0].pricing_options?.length || 0} options`);
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent, test_agent_no_auth
+
+async def compare_auth():
+    # WITH authentication - full product results with pricing
+    full_products = await test_agent.simple.get_products(
+        buying_mode='brief',
+        brief='Premium CTV inventory for brand awareness',
+        brand={
+            'domain': 'acmecorp.com'
+        }
+    )
+
+    print(f"With auth: {len(full_products['products'])} products")
+    print(f"First product pricing: {len(full_products['products'][0]['pricing_options'])} options")
+
+    # WITHOUT authentication - limited public product results
+    public_products = await test_agent_no_auth.simple.get_products(
+        buying_mode='brief',
+        brief='Premium CTV inventory for brand awareness',
+        brand={
+            'domain': 'acmecorp.com'
+        }
+    )
+
+    print(f"Without auth: {len(public_products['products'])} products")
+    print(f"First product pricing: {len(public_products['products'][0].get('pricing_options', []))} options")
+
+asyncio.run(compare_auth())
+```
+
+</CodeGroup>
+
+**Key Differences:**
+- **Product Count**: Authenticated access returns more products, including private/custom offerings
+- **Pricing Information**: Only authenticated requests receive detailed pricing options (CPM, CPCV, etc.)
+- **Targeting Details**: Custom targeting capabilities may be restricted to authenticated users
+- **Rate Limits**: Unauthenticated requests have lower rate limits
+
+## Authentication Behavior
+
+- **Without credentials**: Returns limited public product results, no pricing, no custom offerings
+- **With credentials**: Returns complete product results with pricing and custom products
+
+See [Authentication Guide](/dist/docs/3.1.0-beta.5/building/by-layer/L2/authentication) for details.
+
+## Asynchronous Operations
+
+Most product searches complete immediately, but some scenarios require asynchronous processing. When this happens, you'll receive a status other than `completed` and can track progress through webhooks or polling.
+
+### When Search Runs Asynchronously
+
+Product search may require async processing in these situations:
+
+- **Complex searches**: Searching across multiple inventory sources or custom curation
+- **Needs clarification**: Your brief is vague and the system needs more information
+- **Custom products**: Bespoke product packages that require human review
+
+### Async Status Flow
+
+<Tabs>
+<Tab title="MCP">
+
+#### Immediate Completion (Most Common)
+
+```json
+POST /api/mcp/call_tool
+
+{
+  "name": "get_products",
+  "arguments": {
+    "buying_mode": "brief",
+    "brief": "CTV inventory for sports audience",
+    "brand": { "domain": "acmecorp.com" }
+  }
+}
+
+Response (200 OK):
+{
+  "status": "completed",
+  "message": "Found 3 products matching your requirements",
+  "products": [...]
+}
+```
+
+#### Needs Clarification
+
+When the brief is unclear, the system asks for more details:
+
+```json
+Response (200 OK):
+{
+  "status": "input-required",
+  "message": "I need a bit more information. What's your budget range and campaign duration?",
+  "task_id": "task_789",
+  "context_id": "ctx_123",
+  "reason": "CLARIFICATION_NEEDED",
+  "partial_results": [],
+  "suggestions": ["$50K-$100K", "1 month", "Q1 2024"]
+}
+```
+
+Continue the conversation with the same `context_id`:
+
+```json
+POST /api/mcp/continue
+
+{
+  "context_id": "ctx_123",
+  "message": "Budget is $75K for a 3-week campaign in March"
+}
+
+Response (200 OK):
+{
+  "status": "completed",
+  "message": "Perfect! Found 5 products within your budget",
+  "products": [...]
+}
+```
+
+#### Complex Search (With Webhook)
+
+For searches requiring deep inventory analysis, configure a webhook:
+
+```json
+POST /api/mcp/call_tool
+
+{
+  "name": "get_products",
+  "arguments": {
+    "buying_mode": "brief",
+    "brief": "Premium inventory across all formats for luxury automotive brand",
+    "brand": { "domain": "acmecorp.com" },
+    "pushNotificationConfig": {
+      "url": "https://buyer.com/webhooks/adcp/get_products",
+      "authentication": {
+        "schemes": ["Bearer"],
+        "credentials": "secret_token_32_chars"
+      }
+    }
+  }
+}
+
+Response (200 OK):
+{
+  "status": "working",
+  "message": "Searching premium inventory across display, video, and audio",
+  "task_id": "task_456",
+  "context_id": "ctx_123",
+  "percentage": 10,
+  "current_step": "searching_inventory"
+}
+
+// Later, webhook POST to https://buyer.com/webhooks/adcp/get_products
+{
+  "task_id": "task_456",
+  "task_type": "get_products",
+  "status": "completed",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "message": "Found 12 premium products across all formats",
+  "result": {
+    "products": [...]
+  }
+}
+```
+
+</Tab>
+<Tab title="A2A">
+
+#### Immediate Completion (Most Common)
+
+```json
+POST /api/a2a
+
+{
+  "message": {
+    "role": "user",
+    "parts": [{
+      "kind": "data",
+      "data": {
+        "skill": "get_products",
+        "parameters": {
+          "buying_mode": "brief",
+          "brief": "CTV inventory for sports audience",
+          "brand": { "domain": "acmecorp.com" }
+        }
+      }
+    }]
+  }
+}
+
+Response (200 OK):
+{
+  "id": "task_123",
+  "contextId": "ctx_456",
+  "artifact": {
+    "kind": "data",
+    "data": {
+      "products": [...]
+    }
+  },
+  "status": {
+    "state": "completed",
+    "message": {
+      "role": "agent",
+      "parts": [{ "text": "Found 3 products matching your requirements" }]
+    }
+  }
+}
+```
+
+#### Needs Clarification
+
+Real-time updates via SSE when clarification is needed:
+
+```json
+// Initial response
+{
+  "id": "task_789",
+  "contextId": "ctx_123",
+  "status": {
+    "state": "input-required",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "text": "I need a bit more information. What's your budget range and campaign duration?" },
+        {
+          "data": {
+            "reason": "CLARIFICATION_NEEDED",
+            "suggestions": ["$50K-$100K", "1 month", "Q1 2024"]
+          }
+        }
+      ]
+    }
+  }
+}
+
+// Send follow-up
+POST /api/a2a
+
+{
+  "contextId": "ctx_123",
+  "message": {
+    "role": "user",
+    "parts": [{ "text": "Budget is $75K for a 3-week campaign in March" }]
+  }
+}
+
+// SSE update: task completed
+{
+  "id": "task_789",
+  "contextId": "ctx_123",
+  "artifact": {
+    "kind": "data",
+    "data": { "products": [...] }
+  },
+  "status": {
+    "state": "completed",
+    "message": {
+      "role": "agent",
+      "parts": [{ "text": "Perfect! Found 5 products within your budget" }]
+    }
+  }
+}
+```
+
+#### Complex Search (With Webhook)
+
+Configure push notifications for long searches:
+
+```json
+POST /api/a2a
+
+{
+  "message": {
+    "role": "user",
+    "parts": [{
+      "kind": "data",
+      "data": {
+        "skill": "get_products",
+        "parameters": {
+          "buying_mode": "brief",
+          "brief": "Premium inventory across all formats for luxury automotive brand",
+          "brand": { "domain": "acmecorp.com" }
+        }
+      }
+    }]
+  },
+  "pushNotificationConfig": {
+    "url": "https://buyer.com/webhooks/a2a/get_products",
+    "authentication": {
+      "schemes": ["bearer"],
+      "credentials": "secret_token_32_chars"
+    }
+  }
+}
+
+Response (200 OK):
+{
+  "id": "task_456",
+  "contextId": "ctx_789",
+  "status": {
+    "state": "working",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "text": "Searching premium inventory across display, video, and audio" },
+        {
+          "data": {
+            "percentage": 10,
+            "current_step": "searching_inventory"
+          }
+        }
+      ]
+    }
+  }
+}
+
+// Later, webhook POST to https://buyer.com/webhooks/a2a/get_products
+{
+  "id": "task_456",
+  "contextId": "ctx_789",
+  "artifact": {
+    "kind": "data",
+    "data": {
+      "products": [...]
+    }
+  },
+  "status": {
+    "state": "completed",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "text": "Found 12 premium products across all formats" },
+        {
+          "data": {
+            "products": [...]
+          }
+        }
+      ]
+    },
+    "timestamp": "2025-01-22T10:30:00Z"
+  }
+}
+```
+
+</Tab>
+</Tabs>
+
+### Status Overview
+
+| Status | When It Happens | What You Do |
+|--------|----------------|-------------|
+| `completed` | Search finished successfully | Process the product results |
+| `input-required` | Need clarification on the brief | Answer the question and continue |
+| `working` | Searching across multiple sources | Wait for webhook or poll for updates |
+| `submitted` | Custom curation queued | Wait for webhook notification |
+| `failed` | Search couldn't complete | Check error message, adjust brief |
+
+**Note:** For the complete status list see [Task Lifecycle](/dist/docs/3.1.0-beta.5/building/by-layer/L3/task-lifecycle).
+
+**Most searches complete immediately.** Async processing is only needed for complex scenarios or when the system needs your input.
+
+## Next Steps
+
+After discovering products:
+
+1. **Review Options**: Compare products, pricing, and targeting capabilities
+2. **Create Media Buy**: Use [`create_media_buy`](/dist/docs/3.1.0-beta.5/media-buy/task-reference/create_media_buy) to execute campaign
+3. **Prepare Creatives**: Use [`list_creative_formats`](/dist/docs/3.1.0-beta.5/creative/task-reference/list_creative_formats) to see format requirements
+4. **Upload Assets**: Use [`sync_creatives`](/dist/docs/3.1.0-beta.5/creative/task-reference/sync_creatives) to provide creative assets
+
+## Learn More
+
+- [Product Discovery Guide](/dist/docs/3.1.0-beta.5/media-buy/product-discovery/) - Understanding briefs and products
+- [Pricing Models](/dist/docs/3.1.0-beta.5/media-buy/advanced-topics/pricing-models) - CPM, CPCV, CPP explained
+- [Brief Expectations](/dist/docs/3.1.0-beta.5/media-buy/product-discovery/brief-expectations) - How to write effective briefs
+- [Media Products](/dist/docs/3.1.0-beta.5/media-buy/product-discovery/media-products) - Product structure and fields
