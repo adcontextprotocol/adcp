@@ -296,6 +296,7 @@ jobs:
         run: |
           set -euo pipefail
           required_clean=(
+            "media_buy_seller/billing_finality_delivery"
             "media_buy_seller/canonical_formats"
             "media_buy_seller/vendor_metric_catalog_precondition"
           )
@@ -304,6 +305,24 @@ jobs:
               echo "Required-clean storyboard passed: ${storyboard_id}"
             else
               echo "::error::Required-clean storyboard did not pass on /sales current surface: ${storyboard_id}"
+              echo "Last matching log lines:"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
+
+      - name: Enforce creative required-clean storyboards
+        if: matrix.surface == 'current' && matrix.tenant == 'creative'
+        run: |
+          set -euo pipefail
+          required_clean=(
+            "creative/billing_out_of_band"
+          )
+          for storyboard_id in "${required_clean[@]}"; do
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
+              echo "Required-clean storyboard passed: ${storyboard_id}"
+            else
+              echo "::error::Required-clean storyboard did not pass on /creative current surface: ${storyboard_id}"
               echo "Last matching log lines:"
               grep -F "${storyboard_id}" /tmp/storyboards.log || true
               exit 1

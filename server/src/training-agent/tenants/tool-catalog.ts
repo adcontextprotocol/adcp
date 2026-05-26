@@ -40,6 +40,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   sync_audiences: ['sales'],
   sync_event_sources: ['sales'],
   log_event: ['sales'],
+  report_usage: ['sales', 'creative'],
   // list_creative_formats is framework-registered for any tenant claiming
   // creative (sales, creative, creative-builder) — the SDK auto-advertises
   // it. Catalog mirrors that advertisement so the drift test stays green.
