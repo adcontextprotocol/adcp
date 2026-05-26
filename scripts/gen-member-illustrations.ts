@@ -3,7 +3,11 @@ import pg from 'pg';
 import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
-const pool = new pg.Pool({ connectionString: 'postgresql://adcp:localdev@localhost:62576/adcp_registry' });
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('DATABASE_URL environment variable is required');
+}
+const pool = new pg.Pool({ connectionString });
 
 async function main() {
   // Get the three member-authored articles
