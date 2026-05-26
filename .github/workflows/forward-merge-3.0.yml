@@ -38,7 +38,7 @@ jobs:
       # recursion rule. Closes #3417.
       - name: Mint AAO Release Bot installation token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@v3.2.0
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
