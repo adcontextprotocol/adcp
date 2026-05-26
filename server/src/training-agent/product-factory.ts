@@ -24,6 +24,7 @@ type DeliveryType = Product['delivery_type'];
 type PublisherPropertySelector = Product['publisher_properties'][number];
 type FlatRatePricingOption = Extract<PricingOption, { pricing_model: 'flat_rate' }>;
 type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
+type ProductCardImage = NonNullable<NonNullable<Product['product_card']>['image']>;
 type CollectionSelector = {
   publisher_domain: string;
   collection_ids: string[];
@@ -58,6 +59,29 @@ function inferPrimaryAssetType(channels: string[]): string {
   if (channels.some(c => ['radio', 'streaming_audio', 'podcast'].includes(c))) return 'audio';
   if (channels.some(c => ['social', 'influencer'].includes(c))) return 'social';
   return 'display';
+}
+
+function truncateLabel(value: string, maxLength: number): string {
+  return value.length <= maxLength ? value : value.slice(0, maxLength - 3).trimEnd() + '...';
+}
+
+function productCardImage(pub: PublisherProfile): ProductCardImage | undefined {
+  if (!pub.heroImageUrl) return undefined;
+  return {
+    asset_type: 'image',
+    url: pub.heroImageUrl,
+    width: 600,
+    height: 300,
+    alt_text: `${pub.name} product preview`,
+  };
+}
+
+function productCardPriceLabel(pricing: PricingTemplate | undefined): string | undefined {
+  if (!pricing) return undefined;
+  const price = pricing.fixedPrice ?? pricing.floorPrice;
+  if (price === undefined) return pricing.model.toUpperCase();
+  const amount = pricing.currency === 'USD' ? `$${price}` : `${pricing.currency} ${price}`;
+  return truncateLabel(`${pricing.fixedPrice === undefined ? 'From ' : ''}${amount} ${pricing.model.toUpperCase()}`, 30);
 }
 
 function normalizeInstallmentStatus(status: string): InstallmentStatus {
@@ -574,43 +598,34 @@ function buildProduct(
     ...(collectionTargetingAllowed && { collection_targeting_allowed: collectionTargetingAllowed }),
   };
 
-  // Populate product card manifests from the product's own data
+  // Populate inline product cards from the product's own data.
   const primaryPricing = effectivePricing[0];
   const primaryAssetType = inferPrimaryAssetType(template.channels);
-  const cardAssets: Record<string, { content?: string; url?: string }> = {
-    product_name: { content: template.name },
-    product_description: { content: template.description },
-    delivery_type: { content: template.deliveryType },
-    primary_asset_type: { content: primaryAssetType },
-  };
-  if (pub.heroImageUrl) {
-    cardAssets.product_image = { url: pub.heroImageUrl };
-  }
-  cardAssets.publisher_name = { content: pub.name };
-  if (pub.audienceSummary) {
-    cardAssets.audience_summary = { content: pub.audienceSummary };
-  }
-  if (pub.estimatedVolume) {
-    cardAssets.estimated_volume = { content: pub.estimatedVolume };
-  }
-  if (primaryPricing) {
-    cardAssets.pricing_model = { content: primaryPricing.model.toUpperCase() };
-    const priceValue = primaryPricing.fixedPrice ?? primaryPricing.floorPrice;
-    if (priceValue !== undefined) {
-      cardAssets.pricing_amount = { content: String(priceValue) };
-    }
-    cardAssets.pricing_currency = { content: primaryPricing.currency };
-  }
-  // Click-through links to the publisher's product page
-  cardAssets.click_url = { url: `https://${pub.domain}/products/${productId}` };
+  const image = productCardImage(pub);
+  const priceLabel = productCardPriceLabel(primaryPricing);
+  const specifications = [
+    { label: 'Publisher', value: pub.name },
+    { label: 'Delivery type', value: template.deliveryType === 'guaranteed' ? 'Guaranteed' : 'Non-guaranteed' },
+    { label: 'Channels', value: template.channels.join(', ') },
+    { label: 'Primary asset', value: primaryAssetType },
+    ...(pub.audienceSummary ? [{ label: 'Audience', value: pub.audienceSummary }] : []),
+    ...(pub.estimatedVolume ? [{ label: 'Estimated volume', value: pub.estimatedVolume }] : []),
+  ].map(spec => ({ label: truncateLabel(spec.label, 60), value: truncateLabel(spec.value, 200) }));
 
   product.product_card = {
-    format_id: { agent_url: agentUrl, id: 'product_card_standard' },
-    manifest: { format_id: { agent_url: agentUrl, id: 'product_card_standard' }, assets: cardAssets },
+    ...(image && { image }),
+    title: truncateLabel(template.name, 60),
+    description: truncateLabel(template.description, 200),
+    ...(priceLabel && { price_label: priceLabel }),
+    cta_label: 'View details',
   };
   product.product_card_detailed = {
-    format_id: { agent_url: agentUrl, id: 'product_card_detailed' },
-    manifest: { format_id: { agent_url: agentUrl, id: 'product_card_detailed' }, assets: cardAssets },
+    ...(image && { hero_image: image }),
+    title: template.name,
+    description: template.description,
+    specifications,
+    ...(priceLabel && { price_label: priceLabel }),
+    cta_label: 'View details',
   };
 
   return {
@@ -973,20 +988,6 @@ export function buildCatalog(): CatalogProduct[] {
           }),
         ]
       : alias.source.product.pricing_options;
-    // Product cards embed `click_url` pointing at the source product's id;
-    // rebuild with the alias id so the URL matches the new product_id.
-    // The catalog shape contract (buildCatalog unit tests) asserts that
-    // every product's click_url contains its product_id.
-    const rebuildCard = <T extends { manifest?: { assets?: Record<string, unknown> } } | undefined>(card: T): T => {
-      if (!card?.manifest?.assets) return card;
-      const assets = { ...card.manifest.assets };
-      const clickAsset = assets.click_url as { url?: string } | undefined;
-      if (clickAsset?.url) {
-        const sourceId = alias.source!.product.product_id;
-        assets.click_url = { ...clickAsset, url: clickAsset.url.replace(sourceId, alias.id) };
-      }
-      return { ...card, manifest: { ...card.manifest, assets } } as T;
-    };
     catalog.push({
       ...alias.source,
       product: {
@@ -995,10 +996,10 @@ export function buildCatalog(): CatalogProduct[] {
         name: alias.name,
         ...(aliasedPricing && { pricing_options: aliasedPricing }),
         ...('product_card' in alias.source.product && alias.source.product.product_card
-          ? { product_card: rebuildCard(alias.source.product.product_card) }
+          ? { product_card: { ...alias.source.product.product_card, title: truncateLabel(alias.name, 60) } }
           : {}),
         ...('product_card_detailed' in alias.source.product && alias.source.product.product_card_detailed
-          ? { product_card_detailed: rebuildCard(alias.source.product.product_card_detailed) }
+          ? { product_card_detailed: { ...alias.source.product.product_card_detailed, title: alias.name } }
           : {}),
       },
     });

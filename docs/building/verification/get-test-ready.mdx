@@ -60,7 +60,16 @@ Full details and examples: [Sandbox mode](/docs/media-buy/advanced-topics/sandbo
 
 ## Step 3 — Implement the compliance test controller
 
-Without a compliance test controller, the runner tests only buyer-initiated flows (**observational mode**) — schema conformance, auth rejection, happy-path buyer calls. That is enough for a first pass and for capability discovery, but [conformance](/docs/building/verification/conformance) treats **deterministic mode** — full lifecycle walks enabled by the controller — as the bar for specialism coverage.
+Without a compliance test controller, the runner tests only buyer-initiated flows (**observational mode**) — schema conformance, auth rejection, happy-path buyer calls. That is enough for early integration work and production-path sandbox smoke tests, but it produces **partial coverage** whenever controller-seeded or controller-forced scenarios are in scope. [Conformance](/docs/building/verification/conformance) treats **deterministic mode** — full lifecycle walks enabled by the controller — as the bar for complete specialism coverage.
+
+In practice, sellers usually run both:
+
+| Run | Endpoint | Expected result |
+|-----|----------|-----------------|
+| Observational sandbox run | Production endpoint with sandbox accounts, no controller exposed | `steps_failed = 0`; live-only probes appear as not selected, and selected controller-dependent scenarios may make the summary `partial` with `missing_test_controller` skips |
+| Deterministic run | Dev/staging or sandbox-only endpoint with `comply_test_controller` | `steps_failed = 0` and no controller-dependent coverage skips |
+
+The first run answers "does the production buyer-visible path tolerate sandbox traffic?" The second answers "can the runner prove every lifecycle path for the declared specialisms?" Do not collapse those into one signal. A zero-failure partial run is useful, but buyers need the skip list to know exactly which lifecycle assertions were not graded.
 
 `comply_test_controller` is a single sandbox-only tool with a `scenario` parameter covering three families:
 

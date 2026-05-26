@@ -22,8 +22,10 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | Storyboard | Purpose |
 |-----------|---------|
 | `capability-discovery` | `get_adcp_capabilities` shape, protocol/specialism declarations, version advertising |
+| `comply-controller-mode-gate` | Sandbox/live isolation for sellers that expose `comply_test_controller` on a shared endpoint — live-mode principals must be refused before scenario dispatch |
 | `schema-validation` | Request and response schema conformance, ISO 8601 timestamps, temporal invariants |
 | `schema-validation-signals` | Response schema compliance for signals — required fields on every signal; gated on `get_signals` |
+| `version-negotiation` | Release-precision `adcp.supported_versions` advertisement and response-envelope `adcp_version` echo; advisory in 3.1, promoted in later cuts |
 | `v3-envelope-integrity` | v3 protocol envelopes MUST NOT carry the v2 legacy `task_status` or `response_status` fields — `status` is the single canonical lifecycle field in v3. |
 | `error-compliance` | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
 | `error-compliance-signals` | Error handling for signals protocol — nonexistent signal IDs, missing fields, VERSION_UNSUPPORTED, transport binding; gated on `get_signals` + `activate_signal` |
@@ -45,7 +47,7 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | `signed-requests` | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
 | `billing-gate-dispatch` | `sync_accounts.billing` rejection dispatch — `BILLING_NOT_SUPPORTED` (capability gate, with `error.details.scope`) vs `BILLING_NOT_PERMITTED_FOR_AGENT` (per-buyer-agent commercial-relationship gate, with the clamped `rejected_billing` + `suggested_billing` shape). Capability phase skipped when the seller supports all three `billing` values; per-agent phases skipped when the test kit does not declare `commercial_relationship: passthrough_only`. |
 
-Capability-gated rows (`deterministic-testing`, `signed-requests`) are skipped only when the agent advertises the capability as `false`; they cannot be claimed and partially implemented. Declaring `supported: true` and failing the storyboard is non-conformant — declare `false` rather than ship a partial implementation. The `billing-gate-dispatch` rows are precondition-gated rather than capability-gated: each phase grades `not_applicable` when its precondition is not met (the seller supports all three billing values; or the test kit does not declare a passthrough-only caller). Sellers wanting full coverage of the per-agent gate SHOULD ship a test kit with `commercial_relationship: passthrough_only` declared so the per-agent phases run.
+Capability-gated rows (`deterministic-testing`, `signed-requests`) are skipped only when the agent advertises the capability as `false`; they cannot be claimed and partially implemented. Declaring `supported: true` and failing the storyboard is non-conformant — declare `false` rather than ship a partial implementation. The `billing-gate-dispatch` and `comply-controller-mode-gate` rows are precondition-gated rather than ordinary capability-gated rows: each phase grades `not_applicable` when its precondition is not met. Sellers wanting full coverage of the per-agent billing gate SHOULD ship a test kit with `commercial_relationship: passthrough_only` declared so the per-agent phases run.
 
 ## Protocols
 

@@ -38,6 +38,7 @@ else
     | grep -v '\.previous$' \
     | sort \
     | head -1)
+  PINNED_VERSION=$(basename "$DST")
 fi
 
 if [ -z "$DST" ] || [ ! -d "$DST" ]; then
@@ -56,4 +57,13 @@ echo "Overlaying $SRC onto $DST"
   mkdir -p "$(dirname "$target")"
   cp "$SRC/${rel#./}" "$target"
 done
+node - <<'NODE' "$DST/index.json" "$PINNED_VERSION"
+const fs = require('node:fs');
+const [indexPath, pinnedVersion] = process.argv.slice(2);
+if (!indexPath || !pinnedVersion || !fs.existsSync(indexPath)) process.exit(0);
+const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+if (index.adcp_version === 'latest') index.adcp_version = pinnedVersion;
+if (index.published_version === 'latest') index.published_version = pinnedVersion;
+fs.writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`);
+NODE
 echo "Overlay complete."

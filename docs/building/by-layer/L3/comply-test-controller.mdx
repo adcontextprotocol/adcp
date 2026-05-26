@@ -77,13 +77,16 @@ Sellers that implement compliance test controller MUST:
           "seed_pricing_option",
           "seed_creative",
           "seed_plan",
-          "seed_media_buy"
+          "seed_media_buy",
+          "seed_creative_format",
+          "query_upstream_traffic",
+          "force_upstream_unavailable"
         ],
         "description": "The seller-side transition or fixture-seed to trigger."
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} — task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} — task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {creative_format_id, fixture?}. query_upstream_traffic: {since_timestamp?, tool?, purpose_filter?}. force_upstream_unavailable: {tool, upstream_name?}."
       }
     },
     "required": ["scenario"]

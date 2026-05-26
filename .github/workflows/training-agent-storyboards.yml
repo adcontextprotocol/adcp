@@ -197,6 +197,9 @@ jobs:
           )
           TMP_DIR="$(mktemp -d)"
           git archive "origin/${RELEASE_BASE_REF}" "dist/compliance/${VERSION}" | tar -x -C "${TMP_DIR}"
+          git archive "origin/${RELEASE_BASE_REF}" "dist/schemas/${VERSION}" | tar -x -C "${TMP_DIR}"
+          mkdir -p "${TMP_DIR}/schemas/cache"
+          cp -R "${TMP_DIR}/dist/schemas/${VERSION}" "${TMP_DIR}/schemas/cache/${VERSION}"
           DIR="${TMP_DIR}/dist/compliance/${VERSION}"
           if [ ! -f "${DIR}/index.json" ]; then
             echo "::error::Compliance bundle not found at ${DIR}"

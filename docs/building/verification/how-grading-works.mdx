@@ -18,6 +18,33 @@ When your agent declares a specialism in `get_adcp_capabilities`, the runner:
 
 The manifest drives the full scenario list; capability gates apply per-scenario on top of it.
 
+## Runner evidence vs. verification policy
+
+The storyboard runner does not decide whether an agent earns a badge or satisfies a particular buyer. It produces evidence: executed assertions, failures, selected-but-skipped steps, not-selected steps, skip reasons, and the endpoint/run mode used. A verification policy consumes that evidence and decides which gaps are acceptable for a named outcome.
+
+| Question | Decided by | Evidence used |
+|----------|------------|---------------|
+| "Did this step match the storyboard?" | Storyboard runner | Step validations and response schemas |
+| "Does this agent earn **Verified (Spec)**?" | AgenticAdvertising.org verification policy | Runner evidence against the registered spec/test endpoint, plus membership and declaration checks |
+| "Does this agent earn **Verified (Sandbox)**?" | AgenticAdvertising.org verification policy | Runner evidence against the production endpoint under `account.sandbox: true`, plus sandbox-isolation checks |
+| "Is this good enough for a specific buyer?" | That buyer's requirement profile | Verified mode, declared protocols/specialisms, optional capabilities they require, and any business or integration requirements outside AdCP |
+
+This is why runner classification matters. "Not selected because this is a sandbox-only run" is a suite-selection fact, not a seller capability gap. "Skipped because the seller did not claim an optional feature" may be acceptable for the badge but unacceptable to a buyer that requires that feature. "Skipped because a declared required tool is missing" is a seller implementation problem.
+
+## Requirement profiles
+
+To answer "what do I need to pass?", start with the profile you are trying to satisfy:
+
+| Target | Minimum question the profile answers |
+|--------|--------------------------------------|
+| **Verified (Spec)** | Does the declared AdCP surface pass the required storyboards on the registered spec/test endpoint, with no blocking missing tools or failed assertions? |
+| **Verified (Sandbox)** | Does the registered production endpoint pass the sandbox verification profile under `account.sandbox: true`, with sandbox isolation enforced and only Sandbox-acceptable skips present? |
+| **Specific buyer requirement** | Which verified modes, protocols, specialisms, optional capabilities, operational behaviors, and skip classes does this buyer require? |
+
+A buyer requirement profile can be stricter than the public badge. For example, the public Sandbox profile can accept a capability-gated proposal storyboard being skipped when `media_buy.supports_proposals: false`; a buyer that requires proposal workflows can treat the same skip as a blocker. Conversely, a production endpoint omitting `comply_test_controller` can be acceptable for the Sandbox badge, while a buyer doing deterministic integration testing may ask for a separate dev/staging endpoint that exposes it.
+
+The storyboard runner should not encode those buyer decisions. It should emit typed evidence that a verification policy or buyer profile can evaluate consistently.
+
 ## Specialism manifests
 
 Each specialism's `requires_scenarios` field lists the scenarios the runner will grade. Example — the `sales-guaranteed` manifest declares eight required scenarios:
@@ -107,14 +134,50 @@ When the `skip` block is present, the step was not graded and does not count aga
 
 ## Grading verdicts at a glance
 
-| Outcome | `skip.reason` | Meaning |
-|---------|---------------|---------|
-| Scenario passed | — (no `skip` block) | All validations passed; `passed: true` at the step level |
-| Scenario failed | — (no `skip` block) | One or more required validations failed; see `validations[]` for the failing field and `json_pointer` |
-| Scenario skipped | `not_applicable` | Step was not run. Check `skip.detail` to distinguish: capability gate evaluated false, specialism not declared, or prerequisite not met |
-| Required tool missing | `missing_tool` | Agent declared the specialism but did not expose a tool listed in `required_tools` |
+| Outcome | Output field | Meaning |
+|---------|--------------|---------|
+| Scenario passed | Step result with no `skip`; `passed: true` | All validations passed |
+| Scenario failed | Step result with no `skip`; `passed: false` | One or more required validations failed; see `validations[]` for the failing field and `json_pointer` |
+| Scenario not selected | `run_summary.not_selected[].reason`, counted in `steps_not_selected` | The caller's selected suite, run mode, version, or verification profile excluded this scenario before execution |
+| Scenario skipped | `skip.reason: not_applicable` | Scenario was selected, but an applicability gate evaluated false, such as an optional capability the seller did not claim |
+| Required tool missing | `skip.reason: missing_tool` | Scenario was selected and the agent declared the specialism, but did not expose a tool listed in `required_tools` |
 
-A run's overall compliance verdict is determined by `steps_failed`. Skipped steps (`skip` block present) do not contribute to that counter. The `skip.detail` field is the human-readable string that names the specific skip cause.
+A run's overall compliance verdict is determined by `steps_failed`. Skipped steps (`skip` block present) and not-selected items (`run_summary.not_selected[]` entries) do not contribute to that counter, but they mean different things. `steps_not_selected` says the runner deliberately excluded those scenarios from this run. `steps_skipped` says the runner selected those scenarios but could not execute them; use `skipped_by_reason` and `skip.detail` to distinguish optional capability choices from missing required surfaces.
+
+A sandbox-only run should therefore look like this when the only excluded work is outside the selected mode:
+
+```json
+{
+  "summary": {
+    "steps_passed": 84,
+    "steps_failed": 0,
+    "steps_skipped": 0,
+    "steps_not_selected": 80,
+    "not_selected_by_reason": {
+      "run_mode_excluded": 80
+    }
+  }
+}
+```
+
+If those 80 items instead appear under `steps_skipped`, they were selected and then skipped; that is a different signal and needs `skipped_by_reason`.
+
+## Pass vs partial coverage
+
+Runner summaries distinguish **failure** from **coverage**:
+
+| Run shape | What it means | Seller action |
+|-----------|---------------|---------------|
+| `steps_failed > 0` | A storyboard assertion failed on a step that ran | Fix the agent before claiming the corresponding protocol or specialism |
+| `steps_failed = 0`, no coverage-gap skips | Full pass for the declared scope | The declared protocols, specialisms, and capability flags were graded cleanly |
+| `steps_failed = 0`, with `steps_not_selected > 0` only | The requested suite or run mode intentionally excluded some probes, such as live-only checks during a sandbox-only run | No implementation ask; label the run mode clearly |
+| `steps_failed = 0`, with only capability-gate `not_applicable` skips | Narrower declared scope, not a failure | The agent honestly declined an optional capability, such as `media_buy.supports_proposals: false` |
+| `steps_failed = 0`, with `missing_test_controller` skips | Deterministic-test-surface coverage gap | Run a dev/staging deterministic pass or publish the skipped lifecycle coverage explicitly |
+| Any `missing_tool`, `requirement_unmet`, or `unsatisfied_contract` skip for a declared protocol or specialism | The seller declared a claim the runner could not fully test | Fix the missing surface or narrow the declaration |
+
+This distinction matters for production-path sandbox runs. A seller can run the storyboard suite against the real production endpoint under sandbox-flagged traffic and get **zero failures** while still seeing a `partial` summary because the production endpoint correctly does not expose `comply_test_controller`. That result says: "the buyer-visible sandbox path passed every assertion the runner could grade, but controller-seeded lifecycle scenarios were skipped." It is useful evidence for sandbox readiness, but it is not the same as full deterministic specialism coverage.
+
+For full coverage, run the same declared scope against a dev or staging endpoint that exposes the controller, or pre-seed the required state and configure the runner to assert seeded-state coverage. For a production-only seller, publish the skipped coverage list alongside the zero-failure result so buyers can see exactly what was and was not graded.
 
 ## Where each piece lives
 
