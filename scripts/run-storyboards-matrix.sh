@@ -104,8 +104,15 @@ NODE
         bundle_tmp=$(mktemp -d -t "storyboards-3-0-compat.XXXXXX")
         git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/compliance/${latest_3_0}" | tar -x -C "${bundle_tmp}"
         COMPLIANCE_DIR="${bundle_tmp}/dist/compliance/${latest_3_0}"
+        if git -C "${REPO_ROOT}" cat-file -e "${RELEASE_GIT_REF}:dist/schemas/${latest_3_0}/index.json" 2>/dev/null; then
+          git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/schemas/${latest_3_0}" | tar -x -C "${bundle_tmp}"
+          bash "${SCRIPT_DIR}/stage-sdk-schema-bundle.sh" "${bundle_tmp}/dist/schemas/${latest_3_0}" "${latest_3_0}"
+        fi
       else
         COMPLIANCE_DIR="${REPO_ROOT}/dist/compliance/${latest_3_0}"
+        if [ -f "${REPO_ROOT}/dist/schemas/${latest_3_0}/index.json" ]; then
+          bash "${SCRIPT_DIR}/stage-sdk-schema-bundle.sh" "${REPO_ROOT}/dist/schemas/${latest_3_0}" "${latest_3_0}"
+        fi
       fi
       LABEL="released compliance bundle: ${latest_3_0}"
       FLOOR_SET="3.0-compat"

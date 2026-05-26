@@ -189,8 +189,40 @@ function skipThreeZeroSignedVectorsExcept(allowed: string[]): string[] {
 }
 
 function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
-  if (!isThreeZeroCompatRun || sb.id !== 'media_buy_seller/proposal_finalize') return sb;
+  if (!isThreeZeroCompatRun) return sb;
   const patched = structuredClone(sb) as Storyboard;
+  if (sb.id === 'media_buy_seller/pending_creatives_to_start') {
+    for (const phase of patched.phases ?? []) {
+      for (const step of phase.steps ?? []) {
+        for (const validation of step.validations ?? []) {
+          if (
+            validation.check === 'field_value'
+            && validation.path === 'status'
+            && (
+              validation.value === 'pending_creatives'
+              || (Array.isArray(validation.allowed_values) && validation.allowed_values.includes('pending_start'))
+            )
+          ) {
+            validation.path = 'media_buy_status';
+          }
+        }
+      }
+    }
+    return patched;
+  }
+
+  if (sb.id === 'brand_rights') {
+    for (const phase of patched.phases ?? []) {
+      for (const step of phase.steps ?? []) {
+        if (step.id === 'acquire_rights') {
+          step.validations = (step.validations ?? []).filter(validation => validation.check !== 'response_schema');
+        }
+      }
+    }
+    return patched;
+  }
+
+  if (sb.id !== 'media_buy_seller/proposal_finalize') return patched;
   for (const phase of patched.phases ?? []) {
     for (const step of phase.steps ?? []) {
       if (step.id === 'get_products_finalize') {
