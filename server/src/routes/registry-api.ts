@@ -4501,6 +4501,17 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         logger.warn({ err, agentUrl }, "Latest declared specialisms query failed");
       }
 
+      // Advisory notices from the latest run — forward-looking migration
+      // advisories emitted by the runner (e.g., deprecated specialism names,
+      // future-required capabilities). Forward-compat: unknown codes/severities
+      // are passed through verbatim; callers MUST NOT filter on these values.
+      let notices: Awaited<ReturnType<typeof complianceDb.getLatestNotices>> = [];
+      try {
+        notices = await complianceDb.getLatestNotices(agentUrl);
+      } catch (err) {
+        logger.warn({ err, agentUrl }, "Notices query failed (column may not exist yet)");
+      }
+
       // Per-specialism status — the dashboard renders pass/fail/untested
       // dots so the developer can see which declared specialism is the
       // cause of an overall `failing` status without cross-referencing
@@ -4575,6 +4586,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         check_interval_hours: metadata?.check_interval_hours ?? 12,
         declared_specialisms: declaredSpecialisms,
         specialism_status: specialismStatus,
+        // Advisory notices from the latest run. Forward-compat: unknown codes
+        // and severities are passed through verbatim (runner-output-contract.yaml).
+        notices,
         // Owner-scoped: content is null/false for anonymous and cross-org
         // viewers, populated only when the authenticated viewer owns the
         // agent. Keys are always present so non-owners can't detect
