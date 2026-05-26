@@ -46,7 +46,9 @@ export async function handleRequest(request, env, _ctx) {
 
   if (pathname.startsWith("/protocol/")) {
     const key = pathname.slice(1);
-    return r2ArtifactResponse(request, env, key, cacheControlForProtocolPath(pathname));
+    return r2ArtifactResponse(request, env, key, cacheControlForProtocolPath(pathname), {
+      overrideCacheControl: true,
+    });
   }
 
   return new Response("Not Found", { status: 404, headers: corsHeaders() });
@@ -90,7 +92,9 @@ async function versionedArtifactResponse(request, env, mount, pathname) {
     ? "public, max-age=31536000, immutable"
     : "public, no-cache, must-revalidate";
 
-  return r2ArtifactResponse(request, env, `${mount}${resolvedPath}`, cacheControl);
+  return r2ArtifactResponse(request, env, `${mount}${resolvedPath}`, cacheControl, {
+    overrideCacheControl: true,
+  });
 }
 
 async function discoveryResponse(bucket, mount) {
@@ -159,7 +163,7 @@ async function protocolDiscoveryResponse(bucket) {
   }
 }
 
-async function r2ArtifactResponse(request, env, key, fallbackCacheControl) {
+async function r2ArtifactResponse(request, env, key, fallbackCacheControl, options = {}) {
   const object = request.method === "HEAD"
     ? await env.ARTIFACTS.head(key)
     : await env.ARTIFACTS.get(key);
@@ -179,7 +183,7 @@ async function r2ArtifactResponse(request, env, key, fallbackCacheControl) {
   if (!headers.has("content-type")) {
     headers.set("content-type", contentTypeForKey(key));
   }
-  if (!headers.has("cache-control")) {
+  if (options.overrideCacheControl || !headers.has("cache-control")) {
     headers.set("cache-control", fallbackCacheControl);
   }
 

@@ -73,13 +73,31 @@ async function loadWorker() {
 function env() {
   return {
     ARTIFACTS: new MockBucket([
-      object('schemas/3.0.12/index.json', '{"version":"3.0.12"}', { contentType: 'application/json; charset=utf-8' }),
-      object('schemas/3.0.12/foo.json', '{"version":"3.0.12"}', { contentType: 'application/json; charset=utf-8' }),
-      object('schemas/3.1.0-beta.3/index.json', '{"version":"3.1.0-beta.3"}', { contentType: 'application/json; charset=utf-8' }),
-      object('schemas/3.1.0-beta.3/foo.json', '{"version":"3.1.0-beta.3"}', { contentType: 'application/json; charset=utf-8' }),
+      object('schemas/3.0.12/index.json', '{"version":"3.0.12"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.0.12/foo.json', '{"version":"3.0.12"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.1.0-beta.3/index.json', '{"version":"3.1.0-beta.3"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.1.0-beta.3/foo.json', '{"version":"3.1.0-beta.3"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
       object('schemas/latest/foo.json', '{"version":"latest"}', { contentType: 'application/json; charset=utf-8' }),
-      object('compliance/3.0.12/index.json', '{"version":"3.0.12"}', { contentType: 'application/json; charset=utf-8' }),
-      object('compliance/3.1.0-beta.3/index.json', '{"version":"3.1.0-beta.3"}', { contentType: 'application/json; charset=utf-8' }),
+      object('compliance/3.0.12/index.json', '{"version":"3.0.12"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('compliance/3.1.0-beta.3/index.json', '{"version":"3.1.0-beta.3"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
       object('protocol/3.0.12.tgz', 'pinned-tarball', {
         contentType: 'application/gzip',
         cacheControl: 'public, max-age=31536000, immutable',
