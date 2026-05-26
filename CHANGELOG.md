@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.0-beta.5
+
+### Patch Changes
+
+- 5a1b629: Caches immutable artifact CDN responses at the Cloudflare edge while keeping movable aliases revalidated.
+- ed925eb: Fixes release artifact publication so Version Packages commits upload protocol assets and R2 artifacts even when Changesets reports no publish output. No package release is needed.
+
 ## 3.1.0-beta.4
 
 ### Minor Changes

@@ -1,0 +1,140 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.5/registries/v1-canonical-mapping.json",
+  "title": "v1 → v2 Canonical Format Mapping Registry",
+  "description": "Authoritative AAO-published mapping from v1 named formats to v2 canonical declarations. Used by SDKs to project the v1 wire shape into v2 canonical declarations during the migration window.\n\n**Direction of truth (normative).** This registry is authoritative for **v1 → v2 projection only**. v2 → v1 projection MUST rely on `v1_format_ref` on the v2 `ProductFormatDeclaration` — sellers assert the v1 pairing explicitly. SDKs MUST NOT synthesize a v1 `format_id` from the registry by inverting structural matches: the registry's `id` slugs lack the `agent_url` half of a `FormatId`, and registry entries with `format_id_glob: '*'` or pure-structural matches have no single literal to invert to. SDKs that synthesize unilaterally produce inter-SDK divergence on structurally-equal values (different SDKs pick different `agent_url` and `id` patterns for the same v2 declaration). When a v2 declaration carries no `v1_format_ref` and a v1-only buyer queries the product, the SDK reports the canonical as v1-unreachable via `FORMAT_DECLARATION_V1_AMBIGUOUS` and lets the buyer surface it to the seller; the seller's path is to add `v1_format_ref` to disambiguate.\n\nBest-effort inversion is not available from this registry: as of 3.1 all published entries are pure-structural (family-level), and structural matches are not invertible to a specific v1 `format_id`. Future versions MAY add literal `format_id_glob` entries for platform-specific v1 conventions; in that case SDKs MAY do best-effort inversion for non-wildcarded literals only, AND only when the seller hasn't authored a contradicting `v1_format_ref` — even then, the projection is non-normative and downstream consumers MUST NOT depend on it.\n\n**Resolution order** (per RFC #3305 amendment #3767, normative):\n1. **Authoritative v2→v1 link**: if any v2 `ProductFormatDeclaration` on the same product carries `v1_format_ref` pointing at this v1 format_id, use that v2 declaration. Highest priority — seller asserts the link directly. SDKs SHOULD run the *narrows* check (canonical-formats.mdx 'Narrows — formal definition') between the v2 declaration's `params` and the referenced v1 format's `requirements`; on conflict, surface `FORMAT_DECLARATION_DIVERGENT` on the `get_products` response `errors[]`. Without the narrowing check, `v1_format_ref` is a hint rather than a contract.\n2. **Seller-asserted on the v1 file**: if the v1 format declaration carries an explicit `canonical` field, use it. (Note: `canonical_parameters` on the v1 file is deprecated for 3.1; SDKs reading 3.1 catalogs MUST still honor it when present, but `v1_format_ref` is the path forward.)\n3. **Registry glob**: look up `format_id` in this registry's `format_id_glob` entries.\n4. **Structural match**: attempt structural match against this registry's `structural` entries. A successful structural match yields a *family-level* identification only (e.g., 'this is a `video_vast`') — it does NOT yield a specific v1 `format_id`. SDKs use structural match for v1 → v2 projection (the inbound direction) but MUST NOT invert it to a v1 `format_id` on the outbound path.\n5. **Ambiguous family**: if step 4 succeeded but the matched entries are family-only (pure structural, no invertible literal), the canonical is **v1-unreachable for THIS specific product** unless the seller authors `v1_format_ref`. SDKs MUST surface `FORMAT_DECLARATION_V1_AMBIGUOUS` via `errors[]` augmentation rather than synthesize a plausible-but-arbitrary v1 `format_id`. Distinct from canonical-level v1-unreachability (a canonical with `v1_translatable: false` — `agent_placement`, `sponsored_placement`, `responsive_creative`, `image_carousel` — never has any v1 form regardless of registry coverage).\n6. **Fail closed**: SDK MUST NOT emit `format_options` for products carrying this format. SDKs MUST augment the response's `errors[]` array with an entry carrying `source: \"sdk\"`, `sdk_id: \"<package>@<version>\"`, `code: \"FORMAT_PROJECTION_FAILED\"`, `field: \"products[N].format_ids[K]\"`, and `error.details: { format_id, product_id, resolution_failure: \"no_explicit_canonical\" | \"no_registry_match\" | \"no_structural_match\" }`. Single mandated surface (`errors[]` augmentation) — lint-output channels are NOT acceptable; the multi-hop agent network needs warnings to propagate across SDK boundaries via the wire response. Logger-only warnings die in DEBUG. The advisory is non-fatal: the response stays 200/success, the product is still valid on the v1 path, only the v2 `format_options` projection is absent. Consumer-side counterpart to the producer SHOULD (sellers should add a v2 declaration with `v1_format_ref`, an explicit `canonical` field, or file a registry PR).\n\n**Match modes:**\n- `format_id_glob` — exact / glob match against the v1 `format_id.id`. **As of 3.1 the registry carries zero literal entries**: AAO-catalog-published formats (display_300x250_image, video_vast_30s, audio_standard_30s, etc.) project via resolution-order step 2 (catalog entry's `canonical:` annotation), and platform-specific formats (e.g., Meta Reels, TikTok Spark Ads) project via structural fallback or via the platform's own adagents.json `formats[]` block (#4620). A future literal entry is only justified when (a) the v1 name carries semantic narrowing not recoverable from slot shape AND (b) no platform-published adagents.json exists; such entries land via the AAO governance PR process with a documented rationale. The whole point of canonical-formats is parametrization: ONE `image` canonical with width/height params, not 8 per-size variants. Glob syntax: `*` matches any segment.\n- `structural` — match against the format's slot shape, asset types, and version constraints. The PRIMARY fallback for v1 wire traffic — catches custom v1 formats (a publisher's `acme_homepage_300x250` is structurally an IAB MREC) without enumerating every possible v1 name. v1 sellers in the wild naming things their own way are handled here, not by literal globs.\n\n**Alias collision precedence (normative).** When a v1 format's `assets[i]` carries multiple `asset_group_id` aliases that resolve to the same canonical asset_group (e.g., two slots both aliasing to `landing_page_url`), the SDK MUST resolve deterministically: the v1 format's `assets[*]` array order is authoritative — the first slot in declaration order wins, subsequent collisions are dropped from the projected v2 manifest and surfaced via `FORMAT_PROJECTION_FAILED` with `error.details: { collision_kind: \"asset_group_id_alias\", asset_group_id, winning_slot_id, dropped_slot_ids }`. SDKs MUST NOT silently pick one and discard the other without surfacing — silent picking creates inter-SDK divergence. Producers SHOULD avoid the collision by deduplicating aliased slots or using distinct `asset_group_id` values when both slots are semantically meaningful.\n\n**Governance**: same vocabulary-governance rules as `asset-group-vocabulary.json` and `format-shape-vocabulary.json` — additions land via PR with rationale + ≥1 reference adopter; AAO maintainer review; versioned + content-digested. Entries are additive; once published they are not removed (they may be marked `deprecated: true` if superseded).\n\n**Initial scope (3.1)**: 7 pure-structural fallback entries covering VAST 4.x / legacy VAST, DAAST 1.x, HTML5 zip bundles, hosted video, hosted audio, and url-shaped display tags. Per-size and per-duration literals (display_300x250_image, video_vast_30s, etc.) are NOT enumerated here — those project via catalog `canonical:` annotation (resolution-order step 2), keeping the registry aligned with the canonical-formats parametrization principle. Platform-specific formats (Meta Reels, TikTok Spark Ads, etc.) project via structural fallback or via the platform's own adagents.json `formats[]` block (#4620). The full v1-format audit dataset (~76% of formats from the 12-platform / 86-format audit in #3305) seeds the long-term roadmap and informs future literal-entry decisions.\n\nDigest the file content (sha256) when emitting in capabilities responses or referencing from SDK output. Buyers cache by `version` + `digest`.",
+  "version": "1.0.0",
+  "last_updated": "2026-05-01",
+  "type": "object",
+  "required": ["version", "mappings"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Semver of this registry. Bumped on every published change."
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO date of the last published change."
+    },
+    "mappings": {
+      "type": "array",
+      "description": "Ordered list of v1 → v2 mappings. SDKs apply mappings in order and use the first match.",
+      "items": {
+        "type": "object",
+        "required": ["v1_pattern", "v2"],
+        "properties": {
+          "v1_pattern": {
+            "type": "object",
+            "description": "Match pattern. Carries either format_id_glob OR structural, not both.",
+            "oneOf": [
+              {
+                "required": ["format_id_glob"],
+                "properties": {
+                  "format_id_glob": {
+                    "type": "string",
+                    "description": "Glob pattern matched against v1 format_id.id. Examples: 'iab_mrec_300x250', 'iab_leaderboard_*', 'meta_*_reels'."
+                  }
+                }
+              },
+              {
+                "required": ["structural"],
+                "properties": {
+                  "structural": {
+                    "type": "object",
+                    "description": "Structural match against the format's slot shape, asset types, and version constraints.",
+                    "properties": {
+                      "asset_types": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Set of asset_type values that must appear in the format's slots (in any order, any count)."
+                      },
+                      "vast_versions": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "VAST version constraints. Strings like '>=4.0', '4.x', '4.2'."
+                      },
+                      "daast_versions": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                      },
+                      "dimensions": {
+                        "type": "object",
+                        "properties": {
+                          "width": { "type": "integer" },
+                          "height": { "type": "integer" }
+                        }
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                }
+              }
+            ]
+          },
+          "v2": {
+            "type": "object",
+            "required": ["canonical"],
+            "properties": {
+              "canonical": {
+                "$ref": "/schemas/3.1.0-beta.5/core/canonical-format-kind.json",
+                "description": "v2 canonical format the v1 pattern projects to."
+              },
+              "parameters": {
+                "type": "object",
+                "description": "Optional parameters that narrow the canonical (e.g., width/height, vast_version). When present, become the params on the projected v2 ProductFormatDeclaration. The shape MUST be valid params for the named canonical.",
+                "additionalProperties": true
+              }
+            }
+          },
+          "deprecated": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, this mapping is retained for backward-compatibility but should not be used for new mappings. SDKs SHOULD emit lint warnings when matching a deprecated entry."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Optional human-readable explanation, examples, or rationale."
+          }
+        }
+      }
+    }
+  },
+  "mappings": [
+    {
+      "v1_pattern": { "structural": { "asset_types": ["vast"], "vast_versions": [">=4.0"] } },
+      "v2": { "canonical": "video_vast", "parameters": { "vast_version": "4.2" } },
+      "notes": "Any v1 format whose primary asset is a VAST 4.x tag. SDKs should narrow the parameters.vast_version to the lowest common denominator they support."
+    },
+    {
+      "v1_pattern": { "structural": { "asset_types": ["vast"], "vast_versions": ["3.x", "2.x"] } },
+      "v2": { "canonical": "video_vast", "parameters": { "vast_version": "3.0" } },
+      "notes": "Legacy VAST 2.x/3.x — projected as video_vast with the lowest-supported version."
+    },
+    {
+      "v1_pattern": { "structural": { "asset_types": ["daast"], "daast_versions": ["1.0", "1.1"] } },
+      "v2": { "canonical": "audio_daast", "parameters": { "daast_version": "1.1" } },
+      "notes": "DAAST 1.x audio tag → audio_daast canonical."
+    },
+    {
+      "v1_pattern": { "structural": { "asset_types": ["zip"] } },
+      "v2": { "canonical": "html5" },
+      "notes": "Any v1 format whose primary asset is a zip bundle (HTML5 banner). Caller must add platform_extensions for OM-SDK / clickTag specifics from the v1 declaration."
+    },
+    {
+      "v1_pattern": { "structural": { "asset_types": ["video"] } },
+      "v2": { "canonical": "video_hosted" },
+      "notes": "v1 format with a hosted video file as its primary asset → video_hosted. Caller infers orientation/dimensions from the v1 slot constraints."
+    },
+    {
+      "v1_pattern": { "structural": { "asset_types": ["audio"] } },
+      "v2": { "canonical": "audio_hosted" },
+      "notes": "v1 format with a hosted audio file as its primary asset → audio_hosted. Distinct from audio_daast (which uses tag delivery)."
+    },
+    {
+      "v1_pattern": { "structural": { "asset_types": ["url"] } },
+      "v2": { "canonical": "display_tag" },
+      "notes": "Last-resort structural match: v1 format whose primary asset is a URL pointing at a third-party-served creative → display_tag canonical. Lower confidence than other entries — sellers SHOULD declare an explicit `canonical` for url-shaped formats whenever possible."
+    }
+  ]
+}
