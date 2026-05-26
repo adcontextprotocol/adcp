@@ -128,6 +128,14 @@ function env() {
         contentType: 'text/plain; charset=utf-8',
         cacheControl: 'public, max-age=31536000, immutable',
       }),
+      object('protocol/3.0.12.tgz.sig', 'pinned-signature', {
+        contentType: 'application/octet-stream',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('protocol/3.0.12.tgz.crt', 'pinned-certificate', {
+        contentType: 'application/x-pem-file',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
       object('protocol/latest.tgz', 'latest-tarball', {
         contentType: 'application/gzip',
         cacheControl: 'public, no-cache, must-revalidate',
@@ -336,6 +344,50 @@ describe('artifact CDN Worker', () => {
     assert.equal(edgeCache.puts, 1);
   });
 
+  it('revalidates pinned protocol sidecars without edge caching them', async () => {
+    const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+    const testEnv = env();
+    const edgeCache = new MockEdgeCache();
+    const ctx = { waitUntil: () => assert.fail('sidecars should not write to edge cache') };
+    clearVersionCacheForTests();
+
+    await withMockEdgeCache(edgeCache, async () => {
+      const first = await handleRequest(new Request('https://artifacts.example/protocol/3.0.12.tgz.sig'), testEnv, ctx);
+      const second = await handleRequest(new Request('https://artifacts.example/protocol/3.0.12.tgz.sig'), testEnv, ctx);
+
+      assert.equal(first.status, 200);
+      assert.equal(second.status, 200);
+      assert.equal(await first.text(), 'pinned-signature');
+      assert.equal(await second.text(), 'pinned-signature');
+      assert.equal(first.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+      assert.equal(second.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+    });
+
+    assert.equal(testEnv.ARTIFACTS.getCalls.get('protocol/3.0.12.tgz.sig'), 2);
+    assert.equal(edgeCache.matches, 0);
+    assert.equal(edgeCache.puts, 0);
+  });
+
+  it('revalidates pinned protocol checksums', async () => {
+    const response = await fetchPath('/protocol/3.0.12.tgz.sha256');
+
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'pinned-checksum');
+    assert.equal(response.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+  });
+
+  it('revalidates pinned protocol certificates on GET and HEAD', async () => {
+    const getResponse = await fetchPath('/protocol/3.0.12.tgz.crt');
+    const headResponse = await fetchPath('/protocol/3.0.12.tgz.crt', { method: 'HEAD' });
+
+    assert.equal(getResponse.status, 200);
+    assert.equal(await getResponse.text(), 'pinned-certificate');
+    assert.equal(getResponse.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+    assert.equal(headResponse.status, 200);
+    assert.equal(await headResponse.text(), '');
+    assert.equal(headResponse.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+  });
+
   it('lists protocol tarballs for discovery', async () => {
     const response = await fetchPath('/protocol/');
     const body = await response.json();
@@ -346,6 +398,8 @@ describe('artifact CDN Worker', () => {
         version: '3.0.12',
         tarball: '/protocol/3.0.12.tgz',
         checksum: '/protocol/3.0.12.tgz.sha256',
+        signature: '/protocol/3.0.12.tgz.sig',
+        certificate: '/protocol/3.0.12.tgz.crt',
       },
     ]);
     assert.equal(body.latest.tarball, '/protocol/latest.tgz');

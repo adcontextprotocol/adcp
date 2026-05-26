@@ -1,7 +1,8 @@
 const ALIAS_PATH = /^\/v(\d+)(?:\.(\d+))?(\/.*)?$/;
 const VERSION_DIR_PATH = /^\/([^/]+)\/$/;
 const SEMVER_PATH = /^\/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\/|$)/;
-const PINNED_TARBALL = /(?:^|\/)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.tgz(?:\.sha256|\.sig|\.crt)?$/;
+const PINNED_TARBALL = /(?:^|\/)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.tgz$/;
+const PINNED_TARBALL_SIDECAR = /(?:^|\/)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.tgz\.(?:sha256|sig|crt)$/;
 
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const REVALIDATE_CACHE_CONTROL = "public, no-cache, must-revalidate";
@@ -48,9 +49,9 @@ export async function handleRequest(request, env, ctx) {
 
   if (pathname.startsWith("/protocol/")) {
     const key = pathname.slice(1);
-    const cacheControl = cacheControlForProtocolPath(pathname);
-    return r2ArtifactResponse(request, env, key, cacheControl, {
-      edgeCache: cacheControl === IMMUTABLE_CACHE_CONTROL,
+    const cachePolicy = cachePolicyForProtocolPath(pathname);
+    return r2ArtifactResponse(request, env, key, cachePolicy.cacheControl, {
+      edgeCache: cachePolicy.edgeCache,
       overrideCacheControl: true,
       ctx,
     });
@@ -363,10 +364,14 @@ function compareVersions(left, right) {
   return 0;
 }
 
-function cacheControlForProtocolPath(pathname) {
-  return PINNED_TARBALL.test(pathname)
-    ? IMMUTABLE_CACHE_CONTROL
-    : REVALIDATE_CACHE_CONTROL;
+function cachePolicyForProtocolPath(pathname) {
+  if (PINNED_TARBALL.test(pathname)) {
+    return { cacheControl: IMMUTABLE_CACHE_CONTROL, edgeCache: true };
+  }
+  if (PINNED_TARBALL_SIDECAR.test(pathname)) {
+    return { cacheControl: REVALIDATE_CACHE_CONTROL, edgeCache: false };
+  }
+  return { cacheControl: REVALIDATE_CACHE_CONTROL, edgeCache: false };
 }
 
 function getEdgeCache() {
