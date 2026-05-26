@@ -1351,6 +1351,19 @@ describe('get_products handler', () => {
     expect(products.length).toBeGreaterThan(0);
   });
 
+  it('rejects non-string brief instead of throwing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'brief',
+      brief: { text: 'video sports streaming' },
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.field).toBe('brief');
+    expect(result.message).toContain('brief must be a string');
+  });
+
   it('every product in response has all schema-required fields', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_products', {
