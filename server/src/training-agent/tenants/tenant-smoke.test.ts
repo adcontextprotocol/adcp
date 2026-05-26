@@ -29,13 +29,6 @@ const SALES_CURRENT_SCENARIOS = [
   'seed_measurement_catalog',
 ];
 
-const SALES_CAPABILITY_SCENARIOS = [
-  'force_creative_status',
-  'force_media_buy_status',
-  'simulate_delivery',
-  'simulate_budget_spend',
-];
-
 const SALES_THREE_ZERO_COMPAT_SCENARIOS = [
   'force_creative_status',
   'force_media_buy_status',
@@ -238,7 +231,7 @@ describe('tenant routing smoke', () => {
       const mediaBuy = body.result?.structuredContent?.media_buy;
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
-      expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(SALES_CAPABILITY_SCENARIOS);
+      expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(SALES_CURRENT_SCENARIOS);
     } finally {
       await close();
     }
@@ -346,7 +339,7 @@ describe('tenant routing smoke', () => {
       const capabilitiesBody = await capabilities.json() as {
         result?: { structuredContent?: { compliance_testing?: { scenarios?: string[] } } };
       };
-      expect(capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios).toEqual(SALES_CAPABILITY_SCENARIOS);
+      expect(capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios).toEqual(SALES_THREE_ZERO_COMPAT_SCENARIOS);
       expect(capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios).not.toContain('seed_measurement_catalog');
 
       const list = await fetch(url, {
@@ -394,6 +387,41 @@ describe('tenant routing smoke', () => {
         error?: unknown;
       };
       expect(directSeedBody.result?.structuredContent?.success).not.toBe(true);
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('hides the exact list_accounts account filter from 3.0 storyboard compat tool schemas', async () => {
+    stageLatestThreeZeroSchemaBundle();
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const toolsBody = await callTenantTool(url, 2, 'list_accounts', {}) as {
+        result?: { structuredContent?: { accounts?: unknown[] } };
+      };
+      expect(toolsBody.result?.structuredContent?.accounts).toHaveLength(3);
+
+      const list = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} }),
+      });
+      const body = await list.json() as {
+        result?: {
+          tools?: Array<{
+            name: string;
+            inputSchema?: { properties?: Record<string, unknown> };
+          }>;
+        };
+      };
+      const listAccounts = body.result?.tools?.find(tool => tool.name === 'list_accounts');
+      expect(listAccounts?.inputSchema?.properties ?? {}).not.toHaveProperty('account');
     } finally {
       await close();
     }

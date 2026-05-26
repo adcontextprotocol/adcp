@@ -661,7 +661,6 @@ describe('sync_accounts', () => {
           subscriber_id: 'buyer-primary',
           url: 'https://buyer.example.com/webhooks/creative',
           event_types: ['creative.status_changed'],
-          active: true,
         }],
       }],
     });
@@ -675,6 +674,43 @@ describe('sync_accounts', () => {
       event_types: ['creative.status_changed'],
       active: true,
     }]);
+  });
+
+  it('filters list_accounts exactly by account_id and natural key', async () => {
+    const { result: created } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [
+        {
+          brand: { domain: 'acme.com', brand_id: 'acme-main' },
+          operator: 'agency-one',
+          billing: 'operator',
+          sandbox: true,
+        },
+        {
+          brand: { domain: 'bravo.com' },
+          operator: 'agency-two',
+          billing: 'operator',
+          sandbox: true,
+        },
+      ],
+    });
+    const createdAccounts = created.accounts as Record<string, unknown>[];
+    const accountId = createdAccounts[0].account_id as string;
+
+    const { result: byId } = await simulateCallTool(server, 'list_accounts', {
+      account: { account_id: accountId },
+    });
+    expect(byId.accounts).toHaveLength(1);
+    expect((byId.accounts as Record<string, unknown>[])[0].account_id).toBe(accountId);
+
+    const { result: byNaturalKey } = await simulateCallTool(server, 'list_accounts', {
+      account: {
+        brand: { domain: 'acme.com', brand_id: 'acme-main' },
+        operator: 'agency-one',
+        sandbox: true,
+      },
+    });
+    expect(byNaturalKey.accounts).toHaveLength(1);
+    expect((byNaturalKey.accounts as Record<string, unknown>[])[0].account_id).toBe(accountId);
   });
 
   it('echoes notification auth schemes without write-only credentials', async () => {

@@ -123,9 +123,13 @@ function patchFile(file) {
   const partialCapabilities =
     'zod_1.z.literal("force_creative_status"), zod_1.z.literal("force_account_status"), zod_1.z.literal("force_media_buy_status"), zod_1.z.literal("force_create_media_buy_arm"), zod_1.z.literal("force_task_completion"), zod_1.z.literal("force_session_status"), zod_1.z.literal("simulate_delivery"), zod_1.z.literal("simulate_budget_spend"), zod_1.z.literal("seed_measurement_catalog")]))';
   const currentCapabilities =
-    'zod_1.z.literal("force_creative_status"), zod_1.z.literal("force_account_status"), zod_1.z.literal("force_media_buy_status"), zod_1.z.literal("force_create_media_buy_arm"), zod_1.z.literal("force_task_completion"), zod_1.z.literal("force_session_status"), zod_1.z.literal("simulate_delivery"), zod_1.z.literal("simulate_budget_spend"), zod_1.z.literal("seed_product"), zod_1.z.literal("seed_pricing_option"), zod_1.z.literal("seed_creative"), zod_1.z.literal("seed_plan"), zod_1.z.literal("seed_media_buy"), zod_1.z.literal("seed_creative_format"), zod_1.z.literal("seed_measurement_catalog"), zod_1.z.literal("query_upstream_traffic"), zod_1.z.literal("force_upstream_unavailable")]))';
+    'zod_1.z.literal("force_creative_status"), zod_1.z.literal("force_account_status"), zod_1.z.literal("force_media_buy_status"), zod_1.z.literal("force_create_media_buy_arm"), zod_1.z.literal("force_task_completion"), zod_1.z.literal("force_creative_purge"), zod_1.z.literal("force_session_status"), zod_1.z.literal("simulate_delivery"), zod_1.z.literal("simulate_budget_spend"), zod_1.z.literal("seed_product"), zod_1.z.literal("seed_pricing_option"), zod_1.z.literal("seed_creative"), zod_1.z.literal("seed_plan"), zod_1.z.literal("seed_media_buy"), zod_1.z.literal("seed_creative_format"), zod_1.z.literal("seed_measurement_catalog"), zod_1.z.literal("query_upstream_traffic"), zod_1.z.literal("force_upstream_unavailable")]))';
   text = text.replace(legacyCapabilities, currentCapabilities);
   text = text.replace(partialCapabilities, currentCapabilities);
+  text = text.replaceAll(
+    'zod_1.z.literal("force_task_completion"), zod_1.z.literal("force_session_status")',
+    'zod_1.z.literal("force_task_completion"), zod_1.z.literal("force_creative_purge"), zod_1.z.literal("force_session_status")',
+  );
   text = text.replaceAll(
     'zod_1.z.literal("seed_creative_format")]))',
     'zod_1.z.literal("seed_creative_format"), zod_1.z.literal("seed_measurement_catalog")]))',

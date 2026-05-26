@@ -374,7 +374,7 @@ async function normalizeNotificationConfigs(input: SyncAccountInput): Promise<No
             credentials: config.authentication.credentials,
           }
         : undefined,
-      active: config.active === true,
+      active: config.active !== false,
     });
   }
   return out;

@@ -86,9 +86,7 @@ function buildBearerAuthenticator(): Authenticator | null {
   if (TRAINING_AGENT_TOKEN) staticKeys[TRAINING_AGENT_TOKEN] = { principal: 'static:primary' };
   if (PUBLIC_TEST_AGENT_TOKEN) {
     staticKeys[PUBLIC_TEST_AGENT_TOKEN] = {
-      principal: PUBLIC_TEST_AGENT_TOKEN === DOCUMENTED_PUBLIC_TEST_AGENT_TOKEN
-        ? 'static:public:shared'
-        : 'static:public',
+      principal: 'static:public',
     };
   }
 

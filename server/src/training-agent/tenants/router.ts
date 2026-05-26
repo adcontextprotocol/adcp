@@ -49,11 +49,10 @@ function salesComplyScenarios(storyboardCompat?: TrainingContext['storyboardComp
     : [...SALES_CURRENT_SCENARIOS];
 }
 
-function salesCapabilityScenarios(_storyboardCompat?: TrainingContext['storyboardCompat']): string[] {
-  // The SDK runner's generated Zod schema for get_adcp_capabilities still
-  // accepts only the legacy controller scenario enum. Full 3.1 scenario
-  // discovery remains available through comply_test_controller:list_scenarios.
-  return [...SALES_LEGACY_CAPABILITY_SCENARIOS];
+function salesCapabilityScenarios(storyboardCompat?: TrainingContext['storyboardCompat']): string[] {
+  return storyboardCompat?.version === '3.0'
+    ? [...SALES_LEGACY_CAPABILITY_SCENARIOS]
+    : [...SALES_CURRENT_SCENARIOS];
 }
 
 /**
