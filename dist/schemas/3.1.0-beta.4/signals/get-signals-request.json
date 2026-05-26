@@ -1,0 +1,177 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.4/signals/get-signals-request.json",
+  "title": "Get Signals Request",
+  "description": "Request parameters for discovering and refining signals. Use signal_spec for natural language discovery, signal_refs for exact lookups, both together to refine previous results, or discovery_mode: 'wholesale' to enumerate the agent's full priced signals feed (symmetric with get_products buying_mode: 'wholesale'). The legacy signal_ids field is deprecated.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-beta.4/core/version-envelope.json"
+    },
+    {
+      "description": "Conditional wholesale feed version requests are only valid for wholesale signals feed reads.",
+      "if": {
+        "anyOf": [
+          {
+            "required": [
+              "if_wholesale_feed_version"
+            ]
+          },
+          {
+            "required": [
+              "if_pricing_version"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "discovery_mode": {
+            "const": "wholesale"
+          }
+        },
+        "required": [
+          "discovery_mode"
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "discovery_mode": {
+      "type": "string",
+      "enum": [
+        "brief",
+        "wholesale"
+      ],
+      "default": "brief",
+      "description": "Declares caller intent for this request. 'brief' (default): semantic discovery — signal_spec, signal_refs, or legacy signal_ids is required and the agent performs inference/RAG. 'wholesale': raw wholesale signals feed enumeration — signal_spec, signal_refs, and signal_ids MUST NOT be provided and the agent returns its full priced signals feed, paginated, scoped by filters/account/destinations/countries when present. Sellers receiving requests from pre-v3.1 clients without discovery_mode MUST default to 'brief'. Timing semantics: 'wholesale' is a wholesale signals feed read — agents SHOULD respond synchronously and MUST NOT route a 'wholesale' request through the async/Submitted arm; partial completion is signalled via the response's incomplete[] field, not via a task-handoff envelope. Agents that do not implement wholesale enumeration MAY return INVALID_REQUEST for wholesale calls; callers SHOULD probe via get_adcp_capabilities (signals.discovery_modes) first."
+    },
+    "account": {
+      "$ref": "/schemas/3.1.0-beta.4/core/account-ref.json",
+      "description": "Account for this request. When provided, the signals agent returns per-account pricing options if configured. In 'wholesale' mode, this is the rate-card scope: when omitted in wholesale mode, agents return their default rate-card pricing or omit pricing_options entirely."
+    },
+    "signal_spec": {
+      "type": "string",
+      "description": "Natural language description of the desired signals. When used alone, enables semantic discovery. When combined with signal_refs, provides context for the agent but signal_ref matches are returned first. MUST NOT be provided when discovery_mode is 'wholesale'."
+    },
+    "signal_refs": {
+      "type": "array",
+      "description": "Specific signals to look up by reference. Returns exact matches for the requested SignalRef values. When combined with signal_spec, these signals anchor the starting set and signal_spec guides adjustments. MUST NOT be provided when discovery_mode is 'wholesale'.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.4/core/signal-ref.json"
+      },
+      "minItems": 1
+    },
+    "signal_ids": {
+      "type": "array",
+      "description": "DEPRECATED. Use signal_refs instead. Legacy exact lookup field using SignalId objects. MUST NOT be provided when discovery_mode is 'wholesale'.",
+      "deprecated": true,
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.4/core/signal-id.json"
+      },
+      "minItems": 1
+    },
+    "destinations": {
+      "type": "array",
+      "description": "Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. If the authenticated caller matches one of these destinations, activation keys will be included in the response.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.4/core/destination.json"
+      },
+      "minItems": 1
+    },
+    "countries": {
+      "type": "array",
+      "description": "Countries where signals will be used (ISO 3166-1 alpha-2 codes). When omitted, no geographic filter is applied.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "filters": {
+      "$ref": "/schemas/3.1.0-beta.4/core/signal-filters.json"
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "DEPRECATED: Use pagination.max_results instead. When both fields are present, agents MUST honor pagination.max_results. When only this field is present without a pagination envelope, agents SHOULD treat it as the page size subject to a maximum of 100 results. This field will be removed in AdCP 4.0.",
+      "deprecated": true,
+      "minimum": 1
+    },
+    "pagination": {
+      "$ref": "/schemas/3.1.0-beta.4/core/pagination-request.json",
+      "description": "Pagination parameters. Use pagination.max_results (max: 100, default: 50) and pagination.cursor for cursor-based page walks. When the deprecated top-level max_results field is also present, pagination.max_results takes precedence."
+    },
+    "if_wholesale_feed_version": {
+      "type": "string",
+      "description": "Opaque wholesale_feed_version token returned by a prior wholesale-mode get_signals response from this agent. Only valid when discovery_mode is wholesale. When provided, the agent compares against its current wholesale signals feed version for the caller's cache_scope and MAY return an unchanged: true response (with signals omitted) if nothing has changed. The token is scope-keyed: callers cache `(cache_scope, wholesale_feed_version)` pairs. Scoping dimensions: (agent, discovery_mode, filters, destinations, countries) for cache_scope: 'public'; that tuple plus account_id for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. See specs/wholesale-feed-webhooks.md for the full sync pattern."
+    },
+    "if_pricing_version": {
+      "type": "string",
+      "description": "Opaque pricing_version token from a prior get_signals response. MUST only be sent together with if_wholesale_feed_version — pricing version has no structural baseline to compare against on its own. Evaluation order: (1) if_wholesale_feed_version mismatch → agent returns the full payload; (2) if_wholesale_feed_version matches but if_pricing_version mismatches → agent returns the full payload so the caller sees updated pricing_options; (3) both match → agent MAY return unchanged: true. Agents that don't track pricing separately ignore this and fall back to if_wholesale_feed_version semantics."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.4/core/ext.json"
+    }
+  },
+  "if": {
+    "properties": {
+      "discovery_mode": {
+        "const": "wholesale"
+      }
+    },
+    "required": [
+      "discovery_mode"
+    ]
+  },
+  "then": {
+    "description": "Wholesale enumeration: signal_spec, signal_refs, and legacy signal_ids MUST NOT be present.",
+    "not": {
+      "anyOf": [
+        {
+          "required": [
+            "signal_spec"
+          ]
+        },
+        {
+          "required": [
+            "signal_refs"
+          ]
+        },
+        {
+          "required": [
+            "signal_ids"
+          ]
+        }
+      ]
+    }
+  },
+  "else": {
+    "description": "Brief mode (default): signal_spec, signal_refs, or legacy signal_ids is required.",
+    "anyOf": [
+      {
+        "required": [
+          "signal_spec"
+        ]
+      },
+      {
+        "required": [
+          "signal_refs"
+        ]
+      },
+      {
+        "required": [
+          "signal_ids"
+        ]
+      }
+    ]
+  },
+  "dependencies": {
+    "if_pricing_version": [
+      "if_wholesale_feed_version"
+    ]
+  },
+  "additionalProperties": true
+}
