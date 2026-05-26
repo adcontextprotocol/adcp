@@ -14,7 +14,7 @@
     },
     "is_fixed_price": {
       "type": "boolean",
-      "description": "Filter by pricing availability: true = products offering fixed pricing (at least one option with fixed_price), false = products offering auction pricing (at least one option without fixed_price). Products with both fixed and auction options match both true and false."
+      "description": "Filter by pricing availability and returned pricing options: true = products offering fixed pricing (at least one option with fixed_price), false = products offering auction pricing (at least one option without fixed_price). Products with both fixed and auction options match both true and false, but sellers MUST return only the pricing_options entries matching the requested pricing type so buyers can deterministically select from the returned options."
     },
     "format_ids": {
       "type": "array",

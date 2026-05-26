@@ -13,11 +13,19 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Import triggers route & schema registration
-import "../server/src/routes/registry-api.js";
-import "../server/src/schemas/member-agents-openapi.js";
-import "../server/src/schemas/onboarding-openapi.js";
-import { registry } from "../server/src/schemas/registry.js";
+// Route registration transitively imports auth middleware, which constructs
+// WorkOS at module load. OpenAPI generation never talks to WorkOS; dummy
+// values keep local `npm test` aligned with the CI OpenAPI freshness step.
+process.env.WORKOS_API_KEY ??= "sk_dummy_openapi_only";
+process.env.WORKOS_CLIENT_ID ??= "client_dummy_openapi_only";
+process.env.STRIPE_SECRET_KEY ??= "sk_dummy_openapi_only";
+process.env.RESEND_API_KEY ??= "re_dummy_openapi_only";
+
+// Import triggers route & schema registration.
+await import("../server/src/routes/registry-api.js");
+await import("../server/src/schemas/member-agents-openapi.js");
+await import("../server/src/schemas/onboarding-openapi.js");
+const { registry } = await import("../server/src/schemas/registry.js");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

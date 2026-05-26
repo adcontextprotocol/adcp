@@ -64,6 +64,8 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Video inventory on outdoor lifestyle programming. Q3 flight, $30K budget."
+          filters:
+            is_fixed_price: true
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -83,6 +85,9 @@ phases:
           - check: field_present
             path: "products[0].product_id"
             description: "Product has a product_id"
+          - check: field_present
+            path: "products[0].pricing_options[0].fixed_price"
+            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
 
   - id: create_with_both_lists
     title: "Create media buy with property_list AND collection_list targeting"

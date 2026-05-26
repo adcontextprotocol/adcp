@@ -27,6 +27,7 @@ import type {
   CreateMediaBuyRequest,
   UpdateMediaBuyRequest,
   GetProductsRequest,
+  GetProductsResponse,
   GetMediaBuysRequest,
   GetMediaBuyDeliveryRequest,
   ListCreativeFormatsRequest,
@@ -179,6 +180,22 @@ function vendorMetricKey(entry: VendorMetricRefView | undefined): string | null 
   }
   const brandId = typeof entry?.vendor?.brand_id === 'string' ? entry.vendor.brand_id : '';
   return `${domain.toLowerCase()}|${brandId}|${metricId}`;
+}
+
+function hasFixedPrice(option: PricingOption): boolean {
+  return (option as { fixed_price?: unknown }).fixed_price !== undefined;
+}
+
+function applyFixedPriceFilter(product: Product, fixedPrice: boolean): Product | null {
+  const pricing_options = product.pricing_options.filter(po => hasFixedPrice(po) === fixedPrice);
+  if (pricing_options.length === 0) return null;
+  return { ...product, pricing_options };
+}
+
+function applyFixedPriceFilterToProducts(products: Product[], fixedPrice: boolean): Product[] {
+  return products
+    .map(product => applyFixedPriceFilter(product, fixedPrice))
+    .filter((product): product is Product => product !== null);
 }
 
 // Proposal lifecycle fields not yet in @adcp/sdk — remove after client update
@@ -786,7 +803,7 @@ function resolveManifestProvenance(creative: CreativeForEnforcement): Record<str
  */
 function sanitizeForError(value: string, maxLen = 256): string {
   // eslint-disable-next-line no-control-regex
-  return value.replace(/[ -]/g, '').slice(0, maxLen);
+  return value.replace(/[\x00-\x1F\x7F]/g, '').slice(0, maxLen);
 }
 
 /**
@@ -1471,7 +1488,7 @@ const TOOLS = [
 
 // ── Task handler implementations ──────────────────────────────────
 
-export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
@@ -1500,6 +1517,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     if (deliveryTypeFilter) {
       products = products.filter(p => p.delivery_type === deliveryTypeFilter);
     }
+    const fixedPriceFilter = req.filters.is_fixed_price;
+    if (typeof fixedPriceFilter === 'boolean') {
+      products = applyFixedPriceFilterToProducts(products, fixedPriceFilter);
+    }
     const requiredVendorMetrics = (req.filters as { required_vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> }).required_vendor_metrics;
     if (requiredVendorMetrics?.length) {
       products = products.filter(p => {
@@ -1514,6 +1535,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
       });
     }
   }
+  const filteredProducts = products;
 
   // Brief mode: channel-aware keyword matching
   if (buyingMode === 'brief' && req.brief) {
@@ -1557,8 +1579,8 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
 
     // If no keyword matches, return top products as suggestions
     if (products.length === 0) {
-      products = getCatalog().slice(0, MAX_BRIEF_RESULTS).map(cp => ({
-        ...cp.product,
+      products = filteredProducts.slice(0, MAX_BRIEF_RESULTS).map(p => ({
+        ...p,
         brief_relevance: 'Suggested product — no direct keyword match with your brief.',
       }));
     }
@@ -1570,13 +1592,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string }
     | { scope: 'proposal'; proposal_id: string; action?: 'include' | 'omit' | 'finalize'; ask?: string };
 
-  type RefinementAppliedEntry = {
-    scope: 'request' | 'product' | 'proposal';
-    product_id?: string;
-    proposal_id?: string;
-    status: 'applied' | 'partial' | 'unable';
-    notes?: string;
-  };
+  type RefinementAppliedEntry =
+    | { scope: 'request'; status: 'applied' | 'partial' | 'unable'; notes?: string }
+    | { scope: 'product'; product_id: string; status: 'applied' | 'partial' | 'unable'; notes?: string }
+    | { scope: 'proposal'; proposal_id: string; status: 'applied' | 'partial' | 'unable'; notes?: string };
 
   const refinementApplied: RefinementAppliedEntry[] = [];
   const proposalOmitIds = new Set<string>();
@@ -1626,9 +1645,9 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
           const source = previousProducts.find(p => p.product_id === op.product_id);
           if (source) {
             const sourceChannels = source.channels;
-            for (const p of getCatalog()) {
-              if (p.product.channels?.some(c => sourceChannels?.includes(c))) {
-                includeIds.add(p.product.product_id);
+            for (const p of filteredProducts) {
+              if (p.channels?.some(c => sourceChannels?.includes(c))) {
+                includeIds.add(p.product_id);
               }
             }
           }
@@ -1705,9 +1724,9 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
 
     // Apply includes first (expand), then omits (filter) for products
     if (includeIds.size > 0) {
-      products = getCatalog()
-        .filter(cp => includeIds.has(cp.product.product_id))
-        .map(cp => ({ ...cp.product }));
+      products = filteredProducts
+        .filter(p => includeIds.has(p.product_id))
+        .map(p => ({ ...p }));
     }
     if (omitIds.size > 0) {
       products = products.filter(p => !omitIds.has(p.product_id));
@@ -1718,7 +1737,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   // This prevents keyword capping from accidentally breaking proposals.
   const productIds = new Set(products.map(p => p.product_id));
   if (buyingMode === 'brief') {
-    const catalogById = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+    const catalogById = new Map(filteredProducts.map(p => [p.product_id, p]));
     for (const proposal of getProposals()) {
       const missing = proposal.allocations.filter(a => !productIds.has(a.product_id));
       const present = proposal.allocations.filter(a => productIds.has(a.product_id));
@@ -1739,10 +1758,21 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     ? session.lastGetProductsContext.proposals
     : getProposals();
 
-  const proposals = sourceProposals.filter(proposal =>
-    proposal.allocations.every(a => productIds.has(a.product_id)) &&
-    !proposalOmitIds.has(proposal.proposal_id),
-  );
+  const productsById = new Map(products.map(p => [p.product_id, p]));
+  const proposals = sourceProposals
+    .filter(proposal =>
+      proposal.allocations.every(a => productIds.has(a.product_id)) &&
+      !proposalOmitIds.has(proposal.proposal_id),
+    )
+    .map(proposal => ({
+      ...proposal,
+      allocations: proposal.allocations.map(alloc => {
+        const selectedPricing = productsById.get(alloc.product_id)?.pricing_options[0];
+        return selectedPricing
+          ? { ...alloc, pricing_option_id: selectedPricing.pricing_option_id }
+          : alloc;
+      }),
+    }));
 
   // Store context for refine
   session.lastGetProductsContext = { products, proposals };
