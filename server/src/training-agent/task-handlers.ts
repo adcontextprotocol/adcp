@@ -39,6 +39,7 @@ import type {
   GetAdCPCapabilitiesRequest,
   ListCreativesResponse,
   PreviewCreativeResponse,
+  BuildCreativeResponse,
   CreativeManifest as AdcpCreativeManifest,
 } from '@adcp/sdk';
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
@@ -238,6 +239,18 @@ const THREE_ZERO_LEGACY_PROPOSAL_TARGET_ID = 'sparq_social_amplification';
 
 function isThreeZeroStoryboardCompat(ctx: TrainingContext): boolean {
   return ctx.storyboardCompat?.version === '3.0';
+}
+
+function productForThreeZeroStoryboardCompat(product: Product): Product {
+  const {
+    product_card: _productCard,
+    product_card_detailed: _productCardDetailed,
+    ...rest
+  } = product as Product & {
+    product_card?: unknown;
+    product_card_detailed?: unknown;
+  };
+  return rest as Product;
 }
 
 function includeThreeOneFields(ctx: TrainingContext): boolean {
@@ -2205,12 +2218,15 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   const canonicalFormatAdvisories = collectCanonicalFormatAdvisories(products);
 
   // Store context for refine
-  session.lastGetProductsContext = { products, proposals };
+  const responseProducts = isThreeZeroStoryboardCompat(ctx)
+    ? products.map(productForThreeZeroStoryboardCompat)
+    : products;
+  session.lastGetProductsContext = { products: responseProducts, proposals };
 
   const response = {
     status: 'completed' as const,
-    products,
-    cache_scope: req.account ? 'account' as const : 'public' as const,
+    products: responseProducts,
+    cache_scope: req.account ? ('account' as const) : ('public' as const),
     ...(proposals.length > 0 && { proposals }),
     ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
     ...(canonicalFormatAdvisories.length > 0 && {
@@ -4604,7 +4620,11 @@ function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
   return { serving_tag: { asset_type: 'html', content: html } };
 }
 
-export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
+function buildCreativeCompleted<T extends object>(payload: T): T & { status: 'completed' } {
+  return { status: 'completed', ...payload };
+}
+
+export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
   const req = args as unknown as BuildCreativeArgs;
   const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
@@ -4625,9 +4645,9 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
   if (req.creative_id) {
     const creative = session.creatives.get(req.creative_id) ?? getComplianceCreative(req.creative_id);
     if (!creative) {
-      return {
+      return buildCreativeCompleted({
         errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative "${req.creative_id}" not found. Use sync_creatives to upload or list_creatives to browse.` }],
-      };
+      });
     }
 
     const formatId = targetIds[0] || creative.formatId;
@@ -4639,23 +4659,23 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
         format_id: { agent_url: agentUrl, id: formatId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
       },
-      };
+    };
 
     // Return pricing when account is provided (paid creative agent mode)
     if (creativeBillsThroughAdcp(ctx) && req.account) {
       const pricing = getCreativePricing(req.account, creative);
       creative.pricingOptionId = pricing.pricing_option_id;
-      return {
+      return buildCreativeCompleted({
         ...base,
         pricing_option_id: pricing.pricing_option_id,
         vendor_cost: 0, // CPM-priced: cost accrues at serve time
         currency: pricing.currency,
         consumption: {},
         ...(governanceContext && { governance_context: governanceContext }),
-      };
+      });
     }
 
-    return { ...base, ...(governanceContext && { governance_context: governanceContext }) };
+    return buildCreativeCompleted({ ...base, ...(governanceContext && { governance_context: governanceContext }) });
   }
 
   // Mode 2: Stateless transformation (creative_manifest + target_format_id)
@@ -4681,7 +4701,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
         };
       });
 
-      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }) };
+      return buildCreativeCompleted({ creative_manifests, ...(governanceContext && { governance_context: governanceContext }) });
     }
 
     // Single format response
@@ -4689,13 +4709,13 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     const format = validFormatIds.get(fmtId.id);
     const { w, h } = getDimensions(format);
 
-    return {
+    return buildCreativeCompleted({
       creative_manifest: {
         format_id: { agent_url: agentUrl, id: fmtId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssetCount}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
       ...(governanceContext && { governance_context: governanceContext }),
-      };
+    });
   }
 
   // Mode 3: Generative build (target_format_id + message, no manifest or library creative)
@@ -4709,25 +4729,25 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
           assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
         };
       });
-      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }) };
+      return buildCreativeCompleted({ creative_manifests, ...(governanceContext && { governance_context: governanceContext }) });
     }
 
     const fmtId = targetIds[0];
     const format = validFormatIds.get(fmtId.id);
     const { w, h } = getDimensions(format);
 
-    return {
+    return buildCreativeCompleted({
       creative_manifest: {
         format_id: { agent_url: agentUrl, id: fmtId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
       ...(governanceContext && { governance_context: governanceContext }),
-      };
+    });
   }
 
-  return {
+  return buildCreativeCompleted({
     errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_id (library mode), creative_manifest (transformation mode), or target_format_id (generative mode).' }],
-  };
+  });
 }
 
 // ── Preview creative handler ────────────────────────────────────
