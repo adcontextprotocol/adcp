@@ -192,6 +192,38 @@ REQUIRED_CLEAN_CURRENT_SALES=(
   "media_buy_seller/canonical_formats"
 )
 
+storyboard_passed() {
+  local storyboard_id="$1"
+  local log_file="$2"
+  awk -v id="${storyboard_id}" '
+    $0 ~ "^[[:space:]]+" id "([[:space:]]|$)" {
+      if ($0 ~ /[[:space:]]✓[[:space:]]/) {
+        found = 1
+        exit 0
+      }
+      if ($0 ~ /[[:space:]]✗[[:space:]]/) {
+        exit 1
+      }
+      in_storyboard = 1
+      next
+    }
+    in_storyboard && $0 ~ /^[[:space:]]*✓[[:space:]]/ {
+      found = 1
+      exit 0
+    }
+    in_storyboard && $0 ~ /^[[:space:]]*✗[[:space:]]/ {
+      exit 1
+    }
+    in_storyboard && $0 ~ /^[[:space:]]+[[:alnum:]_\/-]+[[:space:]]/ {
+      exit 1
+    }
+    END {
+      if (found) exit 0
+      exit 1
+    }
+  ' "${log_file}"
+}
+
 for entry in "${TENANTS[@]}"; do
   tenant="${entry%%:*}"
   rest="${entry#*:}"
@@ -238,7 +270,7 @@ for entry in "${TENANTS[@]}"; do
 
   if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "sales" ]; then
     for storyboard_id in "${REQUIRED_CLEAN_CURRENT_SALES[@]}"; do
-      if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" "${log}" >/dev/null; then
+      if storyboard_passed "${storyboard_id}" "${log}"; then
         echo "  ✓ required-clean ${storyboard_id}"
       else
         status="✗"
