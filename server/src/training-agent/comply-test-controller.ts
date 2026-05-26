@@ -110,6 +110,9 @@ function getOrCreateDeliveryAccumulator(session: SessionState, mediaBuyId: strin
 }
 
 function applyExtendedDeliveryParams(cumulative: ComplyDeliveryAccumulator, params: Record<string, unknown>) {
+  if (typeof params.is_final === 'boolean') cumulative.isFinal = params.is_final;
+  if (typeof params.finalized_at === 'string') cumulative.finalizedAt = params.finalized_at;
+  if (typeof params.measurement_window === 'string') cumulative.measurementWindow = params.measurement_window;
   if (typeof params.reach === 'number') cumulative.reach = params.reach;
   if (typeof params.frequency === 'number') cumulative.frequency = params.frequency;
   if (params.reach_window && typeof params.reach_window === 'object' && !Array.isArray(params.reach_window)) {
@@ -122,6 +125,9 @@ function applyExtendedDeliveryParams(cumulative: ComplyDeliveryAccumulator, para
 
 function extendedDeliverySnapshot(cumulative: ComplyDeliveryAccumulator): Record<string, unknown> {
   return {
+    ...(cumulative.isFinal !== undefined ? { is_final: cumulative.isFinal } : {}),
+    ...(cumulative.finalizedAt ? { finalized_at: cumulative.finalizedAt } : {}),
+    ...(cumulative.measurementWindow ? { measurement_window: cumulative.measurementWindow } : {}),
     ...(cumulative.reach !== undefined ? { reach: cumulative.reach } : {}),
     ...(cumulative.frequency !== undefined ? { frequency: cumulative.frequency } : {}),
     ...(cumulative.reachWindow ? { reach_window: cumulative.reachWindow } : {}),
@@ -531,6 +537,9 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       if (typedParams.frequency !== undefined) simulated.frequency = typedParams.frequency;
       if (typedParams.reach_window !== undefined) simulated.reach_window = typedParams.reach_window;
       if (typedParams.viewability !== undefined) simulated.viewability = typedParams.viewability;
+      if (typedParams.is_final !== undefined) simulated.is_final = typedParams.is_final;
+      if (typedParams.finalized_at !== undefined) simulated.finalized_at = typedParams.finalized_at;
+      if (typedParams.measurement_window !== undefined) simulated.measurement_window = typedParams.measurement_window;
 
       return {
         success: true,
@@ -929,6 +938,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     if (params.frequency !== undefined) simulatedExtras.frequency = params.frequency;
     if (params.reach_window !== undefined) simulatedExtras.reach_window = params.reach_window;
     if (params.viewability !== undefined) simulatedExtras.viewability = params.viewability;
+    if (params.is_final !== undefined) simulatedExtras.is_final = params.is_final;
+    if (params.finalized_at !== undefined) simulatedExtras.finalized_at = params.finalized_at;
+    if (params.measurement_window !== undefined) simulatedExtras.measurement_window = params.measurement_window;
     if (Object.keys(simulatedExtras).length > 0 || cumulative) {
       const response = sdkResponse as unknown as Record<string, unknown>;
       return {

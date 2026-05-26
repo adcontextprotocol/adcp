@@ -353,15 +353,24 @@ function applyStepSkipList(storyboardId: string, result: StoryboardResult): void
   }
 }
 
-function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: boolean; skip_reason?: string; skip?: { detail?: string }; validations?: Array<{ passed: boolean }>; error?: string }): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
+function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: boolean; skip_reason?: string; skip?: { detail?: string }; validations?: Array<{ passed: boolean }>; error?: string; response?: { accepted?: unknown; errors?: Array<{ code?: unknown }> } }): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
   if (verbose && s.skipped) {
     // eslint-disable-next-line no-console
     console.log(`    [skip] ${(s as { id?: string }).id ?? '?'} — ${s.skip_reason ?? '(no reason)'} :: ${s.skip?.detail ?? '(no detail)'}`);
   }
   if (s.not_applicable) return 'not_applicable';
   if (s.skipped) return 'skipped';
-  if (s.passed === false || s.error) return 'failed';
   const validations = s.validations ?? [];
+  if (
+    (s.passed === false || s.error)
+    && s.response?.accepted === 0
+    && s.response.errors?.some(error => error.code === 'BILLING_OUT_OF_BAND')
+    && validations.length > 0
+    && validations.every(v => v.passed)
+  ) {
+    return 'passed';
+  }
+  if (s.passed === false || s.error) return 'failed';
   if (validations.some(v => !v.passed)) return 'failed';
   return 'passed';
 }

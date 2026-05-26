@@ -10,6 +10,7 @@ import { TrainingSalesPlatform } from '../v6-sales-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildSalesComplyConfig } from './comply.js';
 import { listAccountsTool } from './account-tools.js';
+import { reportUsageTool } from './report-usage-tool.js';
 import type { TrainingContext } from '../types.js';
 
 const TENANT_ID = 'sales';
@@ -30,6 +31,7 @@ export function buildSalesTenantConfig(host: string, options: { storyboardCompat
       serverOptions: {
         customTools: {
           list_accounts: listAccountsTool(),
+          report_usage: reportUsageTool({ creativeBillsThroughAdcp: true }),
         },
         complyTest: buildSalesComplyConfig(),
       },
