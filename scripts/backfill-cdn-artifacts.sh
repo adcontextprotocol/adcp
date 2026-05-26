@@ -253,7 +253,7 @@ sync_filtered() {
     args+=(--include "$pattern")
   done
   if [[ "${exclude_latest:-0}" -eq 1 ]]; then
-    args+=(--exclude "latest/*")
+    args+=(--exclude "latest/*" --exclude "latest.*")
   fi
   run_cmd aws "${args[@]}"
 }
@@ -281,6 +281,9 @@ cp_filtered_recursive() {
   for pattern in "${patterns[@]}"; do
     args+=(--include "$pattern")
   done
+  if [[ "${exclude_latest:-0}" -eq 1 ]]; then
+    args+=(--exclude "latest/*" --exclude "latest.*")
+  fi
   run_cmd aws "${args[@]}"
 }
 
@@ -352,9 +355,9 @@ if [[ "$skip_latest" -eq 0 && -d dist/compliance/latest ]]; then
 fi
 
 exclude_latest=1 sync_filtered dist/protocol protocol "$immutable_cache" "application/gzip" "*.tgz"
-exclude_latest=1 sync_filtered dist/protocol protocol "$immutable_cache" "text/plain; charset=utf-8" "*.sha256"
-exclude_latest=1 sync_filtered dist/protocol protocol "$immutable_cache" "application/octet-stream" "*.sig"
-exclude_latest=1 sync_filtered dist/protocol protocol "$immutable_cache" "application/x-pem-file" "*.crt"
+exclude_latest=1 cp_filtered_recursive dist/protocol protocol "$revalidate_cache" "text/plain; charset=utf-8" "*.sha256"
+exclude_latest=1 cp_filtered_recursive dist/protocol protocol "$revalidate_cache" "application/octet-stream" "*.sig"
+exclude_latest=1 cp_filtered_recursive dist/protocol protocol "$revalidate_cache" "application/x-pem-file" "*.crt"
 
 if [[ "$skip_latest" -eq 0 && -f dist/protocol/latest.tgz ]]; then
   cp_file dist/protocol/latest.tgz protocol/latest.tgz "$revalidate_cache" "application/gzip"
