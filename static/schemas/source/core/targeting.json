@@ -448,6 +448,15 @@
         "additionalProperties": false
       },
       "minItems": 1
+    },
+    "signal_targeting": {
+      "type": "array",
+      "description": "DEPRECATED. Use signal_targeting_groups for package-level signal targeting. Legacy flat signal_targeting remains accepted during the SignalRef migration window but cannot express grouped include/exclude composition or product-scoped pricing.",
+      "deprecated": true,
+      "items": {
+        "$ref": "/schemas/core/signal-targeting.json"
+      },
+      "minItems": 1
     }
   },
   "additionalProperties": true

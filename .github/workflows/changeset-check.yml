@@ -22,7 +22,7 @@ jobs:
     #   already-published version and do not represent a new package release.
     if: ${{ !startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') && !startsWith(github.head_ref, 'auto/docs-v') }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
 
@@ -32,4 +32,4 @@ jobs:
           node-version: '22'
 
       - name: Check for changeset
-        run: npx --yes @changesets/cli@^2.31.0 status --since=origin/main
+        run: npx --yes @changesets/cli@^2.31.0 status --since=origin/${{ github.base_ref }}

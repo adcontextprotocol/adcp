@@ -1841,7 +1841,8 @@
           return;
         }
         pendingChallengeDomain = data.domain;
-        document.getElementById('add-domain-host').textContent = (data.verification_prefix || '_workos') + '.' + data.domain;
+        var prefix = data.verification_prefix || '';
+        document.getElementById('add-domain-host').textContent = data.dns_record_name || (prefix ? prefix + '.' + data.domain : data.domain);
         document.getElementById('add-domain-token').textContent = data.verification_token || '';
         document.getElementById('add-domain-verify-status').textContent = '';
         challengeEl.style.display = 'block';

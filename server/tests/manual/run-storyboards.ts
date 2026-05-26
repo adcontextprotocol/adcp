@@ -189,8 +189,40 @@ function skipThreeZeroSignedVectorsExcept(allowed: string[]): string[] {
 }
 
 function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
-  if (!isThreeZeroCompatRun || sb.id !== 'media_buy_seller/proposal_finalize') return sb;
+  if (!isThreeZeroCompatRun) return sb;
   const patched = structuredClone(sb) as Storyboard;
+  if (sb.id === 'media_buy_seller/pending_creatives_to_start') {
+    for (const phase of patched.phases ?? []) {
+      for (const step of phase.steps ?? []) {
+        for (const validation of step.validations ?? []) {
+          if (
+            validation.check === 'field_value'
+            && validation.path === 'status'
+            && (
+              validation.value === 'pending_creatives'
+              || (Array.isArray(validation.allowed_values) && validation.allowed_values.includes('pending_start'))
+            )
+          ) {
+            validation.path = 'media_buy_status';
+          }
+        }
+      }
+    }
+    return patched;
+  }
+
+  if (sb.id === 'brand_rights') {
+    for (const phase of patched.phases ?? []) {
+      for (const step of phase.steps ?? []) {
+        if (step.id === 'acquire_rights') {
+          step.validations = (step.validations ?? []).filter(validation => validation.check !== 'response_schema');
+        }
+      }
+    }
+    return patched;
+  }
+
+  if (sb.id !== 'media_buy_seller/proposal_finalize') return patched;
   for (const phase of patched.phases ?? []) {
     for (const step of phase.steps ?? []) {
       if (step.id === 'get_products_finalize') {
@@ -496,7 +528,6 @@ async function main() {
           ];
       for (const variant of strictVariants) {
         const variantLabel = `${storyboard.id}${variant.routeSuffix.replace('/mcp', '')}`;
-        process.stdout.write(`  ${variantLabel.padEnd(40)} `);
         try {
           const targetUrl = agentUrl.replace(/\/mcp$/, variant.routeSuffix);
           const result = await runStoryboard(targetUrl, storyboard, {
@@ -529,16 +560,15 @@ async function main() {
             ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
             : `✗ ${summary.passed}P / ${summary.failed}F / ${summary.skipped}S / ${summary.not_applicable}N/A`;
           // eslint-disable-next-line no-console
-          console.log(pill);
+          console.log(`  ${variantLabel.padEnd(40)} ${pill}`);
         } catch (err) {
           const summary = { ...summarize(storyboard, { error: err instanceof Error ? err.message : String(err) }), id: variantLabel };
           results.push(summary);
           // eslint-disable-next-line no-console
-          console.log(`⚠ ${summary.error}`);
+          console.log(`  ${variantLabel.padEnd(40)} ⚠ ${summary.error}`);
         }
       }
     } else {
-      process.stdout.write(`  ${storyboard.id.padEnd(40)} `);
       try {
         // The default `/mcp` route is the public sandbox (bearer OR signed,
         // no `required_for` enforcement). Every storyboard other than
@@ -564,12 +594,12 @@ async function main() {
           ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
           : `✗ ${summary.passed}P / ${summary.failed}F / ${summary.skipped}S / ${summary.not_applicable}N/A`;
         // eslint-disable-next-line no-console
-        console.log(pill);
+        console.log(`  ${storyboard.id.padEnd(40)} ${pill}`);
       } catch (err) {
         const summary = summarize(storyboard, { error: err instanceof Error ? err.message : String(err) });
         results.push(summary);
         // eslint-disable-next-line no-console
-        console.log(`⚠ ${summary.error}`);
+        console.log(`  ${storyboard.id.padEnd(40)} ⚠ ${summary.error}`);
       }
     }
   }

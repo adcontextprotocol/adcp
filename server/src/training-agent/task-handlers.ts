@@ -18,7 +18,7 @@ import { PostgresTaskStore } from '@adcp/sdk';
 import { mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting } from './types.js';
+import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting } from './types.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
   Product,
@@ -27,6 +27,7 @@ import type {
   CreateMediaBuyRequest,
   UpdateMediaBuyRequest,
   GetProductsRequest,
+  GetProductsResponse,
   GetMediaBuysRequest,
   GetMediaBuyDeliveryRequest,
   ListCreativeFormatsRequest,
@@ -36,7 +37,6 @@ import type {
   ActivateSignalRequest,
   GetCreativeDeliveryRequest,
   GetAdCPCapabilitiesRequest,
-  BuildCreativeResponse,
   ListCreativesResponse,
   PreviewCreativeResponse,
   CreativeManifest as AdcpCreativeManifest,
@@ -181,6 +181,22 @@ function vendorMetricKey(entry: VendorMetricRefView | undefined): string | null 
   return `${domain.toLowerCase()}|${brandId}|${metricId}`;
 }
 
+function hasFixedPrice(option: PricingOption): boolean {
+  return (option as { fixed_price?: unknown }).fixed_price !== undefined;
+}
+
+function applyFixedPriceFilter(product: Product, fixedPrice: boolean): Product | null {
+  const pricing_options = product.pricing_options.filter(po => hasFixedPrice(po) === fixedPrice);
+  if (pricing_options.length === 0) return null;
+  return { ...product, pricing_options };
+}
+
+function applyFixedPriceFilterToProducts(products: Product[], fixedPrice: boolean): Product[] {
+  return products
+    .map(product => applyFixedPriceFilter(product, fixedPrice))
+    .filter((product): product is Product => product !== null);
+}
+
 // Proposal lifecycle fields not yet in @adcp/sdk — remove after client update
 interface ProposalLifecycle {
   proposal_status?: 'draft' | 'committed';
@@ -206,8 +222,10 @@ import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import {
   getSession, sessionKeyFromArgs,
+  findSessionMatching,
   runWithSessionContext, flushDirtySessions,
   getComplianceCreatives, getComplianceCreative,
+  getComplianceMediaBuys, getComplianceMediaBuy,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
 } from './state.js';
 import { getAgentUrl } from './config.js';
@@ -384,6 +402,39 @@ interface TaskError {
   field?: string;
   details?: unknown;
   recovery?: string;
+  source?: 'producer' | 'sdk';
+  sdk_id?: string;
+}
+
+const RESPONSE_ENVELOPE_KEYS = new Set([
+  'errors',
+  'context',
+  'ext',
+  'status',
+  'context_id',
+  'task_id',
+  'timestamp',
+  'message',
+  'replayed',
+  'adcp_error',
+  'push_notification_config',
+  'governance_context',
+  'adcp_version',
+  'adcp_major_version',
+]);
+
+export function hasAdcpSuccessPayload(resultObj: Record<string, unknown> | undefined): boolean {
+  if (!resultObj) return false;
+  if (resultObj.status === 'submitted' && typeof resultObj.task_id === 'string') return true;
+  return Object.keys(resultObj).some(key => !RESPONSE_ENVELOPE_KEYS.has(key) && resultObj[key] !== undefined);
+}
+
+function permitsAdvisoryErrors(toolName: string, resultObj: Record<string, unknown> | undefined): boolean {
+  if (toolName === 'get_products') return hasAdcpSuccessPayload(resultObj);
+  if (toolName === 'create_media_buy') {
+    return resultObj?.status === 'submitted' && typeof resultObj.task_id === 'string';
+  }
+  return false;
 }
 
 /** Signal deployment entry in get_signals response. */
@@ -563,6 +614,261 @@ function validActionsForStatus(status: string): string[] {
   }
 }
 
+function availableActionsForStatus(status: string, explicit?: MediaBuyAvailableActionState[]): MediaBuyAvailableActionState[] {
+  if (explicit !== undefined) return explicit;
+  return validActionsForStatus(status).map(action => ({
+    action,
+    mode: 'self_serve' as const,
+  }));
+}
+
+const NON_TERMINAL_MEDIA_BUY_STATUSES = new Set(['pending_creatives', 'pending_start', 'active', 'paused']);
+
+function allowedActionAppliesToStatus(action: MediaBuyProductAllowedActionState, status: string): boolean {
+  if (action.allowed_statuses?.length) return action.allowed_statuses.includes(status);
+  return NON_TERMINAL_MEDIA_BUY_STATUSES.has(status);
+}
+
+function normalizeProductAllowedActions(product: Product | undefined): MediaBuyProductAllowedActionState[] {
+  const rawActions = (product as unknown as { allowed_actions?: unknown } | undefined)?.allowed_actions;
+  if (!Array.isArray(rawActions)) return [];
+
+  const normalized: MediaBuyProductAllowedActionState[] = [];
+  const seen = new Set<string>();
+  for (const rawAction of rawActions) {
+    if (!rawAction || typeof rawAction !== 'object' || Array.isArray(rawAction)) continue;
+    const src = rawAction as Record<string, unknown>;
+    if (typeof src.action !== 'string' || seen.has(src.action)) continue;
+    if (!Array.isArray(src.modes)) continue;
+    const modes = src.modes.filter((mode): mode is MediaBuyAvailableActionState['mode'] =>
+      mode === 'self_serve'
+      || mode === 'conditional_self_serve'
+      || mode === 'requires_proposal'
+      || mode === 'requires_approval',
+    );
+    if (modes.length === 0) continue;
+    const sla = src.sla && typeof src.sla === 'object' && !Array.isArray(src.sla)
+      ? src.sla as Record<string, unknown>
+      : undefined;
+    normalized.push({
+      action: src.action,
+      modes,
+      ...(Array.isArray(src.allowed_statuses) && {
+        allowed_statuses: src.allowed_statuses.filter(status => typeof status === 'string') as string[],
+      }),
+      ...(sla && {
+        sla: {
+          ...(typeof sla.response_max === 'string' && { response_max: sla.response_max }),
+          ...(typeof sla.completion_max === 'string' && { completion_max: sla.completion_max }),
+        },
+      }),
+      ...(typeof src.terms_ref === 'string' && { terms_ref: src.terms_ref }),
+    });
+    seen.add(src.action);
+  }
+  return normalized;
+}
+
+function deriveProductAllowedActionsForPackages(
+  packages: PackageState[],
+  productMap: Map<string, Product>,
+): MediaBuyProductAllowedActionState[] | undefined {
+  const actions: MediaBuyProductAllowedActionState[] = [];
+  const seen = new Set<string>();
+  for (const pkg of packages) {
+    for (const action of normalizeProductAllowedActions(productMap.get(pkg.productId))) {
+      if (seen.has(action.action)) continue;
+      actions.push(action);
+      seen.add(action.action);
+    }
+  }
+  return actions.length ? actions : undefined;
+}
+
+function deriveAvailableActionsFromProductAllowedActions(
+  allowedActions: MediaBuyProductAllowedActionState[] | undefined,
+  status: string,
+): MediaBuyAvailableActionState[] | undefined {
+  if (!allowedActions) return undefined;
+  return allowedActions
+    .filter(action => allowedActionAppliesToStatus(action, status))
+    .map(action => ({
+      action: action.action,
+      mode: action.modes[0],
+      ...(action.sla && { sla: action.sla }),
+      ...(action.terms_ref && { terms_ref: action.terms_ref }),
+    }));
+}
+
+function availableActionsForMediaBuy(mb: MediaBuyState, status: string): MediaBuyAvailableActionState[] {
+  const productDerived = deriveAvailableActionsFromProductAllowedActions(mb.productAllowedActions, status);
+  if (productDerived !== undefined) return productDerived;
+  return availableActionsForStatus(status, mb.availableActions);
+}
+
+type AttemptedMediaBuyAction =
+  | 'pause'
+  | 'resume'
+  | 'cancel'
+  | 'extend_flight'
+  | 'shorten_flight'
+  | 'update_flight_dates'
+  | 'increase_budget'
+  | 'decrease_budget'
+  | 'reallocate_budget'
+  | 'update_targeting'
+  | 'update_pacing'
+  | 'update_frequency_caps'
+  | 'replace_creative'
+  | 'update_creative_assignments'
+  | 'add_packages'
+  | 'remove_packages';
+
+interface AttemptedMediaBuyActionEntry {
+  action: AttemptedMediaBuyAction;
+  packageId?: string;
+}
+
+function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): AttemptedMediaBuyActionEntry[] {
+  const actions: AttemptedMediaBuyActionEntry[] = [];
+  const seen = new Set<string>();
+  const addAction = (action: AttemptedMediaBuyAction, packageId?: string) => {
+    const key = `${packageId ?? '*'}:${action}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    actions.push({ action, ...(packageId && { packageId }) });
+  };
+
+  if (req.paused === true) addAction('pause');
+  if (req.paused === false) addAction('resume');
+  if (req.canceled === true) addAction('cancel');
+
+  const currentStart = new Date(mb.startTime).getTime();
+  const currentEnd = new Date(mb.endTime).getTime();
+  const requestedStart = req.start_time as unknown;
+  if (typeof requestedStart === 'string') {
+    const nextStart = new Date(requestedStart).getTime();
+    if (!Number.isNaN(nextStart) && nextStart !== currentStart) addAction('update_flight_dates');
+  } else if (requestedStart && typeof requestedStart === 'object' && typeof (requestedStart as { datetime?: unknown }).datetime === 'string') {
+    const nextStart = new Date((requestedStart as { datetime: string }).datetime).getTime();
+    if (!Number.isNaN(nextStart) && nextStart !== currentStart) addAction('update_flight_dates');
+  }
+  if (typeof req.end_time === 'string') {
+    const nextEnd = new Date(req.end_time).getTime();
+    if (!Number.isNaN(nextEnd)) {
+      if (nextEnd > currentEnd) addAction('extend_flight');
+      if (nextEnd < currentEnd) addAction('shorten_flight');
+    }
+  }
+
+  if (req.packages?.length) {
+    let totalBefore = 0;
+    let totalAfter = 0;
+    let sawBudget = false;
+    for (const update of req.packages as PackageUpdateExt[]) {
+      const pkgId = update.package_id || '';
+      const pkg = mb.packages.find(p => p.packageId === pkgId);
+      if (!pkg) continue;
+      totalBefore += pkg.budget;
+      totalAfter += update.budget ?? pkg.budget;
+      if (update.budget !== undefined) {
+        sawBudget = true;
+        if (update.budget > pkg.budget) addAction('increase_budget', pkgId);
+        if (update.budget < pkg.budget) addAction('decrease_budget', pkgId);
+      }
+      if (update.start_time) addAction('update_flight_dates', pkgId);
+      if (update.end_time) {
+        const currentPackageEnd = new Date(pkg.endTime).getTime();
+        const nextPackageEnd = new Date(update.end_time).getTime();
+        if (!Number.isNaN(nextPackageEnd)) {
+          if (nextPackageEnd > currentPackageEnd) addAction('extend_flight', pkgId);
+          if (nextPackageEnd < currentPackageEnd) addAction('shorten_flight', pkgId);
+        }
+      }
+      if (update.targeting_overlay || update.targeting || update.keyword_targets_add || update.keyword_targets_remove || update.negative_keywords_add || update.negative_keywords_remove) addAction('update_targeting', pkgId);
+      if (update.pacing) addAction('update_pacing', pkgId);
+      if (
+        update.targeting_overlay
+        && typeof update.targeting_overlay === 'object'
+        && 'frequency_cap' in (update.targeting_overlay as Record<string, unknown>)
+      ) addAction('update_frequency_caps', pkgId);
+      if (update.creative_assignments) addAction('update_creative_assignments', pkgId);
+      if (update.creatives) addAction('replace_creative', pkgId);
+      if (update.canceled === true) addAction('remove_packages', pkgId);
+    }
+    if (sawBudget && totalAfter === totalBefore && seenHasAction(seen, 'increase_budget') && seenHasAction(seen, 'decrease_budget')) {
+      addAction('reallocate_budget');
+    }
+  }
+
+  if (req.new_packages?.length) addAction('add_packages');
+  return actions;
+}
+
+function seenHasAction(seen: Set<string>, action: AttemptedMediaBuyAction): boolean {
+  for (const key of seen) {
+    if (key.endsWith(`:${action}`)) return true;
+  }
+  return false;
+}
+
+function actionNotAllowedError(
+  attemptedAction: string,
+  reason: 'wrong_status' | 'not_supported_on_product' | 'not_supported_on_buy' | 'mode_mismatch',
+  availableActions: MediaBuyAvailableActionState[],
+  context?: unknown,
+): { errors: TaskError[]; context?: unknown } {
+  return {
+    errors: [{
+      code: 'ACTION_NOT_ALLOWED',
+      message: `Action ${attemptedAction} is not available through direct update_media_buy`,
+      recovery: reason === 'wrong_status' || reason === 'mode_mismatch' ? 'correctable' : 'terminal',
+      details: {
+        attempted_action: attemptedAction,
+        reason,
+        currently_available_actions: availableActions,
+      },
+    }],
+    ...(context !== undefined && { context }),
+  };
+}
+
+function rejectUnavailableAction(
+  mb: MediaBuyState,
+  req: UpdateMediaBuyArgs,
+  status: string,
+  productMap: Map<string, Product>,
+): { errors: TaskError[]; context?: unknown } | null {
+  if (!mb.productAllowedActions && !mb.availableActions) return null;
+
+  const availableActions = availableActionsForMediaBuy(mb, status);
+  for (const attempt of actionsForUpdateRequest(mb, req)) {
+    const packageAllowedActions = attempt.packageId
+      ? normalizeProductAllowedActions(productMap.get(mb.packages.find(pkg => pkg.packageId === attempt.packageId)?.productId ?? ''))
+      : undefined;
+    const scopedAvailableActions = packageAllowedActions
+      ? deriveAvailableActionsFromProductAllowedActions(packageAllowedActions, status) ?? []
+      : availableActions;
+    const advertised = new Map(scopedAvailableActions.map(entry => [entry.action, entry]));
+    const entry = advertised.get(attempt.action);
+    if (!entry) {
+      const productAction = packageAllowedActions
+        ? packageAllowedActions.find(action => action.action === attempt.action)
+        : mb.productAllowedActions?.find(action => action.action === attempt.action);
+      const reason = productAction
+        ? 'wrong_status'
+        : packageAllowedActions || mb.productAllowedActions
+          ? 'not_supported_on_product'
+          : 'not_supported_on_buy';
+      return actionNotAllowedError(attempt.action, reason, availableActions, req.context);
+    }
+    if (entry.mode !== 'self_serve' && entry.mode !== 'conditional_self_serve') {
+      return actionNotAllowedError(attempt.action, 'mode_mismatch', availableActions, req.context);
+    }
+  }
+  return null;
+}
+
 // ── Cached catalog and formats (built once at first use) ──────────
 let cachedCatalog: CatalogProduct[] | null = null;
 let cachedFormats: ReturnType<typeof buildFormats> | null = null;
@@ -637,13 +943,14 @@ function backfillTrainingProductDefaults(product: Product, ownAgentUrl: string):
     description?: string;
     publisher_properties?: Array<{ publisher_domain: string; selection_type: string }>;
     format_ids?: Array<{ agent_url?: string; id?: string }>;
+    format_options?: unknown[];
     pricing_options?: unknown[];
     reporting_capabilities?: Record<string, unknown>;
   };
-  if (!Array.isArray(p.format_ids) || p.format_ids.length === 0) {
+  if ((!Array.isArray(p.format_ids) || p.format_ids.length === 0) && (!Array.isArray(p.format_options) || p.format_options.length === 0)) {
     p.format_ids = [{ agent_url: ownAgentUrl, id: 'display_300x250' }];
   } else {
-    for (const fid of p.format_ids) {
+    for (const fid of p.format_ids ?? []) {
       if (typeof fid === 'object' && fid !== null && !fid.agent_url) {
         fid.agent_url = ownAgentUrl;
       }
@@ -786,7 +1093,7 @@ function resolveManifestProvenance(creative: CreativeForEnforcement): Record<str
  */
 function sanitizeForError(value: string, maxLen = 256): string {
   // eslint-disable-next-line no-control-regex
-  return value.replace(/[ -]/g, '').slice(0, maxLen);
+  return value.replace(/[\x00-\x1F\x7F]/g, '').slice(0, maxLen);
 }
 
 /**
@@ -1005,6 +1312,82 @@ function overlaySeededProducts(
     backfillTrainingProductDefaults(merged as Product, ownAgentUrl);
     productMap.set(productId, merged as Product);
   }
+}
+
+type CanonicalFormatRef = { agent_url?: string; id?: string };
+type CanonicalFormatOption = {
+  format_option_id?: string;
+  format_kind?: string;
+  v1_format_ref?: CanonicalFormatRef[];
+};
+
+function collectCanonicalFormatAdvisories(products: Product[]): TaskError[] {
+  const errors: TaskError[] = [];
+
+  for (let productIndex = 0; productIndex < products.length; productIndex++) {
+    const product = products[productIndex] as Product & {
+      format_ids?: CanonicalFormatRef[];
+      format_options?: CanonicalFormatOption[];
+    };
+    if (!Array.isArray(product.format_ids) || !Array.isArray(product.format_options)) continue;
+    if (product.format_ids.length === 0 || product.format_options.length === 0) continue;
+
+    const declaredRefs = new Set(
+      product.format_ids
+        .filter((ref): ref is Required<CanonicalFormatRef> =>
+          typeof ref.agent_url === 'string' && typeof ref.id === 'string',
+        )
+        .map(ref => `${canonicalizeAgentUrl(ref.agent_url)}#${ref.id}`),
+    );
+    const missingRefs: Array<{
+      format_option_index: number;
+      ref_index: number;
+      agent_url: string;
+      id: string;
+      format_option_id?: string;
+      format_kind?: string;
+    }> = [];
+
+    product.format_options.forEach((option, optionIndex) => {
+      if (!Array.isArray(option.v1_format_ref)) return;
+      option.v1_format_ref.forEach((ref, refIndex) => {
+        if (typeof ref.agent_url !== 'string' || typeof ref.id !== 'string') return;
+        const key = `${canonicalizeAgentUrl(ref.agent_url)}#${ref.id}`;
+        if (!declaredRefs.has(key)) {
+          const missingRef: (typeof missingRefs)[number] = {
+            format_option_index: optionIndex,
+            ref_index: refIndex,
+            agent_url: ref.agent_url,
+            id: ref.id,
+          };
+          if (typeof option.format_option_id === 'string') {
+            missingRef.format_option_id = option.format_option_id;
+          }
+          if (typeof option.format_kind === 'string') {
+            missingRef.format_kind = option.format_kind;
+          }
+          missingRefs.push(missingRef);
+        }
+      });
+    });
+
+    if (missingRefs.length > 0) {
+      errors.push({
+        code: 'FORMAT_DECLARATION_DIVERGENT',
+        message: `Product ${product.product_id} dual-emits format_options v1_format_ref entries that are absent from format_ids.`,
+        field: `products[${productIndex}].format_options`,
+        recovery: 'correctable',
+        source: 'producer',
+        details: {
+          product_id: product.product_id,
+          divergence_reason: 'v1_format_ref_not_declared_on_product',
+          missing_refs: missingRefs,
+        },
+      });
+    }
+  }
+
+  return errors;
 }
 
 // ── Channel aliases for brief matching (module-scoped for perf) ──
@@ -1471,7 +1854,7 @@ const TOOLS = [
 
 // ── Task handler implementations ──────────────────────────────────
 
-export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
@@ -1500,6 +1883,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     if (deliveryTypeFilter) {
       products = products.filter(p => p.delivery_type === deliveryTypeFilter);
     }
+    const fixedPriceFilter = req.filters.is_fixed_price;
+    if (typeof fixedPriceFilter === 'boolean') {
+      products = applyFixedPriceFilterToProducts(products, fixedPriceFilter);
+    }
     const requiredVendorMetrics = (req.filters as { required_vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> }).required_vendor_metrics;
     if (requiredVendorMetrics?.length) {
       products = products.filter(p => {
@@ -1514,6 +1901,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
       });
     }
   }
+  const filteredProducts = products;
 
   // Brief mode: channel-aware keyword matching
   if (buyingMode === 'brief' && req.brief) {
@@ -1557,8 +1945,8 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
 
     // If no keyword matches, return top products as suggestions
     if (products.length === 0) {
-      products = getCatalog().slice(0, MAX_BRIEF_RESULTS).map(cp => ({
-        ...cp.product,
+      products = filteredProducts.slice(0, MAX_BRIEF_RESULTS).map(p => ({
+        ...p,
         brief_relevance: 'Suggested product — no direct keyword match with your brief.',
       }));
     }
@@ -1570,13 +1958,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string }
     | { scope: 'proposal'; proposal_id: string; action?: 'include' | 'omit' | 'finalize'; ask?: string };
 
-  type RefinementAppliedEntry = {
-    scope: 'request' | 'product' | 'proposal';
-    product_id?: string;
-    proposal_id?: string;
-    status: 'applied' | 'partial' | 'unable';
-    notes?: string;
-  };
+  type RefinementAppliedEntry =
+    | { scope: 'request'; status: 'applied' | 'partial' | 'unable'; notes?: string }
+    | { scope: 'product'; product_id: string; status: 'applied' | 'partial' | 'unable'; notes?: string }
+    | { scope: 'proposal'; proposal_id: string; status: 'applied' | 'partial' | 'unable'; notes?: string };
 
   const refinementApplied: RefinementAppliedEntry[] = [];
   const proposalOmitIds = new Set<string>();
@@ -1626,9 +2011,9 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
           const source = previousProducts.find(p => p.product_id === op.product_id);
           if (source) {
             const sourceChannels = source.channels;
-            for (const p of getCatalog()) {
-              if (p.product.channels?.some(c => sourceChannels?.includes(c))) {
-                includeIds.add(p.product.product_id);
+            for (const p of filteredProducts) {
+              if (p.channels?.some(c => sourceChannels?.includes(c))) {
+                includeIds.add(p.product_id);
               }
             }
           }
@@ -1705,9 +2090,9 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
 
     // Apply includes first (expand), then omits (filter) for products
     if (includeIds.size > 0) {
-      products = getCatalog()
-        .filter(cp => includeIds.has(cp.product.product_id))
-        .map(cp => ({ ...cp.product }));
+      products = filteredProducts
+        .filter(p => includeIds.has(p.product_id))
+        .map(p => ({ ...p }));
     }
     if (omitIds.size > 0) {
       products = products.filter(p => !omitIds.has(p.product_id));
@@ -1718,7 +2103,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   // This prevents keyword capping from accidentally breaking proposals.
   const productIds = new Set(products.map(p => p.product_id));
   if (buyingMode === 'brief') {
-    const catalogById = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+    const catalogById = new Map(filteredProducts.map(p => [p.product_id, p]));
     for (const proposal of getProposals()) {
       const missing = proposal.allocations.filter(a => !productIds.has(a.product_id));
       const present = proposal.allocations.filter(a => productIds.has(a.product_id));
@@ -1739,19 +2124,37 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     ? session.lastGetProductsContext.proposals
     : getProposals();
 
-  const proposals = sourceProposals.filter(proposal =>
-    proposal.allocations.every(a => productIds.has(a.product_id)) &&
-    !proposalOmitIds.has(proposal.proposal_id),
-  );
+  const productsById = new Map(products.map(p => [p.product_id, p]));
+  const proposals = sourceProposals
+    .filter(proposal =>
+      proposal.allocations.every(a => productIds.has(a.product_id)) &&
+      !proposalOmitIds.has(proposal.proposal_id),
+    )
+    .map(proposal => ({
+      ...proposal,
+      allocations: proposal.allocations.map(alloc => {
+        const selectedPricing = productsById.get(alloc.product_id)?.pricing_options[0];
+        return selectedPricing
+          ? { ...alloc, pricing_option_id: selectedPricing.pricing_option_id }
+          : alloc;
+      }),
+    }));
+  const canonicalFormatAdvisories = collectCanonicalFormatAdvisories(products);
 
   // Store context for refine
   session.lastGetProductsContext = { products, proposals };
 
-  return {
+  const response = {
+    status: 'completed' as const,
     products,
+    cache_scope: req.account ? 'account' as const : 'public' as const,
     ...(proposals.length > 0 && { proposals }),
     ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
+    ...(canonicalFormatAdvisories.length > 0 && {
+      errors: canonicalFormatAdvisories as unknown as GetProductsResponse['errors'],
+    }),
   };
+  return response;
 }
 
 export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
@@ -2164,7 +2567,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
           const supportedTargets = Array.isArray(supported.supported_targets)
             ? supported.supported_targets
             : [];
-          if (!supportedTargets.includes(targetKind)) {
+          if (!supportedTargets.includes(targetKind as (typeof supportedTargets)[number])) {
             return {
               errors: [{
                 code: 'TERMS_REJECTED',
@@ -2485,6 +2888,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   // Persist governance_context if provided (spec: sellers MUST persist and return on get_media_buys)
   const governanceContext = govCtx && govCtx.length <= 4096 ? govCtx : undefined;
+  const productAllowedActions = deriveProductAllowedActionsForPackages(createdPackages, productMap);
 
   const mediaBuy: MediaBuyState = {
     mediaBuyId,
@@ -2493,6 +2897,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     status: 'active',
     currency: 'USD',
     packages: createdPackages,
+    ...(productAllowedActions && { productAllowedActions }),
     startTime: resolvedStart,
     endTime: buyEnd,
     revision: 1,
@@ -2506,6 +2911,8 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
   const status = deriveStatus(mediaBuy);
+  const productAvailableActions = deriveAvailableActionsFromProductAllowedActions(productAllowedActions, status);
+  if (productAvailableActions !== undefined) mediaBuy.availableActions = productAvailableActions;
   // Emit `media_buy_status` (canonical 3.1 field per #4895). Body-level
   // `status` carrying MediaBuyStatus is deprecated and removed in 3.2
   // (#4906) — emitting it here would collide with envelope `status`
@@ -2519,6 +2926,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     revision: mediaBuy.revision,
     confirmed_at: mediaBuy.confirmedAt,
     valid_actions: validActionsForStatus(status),
+    available_actions: availableActionsForMediaBuy(mediaBuy, status),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
       product_id: pkg.productId,
@@ -2536,12 +2944,20 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   };
 }
 
-export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const req = args as unknown as GetMediaBuysArgs;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.media_buy_ids;
 
   let buys = Array.from(session.mediaBuys.values());
+  if (!filterIds?.length && buys.length === 0) {
+    // Broad list on an empty session: provide compliance fixtures so demo.example.com
+    // sessions show realistic media buy data without the learner first creating a buy.
+    // ID-lookup paths skip this — loading all fixtures to filter down is wasteful when
+    // the caller already knows the IDs it wants (and unknown IDs should return empty,
+    // not a fixture). Sessions that have created their own buys return only those.
+    buys = getComplianceMediaBuys();
+  }
   if (filterIds?.length) {
     buys = buys.filter(b => filterIds.includes(b.mediaBuyId));
     // Media buy lookup is scoped to the caller's session (brand/account-derived).
@@ -2607,6 +3023,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
         created_at: mb.createdAt,
         updated_at: mb.updatedAt,
         valid_actions: validActionsForStatus(status),
+        available_actions: availableActionsForMediaBuy(mb, status),
         currency: mb.currency,
         total_budget: totalBudget,
         start_time: mb.startTime,
@@ -2671,6 +3088,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
       return buy;
     }),
     pagination: paginationBlock,
+    ...(req.context !== undefined && { context: req.context }),
   };
 }
 
@@ -2680,7 +3098,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
   const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
-  const mb = session.mediaBuys.get(mediaBuyId);
+  const mb = session.mediaBuys.get(mediaBuyId) ?? getComplianceMediaBuy(mediaBuyId);
 
   if (!mb) {
     return {
@@ -3094,6 +3512,13 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   const filterIds = req.creative_ids || req.filters?.creative_ids;
 
   let creatives = Array.from(session.creatives.values());
+  if (creatives.length === 0) {
+    // Controller-seeded creative storyboards can write under the test-kit
+    // brand session while the list request keys by account_id. Prefer that
+    // freshly seeded library over falling back to static compliance fixtures.
+    const seededSession = await findSessionMatching(s => s.creatives.size > 0);
+    if (seededSession) creatives = Array.from(seededSession.creatives.values());
+  }
   if (filterIds?.length) {
     creatives = creatives.filter(c => filterIds.includes(c.creativeId));
   } else if (creatives.length === 0) {
@@ -3200,7 +3625,7 @@ function getCreativePricing(account: { account_id?: string }, creative: import('
   };
 }
 
-export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
+export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const req = args as unknown as UpdateMediaBuyArgs;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const mediaBuyId = req.media_buy_id || '';
@@ -3221,6 +3646,12 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       : `Media buy is ${currentStatus} and cannot be updated`;
     return { errors: [{ code, message }] };
   }
+
+  const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+  overlaySeededProducts(session, productMap);
+
+  const actionRejection = rejectUnavailableAction(mb, req, currentStatus, productMap);
+  if (actionRejection) return actionRejection;
 
   // Revision check for optimistic concurrency
   const reqRevision = req.revision;
@@ -3253,7 +3684,9 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       media_buy_status: status,
       revision: mb.revision,
       valid_actions: validActionsForStatus(status),
+      available_actions: availableActionsForMediaBuy(mb, status),
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
+      ...(req.context !== undefined && { context: req.context }),
     };
   }
 
@@ -3404,9 +3837,6 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         errors: [{ code: 'LIMIT_EXCEEDED', message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}.` }] as TaskError[],
       };
     }
-    const catalog = getCatalog();
-    const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
-
     for (let i = 0; i < newPackages.length; i++) {
       const npkg = newPackages[i];
       const productId = npkg.product_id;
@@ -3438,6 +3868,12 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       mb.packages.push(newPkg);
       mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_added', summary: `New package ${pkgId} added (product: ${productId})`, packageId: pkgId });
     }
+    const updatedAllowedActions = deriveProductAllowedActionsForPackages(mb.packages, productMap);
+    if (updatedAllowedActions) {
+      mb.productAllowedActions = updatedAllowedActions;
+    } else {
+      delete mb.productAllowedActions;
+    }
   }
 
   mb.updatedAt = now;
@@ -3452,6 +3888,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     media_buy_status: status,
     revision: mb.revision,
     valid_actions: validActionsForStatus(status),
+    available_actions: availableActionsForMediaBuy(mb, status),
     ...(mb.canceledAt && {
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
     }),
@@ -3469,6 +3906,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       }),
     })),
     ...(warnings.length > 0 && { warnings }),
+    ...(req.context !== undefined && { context: req.context }),
   };
   return result;
 }
@@ -4071,7 +4509,7 @@ function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
   return { serving_tag: { asset_type: 'html', content: html } };
 }
 
-export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
+export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const req = args as unknown as BuildCreativeArgs;
   const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
   const agentUrl = getAgentUrl();
@@ -4861,17 +5299,21 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       }
     }
 
-    // Execute the tool handler. Structured AdCP errors (handler returns
-    // { errors: [...] }) are well-formed responses — the task completes
-    // successfully with an adcp_error envelope. Only thrown exceptions
-    // mark the task as failed.
+    // Execute the tool handler. Structured AdCP error-only bodies (handler
+    // returns { errors: [...] }) are well-formed responses — the task
+    // completes successfully with an adcp_error envelope. Some response
+    // schemas also permit non-fatal advisories in errors[] alongside a
+    // populated success body; those must stay on the success response.
     if (skipHandler) {
       // toolResult already set from idempotency replay path above
     } else try {
       const result = await Promise.resolve(handler((handlerArgs as ToolArgs) || {}, ctx));
-      const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }> };
-      const hasErrors = resultObj.errors && resultObj.errors.length > 0;
-      if (hasErrors) {
+      const resultObj = result as Record<string, unknown> & {
+        errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }>;
+      };
+      const hasErrors = Array.isArray(resultObj.errors) && resultObj.errors.length > 0;
+      const hasAdvisorySuccessPayload = permitsAdvisoryErrors(name, resultObj);
+      if (hasErrors && !hasAdvisorySuccessPayload) {
         // Error-in-body responses are errors from the buyer's POV — do NOT
         // cache (security.mdx rule 3). cachableResponse stays null so the
         // post-dispatch gate below never inserts this into the replay cache.
@@ -4947,7 +5389,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     }
 
     // Resolve the in-flight claim from check(). Cache only successful inner
-    // responses (security.mdx rule 2+3); errors, structured { errors: [...] }
+    // responses (security.mdx rule 2+3); errors, structured error-only
     // bodies, and exceptions all release the claim so a retry re-executes.
     if (idempotencyClaimed && typeof idempotencyKey === 'string') {
       const store = getIdempotencyStore();

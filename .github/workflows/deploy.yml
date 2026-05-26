@@ -18,7 +18,7 @@ jobs:
     name: Preflight
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - name: No duplicate migration numbers
         run: |
           dupes=$(ls server/src/db/migrations/*.sql \
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
 
       - name: Setup Fly CLI
         uses: superfly/flyctl-actions/setup-flyctl@1.6
@@ -294,7 +294,7 @@ jobs:
 
       - name: Upload Fly forensics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fly-forensics-${{ github.run_id }}
           path: /tmp/forensics/

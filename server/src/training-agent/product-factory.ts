@@ -28,7 +28,16 @@ type CollectionSelector = {
   publisher_domain: string;
   collection_ids: string[];
 };
-type TrainingProduct = Product & {
+type ProductCardManifest = {
+  format_id: FormatID;
+  manifest: {
+    format_id: FormatID;
+    assets: Record<string, unknown>;
+  };
+};
+type TrainingProduct = Omit<Product, 'product_card' | 'product_card_detailed'> & {
+  product_card?: Product['product_card'] | ProductCardManifest;
+  product_card_detailed?: Product['product_card_detailed'] | ProductCardManifest;
   collections?: CollectionSelector[];
   installments?: Installment[];
   exclusivity?: 'exclusive' | 'category';
@@ -614,7 +623,7 @@ function buildProduct(
   };
 
   return {
-    product: product as Product,
+    product: product as unknown as Product,
     publisherId: pub.id,
     trainingTier: tierForProduct(pub, template.deliveryType, template.channels),
     scenarioTags: scenarioTagsForProduct(pub, template.deliveryType, template.channels),
@@ -977,15 +986,16 @@ export function buildCatalog(): CatalogProduct[] {
     // rebuild with the alias id so the URL matches the new product_id.
     // The catalog shape contract (buildCatalog unit tests) asserts that
     // every product's click_url contains its product_id.
-    const rebuildCard = <T extends { manifest?: { assets?: Record<string, unknown> } } | undefined>(card: T): T => {
-      if (!card?.manifest?.assets) return card;
-      const assets = { ...card.manifest.assets };
+    const rebuildCard = <T>(card: T): T => {
+      const manifest = (card as { manifest?: { assets?: Record<string, unknown> } } | undefined)?.manifest;
+      if (!manifest?.assets) return card;
+      const assets = { ...manifest.assets };
       const clickAsset = assets.click_url as { url?: string } | undefined;
       if (clickAsset?.url) {
         const sourceId = alias.source!.product.product_id;
         assets.click_url = { ...clickAsset, url: clickAsset.url.replace(sourceId, alias.id) };
       }
-      return { ...card, manifest: { ...card.manifest, assets } } as T;
+      return { ...(card as Record<string, unknown>), manifest: { ...manifest, assets } } as T;
     };
     catalog.push({
       ...alias.source,

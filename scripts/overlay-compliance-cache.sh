@@ -56,4 +56,18 @@ echo "Overlaying $SRC onto $DST"
   mkdir -p "$(dirname "$target")"
   cp "$SRC/${rel#./}" "$target"
 done
+if [ "${SRC}" = "dist/compliance/latest" ] && [ -n "${PINNED_VERSION:-}" ] && [ -f "$DST/index.json" ]; then
+  # The development bundle is published as `latest`, but SDK 8 validates
+  # `adcp_version` as a real version string when loading the cache. The cache
+  # directory is already the SDK's pinned version, so stamp the copied index to
+  # match while keeping the current-source storyboard contents.
+  node - <<'NODE' "$DST/index.json" "$PINNED_VERSION"
+const fs = require('node:fs');
+const [file, version] = process.argv.slice(2);
+const index = JSON.parse(fs.readFileSync(file, 'utf8'));
+index.published_version = version;
+index.adcp_version = version;
+fs.writeFileSync(file, `${JSON.stringify(index, null, 2)}\n`);
+NODE
+fi
 echo "Overlay complete."

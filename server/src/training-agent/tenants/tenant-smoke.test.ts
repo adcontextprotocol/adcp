@@ -108,4 +108,49 @@ describe('tenant routing smoke', () => {
       await close();
     }
   }, 15000);
+
+  it('advertises sales vendor-metric optimization capabilities', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      const headers = {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        authorization: 'Bearer test-token',
+      };
+      await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'initialize',
+          params: { protocolVersion: '2025-03-26', clientInfo: { name: 'x', version: '1' }, capabilities: {} },
+        }),
+      });
+      const r = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'tools/call',
+          params: { name: 'get_adcp_capabilities', arguments: {} },
+        }),
+      });
+      const body = await r.json() as {
+        result?: {
+          structuredContent?: {
+            media_buy?: {
+              supported_optimization_metrics?: string[];
+              vendor_metric_optimization?: { supported_targets?: string[] };
+            };
+          };
+        };
+      };
+      const mediaBuy = body.result?.structuredContent?.media_buy;
+      expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
+      expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
+    } finally {
+      await close();
+    }
+  }, 15000);
 });

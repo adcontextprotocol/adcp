@@ -17,6 +17,7 @@ import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type Registr
 import { buildSignedRevocationList } from '../governance-revocations.js';
 import { getTenantResponseSigningMaterial } from './signing.js';
 import { wrapResponseForSigning } from '../response-signing.js';
+import { salesCapabilityProjection } from '../v6-sales-platform.js';
 import type { TrainingContext } from '../types.js';
 
 const logger = createLogger('training-agent-tenant-router');
@@ -98,6 +99,7 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
     // responses pass through unsigned.
     const responseSigner = getTenantResponseSigningMaterial(tenantId);
     wrapResponseForSigning(req, res, responseSigner.signerKey, tenantId);
+    wrapSalesCapabilitiesProjection(req, res, tenantId);
 
     // Bridge `res.locals.trainingPrincipal` (set by the upstream
     // `requireAuth` middleware) onto `req.auth` so the framework's MCP
@@ -223,6 +225,63 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
       }
     });
   };
+}
+
+function wrapSalesCapabilitiesProjection(req: Request, res: Response, tenantId: string): void {
+  if (tenantId !== 'sales') return;
+  if (req.body?.method !== 'tools/call') return;
+  if (req.body?.params?.name !== 'get_adcp_capabilities') return;
+
+  const origEnd = res.end.bind(res);
+  const chunks: Buffer[] = [];
+
+  (res as unknown as { write: (...args: unknown[]) => boolean }).write = (chunk: unknown, ...rest: unknown[]) => {
+    if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
+    const cb = rest.find(arg => typeof arg === 'function') as (() => void) | undefined;
+    if (cb) queueMicrotask(cb);
+    return true;
+  };
+
+  (res as unknown as { end: (...args: unknown[]) => Response }).end = (chunk?: unknown, ...rest: unknown[]) => {
+    if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
+    const body = Buffer.concat(chunks);
+    const patched = projectSalesCapabilities(body);
+    if (patched !== body) {
+      res.setHeader('content-length', String(patched.length));
+    }
+    return origEnd(patched, ...rest as []);
+  };
+}
+
+function toBuffer(chunk: unknown): Buffer {
+  if (Buffer.isBuffer(chunk)) return chunk;
+  if (typeof chunk === 'string') return Buffer.from(chunk, 'utf8');
+  if (chunk instanceof Uint8Array) return Buffer.from(chunk);
+  return Buffer.from(String(chunk), 'utf8');
+}
+
+function projectSalesCapabilities(body: Buffer): Buffer {
+  try {
+    const parsed = JSON.parse(body.toString('utf8')) as {
+      result?: {
+        structuredContent?: {
+          media_buy?: Record<string, unknown>;
+        };
+      };
+    };
+    const structured = parsed.result?.structuredContent;
+    if (!structured || typeof structured !== 'object') return body;
+    const mediaBuy = structured.media_buy && typeof structured.media_buy === 'object'
+      ? structured.media_buy
+      : {};
+    structured.media_buy = {
+      ...mediaBuy,
+      ...salesCapabilityProjection(),
+    };
+    return Buffer.from(JSON.stringify(parsed), 'utf8');
+  } catch {
+    return body;
+  }
 }
 
 /**

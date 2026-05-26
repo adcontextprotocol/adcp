@@ -1,6 +1,6 @@
 {
   "name": "adcontextprotocol",
-  "version": "3.1.0-beta.3",
+  "version": "3.1.0-beta.5",
   "private": true,
   "type": "module",
   "scripts": {
@@ -105,7 +105,7 @@
     "dev:docs": "node scripts/dev-docs.mjs"
   },
   "dependencies": {
-    "@adcp/sdk": "^7.11.0",
+    "@adcp/sdk": "^8.1.0-beta.12",
     "@anthropic-ai/sdk": "^0.98.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.5.4",
@@ -132,7 +132,8 @@
     "express-rate-limit": "^8.5.1",
     "file-type": "^22.0.1",
     "free-email-domains": "^1.9.12",
-    "googleapis": "^171.4.0",
+    "@googleapis/calendar": "^14.3.0",
+    "google-auth-library": "^10.1.0",
     "isomorphic-dompurify": "^3.14.0",
     "jose": "^6.2.2",
     "jsonwebtoken": "^9.0.3",

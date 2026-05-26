@@ -57,7 +57,7 @@ jobs:
     steps:
       # Third-party actions pinned to commit SHAs to close the "force-push
       # to a moving tag ships malicious code under the App token" vector.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
@@ -68,7 +68,7 @@ jobs:
       # ─────────────────────────────────────────────────────────────────────
       - name: Mint App token
         id: app-token
-        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -116,7 +116,7 @@ jobs:
 
       - name: Comment and skip when PR modifies review workflow
         if: steps.workflow-mod.outputs.modified == 'true'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           MODIFIED_FILES: ${{ steps.workflow-mod.outputs.modified_files }}
         with:
@@ -249,7 +249,7 @@ jobs:
         id: ai-review
         if: steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true'
         continue-on-error: true
-        uses: anthropics/claude-code-action@24492741e0ccfdef4c1d19da8e11e0f373d07494 # v1
+        uses: anthropics/claude-code-action@787c5a0ce96a9a6cfb050ea0c8f4c05f2447c251 # v1
         with:
           prompt: ${{ steps.build-prompt.outputs.ARGUS_PROMPT }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -296,7 +296,7 @@ jobs:
 
       - name: Comment on PR if Argus review failed
         if: steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true' && (steps.ai-review.outcome == 'failure' || steps.verify.outputs.review_posted != 'true')
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:

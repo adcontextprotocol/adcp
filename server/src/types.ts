@@ -192,11 +192,14 @@ export interface PlacementTagDefinition {
 export interface PlacementDefinition {
   placement_id: string;
   name?: string;
+  description?: string;
   publisher_domain?: string;
   tags?: string[];
   property_ids?: string[];
   property_tags?: string[];
   collection_ids?: string[];
+  channels?: string[];
+  format_options?: Array<Record<string, unknown>>;
 }
 
 export interface AuthorizedAgentEntry {

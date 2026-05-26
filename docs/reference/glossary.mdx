@@ -330,6 +330,12 @@ The package-level grouped expression for buyer-selected seller-offered signals. 
 **Signal Targeting Rules**
 Product-level rules that govern package signal selection: resolution model, optional/required/fixed selection, min/max counts, selection group limits, and group-count limits. These rules live on the product because one seller may route different products through different ad servers or planning layers.
 
+**Signal Targeting Groups**
+The package-level grouped expression for buyer-selected seller-offered signals. `targeting_overlay.signal_targeting_groups` has top-level `operator: "all"` and child `any` groups for inclusion or `none` groups for exclusion.
+
+**Signal Targeting Rules**
+Product-level rules that govern package signal selection: resolution model, optional/required/fixed selection, min/max counts, selection group limits, and group-count limits. These rules live on the product because one seller may route different products through different ad servers or planning layers.
+
 **Signal Type**
 Classification of signals as "marketplace" (third-party), "owned" (first-party), "destination" (bundled with media), "contextual", "geographical", or "temporal".
 
