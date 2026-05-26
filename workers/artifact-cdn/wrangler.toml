@@ -1,0 +1,13 @@
+name = "adcp-artifacts-cdn"
+main = "src/index.js"
+compatibility_date = "2026-05-24"
+workers_dev = true
+
+[[r2_buckets]]
+binding = "ARTIFACTS"
+bucket_name = "adcp-artifacts"
+
+# Set this before cutover if Fly should remain the miss fallback.
+# Use a Fly origin that does not route back through this Worker.
+# [vars]
+# FALLBACK_ORIGIN = "https://<fly-origin-host>"

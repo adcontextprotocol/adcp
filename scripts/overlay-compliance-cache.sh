@@ -5,17 +5,14 @@
 # and scripts/run-storyboards-matrix.sh — keep them calling the same
 # script so local pre-push and CI grade against the same overlay.
 #
-# Caveat: this overlay does NOT regenerate the SDK's cache index (e.g.,
-# index.json bundles enumerated at build time). New files under existing
-# protocols are picked up via directory walk, but adding a brand-new
-# top-level bundle (a new specialism / universal file) may need a
-# sync-schemas cycle on the SDK side before the runner enumerates it.
-# New files under existing scenarios/ dirs are the common case and
-# work fine.
+# Rebuilds the development compliance bundle first, then overlays the generated
+# bundle. Copying raw source YAML is not enough: the SDK enumerates storyboards
+# from index.json, so a brand-new universal/protocol/specialism file is
+# invisible unless the index is regenerated.
 
-set -uo pipefail
+set -euo pipefail
 
-SRC="${SRC:-static/compliance/source}"
+SRC="${SRC:-dist/compliance/latest}"
 # SDK 5.13 moved the cache dir from `latest` to the AdCP version string
 # (e.g. `3.0.0`). 5.23.0 renamed the package `@adcp/client` -> `@adcp/sdk`
 # and the compliance bundle moved with it. Resolve whichever subdir
@@ -46,6 +43,11 @@ fi
 if [ -z "$DST" ] || [ ! -d "$DST" ]; then
   echo "warning: SDK compliance cache not found under $CACHE_ROOT — skipping overlay"
   exit 0
+fi
+
+if [ "${SRC}" = "dist/compliance/latest" ]; then
+  echo "Building development compliance bundle for SDK cache overlay"
+  node scripts/build-compliance.cjs
 fi
 
 echo "Overlaying $SRC onto $DST"

@@ -9,6 +9,7 @@ import type { TenantConfig } from '@adcp/sdk/server';
 import { TrainingSalesPlatform } from '../v6-sales-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildSalesComplyConfig } from './comply.js';
+import { listAccountsTool } from './account-tools.js';
 import type { TrainingContext } from '../types.js';
 
 const TENANT_ID = 'sales';
@@ -27,6 +28,9 @@ export function buildSalesTenantConfig(host: string, options: { storyboardCompat
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       platform: new TrainingSalesPlatform(options.storyboardCompat) as any,
       serverOptions: {
+        customTools: {
+          list_accounts: listAccountsTool(),
+        },
         complyTest: buildSalesComplyConfig(),
       },
     },

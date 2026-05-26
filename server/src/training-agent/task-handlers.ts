@@ -156,6 +156,31 @@ function validateTargeting(t: unknown, pathLabel: string): { targeting?: Package
   };
 }
 
+interface VendorMetricRefView {
+  vendor?: { domain?: unknown; brand_id?: unknown };
+  metric_id?: unknown;
+  supported_targets?: unknown;
+  scope?: unknown;
+}
+
+interface VendorMetricOptimizationView {
+  supported_metrics?: VendorMetricRefView[];
+}
+
+interface ReportingCapabilitiesView {
+  vendor_metrics?: VendorMetricRefView[];
+}
+
+function vendorMetricKey(entry: VendorMetricRefView | undefined): string | null {
+  const domain = entry?.vendor?.domain;
+  const metricId = entry?.metric_id;
+  if (typeof domain !== 'string' || domain.length === 0 || typeof metricId !== 'string' || metricId.length === 0) {
+    return null;
+  }
+  const brandId = typeof entry?.vendor?.brand_id === 'string' ? entry.vendor.brand_id : '';
+  return `${domain.toLowerCase()}|${brandId}|${metricId}`;
+}
+
 // Proposal lifecycle fields not yet in @adcp/sdk — remove after client update
 interface ProposalLifecycle {
   proposal_status?: 'draft' | 'committed';
@@ -1001,6 +1026,58 @@ const BRIEF_CHANNEL_ALIASES: Record<string, string> = {
   'radio': 'radio',
 };
 
+// Vendor-metric briefs often ask for a measurement outcome (emissions,
+// brand lift, attention) rather than the literal field name. Score against
+// each product's declared vendor metrics so the named vendor/metric pair wins
+// even when the product card text has no ordinary keyword overlap.
+function inferVendorMetricBriefTerms(domain: string, metricId: string): string[] {
+  const identity = `${domain} ${metricId} ${metricId.replace(/[_-]+/g, ' ')}`;
+  const terms = new Set<string>();
+
+  if (/(attention|focus)/.test(identity)) terms.add('attention');
+  if (/(gco2e|co2|carbon|emission|scope3|sustainability)/.test(identity)) {
+    terms.add('emission');
+    terms.add('emissions');
+    terms.add('carbon');
+    terms.add('scope3');
+    terms.add('sustainability');
+  }
+  if (/(brand.?lift|awareness|incremental|panel)/.test(identity)) {
+    terms.add('brand lift');
+    terms.add('brand-lift');
+    terms.add('awareness');
+    terms.add('incremental');
+    terms.add('panel');
+  }
+
+  return [...terms];
+}
+
+function vendorMetricBriefScore(product: Product, briefLower: string): number {
+  const supportedMetrics = (product as Product & { vendor_metric_optimization?: VendorMetricOptimizationView })
+    .vendor_metric_optimization?.supported_metrics;
+  if (!supportedMetrics?.length) return 0;
+
+  let bestScore = 0;
+  for (const metric of supportedMetrics) {
+    const domain = typeof metric.vendor?.domain === 'string' ? metric.vendor.domain.toLowerCase() : '';
+    const metricId = typeof metric.metric_id === 'string' ? metric.metric_id.toLowerCase() : '';
+    const metricPhrase = metricId.replace(/[_-]+/g, ' ');
+    const categoryTerms = inferVendorMetricBriefTerms(domain, metricId);
+
+    let score = 0;
+    if (domain && briefLower.includes(domain)) score += 14;
+    if (metricId && (briefLower.includes(metricId) || briefLower.includes(metricPhrase))) score += 14;
+    if (categoryTerms.some(term => briefLower.includes(term))) {
+      score += 6;
+    }
+    if (briefLower.includes('vendor metric') || briefLower.includes('vendor-metric')) score += 2;
+    bestScore = Math.max(bestScore, score);
+  }
+
+  return bestScore;
+}
+
 // ── Shared schema fragments ──────────────────────────────────────
 
 const ACCOUNT_REF_SCHEMA = {
@@ -1457,18 +1534,26 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
         const channelScore = briefChannels.size > 0
           ? (p.channels?.filter(c => briefChannels.has(c)).length ?? 0) * 10
           : 0;
-        const totalScore = channelScore + keywordScore;
-        return totalScore > 0 ? { product: p, totalScore, channelScore, keywordScore } : null;
+        const vendorMetricScore = vendorMetricBriefScore(p, briefLower);
+        const totalScore = channelScore + keywordScore + vendorMetricScore;
+        return totalScore > 0 ? { product: p, totalScore, channelScore, keywordScore, vendorMetricScore } : null;
       })
       .filter((s): s is NonNullable<typeof s> => s !== null)
       .sort((a, b) => b.totalScore - a.totalScore);
 
     // Cap at top 5 most relevant products so learners see brief mode as curated discovery
     const MAX_BRIEF_RESULTS = 5;
-    products = scored.slice(0, MAX_BRIEF_RESULTS).map(s => ({
-      ...s.product,
-      brief_relevance: `Matches ${s.channelScore > 0 ? `${s.channelScore / 10} channel(s)` : 'keywords only'}. ${s.product.description}`,
-    }));
+    products = scored.slice(0, MAX_BRIEF_RESULTS).map(s => {
+      const matchParts = [
+        ...(s.channelScore > 0 ? [`${s.channelScore / 10} channel(s)`] : []),
+        ...(s.keywordScore > 0 ? ['keywords'] : []),
+        ...(s.vendorMetricScore > 0 ? ['vendor-metric optimization'] : []),
+      ];
+      return {
+        ...s.product,
+        brief_relevance: `Matches ${matchParts.join(' and ')}. ${s.product.description}`,
+      };
+    });
 
     // If no keyword matches, return top products as suggestions
     if (products.length === 0) {
@@ -1496,6 +1581,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   const refinementApplied: RefinementAppliedEntry[] = [];
   const proposalOmitIds = new Set<string>();
   if (buyingMode === 'refine' && req.refine) {
+    const refineOps = req.refine as unknown as RefineEntry[];
     const previousProducts = session.lastGetProductsContext?.products || products;
     const previousProposals = session.lastGetProductsContext?.proposals || getProposals();
     const omitIds = new Set<string>();
@@ -1504,7 +1590,29 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     const askAckNotes = (ask?: string) =>
       ask ? { notes: `Ask acknowledged but not applied by training agent: ${ask}` } : {};
 
-    for (const op of req.refine as unknown as RefineEntry[]) {
+    // Validate proposal references before applying any refinements. This keeps
+    // failed multi-entry refine calls from partially finalizing earlier entries.
+    for (let opIndex = 0; opIndex < refineOps.length; opIndex++) {
+      const op = refineOps[opIndex];
+      if (op.scope !== 'proposal') continue;
+      let proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
+      if (!proposal && isThreeZeroStoryboardCompat(ctx) && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
+        proposal = resolveThreeZeroProposalAlias([...previousProposals, ...getProposals()]);
+      }
+      if (!proposal) {
+        return {
+          errors: [{
+            code: 'PROPOSAL_NOT_FOUND',
+            message: `Proposal not found: ${op.proposal_id}`,
+            field: `refine[${opIndex}].proposal_id`,
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
+    }
+
+    for (let opIndex = 0; opIndex < refineOps.length; opIndex++) {
+      const op = refineOps[opIndex];
       if (op.scope === 'product') {
         const action = op.action ?? 'include';
         if (action === 'omit') {
@@ -1532,10 +1640,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
         if (!proposal && isThreeZeroStoryboardCompat(ctx) && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
           proposal = resolveThreeZeroProposalAlias([...previousProposals, ...getProposals()]);
         }
-        if (!proposal) {
-          refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'unable', notes: `Proposal not found: ${op.proposal_id}` });
-          continue;
-        }
+        if (!proposal) continue;
         if (action === 'omit') {
           proposalOmitIds.add(op.proposal_id);
           refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied' });
@@ -1974,6 +2079,131 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     }
   }
 
+  // Validate vendor_metric optimization_goals against the product's
+  // vendor_metric_optimization declarations and the package's reporting
+  // contract. This goal kind is only meaningful when the seller can both
+  // optimize toward the vendor metric and commit to reporting the same
+  // (vendor, metric_id) key back to the buyer.
+  if (Array.isArray(req.packages)) {
+    for (let i = 0; i < req.packages.length; i++) {
+      const pkg = req.packages[i] as {
+        product_id?: string;
+        optimization_goals?: unknown;
+        committed_metrics?: unknown;
+      };
+      const goals = pkg?.optimization_goals;
+      if (!Array.isArray(goals)) continue;
+      const product = pkg.product_id
+        ? productMap.get(pkg.product_id) as (Product & { vendor_metric_optimization?: VendorMetricOptimizationView }) | undefined
+        : undefined;
+      if (!product) continue;
+      const supportedMetrics = product?.vendor_metric_optimization?.supported_metrics;
+      const reportableMetrics = (product?.reporting_capabilities as ReportingCapabilitiesView | undefined)?.vendor_metrics;
+      const committedMetrics = Array.isArray(pkg.committed_metrics)
+        ? (pkg.committed_metrics as VendorMetricRefView[])
+        : [];
+      for (let j = 0; j < goals.length; j++) {
+        const goal = goals[j] as VendorMetricRefView & { kind?: unknown; target?: { kind?: unknown; value?: unknown } };
+        if (goal?.kind !== 'vendor_metric') continue;
+        const key = vendorMetricKey(goal);
+        if (!key) {
+          const field = typeof goal?.vendor?.domain !== 'string' || goal.vendor.domain.length === 0
+            ? `packages[${i}].optimization_goals[${j}].vendor.domain`
+            : `packages[${i}].optimization_goals[${j}].metric_id`;
+          return {
+            errors: [{
+              code: 'INVALID_REQUEST',
+              message: 'vendor_metric goal requires non-empty vendor.domain and metric_id',
+              field,
+            }] as TaskError[],
+          };
+        }
+
+        const supported = Array.isArray(supportedMetrics)
+          ? supportedMetrics.find(entry => vendorMetricKey(entry) === key)
+          : undefined;
+        if (!supported) {
+          return {
+            errors: [{
+              // Vendor-metric optimization is negotiated against vendor
+              // measurement/reporting terms. The normative docs route
+              // capability and reporting-coherence misses through
+              // TERMS_REJECTED, even though legacy seller-native metric
+              // shape checks above still use INVALID_REQUEST.
+              code: 'TERMS_REJECTED',
+              message: `vendor_metric goal "${goal.metric_id}" is not in product's vendor_metric_optimization.supported_metrics`,
+              field: `packages[${i}].optimization_goals[${j}].metric_id`,
+            }] as TaskError[],
+          };
+        }
+
+        const target = goal.target;
+        if (target !== undefined && (target === null || typeof target !== 'object' || typeof (target as { kind?: unknown }).kind !== 'string')) {
+          return {
+            errors: [{
+              code: 'INVALID_REQUEST',
+              message: 'vendor_metric target.kind is required when target is present',
+              field: `packages[${i}].optimization_goals[${j}].target.kind`,
+            }] as TaskError[],
+          };
+        }
+
+        const targetKind = (target as { kind?: string; value?: unknown } | undefined)?.kind;
+        const targetValue = (target as { value?: unknown } | undefined)?.value;
+        if (target !== undefined && (typeof targetValue !== 'number' || !Number.isFinite(targetValue) || targetValue <= 0)) {
+          return {
+            errors: [{
+              code: 'INVALID_REQUEST',
+              message: 'vendor_metric target.value must be a positive number when target is present',
+              field: `packages[${i}].optimization_goals[${j}].target.value`,
+            }] as TaskError[],
+          };
+        }
+
+        if (targetKind) {
+          const supportedTargets = Array.isArray(supported.supported_targets)
+            ? supported.supported_targets
+            : [];
+          if (!supportedTargets.includes(targetKind)) {
+            return {
+              errors: [{
+                code: 'TERMS_REJECTED',
+                message: `vendor_metric target.kind "${targetKind}" is not in product's vendor_metric_optimization.supported_metrics[].supported_targets`,
+                field: `packages[${i}].optimization_goals[${j}].target.kind`,
+              }] as TaskError[],
+            };
+          }
+        }
+
+        const hasCommittedMetric = committedMetrics.some(entry =>
+          entry?.scope === 'vendor' && vendorMetricKey(entry) === key,
+        );
+        if (!hasCommittedMetric) {
+          return {
+            errors: [{
+              code: 'TERMS_REJECTED',
+              message: `vendor_metric goal "${goal.metric_id}" requires a matching vendor-scope committed_metrics entry`,
+              field: `packages[${i}].committed_metrics`,
+            }] as TaskError[],
+          };
+        }
+
+        const hasReportableMetric = Array.isArray(reportableMetrics)
+          ? reportableMetrics.some(entry => vendorMetricKey(entry) === key)
+          : false;
+        if (!hasReportableMetric) {
+          return {
+            errors: [{
+              code: 'TERMS_REJECTED',
+              message: `committed_metrics entry for vendor_metric goal "${goal.metric_id}" is not in product's reporting_capabilities.vendor_metrics`,
+              field: `packages[${i}].committed_metrics`,
+            }] as TaskError[],
+          };
+        }
+      }
+    }
+  }
+
   // Proposal-based creation: expand proposal allocations into packages
   if (req.proposal_id && !req.packages?.length) {
     // Check session proposals first (may have finalized versions), then global catalog
@@ -1984,7 +2214,12 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     }
     if (!proposal) {
       return {
-        errors: [{ code: 'INVALID_REQUEST', message: `Proposal not found: ${req.proposal_id}` }] as TaskError[],
+        errors: [{
+          code: 'PROPOSAL_NOT_FOUND',
+          message: `Proposal not found: ${req.proposal_id}`,
+          field: 'proposal_id',
+          recovery: 'correctable',
+        }] as TaskError[],
       };
     }
 
@@ -3303,6 +3538,9 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
         supported_event_types: ['purchase', 'add_to_cart', 'lead', 'page_view'],
         supported_hashed_identifiers: ['hashed_email'],
         supported_action_sources: ['website', 'app'],
+      },
+      vendor_metric_optimization: {
+        supported_targets: ['threshold_rate'],
       },
       // Seller-level rollup of metric-optimization capabilities. Honest
       // union across catalog products (product-factory.ts assigns these

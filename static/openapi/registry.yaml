@@ -4221,6 +4221,17 @@ paths:
                 properties:
                   type: array
                   items: {}
+                catalog_etag:
+                  type: string
+                formats:
+                  type: array
+                  items: {}
+                placements:
+                  type: array
+                  items: {}
+                placement_tags:
+                  type: object
+                  additionalProperties: {}
               required:
                 - authorized_agents
       responses:

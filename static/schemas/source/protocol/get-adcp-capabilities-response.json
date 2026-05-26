@@ -566,6 +566,26 @@
           "minItems": 1,
           "uniqueItems": true
         },
+        "vendor_metric_optimization": {
+          "type": "object",
+          "description": "Seller-level rollup of vendor-metric optimization capabilities supported by at least one product. Product-level vendor_metric_optimization.supported_metrics[] remains authoritative for the specific (vendor, metric_id) pairs and target kinds a buyer may bind on a package; this seller-level object exists so buyers and compliance runners can discover whether vendor_metric goals are in scope before walking the catalog. Sellers MUST keep this in sync with product-level vendor_metric_optimization declarations.",
+          "properties": {
+            "supported_targets": {
+              "type": "array",
+              "description": "Target kinds this seller can support for vendor_metric optimization goals on at least one product. Values match optimization_goals[].target.kind for kind: vendor_metric. A target-less vendor_metric goal maximizes the metric within budget and does not require a target-kind declaration.",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "cost_per",
+                  "threshold_rate"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
         "conversion_tracking": {
           "type": "object",
           "description": "Seller-level conversion tracking capabilities. Presence of this object indicates the seller supports sync_event_sources and log_event for conversion event tracking.",
@@ -771,7 +791,7 @@
         },
         "discovery_modes": {
           "type": "array",
-          "description": "Discovery modes this signals agent supports on get_signals. 'brief' (default — every signals agent supports this): semantic discovery driven by signal_spec or signal_ids. 'wholesale': raw wholesale signals feed enumeration — caller omits signal_spec/signal_ids and the agent returns its full priced signals feed, paginated, scoped by filters/account/destinations/countries. Agents that do not declare 'wholesale' MAY return INVALID_REQUEST for wholesale calls. Absent declaration is treated as ['brief'].",
+          "description": "Discovery modes this signals agent supports on get_signals. 'brief' (default — every signals agent supports this): semantic discovery driven by signal_spec or signal_refs, with deprecated signal_ids accepted for older clients. 'wholesale': raw wholesale signals feed enumeration — caller omits signal_spec, signal_refs, and signal_ids and the agent returns its full priced signals feed, paginated, scoped by filters/account/destinations/countries. Agents that do not declare 'wholesale' MAY return INVALID_REQUEST for wholesale calls. Absent declaration is treated as ['brief'].",
           "items": {
             "type": "string",
             "enum": [
@@ -791,7 +811,7 @@
           "properties": {
             "catalog_signals": {
               "type": "boolean",
-              "description": "Supports signals from data provider catalogs with structured signal_id references"
+              "description": "Supports signals from data provider catalogs with structured signal_ref references"
             }
           },
           "additionalProperties": {

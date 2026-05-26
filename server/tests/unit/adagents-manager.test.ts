@@ -2364,6 +2364,83 @@ describe('AdAgentsManager', () => {
         expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v3/adagents.json');
         expect(parsed.last_updated).toBeDefined();
       });
+
+      it('creates adagents.json with formats, placements, and placement tags', () => {
+        const json = manager.createAdAgentsJson({
+          agents: [
+            {
+              url: 'https://agent.example.com',
+              authorized_for: 'Homepage inventory',
+              authorization_type: 'property_ids',
+              property_ids: ['homepage'],
+            },
+          ],
+          properties: [
+            {
+              property_id: 'homepage',
+              property_type: 'website',
+              name: 'Homepage',
+              identifiers: [{ type: 'domain', value: 'example.com' }],
+            },
+          ],
+          formats: [
+            {
+              format_option_id: 'homepage_mrec_image',
+              format_kind: 'image',
+              params: { width: 300, height: 250 },
+            },
+          ],
+          placements: [
+            {
+              placement_id: 'homepage_mrec',
+              name: 'Homepage MREC',
+              property_ids: ['homepage'],
+              format_options: [{ format_option_id: 'homepage_mrec_image' }],
+            },
+          ],
+          placementTags: {
+            homepage: { name: 'Homepage', description: 'Homepage placements' },
+          },
+          includeTimestamp: false,
+        });
+        const parsed = JSON.parse(json);
+
+        expect(parsed.formats[0].format_option_id).toBe('homepage_mrec_image');
+        expect(parsed.placements[0].format_options[0].format_option_id).toBe('homepage_mrec_image');
+        expect(parsed.placement_tags.homepage.name).toBe('Homepage');
+      });
+
+      it('rejects placement format refs that do not resolve to top-level formats', () => {
+        const result = manager.validateProposed({
+          agents: [
+            {
+              url: 'https://agent.example.com',
+              authorized_for: 'Homepage inventory',
+              authorization_type: 'property_ids',
+              property_ids: ['homepage'],
+            },
+          ],
+          properties: [
+            {
+              property_id: 'homepage',
+              property_type: 'website',
+              name: 'Homepage',
+              identifiers: [{ type: 'domain', value: 'example.com' }],
+            },
+          ],
+          placements: [
+            {
+              placement_id: 'homepage_mrec',
+              name: 'Homepage MREC',
+              property_ids: ['homepage'],
+              format_options: [{ format_option_id: 'missing_format' }],
+            },
+          ],
+        });
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.field === 'placements[0].format_options[0].format_option_id')).toBe(true);
+      });
     });
   });
 });
