@@ -1,0 +1,359 @@
+id: media_buy_seller/refine_finalize_exclusivity
+version: "1.0.0"
+title: "Seller enforces refine[] finalize-exclusivity and MULTI_FINALIZE_UNSUPPORTED"
+category: media_buy_seller
+summary: "Validates that sellers reject mixed-finalize requests (INVALID_REQUEST), structurally-invalid finalize entries, and handle multi-proposal finalize atomically or reject with MULTI_FINALIZE_UNSUPPORTED."
+track: media_buy
+required_tools:
+  - get_products
+
+requires_capability:
+  path: media_buy.supports_proposals
+  equals: true
+
+narrative: |
+  Issue #4107 clarified finalize-exclusivity semantics for refine[]: if any entry carries
+  action: "finalize", the entire array must consist exclusively of proposal-scoped finalize
+  entries. Mixing finalize with request- or product-scoped entries, or with include/omit
+  actions, is a business-rule violation. Current proposal storyboards exercise only the
+  happy-path finalize flow; this scenario covers the three normative negative cases.
+
+  1. Mixed finalize + non-finalize — one proposal-scoped finalize entry combined with a
+     request-scoped entry in the same refine[] call. Each entry is individually schema-valid;
+     the combination violates the exclusivity rule. The seller must reject with INVALID_REQUEST
+     before any state changes and should populate error.field identifying the offending entry.
+
+  2. Non-proposal-scoped finalize — a product-scoped entry carrying action: "finalize".
+     The schema's additionalProperties: false on the product variant makes this structurally
+     invalid (action: "finalize" is not in the product scope's action enum). The seller must
+     reject with INVALID_REQUEST.
+
+  3. Multi-proposal finalize — two proposal-scoped finalize entries in one call. Sellers that
+     can guarantee atomic pre-commit validation handle this and commit all named proposals;
+     sellers that cannot MUST reject with MULTI_FINALIZE_UNSUPPORTED (preferred, distinguishes
+     capability gap from malformed request) or INVALID_REQUEST (acceptable fallback for
+     pre-3.1 error catalogs). This case uses a branch set: the storyboard accepts either
+     outcome from a conformant seller. Because both branches are optional and the runner
+     executes both, the branch that does not match the seller's behavior will fail its
+     validation step (tolerated as optional) while the matching branch contributes; the
+     gate asserts at least one contributed.
+
+     A second brief is attempted in the setup_second_proposal phase to capture a second
+     proposal_id. If the seller returns fewer than two proposals, all multi-finalize phases
+     skip gracefully via skip_if guards and the storyboard still passes on the two mandatory
+     cases.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+    - generates_proposals
+  examples:
+    - "Full-service publisher with proposal engine"
+    - "Retail media network with curated packages"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller must support proposal generation (media_buy.supports_proposals: true).
+    The Acme Outdoor test kit provides brand and operator credentials.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: setup
+    title: "Account setup and first proposal discovery"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_refine_finalize_exclusivity_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: get_products_brief
+        title: "Request proposals — captures proposal_id_1 for mandatory error probes"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return at least one proposal with a proposal_id. proposal_id_1 is captured
+          here for the mandatory mixed-finalize and non-proposal-finalize error probes.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium video and display across outdoor lifestyle and sports. Q2 flight, $50K budget. Adults 25-54, US and Canada."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        context_outputs:
+          - path: "proposals[0].proposal_id"
+            key: "proposal_id_1"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "proposals[0].proposal_id"
+            description: "At least one proposal returned with an ID"
+
+  - id: setup_second_proposal
+    title: "Attempt second proposal capture for multi-finalize coverage"
+    optional: true
+    narrative: |
+      Sends a second brief to capture a second proposal_id for the multi-finalize branch
+      set. This phase is optional: if the seller returns fewer than two proposals, this
+      phase fails gracefully and all multi-finalize phases skip via skip_if guards. The
+      two mandatory error-probe phases (mixed_finalize_rejected, non_proposal_finalize_rejected)
+      are unaffected.
+    steps:
+      - id: get_products_brief_second
+        title: "Second brief to capture proposal_id_2"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return at least two proposals. proposals[1].proposal_id is captured as
+          proposal_id_2. If the seller returns only one proposal, this step fails
+          (tolerated — phase is optional), proposal_id_2 stays unset, and the
+          multi-finalize phases skip gracefully.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium video and display across outdoor lifestyle and sports. Q2 flight, $50K budget. Adults 25-54, US and Canada."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        context_outputs:
+          - path: "proposals[1].proposal_id"
+            key: "proposal_id_2"
+        validations:
+          - check: field_present
+            path: "proposals[1].proposal_id"
+            description: "Second proposal present for multi-finalize test"
+
+  - id: mixed_finalize_rejected
+    title: "Mixed finalize rejected"
+    narrative: |
+      A refine[] array where one entry is a proposal-scoped finalize and another is a
+      request-scoped refinement. Each entry is individually schema-valid; their combination
+      violates the finalize-exclusivity rule. The seller must reject with INVALID_REQUEST
+      before any proposal state changes. Per issue #4107, the error response should include
+      error.field identifying which refine entry triggered the violation.
+
+    steps:
+      - id: get_products_mixed_finalize
+        title: "Finalize entry mixed with request-scoped entry"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with:
+          - code: INVALID_REQUEST
+          - error.field: pointing at the offending refine entry (e.g. "refine[0]",
+            "refine[1]", or "refine" — seller-chosen, any index that identifies
+            the violation is conformant)
+          No proposal state is changed; the finalize entry does not commit.
+        sample_request:
+          buying_mode: "refine"
+          refine:
+            - scope: "proposal"
+              proposal_id: "$context.proposal_id_1"
+              action: "finalize"
+            - scope: "request"
+              ask: "Also increase CTV budget allocation"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Mixed finalize + non-finalize refine[] rejected with INVALID_REQUEST"
+          - check: field_present
+            path: "errors[0].field"
+            description: "Seller populates error.field pointing at the offending refine entry"
+
+  - id: non_proposal_finalize_rejected
+    title: "Non-proposal finalize rejected"
+    narrative: |
+      A product-scoped refine entry carrying action: "finalize". The get-products-request
+      schema allows action: "finalize" only on the proposal-scoped variant; the product
+      variant defines action as "include" | "omit" | "more_like_this" with
+      additionalProperties: false. This is a structurally invalid payload — the runner
+      skips sample_request schema validation (negative_path: schema_invalid) and verifies
+      the seller returns INVALID_REQUEST rather than a 500 or silent acceptance.
+
+      The product_id value is a synthetic test sentinel; since the request fails at schema
+      validation before any product lookup, no fixture seeding is required.
+
+    steps:
+      - id: get_products_product_finalize
+        title: "Product-scoped entry with action: finalize"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        expect_error: true
+        negative_path: schema_invalid
+        stateful: false
+        expected: |
+          Reject with INVALID_REQUEST. The schema prohibits action: "finalize" on
+          product-scoped entries; the seller must not silently ignore the field or
+          treat it as action: "include".
+        sample_request:
+          buying_mode: "refine"
+          refine:
+            - scope: "product"
+              product_id: "test-product-finalize-exclusivity-v1"
+              action: "finalize"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Product-scoped finalize entry rejected with INVALID_REQUEST"
+
+  - id: multi_finalize_atomic_path
+    title: "Multi-finalize handled atomically"
+    optional: true
+    branch_set:
+      id: multi_finalize_handled
+      semantics: any_of
+    skip_if: "!context.proposal_id_2"
+    narrative: |
+      The seller supports atomic multi-finalize: both proposals commit in a single call or
+      neither does. This branch passes when the seller returns a success response with both
+      proposals present. The spec requires atomicity at the observation point — the seller
+      must not return success unless every named proposal has been persisted as committed.
+
+    steps:
+      - id: get_products_multi_finalize_atomic
+        title: "Finalize two proposals in a single call — atomic success path"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: true
+        contributes: true
+        expected: |
+          Return both proposals with committed status and expires_at hold windows.
+          Neither proposal is partially committed — the seller has run pre-commit
+          validation across all named proposals before returning success.
+        sample_request:
+          buying_mode: "refine"
+          refine:
+            - scope: "proposal"
+              proposal_id: "$context.proposal_id_1"
+              action: "finalize"
+            - scope: "proposal"
+              proposal_id: "$context.proposal_id_2"
+              action: "finalize"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "proposals"
+            description: "Response contains the finalized proposals"
+
+  - id: multi_finalize_unsupported_path
+    title: "Multi-finalize rejected with MULTI_FINALIZE_UNSUPPORTED"
+    optional: true
+    branch_set:
+      id: multi_finalize_handled
+      semantics: any_of
+    skip_if: "!context.proposal_id_2"
+    narrative: |
+      The seller cannot guarantee atomic pre-commit validation across multiple proposals.
+      Per the spec, such sellers MUST reject with MULTI_FINALIZE_UNSUPPORTED (preferred —
+      distinguishes seller-side capability gap from a malformed request) or INVALID_REQUEST
+      (acceptable fallback for sellers on a pre-3.1 error catalog). No proposal is committed.
+
+      Note: the runner executes both branch-set peers regardless of which succeeds. For
+      a seller that handled atomically in the sibling branch, this step will attempt to
+      finalize already-committed proposals and may receive a different error (e.g.
+      INVALID_STATE). That step failure is tolerated (optional branch); the atomic branch's
+      contribution is sufficient for the gate assertion.
+
+    steps:
+      - id: get_products_multi_finalize_unsupported
+        title: "Multi-finalize rejected by seller without atomic commit support"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        contributes: true
+        expected: |
+          Reject with MULTI_FINALIZE_UNSUPPORTED (preferred) or INVALID_REQUEST
+          (acceptable fallback). No proposal is committed. Buyers receiving
+          MULTI_FINALIZE_UNSUPPORTED should sequence individual finalize calls.
+        sample_request:
+          buying_mode: "refine"
+          refine:
+            - scope: "proposal"
+              proposal_id: "$context.proposal_id_1"
+              action: "finalize"
+            - scope: "proposal"
+              proposal_id: "$context.proposal_id_2"
+              action: "finalize"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: error_code
+            allowed_values: ["MULTI_FINALIZE_UNSUPPORTED", "INVALID_REQUEST"]
+            description: "Multi-finalize rejected with MULTI_FINALIZE_UNSUPPORTED or INVALID_REQUEST"
+
+  - id: multi_finalize_gate
+    title: "At least one multi-finalize path contributed"
+    skip_if: "!context.proposal_id_2"
+    steps:
+      - id: assert_multi_finalize
+        task: assert_contribution
+        validations:
+          - check: any_of
+            allowed_values: ["multi_finalize_handled"]
+            description: "Seller either handled multi-finalize atomically or rejected with MULTI_FINALIZE_UNSUPPORTED"
