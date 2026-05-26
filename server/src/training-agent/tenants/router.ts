@@ -34,6 +34,7 @@ const SALES_CURRENT_SCENARIOS = [
   ...SALES_LEGACY_CAPABILITY_SCENARIOS,
   'force_create_media_buy_arm',
   'force_task_completion',
+  'force_creative_purge',
   'seed_product',
   'seed_pricing_option',
   'seed_creative',
@@ -46,6 +47,14 @@ function salesComplyScenarios(storyboardCompat?: TrainingContext['storyboardComp
   return storyboardCompat?.version === '3.0'
     ? [...SALES_LEGACY_CAPABILITY_SCENARIOS]
     : [...SALES_CURRENT_SCENARIOS];
+}
+
+function salesCapabilityScenarios(): string[] {
+  // The v6 framework's get_adcp_capabilities validator is generated from the
+  // SDK's scenario enum, which can lag local controller extensions. Keep local
+  // extensions discoverable via comply_test_controller.list_scenarios, but do
+  // not project them into capabilities until the SDK enum catches up.
+  return [...SALES_LEGACY_CAPABILITY_SCENARIOS];
 }
 
 /**
@@ -223,6 +232,16 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
     // Serialize the connect/handle/close window per tenant — see
     // `withTenantLock` above for the race this prevents (adcp#4084).
     await withTenantLock(resolved.tenantId, async () => {
+      if (
+        principal
+        && req.body?.method === 'tools/call'
+        && req.body?.params?.name === 'comply_test_controller'
+        && req.body.params.arguments
+        && typeof req.body.params.arguments === 'object'
+      ) {
+        req.body.params.arguments.__training_principal = principal;
+      }
+
       if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat)) {
         return;
       }
@@ -270,8 +289,15 @@ async function tryHandleLocalComplyScenario(
 
   const rawArgs = (req.body.params.arguments ?? {}) as Record<string, unknown>;
   const isThreeZeroCompat = storyboardCompat?.version === '3.0';
-  if (rawArgs.scenario !== 'seed_measurement_catalog' && rawArgs.scenario !== 'list_scenarios') return false;
-  if (isThreeZeroCompat && rawArgs.scenario === 'seed_measurement_catalog') return false;
+  if (
+    rawArgs.scenario !== 'seed_measurement_catalog'
+    && rawArgs.scenario !== 'force_creative_purge'
+    && rawArgs.scenario !== 'list_scenarios'
+  ) return false;
+  if (
+    isThreeZeroCompat
+    && (rawArgs.scenario === 'seed_measurement_catalog' || rawArgs.scenario === 'force_creative_purge')
+  ) return false;
 
   const { context, ...handlerArgs } = rawArgs;
   const result = await runWithSessionContext(async () => {
@@ -392,7 +418,7 @@ function projectSalesCapabilities(
           ? (complianceTesting as { scenarios: unknown[] }).scenarios.filter((s): s is string => typeof s === 'string')
           : [],
       );
-      for (const scenario of salesComplyScenarios(storyboardCompat)) {
+      for (const scenario of salesCapabilityScenarios()) {
         scenarios.add(scenario);
       }
       structured.compliance_testing = {

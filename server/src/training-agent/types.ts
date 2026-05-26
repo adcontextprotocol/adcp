@@ -460,12 +460,35 @@ export interface CreativeManifest {
 
 export interface CreativeState {
   creativeId: string;
+  accountId?: string;
+  accountRef?: AccountRef;
   formatId: FormatID;
   name?: string;
   status: string;
   syncedAt: string;
   manifest?: CreativeManifest;
   pricingOptionId?: string;
+  purge?: {
+    kind: 'soft';
+    at: string;
+    reasonCode: string;
+  };
+  webhookActivity?: CreativeWebhookActivityRecord[];
+}
+
+export interface CreativeWebhookActivityRecord {
+  idempotency_key: string;
+  subscriber_id: string;
+  fired_at: string;
+  completed_at: string;
+  notification_type: 'creative.status_changed' | 'creative.purged';
+  attempt: number;
+  status: 'success' | 'failed';
+  url: string;
+  http_status_code?: number;
+  response_time_ms?: number;
+  payload_size_bytes?: number;
+  error_message?: string | null;
 }
 
 export interface UsageRecord {

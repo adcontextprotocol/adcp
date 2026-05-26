@@ -65,8 +65,19 @@ export const syncAccountsUpsert: NonNullable<AccountStore['upsert']> = async (re
   // drop list too but `handleSyncAccounts` doesn't implement it yet, so
   // threading it would be inert — wire when v5 grows support.
   const fromInput = pickFromInput(ctx?.input, ['dry_run'] as const);
+  const rawAccounts = (ctx?.input && typeof ctx.input === 'object' && Array.isArray((ctx.input as { accounts?: unknown }).accounts))
+    ? (ctx.input as { accounts: Array<Record<string, unknown>> }).accounts
+    : undefined;
+  const refsWithRawConfig = rawAccounts && rawAccounts.length === refs.length
+    ? refs.map((ref, i) => ({
+        ...(ref as Record<string, unknown>),
+        ...(rawAccounts[i].notification_configs !== undefined && {
+          notification_configs: rawAccounts[i].notification_configs,
+        }),
+      }))
+    : refs;
   const v5Result = handleSyncAccounts(
-    { accounts: refs as unknown[], ...fromInput } as ToolArgs,
+    { accounts: refsWithRawConfig as unknown[], ...fromInput } as ToolArgs,
     trainingCtx,
   );
   // v5 handleSyncAccounts returns `{ accounts: [...] }` where each entry

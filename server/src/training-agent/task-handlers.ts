@@ -18,7 +18,7 @@ import { PostgresTaskStore } from '@adcp/sdk';
 import { mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting } from './types.js';
+import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting, AccountRef } from './types.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
   Product,
@@ -314,6 +314,7 @@ import {
   ACCOUNT_TOOLS,
   SUPPORTED_BILLINGS,
   handleListAccounts,
+  resolveAccountIdForRef,
   handleSyncAccounts,
   handleSyncGovernance,
 } from './account-handlers.js';
@@ -1721,6 +1722,9 @@ const TOOLS = [
         media_buy_id: { type: 'string' },
         include_pricing: { type: 'boolean', description: 'Include pricing from the account rate card on each creative (default: false). Requires account.' },
         include_snapshot: { type: 'boolean', description: 'Include delivery snapshot per creative' },
+        include_purged: { type: 'boolean', description: 'Include soft-purged creative tombstones' },
+        include_webhook_activity: { type: 'boolean', description: 'Include recent lifecycle webhook activity per creative' },
+        webhook_activity_limit: { type: 'integer', minimum: 1, maximum: 200 },
         filters: { type: 'object', properties: { creative_ids: { type: 'array', items: { type: 'string' } }, statuses: { type: 'array', items: { type: 'string' } } } },
         // See list_creative_formats above — declared so legacy dispatch keeps
         // `pagination` on the wire.
@@ -3474,8 +3478,10 @@ function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/
 
 export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCreativesRequest & ToolArgs & { dry_run?: boolean };
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(sessionKey);
   const isDryRun = req.dry_run === true;
+  const accountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
   if (!req.creatives?.length) {
     return {
@@ -3552,16 +3558,22 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     }
 
     const existing = session.creatives.has(creativeId);
+    const existingCreative = session.creatives.get(creativeId);
 
     if (!isDryRun) {
       session.creatives.set(creativeId, {
         creativeId,
+        accountId: accountId ?? existingCreative?.accountId,
+        accountRef: req.account ?? existingCreative?.accountRef,
         formatId,
         name: creative.name,
-        status: 'approved',
+        status: existingCreative?.status ?? 'approved',
         syncedAt: new Date().toISOString(),
         // manifest is a training-agent extension, not in SDK CreativeAsset type
         manifest: (creative as unknown as { manifest?: CreativeManifest }).manifest,
+        pricingOptionId: existingCreative?.pricingOptionId,
+        purge: existingCreative?.purge,
+        webhookActivity: existingCreative?.webhookActivity,
       });
     }
 
@@ -3607,13 +3619,34 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   };
 }
 
+function accountRefsOverlap(stored: AccountRef | undefined, requested: AccountRef): boolean {
+  if (!stored) return false;
+  if (requested.account_id || stored.account_id) {
+    return Boolean(requested.account_id && stored.account_id && requested.account_id === stored.account_id);
+  }
+  if (requested.brand?.domain && stored.brand?.domain && requested.brand.domain !== stored.brand.domain) return false;
+  if (requested.operator || stored.operator) {
+    return Boolean(requested.operator && stored.operator && requested.operator === stored.operator);
+  }
+  return Boolean(requested.brand?.domain && stored.brand?.domain && requested.brand.domain === stored.brand.domain);
+}
+
 export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[]; include_pricing?: boolean; include_snapshot?: boolean };
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const req = args as unknown as ListCreativesRequest & ToolArgs & {
+    creative_ids?: string[];
+    include_pricing?: boolean;
+    include_snapshot?: boolean;
+    include_purged?: boolean;
+    include_webhook_activity?: boolean;
+    webhook_activity_limit?: number;
+  };
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(sessionKey);
   const filterIds = req.creative_ids || req.filters?.creative_ids;
+  const requestedAccountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
   let creatives = Array.from(session.creatives.values());
-  if (creatives.length === 0) {
+  if (creatives.length === 0 && !req.include_webhook_activity) {
     // Controller-seeded creative storyboards can write under the test-kit
     // brand session while the list request keys by account_id. Prefer that
     // freshly seeded library over falling back to static compliance fixtures.
@@ -3628,6 +3661,24 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     // resolve without the SDK's controller_seeding auto-fire. Sessions that
     // have synced their own creatives return only those — no mixing.
     creatives = getComplianceCreatives();
+  }
+  if (req.include_webhook_activity) {
+    creatives = req.account && requestedAccountId
+      ? creatives.filter(c => Boolean(c.accountId) && c.accountId === requestedAccountId)
+      : [];
+  } else if (req.account) {
+    creatives = creatives.filter(c => {
+      if (requestedAccountId && c.accountId) return c.accountId === requestedAccountId;
+      if (c.accountRef) return accountRefsOverlap(c.accountRef, req.account!);
+      return !req.include_webhook_activity;
+    });
+  }
+  if (!req.include_purged) {
+    creatives = creatives.filter(c => !c.purge);
+  }
+  if (req.filters?.statuses?.length) {
+    const statuses = new Set<string>(req.filters.statuses as string[]);
+    creatives = creatives.filter(c => statuses.has(c.status));
   }
 
   const totalMatching = creatives.length;
@@ -3695,6 +3746,17 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       }
       if (req.include_snapshot) {
         base.snapshot_unavailable_reason = 'SNAPSHOT_UNSUPPORTED';
+      }
+      if (c.purge) {
+        base.purge = {
+          kind: c.purge.kind,
+          at: c.purge.at,
+          reason_code: c.purge.reasonCode,
+        };
+      }
+      if (req.include_webhook_activity) {
+        const limit = Math.min(Math.max(req.webhook_activity_limit ?? 50, 1), 200);
+        base.webhook_activity = (c.webhookActivity ?? []).slice(0, limit);
       }
       return base;
     }),
@@ -4037,6 +4099,24 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
   const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethod(op));
   const protocolMethodsRequiredFor = signingCap.required_for.filter(isProtocolMethod);
   const protocolMethodsSupportedFor = signingCap.supported_for?.filter(isProtocolMethod) ?? [];
+  const complianceScenarios = [
+    'force_creative_status',
+    'force_account_status',
+    'force_media_buy_status',
+    'force_create_media_buy_arm',
+    'force_task_completion',
+    ...(!isThreeZeroStoryboardCompat(ctx) ? ['force_creative_purge'] : []),
+    'force_session_status',
+    'simulate_delivery',
+    'simulate_budget_spend',
+    'seed_product',
+    'seed_pricing_option',
+    'seed_creative',
+    'seed_plan',
+    'seed_media_buy',
+    'seed_creative_format',
+    'seed_measurement_catalog',
+  ];
   return {
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
@@ -4120,23 +4200,7 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
       sandbox: true,
     },
     compliance_testing: {
-      scenarios: [
-        'force_creative_status',
-        'force_account_status',
-        'force_media_buy_status',
-        'force_create_media_buy_arm',
-        'force_task_completion',
-        'force_session_status',
-        'simulate_delivery',
-        'simulate_budget_spend',
-        'seed_product',
-        'seed_pricing_option',
-        'seed_creative',
-        'seed_plan',
-        'seed_media_buy',
-        'seed_creative_format',
-        'seed_measurement_catalog',
-      ],
+      scenarios: complianceScenarios,
     },
     agent: {
       name: 'AdCP Training Agent',
