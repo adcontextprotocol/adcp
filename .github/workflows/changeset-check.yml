@@ -32,4 +32,4 @@ jobs:
           node-version: '22'
 
       - name: Check for changeset
-        run: npx --yes @changesets/cli@^2.31.0 status --since=origin/main
+        run: npx --yes @changesets/cli@^2.31.0 status --since=origin/${{ github.base_ref }}
