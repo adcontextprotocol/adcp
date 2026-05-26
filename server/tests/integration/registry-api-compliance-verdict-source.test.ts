@@ -28,9 +28,15 @@ import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 
+vi.hoisted(() => {
+  process.env.WORKOS_API_KEY ||= 'sk_test_registry_debug';
+  process.env.WORKOS_CLIENT_ID ||= 'client_registry_debug';
+});
+
 const RUN_SUFFIX = Math.random().toString(36).slice(2, 8);
 const OWNER_USER_ID = `user_verdict_owner_${RUN_SUFFIX}`;
 const CROSS_ORG_USER_ID = `user_verdict_cross_${RUN_SUFFIX}`;
+const STATIC_ADMIN_USER_ID = 'admin_api_key';
 const OWNER_ORG_ID = `org_verdict_owner_${RUN_SUFFIX}`;
 const CROSS_ORG_ID = `org_verdict_cross_${RUN_SUFFIX}`;
 const AGENT_URL = `https://verdict-source-${RUN_SUFFIX}.example.com/mcp`;
@@ -39,22 +45,28 @@ const AGENT_URL = `https://verdict-source-${RUN_SUFFIX}.example.com/mcp`;
 // header parses successfully. Tests toggle currentUserId between owner,
 // cross-org, and null (anonymous) to exercise each auth branch.
 let currentUserId: string | null = null;
+let complianceRunId: string;
 
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../src/middleware/auth.js');
+  const stampUser = (req: { user?: unknown; isStaticAdminApiKey?: boolean }) => {
+    if (currentUserId === null) return;
+    req.user = { id: currentUserId, email: `${currentUserId}@test.com` };
+    if (currentUserId === STATIC_ADMIN_USER_ID) {
+      req.isStaticAdminApiKey = true;
+    }
+  };
   return {
     ...actual,
-    requireAuth: (req: { user?: unknown }, res: { status: (n: number) => { json: (b: unknown) => void } }, next: () => void) => {
+    requireAuth: (req: { user?: unknown; isStaticAdminApiKey?: boolean }, res: { status: (n: number) => { json: (b: unknown) => void } }, next: () => void) => {
       if (currentUserId === null) {
         return res.status(401).json({ error: 'Authentication required' });
       }
-      req.user = { id: currentUserId, email: `${currentUserId}@test.com` };
+      stampUser(req);
       next();
     },
-    optionalAuth: (req: { user?: unknown }, _res: unknown, next: () => void) => {
-      if (currentUserId !== null) {
-        req.user = { id: currentUserId, email: `${currentUserId}@test.com` };
-      }
+    optionalAuth: (req: { user?: unknown; isStaticAdminApiKey?: boolean }, _res: unknown, next: () => void) => {
+      stampUser(req);
       next();
     },
     requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
@@ -142,7 +154,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     // last_triggered_by='owner_test'. That's the field the route gates
     // behind is_owner — the test asserts owners see it and non-owners
     // see null.
-    await pool.query(
+    const runResult = await pool.query<{ id: string }>(
       `INSERT INTO agent_compliance_runs (
          agent_url, lifecycle_stage, overall_status, headline,
          tracks_json, tracks_passed, tracks_failed, tracks_skipped, tracks_partial,
@@ -151,6 +163,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
                  '[]'::jsonb, 0, 0, 0, 0, 'owner_test', false, NOW())`,
       [AGENT_URL],
     );
+    complianceRunId = runResult.rows[0].id;
     await pool.query(
       `INSERT INTO agent_compliance_status (
          agent_url, status, last_checked_at, last_passed_at,
@@ -165,6 +178,38 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
              updated_at = NOW()`,
       [AGENT_URL],
     );
+    await pool.query(
+      `INSERT INTO agent_storyboard_status (
+         agent_url, storyboard_id, status, last_tested_at, run_id,
+         steps_passed, steps_total, triggered_by
+       ) VALUES ($1, 'debug_storyboard', 'failing', NOW(), $2, 1, 2, 'owner_test')
+       ON CONFLICT (agent_url, storyboard_id) DO UPDATE
+         SET status = EXCLUDED.status,
+             last_tested_at = EXCLUDED.last_tested_at,
+             run_id = EXCLUDED.run_id,
+             steps_passed = EXCLUDED.steps_passed,
+             steps_total = EXCLUDED.steps_total,
+             triggered_by = EXCLUDED.triggered_by`,
+      [AGENT_URL, complianceRunId],
+    );
+    await pool.query(
+      `INSERT INTO agent_compliance_step_diagnostics (
+         run_id, agent_url, storyboard_id, phase_id, step_id, task,
+         step_passed, duration_ms, request_url, request_jsonb,
+         response_status, response_jsonb, error_text
+       ) VALUES (
+         $1, $2, 'debug_storyboard', 'debug_phase', 'debug_step', 'get_products',
+         false, 42, $2, '{"params":{"brief":"debug"}}'::jsonb,
+         200, '{"ok":false}'::jsonb, 'debug failure'
+       )`,
+      [complianceRunId, AGENT_URL],
+    );
+    await pool.query(
+      `INSERT INTO agent_outbound_requests (
+         agent_url, request_type, user_agent, response_time_ms, success, error_message
+       ) VALUES ($1, 'compliance', 'test-runner', 42, false, 'debug failure')`,
+      [AGENT_URL],
+    );
 
     server = new HTTPServer();
     await server.start(0);
@@ -172,6 +217,9 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
   });
 
   afterAll(async () => {
+    await pool.query('DELETE FROM agent_outbound_requests WHERE agent_url = $1', [AGENT_URL]);
+    await pool.query('DELETE FROM agent_compliance_step_diagnostics WHERE agent_url = $1', [AGENT_URL]);
+    await pool.query('DELETE FROM agent_storyboard_status WHERE agent_url = $1', [AGENT_URL]);
     await pool.query('DELETE FROM agent_compliance_runs WHERE agent_url = $1', [AGENT_URL]);
     await pool.query('DELETE FROM agent_compliance_status WHERE agent_url = $1', [AGENT_URL]);
     await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = ANY($1)', [[OWNER_ORG_ID, CROSS_ORG_ID]]);
@@ -259,5 +307,68 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         [OWNER_ORG_ID],
       );
     }
+  });
+
+  it('static admin API key can read storyboard status without membership', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
+    const res = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/storyboard-status`);
+    expect(res.status).toBe(200);
+    expect(res.body.storyboards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        storyboard_id: 'debug_storyboard',
+        status: 'failing',
+        steps_passed: 1,
+        steps_total: 2,
+      }),
+    ]));
+  });
+
+  it('static admin API key can read per-step diagnostics for any agent', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
+    const res = await request(app)
+      .get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/diagnostics`)
+      .query({ run_id: complianceRunId });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      agent_url: AGENT_URL,
+      run_id: complianceRunId,
+      count: 1,
+    });
+    expect(res.body.diagnostics[0]).toMatchObject({
+      storyboard_id: 'debug_storyboard',
+      step_id: 'debug_step',
+      task: 'get_products',
+      error_text: 'debug failure',
+    });
+  });
+
+  it('static admin API key can read outbound monitoring requests for any agent', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
+    const res = await request(app)
+      .get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/monitoring/requests`)
+      .query({ limit: 5 });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      agent_url: AGENT_URL,
+      count: 1,
+      total: 1,
+    });
+    expect(res.body.requests[0]).toMatchObject({
+      agent_url: AGENT_URL,
+      request_type: 'compliance',
+      user_agent: 'test-runner',
+      success: false,
+      error_message: 'debug failure',
+    });
+  });
+
+  it('cross-org caller still cannot read owner diagnostics or monitoring requests', async () => {
+    currentUserId = CROSS_ORG_USER_ID;
+    const [diagnosticsRes, monitoringRes] = await Promise.all([
+      request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/diagnostics`),
+      request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/monitoring/requests`),
+    ]);
+    expect(diagnosticsRes.status).toBe(403);
+    expect(monitoringRes.status).toBe(403);
   });
 });
