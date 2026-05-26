@@ -1884,6 +1884,17 @@ const TOOLS = [
 export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
+  const brief = (req as Record<string, unknown>).brief;
+  if (brief !== undefined && typeof brief !== 'string') {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'brief must be a string.',
+        field: 'brief',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
@@ -1931,8 +1942,8 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   const filteredProducts = products;
 
   // Brief mode: channel-aware keyword matching
-  if (buyingMode === 'brief' && req.brief) {
-    const briefLower = req.brief.toLowerCase();
+  if (buyingMode === 'brief' && brief) {
+    const briefLower = brief.toLowerCase();
     const terms = briefLower.split(/\s+/);
 
     // Extract channel names mentioned in the brief — these get heavy weight
