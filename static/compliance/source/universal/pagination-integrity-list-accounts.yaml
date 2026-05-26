@@ -1,8 +1,8 @@
 id: pagination_integrity_list_accounts
 version: "1.0.0"
-title: "Pagination cursor integrity — list_accounts"
+title: "Pagination continuation integrity — list_accounts"
 category: schema_validation
-summary: "Validates the cursor↔has_more invariant by creating sandbox accounts, requesting a small first page, and following its cursor once."
+summary: "Validates the has_more=true continuation side of list_accounts pagination by creating sandbox accounts, requesting a small first page, and following its cursor once."
 track: core
 required_tools:
   - list_accounts
@@ -16,17 +16,20 @@ narrative: |
 
   The invariant is documented in prose on
   `static/schemas/source/core/pagination-response.json` but JSON Schema does
-  not gate the two fields against each other. This storyboard exercises both
-  sides of the invariant on `list_accounts` in a single run.
+  not gate the two fields against each other. This storyboard exercises the
+  continuation side on `list_accounts`: when `has_more=true`, `cursor` must be
+  present and usable.
 
   The runner bootstraps three sandbox accounts via `sync_accounts`, then
   lists sandbox accounts back with `max_results=2`. The first page MUST cap
   at two accounts and signal continuation with `has_more=true` plus a cursor.
   The runner then follows that cursor to prove the continuation token is usable.
-  Agents may have pre-existing sandbox accounts, so this storyboard does not
-  assert that the second observed page is terminal or that `total_count` equals
-  exactly three; adding account seeding with isolated lookup semantics is
-  tracked separately.
+  Agents may have pre-existing sandbox accounts, so this storyboard deliberately
+  does not assert that the second observed page is terminal or that
+  `total_count` equals exactly three. The terminal side of the invariant is
+  covered by pagination storyboards with isolated seeded result sets; adding
+  equivalent account seeding with isolated lookup semantics is tracked
+  separately.
 
 agent:
   interaction_model: stateful_preloaded

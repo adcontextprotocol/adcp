@@ -1,5 +1,4 @@
 ---
-"adcontextprotocol": patch
 ---
 
 Bound storyboard compliance requests so broad product and creative-format checks
