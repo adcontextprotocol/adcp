@@ -49,12 +49,10 @@ function salesComplyScenarios(storyboardCompat?: TrainingContext['storyboardComp
     : [...SALES_CURRENT_SCENARIOS];
 }
 
-function salesCapabilityScenarios(): string[] {
-  // The v6 framework's get_adcp_capabilities validator is generated from the
-  // SDK's scenario enum, which can lag local controller extensions. Keep local
-  // extensions discoverable via comply_test_controller.list_scenarios, but do
-  // not project them into capabilities until the SDK enum catches up.
-  return [...SALES_LEGACY_CAPABILITY_SCENARIOS];
+function salesCapabilityScenarios(storyboardCompat?: TrainingContext['storyboardCompat']): string[] {
+  return storyboardCompat?.version === '3.0'
+    ? [...SALES_LEGACY_CAPABILITY_SCENARIOS]
+    : [...SALES_CURRENT_SCENARIOS];
 }
 
 /**
@@ -418,7 +416,7 @@ function projectSalesCapabilities(
           ? (complianceTesting as { scenarios: unknown[] }).scenarios.filter((s): s is string => typeof s === 'string')
           : [],
       );
-      for (const scenario of salesCapabilityScenarios()) {
+      for (const scenario of salesCapabilityScenarios(storyboardCompat)) {
         scenarios.add(scenario);
       }
       structured.compliance_testing = {

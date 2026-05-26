@@ -215,7 +215,7 @@ function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboar
       _toolName: string,
     ) => {
       const auth = ctx.authInfo?.clientId ?? 'anonymous';
-      if (auth !== 'static:public') return auth;
+      if (auth !== 'static:public' && auth !== 'static:public:shared') return auth;
       const usageAccount = Array.isArray(params.usage)
         ? (params.usage[0] as { account?: unknown } | undefined)?.account
         : undefined;
@@ -265,11 +265,11 @@ export function createRegistryHolder(options: { storyboardCompat?: TrainingConte
         });
         const tCreate = Date.now();
         const configs = [
-          { id: 'signals', cfg: buildSignalsTenantConfig(hostBase) },
+          { id: 'signals', cfg: buildSignalsTenantConfig(hostBase, options) },
           { id: 'sales', cfg: buildSalesTenantConfig(hostBase, options) },
-          { id: 'governance', cfg: buildGovernanceTenantConfig(hostBase) },
-          { id: 'creative', cfg: buildCreativeTenantConfig(hostBase) },
-          { id: 'creative-builder', cfg: buildCreativeBuilderTenantConfig(hostBase) },
+          { id: 'governance', cfg: buildGovernanceTenantConfig(hostBase, options) },
+          { id: 'creative', cfg: buildCreativeTenantConfig(hostBase, options) },
+          { id: 'creative-builder', cfg: buildCreativeBuilderTenantConfig(hostBase, options) },
           { id: 'brand', cfg: buildBrandTenantConfig(hostBase, options) },
         ] as const;
         const tConfigs = Date.now();

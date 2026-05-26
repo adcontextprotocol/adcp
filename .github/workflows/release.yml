@@ -61,6 +61,10 @@ jobs:
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
+      - name: Verify current storyboard coverage
+        if: github.ref_name == 'main'
+        run: npm run test:storyboards
+
       - name: Verify 3.0 storyboard compatibility
         if: github.ref_name == 'main' || github.ref_name == '3.0.x'
         run: npm run test:storyboards:3.0-compat

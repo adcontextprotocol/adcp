@@ -10,6 +10,10 @@
     }
   ],
   "properties": {
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Optional exact account filter. Use `account_id` to retrieve one known account, or the natural key (`brand` + `operator`, optionally `sandbox`) for implicit-account sellers. When present, the seller returns only matching accounts visible to the authenticated caller."
+    },
     "status": {
       "type": "string",
       "enum": [

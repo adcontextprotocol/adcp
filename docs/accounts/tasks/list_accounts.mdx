@@ -11,7 +11,7 @@ Returns all accounts the authenticated agent can operate on this vendor agent. U
 
 **Response Time**: ~1s.
 
-**Request Schema**: [`/schemas/v3/account/list-accounts-request.json`](https://adcontextprotocol.org/schemas/v3/account/list-accounts-request.json)
+**Request Schema**: [`static/schemas/source/account/list-accounts-request.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/account/list-accounts-request.json)
 **Response Schema**: [`/schemas/v3/account/list-accounts-response.json`](https://adcontextprotocol.org/schemas/v3/account/list-accounts-response.json)
 
 ## Quick Start
@@ -61,12 +61,15 @@ asyncio.run(main())
 
 ## Request Parameters
 
-All parameters are optional. An empty request returns all accounts.
+All parameters are optional. An empty request returns all accounts visible to
+the authenticated caller. Use `account` when re-reading one known account by
+`account_id` or by natural key (`brand` + `operator`, optionally `sandbox`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `account` | object | No | Exact account filter. Pass `{ "account_id": "..." }` after discovery, or a natural key with `brand`, `operator`, and optional `sandbox` for implicit-account sellers. The seller returns only matching accounts visible to the authenticated caller. |
 | `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
-| `sandbox` | boolean | No | When true, return only sandbox accounts. When false or omitted, return only production accounts. Primarily used with explicit accounts (`require_operator_auth: true`) where sandbox accounts are pre-existing test accounts on the platform. |
+| `sandbox` | boolean | No | When true, return only sandbox accounts. When false, return only production accounts. Omit to return both. Primarily used with explicit accounts (`require_operator_auth: true`) where sandbox accounts are pre-existing test accounts on the platform. |
 | `pagination` | object | No | Pagination cursor for large account sets. |
 
 ## Response

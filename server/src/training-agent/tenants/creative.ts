@@ -8,10 +8,11 @@ import { getTenantSigningMaterial } from './signing.js';
 import { buildCreativeComplyConfig } from './comply.js';
 import { listAccountsTool } from './account-tools.js';
 import { reportUsageTool } from './report-usage-tool.js';
+import type { TrainingContext } from '../types.js';
 
 const TENANT_ID = 'creative';
 
-export function buildCreativeTenantConfig(host: string): {
+export function buildCreativeTenantConfig(host: string, options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): {
   tenantId: string;
   config: TenantConfig;
 } {
@@ -23,10 +24,10 @@ export function buildCreativeTenantConfig(host: string): {
       signingKey: material.signingKey,
       label: 'Training agent — creative',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      platform: new TrainingCreativePlatform() as any,
+      platform: new TrainingCreativePlatform(options.storyboardCompat) as any,
       serverOptions: {
         customTools: {
-          list_accounts: listAccountsTool(),
+          list_accounts: listAccountsTool(options.storyboardCompat),
           report_usage: reportUsageTool({ creativeBillsThroughAdcp: false }),
         },
         complyTest: buildCreativeComplyConfig(),

@@ -51,12 +51,12 @@ import {
   STRICT_PROTOCOL_METHODS_REQUIRED_FOR,
 } from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
-import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
 
 const logger = createLogger('training-agent-routes');
 
 const TRAINING_AGENT_TOKEN = process.env.TRAINING_AGENT_TOKEN;
-const PUBLIC_TEST_AGENT_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN || PUBLIC_TEST_AGENT.token;
+const DOCUMENTED_PUBLIC_TEST_AGENT_TOKEN = '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
+const PUBLIC_TEST_AGENT_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN || DOCUMENTED_PUBLIC_TEST_AGENT_TOKEN;
 const STARTUP_TIME = new Date().toISOString();
 
 // WorkOS client for API key validation (reuses main app's credentials)
@@ -84,7 +84,11 @@ function buildBearerAuthenticator(): Authenticator | null {
   }
   const staticKeys: Record<string, AuthPrincipal> = {};
   if (TRAINING_AGENT_TOKEN) staticKeys[TRAINING_AGENT_TOKEN] = { principal: 'static:primary' };
-  if (PUBLIC_TEST_AGENT_TOKEN) staticKeys[PUBLIC_TEST_AGENT_TOKEN] = { principal: 'static:public' };
+  if (PUBLIC_TEST_AGENT_TOKEN) {
+    staticKeys[PUBLIC_TEST_AGENT_TOKEN] = {
+      principal: 'static:public',
+    };
+  }
 
   const authenticators: Authenticator[] = [];
   if (Object.keys(staticKeys).length > 0) {

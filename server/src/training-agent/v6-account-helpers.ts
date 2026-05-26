@@ -76,10 +76,21 @@ export const syncAccountsUpsert: NonNullable<AccountStore['upsert']> = async (re
         }),
       }))
     : refs;
-  const v5Result = handleSyncAccounts(
+  const v5Result = await handleSyncAccounts(
     { accounts: refsWithRawConfig as unknown[], ...fromInput } as ToolArgs,
     trainingCtx,
   );
+  const topLevelErrors = (v5Result as { errors?: Array<{ code: string; message: string }> }).errors;
+  if (topLevelErrors?.length) {
+    type RefWithNaturalKey = { brand?: { domain: string; brand_id?: string }; operator?: string };
+    return refs.map(ref => ({
+      brand: ('brand' in ref ? (ref as RefWithNaturalKey).brand : undefined) ?? { domain: 'unknown.example' },
+      operator: ('operator' in ref ? (ref as RefWithNaturalKey).operator : undefined) ?? 'unknown.example',
+      action: 'failed',
+      status: 'rejected',
+      errors: topLevelErrors,
+    })) as SyncAccountsResultRow[];
+  }
   // v5 handleSyncAccounts returns `{ accounts: [...] }` where each entry
   // is the per-account result row (status, action, billing, errors, etc.).
   // Per-account errors live inside individual rows — they don't trip the

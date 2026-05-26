@@ -12,6 +12,7 @@ import { getAgentUrl } from './config.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import { getCommercialRelationship } from './commercial-relationships.js';
 import { isPerAccountBillingRestricted } from './account-billing-relationships.js';
+import { assertPublicTarget, SsrfRefusedError } from './webhook-fetch.js';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ interface AccountState {
   creditLimit?: { amount: number; currency: string };
   governanceAgents: GovernanceAgentEntry[];
   notificationConfigs: NotificationConfigState[];
+  notificationConfigsTouched?: boolean;
   syncedAt: string;
 }
 
@@ -143,6 +145,16 @@ function findAccountByIdAcrossSessions(accountId: string, principal?: string): A
   return undefined;
 }
 
+function accountsForPrincipal(principal?: string): AccountState[] {
+  const prefix = `${principalScope(principal)}\u001F`;
+  const accounts: AccountState[] = [];
+  for (const [key, scopedAccounts] of accountStore) {
+    if (!key.startsWith(prefix)) continue;
+    accounts.push(...scopedAccounts.values());
+  }
+  return accounts;
+}
+
 function accountStateFromWire(wire: AccountWireShape, now: string): AccountState {
   return {
     accountId: wire.account_id,
@@ -157,6 +169,7 @@ function accountStateFromWire(wire: AccountWireShape, now: string): AccountState
     creditLimit: wire.credit_limit,
     governanceAgents: [],
     notificationConfigs: [],
+    notificationConfigsTouched: false,
     syncedAt: now,
   };
 }
@@ -214,7 +227,7 @@ function accountStateToWire(account: AccountState): AccountWireShape {
   if (account.rateCard) wire.rate_card = account.rateCard;
   if (account.creditLimit) wire.credit_limit = account.creditLimit;
   if (account.sandbox) wire.sandbox = true;
-  if (account.notificationConfigs.length > 0) {
+  if (account.notificationConfigs.length > 0 || account.notificationConfigsTouched) {
     wire.notification_configs = sanitizeNotificationConfigs(account.notificationConfigs);
   }
   return wire;
@@ -255,7 +268,20 @@ function validationFailure(input: SyncAccountInput, field: string, message: stri
   };
 }
 
-function normalizeNotificationConfigs(input: SyncAccountInput): NotificationConfigState[] | { error: Record<string, unknown> } | undefined {
+function durableAccountIdentityError(ctx: TrainingContext): { errors: Array<{ code: string; message: string; recovery: string }> } | null {
+  if (ctx.mode === 'open' && ctx.principal === 'static:public:shared') {
+    return {
+      errors: [{
+        code: 'AUTH_REQUIRED',
+        message: 'Durable account tools require a caller-unique credential; the published public test token is shared.',
+        recovery: 'correctable',
+      }],
+    };
+  }
+  return null;
+}
+
+async function normalizeNotificationConfigs(input: SyncAccountInput): Promise<NotificationConfigState[] | { error: Record<string, unknown> } | undefined> {
   if (input.notification_configs === undefined) return undefined;
   if (!Array.isArray(input.notification_configs)) {
     return { error: validationFailure(input, 'notification_configs', 'notification_configs must be an array') };
@@ -282,8 +308,38 @@ function normalizeNotificationConfigs(input: SyncAccountInput): NotificationConf
     if (!config.url) {
       return { error: validationFailure(input, `${field}.url`, 'url is required') };
     }
+    let parsed: URL;
+    try {
+      parsed = new URL(config.url);
+    } catch {
+      return { error: validationFailure(input, `${field}.url`, 'url must be a valid URL') };
+    }
+    const isLocalWebhook = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
+    if (parsed.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && isLocalWebhook)) {
+      return { error: validationFailure(input, `${field}.url`, 'url must use HTTPS') };
+    }
+    if (parsed.username || parsed.password) {
+      return { error: validationFailure(input, `${field}.url`, 'url must not include userinfo credentials') };
+    }
+    const isDocumentationHost = parsed.hostname === 'example.com' || parsed.hostname.endsWith('.example.com');
+    if (parsed.protocol === 'https:' && !isDocumentationHost) {
+      try {
+        await assertPublicTarget(parsed);
+      } catch (err) {
+        const reason = err instanceof SsrfRefusedError ? err.reason : 'localhost or private network target';
+        return { error: validationFailure(input, `${field}.url`, `url rejected by SSRF guard: ${reason}`) };
+      }
+    }
     if (!Array.isArray(config.event_types) || config.event_types.length === 0) {
       return { error: validationFailure(input, `${field}.event_types`, 'event_types must contain at least one notification type') };
+    }
+    const seenEventTypes = new Set<string>();
+    for (let j = 0; j < config.event_types.length; j += 1) {
+      const eventType = config.event_types[j];
+      if (seenEventTypes.has(eventType)) {
+        return { error: validationFailure(input, `${field}.event_types[${j}]`, 'event_types must be unique within a subscriber') };
+      }
+      seenEventTypes.add(eventType);
     }
     const invalidIndex = config.event_types.findIndex(t => !ACCOUNT_ANCHORED_NOTIFICATION_TYPES.has(t));
     if (invalidIndex !== -1) {
@@ -297,6 +353,15 @@ function normalizeNotificationConfigs(input: SyncAccountInput): NotificationConf
     }
     if (config.authentication?.schemes?.length && !config.authentication.credentials) {
       return { error: validationFailure(input, `${field}.authentication.credentials`, 'authentication.credentials is required when authentication.schemes is present') };
+    }
+    if (config.authentication?.schemes?.length) {
+      const supportedSchemes = ['Bearer', 'HMAC-SHA256'];
+      if (config.authentication.schemes.length !== 1 || !supportedSchemes.includes(config.authentication.schemes[0])) {
+        return { error: validationFailure(input, `${field}.authentication.schemes`, 'authentication.schemes must contain exactly one supported legacy scheme') };
+      }
+      if (typeof config.authentication.credentials !== 'string' || config.authentication.credentials.length < 32) {
+        return { error: validationFailure(input, `${field}.authentication.credentials`, 'authentication.credentials must be at least 32 characters') };
+      }
     }
 
     out.push({
@@ -369,33 +434,36 @@ function getComplianceAccounts(): AccountWireShape[] {
   return [
     {
       account_id: 'acc_pagination_integrity_1',
-      name: 'Acme c/o Pinnacle',
-      advertiser: 'Acme Corp',
-      brand: { domain: 'acme-corp.com' },
-      operator: 'pinnacle-media.com',
+      name: 'Acme Outdoor c/o Pinnacle',
+      advertiser: 'Acme Outdoor',
+      brand: { domain: 'acmeoutdoor.example', brand_id: 'acme_outdoor' },
+      operator: 'pinnacle-agency.example',
       billing: 'operator',
       account_scope: 'operator_brand',
       status: 'active',
+      sandbox: true,
     },
     {
       account_id: 'acc_pagination_integrity_2',
-      name: 'Nova c/o Pinnacle',
-      advertiser: 'Nova Brands',
-      brand: { domain: 'nova-brands.com' },
-      operator: 'pinnacle-media.com',
+      name: 'Acme Outdoor Trail c/o Trailhead',
+      advertiser: 'Acme Outdoor',
+      brand: { domain: 'acmeoutdoor.example', brand_id: 'acme_outdoor' },
+      operator: 'trailhead-agency.example',
       billing: 'operator',
       account_scope: 'operator_brand',
       status: 'active',
+      sandbox: true,
     },
     {
       account_id: 'acc_pagination_integrity_3',
-      name: 'Pinnacle',
-      advertiser: 'Pinnacle Media',
-      brand: { domain: 'pinnacle-media.com' },
-      operator: 'pinnacle-media.com',
+      name: 'Acme Outdoor Direct',
+      advertiser: 'Acme Outdoor',
+      brand: { domain: 'acmeoutdoor.example', brand_id: 'acme_outdoor' },
+      operator: 'acmeoutdoor.example',
       billing: 'operator',
       account_scope: 'brand',
       status: 'active',
+      sandbox: true,
     },
   ];
 }
@@ -405,14 +473,27 @@ function getComplianceAccounts(): AccountWireShape[] {
 export const ACCOUNT_REF_SCHEMA = {
   type: 'object',
   oneOf: [
-    { properties: { account_id: { type: 'string' } }, required: ['account_id'] },
+    {
+      properties: { account_id: { type: 'string' } },
+      required: ['account_id'],
+      additionalProperties: false,
+    },
     {
       properties: {
-        brand: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
+        brand: {
+          type: 'object',
+          properties: {
+            domain: { type: 'string' },
+            brand_id: { type: 'string' },
+          },
+          required: ['domain'],
+          additionalProperties: false,
+        },
         operator: { type: 'string' },
         sandbox: { type: 'boolean' },
       },
-      required: ['brand'],
+      required: ['brand', 'operator'],
+      additionalProperties: false,
     },
   ],
 };
@@ -430,6 +511,10 @@ export const ACCOUNT_TOOLS = [
           type: 'string',
           enum: ['active', 'pending_approval', 'rejected', 'payment_required', 'suspended', 'closed'],
           description: 'Filter accounts by status. Omit to return accounts in all statuses.',
+        },
+        account: {
+          ...ACCOUNT_REF_SCHEMA,
+          description: 'Optional exact account filter. Use account_id or a brand/operator natural key to return one matching account visible to the caller.',
         },
         sandbox: {
           type: 'boolean',
@@ -576,8 +661,10 @@ const SUPPORTED_PAYMENT_TERMS = ['net_15', 'net_30', 'net_45', 'net_60', 'net_90
 export const SUPPORTED_BILLINGS = ['agent', 'operator', 'advertiser'] as const;
 type SupportedBilling = typeof SUPPORTED_BILLINGS[number];
 
-export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
+export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncAccountsInput;
+  const identityError = durableAccountIdentityError(ctx);
+  if (identityError) return identityError;
 
   if (!req.accounts || !Array.isArray(req.accounts) || req.accounts.length === 0) {
     return {
@@ -593,6 +680,26 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
 
   for (const input of req.accounts) {
     if (input.account) {
+      const mixedProvisioningFields = [
+        input.brand !== undefined && 'brand',
+        input.operator !== undefined && 'operator',
+        input.billing !== undefined && 'billing',
+        input.sandbox !== undefined && 'sandbox',
+      ].filter(Boolean);
+      if (mixedProvisioningFields.length > 0) {
+        results.push({
+          account: input.account,
+          action: 'failed',
+          status: 'rejected',
+          errors: [{
+            code: 'INVALID_REQUEST',
+            message: `Settings-update mode must not include provisioning fields: ${mixedProvisioningFields.join(', ')}`,
+            field: String(mixedProvisioningFields[0]),
+            recovery: 'correctable',
+          }],
+        });
+        continue;
+      }
       const existing = findAccountByRef(accounts, input.account)
         ?? (input.account.account_id ? findAccountByIdAcrossSessions(input.account.account_id, ctx.principal) : undefined)
         ?? (input.account.account_id ? findComplianceAccountById(input.account.account_id, now) : undefined);
@@ -625,12 +732,13 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         continue;
       }
 
-      const notificationConfigs = normalizeNotificationConfigs(input);
+      const notificationConfigs = await normalizeNotificationConfigs(input);
       if (notificationConfigs && 'error' in notificationConfigs) {
         results.push(notificationConfigs.error);
         continue;
       }
-      const nextNotificationConfigs = Array.isArray(notificationConfigs)
+      const notificationConfigsProvided = Array.isArray(notificationConfigs);
+      const nextNotificationConfigs = notificationConfigsProvided
         ? notificationConfigs
         : existing.notificationConfigs;
 
@@ -653,7 +761,10 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
 
       if (input.payment_terms) existing.paymentTerms = input.payment_terms;
       if (input.billing_entity) existing.billingEntity = input.billing_entity;
-      if (Array.isArray(notificationConfigs)) existing.notificationConfigs = notificationConfigs;
+      if (notificationConfigsProvided) {
+        existing.notificationConfigs = notificationConfigs;
+        existing.notificationConfigsTouched = true;
+      }
       existing.syncedAt = now;
       results.push(result);
       continue;
@@ -783,7 +894,7 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
     const key = accountKey(input.brand, input.operator);
     const existing = accounts.get(key);
     const isSandbox = input.sandbox === true;
-    const notificationConfigs = normalizeNotificationConfigs(input);
+    const notificationConfigs = await normalizeNotificationConfigs(input);
     if (notificationConfigs && 'error' in notificationConfigs) {
       results.push(notificationConfigs.error);
       continue;
@@ -831,6 +942,9 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       notificationConfigs: Array.isArray(notificationConfigs)
         ? notificationConfigs
         : existing?.notificationConfigs || [],
+      notificationConfigsTouched: Array.isArray(notificationConfigs)
+        ? true
+        : existing?.notificationConfigsTouched,
       syncedAt: now,
     };
 
@@ -885,24 +999,46 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
 }
 
 interface ListAccountsRequest extends ToolArgs {
+  account?: AccountRef;
   status?: string;
   sandbox?: boolean;
   pagination?: { max_results?: number; cursor?: string };
 }
 
+function wireAccountMatchesRef(account: AccountWireShape, ref: AccountRef): boolean {
+  if (ref.account_id) return account.account_id === ref.account_id;
+  if (!ref.brand?.domain || !ref.operator) return false;
+  if (account.brand.domain !== ref.brand.domain) return false;
+  if (ref.brand.brand_id !== undefined && account.brand.brand_id !== ref.brand.brand_id) return false;
+  if (account.operator !== ref.operator) return false;
+  if (typeof ref.sandbox === 'boolean') return (account.sandbox === true) === ref.sandbox;
+  return true;
+}
+
 export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object {
   const req = args as unknown as ListAccountsRequest;
-  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const identityError = durableAccountIdentityError(ctx);
+  if (identityError) return identityError;
+  const sessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
   const accountMap = getAccountMap(sessionKey, ctx.principal);
+  const preferFixtureAccounts = ctx.storyboardCompat?.version === '3.0';
+  const scopedAccounts = req.account && !preferFixtureAccounts ? accountsForPrincipal(ctx.principal) : [];
 
-  let accounts: AccountWireShape[] = accountMap.size > 0
-    ? Array.from(accountMap.values()).map(accountStateToWire)
-    : getComplianceAccounts();
+  let accounts: AccountWireShape[] = preferFixtureAccounts
+    ? getComplianceAccounts()
+    : scopedAccounts.length > 0
+      ? scopedAccounts.map(accountStateToWire)
+      : accountMap.size > 0
+        ? Array.from(accountMap.values()).map(accountStateToWire)
+        : getComplianceAccounts();
 
-  if (req.status) {
+  if (!preferFixtureAccounts && req.account) {
+    accounts = accounts.filter(a => wireAccountMatchesRef(a, req.account!));
+  }
+  if (!preferFixtureAccounts && req.status) {
     accounts = accounts.filter(a => a.status === req.status);
   }
-  if (typeof req.sandbox === 'boolean') {
+  if (!preferFixtureAccounts && typeof req.sandbox === 'boolean') {
     accounts = req.sandbox
       ? accounts.filter(a => a.sandbox === true)
       : accounts.filter(a => !a.sandbox);
@@ -931,6 +1067,8 @@ export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object
 
 export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncGovernanceInput;
+  const identityError = durableAccountIdentityError(ctx);
+  if (identityError) return identityError;
 
   if (!req.accounts || !Array.isArray(req.accounts) || req.accounts.length === 0) {
     return {

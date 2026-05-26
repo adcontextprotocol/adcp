@@ -20,6 +20,7 @@ import { getTenantSigningMaterial } from './signing.js';
 import { customToolFor } from './custom-tool-helper.js';
 import { listAccountsTool } from './account-tools.js';
 import { handleSyncGovernance } from '../account-handlers.js';
+import type { TrainingContext } from '../types.js';
 
 const TENANT_ID = 'signals';
 
@@ -44,7 +45,7 @@ const SYNC_GOVERNANCE_SCHEMA = {
   context: z.any().optional(),
 };
 
-export function buildSignalsTenantConfig(host: string): {
+export function buildSignalsTenantConfig(host: string, options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): {
   tenantId: string;
   config: TenantConfig;
 } {
@@ -56,10 +57,10 @@ export function buildSignalsTenantConfig(host: string): {
       signingKey: material.signingKey,
       label: 'Training agent — signals',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      platform: new TrainingPlatform() as any,
+      platform: new TrainingPlatform(options.storyboardCompat) as any,
       serverOptions: {
         customTools: {
-          list_accounts: listAccountsTool(),
+          list_accounts: listAccountsTool(options.storyboardCompat),
           sync_governance: customToolFor(
             'sync_governance',
             'Register governance agent endpoints on accounts. The seller calls these agents via check_governance during signal activation. Uses replace semantics: each call replaces previously synced agents on the specified accounts.',
