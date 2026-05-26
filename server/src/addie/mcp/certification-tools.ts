@@ -1394,6 +1394,14 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/building/operating/seller-integration` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
   ],
+  // Track R: Registry lifecycle (operator-facing)
+  R1: [
+    { label: 'Maintaining your agent', url: `${DOCS_BASE}/docs/registry/maintaining-your-agent` },
+    { label: 'Registering an agent', url: `${DOCS_BASE}/docs/registry/registering-an-agent` },
+    { label: 'Registry API overview', url: `${DOCS_BASE}/docs/registry` },
+    { label: 'AAO Verified', url: `${DOCS_BASE}/docs/building/verification/aao-verified` },
+    { label: 'Compliance Catalog', url: `${DOCS_BASE}/docs/building/verification/compliance-catalog` },
+  ],
 };
 
 // =====================================================
