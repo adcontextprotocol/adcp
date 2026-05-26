@@ -1608,6 +1608,7 @@ export function createCertificationToolHandlers(
           lines.push('', '## Demo scenarios');
           lines.push(formatTenantBlock(tenants));
           lines.push('YOU (Sage) run ONE demo early (turn 2-3) to ground concepts. Clearly label it as YOUR demonstration — say "Let me show you..." before calling the tool. Do NOT attribute tool results to the learner. After the demo, invite the learner to try the exercise themselves.');
+          lines.push('After the tool call returns, display the actual response data (formatted JSON block or structured list) BEFORE any explanatory commentary. Tool result blocks are exempt from the 150-word cap — show the full response if it is ≤20 items; for larger responses, show the first 10 items verbatim with a note that the catalog has N total. Never substitute a prose summary for the data block.');
           lp.demo_scenarios.forEach(ds => {
             lines.push(`### ${ds.description}`);
             lines.push(`Tools: ${ds.tools.join(', ')}`);
