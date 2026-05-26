@@ -23,6 +23,15 @@ else
   RELEASE_GIT_REF="${RELEASE_BASE_REF}"
 fi
 export ADCP_RELEASE_GIT_REF="${RELEASE_GIT_REF}"
+SDK_GENERATED_SCHEMA_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js"
+
+restore_sdk_generated_schema() {
+  local backup="${SDK_GENERATED_SCHEMA_FILE}.adcp-overlay-backup"
+  if [ -f "${backup}" ]; then
+    cp "${backup}" "${SDK_GENERATED_SCHEMA_FILE}"
+    rm -f "${backup}"
+  fi
+}
 
 usage() {
   cat <<'USAGE'
@@ -153,7 +162,9 @@ NODE
   fi
 fi
 
+restore_sdk_generated_schema
 if [ "${OVERLAY}" -eq 1 ]; then
+  trap restore_sdk_generated_schema EXIT
   # Mirror CI's overlay step before running tenants: copies in-repo
   # compliance source onto the SDK's bundled cache so the runner grades
   # against current-PR fixtures, not the SDK-published snapshot. Without
@@ -190,6 +201,7 @@ REGRESSED=0
 SUMMARY=""
 REQUIRED_CLEAN_CURRENT_SALES=(
   "media_buy_seller/canonical_formats"
+  "media_buy_seller/vendor_metric_catalog_precondition"
 )
 
 storyboard_passed() {

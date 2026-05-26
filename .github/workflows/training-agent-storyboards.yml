@@ -297,6 +297,7 @@ jobs:
           set -euo pipefail
           required_clean=(
             "media_buy_seller/canonical_formats"
+            "media_buy_seller/vendor_metric_catalog_precondition"
           )
           for storyboard_id in "${required_clean[@]}"; do
             if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then

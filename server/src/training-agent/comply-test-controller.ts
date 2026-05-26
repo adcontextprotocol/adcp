@@ -622,7 +622,7 @@ function createStore(session: SessionState): TestControllerStore {
  * adcontextprotocol/adcp-client — the dedup below means it is safe to leave this
  * entry in place during the transition; remove once a release has landed and the
  * cross-impl tests no longer rely on it). */
-const LOCAL_SCENARIOS = ['force_create_media_buy_arm', 'force_task_completion', 'seed_creative_format'] as const;
+const LOCAL_SCENARIOS = ['force_create_media_buy_arm', 'force_task_completion', 'seed_creative_format', 'seed_measurement_catalog'] as const;
 
 // ── Tool definition ───────────────────────────────────────────────
 
@@ -712,6 +712,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
   if (scenario === 'force_task_completion') {
     return handleForceTaskCompletion(sessionKey, rawArgs);
+  }
+  if (scenario === 'seed_measurement_catalog') {
+    return handleSeedMeasurementCatalog(session, rawArgs);
   }
   // seed_creative_format is a training-agent extension not in the SDK's
   // CONTROLLER_SCENARIOS. Handle it before the SDK dispatcher so the SDK
@@ -821,6 +824,124 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
 
   return sdkResponse;
+}
+
+function measurementVendorCatalogKey(vendor: { domain?: unknown; brand_id?: unknown }): string | null {
+  const domain = vendor.domain;
+  if (typeof domain !== 'string' || domain.length === 0) return null;
+  const brandId = typeof vendor.brand_id === 'string' ? vendor.brand_id : '';
+  return `${domain.toLowerCase()}|${brandId}`;
+}
+
+function canonicalJson(value: unknown, seen = new WeakSet<object>()): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? String(value);
+  if (seen.has(value)) return '"__cycle__"';
+  seen.add(value);
+  if (Array.isArray(value)) return `[${value.map(v => canonicalJson(v, seen)).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  const entries = Object.keys(record)
+    .sort()
+    .map(k => `${JSON.stringify(k)}:${canonicalJson(record[k], seen)}`);
+  return `{${entries.join(',')}}`;
+}
+
+function handleSeedMeasurementCatalog(session: SessionState, rawArgs: Record<string, unknown>): object {
+  const params = rawArgs.params as Record<string, unknown> | undefined;
+  if (!params || typeof params !== 'object') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'seed_measurement_catalog requires params',
+    };
+  }
+
+  const vendor = params.vendor as { domain?: unknown; brand_id?: unknown } | undefined;
+  const key = vendor ? measurementVendorCatalogKey(vendor) : null;
+  if (!vendor || !key) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'seed_measurement_catalog requires params.vendor.domain',
+    };
+  }
+  const vendorDomain = (vendor.domain as string).toLowerCase();
+
+  const rawMetrics = params.metrics;
+  if (!Array.isArray(rawMetrics)) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'seed_measurement_catalog requires params.metrics[]',
+    };
+  }
+  if (rawMetrics.length === 0) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'seed_measurement_catalog requires at least one metric',
+    };
+  }
+
+  const metrics: Array<{ metric_id: string; [key: string]: unknown }> = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < rawMetrics.length; i++) {
+    const metric = rawMetrics[i];
+    if (!metric || typeof metric !== 'object' || Array.isArray(metric)) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: `seed_measurement_catalog params.metrics[${i}] must be an object`,
+      };
+    }
+    const entry = metric as Record<string, unknown>;
+    if (typeof entry.metric_id !== 'string' || entry.metric_id.length === 0) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: `seed_measurement_catalog params.metrics[${i}].metric_id is required`,
+      };
+    }
+    if (seen.has(entry.metric_id)) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: `seed_measurement_catalog duplicate metric_id "${entry.metric_id}"`,
+      };
+    }
+    seen.add(entry.metric_id);
+    metrics.push({ ...entry, metric_id: entry.metric_id });
+  }
+  metrics.sort((a, b) => a.metric_id.localeCompare(b.metric_id));
+
+  const nextCatalog = {
+    vendor: {
+      domain: vendorDomain,
+      ...(typeof vendor.brand_id === 'string' && { brand_id: vendor.brand_id }),
+    },
+    metrics,
+  };
+  const existing = session.complyExtensions.seededMeasurementCatalogs.get(key);
+  if (existing) {
+    if (canonicalJson(existing) !== canonicalJson(nextCatalog)) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: `Measurement catalog for ${vendorDomain} diverges from the previously seeded fixture`,
+      };
+    }
+    return {
+      success: true,
+      message: 'Fixture re-seeded (equivalent)',
+    };
+  }
+
+  enforceMapCap(session.complyExtensions.seededMeasurementCatalogs, key, 'seeded measurement catalogs');
+  session.complyExtensions.seededMeasurementCatalogs.set(key, nextCatalog);
+
+  return {
+    success: true,
+    message: `Measurement catalog for ${vendorDomain} seeded with ${metrics.length} metric(s)`,
+  };
 }
 
 /**
