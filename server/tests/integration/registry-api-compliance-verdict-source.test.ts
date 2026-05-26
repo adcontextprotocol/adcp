@@ -160,7 +160,8 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
          tracks_json, tracks_passed, tracks_failed, tracks_skipped, tracks_partial,
          triggered_by, dry_run, tested_at
        ) VALUES ($1, 'production', 'passing', 'all clear',
-                 '[]'::jsonb, 0, 0, 0, 0, 'owner_test', false, NOW())`,
+                 '[]'::jsonb, 0, 0, 0, 0, 'owner_test', false, NOW())
+       RETURNING id`,
       [AGENT_URL],
     );
     complianceRunId = runResult.rows[0].id;
