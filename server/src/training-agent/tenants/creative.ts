@@ -7,6 +7,7 @@ import { TrainingCreativePlatform } from '../v6-creative-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildCreativeComplyConfig } from './comply.js';
 import { listAccountsTool } from './account-tools.js';
+import { reportUsageTool } from './report-usage-tool.js';
 
 const TENANT_ID = 'creative';
 
@@ -26,6 +27,7 @@ export function buildCreativeTenantConfig(host: string): {
       serverOptions: {
         customTools: {
           list_accounts: listAccountsTool(),
+          report_usage: reportUsageTool({ creativeBillsThroughAdcp: false }),
         },
         complyTest: buildCreativeComplyConfig(),
       },

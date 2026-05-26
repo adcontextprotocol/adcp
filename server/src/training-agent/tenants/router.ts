@@ -308,7 +308,6 @@ function wrapSalesCapabilitiesProjection(
   tenantId: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): void {
-  if (tenantId !== 'sales') return;
   if (req.body?.method !== 'tools/call') return;
   if (req.body?.params?.name !== 'get_adcp_capabilities') return;
 
@@ -325,7 +324,7 @@ function wrapSalesCapabilitiesProjection(
   (res as unknown as { end: (...args: unknown[]) => Response }).end = (chunk?: unknown, ...rest: unknown[]) => {
     if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
     const body = Buffer.concat(chunks);
-    const patched = projectSalesCapabilities(body, storyboardCompat);
+    const patched = projectSalesCapabilities(body, tenantId, storyboardCompat);
     if (patched !== body) {
       res.setHeader('content-length', String(patched.length));
     }
@@ -340,11 +339,17 @@ function toBuffer(chunk: unknown): Buffer {
   return Buffer.from(String(chunk), 'utf8');
 }
 
-function projectSalesCapabilities(body: Buffer, storyboardCompat?: TrainingContext['storyboardCompat']): Buffer {
+function projectSalesCapabilities(
+  body: Buffer,
+  tenantId: string,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): Buffer {
   try {
     const parsed = JSON.parse(body.toString('utf8')) as {
       result?: {
         structuredContent?: {
+          supported_protocols?: unknown;
+          creative?: Record<string, unknown>;
           media_buy?: Record<string, unknown>;
           compliance_testing?: Record<string, unknown>;
         };
@@ -352,28 +357,49 @@ function projectSalesCapabilities(body: Buffer, storyboardCompat?: TrainingConte
     };
     const structured = parsed.result?.structuredContent;
     if (!structured || typeof structured !== 'object') return body;
-    const mediaBuy = structured.media_buy && typeof structured.media_buy === 'object'
-      ? structured.media_buy
-      : {};
-    structured.media_buy = {
-      ...mediaBuy,
-      ...salesCapabilityProjection(),
-    };
-    const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
-      ? structured.compliance_testing
-      : {};
-    const scenarios = new Set(
-      Array.isArray((complianceTesting as { scenarios?: unknown }).scenarios)
-        ? (complianceTesting as { scenarios: unknown[] }).scenarios.filter((s): s is string => typeof s === 'string')
-        : [],
-    );
-    for (const scenario of salesComplyScenarios(storyboardCompat)) {
-      scenarios.add(scenario);
+    if (
+      tenantId === 'creative'
+      && storyboardCompat?.version !== '3.0'
+      && (
+        structured.creative
+        || (
+          Array.isArray(structured.supported_protocols)
+          && structured.supported_protocols.includes('creative')
+        )
+      )
+    ) {
+      const creative = structured.creative && typeof structured.creative === 'object'
+        ? structured.creative
+        : {};
+      structured.creative = {
+        ...creative,
+        bills_through_adcp: false,
+      };
     }
-    structured.compliance_testing = {
-      ...complianceTesting,
-      scenarios: [...scenarios],
-    };
+    if (tenantId === 'sales') {
+      const mediaBuy = structured.media_buy && typeof structured.media_buy === 'object'
+        ? structured.media_buy
+        : {};
+      structured.media_buy = {
+        ...mediaBuy,
+        ...salesCapabilityProjection(),
+      };
+      const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
+        ? structured.compliance_testing
+        : {};
+      const scenarios = new Set(
+        Array.isArray((complianceTesting as { scenarios?: unknown }).scenarios)
+          ? (complianceTesting as { scenarios: unknown[] }).scenarios.filter((s): s is string => typeof s === 'string')
+          : [],
+      );
+      for (const scenario of salesComplyScenarios(storyboardCompat)) {
+        scenarios.add(scenario);
+      }
+      structured.compliance_testing = {
+        ...complianceTesting,
+        scenarios: [...scenarios],
+      };
+    }
     return Buffer.from(JSON.stringify(parsed), 'utf8');
   } catch {
     return body;

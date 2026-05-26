@@ -216,7 +216,10 @@ function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboar
     ) => {
       const auth = ctx.authInfo?.clientId ?? 'anonymous';
       if (auth !== 'static:public') return auth;
-      const account = params.account as { account_id?: string; brand?: { domain?: string } } | undefined;
+      const usageAccount = Array.isArray(params.usage)
+        ? (params.usage[0] as { account?: unknown } | undefined)?.account
+        : undefined;
+      const account = (params.account ?? usageAccount) as { account_id?: string; brand?: { domain?: string } } | undefined;
       const accountScope = account?.account_id
         ? `a:${account.account_id}`
         : account?.brand?.domain

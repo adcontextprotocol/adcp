@@ -240,6 +240,14 @@ function isThreeZeroStoryboardCompat(ctx: TrainingContext): boolean {
   return ctx.storyboardCompat?.version === '3.0';
 }
 
+function includeThreeOneFields(ctx: TrainingContext): boolean {
+  return !isThreeZeroStoryboardCompat(ctx);
+}
+
+function creativeBillsThroughAdcp(ctx: TrainingContext): boolean {
+  return ctx.creativeBillsThroughAdcp !== false;
+}
+
 function resolveThreeZeroProposalAlias(proposals: Proposal[]): Proposal | undefined {
   return proposals.find(p => p.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_TARGET_ID);
 }
@@ -378,7 +386,10 @@ function toolSupportsTask(toolName: string): boolean {
  * from seeing each other's idempotency outcomes.
  */
 function deriveAccountScope(args: Record<string, unknown>): string | undefined {
-  const account = (args.account as { account_id?: string; brand?: { domain?: string } } | undefined);
+  const usageAccount = Array.isArray(args.usage)
+    ? (args.usage[0] as { account?: unknown } | undefined)?.account
+    : undefined;
+  const account = (args.account ?? usageAccount) as { account_id?: string; brand?: { domain?: string } } | undefined;
   if (account?.account_id && typeof account.account_id === 'string') {
     return `a:${account.account_id}`;
   }
@@ -388,6 +399,17 @@ function deriveAccountScope(args: Record<string, unknown>): string | undefined {
     return `b:${domain.toLowerCase()}`;
   }
   return undefined;
+}
+
+function withUsageAccountScope<T extends Record<string, unknown>>(req: T): T {
+  if (req.account !== undefined) return req;
+  const usageAccount = Array.isArray(req.usage)
+    ? (req.usage[0] as { account?: unknown } | undefined)?.account
+    : undefined;
+  if (usageAccount && typeof usageAccount === 'object') {
+    return { ...req, account: usageAccount };
+  }
+  return req;
 }
 
 /** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
@@ -1859,6 +1881,9 @@ const TOOLS = [
               media_spend: { type: 'number' },
               vendor_cost: { type: 'number' },
               currency: { type: 'string' },
+              final: { type: 'boolean' },
+              finalized_at: { type: 'string' },
+              measurement_window: { type: 'string' },
             },
             required: ['account', 'vendor_cost', 'currency'],
           },
@@ -3259,6 +3284,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       model: pricingModel, // #1525: alias for @adcp/sdk < 4.11.0
       rate,
       currency: mb.currency,
+      ...(includeThreeOneFields(ctx) && simDeliveryEarly?.isFinal !== undefined ? { is_final: simDeliveryEarly.isFinal } : {}),
+      ...(includeThreeOneFields(ctx) && simDeliveryEarly?.isFinal === true && simDeliveryEarly.finalizedAt ? { finalized_at: simDeliveryEarly.finalizedAt } : {}),
+      ...(includeThreeOneFields(ctx) && simDeliveryEarly?.measurementWindow ? { measurement_window: simDeliveryEarly.measurementWindow } : {}),
       paused: false,
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
       // vendor_metric_values are media-buy-scoped in simulate_delivery, so they
@@ -3378,6 +3406,8 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     media_buy_deliveries: [{
       media_buy_id: mb.mediaBuyId,
       status: deriveStatus(mb),
+      ...(includeThreeOneFields(ctx) && simDelivery?.isFinal !== undefined ? { is_final: simDelivery.isFinal } : {}),
+      ...(includeThreeOneFields(ctx) && simDelivery?.isFinal === true && simDelivery.finalizedAt ? { finalized_at: simDelivery.finalizedAt } : {}),
       totals: {
         impressions: totalImpressions,
         spend: roundedSpend,
@@ -3597,7 +3627,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   // Spec today says "When false or omitted, pricing is not computed"; the
   // emission-on-omit behaviour here is deliberate per the has_creative_library
   // gate in #2847 and tracks the spec-side clarification referenced there.
-  const emitPricing = Boolean(req.account) && req.include_pricing !== false;
+  const emitPricing = creativeBillsThroughAdcp(ctx) && Boolean(req.account) && req.include_pricing !== false;
   const agentUrl = getAgentUrl();
 
   return {
@@ -4050,6 +4080,7 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
       supports_transformation: true,
       supports_compliance: false,
       has_creative_library: true,
+      ...(includeThreeOneFields(ctx) ? { bills_through_adcp: creativeBillsThroughAdcp(ctx) } : {}),
     },
     account: {
       require_operator_auth: false,
@@ -4600,7 +4631,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       };
 
     // Return pricing when account is provided (paid creative agent mode)
-    if (req.account) {
+    if (creativeBillsThroughAdcp(ctx) && req.account) {
       const pricing = getCreativePricing(req.account, creative);
       creative.pricingOptionId = pricing.pricing_option_id;
       return {
@@ -4806,6 +4837,7 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
 
 interface ReportUsageArgs extends ToolArgs {
   idempotency_key?: string;
+  account?: { account_id?: string; brand?: { domain: string }; operator?: string };
   reporting_period: { start: string; end: string };
   usage: Array<{
     account: { account_id?: string; brand?: { domain: string }; operator?: string };
@@ -4816,6 +4848,9 @@ interface ReportUsageArgs extends ToolArgs {
     media_spend?: number;
     vendor_cost: number;
     currency: string;
+    final?: boolean;
+    finalized_at?: string;
+    measurement_window?: string;
   }>;
 }
 
@@ -4985,7 +5020,8 @@ function pickBuyerNominatedVerifierUrl(provenance: Record<string, unknown> | und
 
 export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ReportUsageArgs;
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const sessionScopeReq = withUsageAccountScope(req as unknown as Record<string, unknown>) as unknown as ToolArgs;
+  const session = await getSession(sessionKeyFromArgs(sessionScopeReq, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!req.reporting_period || !req.usage?.length) {
     return { errors: [{ code: 'INVALID_USAGE_DATA', message: 'reporting_period and at least one usage record are required.' }] };
@@ -4996,7 +5032,7 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   }
 
   let accepted = 0;
-  const errors: Array<{ code: string; message: string; field?: string }> = [];
+  const errors: Array<{ code: string; message: string; field?: string; recovery?: string }> = [];
 
   for (let i = 0; i < req.usage.length; i++) {
     const record = req.usage[i];
@@ -5025,6 +5061,16 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
 
     // Validate creative_id exists if provided
     if (record.creative_id) {
+      if (!creativeBillsThroughAdcp(ctx)) {
+        errors.push({
+          code: 'BILLING_OUT_OF_BAND',
+          message: 'Creative usage for this account bills out of band; do not retry report_usage for billing reconciliation.',
+          field: `usage[${i}]`,
+          recovery: 'terminal',
+        });
+        continue;
+      }
+
       const creative = session.creatives.get(record.creative_id) ?? getComplianceCreative(record.creative_id);
       if (!creative) {
         errors.push({ code: 'CREATIVE_NOT_FOUND', message: `Creative "${record.creative_id}" not found in session.`, field: `usage[${i}].creative_id` });
@@ -5061,6 +5107,9 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
       mediaSpend: record.media_spend,
       vendorCost: record.vendor_cost,
       currency: record.currency,
+      final: record.final,
+      finalizedAt: record.finalized_at,
+      measurementWindow: record.measurement_window,
       reportedAt: new Date().toISOString(),
     });
     accepted++;
@@ -5071,9 +5120,9 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   // When all records are rejected (accepted === 0), return as errors for
   // proper error signaling.
   if (accepted === 0 && errors.length) {
-    return { accepted: 0, errors };
+    return { status: 'completed', accepted: 0, errors };
   }
-  const result: Record<string, unknown> = { accepted };
+  const result: Record<string, unknown> = { status: 'completed', accepted };
   if (errors.length) result.rejected = errors;
   return result;
 }

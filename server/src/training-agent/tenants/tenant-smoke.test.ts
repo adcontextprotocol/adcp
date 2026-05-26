@@ -73,6 +73,41 @@ function stageLatestThreeZeroSchemaBundle(): void {
   });
 }
 
+async function initializeTenant(url: string): Promise<void> {
+  await fetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json',
+      authorization: 'Bearer test-token',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { protocolVersion: '2025-03-26', clientInfo: { name: 'x', version: '1' }, capabilities: {} },
+    }),
+  });
+}
+
+async function callTenantTool(url: string, id: number, name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json',
+      authorization: 'Bearer test-token',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id,
+      method: 'tools/call',
+      params: { name, arguments: args },
+    }),
+  });
+  return response.json() as Promise<Record<string, unknown>>;
+}
+
 describe('tenant routing smoke', () => {
   it('serves brand.json with tenant public keys', async () => {
     const { baseUrl, close } = await bootServer();
@@ -351,6 +386,53 @@ describe('tenant routing smoke', () => {
         error?: unknown;
       };
       expect(directSeedBody.result?.structuredContent?.success).not.toBe(true);
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('does not advertise creative billing discriminator in 3.0 storyboard compat mode', async () => {
+    stageLatestThreeZeroSchemaBundle();
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      const url = `${baseUrl}/creative/mcp`;
+      await initializeTenant(url);
+      const capabilitiesBody = await callTenantTool(url, 2, 'get_adcp_capabilities', {}) as {
+        result?: { structuredContent?: { creative?: Record<string, unknown> } };
+      };
+      expect(capabilitiesBody.result?.structuredContent?.creative ?? {}).not.toHaveProperty('bills_through_adcp');
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('enforces idempotency on tenant report_usage custom tools', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const payload = {
+        account: { brand: { domain: 'tenant-usage.example' }, operator: 'tenant-usage.example' },
+        idempotency_key: 'tenant-report-usage-0001',
+        reporting_period: { start: '2026-03-01T00:00:00Z', end: '2026-03-31T23:59:59Z' },
+        usage: [{
+          account: { brand: { domain: 'tenant-usage.example' }, operator: 'tenant-usage.example' },
+          vendor_cost: 25,
+          currency: 'USD',
+        }],
+      };
+
+      const first = await callTenantTool(url, 2, 'report_usage', payload) as {
+        result?: { structuredContent?: { accepted?: number; replayed?: boolean } };
+      };
+      const second = await callTenantTool(url, 3, 'report_usage', payload) as {
+        result?: { structuredContent?: { accepted?: number; replayed?: boolean } };
+      };
+
+      expect(first.result?.structuredContent?.accepted).toBe(1);
+      expect(first.result?.structuredContent?.replayed).toBeUndefined();
+      expect(second.result?.structuredContent?.accepted).toBe(1);
+      expect(second.result?.structuredContent?.replayed).toBe(true);
     } finally {
       await close();
     }

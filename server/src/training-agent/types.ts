@@ -31,6 +31,8 @@ export interface TrainingContext {
   strict?: boolean;
   /** Local storyboard-runner compatibility shims. Never set in deployed routes. */
   storyboardCompat?: { version: '3.0' };
+  /** Whether creative usage is billed through AdCP. Defaults to true for legacy/shared routes. */
+  creativeBillsThroughAdcp?: boolean;
   /**
    * `covers_content_digest` mode advertised by this route. Only meaningful
    * when `strict` is true. Defaults to `'either'` (the `/mcp-strict` route).
@@ -194,6 +196,9 @@ export interface ComplyDeliveryAccumulator {
   clicks: number;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
+  isFinal?: boolean;
+  finalizedAt?: string;
+  measurementWindow?: string;
   reach?: number;
   frequency?: number;
   reachWindow?: {
@@ -472,6 +477,9 @@ export interface UsageRecord {
   mediaSpend?: number;
   vendorCost: number;
   currency: string;
+  final?: boolean;
+  finalizedAt?: string;
+  measurementWindow?: string;
   reportedAt: string;
 }
 
