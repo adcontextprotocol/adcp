@@ -412,6 +412,27 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "force_upstream_unavailable"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "tool"
+            ]
+          }
+        }
+      }
     }
   ],
   "x-mutates-state": true,
@@ -434,9 +455,10 @@
         "seed_plan",
         "seed_media_buy",
         "seed_creative_format",
-        "query_upstream_traffic"
+        "query_upstream_traffic",
+        "force_upstream_unavailable"
       ],
-      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'seed_*' scenarios pre-populate fixtures (product, pricing option, creative, plan, media buy, creative format) so storyboards can reference them by stable ID without the implementer having to guess which IDs the conformance suite expects. 'query_upstream_traffic' returns outbound HTTP calls the agent has made since session start (or since a caller-supplied timestamp), so storyboard runners can assert upstream side-effects via `check: upstream_traffic`. The contract raises the bar against unintentional façades — adapters that satisfy AdCP schema requirements with synthetic placeholders. It is NOT an adversarial integrity check: adopters self-report their own traffic. Adopters MUST scope the response to traffic caused by the requesting principal's session/auth context — cross-caller traffic MUST NOT be returned, regardless of the supplied since_timestamp. Multi-tenant sandboxes MUST key the recording buffer on the comply_test_controller invocation's auth principal."
+      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'seed_*' scenarios pre-populate fixtures (product, pricing option, creative, plan, media buy, creative format) so storyboards can reference them by stable ID without the implementer having to guess which IDs the conformance suite expects. 'query_upstream_traffic' returns outbound HTTP calls the agent has made since session start (or since a caller-supplied timestamp), so storyboard runners can assert upstream side-effects via `check: upstream_traffic`. 'force_upstream_unavailable' marks a named upstream dependency as unreachable for the duration of the compliance session (or until the seller resets it), so storyboards can exercise stale-cache fallback paths — see the `stale_response_advisory` universal storyboard. The contract raises the bar against unintentional façades — adapters that satisfy AdCP schema requirements with synthetic placeholders. It is NOT an adversarial integrity check: adopters self-report their own traffic. Adopters MUST scope the response to traffic caused by the requesting principal's session/auth context — cross-caller traffic MUST NOT be returned, regardless of the supplied since_timestamp. Multi-tenant sandboxes MUST key the recording buffer on the comply_test_controller invocation's auth principal."
     },
     "params": {
       "type": "object",
@@ -639,6 +661,14 @@
         "format_id": {
           "type": "string",
           "description": "Creative format ID to seed. Used by seed_creative_format. The seller MUST expose this format ID in list_creative_formats responses for the duration of the compliance session."
+        },
+        "tool": {
+          "type": "string",
+          "description": "Tool name whose upstream dependency to affect. Used by force_upstream_unavailable. The seller marks the named upstream as unreachable for subsequent calls to this tool within the compliance session. Sellers MAY accept a wildcard ('*') to affect all tools."
+        },
+        "upstream_name": {
+          "type": "string",
+          "description": "Human-readable identifier for the upstream dependency to force unavailable (e.g., 'inventory-service', 'creative-agent'). Used by force_upstream_unavailable. When omitted, the seller marks its default upstream for the specified tool as unavailable. Sellers MUST include the same name in STALE_RESPONSE error.details.upstream.name on the affected response."
         },
         "result": {
           "$ref": "/schemas/core/async-response-data.json",
