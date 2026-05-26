@@ -6219,6 +6219,7 @@ describe('get_adcp_capabilities handler', () => {
       'force_media_buy_status',
       'force_create_media_buy_arm',
       'force_task_completion',
+      'force_creative_purge',
       'force_session_status',
       'simulate_delivery',
       'simulate_budget_spend',

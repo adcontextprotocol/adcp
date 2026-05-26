@@ -177,12 +177,13 @@ describe('comply_test_controller', () => {
         // server/src/training-agent/comply-test-controller.ts.
         'force_create_media_buy_arm',
         'force_task_completion',
+        'force_creative_purge',
         'seed_creative_format',
         'seed_measurement_catalog',
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(10);
+      expect(scenarios.length).toBe(11);
       // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });

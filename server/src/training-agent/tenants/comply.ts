@@ -25,16 +25,7 @@ import { TOOL_INPUT_SHAPE } from '@adcp/sdk/server';
 import { handleComplyTestController } from '../comply-test-controller.js';
 import type { ToolArgs, TrainingContext } from '../types.js';
 
-// Hardcoded principal — `ComplyControllerContext` doesn't carry authInfo,
-// so the comply adapter has no per-call principal to forward. Effect: comply
-// state set by one caller is visible to another caller using the same
-// brand.domain. This is acceptable for the training agent (the entire surface
-// is shared sandbox fixtures by design — different orgs intentionally see the
-// same mock data while running storyboards) but is NOT a pattern production
-// agents should copy. SDK feedback filed: surface authInfo on
-// ComplyControllerContext so adopters that want partition-by-caller have the
-// hook to do it.
-const trainingCtx: TrainingContext = { mode: 'open', principal: 'static:public' };
+const TRAINING_PRINCIPAL_FIELD = '__training_principal';
 
 /**
  * v5 handler return shape — wide union of seed/force/simulate response
@@ -57,8 +48,13 @@ async function dispatchV5(scenario: string, params: Record<string, unknown>, inp
   // v5 handler reads brand/account from the wire-shaped args to derive
   // the session key. `ctx.input` is the full raw input (including
   // brand/account/sandbox/etc.), so spread it and stamp scenario+params.
-  const args = { ...input, scenario, params } as ToolArgs;
-  return await handleComplyTestController(args, trainingCtx) as V5Response;
+  const principal = typeof input[TRAINING_PRINCIPAL_FIELD] === 'string'
+    ? input[TRAINING_PRINCIPAL_FIELD]
+    : 'anonymous';
+  const cleanInput = { ...input };
+  delete cleanInput[TRAINING_PRINCIPAL_FIELD];
+  const args = { ...cleanInput, scenario, params } as ToolArgs;
+  return await handleComplyTestController(args, { mode: 'open', principal } satisfies TrainingContext) as V5Response;
 }
 
 function throwOnFailure(result: V5Response): void {
@@ -125,6 +121,7 @@ const SALES_COMPLY_INPUT_SCHEMA = {
     sandbox: z.boolean().optional(),
   }).passthrough().optional(),
   brand: z.object({ domain: z.string().optional() }).passthrough().optional(),
+  [TRAINING_PRINCIPAL_FIELD]: z.string().optional(),
 };
 
 /**
