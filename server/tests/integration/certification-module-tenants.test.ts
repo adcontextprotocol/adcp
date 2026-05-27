@@ -53,9 +53,10 @@ describe('certification_modules.tenant_ids (migration 464)', () => {
     const c2 = await getModule('C2');
     expect(c2!.tenant_ids).toEqual(['brand', 'governance']);
 
-    // S2 (creative mastery) covers both creative tenants.
+    // S2 (creative mastery) covers both creative tenants plus the sales
+    // tenant used for canonical format discovery and preview workflows.
     const s2 = await getModule('S2');
-    expect(s2!.tenant_ids).toEqual(['creative', 'creative-builder']);
+    expect(s2!.tenant_ids).toEqual(['creative', 'creative-builder', 'sales']);
   });
 
   it('SI-dependent modules are intentionally NULL until an si tenant exists', async () => {
