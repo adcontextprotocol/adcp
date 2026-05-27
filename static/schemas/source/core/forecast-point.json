@@ -18,7 +18,7 @@
     },
     "dimensions": {
       "$ref": "/schemas/core/forecast-point-dimensions.json",
-      "description": "Dimensional slice represented by this forecast point, such as country, region, placement, device type, platform, or audience. Each point declares one primary dimension family. Use multiple points with dimensions to expose country/placement availability within one product or proposal without creating separate products solely for each dimension. Dimensions describe the forecast row and are independent of pricing_options."
+      "description": "Dimension constraints represented by this forecast point, such as country, region, placement, device type, platform, audience, or intersections such as placement x country. Each item declares one dimension family; when multiple items are present, the point represents their intersection. Use multiple points with dimensions to expose country/placement availability within one product or proposal without creating separate products solely for each dimension. Dimensions describe the forecast row and are independent of pricing_options."
     },
     "metrics": {
       "type": "object",
