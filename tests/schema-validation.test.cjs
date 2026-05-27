@@ -441,7 +441,44 @@ async function runTests() {
     return true;
   });
 
-  // Test 9: Validate schema examples against their schemas
+  // Test 9: Validate ForecastPoint dimensions unique-kind conformance marker
+  await test('ForecastPoint dimensions declare and exercise unique kind conformance', () => {
+    const dimensionsSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-point-dimensions.json'));
+    const uniqueProps = dimensionsSchema['x-adcp-validation']?.unique_item_properties || [];
+    if (!uniqueProps.includes('kind')) {
+      return 'forecast-point-dimensions.json must declare x-adcp-validation.unique_item_properties: ["kind"]';
+    }
+
+    const hasRepeatedKind = (dimensions) => {
+      const seen = new Set();
+      for (const dimension of dimensions) {
+        if (!dimension || typeof dimension.kind !== 'string') continue;
+        if (seen.has(dimension.kind)) return true;
+        seen.add(dimension.kind);
+      }
+      return false;
+    };
+
+    const placementCountry = [
+      { kind: 'placement', placement_ref: { publisher_domain: 'publisher.example', placement_id: 'header_bidding' } },
+      { kind: 'geo', geo_level: 'country', geo_code: 'US' }
+    ];
+    if (hasRepeatedKind(placementCountry)) {
+      return 'placement x country intersection was incorrectly flagged as duplicate kind';
+    }
+
+    const twoCountries = [
+      { kind: 'geo', geo_level: 'country', geo_code: 'US' },
+      { kind: 'geo', geo_level: 'country', geo_code: 'CA' }
+    ];
+    if (!hasRepeatedKind(twoCountries)) {
+      return 'two geo rows in one point must be flagged as duplicate kind';
+    }
+
+    return true;
+  });
+
+  // Test 10: Validate schema examples against their schemas
   await test('Schema examples validate against their own schemas', async () => {
     // Skip schemas that require format-aware validation (creative manifests need format context)
     const FORMAT_AWARE_SCHEMAS = ['sync-creatives-request.json', 'list-creatives-response.json'];

@@ -16,9 +16,14 @@
       "description": "Budget amount for this forecast point. Required for spend curves; omit for availability forecasts where the metrics represent total available inventory. For allocation-level forecasts, this is the absolute budget for that allocation (not the percentage). For proposal-level forecasts, this is the total proposal budget. When omitted, use metrics.spend to express the estimated cost of the available inventory.",
       "minimum": 0
     },
+    "product_id": {
+      "type": "string",
+      "description": "Optional product context for this forecast row. Usually omitted on product-level and allocation-level forecasts where the product is already implied. On proposal-level forecasts, populate when a dimensional row, especially a placement row, maps to a specific product allocation so buyers can turn the row into an executable package choice. Omit for true aggregate proposal rows spanning multiple products.",
+      "x-entity": "product"
+    },
     "dimensions": {
       "$ref": "/schemas/core/forecast-point-dimensions.json",
-      "description": "Dimension constraints represented by this forecast point, such as country, region, placement, device type, platform, audience, or intersections such as placement x country. Each item declares one dimension family; when multiple items are present, the point represents their intersection. Use multiple points with dimensions to expose country/placement availability within one product or proposal without creating separate products solely for each dimension. Dimensions describe the forecast row and are independent of pricing_options."
+      "description": "Dimension constraints represented by this forecast point, such as country, region, placement, device type, platform, audience, or intersections such as placement x country. Each item declares one dimension family; when multiple items are present, the point represents their intersection. Sellers MUST NOT emit more than one item for each `kind` on a point; consumers MUST NOT treat repeated kinds as OR semantics. Use multiple points with dimensions to expose country/placement availability within one product or proposal without creating separate products solely for each dimension. Dimensions describe the forecast row and are independent of pricing_options."
     },
     "metrics": {
       "type": "object",

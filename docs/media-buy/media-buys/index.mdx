@@ -147,15 +147,15 @@ A display campaign running March 1-31, broken into weekly $2,000 flights with a 
 
 Week 3 is intentionally omitted — a dark period for lift measurement. Each flight gets its own budget, so pacing and spend are controlled per week. To adjust mid-campaign, update individual package budgets without affecting other flights.
 
-### Creative Assignment and Placement Targeting
+### Creative Assignment and Placement Routing
 
-When a product defines multiple buyer-targetable placements, buyers can assign different creatives to those placements while still purchasing the product as a package.
+When a product defines multiple buyer-targetable placements, buyers can assign different creatives to those placements while still purchasing the product as a package. Creative placement refs route creatives inside the package inventory; they do not narrow the inventory purchased by the package.
 
 **Key Points:**
 - **Packages buy the product** - product-level `placements[].mode` says which publisher-scoped placements are buyer-targetable
 - **Placement identity is publisher-scoped** - publisher-referenced placements resolve as `{publisher_domain, placement_id}` against the publisher's `adagents.json`
 - **Inline placements are still allowed** - if there is no public publisher placement declaration, the sales agent may define an inline placement with `name`, formats, and public buyer-facing detail; its `placement_id` is still interpreted in the named publisher namespace, or in the seller agent's own publisher namespace when `publisher_domain` is omitted in a single-publisher legacy context
-- Placement targeting happens at the creative assignment level unless a future product explicitly defines another targeting surface
+- Package inventory scope comes from the selected product, product refinement, or a seller-supported package targeting surface. `creative_assignments[].placement_refs` only routes creatives among placements already in scope
 - Creatives without `placement_refs` or `placement_ids` run on all buyer-targetable placements in the package
 - If both `placement_refs` and legacy `placement_ids` are present, `placement_refs` wins and sellers ignore `placement_ids`
 - Placements with `mode: "included"` are part of the product's public composition and cannot be referenced in `creative_assignments[].placement_refs`

@@ -343,6 +343,8 @@ Publishers may return proposals alongside products - structured media plans with
 | `brief_alignment` | string | How this proposal addresses the campaign brief |
 | `expires_at` | string | ISO 8601 timestamp when this proposal expires |
 
+Each `ForecastPoint` is one forecast row. Composite slices are encoded by multiple `dimensions[]` items on the same point, such as placement x country. Sibling points are parallel rows, not nested children. Dimension order has no meaning; buyers normalize row identity from `(forecast_range_unit, budget if present, product_id if present, dimensions sorted by kind)`. Buyers may compare rows at the same grain, but MUST NOT sum them unless the seller documents that the returned rows form a complete, non-overlapping partition. Standard delivery reporting verifies one-dimensional marginals, not exact cross-dimensional intersections.
+
 ### Pagination
 
 For large product result sets and wholesale product feeds, use cursor-based pagination:
