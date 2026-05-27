@@ -1,17 +1,19 @@
 ---
 title: Release Notes
-description: "AdCP release notes with version highlights and migration guides. Covers breaking changes, new tasks, and schema updates for each major release."
+description: "Authoritative AdCP version-by-version release record with cumulative change detail, migration guidance, and per-version adoption notes."
 "og:title": "AdCP — Release Notes"
 ---
 
 
-High-level summaries of major AdCP releases with migration guidance. For the at-a-glance status of every published version, see [Versions & Compatibility](/docs/reference/versions). For detailed technical changelogs, see [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md). For version stability, schema-change scope, and the 3.x guarantees see [Versioning & Governance](/docs/reference/versioning). For v2 end-of-life see the [v2 sunset page](/docs/reference/v2-sunset).
+Authoritative version-by-version release record for AdCP, with cumulative change detail, migration guidance, and per-version adoption notes. For a curated adopter overview of the 3.1 minor release, see [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1). For the at-a-glance status of every published version, see [Versions & Compatibility](/docs/reference/versions). For source-level changelogs, see [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md). For version stability, schema-change scope, and the 3.x guarantees see [Versioning & Governance](/docs/reference/versioning). For v2 end-of-life see the [v2 sunset page](/docs/reference/v2-sunset).
 
 ---
 
 ## Version 3.1.0 (unreleased)
 
 **Status:** Accumulating — minor release. The published 3.0.x line remains the stable surface; 3.1 features land here as their changesets accumulate. SDKs pin to a specific 3.x and pick up minors at their own cadence.
+
+For adoption-oriented framing before the full change list, start with [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1).
 
 **Headline:** **Distributed `brand.json`.** A brand can now publish its **own** canonical document on its own domain while the corporate house declares ownership via a portfolio pointer. The hierarchy stays one level deep — only houses declare ownership — and trust between a leaf and a house resolves via mutual assertion (both sides reciprocate). Identity attributes (logos, colors, tone, tagline) trust on the leaf's TLS alone; relationship trust (governance propagation, billable inclusion) gates on the reciprocal entry.
 
