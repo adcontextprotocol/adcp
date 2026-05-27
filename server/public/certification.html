@@ -1599,7 +1599,7 @@
 
         html += '<p><a href="/ai-disclosure#review" class="assessment-link">About Addie’s grading and your rights →</a></p>';
         html += '<div class="assessment-review-area" id="review-area-' + esc(mod.id) + '">';
-        html += '<p class="assessment-note">Disagree with this assessment? AgenticAdvertising.org staff will review within 2 business days.</p>';
+        html += '<p class="assessment-note">Disagree with this assessment? AgenticAdvertising.org staff will acknowledge review requests within 2 business days and resolve them through the certification complaints process.</p>';
         html += '<div class="assessment-review-actions">';
         html += '<button type="button" class="btn-review-request" onclick="submitReviewRequest(event, \'' + esc(mod.id) + '\')">';
         html += 'Request human review';
@@ -1772,7 +1772,7 @@
             if (reviewArea) {
               var msg = document.createElement('p');
               msg.className = 'review-submitted';
-              msg.textContent = 'Review requested — you’ll hear from us within 2 business days.';
+              msg.textContent = 'Review requested — we acknowledge review requests within 2 business days and resolve them through the certification complaints process.';
               reviewArea.replaceChildren(msg);
             }
           } else {

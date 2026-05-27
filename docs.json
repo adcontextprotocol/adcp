@@ -651,6 +651,7 @@
                     "pages": [
                       "docs/learning/policies/nondiscrimination",
                       "docs/learning/policies/learner-records",
+                      "docs/learning/policies/recertification",
                       "docs/learning/policies/complaints",
                       "docs/learning/policies/conflict-of-interest",
                       "docs/learning/policies/intellectual-property",
@@ -1220,6 +1221,7 @@
                 "pages": [
                   "docs/learning/policies/nondiscrimination",
                   "docs/learning/policies/learner-records",
+                  "docs/learning/policies/recertification",
                   "docs/learning/policies/complaints",
                   "docs/learning/policies/conflict-of-interest",
                   "docs/learning/policies/intellectual-property",
