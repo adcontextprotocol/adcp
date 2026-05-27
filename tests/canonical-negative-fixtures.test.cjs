@@ -393,6 +393,50 @@ const NEGATIVE_CASES = {
       },
     },
   ],
+
+  // #5089 — signal coverage forecast schema cleanup follow-ups (items 3 and 5)
+  '/schemas/core/forecast-point.json': [
+    {
+      label: 'coverage_rate.low above maximum:1 rejected',
+      expected: false,
+      doc: {
+        metrics: { coverage_rate: { low: 1.5, high: 2.0 } },
+      },
+    },
+    {
+      label: 'coverage_rate.high above maximum:1 rejected',
+      expected: false,
+      doc: {
+        metrics: { coverage_rate: { low: 0.2, high: 1.5 } },
+      },
+    },
+    {
+      label: 'coverage_rate.mid above maximum:1 rejected',
+      expected: false,
+      doc: {
+        metrics: { coverage_rate: { mid: 1.5 } },
+      },
+    },
+    {
+      label: 'coverage_rate within [0, 1] accepted (positive control)',
+      expected: true,
+      doc: {
+        metrics: { coverage_rate: { low: 0.2, mid: 0.5, high: 0.8 } },
+      },
+    },
+  ],
+  '/schemas/core/forecast-point-dimensions.json': [
+    {
+      // Pins the intentional schema behavior: presence:present with omitted signal_value
+      // is valid for signal-level presence buckets (the `present` allOf branch does not
+      // require signal_value — only constrains its type when provided).
+      label: 'signal dimension presence:present without signal_value is valid (signal-level presence bucket)',
+      expected: true,
+      doc: [
+        { kind: 'signal', presence: 'present', signal_id: 'age_group' },
+      ],
+    },
+  ],
 };
 
 let pass = 0;
