@@ -582,8 +582,14 @@
         },
         "coverage_percentage": {
           "type": "number",
+          "description": "DEPRECATED for detailed planning. Scalar percentage of audience coverage retained for backwards compatibility. When coverage_forecast is also present, this is the seller's total present-coverage estimate for the same signal.",
           "minimum": 0,
-          "maximum": 100
+          "maximum": 100,
+          "deprecated": true
+        },
+        "coverage_forecast": {
+          "$ref": "/schemas/core/signal-coverage-forecast.json",
+          "description": "Optional forecast-shaped signal availability guidance using the same wire shape as get_signals.signals[].coverage_forecast."
         },
         "deployments": {
           "type": "array",

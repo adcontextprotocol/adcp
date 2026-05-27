@@ -23,7 +23,7 @@
     },
     "dimensions": {
       "$ref": "/schemas/core/forecast-point-dimensions.json",
-      "description": "Dimension constraints represented by this forecast point, such as country, region, placement, device type, platform, audience, or intersections such as placement x country. Each item declares one dimension family; when multiple items are present, the point represents their intersection. Sellers MUST NOT emit more than one item for each `kind` on a point; consumers MUST NOT treat repeated kinds as OR semantics. Use multiple points with dimensions to expose country/placement availability within one product or proposal without creating separate products solely for each dimension. Dimensions describe the forecast row and are independent of pricing_options."
+      "description": "Dimension constraints represented by this forecast point, such as country, region, placement, device type, platform, audience, signal value, or intersections such as placement x country or product x signal. Each item declares one dimension family; when multiple items are present, the point represents their intersection. Sellers MUST NOT emit more than one item for each `kind` on a point; consumers MUST NOT treat repeated kinds as OR semantics. Use multiple points with dimensions to expose country/placement/signal availability within one product, proposal, or signal coverage forecast without creating separate products solely for each dimension. Dimensions describe the forecast row and are independent of pricing_options."
     },
     "metrics": {
       "type": "object",
@@ -44,7 +44,20 @@
         "profile_visits": { "$ref": "/schemas/core/forecast-range.json" },
         "measured_impressions": { "$ref": "/schemas/core/forecast-range.json" },
         "downloads": { "$ref": "/schemas/core/forecast-range.json" },
-        "plays": { "$ref": "/schemas/core/forecast-range.json" }
+        "plays": { "$ref": "/schemas/core/forecast-range.json" },
+        "coverage_rate": {
+          "allOf": [
+            { "$ref": "/schemas/core/forecast-range.json" },
+            {
+              "properties": {
+                "low": { "maximum": 1 },
+                "mid": { "maximum": 1 },
+                "high": { "maximum": 1 }
+              }
+            }
+          ],
+          "description": "Share of the declared forecast scope represented by this point. For signal coverage forecasts, this is the point's count divided by the coverage_forecast.scope denominator. Range 0.0 to 1.0."
+        }
       },
       "additionalProperties": {
         "$ref": "/schemas/core/forecast-range.json"

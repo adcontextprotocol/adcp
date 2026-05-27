@@ -567,6 +567,8 @@ async function runTests() {
 
     const validateDimensions = await testAjv.compileAsync(dimensionsSchema);
     const validateForecastPoint = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-point.json')));
+    const validateSignalCoverageForecast = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/signal-coverage-forecast.json')));
+    const validateGetSignalsResponse = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'signals/get-signals-response.json')));
     const validateDeliveryMetrics = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/delivery-metrics.json')));
     const validateComplyRequest = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'compliance/comply-test-controller-request.json')));
 
@@ -588,7 +590,10 @@ async function runTests() {
       [[{ kind: 'geo', geo_level: 'metro', system: 'nielsen_dma', geo_code: '501' }], 'metro dimension with metro-system'],
       [[{ kind: 'geo', geo_level: 'postal_area', system: 'us_zip', geo_code: '10001' }], 'postal dimension with postal-system'],
       [[{ kind: 'geo', geo_level: 'country', geo_code: 'US' }], 'country dimension without system'],
-      [[{ kind: 'placement', placement_ref: { publisher_domain: 'publisher.example', placement_id: 'header_bidding' } }, { kind: 'geo', geo_level: 'country', geo_code: 'US' }], 'placement x country intersection']
+      [[{ kind: 'placement', placement_ref: { publisher_domain: 'publisher.example', placement_id: 'header_bidding' } }, { kind: 'geo', geo_level: 'country', geo_code: 'US' }], 'placement x country intersection'],
+      [[{ kind: 'signal', signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' }, signal_value: 'hot', presence: 'present' }], 'signal value dimension with signal_ref'],
+      [[{ kind: 'signal', signal_id: 'weather', signal_value: 'hot', presence: 'present' }], 'signal value dimension with inherited signal_id shorthand'],
+      [[{ kind: 'signal', signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' }, signal_value: null, presence: 'absent' }], 'signal not-present dimension']
     ]) {
       const result = assertValid(validateDimensions, value, label);
       if (result !== true) return result;
@@ -598,17 +603,222 @@ async function runTests() {
       [[{ kind: 'geo', geo_level: 'metro', system: 'us_zip', geo_code: '10001' }], 'metro dimension with postal-system'],
       [[{ kind: 'geo', geo_level: 'postal_area', system: 'nielsen_dma', geo_code: '501' }], 'postal dimension with metro-system'],
       [[{ kind: 'geo', geo_level: 'country', system: 'nielsen_dma', geo_code: 'US' }], 'country dimension with system'],
-      [[{ kind: 'geo', geo_level: 'country', geo_code: 'USA' }], 'country dimension with non-alpha2 code']
+      [[{ kind: 'geo', geo_level: 'country', geo_code: 'USA' }], 'country dimension with non-alpha2 code'],
+      [[{ kind: 'signal', signal_id: 'weather', signal_value: 'hot', presence: 'absent' }], 'signal absent dimension with non-null value'],
+      [[{ kind: 'signal', signal_id: 'weather', signal_value: null, presence: 'present' }], 'signal present dimension with null value'],
+      [[{ kind: 'signal', signal_id: 'weather', presence: 'absent' }], 'signal absent dimension without explicit null value'],
+      [[{ kind: 'signal', signal_value: 'hot', presence: 'present' }], 'signal dimension without signal identity']
     ]) {
       const result = assertInvalid(validateDimensions, value, label);
       if (result !== true) return result;
     }
 
+    const coverageRateOutOfRange = {
+      metrics: { coverage_rate: { mid: 1.2 } }
+    };
+    let result = assertInvalid(validateForecastPoint, coverageRateOutOfRange, 'coverage_rate above 1.0');
+    if (result !== true) return result;
+
+    const signalCoverageForecast = {
+      method: 'estimate',
+      forecast_range_unit: 'availability',
+      scope: {
+        kind: 'inventory',
+        label: 'network price-priority inventory',
+        line_item_types: ['PRICE_PRIORITY']
+      },
+      bucket_semantics: 'exclusive',
+      bucket_completeness: 'partial',
+      points: [
+        {
+          label: 'not present',
+          dimensions: [
+            { kind: 'signal', signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' }, signal_value: null, presence: 'absent' }
+          ],
+          metrics: {
+            impressions: { mid: 280000 },
+            coverage_rate: { mid: 0.28 }
+          }
+        },
+        {
+          label: 'hot',
+          dimensions: [
+            { kind: 'signal', signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' }, signal_value: 'hot', presence: 'present' }
+          ],
+          metrics: {
+            impressions: { mid: 180000 },
+            coverage_rate: { mid: 0.18 }
+          }
+        }
+      ]
+    };
+    result = assertValid(validateSignalCoverageForecast, signalCoverageForecast, 'signal coverage forecast');
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateSignalCoverageForecast,
+      { ...signalCoverageForecast, points: [{ metrics: { coverage_rate: { mid: 0.12 } } }] },
+      'signal coverage forecast point without dimensions'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateSignalCoverageForecast,
+      {
+        ...signalCoverageForecast,
+        points: [
+          {
+            dimensions: [{ kind: 'geo', geo_level: 'country', geo_code: 'US' }],
+            metrics: { coverage_rate: { mid: 0.12 } }
+          }
+        ]
+      },
+      'signal coverage forecast point without signal dimension'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateSignalCoverageForecast,
+      {
+        ...signalCoverageForecast,
+        points: [
+          {
+            dimensions: [
+              { kind: 'signal', signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' }, presence: 'present' }
+            ],
+            metrics: { impressions: { mid: 120000 } }
+          }
+        ]
+      },
+      'signal coverage forecast point without coverage_rate'
+    );
+    if (result !== true) return result;
+
+    const signalCoverageForecastWithoutBucketSemantics = { ...signalCoverageForecast };
+    delete signalCoverageForecastWithoutBucketSemantics.bucket_semantics;
+    result = assertInvalid(
+      validateSignalCoverageForecast,
+      signalCoverageForecastWithoutBucketSemantics,
+      'signal coverage forecast without bucket semantics'
+    );
+    if (result !== true) return result;
+
+    const signalCoverageForecastWithoutBucketCompleteness = { ...signalCoverageForecast };
+    delete signalCoverageForecastWithoutBucketCompleteness.bucket_completeness;
+    result = assertInvalid(
+      validateSignalCoverageForecast,
+      signalCoverageForecastWithoutBucketCompleteness,
+      'signal coverage forecast without bucket completeness'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateSignalCoverageForecast,
+      { ...signalCoverageForecast, forecast_range_unit: 'spend' },
+      'signal coverage forecast with non-availability range unit'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateSignalCoverageForecast,
+      { ...signalCoverageForecast, scope: { kind: 'product', label: 'Sports ROS' } },
+      'product-scoped signal coverage forecast without product_id'
+    );
+    if (result !== true) return result;
+
+    const signalDimensionMatchesEnclosingSignal = (signal) => {
+      const enclosingRef = signal.signal_ref;
+      const enclosingLegacyId = signal.signal_id?.id;
+      for (const point of signal.coverage_forecast?.points || []) {
+        for (const dimension of point.dimensions || []) {
+          if (dimension.kind !== 'signal') continue;
+          if (dimension.signal_ref && enclosingRef) {
+            if (JSON.stringify(dimension.signal_ref) !== JSON.stringify(enclosingRef)) return false;
+          } else if (dimension.signal_ref && !enclosingRef) {
+            return false;
+          } else if (dimension.signal_id) {
+            const enclosingSignalId = enclosingRef?.signal_id || enclosingLegacyId;
+            if (dimension.signal_id !== enclosingSignalId) return false;
+          }
+        }
+      }
+      return true;
+    };
+
+    if (!signalDimensionMatchesEnclosingSignal({
+      signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' },
+      coverage_forecast: signalCoverageForecast
+    })) {
+      return 'matching coverage_forecast signal_ref was incorrectly flagged as mismatch';
+    }
+
+    if (signalDimensionMatchesEnclosingSignal({
+      signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'sports_fans' },
+      coverage_forecast: signalCoverageForecast
+    })) {
+      return 'coverage_forecast signal dimension must resolve to the enclosing signal';
+    }
+
+    const completeExclusiveCoverageRatesPartition = (forecast) => {
+      if (forecast.bucket_semantics !== 'exclusive' || forecast.bucket_completeness !== 'complete') return true;
+      const mids = forecast.points.map(point => point.metrics?.coverage_rate?.mid);
+      if (mids.some(value => typeof value !== 'number')) return false;
+      return Math.abs(mids.reduce((sum, value) => sum + value, 0) - 1) < 0.000001;
+    };
+
+    if (!completeExclusiveCoverageRatesPartition({
+      ...signalCoverageForecast,
+      bucket_completeness: 'complete',
+      points: [
+        signalCoverageForecast.points[0],
+        {
+          ...signalCoverageForecast.points[1],
+          label: 'present',
+          metrics: { coverage_rate: { mid: 0.72 } }
+        }
+      ]
+    })) {
+      return 'complete exclusive coverage partition with rates summing to 1 was incorrectly flagged';
+    }
+
+    if (completeExclusiveCoverageRatesPartition({
+      ...signalCoverageForecast,
+      bucket_completeness: 'complete'
+    })) {
+      return 'complete exclusive coverage partition must have coverage_rate mid values summing to 1';
+    }
+
+    result = assertValid(
+      validateGetSignalsResponse,
+      {
+        status: 'completed',
+        cache_scope: 'public',
+        signals: [
+          {
+            signal_ref: {
+              scope: 'data_provider',
+              data_provider_domain: 'pinnacle-data.example',
+              signal_id: 'weather'
+            },
+            signal_agent_segment_id: 'weather',
+            name: 'Weather',
+            description: 'Weather context',
+            signal_type: 'marketplace',
+            coverage_percentage: 72,
+            coverage_forecast: signalCoverageForecast,
+            deployments: []
+          }
+        ]
+      },
+      'get_signals response with coverage_forecast'
+    );
+    if (result !== true) return result;
+
     const forecastWithoutStandard = {
       metrics: { impressions: { mid: 10 } },
       viewability: { viewable_rate: { mid: 0.8 } }
     };
-    let result = assertInvalid(validateForecastPoint, forecastWithoutStandard, 'forecast viewability values without standard');
+    result = assertInvalid(validateForecastPoint, forecastWithoutStandard, 'forecast viewability values without standard');
     if (result !== true) return result;
 
     const forecastWithStandard = {

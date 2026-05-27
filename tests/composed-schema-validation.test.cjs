@@ -729,6 +729,36 @@ async function runTests() {
       { type: 'platform', platform: 'example_dsp', is_live: true }
     ]
   };
+  const signalCoverageForecast = {
+    method: 'estimate',
+    forecast_range_unit: 'availability',
+    scope: {
+      kind: 'inventory',
+      label: 'network price-priority inventory'
+    },
+    bucket_semantics: 'exclusive',
+    bucket_completeness: 'partial',
+    points: [
+      {
+        label: 'auto intent present',
+        dimensions: [
+          {
+            kind: 'signal',
+            signal_ref: {
+              scope: 'data_provider',
+              data_provider_domain: 'pinnacle-data.example',
+              signal_id: 'auto_intenders'
+            },
+            presence: 'present'
+          }
+        ],
+        metrics: {
+          impressions: { mid: 120000 },
+          coverage_rate: { mid: 0.12 }
+        }
+      }
+    ]
+  };
 
   await testSchemaValidation(
     '/schemas/core/product.json',
@@ -906,11 +936,12 @@ async function runTests() {
         applies_to: { scope: 'public' },
         signal: {
           signal_id: legacySignalId,
-          ...signalListingCore
+          ...signalListingCore,
+          coverage_forecast: signalCoverageForecast
         }
       }
     },
-    'Wholesale signal event accepts deprecated signal_id and relaxed data_provider/pricing_options'
+    'Wholesale signal event accepts deprecated signal_id, relaxed data_provider/pricing_options, and coverage_forecast'
   );
 
   log('Registry change feed schemas:', 'info');
