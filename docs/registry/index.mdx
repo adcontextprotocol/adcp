@@ -485,6 +485,8 @@ result = requests.post(
 
 Poll a cursor-based feed of registry changes. Use this to keep a local copy of the registry in sync without re-fetching the full dataset. Events are ordered by UUID v7 `event_id`, providing monotonic cursor progression. The feed retains events for 90 days — expired cursors return `410 Gone`.
 
+**Schema:** [`core/registry-feed-response.json`](https://adcontextprotocol.org/schemas/v3/core/registry-feed-response.json) wraps [`core/registry-event.json`](https://adcontextprotocol.org/schemas/v3/core/registry-event.json) items.
+
 **Query parameters:**
 
 | Parameter | Type | Default | Description |
@@ -505,9 +507,14 @@ Poll a cursor-based feed of registry changes. Use this to keep a local copy of t
 | `agent.discovered` | A new `agent_url` appeared in a publisher's `adagents.json` (authorization graph; does not imply the agent is in `/api/registry/agents`) |
 | `agent.removed` | An agent was removed from the registry |
 | `agent.profile_updated` | Agent inventory profile changed |
+| `agent.compliance_changed` | Agent compliance or verification status changed |
+| `agent.verification_earned` | Agent earned an AAO Verified badge |
+| `agent.verification_lost` | Agent lost an AAO Verified badge |
+| `publisher.adagents_discovered` | A publisher's adagents.json was discovered and projected into the registry |
 | `publisher.adagents_changed` | A publisher's adagents.json was updated |
 | `authorization.granted` | An agent was authorized for a property |
 | `authorization.revoked` | An authorization was removed |
+| `authorization.modified` | An authorization stayed visible, but externally visible metadata changed |
 
 <CodeGroup>
 
@@ -546,7 +553,14 @@ feed = requests.get(
       "event_type": "property.created",
       "entity_type": "property",
       "entity_id": "019539a0-b1c2-7000-8000-000000000002",
-      "payload": {},
+      "payload": {
+        "property_rid": "019539a0-b1c2-7000-8000-000000000002",
+        "classification": "property",
+        "source": "contributed",
+        "identifiers": [
+          { "type": "domain", "value": "streamer.example.com" }
+        ]
+      },
       "actor": "crawler",
       "created_at": "2026-03-31T10:00:00.000Z"
     }

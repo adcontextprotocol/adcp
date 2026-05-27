@@ -158,6 +158,14 @@
           "$ref": "/schemas/core/reference-asset.json",
           "description": "A reference asset with semantic role for creative context"
         },
+        "registry-event": {
+          "$ref": "/schemas/core/registry-event.json",
+          "description": "A cursor-ordered registry change-feed event from /api/registry/feed"
+        },
+        "registry-feed-response": {
+          "$ref": "/schemas/core/registry-feed-response.json",
+          "description": "Response wrapper for GET /api/registry/feed"
+        },
         "proposal": {
           "$ref": "/schemas/core/proposal.json",
           "description": "A proposed media plan with budget allocations across products - actionable via create_media_buy"
