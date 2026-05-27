@@ -178,12 +178,13 @@ describe('comply_test_controller', () => {
         'force_create_media_buy_arm',
         'force_task_completion',
         'force_creative_purge',
+        'force_wholesale_feed_webhook',
         'seed_creative_format',
         'seed_measurement_catalog',
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(11);
+      expect(scenarios.length).toBe(12);
       // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });

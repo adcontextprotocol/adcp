@@ -38,6 +38,8 @@ import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
 import { getAccountNotificationSubscribers } from './account-handlers.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
+import { buildCatalog } from './product-factory.js';
+import { getAllSignals } from './signal-providers.js';
 
 // ── State machine transition tables ───────────────────────────────
 
@@ -752,11 +754,11 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
  * adcontextprotocol/adcp-client — the dedup below means it is safe to leave this
  * entry in place during the transition; remove once a release has landed and the
  * cross-impl tests no longer rely on it). */
-const LOCAL_SCENARIOS = ['force_create_media_buy_arm', 'force_task_completion', 'force_creative_purge', 'seed_creative_format', 'seed_measurement_catalog'] as const;
+const LOCAL_SCENARIOS = ['force_create_media_buy_arm', 'force_task_completion', 'force_creative_purge', 'force_wholesale_feed_webhook', 'seed_creative_format', 'seed_measurement_catalog'] as const;
 
 function localScenariosFor(ctx: TrainingContext): string[] {
   return ctx.storyboardCompat?.version === '3.0'
-    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge')
+    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook')
     : [...LOCAL_SCENARIOS];
 }
 
@@ -858,6 +860,16 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       };
     }
     return handleForceCreativePurge(session, sessionKey, ctx.principal, rawArgs);
+  }
+  if (scenario === 'force_wholesale_feed_webhook') {
+    if (ctx.storyboardCompat?.version === '3.0') {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: 'force_wholesale_feed_webhook is not available in AdCP 3.0 compatibility mode',
+      };
+    }
+    return handleForceWholesaleFeedWebhook(sessionKey, ctx.principal, rawArgs);
   }
   if (scenario === 'seed_measurement_catalog') {
     return handleSeedMeasurementCatalog(session, rawArgs);
@@ -973,6 +985,199 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
 
   return sdkResponse;
+}
+
+function entityTypeForWholesaleEvent(eventType: string): 'product' | 'signal' | 'feed' | null {
+  if (eventType.startsWith('product.')) return 'product';
+  if (eventType.startsWith('signal.')) return 'signal';
+  if (eventType === 'wholesale_feed.bulk_change') return 'feed';
+  return null;
+}
+
+function defaultWholesaleProduct(productId: string): Record<string, unknown> {
+  const product = buildCatalog()[0]?.product;
+  return product
+    ? { ...product, product_id: productId }
+    : {
+      product_id: productId,
+      name: 'Training wholesale product',
+      description: 'Synthetic wholesale feed product emitted by the training agent.',
+      channels: ['display'],
+      delivery_type: 'non_guaranteed',
+      pricing_options: [{ pricing_option_id: 'po_training_cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 12 }],
+    };
+}
+
+function defaultWholesaleSignal(signalId: string): Record<string, unknown> {
+  const signal = getAllSignals()[0];
+  const providerDomain = signal?.providerDomain ?? 'training-signals.example';
+  return {
+    signal_agent_segment_id: signalId,
+    signal_ref: {
+      scope: 'data_provider',
+      data_provider_domain: providerDomain,
+      signal_id: signalId,
+    },
+    name: signal?.name ?? 'Training wholesale signal',
+    description: signal?.description ?? 'Synthetic wholesale feed signal emitted by the training agent.',
+    value_type: signal?.valueType ?? 'binary',
+    signal_type: signal?.signalType ?? 'marketplace',
+    data_provider: signal?.providerName ?? 'Training Signals',
+    coverage_percentage: signal?.coveragePercentage ?? 10,
+    deployments: [{
+      type: 'agent',
+      agent_url: getAgentUrl(),
+      is_live: false,
+      estimated_activation_duration_minutes: 0,
+    }],
+    pricing_options: (signal?.pricingOptions ?? [{ pricingOptionId: 'po_training_signal_cpm', model: 'cpm', cpm: 1.5, currency: 'USD' }]).map(po => ({
+      pricing_option_id: po.pricingOptionId,
+      model: po.model,
+      currency: po.currency,
+      ...(po.model === 'cpm' && { cpm: po.cpm }),
+      ...(po.model === 'percent_of_media' && { percent: po.percent, ...(po.maxCpm !== undefined && { max_cpm: po.maxCpm }) }),
+      ...(po.model === 'flat_fee' && { amount: po.amount, period: po.period }),
+    })),
+    ...(signal?.valueType === 'categorical' && signal.categories ? { categories: signal.categories } : {}),
+    ...(signal?.valueType === 'numeric' && signal.range ? { range: signal.range } : {}),
+  };
+}
+
+function defaultWholesaleEventPayload(eventType: string, entityId: string, appliesTo: Record<string, unknown>): Record<string, unknown> {
+  if (eventType === 'product.created' || eventType === 'product.updated') {
+    return {
+      product_id: entityId,
+      product: defaultWholesaleProduct(entityId),
+      ...(eventType === 'product.updated' && { changed_fields: ['pricing_options'] }),
+      applies_to: appliesTo,
+    };
+  }
+  if (eventType === 'product.priced') {
+    return {
+      product_id: entityId,
+      pricing_options: [{ pricing_option_id: 'po_training_cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 12 }],
+      applies_to: appliesTo,
+    };
+  }
+  if (eventType === 'signal.created' || eventType === 'signal.updated') {
+    return {
+      signal_agent_segment_id: entityId,
+      signal_ref: {
+        scope: 'data_provider',
+        data_provider_domain: getAllSignals()[0]?.providerDomain ?? 'training-signals.example',
+        signal_id: entityId,
+      },
+      signal: defaultWholesaleSignal(entityId),
+      ...(eventType === 'signal.updated' && { changed_fields: ['pricing_options'] }),
+      applies_to: appliesTo,
+    };
+  }
+  if (eventType === 'signal.priced') {
+    return {
+      signal_agent_segment_id: entityId,
+      pricing_options: [{ pricing_option_id: 'po_training_signal_cpm', model: 'cpm', cpm: 1.5, currency: 'USD' }],
+      applies_to: appliesTo,
+    };
+  }
+  if (eventType === 'wholesale_feed.bulk_change') {
+    return {
+      summary: 'Training wholesale feed refresh',
+      affected_entity_type: entityId === 'signal' ? 'signal' : 'product',
+      affected_count: 1,
+      recommendation: 'wholesale_resync',
+      applies_to: appliesTo,
+    };
+  }
+  if (eventType.startsWith('product.')) return { product_id: entityId, applies_to: appliesTo };
+  if (eventType.startsWith('signal.')) return { signal_agent_segment_id: entityId, applies_to: appliesTo };
+  return { applies_to: appliesTo };
+}
+
+async function handleForceWholesaleFeedWebhook(
+  sessionKey: string,
+  principal: string | undefined,
+  rawArgs: Record<string, unknown>,
+): Promise<object> {
+  const params = (rawArgs.params ?? {}) as Record<string, unknown>;
+  const eventType = typeof params.event_type === 'string' ? params.event_type : undefined;
+  if (!eventType) {
+    return { success: false, error: 'INVALID_PARAMS', error_detail: 'force_wholesale_feed_webhook requires params.event_type' };
+  }
+  const entityType = entityTypeForWholesaleEvent(eventType);
+  if (!entityType) {
+    return { success: false, error: 'INVALID_PARAMS', error_detail: `Unsupported wholesale feed event type: ${eventType}` };
+  }
+  const notificationType = eventType as Parameters<typeof getAccountNotificationSubscribers>[1];
+  const accountRef = (rawArgs.account ?? params.account) as AccountRef | undefined;
+  const subscribers = getAccountNotificationSubscribers(sessionKey, notificationType, principal, undefined, accountRef);
+  const firedAt = new Date().toISOString();
+  const notificationId = randomUUID();
+  const cacheScope = params.cache_scope === 'account' ? 'account' : 'public';
+  const appliesTo = cacheScope === 'account'
+    ? { scope: 'account', ...(typeof params.account_id === 'string' ? { account_ids: [params.account_id] } : {}) }
+    : { scope: 'public' };
+  const entityId = typeof params.entity_id === 'string'
+    ? params.entity_id
+    : entityType === 'product'
+      ? 'prod_training_wholesale'
+      : entityType === 'signal'
+        ? 'seg_training_wholesale'
+        : 'product';
+  const eventPayload = (params.payload && typeof params.payload === 'object')
+    ? params.payload as Record<string, unknown>
+    : defaultWholesaleEventPayload(eventType, entityId, appliesTo);
+  const event = {
+    event_id: notificationId,
+    event_type: eventType,
+    entity_type: entityType,
+    entity_id: entityId,
+    created_at: firedAt,
+    payload: eventPayload,
+  };
+  const basePayload = {
+    notification_id: notificationId,
+    notification_type: eventType,
+    fired_at: firedAt,
+    wholesale_feed_version: typeof params.wholesale_feed_version === 'string' ? params.wholesale_feed_version : `training-${eventType}-v1`,
+    cache_scope: cacheScope,
+    event,
+  };
+
+  let delivered = 0;
+  const failures: string[] = [];
+  for (const subscriber of subscribers) {
+    const idempotencyKey = `whk_${randomUUID()}`;
+    const payload = {
+      ...basePayload,
+      idempotency_key: idempotencyKey,
+      subscriber_id: subscriber.subscriberId,
+      account_id: subscriber.accountId,
+    };
+    try {
+      const result = await emitAccountNotificationWebhook({
+        url: subscriber.url,
+        payload,
+        operationId: `${subscriber.accountId}:${subscriber.subscriberId}:${notificationId}:${idempotencyKey}`,
+        notificationType: eventType,
+        authentication: webhookAuthenticationFromConfig(subscriber.authentication),
+      });
+      if (result.delivered) {
+        delivered += 1;
+      } else {
+        failures.push(...result.errors);
+      }
+    } catch (err) {
+      failures.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return {
+    success: failures.length === 0,
+    notification_type: eventType,
+    subscribers: subscribers.length,
+    delivered,
+    ...(failures.length > 0 && { failures }),
+  };
 }
 
 function measurementVendorCatalogKey(vendor: { domain?: unknown; brand_id?: unknown }): string | null {

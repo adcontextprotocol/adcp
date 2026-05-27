@@ -16,6 +16,8 @@ type AccountReference = CreateMediaBuyRequest['account'];
 
 export interface TrainingContext {
   mode: 'open' | 'training';
+  /** Per-tenant route id for capability projection on /sales, /signals, etc. */
+  tenantId?: 'sales' | 'signals' | 'governance' | 'creative' | 'creative-builder' | 'brand';
   userId?: string;
   moduleId?: string;
   trackId?: string;

@@ -37,6 +37,11 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | `notification-config-event-scope` | `sync_accounts.accounts[].notification_configs[]` semantic validation — account-level subscribers reject media-buy-anchored notification types (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) even though they are valid values in the shared notification-type enum. |
 | `notification-config-lifecycle` | Account-level `notification_configs[]` lifecycle on `sync_accounts`: paused registration, durable `list_accounts` echo, subscriber-keyed replacement, and clear-all semantics. |
 | `notification-config-rejections` | Semantic `notification_configs[]` request rejection path for duplicate `subscriber_id` values. |
+| `wholesale-feed-products` | Product wholesale feed versioning — bootstrap responses carry `wholesale_feed_version`/`cache_scope`, and matching `if_wholesale_feed_version` probes return `unchanged` without product rows. |
+| `wholesale-feed-signals` | Signals wholesale feed versioning — bootstrap responses carry `wholesale_feed_version`/`cache_scope`, and matching `if_wholesale_feed_version` probes return `unchanged` without signal rows. |
+| `wholesale-feed-product-webhooks` | Account-level `notification_configs[]` registration for agents that advertise product wholesale feed webhook events. |
+| `wholesale-feed-signal-webhooks` | Account-level `notification_configs[]` registration for agents that advertise signal wholesale feed webhook events. |
+| `wholesale-feed-bulk-webhooks` | Account-level `notification_configs[]` registration for agents that advertise `wholesale_feed.bulk_change`. |
 | `pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_creatives` response from a continuation page through to terminal. |
 | `get-signals-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `get_signals` response under a broad query — page 1 must be non-terminal against any non-trivial signal set, page 2 follows the cursor. |
 | `pagination-integrity-list-accounts` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_accounts` response — storyboard bootstraps three accounts via `sync_accounts`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |

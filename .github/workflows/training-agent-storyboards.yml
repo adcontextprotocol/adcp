@@ -305,12 +305,35 @@ jobs:
             "notification_config_event_scope"
             "notification_config_lifecycle"
             "notification_config_rejections"
+            "wholesale_feed_products"
+            "wholesale_feed_product_webhooks"
+            "wholesale_feed_bulk_webhooks"
           )
           for storyboard_id in "${required_clean[@]}"; do
             if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
               echo "Required-clean storyboard passed: ${storyboard_id}"
             else
               echo "::error::Required-clean storyboard did not pass on /sales current surface: ${storyboard_id}"
+              echo "Last matching log lines:"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
+
+      - name: Enforce signals required-clean storyboards
+        if: matrix.surface == 'current' && matrix.tenant == 'signals'
+        run: |
+          set -euo pipefail
+          required_clean=(
+            "wholesale_feed_signals"
+            "wholesale_feed_signal_webhooks"
+            "wholesale_feed_bulk_webhooks"
+          )
+          for storyboard_id in "${required_clean[@]}"; do
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
+              echo "Required-clean storyboard passed: ${storyboard_id}"
+            else
+              echo "::error::Required-clean storyboard did not pass on /signals current surface: ${storyboard_id}"
               echo "Last matching log lines:"
               grep -F "${storyboard_id}" /tmp/storyboards.log || true
               exit 1

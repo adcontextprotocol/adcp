@@ -233,7 +233,7 @@ function accountStateToWire(account: AccountState): AccountWireShape {
   return wire;
 }
 
-const ACCOUNT_ANCHORED_NOTIFICATION_TYPES = new Set([
+export const ACCOUNT_ANCHORED_NOTIFICATION_TYPE_VALUES = [
   'creative.status_changed',
   'creative.purged',
   'product.created',
@@ -245,7 +245,11 @@ const ACCOUNT_ANCHORED_NOTIFICATION_TYPES = new Set([
   'signal.priced',
   'signal.removed',
   'wholesale_feed.bulk_change',
-]);
+] as const;
+
+export type AccountAnchoredNotificationType = typeof ACCOUNT_ANCHORED_NOTIFICATION_TYPE_VALUES[number];
+
+const ACCOUNT_ANCHORED_NOTIFICATION_TYPES = new Set<string>(ACCOUNT_ANCHORED_NOTIFICATION_TYPE_VALUES);
 
 function sanitizeNotificationConfigs(configs: NotificationConfigState[]): Array<Record<string, unknown>> {
   return configs.map(config => ({
@@ -390,7 +394,7 @@ export interface AccountNotificationSubscriber {
 
 export function getAccountNotificationSubscribers(
   sessionKey: string,
-  notificationType: 'creative.status_changed' | 'creative.purged',
+  notificationType: AccountAnchoredNotificationType,
   principal?: string,
   accountId?: string,
   accountRef?: AccountRef,
