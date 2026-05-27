@@ -499,7 +499,7 @@
               },
               "content_type": {
                 "type": "string",
-                "description": "Media type of the outbound request body, mirroring the agent's outbound `Content-Type` header (e.g., `application/json`, `application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`). In raw mode this describes the returned `payload`; in digest mode it describes the body the digest was computed over. Storyboard `payload_must_contain` JSONPath assertions are valid only when content_type is `application/json` or has a `+json` suffix AND attestation_mode is `raw` — digest mode and non-JSON content types grade `payload_must_contain` as not_applicable. Required so the runner can choose the right matcher deterministically."
+                "description": "Media type of the outbound request body, mirroring the agent's outbound `Content-Type` header (e.g., `application/json`, `application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`). In raw mode this describes the returned `payload`; in digest mode it describes the body the digest was computed over. Storyboard `payload_must_contain` JSONPath-lite assertions are valid only when content_type is `application/json` or has a `+json` suffix AND attestation_mode is `raw` — digest mode and non-JSON content types grade `payload_must_contain` as not_applicable. Required so the runner can choose the right matcher deterministically."
               },
               "attestation_mode": {
                 "type": "string",

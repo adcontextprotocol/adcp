@@ -1443,16 +1443,21 @@
 #     payload_must_contain: array of MatchSpec (optional)
 #                              # Each entry asserts a path/value pair that MUST
 #                              # appear in at least one matching call's payload.
-#                              # Path syntax: positional dotted path with `[*]`
-#                              # array wildcards. Examples:
+#                              # Path syntax: JSONPath-lite positional path
+#                              # with `[*]` array wildcards. Shared storyboards
+#                              # SHOULD use the bare dotted form. Examples:
 #                              #   "users[*].hashed_email"
 #                              #   "data.audience.members[*].id"
-#                              # The `[*]` wildcard flattens over arrays and
-#                              # passes if any element matches. RFC 9535
-#                              # JSONPath descendant syntax (`$..foo`) is NOT
+#                              # The literal `[*]` wildcard flattens over arrays
+#                              # and passes if any element matches. The runner
+#                              # also tolerates optional `$` / `$.` prefixes and
+#                              # standalone numeric index tokens for SDK
+#                              # compatibility (for example `items.[0].id`);
+#                              # shared storyboards should avoid indexes unless
+#                              # a position-specific assertion is intentional.
+#                              # RFC 9535 JSONPath descendant syntax (`$..foo`) is NOT
 #                              # supported — the runner uses
-#                              # parsePathWithWildcards from @adcp/sdk, which
-#                              # recognizes `[*]` only. Path matching only
+#                              # JSONPath-lite matching from @adcp/sdk. Path matching only
 #                              # applies when recorded_calls[].content_type is
 #                              # JSON-shaped — defined as `application/json`
 #                              # or any structured-syntax-suffix `*/*+json`
