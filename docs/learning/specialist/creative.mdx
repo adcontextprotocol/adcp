@@ -141,8 +141,10 @@ See the [Quickstart](/docs/quickstart) for a walkthrough of your first call.
 | **`format_kind`** | The discriminator that names which canonical applies to a product format option. It controls creative shape, not delivery channel or targeting. |
 | **`format_options[]`** | Product-level declarations that narrow canonicals with sizes, slots, production source, and platform constraints. A product can offer one option or several alternatives. |
 | **`format_option_id`** | Stable identifier for a product or publisher-catalog option. Select it when the product publishes one; do not substitute creative-agent capability IDs in media-buy products or creative manifests. |
+| **`v1_format_ref[]`** | Legacy creative-format references attached to a canonical option. One option can point to one existing format or fan out to several size-specific formats. |
 | **`capability_id`** | Creative-agent build capability selector on `creative.supported_formats`. It chooses a `build_creative` path and is separate from product-level `format_option_id`. |
 | **`asset_source`** | Declares who renders the asset bytes for `image`, `video_hosted`, and `audio_hosted`: `buyer_uploaded`, `publisher_host_recorded`, `seller_pre_rendered_from_brief`, `seller_human_designed`, or `agent_synthesized`. |
+| **Manifest asset map** | The slot-by-slot mapping from the selected format option's requirements to the creative manifest assets, including which inputs the buyer provides and which assets are seller-, publisher-, or agent-produced. |
 
 ## Lab exercises
 
@@ -200,7 +202,7 @@ Vendors often offer multiple pricing options per creative — volume/commitment 
 | Dimension | Weight | What Addie evaluates |
 |-----------|--------|---------------------|
 | Interaction models | 20% | Correctly identifies and works with all three creative agent types |
-| Cross-platform and canonical formats | 25% | Adapts creatives across channels and formats; reads `format_options[]`, selects `format_kind`, maps `asset_source` values to buyer-provided, agent-synthesized, seller-rendered, seller-designed, and publisher-hosted workflows, and explains product narrowing |
+| Cross-platform and canonical formats | 25% | Adapts creatives across channels and formats; reads `format_options[]`, selects `format_kind` and `format_option_id`, explains single-option, multi-option, and `v1_format_ref[]` fan-out cardinality, maps `asset_source` values to buyer-provided, agent-synthesized, seller-rendered, seller-designed, and publisher-hosted workflows, and explains canonical-first/product-second validation order |
 | Compliance | 25% | Configures disclosures, provenance, and regulatory requirements |
 | Pricing and accounts | 15% | Understands rate cards, reads pricing from `list_creatives` and `list_creative_formats`, interprets build costs, closes the `report_usage` loop |
 | Analytical skill | 15% | Interprets creative feature evaluation and delivery results |
