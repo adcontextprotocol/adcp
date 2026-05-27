@@ -7,6 +7,8 @@ testable: false
 
 Returns all accounts the authenticated agent can operate on this vendor agent. Use this to discover existing accounts, check status changes on pending accounts, and retrieve `account_id` values for use in protocol operations.
 
+For upstream-managed account namespaces, `list_accounts` is not optional discovery polish; it is the namespace discovery contract. The upstream platform owns the accessible account set, so buyers MUST resolve an explicit `account_id` before the first account-scoped request. If the authenticated credential can access more than one account, the seller MUST expose `list_accounts`; if it can access exactly one account, the seller SHOULD expose `list_accounts` returning that singleton so SDKs can auto-select it and still send `{ "account_id": "..." }` on required-account calls. `sync_accounts` provisioning does not create account-id accounts in 3.0.x unless a future explicit capability declares that mode; if `sync_accounts` is exposed on these sellers today, use it only for settings updates against an account already identified by `account_id`.
+
 `list_accounts` works across all vendor protocols — media buy agents, signals agents, governance agents, and creative agents all return accounts through this same task.
 
 **Response Time**: ~1s.
@@ -67,9 +69,9 @@ the authenticated caller. Use `account` when re-reading one known account by
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | object | No | Exact account filter. Pass `{ "account_id": "..." }` after discovery, or a natural key with `brand`, `operator`, and optional `sandbox` for implicit-account sellers. The seller returns only matching accounts visible to the authenticated caller. |
+| `account` | object | No | Exact account filter. Pass `{ "account_id": "..." }` after discovery, or a natural key with `brand`, `operator`, and optional `sandbox` for buyer-declared account sellers. The seller returns only matching accounts visible to the authenticated caller. |
 | `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
-| `sandbox` | boolean | No | When true, return only sandbox accounts. When false, return only production accounts. Omit to return both. Primarily used with explicit accounts (`require_operator_auth: true`) where sandbox accounts are pre-existing test accounts on the platform. |
+| `sandbox` | boolean | No | When true, return only sandbox accounts. When false, return only production accounts. Omit to return both. Primarily used with account-id namespaces where sandbox accounts are pre-existing test accounts on the platform. |
 | `pagination` | object | No | Pagination cursor for large account sets. |
 
 ## Response
