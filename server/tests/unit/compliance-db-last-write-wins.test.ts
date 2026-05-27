@@ -183,6 +183,7 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
         previous_status: null,
         status_changed_at: null,
         updated_at: now,
+        last_run_id: 'run-owner-test',
         last_triggered_by: 'owner_test',
       }],
       rowCount: 1,
@@ -194,11 +195,104 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     const status = await db.getComplianceStatus(AGENT_URL);
 
     expect(status).not.toBeNull();
+    expect(status!.last_run_id).toBe('run-owner-test');
     expect(status!.last_triggered_by).toBe('owner_test');
 
     const [sql] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('r.id AS last_run_id');
     expect(sql).toContain('dry_run = false');
     expect(sql).toContain('ORDER BY tested_at DESC');
     expect(sql).toContain('LIMIT 1');
+  });
+
+  it('getStoryboardStatusCounts can scope counts to the latest compliance run id', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [{ passing: '0', total: '0' }],
+      rowCount: 1,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    const counts = await db.getStoryboardStatusCounts(AGENT_URL, { runId: 'run-new-empty' });
+
+    expect(counts).toEqual({ passing: 0, total: 0 });
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('run_id::text = $2');
+    expect(params).toEqual([AGENT_URL, 'run-new-empty', null]);
+  });
+
+  it('getStoryboardStatuses can scope storyboard detail to a single compliance run id', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [],
+      rowCount: 0,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    const statuses = await db.getStoryboardStatuses(AGENT_URL, { runId: 'run-new-empty' });
+
+    expect(statuses).toEqual([]);
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('run_id::text = $2');
+    expect(params).toEqual([AGENT_URL, 'run-new-empty', null]);
+  });
+
+  it('getStoryboardStatusCounts can suppress stale rows when the latest run wrote no storyboard rows', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [{ passing: '0', total: '0' }],
+      rowCount: 1,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    const counts = await db.getStoryboardStatusCounts(AGENT_URL, { requireRowsForRunId: 'run-new-empty' });
+
+    expect(counts).toEqual({ passing: 0, total: 0 });
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('EXISTS');
+    expect(sql).toContain('latest.run_id::text = $3');
+    expect(params).toEqual([AGENT_URL, null, 'run-new-empty']);
+  });
+
+  it('getStoryboardStatuses can preserve merged rows only when the latest run wrote storyboard rows', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [],
+      rowCount: 0,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    const statuses = await db.getStoryboardStatuses(AGENT_URL, { requireRowsForRunId: 'run-new-empty' });
+
+    expect(statuses).toEqual([]);
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('EXISTS');
+    expect(sql).toContain('latest.run_id::text = $3');
+    expect(params).toEqual([AGENT_URL, null, 'run-new-empty']);
+  });
+
+  it('bulkGetStoryboardStatuses preserves merged rows unless the latest run explicitly wrote none', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [],
+      rowCount: 0,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    const statuses = await db.bulkGetStoryboardStatuses([AGENT_URL]);
+
+    expect(statuses).toEqual(new Map());
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('WITH latest_runs AS');
+    expect(sql).toContain('AND dry_run = false');
+    expect(sql).toContain('latest_run_flags AS');
+    expect(sql).toContain('latest.run_id = lr.id');
+    expect(sql).toContain('COALESCE(lf.has_rows, true) = true');
+    expect(params).toEqual([[AGENT_URL]]);
   });
 });

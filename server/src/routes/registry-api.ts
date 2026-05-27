@@ -99,7 +99,7 @@ import { adaptAuthForSdk, type SdkAuth } from "../services/sdk-auth-adapter.js";
 import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credentials-input.js";
 import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
 import { AgentContextDatabase, validateAuthTokenChars } from "../db/agent-context-db.js";
-import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
+import { getRequestLog, getRequestCount, logOutboundRequest } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
 import { isWebUserAAOAdmin } from "../addie/admin-status-lookup.js";
@@ -114,8 +114,9 @@ import {
   parseEvidenceParam,
   parseIncludeParam,
 } from "../db/authorization-snapshot-db.js";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { createGzip, constants as zlibConstants } from "zlib";
+import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
 
 const logger = createLogger("registry-api");
 const propertyCheckService = new PropertyCheckService();
@@ -2288,7 +2289,7 @@ registry.registerPath({
   operationId: "refreshAgent",
   summary: "Refresh agent snapshot",
   description:
-    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent and the capability probe succeeds, the full storyboard suite runs (~30–90s) and `agent_storyboard_status` is updated under `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent or AAO admin.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
+    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent and the capability probe succeeds, the full storyboard suite runs (~30–90s) with a fresh test session and `agent_storyboard_status` is updated under `triggered_by: 'owner_test'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent or AAO admin.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -4477,7 +4478,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // if the table hasn't been migrated yet
       let sbCounts = { passing: 0, total: 0 };
       try {
-        sbCounts = await complianceDb.getStoryboardStatusCounts(agentUrl);
+        sbCounts = await complianceDb.getStoryboardStatusCounts(agentUrl, { requireRowsForRunId: status.last_run_id });
       } catch (err) {
         logger.warn({ err, agentUrl }, "Storyboard status query failed");
       }
@@ -4519,7 +4520,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       let specialismStatus: Record<string, string> = {};
       if (declaredSpecialisms.length > 0) {
         try {
-          const sbStatuses = await complianceDb.getStoryboardStatuses(agentUrl);
+          const sbStatuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForRunId: status.last_run_id });
           specialismStatus = computeSpecialismStatus(
             declaredSpecialisms,
             sbStatuses.map(s => ({
@@ -4973,9 +4974,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.json({ agent_url: agentUrl, status: "opted_out", storyboards: [] });
         }
 
+        const complianceStatus = await complianceDb.getComplianceStatus(agentUrl);
         let statuses: Awaited<ReturnType<typeof complianceDb.getStoryboardStatuses>> = [];
         try {
-          statuses = await complianceDb.getStoryboardStatuses(agentUrl);
+          statuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForRunId: complianceStatus?.last_run_id });
         } catch (err) {
           logger.warn({ err, agentUrl }, "Storyboard status query failed (table may not exist)");
         }
@@ -5435,10 +5437,21 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       } = { ran: false };
 
       if (ownerOrgId && !probeResult.error && !probeResult.oauth_required) {
+        const complianceStart = Date.now();
         try {
+          const testSessionId = `owner-refresh-${Date.now()}-${randomUUID()}`;
           const complyResult = await comply(agentUrl, {
+            test_session_id: testSessionId,
             timeout_ms: 90_000,
+            userAgent: AAO_UA_COMPLIANCE,
             ...(resolvedAuth && { auth: resolvedAuth }),
+          });
+          logOutboundRequest({
+            agent_url: agentUrl,
+            request_type: 'compliance',
+            user_agent: AAO_UA_COMPLIANCE,
+            response_time_ms: Date.now() - complianceStart,
+            success: true,
           });
           if (complyResult.overall_status === 'auth_required') {
             complianceSummary = { ran: false, error: 'Agent requires OAuth authorization' };
@@ -5448,10 +5461,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               complyResult,
               agentUrl,
               metadata?.lifecycle_stage || 'production',
-              'manual',
+              'owner_test',
             );
             dbInput.dry_run = false;
-            const { storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+            dbInput.triggered_org_id = ownerOrgId;
+            const { run, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
             const passing = storyboardStatuses.filter(s => s.status === 'passing').length;
             complianceSummary = {
               ran: true,
@@ -5463,12 +5477,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             // Fan out badge issuance so verification badges reflect the new
             // verdict immediately. Matches the per-storyboard owner-test path.
             const declaredSpecialisms = complyResult.agent_profile?.specialisms ?? [];
-            if (declaredSpecialisms.length > 0) {
-              try {
-                await runBadgeFanOut({
+              if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0) {
+                try {
+                  await runBadgeFanOut({
                   complianceDb,
                   agentUrl,
                   declaredSpecialisms,
+                  runId: run.id,
                 });
               } catch (badgeError) {
                 logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after manual refresh');
@@ -5477,7 +5492,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           }
         } catch (complyErr) {
           const msg = complyErr instanceof Error ? complyErr.message : 'compliance run failed';
-          logger.warn({ agentUrl, err: complyErr }, 'Compliance re-run failed during manual refresh');
+          logOutboundRequest({
+            agent_url: agentUrl,
+            request_type: 'compliance',
+            user_agent: AAO_UA_COMPLIANCE,
+            response_time_ms: Date.now() - complianceStart,
+            success: false,
+            error_message: msg,
+          });
+          logger.warn({ agentUrl, err: complyErr }, 'Compliance re-run failed during owner refresh');
           complianceSummary = { ran: false, error: msg };
         }
       }
