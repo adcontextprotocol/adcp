@@ -401,6 +401,7 @@
         },
         "allOf": [
           {
+            "$comment": "When get_media_buys gains canonical media_buy_status during the 3.1 -> 3.2 status migration, extend this provisional-buy guard to reject media_buy_status: active alongside legacy status: active.",
             "if": {
               "properties": {
                 "confirmed_at": {

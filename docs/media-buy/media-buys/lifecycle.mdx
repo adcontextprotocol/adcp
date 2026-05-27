@@ -92,7 +92,7 @@ Rather than hardcoding the state machine, read `valid_actions` from `get_media_b
 }
 ```
 
-Pass the latest `revision` in every `update_media_buy` call intended to change state. The field is optional for backward compatibility, but when present the seller rejects with `CONFLICT` if the revision has changed since your last read, and the check must happen atomically with the write so concurrent updates cannot overwrite each other.
+Buyers SHOULD pass the latest `revision` in every `update_media_buy` call intended to change state. The field is optional for backward compatibility, but when present the seller rejects with `CONFLICT` if the revision has changed since your last read, and the check must happen atomically with the write so concurrent updates cannot overwrite each other. See [optimistic concurrency](/docs/media-buy/task-reference/update_media_buy#optimistic-concurrency).
 
 ## Guaranteed / PG deal variation
 

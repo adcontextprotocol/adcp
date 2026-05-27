@@ -89,7 +89,7 @@ Adapter-facing internal object (not an AdCP request or response shape):
 }
 ```
 
-`creative_id` is the canonical AdCP stored creative identifier. `id` is an adapter-compatibility alias for generic asset contracts that expect an `id` field. Implementations SHOULD populate both with the same value when transforming a stored creative into an adapter asset; adapters should prefer `creative_id` when both are present. On the AdCP wire, buyers send only `creative_id` in `creative_assignments[]`. The adapter-only `id` alias is internal compatibility data, not a second buyer-supplied identifier; sellers SHOULD ignore it if present on input.
+`creative_id` is the canonical AdCP stored creative identifier. `id` is an adapter-compatibility alias for generic asset contracts that expect an `id` field. Implementations SHOULD populate both with the same value when transforming a stored creative into an adapter asset; adapters should prefer `creative_id` when both are present. On the AdCP wire, buyers send only `creative_id` in `creative_assignments[]`. The adapter-only `id` alias is internal compatibility data, not a second buyer-supplied identifier; sellers MUST ignore it if present on input.
 
 The URL-backed path above is the portable adapter handoff. Snippet-backed or inline-content-backed stored creatives, such as HTML snippets, third-party tags, or seller-rendered brief content, require explicit adapter support because the transformation depends on that adapter's trafficking model. Docs and SDK scaffolds SHOULD NOT imply that every adapter receives fields such as `snippet`, `content`, or `media_url` unless that adapter's contract actually declares and handles them.
 
