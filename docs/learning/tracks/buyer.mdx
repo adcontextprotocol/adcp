@@ -199,6 +199,32 @@ How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sy
 - **Creative pricing** — creative agents can charge for their services. When they do, `list_creatives` returns `pricing_options` from your account's rate card, and `build_creative` returns the cost incurred. See the [creative pricing specification](/docs/creative/specification#pricing) for details.
 - **Sponsored Intelligence** — brands participate in conversational AI with transparency and user control. SI is an [experimental surface](/docs/reference/experimental-status) in AdCP 3.0 (feature id `sponsored_intelligence.core`); session lifecycle and UI components may change between 3.x releases with at least 6 weeks' notice.
 
+### Canonical-format buyer glossary
+
+| Term | Buyer-track meaning |
+|------|---------------------|
+| `format_kind` | The canonical creative shape a seller accepts, such as `image`, `video_hosted`, or `native_in_feed`. Pick it by the creative you can ship, not by the media channel alone. |
+| `format_options[]` | Product-level creative requirements returned by `get_products`. Each option narrows a canonical with seller-specific sizes, slots, selectors, or production constraints. |
+| `asset_source` | Who produces the rendered bytes for a canonical asset. Buyers use it to decide whether they upload finished assets or provide a brief/input for seller, publisher, or agent production. |
+
+S2 goes deeper on [authoring manifests](/docs/learning/specialist/creative), `format_option_id` vs creative-agent `capability_id`, and the canonical-first/product-second validation flow.
+
+### Practice exercise
+
+1. **Canonical-format selection from `get_products`** — Given a product response that includes multiple `format_options[]`:
+   - List every available `format_kind` and the buyer-visible product constraints that matter for creative routing
+   - Select the option that matches the campaign creative shape, using `format_option_id` when the product publishes one
+   - State the validation order at a high level: canonical shape first, product narrowing second
+   - Review canonical-format `FORMAT_*` entries in `errors[]` before routing: most are non-fatal advisories, while broken placement references require failing closed for that placement
+
+| Advisory code | Buyer action |
+|---------------|--------------|
+| `FORMAT_PROJECTION_FAILED` | The legacy format still exists, but the SDK could not project it to `format_options[]`. Prefer an explicit canonical option when available; otherwise flag the seller or registry gap. |
+| `FORMAT_DECLARATION_DIVERGENT` | The seller's v1 and v2 declarations disagree. Prefer `format_options[]` for 3.1 routing, and flag the seller declaration mismatch. |
+| `FORMAT_DECLARATION_V1_AMBIGUOUS` | The v2 declaration cannot safely map back to one v1 named format. Do not invent a v1 fallback; use the canonical path or ask the seller to add `v1_format_ref[]`. |
+| `FORMAT_OPTION_UNRESOLVED` | A placement references a missing publisher-catalog option. Fail closed for that placement reference and ask the publisher to fix the catalog. |
+| `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE` | Some v1 size coverage was dropped from a multi-size v2 declaration. Continue only with the surfaced covered sizes, or choose a fully declared option. |
+
 <Card title="Start C3 with Addie" icon="play" href="https://agenticadvertising.org/chat">
   "I'd like to start certification module C3."
 </Card>
