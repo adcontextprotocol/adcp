@@ -223,6 +223,7 @@ const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
     { asset_group_id: 'landing_page_url', asset_type: 'url' },
   ],
 };
+const MAX_VALIDATE_INPUT_TARGETS = 50;
 const VALID_CANONICAL_FORMAT_KINDS = new Set([...Object.keys(CANONICAL_FORMAT_SLOTS), 'custom']);
 const NONDETERMINISTIC_INCOMPATIBLE_SOURCES = new Set(['buyer_uploaded', 'publisher_host_recorded']);
 
@@ -2116,6 +2117,7 @@ const TOOLS = [
         targets: {
           type: 'array',
           minItems: 1,
+          maxItems: MAX_VALIDATE_INPUT_TARGETS,
           items: {
             type: 'object',
             properties: {
@@ -3361,6 +3363,21 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
         target: { kind: 'canonical', id: 'unknown' },
         result_kind: 'validated_fail',
         violations: [{ rule: 'target_required', field: 'targets', expected: 'at least one validation target' }],
+      }],
+    };
+  }
+  if (targets.length > MAX_VALIDATE_INPUT_TARGETS) {
+    return {
+      status: 'completed',
+      results: [{
+        target: { kind: 'canonical', id: 'unknown' },
+        result_kind: 'validated_fail',
+        violations: [{
+          rule: 'too_many_targets',
+          field: 'targets',
+          expected: `at most ${MAX_VALIDATE_INPUT_TARGETS} validation targets`,
+          predicted: targets.length,
+        }],
       }],
     };
   }

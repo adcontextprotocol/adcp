@@ -21,6 +21,7 @@
     "targets": {
       "type": "array",
       "minItems": 1,
+      "maxItems": 50,
       "description": "Discriminated list of validation targets. Each entry mirrors the `target` shape on `validate-input-result.json` so the request/response wire shapes match exactly. Multi-target requests enable universal-creative scenarios where one manifest targets multiple sellers' format declarations in a single round-trip; the response carries one result per target in the same order.",
       "items": {
         "type": "object",

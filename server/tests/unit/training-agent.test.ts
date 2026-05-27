@@ -1098,6 +1098,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toHaveLength(51);
 
     const validateInput = tools.find(t => t.name === 'validate_input');
+    expect(validateInput?.inputSchema?.properties?.targets?.maxItems).toBe(50);
     expect(validateInput?.inputSchema?.properties?.targets?.items?.properties?.kind?.enum).toEqual([
       'canonical',
       'product',
@@ -1575,6 +1576,46 @@ describe('validate_input handler', () => {
     expect(result.results).toEqual([
       { target: { kind: 'canonical', id: 'image' }, result_kind: 'validated_pass' },
     ]);
+  });
+
+  it('caps validate_input targets before third-party fan-out', async () => {
+    const result = await executeTrainingAgentTool('validate_input', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/mrec.png',
+            width: 300,
+            height: 250,
+          },
+        },
+      },
+      targets: Array.from({ length: 51 }, (_, index) => ({
+        kind: index % 2 === 0 ? 'third_party_format' : 'canonical',
+        id: index % 2 === 0
+          ? `https://formats.example/${index}@sha256:${'a'.repeat(64)}`
+          : 'image',
+      })),
+    }, DEFAULT_CTX);
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+      status: 'completed',
+      results: [{
+        target: { kind: 'canonical', id: 'unknown' },
+        result_kind: 'validated_fail',
+        violations: [{
+          rule: 'too_many_targets',
+          field: 'targets',
+          expected: 'at most 50 validation targets',
+          predicted: 51,
+        }],
+      }],
+      },
+    });
   });
 
   it('returns validated_fail with slot violations for an incomplete canonical manifest', async () => {

@@ -3,6 +3,8 @@ import { customToolFor } from './custom-tool-helper.js';
 import { handleValidateInput, resolveServedAdcpVersionForTool } from '../task-handlers.js';
 import type { TrainingContext } from '../types.js';
 
+const MAX_VALIDATE_INPUT_TARGETS = 50;
+
 const ACCOUNT_REF_SCHEMA = z.object({
   account_id: z.string().optional(),
   brand: z.object({ domain: z.string() }).passthrough().optional(),
@@ -22,7 +24,7 @@ const VALIDATE_INPUT_SCHEMA = {
   targets: z.array(z.object({
     kind: z.enum(['canonical', 'product', 'third_party_format']),
     id: z.string(),
-  }).passthrough()).min(1).optional(),
+  }).passthrough()).min(1).max(MAX_VALIDATE_INPUT_TARGETS).optional(),
   context: z.any().optional(),
   ext: z.any().optional(),
 };

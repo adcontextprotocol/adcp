@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": patch
+"adcontextprotocol": minor
 ---
 
 Add the canonical-format `validate_input` conformance storyboard for 3.1.
