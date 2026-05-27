@@ -40,7 +40,7 @@
     "creative-ad-server": "Creative ad server with tag-based delivery",
     "creative-generative": "Generative creative agent producing assets on demand",
     "creative-template": "Creative template and transformation agent",
-    "governance-aware-seller": "Seller agent that composes with the buyer's campaign-governance agent — accepts sync_governance, calls check_governance before confirming spend, and propagates approvals, conditions, and denials unchanged. Optional claim; pure sellers without governance composition skip the governance scenarios as not_applicable.",
+    "governance-aware-seller": "Seller agent that composes with the buyer's campaign-governance agent after baseline sync_governance registration — calls check_governance before confirming spend, and propagates approvals, conditions, and denials unchanged. Optional claim for the full governance-check loop.",
     "governance-delivery-monitor": "Campaign delivery monitoring with drift detection",
     "governance-spend-authority": "Conditional spend approval and human-in-the-loop governance",
     "property-lists": "Property list governance — curated inclusion and exclusion lists for targeting and delivery compliance",

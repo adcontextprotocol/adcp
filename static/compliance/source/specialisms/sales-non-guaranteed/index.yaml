@@ -6,6 +6,7 @@ category: sales_non_guaranteed
 summary: "Seller agent for auction-based, non-guaranteed buying where the buyer sets bid prices and budgets."
 track: media_buy
 required_tools:
+  - sync_governance
   - get_products
   - create_media_buy
 requires_scenarios:
@@ -23,12 +24,16 @@ requires_scenarios:
   - media_buy_seller/performance_buy_flow
   - media_buy_seller/performance_buy_flow_roas
   - media_buy_seller/reach_buy_flow
+  - governance_aware_seller/governance_multi_agent_rejected
 
 # Cross-step assertion (adcp#2664). status.monotonic rejects resource
 # status transitions observed across steps that aren't on the spec
 # lifecycle graph — e.g. active → pending_creatives on a media_buy.
 invariants:
   - status.monotonic
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
 narrative: |
   You run a sell-side platform with auction-based inventory. Non-guaranteed buys don't
@@ -246,6 +251,50 @@ phases:
       bidding in auctions on the buyer's behalf.
 
     steps:
+      - id: sync_governance
+        title: "Register governance agent"
+        narrative: |
+          The buyer registers the configured governance agent on the account before
+          creating the auction-based media buy.
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: |
+          Acknowledge governance registration for the account:
+          - status: synced
+          - governance_agents[0].url echoes the configured governance agent
+
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+          idempotency_key: "$generate:uuid_v4#sales_non_guaranteed_create_buy_sync_governance"
+          context:
+            correlation_id: "sales_non_guaranteed--sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "synced"
+            description: "Governance agent is registered on the account"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_non_guaranteed--sync_governance"
+            description: "Context correlation_id returned unchanged"
       - id: create_media_buy
         title: "Create a media buy with bid prices"
         narrative: |
