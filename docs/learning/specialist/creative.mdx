@@ -179,7 +179,7 @@ Vendors often offer multiple pricing options per creative — volume/commitment 
 
 ### Canonical formats
 
-6. **Canonical-formats authoring** — Using a multi-format display product and a generative video product from the canonical fixture pool:
+6. **Canonical-formats authoring** — Using the validated reference fixtures in `static/examples/products/canonical/`: the multi-format display fixture (`nytimes_homepage_mrec.json`) and the generative video fixture (`veo_generative_video_15s.json`):
    - Read each product's `format_options[]` and identify every available `format_kind`
    - Select `format_option_id` when the product publishes one, and explain why a single-option product may not expose a separate selector
    - Write the manifest asset map implied by the selected option's slots, including when the buyer ships rendered assets and when the buyer ships a brief, video brief, or structured object
@@ -200,7 +200,7 @@ Vendors often offer multiple pricing options per creative — volume/commitment 
 | Dimension | Weight | What Addie evaluates |
 |-----------|--------|---------------------|
 | Interaction models | 20% | Correctly identifies and works with all three creative agent types |
-| Cross-platform and canonical formats | 25% | Adapts creatives across channels and formats; reads `format_options[]`, selects `format_kind`, maps `asset_source`, and explains product narrowing |
+| Cross-platform and canonical formats | 25% | Adapts creatives across channels and formats; reads `format_options[]`, selects `format_kind`, maps `asset_source` values to buyer-provided, agent-synthesized, seller-rendered, seller-designed, and publisher-hosted workflows, and explains product narrowing |
 | Compliance | 25% | Configures disclosures, provenance, and regulatory requirements |
 | Pricing and accounts | 15% | Understands rate cards, reads pricing from `list_creatives` and `list_creative_formats`, interprets build costs, closes the `report_usage` loop |
 | Analytical skill | 15% | Interprets creative feature evaluation and delivery results |

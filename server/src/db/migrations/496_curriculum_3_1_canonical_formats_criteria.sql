@@ -5,15 +5,13 @@
 -- preview-status recertification criteria should land only after those tasks
 -- are explicitly assessable in the module.
 
+-- S2 remains creative-primary. The sales tenant is also in scope because the
+-- canonical-format lab asks creative learners to read product format_options[]
+-- with get_products before building or syncing creative assets.
 UPDATE certification_modules
-SET tenant_ids = (
-  SELECT ARRAY(
-    SELECT DISTINCT tenant_id
-    FROM unnest(COALESCE(tenant_ids, '{}'::text[]) || ARRAY['creative', 'creative-builder', 'sales']) AS tenant_id
-    ORDER BY tenant_id
-  )
-)
-WHERE id = 'S2';
+SET tenant_ids = ARRAY['creative', 'creative-builder', 'sales']
+WHERE id = 'S2'
+  AND tenant_ids IS DISTINCT FROM ARRAY['creative', 'creative-builder', 'sales'];
 
 UPDATE certification_modules
 SET lesson_plan = jsonb_set(
@@ -22,7 +20,7 @@ SET lesson_plan = jsonb_set(
   COALESCE(lesson_plan->'key_concepts', '[]'::jsonb) || jsonb_build_array(
     jsonb_build_object(
       'topic', 'Canonical formats',
-      'teaching_notes', 'AdCP 3.1 products may publish format_options[] that narrow shared canonical formats such as image, video_hosted, or native_in_feed. Teach learners to select format_kind by creative shape, validate against the canonical first and the product narrowing second, select format_option_id when a product publishes one, and distinguish buyer_uploaded from agent_synthesized asset_source values.'
+      'teaching_notes', 'AdCP 3.1 products may publish format_options[] that narrow shared canonical formats such as image, video_hosted, or native_in_feed. Teach learners to select format_kind by creative shape, validate against the canonical first and the product narrowing second, select format_option_id when a product publishes one, and distinguish buyer_uploaded, agent_synthesized, seller_pre_rendered_from_brief, seller_human_designed, and publisher_host_recorded asset_source values.'
     )
   )
 )
@@ -152,6 +150,9 @@ SELECT _append_criterion('S2', 's2_ex1', 's2_ex1_sc_format_options_cardinality',
   'Reads product format_options[] and explains single-option, multi-option, and multi-size fan-out declarations, including when a buyer should select a format_option_id.');
 
 SELECT _append_criterion('S2', 's2_ex1', 's2_ex1_sc_source_taxonomy',
-  'Chooses the correct asset_source model for buyer_uploaded or agent_synthesized creative workflows, and maps that choice to the manifest assets the buyer must provide.');
+  'Chooses the correct asset_source model across buyer_uploaded, agent_synthesized, seller_pre_rendered_from_brief, seller_human_designed, and publisher_host_recorded workflows, and maps that choice to the manifest assets or seller/publisher-supplied inputs required.');
+
+SELECT _append_criterion('S2', 's2_ex1', 's2_ex1_sc_validation_order',
+  'Explains why sellers validate against the shared canonical shape before applying product-specific narrowing, and why creative-agent capabilities only narrow what the agent can produce.');
 
 DROP FUNCTION _append_criterion(text, text, text, text);
