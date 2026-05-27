@@ -20,6 +20,7 @@ import { PostgresTaskStore } from '@adcp/sdk';
 import { mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
+import { isPrivateHostname, safeFetchAxiosLike } from '../utils/url-security.js';
 import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting, AccountRef, SessionState } from './types.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
@@ -44,6 +45,7 @@ import type {
   BuildCreativeResponse,
   CreativeManifest as AdcpCreativeManifest,
 } from '@adcp/sdk';
+import { CreativeManifestSchema } from '@adcp/sdk/types';
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -84,6 +86,40 @@ type WholesaleFeedMeta = {
   pricing_version: string;
   cache_scope: 'public' | 'account';
 };
+type ValidateInputTarget = {
+  kind: 'canonical' | 'product' | 'third_party_format';
+  id: string;
+};
+type ValidateInputArgs = ToolArgs & {
+  account?: AccountRef;
+  brand?: { domain?: string; name?: string };
+  manifest?: {
+    format_kind?: string;
+    format_id?: FormatID;
+    format_option_ref?: Record<string, unknown>;
+    assets?: Record<string, unknown>;
+  };
+  targets?: ValidateInputTarget[];
+};
+type ValidateInputViolation = {
+  rule: string;
+  field: string;
+  expected?: unknown;
+  predicted?: unknown;
+  retry_with?: Record<string, unknown>;
+};
+type ValidateInputResult = {
+  target: ValidateInputTarget;
+  result_kind: 'validated_pass' | 'validated_fail' | 'unvalidatable_nondeterministic';
+  violations?: ValidateInputViolation[];
+};
+type CanonicalSlot = {
+  asset_group_id: string;
+  asset_type: string;
+  required?: boolean;
+  min?: number;
+  max?: number;
+};
 
 const PRODUCT_WHOLESALE_FEED_VERSION = 'training-products-feed-v1';
 const PRODUCT_WHOLESALE_PRICING_VERSION = 'training-products-pricing-v1';
@@ -104,6 +140,91 @@ const SIGNAL_WHOLESALE_FEED_WEBHOOK_EVENT_TYPES = [
   'signal.priced',
   'signal.removed',
 ] as const;
+const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
+  image: [
+    { asset_group_id: 'image_main', asset_type: 'image', required: true },
+    { asset_group_id: 'headline', asset_type: 'text' },
+    { asset_group_id: 'body_text', asset_type: 'text' },
+    { asset_group_id: 'primary_text', asset_type: 'text' },
+    { asset_group_id: 'cta', asset_type: 'text' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  html5: [
+    { asset_group_id: 'html5_bundle', asset_type: 'zip', required: true },
+    { asset_group_id: 'backup_image', asset_type: 'image' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  display_tag: [
+    { asset_group_id: 'tag_url', asset_type: 'url', required: true },
+    { asset_group_id: 'backup_image', asset_type: 'image' },
+  ],
+  image_carousel: [
+    { asset_group_id: 'cards', asset_type: 'card', required: true, min: 2, max: 10 },
+    { asset_group_id: 'primary_text', asset_type: 'text' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  video_hosted: [
+    { asset_group_id: 'video_main', asset_type: 'video', required: true },
+    { asset_group_id: 'headline', asset_type: 'text' },
+    { asset_group_id: 'primary_text', asset_type: 'text' },
+    { asset_group_id: 'cta', asset_type: 'text' },
+    { asset_group_id: 'brand_name', asset_type: 'text' },
+    { asset_group_id: 'companion_banner', asset_type: 'image' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  video_vast: [
+    { asset_group_id: 'vast_tag', asset_type: 'vast', required: true },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  audio_hosted: [
+    { asset_group_id: 'audio_main', asset_type: 'audio', required: true },
+    { asset_group_id: 'companion_image', asset_type: 'image' },
+    { asset_group_id: 'brand_name', asset_type: 'text' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  audio_daast: [
+    { asset_group_id: 'daast_tag', asset_type: 'daast', required: true },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  sponsored_placement: [
+    { asset_group_id: 'source_catalog', asset_type: 'catalog', required: true },
+    { asset_group_id: 'hero_asset', asset_type: 'image' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  native_in_feed: [
+    { asset_group_id: 'title', asset_type: 'text', required: true },
+    { asset_group_id: 'body_text', asset_type: 'text' },
+    { asset_group_id: 'main_image', asset_type: 'image' },
+    { asset_group_id: 'icon', asset_type: 'image' },
+    { asset_group_id: 'cta', asset_type: 'text' },
+    { asset_group_id: 'advertiser_name', asset_type: 'text', required: true },
+    { asset_group_id: 'sponsored_label', asset_type: 'text' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url', required: true },
+    { asset_group_id: 'display_url', asset_type: 'text' },
+    { asset_group_id: 'rating', asset_type: 'text' },
+    { asset_group_id: 'price', asset_type: 'text' },
+    { asset_group_id: 'impression_tracker', asset_type: 'pixel_tracker' },
+    { asset_group_id: 'viewability_tracker', asset_type: 'pixel_tracker' },
+    { asset_group_id: 'click_tracker', asset_type: 'pixel_tracker' },
+  ],
+  responsive_creative: [
+    { asset_group_id: 'headlines', asset_type: 'text', required: true, min: 3, max: 15 },
+    { asset_group_id: 'long_headlines', asset_type: 'text', min: 1, max: 5 },
+    { asset_group_id: 'descriptions', asset_type: 'text', required: true, min: 2, max: 5 },
+    { asset_group_id: 'images_landscape', asset_type: 'image', min: 1, max: 20 },
+    { asset_group_id: 'images_square', asset_type: 'image', min: 1, max: 20 },
+    { asset_group_id: 'images_vertical', asset_type: 'image', min: 1, max: 20 },
+    { asset_group_id: 'video', asset_type: 'video', min: 0, max: 5 },
+    { asset_group_id: 'logo', asset_type: 'image', required: true, min: 1, max: 5 },
+    { asset_group_id: 'landing_page_url', asset_type: 'url', required: true },
+  ],
+  agent_placement: [
+    { asset_group_id: 'offering_ref', asset_type: 'text' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+};
+const VALID_CANONICAL_FORMAT_KINDS = new Set([...Object.keys(CANONICAL_FORMAT_SLOTS), 'custom']);
+const NONDETERMINISTIC_INCOMPATIBLE_SOURCES = new Set(['buyer_uploaded', 'publisher_host_recorded']);
 
 type GetMediaBuysArgs = GetMediaBuysRequest & ToolArgs & {
   status_filter?: string[];
@@ -395,6 +516,7 @@ import { selectSigningCapability } from './request-signing.js';
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5'] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
+const CURRENT_ADCP_VERSION = '3.1-beta.5';
 const MAX_PACKAGES_PER_BUY = 50;
 
 interface ParsedAdcpReleaseVersion {
@@ -545,6 +667,17 @@ export function resolveServedAdcpVersion(args: Record<string, unknown>): Version
   }
 
   return { ok: true, servedVersion: DEFAULT_ADCP_VERSION };
+}
+
+export function resolveServedAdcpVersionForTool(toolName: string, args: Record<string, unknown>): VersionResolution {
+  if (
+    toolName === 'validate_input'
+    && args.adcp_version === undefined
+    && args.adcp_major_version === undefined
+  ) {
+    return resolveServedAdcpVersion({ ...args, adcp_version: CURRENT_ADCP_VERSION });
+  }
+  return resolveServedAdcpVersion(args);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1884,6 +2017,17 @@ function wholesaleCapabilityProfile(ctx: TrainingContext): {
   };
 }
 
+function supportedCanonicalFormatsCapability(): Array<Record<string, unknown>> {
+  return Object.entries(CANONICAL_FORMAT_SLOTS).map(([formatKind, slots]) => ({
+    format: {
+      format_kind: formatKind,
+      params: {
+        slots: slots.map(slot => ({ ...slot })),
+      },
+    },
+  }));
+}
+
 function signalMatchesRef(
   signal: ReturnType<typeof getAllSignals>[number],
   ref: Record<string, unknown>,
@@ -1956,6 +2100,33 @@ const TOOLS = [
           },
         },
       },
+    },
+  },
+  {
+    name: 'validate_input',
+    description: 'Dry-run a creative manifest against canonical formats, seeded products, or third-party format references. Returns per-target validated_pass, validated_fail, or unvalidatable_nondeterministic without registering a creative.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        account: ACCOUNT_REF_SCHEMA,
+        brand: { type: 'object', properties: { domain: { type: 'string' }, name: { type: 'string' } } },
+        manifest: { type: 'object' },
+        targets: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              kind: { type: 'string', enum: ['canonical', 'product', 'third_party_format'] },
+              id: { type: 'string' },
+            },
+            required: ['kind', 'id'],
+          },
+        },
+      },
+      required: ['manifest'],
     },
   },
   {
@@ -2282,6 +2453,22 @@ const TOOLS = [
     },
   },
 ];
+
+function visibleToolsForContext(ctx: TrainingContext): typeof TOOLS {
+  return TOOLS.filter(tool => {
+    if (tool.name !== 'validate_input') return true;
+    if (isThreeZeroStoryboardCompat(ctx)) return false;
+    return true;
+  }) as typeof TOOLS;
+}
+
+export function visibleTrainingToolNamesForContext(ctx: TrainingContext): string[] {
+  return visibleToolsForContext(ctx).map(tool => tool.name);
+}
+
+function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: string): boolean {
+  return !(toolName === 'validate_input' && servedAdcpVersion.startsWith('3.0'));
+}
 
 // ── Task handler implementations ──────────────────────────────────
 
@@ -2738,6 +2925,482 @@ export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingCo
       ...(hasMore && { cursor: encodeCreativeCursor(pageEnd) }),
     },
   };
+}
+
+function defaultTargetsForManifest(manifest: ValidateInputArgs['manifest']): ValidateInputTarget[] {
+  if (typeof manifest?.format_kind === 'string') {
+    return [{ kind: 'canonical', id: manifest.format_kind }];
+  }
+  return [];
+}
+
+function schemaIssueField(path: Array<string | number>): string {
+  if (path.length === 0) return 'manifest';
+  return `manifest.${path.map(part => typeof part === 'number' ? `[${part}]` : part).join('.')}`.replace(/\.\[/g, '[');
+}
+
+function validateManifestSchema(manifest: NonNullable<ValidateInputArgs['manifest']>): ValidateInputViolation[] {
+  const parsed = CreativeManifestSchema.safeParse(manifest);
+  if (parsed.success) return [];
+  return parsed.error.issues.map(issue => ({
+    rule: 'schema',
+    field: schemaIssueField(issue.path.filter((part): part is string | number => typeof part === 'string' || typeof part === 'number')),
+    expected: issue.message,
+    predicted: issue.code,
+  }));
+}
+
+function validateExternalUrlValue(field: string, raw: unknown): ValidateInputViolation | null {
+  if (typeof raw !== 'string') return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return { rule: 'url', field, expected: 'valid http/https URL', predicted: raw };
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return { rule: 'url_scheme', field, expected: 'http or https', predicted: parsed.protocol };
+  }
+  if (isPrivateHostname(parsed.hostname)) {
+    return { rule: 'url_host_public', field, expected: 'public hostname', predicted: parsed.hostname };
+  }
+  return null;
+}
+
+function collectAssetUrlViolations(
+  value: unknown,
+  path: string,
+  violations: ValidateInputViolation[],
+  seen: WeakSet<object>,
+): void {
+  if (!value || typeof value !== 'object') return;
+  if (seen.has(value)) return;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => collectAssetUrlViolations(entry, `${path}[${index}]`, violations, seen));
+    return;
+  }
+
+  const object = value as Record<string, unknown>;
+  for (const [key, entry] of Object.entries(object)) {
+    const childPath = `${path}.${key}`;
+    if (key === 'url' || key.endsWith('_url')) {
+      const violation = validateExternalUrlValue(childPath, entry);
+      if (violation) violations.push(violation);
+    }
+    collectAssetUrlViolations(entry, childPath, violations, seen);
+  }
+}
+
+function validateAssetUrls(manifest: NonNullable<ValidateInputArgs['manifest']>): ValidateInputViolation[] {
+  const violations: ValidateInputViolation[] = [];
+  const assets = manifest.assets ?? {};
+  const seen = new WeakSet<object>();
+  for (const [slotId, slotValue] of Object.entries(assets)) {
+    collectAssetUrlViolations(slotValue, `assets.${slotId}`, violations, seen);
+  }
+  return violations;
+}
+
+function assetTypeOf(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const assetType = (value as { asset_type?: unknown }).asset_type;
+  return typeof assetType === 'string' ? assetType : undefined;
+}
+
+function slotValues(assets: Record<string, unknown> | undefined, slotId: string): unknown[] {
+  const value = assets?.[slotId];
+  if (value === undefined || value === null) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function slotCount(assets: Record<string, unknown> | undefined, slotId: string): number {
+  return slotValues(assets, slotId).length;
+}
+
+function validateManifestSlots(
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+  slots: CanonicalSlot[],
+): ValidateInputViolation[] {
+  const violations: ValidateInputViolation[] = [];
+  const assets = manifest.assets ?? {};
+
+  for (const slot of slots) {
+    const count = slotCount(assets, slot.asset_group_id);
+    if (slot.required && count === 0) {
+      violations.push({
+        rule: 'required_slot',
+        field: `assets.${slot.asset_group_id}`,
+        expected: { asset_type: slot.asset_type },
+      });
+      continue;
+    }
+    if (count === 0) continue;
+    if (slot.min !== undefined && count < slot.min) {
+      violations.push({
+        rule: 'slot_min_items',
+        field: `assets.${slot.asset_group_id}`,
+        expected: slot.min,
+        predicted: count,
+      });
+    }
+    if (slot.max !== undefined && count > slot.max) {
+      violations.push({
+        rule: 'slot_max_items',
+        field: `assets.${slot.asset_group_id}`,
+        expected: slot.max,
+        predicted: count,
+      });
+    }
+    for (const [index, value] of slotValues(assets, slot.asset_group_id).entries()) {
+      const predicted = assetTypeOf(value);
+      if (predicted !== slot.asset_type) {
+        violations.push({
+          rule: 'asset_type',
+          field: Array.isArray(assets[slot.asset_group_id])
+            ? `assets.${slot.asset_group_id}[${index}].asset_type`
+            : `assets.${slot.asset_group_id}.asset_type`,
+          expected: slot.asset_type,
+          predicted,
+        });
+      }
+    }
+  }
+
+  return violations;
+}
+
+function normalizeCanonicalSlots(value: unknown): CanonicalSlot[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const slots: CanonicalSlot[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') continue;
+    const slot = entry as Record<string, unknown>;
+    if (typeof slot.asset_group_id !== 'string' || typeof slot.asset_type !== 'string') continue;
+    slots.push({
+      asset_group_id: slot.asset_group_id,
+      asset_type: slot.asset_type,
+      ...(typeof slot.required === 'boolean' && { required: slot.required }),
+      ...(typeof slot.min === 'number' && { min: slot.min }),
+      ...(typeof slot.max === 'number' && { max: slot.max }),
+    });
+  }
+  return slots.length > 0 ? slots : undefined;
+}
+
+function selectedFormatDeclaration(
+  product: Product,
+  manifest: ValidateInputArgs['manifest'],
+): Record<string, unknown> | undefined {
+  const declarations = (product as unknown as { format_options?: unknown[] }).format_options;
+  if (!Array.isArray(declarations)) return undefined;
+  const formatOptionRef = manifest?.format_option_ref && typeof manifest.format_option_ref === 'object'
+    ? manifest.format_option_ref
+    : undefined;
+  const formatOptionId = typeof formatOptionRef?.format_option_id === 'string'
+    ? formatOptionRef.format_option_id
+    : undefined;
+  const publisherDomain = typeof formatOptionRef?.publisher_domain === 'string'
+    ? formatOptionRef.publisher_domain
+    : undefined;
+  const scope = typeof formatOptionRef?.scope === 'string'
+    ? formatOptionRef.scope
+    : undefined;
+  const formatKindMatches = declarations.filter((entry): entry is Record<string, unknown> => {
+    if (!entry || typeof entry !== 'object') return false;
+    const declaration = entry as Record<string, unknown>;
+    if (manifest?.format_kind && declaration.format_kind !== manifest.format_kind) return false;
+    return true;
+  });
+  if (formatOptionId) {
+    return formatKindMatches.find(declaration => {
+      if (declaration.format_option_id !== formatOptionId) return false;
+      const declarationPublisherDomain = typeof declaration.publisher_domain === 'string'
+        ? declaration.publisher_domain
+        : undefined;
+      if (scope === 'publisher') {
+        return Boolean(publisherDomain) && declarationPublisherDomain === publisherDomain;
+      }
+      if (scope === 'product') {
+        return declarationPublisherDomain === undefined;
+      }
+      return declarationPublisherDomain === publisherDomain;
+    });
+  }
+  return formatKindMatches.length === 1 ? formatKindMatches[0] : undefined;
+}
+
+function nondeterministicSourceViolation(formatParams: Record<string, unknown>): ValidateInputViolation | null {
+  const source = typeof formatParams.asset_source === 'string'
+    ? formatParams.asset_source
+    : (typeof formatParams.item_production_model === 'string' ? formatParams.item_production_model : undefined);
+  if (!source || !NONDETERMINISTIC_INCOMPATIBLE_SOURCES.has(source)) return null;
+  return {
+    rule: 'synthesis_nondeterministic_source_compatibility',
+    field: formatParams.asset_source !== undefined ? 'params.asset_source' : 'params.item_production_model',
+    expected: 'seller_pre_rendered_from_brief, seller_human_designed, or agent_synthesized',
+    predicted: source,
+  };
+}
+
+function thirdPartyResolutionViolation(target: ValidateInputTarget, expected: string, predicted?: unknown): ValidateInputResult {
+  return {
+    target,
+    result_kind: 'validated_fail',
+    violations: [{
+      rule: 'third_party_format_resolution',
+      field: 'targets[].id',
+      expected,
+      predicted: predicted ?? target.id,
+    }],
+  };
+}
+
+function parseThirdPartyFormatTarget(target: ValidateInputTarget): { url: string; digest: string } | ValidateInputResult {
+  const marker = '@sha256:';
+  const markerIndex = target.id.lastIndexOf(marker);
+  if (markerIndex <= 0) {
+    return thirdPartyResolutionViolation(target, 'https URI followed by @sha256:<64 lowercase hex digest>');
+  }
+  const url = target.id.slice(0, markerIndex);
+  const digest = target.id.slice(markerIndex + marker.length);
+  if (!/^[a-f0-9]{64}$/.test(digest)) {
+    return thirdPartyResolutionViolation(target, '64 lowercase hex SHA-256 digest', digest);
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') {
+      return thirdPartyResolutionViolation(target, 'https URI', parsed.protocol);
+    }
+    if (isPrivateHostname(parsed.hostname)) {
+      return thirdPartyResolutionViolation(target, 'public hostname', parsed.hostname);
+    }
+  } catch {
+    return thirdPartyResolutionViolation(target, 'valid https URI', url);
+  }
+  return { url, digest };
+}
+
+async function validateThirdPartyTarget(
+  target: ValidateInputTarget,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): Promise<ValidateInputResult> {
+  const parsedTarget = parseThirdPartyFormatTarget(target);
+  if ('result_kind' in parsedTarget) return parsedTarget;
+
+  let response: { status: number; data: Buffer };
+  try {
+    response = await safeFetchAxiosLike(parsedTarget.url, {
+      method: 'GET',
+      timeoutMs: 5000,
+      maxResponseBytes: 1024 * 1024,
+      maxRedirects: 0,
+    });
+  } catch (error) {
+    return thirdPartyResolutionViolation(target, 'fetchable digest-pinned third-party format schema', error instanceof Error ? error.message : String(error));
+  }
+  if (response.status < 200 || response.status >= 300) {
+    return thirdPartyResolutionViolation(target, 'HTTP 2xx response', response.status);
+  }
+
+  const body = response.data;
+  const digest = createHash('sha256').update(body).digest('hex');
+  if (digest !== parsedTarget.digest) {
+    return thirdPartyResolutionViolation(target, `sha256:${parsedTarget.digest}`, `sha256:${digest}`);
+  }
+
+  let definition: unknown;
+  try {
+    definition = JSON.parse(body.toString('utf8'));
+  } catch {
+    return thirdPartyResolutionViolation(target, 'JSON format definition');
+  }
+  const def = definition && typeof definition === 'object'
+    ? definition as Record<string, unknown>
+    : {};
+  const params = def.params && typeof def.params === 'object'
+    ? def.params as Record<string, unknown>
+    : {};
+  const slots = normalizeCanonicalSlots(def.slots) ?? normalizeCanonicalSlots(params.slots);
+  if (!slots) {
+    return thirdPartyResolutionViolation(target, 'format definition with slots[] or params.slots[]');
+  }
+  const violations = validateManifestSlots(manifest, slots);
+  return violations.length > 0
+    ? { target, result_kind: 'validated_fail', violations }
+    : { target, result_kind: 'validated_pass' };
+}
+
+function validateCanonicalTarget(
+  target: ValidateInputTarget,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): ValidateInputResult {
+  if (!VALID_CANONICAL_FORMAT_KINDS.has(target.id) || target.id === 'custom') {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'canonical_target_supported',
+        field: 'targets[].id',
+        expected: [...VALID_CANONICAL_FORMAT_KINDS].filter(id => id !== 'custom'),
+        predicted: target.id,
+      }],
+    };
+  }
+  if (manifest.format_kind !== target.id) {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'format_kind',
+        field: 'manifest.format_kind',
+        expected: target.id,
+        predicted: manifest.format_kind,
+      }],
+    };
+  }
+  const violations = validateManifestSlots(manifest, CANONICAL_FORMAT_SLOTS[target.id] ?? []);
+  return violations.length > 0
+    ? { target, result_kind: 'validated_fail', violations }
+    : { target, result_kind: 'validated_pass' };
+}
+
+function validateProductTarget(
+  target: ValidateInputTarget,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+  product: Product | undefined,
+): ValidateInputResult {
+  if (!product) {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'product_target_found',
+        field: 'targets[].id',
+        expected: 'known product_id',
+        predicted: target.id,
+      }],
+    };
+  }
+  if (typeof manifest.format_kind !== 'string') {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'format_kind',
+        field: 'manifest.format_kind',
+        expected: 'canonical format_kind for product validation',
+        predicted: manifest.format_kind,
+      }],
+    };
+  }
+  const declaration = selectedFormatDeclaration(product, manifest);
+  if (!declaration) {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'product_format_option_supported',
+        field: 'manifest.format_kind',
+        expected: (product as unknown as { format_options?: Array<{ format_kind?: string }> }).format_options?.map(o => o.format_kind) ?? [],
+        predicted: manifest.format_kind,
+      }],
+    };
+  }
+  const formatKind = typeof declaration.format_kind === 'string' ? declaration.format_kind : undefined;
+  if (!formatKind || !VALID_CANONICAL_FORMAT_KINDS.has(formatKind) || formatKind === 'custom') {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'product_format_kind_supported',
+        field: 'products[].format_options[].format_kind',
+        expected: [...VALID_CANONICAL_FORMAT_KINDS].filter(id => id !== 'custom'),
+        predicted: formatKind,
+      }],
+    };
+  }
+  const params = declaration.params && typeof declaration.params === 'object'
+    ? declaration.params as Record<string, unknown>
+    : {};
+  const slots = normalizeCanonicalSlots(params.slots) ?? CANONICAL_FORMAT_SLOTS[formatKind] ?? [];
+  const violations = validateManifestSlots(manifest, slots);
+  if (params.synthesis_nondeterministic === true) {
+    const sourceViolation = nondeterministicSourceViolation(params);
+    if (sourceViolation) {
+      return { target, result_kind: 'validated_fail', violations: [...violations, sourceViolation] };
+    }
+    if (violations.length > 0) {
+      return { target, result_kind: 'validated_fail', violations };
+    }
+    return { target, result_kind: 'unvalidatable_nondeterministic' };
+  }
+  return violations.length > 0
+    ? { target, result_kind: 'validated_fail', violations }
+    : { target, result_kind: 'validated_pass' };
+}
+
+export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext): Promise<object> {
+  const req = args as unknown as ValidateInputArgs;
+  if (!req.manifest) {
+    return {
+      status: 'completed',
+      results: [{
+        target: { kind: 'canonical', id: 'unknown' },
+        result_kind: 'validated_fail',
+        violations: [{ rule: 'manifest_required', field: 'manifest', expected: 'creative manifest' }],
+      }],
+    };
+  }
+  const targets = req.targets?.length ? req.targets : defaultTargetsForManifest(req.manifest);
+  if (targets.length === 0) {
+    return {
+      status: 'completed',
+      results: [{
+        target: { kind: 'canonical', id: 'unknown' },
+        result_kind: 'validated_fail',
+        violations: [{ rule: 'target_required', field: 'targets', expected: 'at least one validation target' }],
+      }],
+    };
+  }
+
+  const schemaViolations = [
+    ...validateManifestSchema(req.manifest),
+    ...validateAssetUrls(req.manifest),
+  ];
+  if (schemaViolations.length > 0) {
+    return {
+      status: 'completed',
+      results: targets.map(target => ({
+        target,
+        result_kind: 'validated_fail',
+        violations: schemaViolations,
+      })),
+    };
+  }
+
+  const productTargets = targets.filter(target => target.kind === 'product');
+  const productsById = new Map<string, Product>();
+  if (productTargets.length > 0) {
+    const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+    for (const catalogProduct of getCatalog()) {
+      productsById.set(catalogProduct.product.product_id, { ...catalogProduct.product });
+    }
+    overlaySeededProducts(session, productsById);
+  }
+
+  const results: ValidateInputResult[] = await Promise.all(targets.map(target => {
+    if (target.kind === 'canonical') {
+      return validateCanonicalTarget(target, req.manifest!);
+    }
+    if (target.kind === 'product') {
+      return validateProductTarget(target, req.manifest!, productsById.get(target.id));
+    }
+    return validateThirdPartyTarget(target, req.manifest!);
+  }));
+
+  return { status: 'completed', results };
 }
 
 export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
@@ -4516,8 +5179,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   return result;
 }
 
-export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
-  const tasks = TOOLS
+export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
+  const versionResolution = resolveServedAdcpVersion(args as unknown as Record<string, unknown>);
+  const servedAdcpVersion = versionResolution.ok ? versionResolution.servedVersion : DEFAULT_ADCP_VERSION;
+  const tasks = visibleToolsForContext(ctx)
+    .filter(tool => toolAvailableForServedAdcpVersion(tool.name, servedAdcpVersion))
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
@@ -4653,7 +5319,11 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
       supports_transformation: true,
       supports_compliance: false,
       has_creative_library: true,
-      ...(includeThreeOneFields(ctx) ? { bills_through_adcp: creativeBillsThroughAdcp(ctx) } : {}),
+      ...(includeThreeOneFields(ctx) ? {
+        bills_through_adcp: creativeBillsThroughAdcp(ctx),
+        supported_formats: supportedCanonicalFormatsCapability(),
+        canonical_catalog_version: '3.1',
+      } : {}),
     },
     account: {
       require_operator_auth: false,
@@ -5875,6 +6545,7 @@ type ToolHandler = (args: ToolArgs, ctx: TrainingContext) => object | Promise<ob
 const HANDLER_MAP: Record<string, ToolHandler> = {
   get_products: handleGetProducts,
   list_creative_formats: handleListCreativeFormats,
+  validate_input: handleValidateInput,
   create_media_buy: handleCreateMediaBuy,
   get_media_buys: handleGetMediaBuys,
   get_media_buy_delivery: handleGetMediaBuyDelivery,
@@ -5934,13 +6605,23 @@ export async function executeTrainingAgentTool(
   args: ToolArgs,
   ctx: TrainingContext,
 ): Promise<{ success: boolean; data?: object; error?: string }> {
+  const versionResolution = resolveServedAdcpVersionForTool(toolName, args as unknown as Record<string, unknown>);
+  if (!versionResolution.ok) {
+    return { success: false, error: versionResolution.message };
+  }
+  if (
+    !visibleTrainingToolNamesForContext(ctx).includes(toolName)
+    || !toolAvailableForServedAdcpVersion(toolName, versionResolution.servedVersion)
+  ) {
+    return { success: false, error: `Unknown tool: ${toolName}` };
+  }
   const handler = HANDLER_MAP[toolName];
   if (!handler) {
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
   try {
     const result = await Promise.resolve(handler(args, ctx));
-    return { success: true, data: result };
+    return { success: true, data: addServedAdcpVersion(result, versionResolution.servedVersion) as object };
   } catch (error) {
     logger.error({ error, tool: toolName }, 'Training agent in-process tool error');
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -5970,7 +6651,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return { tools: TOOLS };
+    return { tools: visibleToolsForContext(ctx) };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
@@ -5997,7 +6678,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // echo caller's context object back unchanged in every response).
     const rawArgs = (args as Record<string, unknown> | undefined) ?? {};
     const { context: callerContext, ...handlerArgs } = rawArgs;
-    const versionResolution = resolveServedAdcpVersion(handlerArgs);
+    const versionResolution = resolveServedAdcpVersionForTool(name, handlerArgs);
 
     const handler = HANDLER_MAP[name];
 
@@ -6013,7 +6694,11 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     }
     const servedAdcpVersion = versionResolution.servedVersion;
 
-    if (!handler) {
+    if (
+      !handler
+      || !visibleTrainingToolNamesForContext(ctx).includes(name)
+      || !toolAvailableForServedAdcpVersion(name, servedAdcpVersion)
+    ) {
       // Pre-handler validation failures don't touch session state, so flushing
       // is a no-op; leaving flushable=true keeps behaviour consistent for
       // requests whose handlers DO legitimately mutate before failing.

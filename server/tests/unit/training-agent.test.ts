@@ -17,6 +17,7 @@ import {
 } from '../../src/training-agent/state.js';
 import {
   createTrainingAgentServer,
+  executeTrainingAgentTool,
   invalidateCache,
   clearTaskStore,
 } from '../../src/training-agent/task-handlers.js';
@@ -45,6 +46,7 @@ const VALID_PRICING_MODELS = [
 ] as const;
 
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
+const CURRENT_ADCP_VERSION = '3.1-beta.5';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 
@@ -52,13 +54,16 @@ const DEFAULT_CTX: TrainingContext = { mode: 'open' };
  * Simulate ListTools request on an MCP server.
  * The MCP SDK Server stores handlers in a Map keyed by method string.
  */
-async function simulateListTools(server: ReturnType<typeof createTrainingAgentServer>): Promise<{ tools: Array<{ name: string }> }> {
+async function simulateListTools(
+  server: ReturnType<typeof createTrainingAgentServer>,
+  params: Record<string, unknown> = {},
+): Promise<{ tools: Array<{ name: string; inputSchema?: Record<string, any> }> }> {
   const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
   const handler = requestHandlers.get('tools/list');
   if (!handler) {
     throw new Error('ListTools handler not found');
   }
-  return handler({ method: 'tools/list' }, {});
+  return handler({ method: 'tools/list', params }, {});
 }
 
 /**
@@ -71,6 +76,9 @@ async function simulateListTools(server: ReturnType<typeof createTrainingAgentSe
  * pass an explicit `idempotency_key`, which this helper preserves.
  */
 function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (toolName === 'validate_input' && args.adcp_version === undefined) {
+    return { ...args, adcp_version: CURRENT_ADCP_VERSION };
+  }
   if (!MUTATING_TOOLS.has(toolName)) return args;
   if (args.idempotency_key !== undefined) return args;
   return { ...args, idempotency_key: `test-${randomUUID()}` };
@@ -1073,6 +1081,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('build_creative');
     expect(toolNames).toContain('preview_creative');
     expect(toolNames).toContain('report_usage');
+    expect(toolNames).toContain('validate_input');
     expect(toolNames).toContain('sync_accounts');
     expect(toolNames).toContain('list_accounts');
     expect(toolNames).toContain('sync_governance');
@@ -1086,7 +1095,14 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('update_collection_list');
     expect(toolNames).toContain('list_collection_lists');
     expect(toolNames).toContain('delete_collection_list');
-    expect(toolNames).toHaveLength(50);
+    expect(toolNames).toHaveLength(51);
+
+    const validateInput = tools.find(t => t.name === 'validate_input');
+    expect(validateInput?.inputSchema?.properties?.targets?.items?.properties?.kind?.enum).toEqual([
+      'canonical',
+      'product',
+      'third_party_format',
+    ]);
   });
 
   it('get_adcp_capabilities response uses 3.0 capability model', async () => {
@@ -1524,6 +1540,682 @@ describe('list_creative_formats handler', () => {
     const formats = result.formats as Array<Record<string, unknown>>;
     expect(formats).toHaveLength(1);
     expect((formats[0].format_id as Record<string, unknown>).id).toBe('display_300x250');
+  });
+});
+
+// ── validate_input handler ─────────────────────────────────────────
+
+describe('validate_input handler', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns validated_pass for a structurally complete canonical manifest', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/mrec.png',
+            width: 300,
+            height: 250,
+          },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'image' }],
+    });
+
+    expect(result.results).toEqual([
+      { target: { kind: 'canonical', id: 'image' }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('returns validated_fail with slot violations for an incomplete canonical manifest', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'image',
+        assets: {},
+      },
+      targets: [{ kind: 'canonical', id: 'image' }],
+    });
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual([
+      expect.objectContaining({
+        rule: 'required_slot',
+        field: 'assets.image_main',
+      }),
+    ]);
+  });
+
+  it('returns validated_fail with schema violations for malformed manifest assets', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'display_tag',
+        assets: {
+          tag_url: { asset_type: 'url' },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'display_tag' }],
+    });
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        rule: 'schema',
+        field: 'manifest.assets.tag_url',
+      }),
+    ]));
+  });
+
+  it('returns validated_fail for unsafe URL-bearing assets', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'display_tag',
+        assets: {
+          tag_url: { asset_type: 'url', url: 'javascript:alert(1)' },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'display_tag' }],
+    });
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        rule: 'url_scheme',
+        field: 'assets.tag_url.url',
+      }),
+    ]));
+  });
+
+  it('returns validated_fail for unsafe nested URL-bearing assets', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'image_carousel',
+        assets: {
+          cards: [
+            {
+              asset_type: 'card',
+              media: {
+                asset_type: 'image',
+                url: 'javascript:alert(1)',
+                width: 1080,
+                height: 1080,
+              },
+              landing_page_url: {
+                asset_type: 'url',
+                url: 'http://127.0.0.1/click',
+              },
+            },
+            {
+              asset_type: 'card',
+              media: {
+                asset_type: 'image',
+                url: 'https://cdn.acme.example/card-2.png',
+                width: 1080,
+                height: 1080,
+              },
+            },
+          ],
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'image_carousel' }],
+    });
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        rule: 'url_scheme',
+        field: 'assets.cards[0].media.url',
+      }),
+      expect.objectContaining({
+        rule: 'url_host_public',
+        field: 'assets.cards[0].landing_page_url.url',
+      }),
+    ]));
+  });
+
+  it('returns validated_fail for unsafe asset fields ending in _url', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'video_hosted',
+        assets: {
+          video_main: {
+            asset_type: 'video',
+            url: 'https://cdn.acme.example/spot.mp4',
+            width: 1920,
+            height: 1080,
+            duration_ms: 30000,
+            transcript_url: 'javascript:alert(1)',
+          },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'video_hosted' }],
+    });
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        rule: 'url_scheme',
+        field: 'assets.video_main.transcript_url',
+      }),
+    ]));
+  });
+
+  it('rejects validate_input when the caller pins a 3.0 AdCP version', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'validate_input', {
+      adcp_version: '3.0',
+      manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/mrec.png',
+            width: 300,
+            height: 250,
+          },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'image' }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result).toMatchObject({
+      code: 'INVALID_REQUEST',
+      message: 'Unknown tool: validate_input',
+    });
+  });
+
+  it('serves unpinned validate_input calls on the current 3.1 beta envelope', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
+    const handler = requestHandlers.get('tools/call');
+    const response = await handler({
+      method: 'tools/call',
+      params: {
+        name: 'validate_input',
+        arguments: {
+          manifest: {
+            format_kind: 'image',
+            assets: {
+              image_main: {
+                asset_type: 'image',
+                url: 'https://cdn.acme.example/mrec.png',
+                width: 300,
+                height: 250,
+              },
+            },
+          },
+          targets: [{ kind: 'canonical', id: 'image' }],
+        },
+      },
+    }, {});
+    const parsed = response.structuredContent as Record<string, unknown>;
+
+    expect(response.isError).not.toBe(true);
+    expect(parsed.adcp_version).toBe(CURRENT_ADCP_VERSION);
+    expect(parsed.results).toEqual([
+      { target: { kind: 'canonical', id: 'image' }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('serves in-process validate_input calls on the same version contract', async () => {
+    const args = {
+      manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/mrec.png',
+            width: 300,
+            height: 250,
+          },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'image' }],
+    };
+
+    const unpinned = await executeTrainingAgentTool('validate_input', args, DEFAULT_CTX);
+    expect(unpinned.success).toBe(true);
+    expect(unpinned.data).toMatchObject({
+      adcp_version: CURRENT_ADCP_VERSION,
+      results: [{ target: { kind: 'canonical', id: 'image' }, result_kind: 'validated_pass' }],
+    });
+
+    const pinnedThreeZero = await executeTrainingAgentTool('validate_input', {
+      ...args,
+      adcp_version: '3.0',
+    }, DEFAULT_CTX);
+    expect(pinnedThreeZero).toEqual({
+      success: false,
+      error: 'Unknown tool: validate_input',
+    });
+  });
+
+  it('requires the responsive_creative logo slot and passes when it is present', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const baseManifest = {
+      format_kind: 'responsive_creative',
+      assets: {
+        headlines: [
+          { asset_type: 'text', content: 'Trail gear' },
+          { asset_type: 'text', content: 'Pack light' },
+          { asset_type: 'text', content: 'Summit-ready' },
+        ],
+        descriptions: [
+          { asset_type: 'text', content: 'Durable gear for fictional trips.' },
+          { asset_type: 'text', content: 'Shop fictional outdoor essentials.' },
+        ],
+        landing_page_url: { asset_type: 'url', url: 'https://acme.example/responsive' },
+      },
+    };
+
+    const missingLogo = await simulateCallTool(server, 'validate_input', {
+      manifest: baseManifest,
+      targets: [{ kind: 'canonical', id: 'responsive_creative' }],
+    });
+    const missingLogoResults = missingLogo.result.results as Array<Record<string, unknown>>;
+    expect(missingLogoResults[0].result_kind).toBe('validated_fail');
+    expect(missingLogoResults[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        rule: 'required_slot',
+        field: 'assets.logo',
+      }),
+    ]));
+
+    const withLogo = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        ...baseManifest,
+        assets: {
+          ...baseManifest.assets,
+          logo: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/logo.png',
+            width: 512,
+            height: 512,
+          },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'responsive_creative' }],
+    });
+    expect(withLogo.result.results).toEqual([
+      { target: { kind: 'canonical', id: 'responsive_creative' }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('returns unvalidatable_nondeterministic for a seeded product with nondeterministic synthesis', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'validate-input.example' }, operator: 'pinnacle-agency.example' };
+    const seed = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'validate-input.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: 'validate_input_nondeterministic_video',
+        fixture: {
+          channels: ['olv'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: 'video_hosted',
+            format_option_id: 'validate_input_video_brief',
+            params: {
+              synthesis_nondeterministic: true,
+              asset_source: 'agent_synthesized',
+              slots: [
+                { asset_group_id: 'creative_brief', asset_type: 'brief', required: true },
+              ],
+            },
+          }],
+        },
+      },
+    });
+    expect(seed.result.success).toBe(true);
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'video_hosted',
+        format_option_ref: { scope: 'product', format_option_id: 'validate_input_video_brief' },
+        assets: {
+          creative_brief: {
+            asset_type: 'brief',
+            name: 'Validate Input Launch Brief',
+            objective: 'awareness',
+            tone: 'Cinematic and energetic',
+            audience: 'Outdoor enthusiasts planning weekend trips',
+          },
+        },
+      },
+      targets: [{ kind: 'product', id: 'validate_input_nondeterministic_video' }],
+    });
+
+    expect(result.results).toEqual([
+      {
+        target: { kind: 'product', id: 'validate_input_nondeterministic_video' },
+        result_kind: 'unvalidatable_nondeterministic',
+      },
+    ]);
+  });
+
+  it('validates required product slots before reporting nondeterministic synthesis', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'validate-input-missing-brief.example' }, operator: 'pinnacle-agency.example' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'validate-input-missing-brief.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: 'validate_input_missing_brief_video',
+        fixture: {
+          channels: ['olv'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: 'video_hosted',
+            format_option_id: 'validate_input_missing_brief',
+            params: {
+              synthesis_nondeterministic: true,
+              asset_source: 'agent_synthesized',
+              slots: [
+                { asset_group_id: 'creative_brief', asset_type: 'brief', required: true },
+              ],
+            },
+          }],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'video_hosted',
+        format_option_ref: { scope: 'product', format_option_id: 'validate_input_missing_brief' },
+        assets: {},
+      },
+      targets: [{ kind: 'product', id: 'validate_input_missing_brief_video' }],
+    });
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual([
+      expect.objectContaining({
+        rule: 'required_slot',
+        field: 'assets.creative_brief',
+      }),
+    ]);
+  });
+
+  it('does not infer third-party validation from a legacy format_id manifest', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_id: { agent_url: 'https://creative.example', id: 'custom_format' },
+        assets: {},
+      },
+    });
+
+    expect(result.results).toEqual([
+      {
+        target: { kind: 'canonical', id: 'unknown' },
+        result_kind: 'validated_fail',
+        violations: [{ rule: 'target_required', field: 'targets', expected: 'at least one validation target' }],
+      },
+    ]);
+  });
+
+  it('rejects product validation for legacy format_id manifests without format_kind', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'validate-input-legacy.example' }, operator: 'pinnacle-agency.example' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'validate-input-legacy.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: 'validate_input_legacy_format_id',
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: 'image',
+            format_option_id: 'image_main_variant',
+            params: { slots: [{ asset_group_id: 'image_main', asset_type: 'image', required: true }] },
+          }],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_id: { agent_url: 'https://creative.example', id: 'display_300x250' },
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/mrec.png',
+            width: 300,
+            height: 250,
+          },
+        },
+      },
+      targets: [{ kind: 'product', id: 'validate_input_legacy_format_id' }],
+    });
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual([
+      expect.objectContaining({
+        rule: 'format_kind',
+        field: 'manifest.format_kind',
+      }),
+    ]);
+  });
+
+  it('accepts explicit third-party format targets and fails closed when unresolved', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/mrec.png',
+            width: 300,
+            height: 250,
+          },
+        },
+      },
+      targets: [{ kind: 'third_party_format', id: 'https://formats.example/image_300x250@sha256:abc' }],
+    });
+
+    expect(result.results).toEqual([
+      {
+        target: { kind: 'third_party_format', id: 'https://formats.example/image_300x250@sha256:abc' },
+        result_kind: 'validated_fail',
+        violations: [
+          expect.objectContaining({
+            rule: 'third_party_format_resolution',
+            field: 'targets[].id',
+          }),
+        ],
+      },
+    ]);
+  });
+
+  it('requires format_option_ref when product declarations share format_kind', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'validate-input-ambiguous.example' }, operator: 'pinnacle-agency.example' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'validate-input-ambiguous.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: 'validate_input_ambiguous_image',
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'guaranteed',
+          format_options: [
+            {
+              format_kind: 'image',
+              format_option_id: 'image_main_variant',
+              params: { slots: [{ asset_group_id: 'image_main', asset_type: 'image', required: true }] },
+            },
+            {
+              format_kind: 'image',
+              format_option_id: 'alt_image_variant',
+              params: { slots: [{ asset_group_id: 'alt_image', asset_type: 'image', required: true }] },
+            },
+          ],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/mrec.png',
+            width: 300,
+            height: 250,
+          },
+        },
+      },
+      targets: [{ kind: 'product', id: 'validate_input_ambiguous_image' }],
+    });
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual([
+      expect.objectContaining({
+        rule: 'product_format_option_supported',
+        field: 'manifest.format_kind',
+      }),
+    ]);
+  });
+
+  it('resolves publisher-scoped format_option_ref without matching product-local options', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'validate-input-publisher.example' }, operator: 'pinnacle-agency.example' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'validate-input-publisher.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: 'validate_input_publisher_image',
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'guaranteed',
+          format_options: [
+            {
+              format_kind: 'image',
+              format_option_id: 'shared_image_option',
+              params: { slots: [{ asset_group_id: 'image_main', asset_type: 'image', required: true }] },
+            },
+            {
+              format_kind: 'image',
+              format_option_id: 'shared_image_option',
+              publisher_domain: 'regional-news.example',
+              params: { slots: [{ asset_group_id: 'publisher_image', asset_type: 'image', required: true }] },
+            },
+          ],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'image',
+        format_option_ref: {
+          scope: 'publisher',
+          publisher_domain: 'regional-news.example',
+          format_option_id: 'shared_image_option',
+        },
+        assets: {
+          publisher_image: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/publisher-image.png',
+            width: 300,
+            height: 250,
+          },
+        },
+      },
+      targets: [{ kind: 'product', id: 'validate_input_publisher_image' }],
+    });
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: 'validate_input_publisher_image' }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('rejects nondeterministic declarations paired with buyer-uploaded assets', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'validate-input-invalid.example' }, operator: 'pinnacle-agency.example' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'validate-input-invalid.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: 'validate_input_invalid_nondeterministic_video',
+        fixture: {
+          channels: ['olv'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: 'video_hosted',
+            format_option_id: 'validate_input_invalid_video',
+            params: {
+              synthesis_nondeterministic: true,
+              asset_source: 'buyer_uploaded',
+            },
+          }],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'video_hosted',
+        assets: {
+          video_main: {
+            asset_type: 'video',
+            url: 'https://cdn.acme.example/spot.mp4',
+            width: 1920,
+            height: 1080,
+            duration_ms: 15000,
+          },
+        },
+      },
+      targets: [{ kind: 'product', id: 'validate_input_invalid_nondeterministic_video' }],
+    });
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual([
+      expect.objectContaining({
+        rule: 'synthesis_nondeterministic_source_compatibility',
+        predicted: 'buyer_uploaded',
+      }),
+    ]);
   });
 });
 

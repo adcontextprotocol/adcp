@@ -11,6 +11,7 @@ import { getTenantSigningMaterial } from './signing.js';
 import { buildSalesComplyConfig } from './comply.js';
 import { listAccountsTool } from './account-tools.js';
 import { reportUsageTool } from './report-usage-tool.js';
+import { validateInputTool } from './validate-input-tool.js';
 import type { TrainingContext } from '../types.js';
 
 const TENANT_ID = 'sales';
@@ -32,6 +33,13 @@ export function buildSalesTenantConfig(host: string, options: { storyboardCompat
         customTools: {
           list_accounts: listAccountsTool(options.storyboardCompat),
           report_usage: reportUsageTool({ creativeBillsThroughAdcp: true }),
+          ...(options.storyboardCompat?.version === '3.0' ? {} : {
+            validate_input: validateInputTool({
+              tenantId: TENANT_ID,
+              creativeBillsThroughAdcp: true,
+              ...(options.storyboardCompat && { storyboardCompat: options.storyboardCompat }),
+            }),
+          }),
         },
         complyTest: buildSalesComplyConfig(),
       },

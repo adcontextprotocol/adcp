@@ -140,6 +140,7 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
     // responses pass through unsigned.
     const responseSigner = getTenantResponseSigningMaterial(tenantId);
     wrapResponseForSigning(req, res, responseSigner.signerKey, tenantId);
+    wrapTenantToolDiscoveryProjection(req, res, storyboardCompat);
     wrapSalesCapabilitiesProjection(req, res, tenantId, storyboardCompat);
 
     // Bridge `res.locals.trainingPrincipal` (set by the upstream
@@ -383,6 +384,54 @@ function wrapSalesCapabilitiesProjection(
     }
     return origEnd(patched, ...rest as []);
   };
+}
+
+function wrapTenantToolDiscoveryProjection(
+  req: Request,
+  res: Response,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): void {
+  if (req.body?.method !== 'tools/list') return;
+
+  const origEnd = res.end.bind(res);
+  const chunks: Buffer[] = [];
+
+  (res as unknown as { write: (...args: unknown[]) => boolean }).write = (chunk: unknown, ...rest: unknown[]) => {
+    if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
+    const cb = rest.find(arg => typeof arg === 'function') as (() => void) | undefined;
+    if (cb) queueMicrotask(cb);
+    return true;
+  };
+
+  (res as unknown as { end: (...args: unknown[]) => Response }).end = (chunk?: unknown, ...rest: unknown[]) => {
+    if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
+    const body = Buffer.concat(chunks);
+    const patched = projectTenantToolDiscovery(body, storyboardCompat);
+    if (patched !== body) {
+      res.setHeader('content-length', String(patched.length));
+    }
+    return origEnd(patched, ...rest as []);
+  };
+}
+
+function projectTenantToolDiscovery(
+  body: Buffer,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): Buffer {
+  try {
+    const parsed = JSON.parse(body.toString('utf8')) as {
+      result?: {
+        tools?: Array<{ name?: string }>;
+      };
+    };
+    const tools = parsed.result?.tools;
+    if (!Array.isArray(tools)) return body;
+    if (storyboardCompat?.version !== '3.0') return body;
+    parsed.result!.tools = tools.filter(tool => tool.name !== 'validate_input');
+    return Buffer.from(JSON.stringify(parsed), 'utf8');
+  } catch {
+    return body;
+  }
 }
 
 function toBuffer(chunk: unknown): Buffer {

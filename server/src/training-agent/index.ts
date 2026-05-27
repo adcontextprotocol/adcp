@@ -764,7 +764,7 @@ export function createTrainingAgentRouter(options: { storyboardCompat?: Training
         tenant_id: tenantId,
         url: `${agentUrl}/${tenantId}/mcp`,
         specialisms: TENANT_SPECIALISMS[tenantId],
-        tools: toolsForTenant(tenantId),
+        tools: toolsForTenant(tenantId, { storyboardCompat: options.storyboardCompat }),
       })),
       last_updated: STARTUP_TIME,
     });
