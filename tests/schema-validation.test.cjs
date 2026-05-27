@@ -408,6 +408,8 @@ async function runTests() {
         status: 'active',
         currency: 'USD',
         total_budget: 10000,
+        confirmed_at: '2026-05-27T09:00:00Z',
+        revision: 1,
         packages: [],
         available_actions: [{
           action: 'increase_budget',

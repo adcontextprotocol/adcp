@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/create-media-buy-response.json",
   "title": "Create Media Buy Response",
-  "description": "Response payload for create_media_buy. Exactly one of three shapes: (1) synchronous success — media_buy_id and packages are issued in-line, no status or a MediaBuyStatus value (pending_creatives / pending_start / active); (2) terminal failure — an errors array with no media-buy artifact and status != 'submitted'; (3) submitted task envelope — status 'submitted' with task_id, the media buy is queued or awaiting a human decision (e.g., IO signing), and media_buy_id / packages land on the task's completion artifact, not this response. The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive — a response has exactly one.",
+  "description": "Response payload for create_media_buy. Exactly one of three shapes: (1) synchronous success — media_buy_id and packages are issued in-line, no status or a MediaBuyStatus value (pending_creatives / pending_start / active), and confirmed_at is either the seller commitment timestamp or null for a provisional buy that already exists; (2) terminal failure — an errors array with no media-buy artifact and status != 'submitted'; (3) submitted task envelope — status 'submitted' with task_id when no media_buy_id has been allocated yet and the media buy is queued or awaiting a human decision (e.g., IO signing). In the submitted branch, media_buy_id / packages land on the task's completion artifact, not this response. The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive — a response has exactly one.",
   "type": "object",
   "allOf": [
     {
@@ -41,9 +41,9 @@
           "description": "DEPRECATED in 3.1, removed in 3.2 (#4906). Use `media_buy_status` instead. Top-level `status` here collides with the envelope TaskStatus on flat-serialized MCP wire (see adcontextprotocol/adcp#4895). Buyers consuming 3.1+ responses MUST prefer `media_buy_status` when present; sellers MAY emit both during the deprecation window but MUST emit identical values when doing so — divergent emission is a conformance violation."
         },
         "confirmed_at": {
-          "type": "string",
+          "type": ["string", "null"],
           "format": "date-time",
-          "description": "ISO 8601 timestamp when this media buy was confirmed by the seller. A successful create_media_buy response constitutes order confirmation."
+          "description": "ISO 8601 timestamp when this media buy was committed by the seller. Stable after it is set; do not update on later pause/resume/status/reporting transitions. May be null in deferred or manual-approval flows until seller commitment occurs."
         },
         "creative_deadline": {
           "type": "string",
@@ -52,7 +52,7 @@
         },
         "revision": {
           "type": "integer",
-          "description": "Initial revision number for this media buy. Use in subsequent update_media_buy requests for optimistic concurrency.",
+          "description": "Initial revision number for this media buy. Use in subsequent update_media_buy requests intended to change state for optimistic concurrency.",
           "minimum": 1
         },
         "currency": {
@@ -104,6 +104,8 @@
       },
       "required": [
         "media_buy_id",
+        "confirmed_at",
+        "revision",
         "packages"
       ],
       "additionalProperties": true,

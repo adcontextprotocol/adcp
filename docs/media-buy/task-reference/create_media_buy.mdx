@@ -210,13 +210,18 @@ npx @adcp/sdk@latest \
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Seller's unique identifier |
-| `confirmed_at` | ISO 8601 timestamp of order confirmation. A successful response constitutes confirmation. |
+| `confirmed_at` | ISO 8601 timestamp when the seller committed to the media buy. Stable after it is set. May be `null` in deferred/manual approval flows until seller commitment occurs. |
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
+| `revision` | Initial media-buy revision. Use this value as the `revision` token on the next `update_media_buy` call intended to change state. |
 | `packages` | Array of created packages with complete state. Packages may include per-package `creative_deadline` when different from the media buy deadline. |
+
+`confirmed_at` is seller commitment time, not a delivery-status timestamp. Do not update it when a buy later pauses, resumes, starts delivery, completes, or reports performance. A committed synchronous create stamps it immediately. Use the `submitted` response branch when no `media_buy_id` has been allocated yet. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment.
 
 #### Reporting contract on confirmed packages
 
 Each package in the response MAY carry `committed_metrics` — the binding reporting contract the seller has agreed to populate in delivery reports for this package. The field is a unified array carrying both standard metrics (from the closed `available-metric.json` enum) and vendor-defined metrics (anchored on a BrandRef), with each entry tagged by an explicit `scope` discriminator and timestamped via `committed_at`:
+
+When `confirmed_at` is `null`, sellers MUST omit `packages[].committed_metrics`. The first response that sets `confirmed_at` MAY include the initial committed-metrics set, and each such entry's `committed_at` MUST equal `confirmed_at`.
 
 ```json
 {

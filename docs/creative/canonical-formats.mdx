@@ -968,6 +968,28 @@ For the third-party creative-agent flow: `validate_input` first (cheap pre-fligh
 
 See [`build_creative` task reference](/docs/creative/task-reference/build_creative) for the full request/response shape.
 
+### Format matching vs product satisfaction
+
+Sellers and SDKs MUST normalize legacy named formats before comparing them to canonical declarations. A legacy `format_id` such as `{ "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }` resolves through the explicit `canonical` annotation, `v1_format_ref`, or the canonical mapping registry to a canonical declaration such as `format_kind: "image"` with `params.width: 300` and `params.height: 250`. After that projection, implementations compare the canonical shape and parameters, not the raw `(agent_url, id)` pair.
+
+Two related checks use different directionality:
+
+- **Equivalence matching** answers whether two declarations identify the same underlying creative shape after normalization. `display_300x250` and `format_kind: "image"` with `width: 300` and `height: 250` are equivalent even though their wire identifiers differ.
+- **Product satisfaction** answers whether a submitted or requested creative is specific enough for a product's accepted format declaration. When the product declares a fixed `width`, `height`, `duration_ms_exact`, or equivalent duration range, the requested creative or package selector MUST declare and match that constraint. An under-specified request is not a wildcard for product gating.
+
+Range constraints use containment, not overlap. A range-based request satisfies a product only when every value the request permits falls within the product's accepted range; overlap alone is insufficient. An exact value, such as `duration_ms_exact`, satisfies a range when that exact value falls inside the accepted range.
+
+Concrete examples:
+
+| Product declaration | Buyer request / creative | Result |
+|---|---|---|
+| `image`, `width: 300`, `height: 250` | legacy `display_300x250`, projected to `image` 300x250 | Match |
+| `image`, `width: 300`, `height: 250` | `image` with no width/height | Reject for this product — request is under-specified |
+| `image` with no width/height constraint | `image` 300x250 | Match — a broad product can accept a specific creative |
+| `video_hosted`, `duration_ms_exact: 30000` | `video_hosted` with no duration | Reject for this product — duration is under-specified |
+
+This asymmetry prevents two failure modes: exact-ID comparison rejecting compatible legacy/canonical pairs, and overly-broad matching allowing an under-specified request to satisfy a fixed-size or fixed-duration product.
+
 ### Discovery + validation at scale
 
 A high-product-count buyer (TTD-class with ~100s of products per get_products response) cannot pre-flight every product via `validate_input` per round — N products × M format_options × per-target round-trips becomes operationally expensive. Two patterns address this:
