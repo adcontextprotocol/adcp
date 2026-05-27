@@ -441,7 +441,125 @@ async function runTests() {
     return true;
   });
 
-  // Test 9: Validate schema examples against their schemas
+  // Test 9: Validate ForecastPoint dimension and viewability compatibility gates
+  await test('ForecastPoint dimension and viewability compatibility gates behave as intended', async () => {
+    const dimensionsSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-point-dimensions.json'));
+    const uniqueProps = dimensionsSchema['x-adcp-validation']?.unique_item_properties || [];
+    if (!uniqueProps.includes('kind')) {
+      return 'forecast-point-dimensions.json must declare x-adcp-validation.unique_item_properties: ["kind"]';
+    }
+
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validateDimensions = await testAjv.compileAsync(dimensionsSchema);
+    const validateForecastPoint = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-point.json')));
+    const validateDeliveryMetrics = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/delivery-metrics.json')));
+    const validateComplyRequest = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'compliance/comply-test-controller-request.json')));
+
+    const assertValid = (validate, value, label) => {
+      if (!validate(value)) {
+        return `${label} unexpectedly failed validation: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+      }
+      return true;
+    };
+
+    const assertInvalid = (validate, value, label) => {
+      if (validate(value)) {
+        return `${label} unexpectedly passed validation`;
+      }
+      return true;
+    };
+
+    for (const [value, label] of [
+      [[{ kind: 'geo', geo_level: 'metro', system: 'nielsen_dma', geo_code: '501' }], 'metro dimension with metro-system'],
+      [[{ kind: 'geo', geo_level: 'postal_area', system: 'us_zip', geo_code: '10001' }], 'postal dimension with postal-system'],
+      [[{ kind: 'geo', geo_level: 'country', geo_code: 'US' }], 'country dimension without system'],
+      [[{ kind: 'placement', placement_ref: { publisher_domain: 'publisher.example', placement_id: 'header_bidding' } }, { kind: 'geo', geo_level: 'country', geo_code: 'US' }], 'placement x country intersection']
+    ]) {
+      const result = assertValid(validateDimensions, value, label);
+      if (result !== true) return result;
+    }
+
+    for (const [value, label] of [
+      [[{ kind: 'geo', geo_level: 'metro', system: 'us_zip', geo_code: '10001' }], 'metro dimension with postal-system'],
+      [[{ kind: 'geo', geo_level: 'postal_area', system: 'nielsen_dma', geo_code: '501' }], 'postal dimension with metro-system'],
+      [[{ kind: 'geo', geo_level: 'country', system: 'nielsen_dma', geo_code: 'US' }], 'country dimension with system'],
+      [[{ kind: 'geo', geo_level: 'country', geo_code: 'USA' }], 'country dimension with non-alpha2 code']
+    ]) {
+      const result = assertInvalid(validateDimensions, value, label);
+      if (result !== true) return result;
+    }
+
+    const forecastWithoutStandard = {
+      metrics: { impressions: { mid: 10 } },
+      viewability: { viewable_rate: { mid: 0.8 } }
+    };
+    let result = assertInvalid(validateForecastPoint, forecastWithoutStandard, 'forecast viewability values without standard');
+    if (result !== true) return result;
+
+    const forecastWithStandard = {
+      product_id: 'prod_1',
+      metrics: { impressions: { mid: 10 } },
+      dimensions: [
+        { kind: 'placement', placement_ref: { publisher_domain: 'publisher.example', placement_id: 'header_bidding' } },
+        { kind: 'geo', geo_level: 'country', geo_code: 'US' }
+      ],
+      viewability: { viewable_rate: { mid: 0.8 }, standard: 'mrc' }
+    };
+    result = assertValid(validateForecastPoint, forecastWithStandard, 'forecast viewability values with standard');
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateDeliveryMetrics,
+      { impressions: 10, viewability: { measurable_impressions: 9, viewable_rate: 0.8 } },
+      'delivery viewability without standard remains 3.x-compatible'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateComplyRequest,
+      { scenario: 'simulate_delivery', params: { media_buy_id: 'mb_1', viewability: { viewable_rate: 0.8 } }, account: { sandbox: true } },
+      'simulate_delivery viewability without standard remains 3.x-compatible'
+    );
+    if (result !== true) return result;
+
+    const hasRepeatedKind = (dimensions) => {
+      const seen = new Set();
+      for (const dimension of dimensions) {
+        if (!dimension || typeof dimension.kind !== 'string') continue;
+        if (seen.has(dimension.kind)) return true;
+        seen.add(dimension.kind);
+      }
+      return false;
+    };
+
+    const placementCountry = [
+      { kind: 'placement', placement_ref: { publisher_domain: 'publisher.example', placement_id: 'header_bidding' } },
+      { kind: 'geo', geo_level: 'country', geo_code: 'US' }
+    ];
+    if (hasRepeatedKind(placementCountry)) {
+      return 'placement x country intersection was incorrectly flagged as duplicate kind';
+    }
+
+    const twoCountries = [
+      { kind: 'geo', geo_level: 'country', geo_code: 'US' },
+      { kind: 'geo', geo_level: 'country', geo_code: 'CA' }
+    ];
+    if (!hasRepeatedKind(twoCountries)) {
+      return 'two geo rows in one point must be flagged as duplicate kind';
+    }
+
+    return true;
+  });
+
+  // Test 10: Validate schema examples against their schemas
   await test('Schema examples validate against their own schemas', async () => {
     // Skip schemas that require format-aware validation (creative manifests need format context)
     const FORMAT_AWARE_SCHEMAS = ['sync-creatives-request.json', 'list-creatives-response.json'];
