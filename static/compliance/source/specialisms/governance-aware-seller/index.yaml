@@ -33,6 +33,16 @@ narrative: |
   loop after registration: `check_governance` consultation before confirming
   spend, plus `GOVERNANCE_DENIED` and governance-condition propagation.
 
+  Registration and consultation are deliberately separate layers. Baseline
+  sellers register exactly one buyer governance agent per account so the
+  account has an auditable governance endpoint on file before spend moves.
+  That registration is useful even when the seller does not actively consult
+  the agent on every mutation: it establishes the account binding, lets buyers
+  rotate governance endpoints through a single task, and gives graders one
+  place to enforce the `governance_agents.maxItems: 1` invariant. Sellers only
+  claim this specialism when they also promise to call `check_governance` and
+  propagate governance results during spend-committing flows.
+
   Sellers that want to advertise "I honor the buyer's governance plan" claim
   this specialism. The grading exercises the four scenarios that require the
   governance handshake:

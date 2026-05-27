@@ -24,6 +24,7 @@ requires_scenarios:
   - media_buy_seller/performance_buy_flow
   - media_buy_seller/performance_buy_flow_roas
   - media_buy_seller/reach_buy_flow
+  - governance_aware_seller/governance_multi_agent_rejected
 
 # Cross-step assertion (adcp#2664). status.monotonic rejects resource
 # status transitions observed across steps that aren't on the spec

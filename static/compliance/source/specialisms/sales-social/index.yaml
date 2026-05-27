@@ -12,6 +12,8 @@ required_tools:
   - sync_creatives
   - sync_event_sources
   - preview_creative
+requires_scenarios:
+  - governance_aware_seller/governance_multi_agent_rejected
 
 # Cross-step assertion (adcp#2664). status.monotonic rejects resource
 # status transitions observed across steps that aren't on the spec
