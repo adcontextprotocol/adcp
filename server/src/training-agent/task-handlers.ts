@@ -10,7 +10,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
+  ErrorCode,
   ListToolsRequestSchema,
+  McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
@@ -49,11 +51,14 @@ function escapeHtmlAttr(s: string): string {
 }
 
 /** Build a structured MCP error response for tool calls (L3 error compliance). */
-function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string }, context?: unknown) {
+export function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string }, context?: unknown, adcpVersion?: string) {
   const errorObj = { code, ...opts };
   const body = context !== undefined
     ? { adcp_error: errorObj, context }
     : { adcp_error: errorObj };
+  if (adcpVersion) {
+    (body as Record<string, unknown>).adcp_version = adcpVersion;
+  }
   return {
     isError: true,
     content: [{ type: 'text' as const, text: JSON.stringify(body) }],
@@ -388,7 +393,226 @@ import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { selectSigningCapability } from './request-signing.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5'] as const;
+const DEFAULT_ADCP_VERSION = '3.0';
 const MAX_PACKAGES_PER_BUY = 50;
+
+interface ParsedAdcpReleaseVersion {
+  raw: string;
+  major: number;
+  minor: number;
+  prerelease?: string;
+}
+
+interface VersionUnsupportedDetails {
+  adcp_version?: string;
+  adcp_major_version?: number;
+  supported_versions: string[];
+  supported_majors: number[];
+  rejected_adcp_version?: string;
+}
+
+type VersionResolution =
+  | { ok: true; servedVersion: string }
+  | { ok: false; message: string; field: 'adcp_version' | 'adcp_major_version'; details: VersionUnsupportedDetails };
+
+type McpRequestHandler = (request: { params?: Record<string, unknown> }, extra: unknown) => Promise<unknown> | unknown;
+
+const TASK_PROTOCOL_METHODS = ['tasks/get', 'tasks/result', 'tasks/list', 'tasks/cancel'] as const;
+
+function parseAdcpReleaseVersion(value: unknown): ParsedAdcpReleaseVersion | undefined {
+  if (typeof value !== 'string') return undefined;
+  const match = value.match(/^(\d+)\.(\d+)(?:-([A-Za-z0-9.-]+))?$/);
+  if (!match) return undefined;
+  return {
+    raw: value,
+    major: Number.parseInt(match[1], 10),
+    minor: Number.parseInt(match[2], 10),
+    ...(match[3] && { prerelease: match[3] }),
+  };
+}
+
+function compareAdcpReleaseVersions(left: ParsedAdcpReleaseVersion, right: ParsedAdcpReleaseVersion): number {
+  if (left.major !== right.major) return left.major - right.major;
+  if (left.minor !== right.minor) return left.minor - right.minor;
+  if (left.prerelease === right.prerelease) return 0;
+  if (!left.prerelease) return 1;
+  if (!right.prerelease) return -1;
+  return left.prerelease.localeCompare(right.prerelease);
+}
+
+const PARSED_SUPPORTED_RELEASE_VERSIONS = SUPPORTED_RELEASE_VERSIONS
+  .map(version => parseAdcpReleaseVersion(version))
+  .filter((version): version is ParsedAdcpReleaseVersion => version !== undefined)
+  .sort(compareAdcpReleaseVersions);
+
+function highestSupportedRelease(major?: number): string | undefined {
+  const candidates = major === undefined
+    ? PARSED_SUPPORTED_RELEASE_VERSIONS
+    : PARSED_SUPPORTED_RELEASE_VERSIONS.filter(version => version.major === major);
+  return candidates.at(-1)?.raw;
+}
+
+function supportedVersionDetails(args: Record<string, unknown>): VersionUnsupportedDetails {
+  const requestedRelease = parseAdcpReleaseVersion(args.adcp_version);
+  const requestedMajor = typeof args.adcp_major_version === 'number' && Number.isInteger(args.adcp_major_version)
+    ? args.adcp_major_version
+    : undefined;
+  return {
+    ...(requestedRelease && { adcp_version: requestedRelease.raw }),
+    ...(requestedMajor !== undefined && { adcp_major_version: requestedMajor }),
+    ...(!requestedRelease && typeof args.adcp_version === 'string' && { rejected_adcp_version: args.adcp_version }),
+    supported_versions: [...SUPPORTED_RELEASE_VERSIONS],
+    supported_majors: [...SUPPORTED_MAJOR_VERSIONS],
+  };
+}
+
+export function resolveServedAdcpVersion(args: Record<string, unknown>): VersionResolution {
+  const requestedReleaseRaw = args.adcp_version;
+  const requestedMajorRaw = args.adcp_major_version;
+  const requestedMajor = typeof requestedMajorRaw === 'number' && Number.isInteger(requestedMajorRaw)
+    ? requestedMajorRaw
+    : undefined;
+
+  if (requestedReleaseRaw !== undefined) {
+    const requestedRelease = parseAdcpReleaseVersion(requestedReleaseRaw);
+    if (!requestedRelease) {
+      return {
+        ok: false,
+        message: `AdCP version ${JSON.stringify(requestedReleaseRaw)} is not supported`,
+        field: 'adcp_version',
+        details: supportedVersionDetails(args),
+      };
+    }
+
+    if (requestedMajor !== undefined && requestedMajor !== requestedRelease.major) {
+      return {
+        ok: false,
+        message: `Request carries adcp_version="${requestedRelease.raw}" (major ${requestedRelease.major}) and adcp_major_version=${requestedMajor}; majors must agree.`,
+        field: 'adcp_version',
+        details: supportedVersionDetails(args),
+      };
+    }
+
+    if ((SUPPORTED_RELEASE_VERSIONS as readonly string[]).includes(requestedRelease.raw)) {
+      return { ok: true, servedVersion: requestedRelease.raw };
+    }
+
+    if (requestedRelease.prerelease) {
+      return {
+        ok: false,
+        message: `AdCP version ${requestedRelease.raw} is not supported`,
+        field: 'adcp_version',
+        details: supportedVersionDetails(args),
+      };
+    }
+
+    const downshift = PARSED_SUPPORTED_RELEASE_VERSIONS
+      .filter(version => version.major === requestedRelease.major)
+      .filter(version => !version.prerelease)
+      .filter(version => compareAdcpReleaseVersions(version, requestedRelease) <= 0)
+      .at(-1);
+
+    if (downshift) {
+      return { ok: true, servedVersion: downshift.raw };
+    }
+
+    return {
+      ok: false,
+      message: `AdCP version ${requestedRelease.raw} is not supported`,
+      field: 'adcp_version',
+      details: supportedVersionDetails(args),
+    };
+  }
+
+  if (requestedMajorRaw !== undefined) {
+    if (requestedMajor === undefined) {
+      return {
+        ok: false,
+        message: `AdCP major version ${JSON.stringify(requestedMajorRaw)} is not supported`,
+        field: 'adcp_major_version',
+        details: supportedVersionDetails(args),
+      };
+    }
+    const servedVersion = highestSupportedRelease(requestedMajor);
+    if (servedVersion) return { ok: true, servedVersion };
+    return {
+      ok: false,
+      message: `AdCP major version ${requestedMajor} is not supported`,
+      field: 'adcp_major_version',
+      details: supportedVersionDetails(args),
+    };
+  }
+
+  return { ok: true, servedVersion: DEFAULT_ADCP_VERSION };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function mcpErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  return error.message.replace(/^MCP error -?\d+: /, '');
+}
+
+function versionUnsupportedJsonRpcError(resolution: Extract<VersionResolution, { ok: false }>, context?: unknown): McpError {
+  const adcpError = {
+    code: 'VERSION_UNSUPPORTED',
+    message: resolution.message,
+    details: resolution.details,
+    field: resolution.field,
+  };
+  return new McpError(ErrorCode.InvalidParams, resolution.message, {
+    ...resolution.details,
+    adcp_error: adcpError,
+    ...(context !== undefined && { context }),
+  });
+}
+
+function rethrowWithServedAdcpVersion(error: unknown, servedAdcpVersion: string): never {
+  if (error instanceof McpError) {
+    const existingData = isRecord(error.data) ? error.data : {};
+    throw new McpError(error.code, mcpErrorMessage(error), {
+      ...existingData,
+      adcp_version: servedAdcpVersion,
+    });
+  }
+  throw error;
+}
+
+function addServedAdcpVersion(result: unknown, servedAdcpVersion: string, context?: unknown): unknown {
+  if (!isRecord(result)) return result;
+  return {
+    ...result,
+    adcp_version: servedAdcpVersion,
+    ...(context !== undefined && result.context === undefined && { context }),
+  };
+}
+
+function installTaskProtocolVersionNegotiation(server: Server): void {
+  const handlers = (server as unknown as { _requestHandlers?: Map<string, McpRequestHandler> })._requestHandlers;
+  if (!handlers) return;
+
+  for (const method of TASK_PROTOCOL_METHODS) {
+    const original = handlers.get(method);
+    if (!original) continue;
+    handlers.set(method, async (request, extra) => {
+      const rawParams = isRecord(request.params) ? request.params : {};
+      const { context: callerContext, ...versionArgs } = rawParams;
+      const versionResolution = resolveServedAdcpVersion(versionArgs);
+      if (!versionResolution.ok) {
+        throw versionUnsupportedJsonRpcError(versionResolution, callerContext);
+      }
+      try {
+        const result = await original(request, extra);
+        return addServedAdcpVersion(result, versionResolution.servedVersion, callerContext);
+      } catch (error) {
+        rethrowWithServedAdcpVersion(error, versionResolution.servedVersion);
+      }
+    });
+  }
+}
 
 // ── MCP Tasks store (SDK-managed) ─────────────────────────────────
 
@@ -4336,6 +4560,7 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
   return {
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
+      supported_versions: [...SUPPORTED_RELEASE_VERSIONS],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
     },
     supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
@@ -5673,6 +5898,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       return result;
     });
   });
+  installTaskProtocolVersionNegotiation(server);
 
   async function dispatchCallTool(
     request: { params: { name: string; arguments?: unknown; task?: { ttl?: number } } },
@@ -5684,29 +5910,27 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // echo caller's context object back unchanged in every response).
     const rawArgs = (args as Record<string, unknown> | undefined) ?? {};
     const { context: callerContext, ...handlerArgs } = rawArgs;
+    const versionResolution = resolveServedAdcpVersion(handlerArgs);
 
     const handler = HANDLER_MAP[name];
+
+    if (!versionResolution.ok) {
+      return {
+        result: adcpError('VERSION_UNSUPPORTED', {
+          message: versionResolution.message,
+          details: versionResolution.details,
+          field: versionResolution.field,
+        }, callerContext),
+        flushable: true,
+      };
+    }
+    const servedAdcpVersion = versionResolution.servedVersion;
 
     if (!handler) {
       // Pre-handler validation failures don't touch session state, so flushing
       // is a no-op; leaving flushable=true keeps behaviour consistent for
       // requests whose handlers DO legitimately mutate before failing.
-      return { result: adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext), flushable: true };
-    }
-
-    const requestedVersion = (handlerArgs as { adcp_major_version?: unknown }).adcp_major_version;
-    if (
-      requestedVersion !== undefined
-      && !(SUPPORTED_MAJOR_VERSIONS as readonly number[]).includes(requestedVersion as number)
-    ) {
-      return {
-        result: adcpError('VERSION_UNSUPPORTED', {
-          message: `AdCP major version ${String(requestedVersion)} is not supported`,
-          details: { supported_major_versions: SUPPORTED_MAJOR_VERSIONS },
-          field: 'adcp_major_version',
-        }, callerContext),
-        flushable: true,
-      };
+      return { result: adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext, servedAdcpVersion), flushable: true };
     }
 
     // Check for task-augmented request (explicit `task` field in params).
@@ -5749,7 +5973,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
             message: `idempotency_key is required for ${name}. Generate a UUID v4 and include it on every mutating request; reuse the same key for network retries.`,
             field: 'idempotency_key',
             recovery: 'correctable',
-          }, callerContext),
+          }, callerContext, servedAdcpVersion),
           flushable: true,
         };
       }
@@ -5759,7 +5983,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
             message: 'idempotency_key must match ^[A-Za-z0-9_.:-]{16,255}$ (UUID v4 recommended).',
             field: 'idempotency_key',
             recovery: 'correctable',
-          }, callerContext),
+          }, callerContext, servedAdcpVersion),
           flushable: true,
         };
       }
@@ -5774,7 +5998,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           result: adcpError('IDEMPOTENCY_EXPIRED', {
             message: 'idempotency_key is past the replay window. Generate a fresh UUID v4 and resend.',
             recovery: 'correctable',
-          }, callerContext),
+          }, callerContext, servedAdcpVersion),
           flushable: true,
         };
       }
@@ -5788,7 +6012,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         return {
           result: adcpError('IDEMPOTENCY_CONFLICT', {
             message: 'idempotency_key was used with a different payload within the replay window. Either resend the exact original payload (to return the cached response) or generate a fresh UUID v4 to submit this new payload.',
-          }, callerContext),
+          }, callerContext, servedAdcpVersion),
           flushable: true,
         };
       }
@@ -5800,7 +6024,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           result: adcpError('RATE_LIMITED', {
             message: 'A concurrent request with this idempotency_key is already in progress. Retry after a short delay.',
             recovery: 'transient',
-          }, callerContext),
+          }, callerContext, servedAdcpVersion),
           flushable: true,
         };
       }
@@ -5815,6 +6039,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // requires envelope `status`.
         const body: Record<string, unknown> = { ...(outcome.response as Record<string, unknown>), replayed: true };
         if (body.status === undefined) body.status = 'completed';
+        body.adcp_version = servedAdcpVersion;
         if (callerContext !== undefined) body.context = callerContext;
         toolResult = {
           content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -5856,6 +6081,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           // happens to describe application-level errors — `completed` is
           // the correct TaskStatus regardless of body shape.
           const body: Record<string, unknown> = { status: 'completed', errors: resultObj.errors };
+          body.adcp_version = servedAdcpVersion;
           if (callerContext !== undefined) body.context = callerContext;
           toolResult = {
             content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -5871,7 +6097,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
               : resultObj.errors!.length > 1
                 ? { all_errors: resultObj.errors }
                 : undefined,
-          }, callerContext);
+          }, callerContext, servedAdcpVersion);
         }
       } else {
         // Inner response (what gets cached for replay). Per security.mdx:
@@ -5891,6 +6117,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // `inner` and we honor that value.
         const response: Record<string, unknown> = { ...inner };
         if (response.status === undefined) response.status = 'completed';
+        response.adcp_version = servedAdcpVersion;
         if (name === 'create_media_buy') response.replayed = false;
         if (callerContext !== undefined) response.context = callerContext;
         // `structuredContent` is authoritative on success so raw-probe
@@ -5910,7 +6137,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       toolResult = adcpError('SERVICE_UNAVAILABLE', {
         message: error instanceof Error ? error.message : 'Unknown error',
         recovery: 'transient',
-      }, callerContext);
+      }, callerContext, servedAdcpVersion);
     }
 
     // TypeScript: by this point toolResult is guaranteed set — either the
@@ -5999,7 +6226,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       'Created MCP task',
     );
 
-    return { result: { task } as object, flushable: !handlerThrew };
+    return { result: { task, adcp_version: servedAdcpVersion } as object, flushable: !handlerThrew };
   }
 
   // tasks/get, tasks/result, tasks/list, tasks/cancel are auto-registered
