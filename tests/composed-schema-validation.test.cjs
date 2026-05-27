@@ -912,6 +912,171 @@ async function runTests() {
     },
     'Wholesale signal event accepts deprecated signal_id and relaxed data_provider/pricing_options'
   );
+
+  log('Registry change feed schemas:', 'info');
+  await testSchemaValidation(
+    '/schemas/core/registry-feed-response.json',
+    {
+      events: [
+        {
+          event_id: '019539a0-1234-7000-8000-000000000001',
+          event_type: 'property.created',
+          entity_type: 'property',
+          entity_id: '019539a0-b1c2-7000-8000-000000000002',
+          payload: {
+            property_rid: '019539a0-b1c2-7000-8000-000000000002',
+            classification: 'property',
+            source: 'contributed',
+            identifiers: [{ type: 'domain', value: 'streamer.example.com' }]
+          },
+          actor: 'pipeline:crawler',
+          created_at: '2026-03-31T10:00:00.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000003',
+          event_type: 'authorization.granted',
+          entity_type: 'authorization',
+          entity_id: 'https://ads.agency.example.com:streamer.example.com',
+          payload: {
+            agent_url: 'https://ads.agency.example.com',
+            publisher_domain: 'streamer.example.com',
+            authorization_type: 'property_ids',
+            property_ids: ['primetime_ctv'],
+            placement_ids: ['pre_roll_30s'],
+            countries: ['US', 'CA'],
+            delegation_type: 'direct',
+            exclusive: false,
+            signing_keys: [{ kid: 'pub-2026-04', kty: 'OKP', alg: 'EdDSA', crv: 'Ed25519', x: 'abc123' }]
+          },
+          actor: 'pipeline:crawler',
+          created_at: '2026-03-31T10:01:00.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000007',
+          event_type: 'agent.discovered',
+          entity_type: 'agent',
+          entity_id: 'https://new-agent.example.com',
+          payload: {
+            agent_url: 'https://new-agent.example.com',
+            channels: [],
+            property_types: [],
+            markets: [],
+            categories: [],
+            tags: [],
+            delivery_types: [],
+            property_count: 0,
+            publisher_count: 0,
+            has_tmp: false
+          },
+          actor: 'pipeline:crawler',
+          created_at: '2026-03-31T10:01:30.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000004',
+          event_type: 'agent.compliance_changed',
+          entity_type: 'agent',
+          entity_id: 'https://ads.agency.example.com',
+          payload: {
+            agent_url: 'https://ads.agency.example.com',
+            previous_status: 'passing',
+            current_status: 'degraded',
+            headline: 'media_buy track failing: 2 scenarios down',
+            tracks: { core: 'pass', media_buy: 'partial', creative: 'skip', governance: 'silent' },
+            storyboards_passing: 24,
+            storyboards_total: 27,
+            storyboards: [
+              { storyboard_id: 'media_buy_seller', status: 'failing', steps_passed: 4, steps_total: 7 },
+              { storyboard_id: 'optional_controller', status: 'untested' },
+              { storyboard_id: 'mixed_flow', status: 'partial', steps_passed: 3, steps_total: 5 }
+            ]
+          },
+          actor: 'pipeline:compliance-heartbeat',
+          created_at: '2026-03-31T10:02:00.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000008',
+          event_type: 'agent.verification_earned',
+          entity_type: 'agent',
+          entity_id: 'https://ads.agency.example.com',
+          payload: {
+            agent_url: 'https://ads.agency.example.com',
+            role: 'media-buy',
+            verified_specialisms: ['sales-catalog-driven'],
+            adcp_version: '3.1.0-beta.5'
+          },
+          actor: 'pipeline:compliance-heartbeat',
+          created_at: '2026-03-31T10:02:30.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000009',
+          event_type: 'agent.verification_lost',
+          entity_type: 'agent',
+          entity_id: 'https://ads.agency.example.com',
+          payload: {
+            agent_url: 'https://ads.agency.example.com',
+            role: 'media-buy',
+            reason: 'media_buy track failing'
+          },
+          actor: 'pipeline:compliance-heartbeat',
+          created_at: '2026-03-31T10:02:45.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000010',
+          event_type: 'publisher.adagents_discovered',
+          entity_type: 'publisher',
+          entity_id: 'streamer.example.com',
+          payload: {
+            publisher_domain: 'streamer.example.com',
+            agent_count: 2,
+            property_count: 4,
+            source: 'catalog_crawl',
+            discovery_method: 'direct',
+            manager_domain: null
+          },
+          actor: 'pipeline:catalog_crawl',
+          created_at: '2026-03-31T10:03:00.000Z'
+        }
+      ],
+      cursor: '019539a0-1234-7000-8000-000000000010',
+      has_more: false
+    },
+    'Registry feed response validates typed property, authorization, and compliance events'
+  );
+  await testSchemaRejection(
+    '/schemas/core/registry-event.json',
+    {
+      event_id: '019539a0-1234-7000-8000-000000000005',
+      event_type: 'authorization.granted',
+      entity_type: 'authorization',
+      entity_id: 'https://ads.agency.example.com:streamer.example.com',
+      payload: {
+        agent_url: 'https://ads.agency.example.com'
+      },
+      actor: 'pipeline:crawler',
+      created_at: '2026-03-31T10:03:00.000Z'
+    },
+    'Registry authorization events reject missing publisher_domain'
+  );
+  await testSchemaRejection(
+    '/schemas/core/registry-event.json',
+    {
+      event_id: '019539a0-1234-7000-8000-000000000006',
+      event_type: 'agent.compliance_changed',
+      entity_type: 'publisher',
+      entity_id: 'https://ads.agency.example.com',
+      payload: {
+        agent_url: 'https://ads.agency.example.com',
+        previous_status: 'passing',
+        current_status: 'degraded',
+        tracks: { core: 'pass' },
+        storyboards_passing: 1,
+        storyboards_total: 2
+      },
+      actor: 'pipeline:compliance-heartbeat',
+      created_at: '2026-03-31T10:04:00.000Z'
+    },
+    'Registry event discriminator rejects mismatched entity_type'
+  );
   log('');
 
   // Product `publisher_properties` rejects `publisher_domains[]` compact form (#4508):
