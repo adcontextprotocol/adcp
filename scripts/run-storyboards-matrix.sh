@@ -203,6 +203,7 @@ REQUIRED_CLEAN_CURRENT_SALES=(
   "media_buy_seller/billing_finality_delivery"
   "media_buy_seller/canonical_formats"
   "media_buy_seller/vendor_metric_catalog_precondition"
+  "canonical_format_validate_input"
   "notification_config_event_scope"
   "notification_config_lifecycle"
   "notification_config_rejections"
@@ -216,7 +217,11 @@ REQUIRED_CLEAN_CURRENT_SIGNALS=(
   "wholesale_feed_bulk_webhooks"
 )
 REQUIRED_CLEAN_CURRENT_CREATIVE=(
+  "canonical_format_validate_input"
   "creative/billing_out_of_band"
+)
+REQUIRED_CLEAN_CURRENT_CREATIVE_BUILDER=(
+  "canonical_format_validate_input"
 )
 
 storyboard_passed() {
@@ -327,6 +332,21 @@ for entry in "${TENANTS[@]}"; do
 
   if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "creative" ]; then
     for storyboard_id in "${REQUIRED_CLEAN_CURRENT_CREATIVE[@]}"; do
+      if storyboard_passed "${storyboard_id}" "${log}"; then
+        echo "  ✓ required-clean ${storyboard_id}"
+      else
+        status="✗"
+        if [ -n "${failed_floor}" ]; then
+          failed_floor="${failed_floor}; required-clean ${storyboard_id} did not pass"
+        else
+          failed_floor="required-clean ${storyboard_id} did not pass"
+        fi
+      fi
+    done
+  fi
+
+  if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "creative-builder" ]; then
+    for storyboard_id in "${REQUIRED_CLEAN_CURRENT_CREATIVE_BUILDER[@]}"; do
       if storyboard_passed "${storyboard_id}" "${log}"; then
         echo "  ✓ required-clean ${storyboard_id}"
       else

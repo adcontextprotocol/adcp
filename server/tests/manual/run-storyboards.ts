@@ -64,6 +64,37 @@ const releasedComplianceVersion = process.env.ADCP_COMPLIANCE_DIR
   : undefined;
 const isThreeZeroCompatRun = releasedComplianceVersion !== undefined && /^3\.0\.\d+$/.test(releasedComplianceVersion);
 
+function installValidateInputResponseSchemaShim(): void {
+  // Temporary bridge until @adcp/sdk registers validate_input in
+  // TOOL_RESPONSE_SCHEMAS (adcp-client#2059). The generated Zod schema already
+  // exists; the storyboard runner map is the only missing link.
+  const require = createRequire(import.meta.url);
+  try {
+    const sdkRoot = dirname(require.resolve('@adcp/sdk/package.json'));
+    const responseSchemas = require(join(sdkRoot, 'dist/lib/utils/response-schemas.js')) as {
+      TOOL_RESPONSE_SCHEMAS?: Record<string, unknown>;
+    };
+    const generatedSchemas = require(join(sdkRoot, 'dist/lib/types/schemas.generated.js')) as {
+      ValidateInputResponseSchema?: unknown;
+    };
+    if (
+      responseSchemas.TOOL_RESPONSE_SCHEMAS
+      && generatedSchemas.ValidateInputResponseSchema
+      && !responseSchemas.TOOL_RESPONSE_SCHEMAS.validate_input
+    ) {
+      responseSchemas.TOOL_RESPONSE_SCHEMAS.validate_input = generatedSchemas.ValidateInputResponseSchema;
+    }
+  } catch (err) {
+    throw new Error(
+      `Unable to install temporary validate_input response schema shim for the storyboard runner. ` +
+      `Upgrade @adcp/sdk once adcp-client#2059 is released, or ensure the local SDK package contains ` +
+      `dist/lib/utils/response-schemas.js and ValidateInputResponseSchema. Cause: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+installValidateInputResponseSchemaShim();
+
 function prewarmAsyncVariantSchemas(adcpVersion: string | undefined): void {
   if (!adcpVersion) return;
   const require = createRequire(import.meta.url);

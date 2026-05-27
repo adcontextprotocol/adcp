@@ -52,6 +52,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   // operations. SDK 7.0's `CreativeBuilderPlatform` interface dropped them
   // (they live on `CreativeAdServerPlatform`); the /creative-builder tenant
   // no longer advertises them in tools/list.
+  validate_input: ['sales', 'creative', 'creative-builder'],
   list_creatives: ['sales', 'creative'],
   sync_creatives: ['sales', 'creative', 'creative-builder'],
   build_creative: ['creative', 'creative-builder'],
@@ -100,9 +101,19 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
 };
 
 /** Build the tool list a given tenant serves — inverse view of TOOL_CATALOG. */
-export function toolsForTenant(tenantId: string): string[] {
+export function toolsForTenant(
+  tenantId: string,
+  options: { storyboardCompat?: { version?: string }; adcpVersion?: string } = {},
+): string[] {
   return Object.entries(TOOL_CATALOG)
     .filter(([, tenants]) => tenants.includes(tenantId))
     .map(([tool]) => tool)
+    .filter(tool => !(
+      tool === 'validate_input'
+      && (
+        options.storyboardCompat?.version === '3.0'
+        || options.adcpVersion?.startsWith('3.0')
+      )
+    ))
     .sort();
 }

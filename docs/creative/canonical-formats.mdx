@@ -960,7 +960,7 @@ When NOT to use `validate_input`:
 
 | Tool | Who calls | What it does | Side effects |
 |---|---|---|---|
-| `validate_input` | Buyer | Dry-run validation against canonicals and/or products. Returns per-target `ok` + violations. | None (no creative registered, no synthesis triggered). |
+| `validate_input` | Buyer | Dry-run validation against canonicals and/or products. Returns per-target `validated_pass`, `validated_fail`, or `unvalidatable_nondeterministic`. | None (no creative registered, no synthesis triggered). |
 | `build_creative` | Buyer (calling a creative agent) | Produces a creative manifest from inputs (brief, video_brief, brand). For deterministic flows: one round-trip. For nondeterministic flows: returns task with QA-loop semantics. | Synthesis happens; output manifest is returned. May register a creative on the creative agent's library if the agent supports `has_creative_library`. Does NOT register on the seller. |
 | `sync_creatives` | Buyer (calling a seller) | Submits a manifest to the sales agent for the seller to register against a product. | Validates against canonical + product narrowing; registers creative on the seller's library on success; returns violations on failure. |
 

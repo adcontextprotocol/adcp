@@ -486,6 +486,33 @@ describe('tenant routing smoke', () => {
     }
   }, 15000);
 
+  it('does not advertise validate_input in 3.0 storyboard compat mode', async () => {
+    stageLatestThreeZeroSchemaBundle();
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      for (const tenant of ['sales', 'creative', 'creative-builder']) {
+        const url = `${baseUrl}/${tenant}/mcp`;
+        await initializeTenant(url);
+        const list = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json',
+            authorization: 'Bearer test-token',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+        });
+        const body = await list.json() as {
+          result?: { tools?: Array<{ name: string }> };
+        };
+        const toolNames = (body.result?.tools ?? []).map(tool => tool.name);
+        expect(toolNames).not.toContain('validate_input');
+      }
+    } finally {
+      await close();
+    }
+  }, 15000);
+
   it('does not advertise creative billing discriminator in 3.0 storyboard compat mode', async () => {
     stageLatestThreeZeroSchemaBundle();
     const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });

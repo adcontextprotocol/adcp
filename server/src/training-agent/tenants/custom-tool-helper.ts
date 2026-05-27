@@ -54,6 +54,9 @@ interface IdempotencyClaim {
 
 function toAdaptedResponse(result: unknown, callerContext: unknown, options: CustomToolOptions): AdaptedResponse {
   const errsField = (result as { errors?: unknown[] } | null | undefined)?.errors;
+  const servedAdcpVersion = typeof (result as { adcp_version?: unknown } | null | undefined)?.adcp_version === 'string'
+    ? (result as { adcp_version: string }).adcp_version
+    : undefined;
   const canReturnPayloadErrors = options.payloadErrorsAsSuccess
     && typeof (result as { accepted?: unknown } | null | undefined)?.accepted === 'number';
   if (Array.isArray(errsField) && errsField.length > 0 && !canReturnPayloadErrors) {
@@ -62,7 +65,10 @@ function toAdaptedResponse(result: unknown, callerContext: unknown, options: Cus
     if (first.field) errorObj.field = first.field;
     if (first.details !== undefined) errorObj.details = first.details;
     if (first.recovery) errorObj.recovery = first.recovery;
-    const body = wrapEnvelope({ adcp_error: errorObj }, { context: callerContext });
+    const body = wrapEnvelope({
+      adcp_error: errorObj,
+      ...(servedAdcpVersion && { adcp_version: servedAdcpVersion }),
+    }, { context: callerContext });
     return {
       isError: true,
       content: [{ type: 'text', text: JSON.stringify(body) }],

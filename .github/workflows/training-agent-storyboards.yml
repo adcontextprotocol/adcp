@@ -12,8 +12,11 @@ on:
       - 'scripts/overlay-compliance-cache.sh'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
+      - 'scripts/stage-sdk-schema-bundle.sh'
+      - 'static/schemas/source/**'
       - 'static/compliance/source/**'
       - 'dist/compliance/**'
+      - 'dist/schemas/**'
       - '.github/workflows/training-agent-storyboards.yml'
   push:
     branches: [main, '3.0.x']
@@ -26,8 +29,11 @@ on:
       - 'scripts/overlay-compliance-cache.sh'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
+      - 'scripts/stage-sdk-schema-bundle.sh'
+      - 'static/schemas/source/**'
       - 'static/compliance/source/**'
       - 'dist/compliance/**'
+      - 'dist/schemas/**'
       - '.github/workflows/training-agent-storyboards.yml'
 
 concurrency:
@@ -302,6 +308,7 @@ jobs:
             "media_buy_seller/billing_finality_delivery"
             "media_buy_seller/canonical_formats"
             "media_buy_seller/vendor_metric_catalog_precondition"
+            "canonical_format_validate_input"
             "notification_config_event_scope"
             "notification_config_lifecycle"
             "notification_config_rejections"
@@ -345,6 +352,7 @@ jobs:
         run: |
           set -euo pipefail
           required_clean=(
+            "canonical_format_validate_input"
             "creative/billing_out_of_band"
           )
           for storyboard_id in "${required_clean[@]}"; do
@@ -352,6 +360,24 @@ jobs:
               echo "Required-clean storyboard passed: ${storyboard_id}"
             else
               echo "::error::Required-clean storyboard did not pass on /creative current surface: ${storyboard_id}"
+              echo "Last matching log lines:"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
+
+      - name: Enforce creative-builder required-clean storyboards
+        if: matrix.surface == 'current' && matrix.tenant == 'creative-builder'
+        run: |
+          set -euo pipefail
+          required_clean=(
+            "canonical_format_validate_input"
+          )
+          for storyboard_id in "${required_clean[@]}"; do
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
+              echo "Required-clean storyboard passed: ${storyboard_id}"
+            else
+              echo "::error::Required-clean storyboard did not pass on /creative-builder current surface: ${storyboard_id}"
               echo "Last matching log lines:"
               grep -F "${storyboard_id}" /tmp/storyboards.log || true
               exit 1
