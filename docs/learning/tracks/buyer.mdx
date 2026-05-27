@@ -179,6 +179,9 @@ How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sy
   <Card title="Creative agent pricing" icon="money-bill" href="/docs/creative/implementing-creative-agents#pricing-walkthrough">
     How creative agents charge: pricing discovery, build costs, and billing reconciliation.
   </Card>
+  <Card title="Canonical formats" icon="shapes" href="/docs/creative/canonical-formats">
+    Product-level `format_options[]`, `format_kind`, and canonical-first validation for 3.1 creative requirements.
+  </Card>
   <Card title="Sponsored Intelligence" icon="message-bot" href="/docs/sponsored-intelligence/overview">
     Conversational brand experiences in AI assistants.
   </Card>
@@ -191,7 +194,7 @@ How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sy
 
 - **Creative lifecycle** — `build_creative`, `preview_creative`, `sync_creatives` — callable on any agent implementing the Creative Protocol, including sales agents
 - **Preview modes** — `preview_creative` supports single, batch, and variant requests — choose the mode that fits the workflow (S2 covers the tradeoffs)
-- **Cross-platform adaptation** — agents adapt assets across display, video, audio, native, and broadcast formats. Broadcast manifests carry `industry_identifiers[]` (Ad-ID, ISCI) — S2 goes deep
+- **Cross-platform adaptation** — agents adapt assets across display, video, audio, native, and broadcast formats. In 3.1, sellers may publish canonical `format_options[]`; choose `format_kind` by creative shape, then validate the canonical first and the product's narrowing second. S2 covers the hands-on details
 - **Seller-side generation** — sales agents can generate creatives at serve time from a brief provided in the media buy
 - **Creative pricing** — creative agents can charge for their services. When they do, `list_creatives` returns `pricing_options` from your account's rate card, and `build_creative` returns the cost incurred. See the [creative pricing specification](/docs/creative/specification#pricing) for details.
 - **Sponsored Intelligence** — brands participate in conversational AI with transparency and user control. SI is an [experimental surface](/docs/reference/experimental-status) in AdCP 3.0 (feature id `sponsored_intelligence.core`); session lifecycle and UI components may change between 3.x releases with at least 6 weeks' notice.

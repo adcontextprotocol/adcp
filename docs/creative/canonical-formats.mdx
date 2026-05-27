@@ -19,6 +19,8 @@ testable: true
 
 Canonical formats collapse today's separate format registry into product-bound declarations. AdCP defines a small set of **canonical formats** (universal building blocks); sellers' products carry inline `ProductFormatDeclaration`s that narrow canonicals with platform-specific parameters. Creative agents become transformation services declaring `build_creative` capabilities targeting canonical formats. Most existing concepts (CTAs, destinations, tracking, brand identity) are reused or stay in their current homes — canonical formats don't create a new vocabulary layer for those.
 
+For hands-on authoring practice, use the [S2 creative specialist module](/docs/learning/specialist/creative), which links to this reference instead of duplicating it.
+
 ## Glossary
 
 | Term | One-line definition |
@@ -1271,6 +1273,7 @@ The SDK side's v1→v2 projection (validated in [adcp-client #1815](https://gith
 
 ## Related
 
+- [S2 creative specialist module](/docs/learning/specialist/creative) — training lab for reading product `format_options[]`, selecting `format_kind`, and mapping `asset_source`
 - [v1 → canonical-formats migration guide](/docs/creative/canonical-formats-migration) — concrete migration paths for sellers, creative agents, buyers, and publisher-direct integrations
 - [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) — v2 architecture decisions and rationale
 - [PR #3307](https://github.com/adcontextprotocol/adcp/pull/3307) — Phase 1 + Phase 2 implementation, on hold pending 3.1.0 beta cycle
