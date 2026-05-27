@@ -664,7 +664,7 @@
         },
         "viewability": {
           "type": "object",
-          "description": "Viewability metrics to inject into the simulated delivery row. Used by simulate_delivery. When present, sellers MUST surface these values inside `viewability` on the next get_media_buy_delivery response. Mirrors the `viewability` block in delivery-metrics.json: measurable_impressions is the shared denominator for viewable_rate and viewed_seconds, and standard is required whenever measured values are present.",
+          "description": "Viewability metrics to inject into the simulated delivery row. Used by simulate_delivery. When present, sellers MUST surface these values inside `viewability` on the next get_media_buy_delivery response. Mirrors the `viewability` block in delivery-metrics.json: measurable_impressions is the shared denominator for viewable_rate and viewed_seconds. Sellers SHOULD include standard whenever measured values are present.",
           "properties": {
             "measurable_impressions": {
               "type": "number",
@@ -692,20 +692,7 @@
               "description": "Viewability measurement standard governing the threshold for viewable_rate and viewed_seconds."
             }
           },
-          "additionalProperties": true,
-          "anyOf": [
-            {
-              "not": {
-                "anyOf": [
-                  { "required": ["measurable_impressions"] },
-                  { "required": ["viewable_impressions"] },
-                  { "required": ["viewable_rate"] },
-                  { "required": ["viewed_seconds"] }
-                ]
-              }
-            },
-            { "required": ["standard"] }
-          ]
+          "additionalProperties": true
         },
         "spend_percentage": {
           "type": "number",

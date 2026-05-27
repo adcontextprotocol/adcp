@@ -283,7 +283,7 @@
     },
     "viewability": {
       "type": "object",
-      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — since duration is governed by the same viewability threshold (`standard`) and shares the same `measurable_impressions` denominator. `standard` is required whenever measured viewability values are reported because MRC and GroupM rows are not interchangeable.",
+      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — since duration is governed by the same viewability threshold (`standard`) and shares the same `measurable_impressions` denominator. Sellers SHOULD include `standard` whenever measured viewability values are reported because MRC and GroupM rows are not interchangeable.",
       "properties": {
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",
@@ -315,20 +315,7 @@
           "description": "Viewability measurement standard applied to these metrics. Governs the in-view threshold for both `viewable_rate` and `viewed_seconds`."
         }
       },
-      "additionalProperties": true,
-      "anyOf": [
-        {
-          "not": {
-            "anyOf": [
-              { "required": ["measurable_impressions"] },
-              { "required": ["viewable_impressions"] },
-              { "required": ["viewable_rate"] },
-              { "required": ["viewed_seconds"] }
-            ]
-          }
-        },
-        { "required": ["standard"] }
-      ]
+      "additionalProperties": true
     },
     "engagements": {
       "type": "number",
