@@ -754,11 +754,19 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
  * adcontextprotocol/adcp-client — the dedup below means it is safe to leave this
  * entry in place during the transition; remove once a release has landed and the
  * cross-impl tests no longer rely on it). */
-const LOCAL_SCENARIOS = ['force_create_media_buy_arm', 'force_task_completion', 'force_creative_purge', 'force_wholesale_feed_webhook', 'seed_creative_format', 'seed_measurement_catalog'] as const;
+const LOCAL_SCENARIOS = [
+  'force_create_media_buy_arm',
+  'force_task_completion',
+  'force_creative_purge',
+  'force_wholesale_feed_webhook',
+  'seed_creative_format',
+  'seed_measurement_catalog',
+  'query_provenance_audit_observations',
+] as const;
 
 function localScenariosFor(ctx: TrainingContext): string[] {
   return ctx.storyboardCompat?.version === '3.0'
-    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook')
+    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'query_provenance_audit_observations')
     : [...LOCAL_SCENARIOS];
 }
 
@@ -873,6 +881,16 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
   if (scenario === 'seed_measurement_catalog') {
     return handleSeedMeasurementCatalog(session, rawArgs);
+  }
+  if (scenario === 'query_provenance_audit_observations') {
+    if (ctx.storyboardCompat?.version === '3.0') {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: 'query_provenance_audit_observations is not available in AdCP 3.0 compatibility mode',
+      };
+    }
+    return handleQueryProvenanceAuditObservations(session, rawArgs);
   }
   // seed_creative_format is a training-agent extension not in the SDK's
   // CONTROLLER_SCENARIOS. Handle it before the SDK dispatcher so the SDK
@@ -1406,6 +1424,7 @@ async function handleForceCreativePurge(session: SessionState, sessionKey: strin
 
   if (purgeKind === 'hard') {
     session.creatives.delete(creativeId);
+    session.complyExtensions.provenanceAuditObservations.delete(creativeId);
   } else {
     creative.purge = {
       kind: 'soft',
@@ -1638,6 +1657,40 @@ function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, u
     previous_state: 'submitted',
     current_state: 'completed',
     message: `Task ${taskId} transitioned from submitted to completed`,
+  };
+}
+
+function handleQueryProvenanceAuditObservations(session: SessionState, rawArgs: Record<string, unknown>): object {
+  const params = rawArgs.params as Record<string, unknown> | undefined;
+  if (!params || typeof params !== 'object') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'query_provenance_audit_observations requires params',
+    };
+  }
+
+  const creativeId = params.creative_id;
+  if (typeof creativeId !== 'string' || creativeId.length === 0) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'creative_id is required',
+    };
+  }
+
+  if (!session.creatives.has(creativeId)) {
+    return {
+      success: false,
+      error: 'NOT_FOUND',
+      error_detail: `Creative "${creativeId}" not found in this sandbox session`,
+    };
+  }
+
+  return {
+    success: true,
+    creative_id: creativeId,
+    audit_observations: session.complyExtensions.provenanceAuditObservations.get(creativeId) ?? [],
   };
 }
 

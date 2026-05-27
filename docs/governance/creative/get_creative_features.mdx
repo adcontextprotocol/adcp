@@ -100,6 +100,35 @@ Evaluates a creative manifest and returns feature values from a creative governa
   "detail_url": "https://categorizer.example.com/reports/ctx_jkl012"
 }
 ```
+
+```json Provenance audit observation
+{
+  "$schema": "/schemas/creative/get-creative-features-response.json",
+  "status": "completed",
+  "results": [
+    { "feature_id": "ai_generated", "value": true, "confidence": 0.94 }
+  ],
+  "audit_observations": [
+    {
+      "code": "OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED",
+      "severity": "audit-worthy",
+      "recovery": "informational",
+      "field": "creative_manifest.provenance.disclosure.required",
+      "message": "Creative claims human-directed AI output does not require disclosure; retain for audit review.",
+      "details": {
+        "agent_url": "https://governance.encypher.seller.example",
+        "feature_id": "ai_generated",
+        "claimed_value": {
+          "human_oversight": "directed",
+          "disclosure_required": false
+        },
+        "observed_value": true,
+        "confidence": 0.94
+      }
+    }
+  ]
+}
+```
 </CodeGroup>
 
 ### Response fields
@@ -116,6 +145,16 @@ Evaluates a creative manifest and returns feature values from a creative governa
 | `results[].methodology_version` | Version of methodology used |
 | `results[].details` | Vendor-specific details |
 | `detail_url` | URL to vendor's full assessment. Access-controlled by the vendor. |
+| `audit_observations[]` | Non-blocking observations for audit routing. These are not rejection signals by themselves. |
+| `audit_observations[].code` | Machine-readable observation code, such as `OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED` |
+| `audit_observations[].severity` | Routing severity; currently `audit-worthy` |
+| `audit_observations[].recovery` | Caller recovery category; currently `informational` |
+| `audit_observations[].field` | Resolved creative manifest path for the risky claim side of the observation. Multi-field observations anchor the primary claim path, not necessarily every trigger field. |
+| `audit_observations[].message` | Human-readable audit queue summary; do not include PII, cross-tenant data, or vendor-only report details |
+| `audit_observations[].details` | Audit-safe details limited to `{ agent_url, feature_id, claimed_value, observed_value, confidence, substituted_for }` |
+| `audit_observations[].details.claimed_value` | For `OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED`, a compact object `{ human_oversight, disclosure_required }`; `disclosure_required` is the flattened alias for `creative_manifest.provenance.disclosure.required`. |
+
+`feature_ids` filters `results[]`; `audit_observations[]` may still appear when the submitted provenance itself is audit-worthy. `OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED` fires when `human_oversight` is `edited` or `directed` and `disclosure.required` is `false`; verifier observations such as `observed_value` and `confidence` are optional audit context.
 
 ### Error response
 
@@ -163,6 +202,13 @@ const quality = result.results.find(f => f.feature_id === 'brand_consistency');
 if (quality && quality.value < 80) {
   // Reject - below quality threshold
   return;
+}
+
+for (const observation of result.audit_observations ?? []) {
+  if (observation.severity === 'audit-worthy') {
+    // Retain or route for review; do not reject solely on this signal.
+    recordAuditObservation(observation);
+  }
 }
 ```
 

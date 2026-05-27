@@ -45,6 +45,7 @@ const SALES_CURRENT_SCENARIOS = [
   'seed_media_buy',
   'seed_creative_format',
   'seed_measurement_catalog',
+  'query_provenance_audit_observations',
 ] as const;
 
 const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5'] as const;
@@ -297,11 +298,16 @@ async function tryHandleLocalComplyScenario(
   if (
     rawArgs.scenario !== 'seed_measurement_catalog'
     && rawArgs.scenario !== 'force_creative_purge'
+    && rawArgs.scenario !== 'query_provenance_audit_observations'
     && rawArgs.scenario !== 'list_scenarios'
   ) return false;
   if (
     isThreeZeroCompat
-    && (rawArgs.scenario === 'seed_measurement_catalog' || rawArgs.scenario === 'force_creative_purge')
+    && (
+      rawArgs.scenario === 'seed_measurement_catalog'
+      || rawArgs.scenario === 'force_creative_purge'
+      || rawArgs.scenario === 'query_provenance_audit_observations'
+    )
   ) return false;
 
   const { context, ...handlerArgs } = rawArgs;

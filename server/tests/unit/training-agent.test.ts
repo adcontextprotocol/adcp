@@ -6629,6 +6629,7 @@ describe('get_adcp_capabilities handler', () => {
       'seed_media_buy',
       'seed_creative_format',
       'seed_measurement_catalog',
+      'query_provenance_audit_observations',
     ]));
   });
 

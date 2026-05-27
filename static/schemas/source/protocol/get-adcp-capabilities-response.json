@@ -1527,6 +1527,7 @@
               "seed_creative_format",
               "seed_measurement_catalog",
               "query_upstream_traffic",
+              "query_provenance_audit_observations",
               "force_upstream_unavailable"
             ]
           },
