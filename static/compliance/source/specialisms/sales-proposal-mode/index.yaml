@@ -6,6 +6,7 @@ category: sales_proposal_mode
 summary: "Seller agent that generates curated media plan proposals the buyer can review, refine, and accept."
 track: media_buy
 required_tools:
+  - sync_governance
   - get_products
   - create_media_buy
 requires_scenarios:
@@ -25,6 +26,9 @@ requires_scenarios:
 # pending_creatives on a media_buy.
 invariants:
   - status.monotonic
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
 narrative: |
   **DEPRECATED in 3.1 — see https://github.com/adcontextprotocol/adcp/issues/3823**
@@ -154,6 +158,50 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "sales_proposal_mode--sync_accounts"
+            description: "Context correlation_id returned unchanged"
+      - id: sync_governance
+        title: "Register governance agent"
+        narrative: |
+          The buyer registers the configured governance agent on the account before
+          accepting a seller-generated proposal as a media buy.
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: |
+          Acknowledge governance registration for the account:
+          - status: synced
+          - governance_agents[0].url echoes the configured governance agent
+
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+          idempotency_key: "$generate:uuid_v4#sales_proposal_mode_account_setup_sync_governance"
+          context:
+            correlation_id: "sales_proposal_mode--sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "synced"
+            description: "Governance agent is registered on the account"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_proposal_mode--sync_governance"
             description: "Context correlation_id returned unchanged"
   - id: brief_with_proposals
     title: "Brief with proposals"

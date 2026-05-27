@@ -3,7 +3,7 @@ version: "1.0.0"
 title: "Governance-aware seller"
 protocol: media-buy
 category: governance_aware_seller
-summary: "Seller agent that composes with a campaign-governance agent on the buyer side — accepts sync_governance, calls check_governance before confirming spend, and propagates governance approvals, conditions, and denials unchanged. Optional claim; pure sellers without governance composition do not claim this specialism and skip the governance scenarios as not_applicable."
+summary: "Seller agent that composes with a campaign-governance agent on the buyer side after baseline sync_governance registration — calls check_governance before confirming spend, and propagates governance approvals, conditions, and denials unchanged. Optional claim for the full governance-check loop."
 track: media_buy
 required_tools:
   - sync_governance
@@ -28,15 +28,10 @@ requires_scenarios:
   - governance_aware_seller/governance_multi_agent_rejected
 
 narrative: |
-  Governance composition is an optional seller capability. A seller agent can be
-  fully spec-compliant without integrating with a buyer-side governance agent —
-  it accepts `create_media_buy`, validates the request against its own rules
-  (budget, inventory, creative), and returns success or a seller-scoped error
-  (`VALIDATION_ERROR`, `INVENTORY_UNAVAILABLE`, `TERMS_REJECTED`, etc.). The
-  governance handshake — `sync_governance` registration, `check_governance`
-  consultation before confirming spend, and `GOVERNANCE_DENIED` / governance
-  condition propagation — is only exercisable by a seller that has opted into
-  composing with the buyer's governance agent.
+  Baseline `sync_governance` registration is exercised by the money-moving
+  sales specialisms. This specialism covers the full governance composition
+  loop after registration: `check_governance` consultation before confirming
+  spend, plus `GOVERNANCE_DENIED` and governance-condition propagation.
 
   Sellers that want to advertise "I honor the buyer's governance plan" claim
   this specialism. The grading exercises the four scenarios that require the
@@ -51,19 +46,19 @@ narrative: |
     falls within the plan limits after the buyer reads the denial findings.
 
   Sellers that do not claim this specialism are graded `not_applicable` on
-  these scenarios rather than failed. This mirrors the pattern used by the
-  other governance-* specialisms (`governance-spend-authority`,
-  `governance-delivery-monitor`) and by `measurement-verification` —
-  cross-cutting capabilities that involve campaign behavior are gated behind
-  explicit specialism claims instead of being force-included under every
-  sales-* specialism. (`signed-requests` was previously listed here; it was
-  reclassified in 3.1 to a universal capability-gated storyboard.)
+  the `check_governance` scenarios rather than failed. This mirrors the
+  pattern used by the other governance-* specialisms
+  (`governance-spend-authority`, `governance-delivery-monitor`) and by
+  `measurement-verification` — cross-cutting behaviors beyond registration
+  are gated behind explicit specialism claims instead of being force-included
+  under every sales-* specialism. (`signed-requests` was previously listed
+  here; it was reclassified in 3.1 to a universal capability-gated storyboard.)
 
   Composition means the seller:
-  - accepts `sync_governance` to register the buyer's single governance agent
-    URL for the account (one agent per account; internal specialist review
-    composes inside the agent, not at registration — see #3010 / #3015),
-  - calls `check_governance` on the registered agent before confirming a
+  - uses the account's registered single governance agent (one agent per
+    account; internal specialist review composes inside the agent, not at
+    registration — see #3010 / #3015),
+  - calls `check_governance` on that registered agent before confirming a
     spend-committing request,
   - returns `GOVERNANCE_DENIED` with the governance findings propagated
     unchanged when the check denies,
@@ -79,7 +74,7 @@ agent:
     - sells_media
     - governance_aware
   examples:
-    - "Publisher seller that integrates sync_governance and check_governance"
+    - "Publisher seller that integrates check_governance before confirming spend"
     - "SSP that honors buyer-side governance plans before confirming bids"
     - "Retail media network that refuses buys when the buyer's governance denies"
 
