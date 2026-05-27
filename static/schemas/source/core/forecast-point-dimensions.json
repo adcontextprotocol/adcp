@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/forecast-point-dimensions.json",
   "title": "Forecast Point Dimensions",
-  "description": "Dimension constraints represented by a ForecastPoint. Use this when one product or proposal needs to expose availability or forecasted delivery by country, region, placement, device, audience, or intersections such as placement x country without creating separate products solely for each slice. Each item declares one dimension family via `kind`; when multiple items are present, the point represents their intersection. Sellers MUST NOT emit more than one item for each `kind` in a point. Consumers MUST NOT treat repeated kinds as OR semantics; repeated peer values such as two countries are a seller conformance issue. Dimension values are descriptors of the forecast row and are independent of pricing_options.",
+  "description": "Dimension constraints represented by a ForecastPoint. Use this when one product, proposal, or signal coverage forecast needs to expose availability or forecasted delivery by country, region, placement, device, audience, signal value, or intersections such as placement x country without creating separate products solely for each slice. Each item declares one dimension family via `kind`; when multiple items are present, the point represents their intersection. Sellers MUST NOT emit more than one item for each `kind` in a point. Consumers MUST NOT treat repeated kinds as OR semantics; repeated peer values such as two countries are a seller conformance issue. Dimension values are descriptors of the forecast row and are independent of pricing_options.",
   "x-adcp-validation": {
     "unique_item_properties": ["kind"],
     "description": "`dimensions[]` is an array for readable intersection syntax, but `kind` is a logical set key. JSON Schema draft-07 cannot express unique-by-property for this array shape, so conformance tooling should reject repeated `kind` values."
@@ -178,6 +178,87 @@
           }
         },
         "required": ["kind", "audience_id", "audience_source"],
+        "additionalProperties": false
+      },
+      {
+        "title": "Signal Forecast Dimension",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "signal",
+            "description": "Dimension family discriminator."
+          },
+          "signal_ref": {
+            "$ref": "/schemas/core/signal-ref.json",
+            "description": "Canonical signal reference for this forecast row. Required when the row needs to disambiguate product-local, data-provider, or signal-source identity. Product-relative forecasts SHOULD use signal_ref."
+          },
+          "signal_id": {
+            "type": "string",
+            "description": "Signal identifier shorthand for this forecast row. Use only when the enclosing context already identifies the signal unambiguously, such as a coverage_forecast nested directly under one get_signals signal item. Otherwise use signal_ref.",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "x-entity": "signal"
+          },
+          "signal_value": {
+            "type": ["string", "number", "boolean", "null"],
+            "description": "Signal value bucket represented by this point. Use null with presence 'absent' to represent inventory where the signal is not present. Omit when the row describes any present value rather than one specific value."
+          },
+          "presence": {
+            "type": "string",
+            "enum": ["present", "absent"],
+            "description": "Whether the signal is present for this point. Use 'absent' for the explicit not-present bucket."
+          },
+          "signal_name": {
+            "type": "string",
+            "description": "Human-readable signal name, useful when the buyer has not resolved the signal definition."
+          },
+          "signal_value_name": {
+            "type": "string",
+            "description": "Human-readable label for the signal value bucket."
+          }
+        },
+        "required": ["kind", "presence"],
+        "anyOf": [
+          { "required": ["signal_ref"] },
+          { "required": ["signal_id"] }
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "presence": {
+                  "const": "absent"
+                }
+              },
+              "required": ["presence"]
+            },
+            "then": {
+              "properties": {
+                "signal_value": {
+                  "type": "null"
+                }
+              },
+              "required": ["signal_value"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "presence": {
+                  "const": "present"
+                }
+              },
+              "required": ["presence"]
+            },
+            "then": {
+              "properties": {
+                "signal_value": {
+                  "type": ["string", "number", "boolean"]
+                }
+              }
+            }
+          }
+        ],
         "additionalProperties": false
       }
     ]

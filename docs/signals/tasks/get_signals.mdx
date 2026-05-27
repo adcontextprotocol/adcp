@@ -90,6 +90,56 @@ The response structure is identical across protocols, with only the transport wr
       "signal_type": "string",
       "data_provider": "string",
       "coverage_percentage": "number",
+      "coverage_forecast": {
+        "method": "estimate",
+        "forecast_range_unit": "availability",
+        "scope": {
+          "kind": "inventory",
+          "label": "network price-priority inventory"
+        },
+        "bucket_semantics": "exclusive",
+        "bucket_completeness": "partial",
+        "points": [
+          {
+            "label": "not present",
+            "dimensions": [
+              {
+                "kind": "signal",
+                "signal_ref": {
+                  "scope": "data_provider",
+                  "data_provider_domain": "weather-data.example",
+                  "signal_id": "weather"
+                },
+                "signal_value": null,
+                "presence": "absent"
+              }
+            ],
+            "metrics": {
+              "impressions": { "mid": 280000 },
+              "coverage_rate": { "mid": 0.28 }
+            }
+          },
+          {
+            "label": "hot",
+            "dimensions": [
+              {
+                "kind": "signal",
+                "signal_ref": {
+                  "scope": "data_provider",
+                  "data_provider_domain": "weather-data.example",
+                  "signal_id": "weather"
+                },
+                "signal_value": "hot",
+                "presence": "present"
+              }
+            ],
+            "metrics": {
+              "impressions": { "mid": 180000 },
+              "coverage_rate": { "mid": 0.18 }
+            }
+          }
+        ]
+      },
       "deployments": [
         {
           "type": "agent",
@@ -128,7 +178,8 @@ The response structure is identical across protocols, with only the transport wr
     - `owned` — first-party segment derived from data the signal source directly owns
     - `custom` — source-native segment built on demand from models, composites, or buyer inputs (not attributable to a standing upstream provider)
   - **data_provider**: Human-readable source name when applicable. For `scope: "data_provider"` signals this is the data provider; for `scope: "signal_source"` signals it may identify the signal source or proprietary origin.
-  - **coverage_percentage**: Percentage of audience coverage
+  - **coverage_percentage**: Legacy scalar percentage of audience coverage. When **coverage_forecast** is also present, this is the seller's total present-coverage estimate for the same signal. If `coverage_forecast` includes an absent bucket over the same denominator, `coverage_percentage` should align with `100 * (1 - absent coverage_rate.mid)`.
+  - **coverage_forecast**: Optional forecast-shaped availability guidance for the signal. `scope` declares the denominator, `bucket_semantics` declares whether returned value buckets are `exclusive` or `overlapping`, and `bucket_completeness` declares whether the returned buckets are a full denominator partition or a partial histogram. Each point can use a `kind: "signal"` dimension with canonical `signal_ref`, `presence: "present"` for values, or `presence: "absent"` plus `signal_value: null` for the not-present bucket. `metrics.coverage_rate` is a 0.0-1.0 fraction of the declared scope.
   - **deployments**: Array of destination deployments
     - **agent_url**: URL identifying the destination agent
     - **account**: Account identifier if applicable
@@ -629,7 +680,10 @@ Discover all available deployments across platforms:
   - **description** (string): Detailed signal description
   - **signal_type** (string): `marketplace` (resold third-party), `owned` (signal source first-party data), or `custom` (source-native segment built on demand)
   - **data_provider** (string, optional): Human-readable source/provider name when applicable
-  - **coverage_percentage** (number): Estimated reach percentage
+  - **coverage_percentage** (number): Legacy scalar estimated reach percentage
+  - **coverage_forecast** (object, optional): Forecast-shaped coverage breakdown with an explicit denominator and per-value availability points. Use `bucket_semantics: "exclusive"` when returned buckets do not overlap, or `"overlapping"` when multi-value signals can make returned rates sum above 1.0. Use `bucket_completeness: "complete"` only when the returned buckets cover the declared denominator; otherwise use `"partial"` and buyers must treat omitted share as undisclosed, other, or unsupported buckets.
+
+Use `coverage_forecast` for signal-first discovery: "how much inventory has this signal or its values?" Use product or proposal forecasts with `kind: "signal"` dimensions for product-specific planning: "how does this signal restrict this product's baseline availability?" Bucket-specific filtering is client-side for now; request filters such as `min_coverage_percentage` still use the legacy scalar.
   - **deployments** (array): Platform-specific deployment information
     - **platform** (string): Target platform name
     - **account** (string, nullable): Specific account if account-specific

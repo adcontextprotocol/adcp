@@ -182,6 +182,10 @@
           "$ref": "/schemas/core/delivery-forecast.json",
           "description": "Forecasted delivery metrics for a proposal or product allocation"
         },
+        "signal-coverage-forecast": {
+          "$ref": "/schemas/core/signal-coverage-forecast.json",
+          "description": "Forecast-shaped availability guidance for a signal, without requiring monetary currency"
+        },
         "forecast-range": {
           "$ref": "/schemas/core/forecast-range.json",
           "description": "A forecast value with optional low/high bounds"
