@@ -215,7 +215,7 @@ npx @adcp/sdk@latest \
 | `revision` | Initial media-buy revision. Use this value as the `revision` token on the next `update_media_buy` call intended to change state. |
 | `packages` | Array of created packages with complete state. Packages may include per-package `creative_deadline` when different from the media buy deadline. |
 
-`confirmed_at` is seller commitment time, not a delivery-status timestamp. Do not update it when a buy later pauses, resumes, starts delivery, completes, or reports performance. A committed synchronous create stamps it immediately. Use the `submitted` response branch when no `media_buy_id` has been allocated yet. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment.
+`confirmed_at` is seller commitment time, not a delivery-status timestamp. Do not update it when a buy later pauses, resumes, starts delivery, completes, or reports performance. A committed synchronous create stamps it immediately. Use the `submitted` response branch when no `media_buy_id` has been allocated yet. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment. A provisional buy with `confirmed_at: null` MUST NOT be `active` and MUST NOT include `packages[].committed_metrics`.
 
 #### Reporting contract on confirmed packages
 
@@ -265,7 +265,7 @@ Returned when the buy cannot be confirmed synchronously — e.g., guaranteed buy
 
 | Field | Description |
 |-------|-------------|
-| `status` | Literal `"submitted"` — discriminates this shape from the sync success branch, whose `status` carries a `MediaBuyStatus` value (`pending_creatives` / `pending_start` / `active`). |
+| `status` | Literal `"submitted"` — discriminates this shape from the sync success branch, which uses `media_buy_status` for lifecycle state. During the 3.1 migration window, sellers MAY also emit deprecated top-level MediaBuyStatus values on synchronous success for back-compat. |
 | `task_id` | Handle the buyer polls with `tasks/get` or receives on webhook callbacks. |
 | `message` | Optional human-readable explanation (e.g., "Awaiting IO signature from sales team"). |
 | `errors` | Optional advisory warnings (non-blocking). Terminal failures belong in the Error Response. |

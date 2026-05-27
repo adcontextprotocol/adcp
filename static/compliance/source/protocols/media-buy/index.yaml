@@ -447,7 +447,7 @@ phases:
 
           Synchronous (completed):
           - media_buy_id: your platform's identifier
-          - status: active or pending_creatives
+          - media_buy_status: active, pending_start, or pending_creatives (deprecated top-level status may mirror this during the 3.1 migration window)
           - packages: line items with pricing
           - confirmed_at: seller commitment timestamp, or null only for a provisional buy that already exists and is retrievable
           - revision: optimistic concurrency token

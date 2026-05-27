@@ -171,7 +171,7 @@ Mutating updates increment `revision` and return the new value. This includes bu
 
 Buyers SHOULD pass the latest observed `revision` on every `update_media_buy` call intended to change state. The request field remains optional for backward compatibility. When `revision` is present, sellers MUST compare it atomically with the write and reject stale values with `CONFLICT`. On `CONFLICT`, reload the media buy with `get_media_buys`, reconcile against the current state, then retry with the new `revision` and a fresh `idempotency_key`.
 
-`confirmed_at` is the seller's commitment timestamp, not a delivery-status timestamp. Once populated, it remains stable through later pause, resume, cancellation, completion, and reporting transitions. Use the `submitted` response branch when no `media_buy_id` has been allocated yet. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment.
+`confirmed_at` is the seller's commitment timestamp, not a delivery-status timestamp. Once populated, it remains stable through later pause, resume, cancellation, completion, and reporting transitions. Use the `submitted` response branch when no `media_buy_id` has been allocated yet. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment. A provisional buy with `confirmed_at: null` MUST NOT be `active` and MUST NOT include `packages[].committed_metrics`.
 
 **Package-level lifecycle:**
 

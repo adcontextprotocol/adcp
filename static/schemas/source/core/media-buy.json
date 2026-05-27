@@ -100,6 +100,37 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "confirmed_at": {
+            "type": "null"
+          }
+        },
+        "required": ["confirmed_at"]
+      },
+      "then": {
+        "not": {
+          "properties": {
+            "status": {
+              "const": "active"
+            }
+          },
+          "required": ["status"]
+        },
+        "properties": {
+          "packages": {
+            "items": {
+              "not": {
+                "required": ["committed_metrics"]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "required": [
     "media_buy_id",
     "status",
