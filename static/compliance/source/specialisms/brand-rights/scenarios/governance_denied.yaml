@@ -19,7 +19,7 @@ narrative: |
   This scenario sets up a strict $50 governance plan, registers governance with the
   brand agent via sync_governance, then attempts to acquire rights whose pricing
   exceeds the plan. The brand agent must return the canonical denial shape — the
-  `AcquireRightsRejected` arm of the response (`status: "rejected"` + `reason`)
+  `AcquireRightsRejected` arm of the response (`rights_status: "rejected"` + `reason`)
   — propagating the governance agent's findings in `reason`. Per the wire-placement
   rule on `GOVERNANCE_DENIED`, when a task response defines a structured rejection arm,
   the arm IS the canonical denial shape: sellers do NOT additionally emit
@@ -174,7 +174,7 @@ phases:
         stateful: true
         expected: |
           Brand agent returns the canonical denial shape for a task with a structured rejection arm:
-          AcquireRightsRejected (`status: "rejected"` + `reason`, with `suggestions` optional). Per the
+          AcquireRightsRejected (`rights_status: "rejected"` + `reason`, with `suggestions` optional). Per the
           wire-placement rule on `GOVERNANCE_DENIED`, the spec-correct denial response carries no error
           code on the wire — the rejection arm enforces `not: { required: [errors] }` at the schema layer,
           so emitting `errors[]` alongside the rejection arm is already a schema violation. Transport-level
@@ -211,15 +211,12 @@ phases:
           - check: response_schema
             description: "Response matches acquire-rights-response.json (rejection arm validates against AcquireRightsRejected; the schema's `not: { required: [errors] }` rule rejects dual-emission)"
           - check: field_value
-            path: "status"
+            path: "rights_status"
             value: "rejected"
-            description: "Discriminator on the rejection arm — status must be 'rejected'"
+            description: "Discriminator on the rejection arm — rights_status must be 'rejected'"
           - check: field_present
             path: "reason"
             description: "Rejection arm carries the operator-readable reason (governance findings propagated verbatim per wire-placement guidance)"
-          - check: field_absent
-            path: "errors"
-            description: "errors[] absent — GOVERNANCE_DENIED MUST NOT dual-emit on acquire_rights; rejection arm IS the canonical denial shape"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object on the rejection arm"

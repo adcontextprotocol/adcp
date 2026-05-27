@@ -4,6 +4,15 @@ title: "Creative sync unblocks pending_creatives → pending_start"
 category: media_buy_seller
 summary: "Verifies that a media buy created without creatives sits in pending_creatives until sync_creatives completes, then transitions to pending_start."
 track: media_buy
+
+# This scenario requires an explicit auto-approval declaration. Sellers that
+# declare `require_human`, or omit the field because approval behavior is
+# legacy-unspecified, grade not_applicable rather than false-failing on a
+# manual-review workflow.
+requires_capability:
+  path: media_buy.creative_approval_mode
+  equals: auto_approve
+
 required_tools:
   - get_products
   - create_media_buy
@@ -20,6 +29,8 @@ narrative: |
   sync a creative, and confirm the status advances to pending_start. The transition
   proves that the creative pipeline and the buy state machine are wired together — a
   common integration gap when creative and media buy systems live on different backends.
+  Sellers with manual creative review declare media_buy.creative_approval_mode:
+  require_human and skip this auto-approval-dependent scenario as not_applicable.
 
 agent:
   interaction_model: media_buy_seller

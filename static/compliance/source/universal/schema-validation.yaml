@@ -332,6 +332,7 @@ phases:
           Send a create_media_buy request where end_time is before start_time. The agent
           must reject this with an INVALID_REQUEST error.
         task: create_media_buy
+        requires_tool: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
@@ -398,6 +399,7 @@ phases:
           universal/idempotency.yaml), and the storyboard couldn't tell
           which rule fired.
         task: create_media_buy
+        requires_tool: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
@@ -466,6 +468,7 @@ phases:
           auto-adjusts the start_time forward, and returns a media_buy_id.
           idempotency_key is present because the request is a real mutation.
         task: create_media_buy
+        requires_tool: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
@@ -532,6 +535,7 @@ phases:
           Synthetic assertion over accumulated flags from the two optional
           phases. Fails only if neither path contributed past_start_handled.
         task: assert_contribution
+        requires_tool: create_media_buy
         comply_scenario: temporal_validation
         stateful: false
         expected: |
