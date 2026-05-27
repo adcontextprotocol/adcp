@@ -282,7 +282,7 @@ async function runTests() {
       // product.json: format_ids OR format_options is required (v1 OR v2 path) — checked separately below
       // creative-asset.json: format_id OR format_kind is required (v1 OR v2 path) — checked separately below
       'product.json': ['product_id', 'name', 'description', 'delivery_type'],
-      'media-buy.json': ['media_buy_id', 'status', 'total_budget', 'packages'],
+      'media-buy.json': ['media_buy_id', 'status', 'confirmed_at', 'revision', 'total_budget', 'packages'],
       'package.json': ['package_id'],
       'creative-asset.json': ['creative_id', 'name', 'assets'],
       'error.json': ['code', 'message']
@@ -408,6 +408,8 @@ async function runTests() {
         status: 'active',
         currency: 'USD',
         total_budget: 10000,
+        confirmed_at: '2026-05-27T09:00:00Z',
+        revision: 1,
         packages: [],
         available_actions: [{
           action: 'increase_budget',
@@ -441,7 +443,112 @@ async function runTests() {
     return true;
   });
 
-  // Test 9: Validate ForecastPoint dimension and viewability compatibility gates
+  // Test 9: Validate provisional media-buy confirmation guards
+  await test('provisional media buys cannot be active or carry committed_metrics', async () => {
+    const createSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-response.json'));
+    const getSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/get-media-buys-response.json'));
+    const coreSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/media-buy.json'));
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validateCreate = await testAjv.compileAsync(createSchema);
+    const validateGet = await testAjv.compileAsync(getSchema);
+    const validateCore = await testAjv.compileAsync(coreSchema);
+    const committedMetric = {
+      scope: 'standard',
+      metric_id: 'impressions',
+      committed_at: '2026-05-27T09:00:00Z'
+    };
+
+    const provisionalCreate = {
+      status: 'completed',
+      media_buy_id: 'mb_provisional',
+      media_buy_status: 'pending_start',
+      confirmed_at: null,
+      revision: 1,
+      packages: [{ package_id: 'pkg_1' }]
+    };
+    if (!validateCreate(provisionalCreate)) {
+      return `Provisional create response unexpectedly failed validation: ${validateCreate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const committedCreate = structuredClone(provisionalCreate);
+    committedCreate.media_buy_status = 'active';
+    committedCreate.confirmed_at = '2026-05-27T09:00:00Z';
+    committedCreate.packages[0].committed_metrics = [committedMetric];
+    if (!validateCreate(committedCreate)) {
+      return `Committed create response unexpectedly failed validation: ${validateCreate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const activeProvisionalCreate = structuredClone(provisionalCreate);
+    activeProvisionalCreate.media_buy_status = 'active';
+    if (validateCreate(activeProvisionalCreate)) {
+      return 'create_media_buy accepted active media_buy_status with confirmed_at: null';
+    }
+
+    const legacyActiveProvisionalCreate = structuredClone(provisionalCreate);
+    delete legacyActiveProvisionalCreate.media_buy_status;
+    legacyActiveProvisionalCreate.status = 'active';
+    if (validateCreate(legacyActiveProvisionalCreate)) {
+      return 'create_media_buy accepted deprecated active status with confirmed_at: null';
+    }
+
+    const metricsProvisionalCreate = structuredClone(provisionalCreate);
+    metricsProvisionalCreate.packages[0].committed_metrics = [committedMetric];
+    if (validateCreate(metricsProvisionalCreate)) {
+      return 'create_media_buy accepted committed_metrics with confirmed_at: null';
+    }
+
+    const provisionalGet = {
+      status: 'completed',
+      media_buys: [{
+        media_buy_id: 'mb_provisional',
+        status: 'pending_start',
+        currency: 'USD',
+        total_budget: 1000,
+        confirmed_at: null,
+        revision: 1,
+        packages: [{ package_id: 'pkg_1' }]
+      }]
+    };
+    if (!validateGet(provisionalGet)) {
+      return `Provisional get_media_buys response unexpectedly failed validation: ${validateGet.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const activeProvisionalGet = structuredClone(provisionalGet);
+    activeProvisionalGet.media_buys[0].status = 'active';
+    if (validateGet(activeProvisionalGet)) {
+      return 'get_media_buys accepted active status with confirmed_at: null';
+    }
+
+    const metricsProvisionalGet = structuredClone(provisionalGet);
+    metricsProvisionalGet.media_buys[0].packages[0].committed_metrics = [committedMetric];
+    if (validateGet(metricsProvisionalGet)) {
+      return 'get_media_buys accepted committed_metrics with confirmed_at: null';
+    }
+
+    const activeCore = {
+      media_buy_id: 'mb_core',
+      status: 'active',
+      confirmed_at: null,
+      revision: 1,
+      total_budget: 1000,
+      packages: [{ package_id: 'pkg_1' }]
+    };
+    if (validateCore(activeCore)) {
+      return 'core media-buy accepted active status with confirmed_at: null';
+    }
+
+    return true;
+  });
+
+  // Test 10: Validate ForecastPoint dimension and viewability compatibility gates
   await test('ForecastPoint dimension and viewability compatibility gates behave as intended', async () => {
     const dimensionsSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-point-dimensions.json'));
     const uniqueProps = dimensionsSchema['x-adcp-validation']?.unique_item_properties || [];

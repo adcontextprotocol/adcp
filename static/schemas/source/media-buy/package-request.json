@@ -20,7 +20,7 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Legacy named-format selector. Array of format IDs that will be used for this package - must be supported by the product. If omitted (and no 3.1+ format-option selector is present), defaults to all formats supported by the product.",
+      "description": "Legacy named-format selector. Array of format IDs that will be used for this package - must be supported by the product. If omitted (and no 3.1+ format-option selector is present), defaults to all formats supported by the product.\n\nSellers comparing this selector to a product's `format_options[]` MUST first normalize each legacy `format_id` through the canonical mapping path (`canonical`, `v1_format_ref`, or registry projection). Exact `(agent_url, id)` comparison after projection is insufficient: a legacy fixed-size display ID can satisfy a canonical `image` product declaration with matching `width`/`height`. Product gating remains directional: if the product declares fixed dimensions or duration, the selected format must declare and match those constraints; an under-specified canonical request is not a wildcard for a fixed-size or fixed-duration product. Range constraints use containment, not overlap: a range-based request satisfies the product only when every value it permits falls within the product's accepted range.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       },

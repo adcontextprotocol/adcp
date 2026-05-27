@@ -22,7 +22,7 @@
     },
     "revision": {
       "type": "integer",
-      "description": "Expected current revision for optimistic concurrency. When provided, sellers MUST reject the update with CONFLICT if the media buy's current revision does not match. Obtain from get_media_buys or the most recent update response.",
+      "description": "Expected current revision for optimistic concurrency. Optional for backward compatibility. When provided, sellers MUST reject the update with CONFLICT if the media buy's current revision does not match, and MUST enforce that comparison atomically with the write. Obtain from get_media_buys or the most recent create/update response.",
       "minimum": 1
     },
     "paused": {

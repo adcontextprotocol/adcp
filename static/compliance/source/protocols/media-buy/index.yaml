@@ -447,9 +447,10 @@ phases:
 
           Synchronous (completed):
           - media_buy_id: your platform's identifier
-          - status: active or pending_creatives
+          - media_buy_status: active, pending_start, or pending_creatives (deprecated top-level status may mirror this during the 3.1 migration window)
           - packages: line items with pricing
-          - confirmed_at: timestamp
+          - confirmed_at: seller commitment timestamp, or null only for a provisional buy that already exists and is retrievable
+          - revision: optimistic concurrency token
           - valid_actions: what the buyer can do next
 
           Asynchronous (working):
@@ -459,7 +460,7 @@ phases:
           Async with human approval (submitted):
           - task_id / taskId: handle the buyer polls or receives webhooks on
           - message (optional): explanation of what the seller is waiting on (e.g., "Awaiting IO signature from sales team; typical turnaround 2–4 hours")
-          - No media_buy_id yet — it is issued on task completion
+          - No media_buy_id yet — it is issued on task completion. If you allocate media_buy_id before commitment, return synchronous success with confirmed_at: null instead, and make the provisional buy retrievable via get_media_buys.
           - Seller-side IO signing is modelled here (task stays submitted until signed). Do not emit a "pending_approval" media buy status — that value is not in MediaBuy.status
 
           Needs input (input-required):

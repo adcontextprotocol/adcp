@@ -34,7 +34,7 @@
         },
         "revision": {
           "type": "integer",
-          "description": "Revision number after this update. Use this value in subsequent update_media_buy requests for optimistic concurrency.",
+          "description": "Revision number after this update. Use this value in subsequent update_media_buy requests intended to change state for optimistic concurrency. Exact idempotency replays return the prior revision and do not increment revision.",
           "minimum": 1
         },
         "currency": {
@@ -93,7 +93,8 @@
         }
       },
       "required": [
-        "media_buy_id"
+        "media_buy_id",
+        "revision"
       ],
       "additionalProperties": true,
       "not": {
