@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { createServer } from 'node:http';
 import { buildCatalog } from '../../src/training-agent/product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from '../../src/training-agent/formats.js';
 import { PUBLISHERS } from '../../src/training-agent/publishers.js';
@@ -1191,6 +1192,129 @@ describe('get_products handler', () => {
     expect((result.products as unknown[]).length).toBeGreaterThan(0);
   });
 
+  it('returns wholesale feed metadata and honors unchanged product probes', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: first } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+    });
+
+    expect(first.wholesale_feed_version).toBe('training-products-feed-v1.base');
+    expect(first.pricing_version).toBe('training-products-pricing-v1.base');
+    expect(first.cache_scope).toBe('public');
+
+    const { result: unchanged } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      if_wholesale_feed_version: first.wholesale_feed_version,
+      if_pricing_version: first.pricing_version,
+    });
+
+    expect(unchanged.unchanged).toBe(true);
+    expect(unchanged.wholesale_feed_version).toBe(first.wholesale_feed_version);
+    expect(unchanged.pricing_version).toBe(first.pricing_version);
+    expect(unchanged.cache_scope).toBe('public');
+    expect(unchanged.products).toBeUndefined();
+  });
+
+  it('returns products when only the pricing token is stale', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      if_wholesale_feed_version: 'training-products-feed-v1.base',
+      if_pricing_version: 'stale-pricing-token',
+    });
+
+    expect(result.unchanged).toBeUndefined();
+    expect((result.products as unknown[]).length).toBeGreaterThan(0);
+    expect(result.wholesale_feed_version).toBe('training-products-feed-v1.base');
+    expect(result.pricing_version).toBe('training-products-pricing-v1.base');
+  });
+
+  it('changes product wholesale version tokens when controller-seeded catalog state changes', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'wholesale-version-seed.example' }, operator: 'pinnacle-agency.example' };
+    const { result: first } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+    });
+
+    const seed = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'wholesale-version-seed.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: 'seeded_wholesale_product',
+        fixture: { channels: ['display'], delivery_type: 'non_guaranteed' },
+      },
+    });
+    expect(seed.result.success).toBe(true);
+
+    const { result: afterSeed } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+      if_wholesale_feed_version: first.wholesale_feed_version,
+      if_pricing_version: first.pricing_version,
+    });
+
+    expect(afterSeed.unchanged).toBeUndefined();
+    expect(afterSeed.wholesale_feed_version).not.toBe(first.wholesale_feed_version);
+    expect(afterSeed.pricing_version).toBe(first.pricing_version);
+    expect((afterSeed.products as Array<Record<string, unknown>>).some(p => p.product_id === 'seeded_wholesale_product')).toBe(true);
+  });
+
+  it('keeps public cache scope for ordinary accounts and account scope for overlay accounts', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: ordinary } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account: {
+        brand: { domain: 'acmeoutdoor.example' },
+        operator: 'pinnacle-agency.example',
+      },
+    });
+    const { result: overlay } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account: {
+        brand: { domain: 'account-overlay.example' },
+        operator: 'pinnacle-agency.example',
+      },
+    });
+
+    expect(ordinary.cache_scope).toBe('public');
+    expect(overlay.cache_scope).toBe('account');
+  });
+
+  it('keeps product feed versions stable across paginated wholesale pages', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: first } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      pagination: { max_results: 1 },
+    });
+    const { result: next } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      pagination: {
+        max_results: 1,
+        cursor: (first.pagination as Record<string, unknown>).cursor,
+      },
+    });
+
+    expect(first.wholesale_feed_version).toBe(next.wholesale_feed_version);
+    expect(first.pricing_version).toBe(next.pricing_version);
+    expect(first.cache_scope).toBe(next.cache_scope);
+    expect((first.products as unknown[])).toHaveLength(1);
+    expect((next.products as unknown[])).toHaveLength(1);
+    expect(first.proposals).toBeUndefined();
+    expect(next.proposals).toBeUndefined();
+  });
+
+  it('rejects standalone wholesale product pricing tokens', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const standalonePricing = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      if_pricing_version: 'training-products-pricing-v1',
+    });
+
+    expect(standalonePricing.result.field).toBe('if_pricing_version');
+  });
+
   it('filters by channel', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_products', {
@@ -1267,50 +1391,26 @@ describe('get_products handler', () => {
     }
   });
 
-  it('keeps proposal allocation pricing aligned with filtered fixed-price options', async () => {
+  it('omits proposals from wholesale fixed-price responses', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_products', {
       buying_mode: 'wholesale',
       filters: { is_fixed_price: true },
     });
 
-    const products = result.products as Array<{ product_id: string; pricing_options: Array<Record<string, unknown>> }>;
-    const proposals = result.proposals as Array<{ allocations: Array<{ product_id: string; pricing_option_id?: string }> }> | undefined;
-    expect(proposals?.length).toBeGreaterThan(0);
-
-    const productsById = new Map(products.map(p => [p.product_id, p]));
-    for (const proposal of proposals ?? []) {
-      for (const allocation of proposal.allocations) {
-        const product = productsById.get(allocation.product_id);
-        expect(product).toBeDefined();
-        const selected = product?.pricing_options.find(po => po.pricing_option_id === allocation.pricing_option_id);
-        expect(selected).toBeDefined();
-        expect(selected?.fixed_price).toBeDefined();
-      }
-    }
+    expect((result.products as unknown[]).length).toBeGreaterThan(0);
+    expect(result.proposals).toBeUndefined();
   });
 
-  it('keeps proposal allocation pricing aligned with filtered auction options', async () => {
+  it('omits proposals from wholesale auction responses', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_products', {
       buying_mode: 'wholesale',
       filters: { is_fixed_price: false },
     });
 
-    const products = result.products as Array<{ product_id: string; pricing_options: Array<Record<string, unknown>> }>;
-    const proposals = result.proposals as Array<{ allocations: Array<{ product_id: string; pricing_option_id?: string }> }> | undefined;
-    expect(proposals?.length).toBeGreaterThan(0);
-
-    const productsById = new Map(products.map(p => [p.product_id, p]));
-    for (const proposal of proposals ?? []) {
-      for (const allocation of proposal.allocations) {
-        const product = productsById.get(allocation.product_id);
-        expect(product).toBeDefined();
-        const selected = product?.pricing_options.find(po => po.pricing_option_id === allocation.pricing_option_id);
-        expect(selected).toBeDefined();
-        expect(selected?.fixed_price).toBeUndefined();
-      }
-    }
+    expect((result.products as unknown[]).length).toBeGreaterThan(0);
+    expect(result.proposals).toBeUndefined();
   });
 
   it('returns products in brief mode with keyword matching', async () => {
@@ -5542,6 +5642,133 @@ describe('get_signals handler', () => {
     expect((result.signals as unknown[]).length).toBeGreaterThan(0);
   });
 
+  it('returns wholesale signal feed metadata and honors unchanged probes', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: first } = await simulateCallTool(server, 'get_signals', {
+      account,
+      discovery_mode: 'wholesale',
+    });
+
+    expect((first.signals as unknown[]).length).toBeGreaterThan(0);
+    expect(first.wholesale_feed_version).toBe('training-signals-feed-v1');
+    expect(first.pricing_version).toBe('training-signals-pricing-v1');
+    expect(first.cache_scope).toBe('public');
+
+    const { result: unchanged } = await simulateCallTool(server, 'get_signals', {
+      account,
+      discovery_mode: 'wholesale',
+      if_wholesale_feed_version: first.wholesale_feed_version,
+      if_pricing_version: first.pricing_version,
+    });
+
+    expect(unchanged.unchanged).toBe(true);
+    expect(unchanged.wholesale_feed_version).toBe(first.wholesale_feed_version);
+    expect(unchanged.pricing_version).toBe(first.pricing_version);
+    expect(unchanged.cache_scope).toBe('public');
+    expect(unchanged.signals).toBeUndefined();
+  });
+
+  it('returns signals when only the signal pricing token is stale', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      discovery_mode: 'wholesale',
+      if_wholesale_feed_version: 'training-signals-feed-v1',
+      if_pricing_version: 'stale-pricing-token',
+    });
+
+    expect(result.unchanged).toBeUndefined();
+    expect((result.signals as unknown[]).length).toBeGreaterThan(0);
+    expect(result.wholesale_feed_version).toBe('training-signals-feed-v1');
+    expect(result.pricing_version).toBe('training-signals-pricing-v1');
+  });
+
+  it('supports signal_refs exact lookup in brief mode', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_refs: [{
+        scope: 'data_provider',
+        data_provider_domain: 'tridentauto.example',
+        signal_id: 'trident_likely_ev_buyers',
+      }],
+    });
+
+    expect((result.signals as unknown[])).toHaveLength(1);
+    expect((result.signals as Array<Record<string, unknown>>)[0].signal_agent_segment_id).toBe('trident_likely_ev_buyers');
+  });
+
+  it('rejects invalid wholesale signal token and exact-lookup mixed-mode combinations', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const standalonePricing = await simulateCallTool(server, 'get_signals', {
+      account,
+      discovery_mode: 'wholesale',
+      if_pricing_version: 'training-signals-pricing-v1',
+    });
+    const wholesaleWithRefs = await simulateCallTool(server, 'get_signals', {
+      account,
+      discovery_mode: 'wholesale',
+      signal_refs: [{ signal_agent_segment_id: 'trident_likely_ev_buyers' }],
+    });
+    const wholesaleWithIds = await simulateCallTool(server, 'get_signals', {
+      account,
+      discovery_mode: 'wholesale',
+      signal_ids: [{ id: 'trident_likely_ev_buyers' }],
+    });
+    const wholesaleWithSpec = await simulateCallTool(server, 'get_signals', {
+      account,
+      discovery_mode: 'wholesale',
+      signal_spec: 'automotive purchase intent',
+    });
+    const wholesaleWithBrief = await simulateCallTool(server, 'get_signals', {
+      account,
+      discovery_mode: 'wholesale',
+      brief: 'automotive purchase intent',
+    });
+
+    expect(standalonePricing.result.field).toBe('if_pricing_version');
+    expect(wholesaleWithRefs.result.field).toBe('signal_refs');
+    expect(wholesaleWithIds.result.field).toBe('signal_ids');
+    expect(wholesaleWithSpec.result.field).toBe('signal_spec');
+    expect(wholesaleWithBrief.result.field).toBe('brief');
+  });
+
+  it('ignores the SDK storyboard fallback signal_spec in wholesale mode', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      discovery_mode: 'wholesale',
+      signal_spec: 'E2E fallback signal discovery',
+    });
+
+    expect(result.wholesale_feed_version).toBe('training-signals-feed-v1');
+    expect(result.pricing_version).toBe('training-signals-pricing-v1');
+    expect((result.signals as unknown[]).length).toBeGreaterThan(0);
+  });
+
+  it('keeps signal feed versions stable across paginated wholesale pages', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: first } = await simulateCallTool(server, 'get_signals', {
+      account,
+      discovery_mode: 'wholesale',
+      pagination: { max_results: 1 },
+    });
+    const { result: next } = await simulateCallTool(server, 'get_signals', {
+      account,
+      discovery_mode: 'wholesale',
+      pagination: {
+        max_results: 1,
+        cursor: (first.pagination as Record<string, unknown>).cursor,
+      },
+    });
+
+    expect(first.wholesale_feed_version).toBe(next.wholesale_feed_version);
+    expect(first.pricing_version).toBe(next.pricing_version);
+    expect(first.cache_scope).toBe(next.cache_scope);
+    expect((first.signals as unknown[])).toHaveLength(1);
+    expect((next.signals as unknown[])).toHaveLength(1);
+  });
+
   it('discovers signals by natural language spec', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_signals', {
@@ -6199,6 +6426,169 @@ describe('get_adcp_capabilities handler', () => {
     });
     expect(result.protocol_version).toBe('3.0');
     expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand']);
+  });
+
+  it('advertises wholesale feed versioning, modes, and webhooks', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+
+    expect(result.wholesale_feed_versioning).toEqual({
+      supported: true,
+      pricing_version_separate: true,
+      cache_scope_account: true,
+    });
+    expect(result.wholesale_feed_webhooks).toEqual({
+      supported: true,
+      event_types: [
+        'product.created',
+        'product.updated',
+        'product.priced',
+        'product.removed',
+        'signal.created',
+        'signal.updated',
+        'signal.priced',
+        'signal.removed',
+        'wholesale_feed.bulk_change',
+      ],
+    });
+    expect((result.media_buy as Record<string, unknown>).buying_modes).toEqual(['brief', 'wholesale', 'refine']);
+    expect((result.signals as Record<string, unknown>).discovery_modes).toEqual(['brief', 'wholesale']);
+    expect(((result.signals as Record<string, unknown>).features as Record<string, unknown>).catalog_signals).toBe(true);
+    expect((result.webhook_signing as Record<string, unknown>).supported).toBe(true);
+    expect((result.identity as Record<string, unknown>).brand_json_url).toBe(`${getAgentUrl()}/.well-known/brand.json`);
+  });
+
+  it('scopes wholesale webhook event families to the tenant repair path', async () => {
+    const salesServer = createTrainingAgentServer({ ...DEFAULT_CTX, tenantId: 'sales' });
+    const signalsServer = createTrainingAgentServer({ ...DEFAULT_CTX, tenantId: 'signals' });
+
+    const { result: sales } = await simulateCallTool(salesServer, 'get_adcp_capabilities', {});
+    const { result: signals } = await simulateCallTool(signalsServer, 'get_adcp_capabilities', {});
+
+    expect((sales.wholesale_feed_webhooks as Record<string, unknown>).event_types).toEqual([
+      'product.created',
+      'product.updated',
+      'product.priced',
+      'product.removed',
+      'wholesale_feed.bulk_change',
+    ]);
+    expect((sales.media_buy as Record<string, unknown>).buying_modes).toContain('wholesale');
+    expect(sales.signals).toBeUndefined();
+
+    expect((signals.wholesale_feed_webhooks as Record<string, unknown>).event_types).toEqual([
+      'signal.created',
+      'signal.updated',
+      'signal.priced',
+      'signal.removed',
+      'wholesale_feed.bulk_change',
+    ]);
+    expect((signals.signals as Record<string, unknown>).discovery_modes).toContain('wholesale');
+    expect((signals.media_buy as Record<string, unknown>).buying_modes).not.toContain('wholesale');
+  });
+
+  it('does not advertise 3.1 wholesale capability claims in 3.0 storyboard compatibility mode', async () => {
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, storyboardCompat: { version: '3.0' } });
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+
+    expect(result.wholesale_feed_versioning).toBeUndefined();
+    expect(result.wholesale_feed_webhooks).toBeUndefined();
+    expect((result.media_buy as Record<string, unknown>).buying_modes).not.toContain('wholesale');
+    expect(result.signals).toBeUndefined();
+  });
+
+  it('accepts advertised wholesale feed notification event types on sync_accounts', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acmeoutdoor.example' },
+        operator: 'pinnacle-agency.example',
+        billing: 'operator',
+        payment_terms: 'net_60',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: 'wholesale-feed-sync',
+          url: 'https://example.com/webhooks/adcp/wholesale-feed',
+          event_types: ['product.priced', 'signal.priced', 'wholesale_feed.bulk_change'],
+          active: false,
+        }],
+      }],
+      idempotency_key: '6cb012f2-3865-44f0-8ce8-cd07eb4f0ae8',
+    });
+
+    const configs = (result.accounts as Array<Record<string, unknown>>)[0].notification_configs as Array<Record<string, unknown>>;
+    expect(configs[0].subscriber_id).toBe('wholesale-feed-sync');
+    expect(configs[0].event_types).toEqual(['product.priced', 'signal.priced', 'wholesale_feed.bulk_change']);
+    expect(configs[0].active).toBe(false);
+  });
+
+  it('emits wholesale feed webhook payloads to active account subscribers', async () => {
+    const received: Record<string, unknown>[] = [];
+    const receiver = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', chunk => chunks.push(Buffer.from(chunk)));
+      req.on('end', () => {
+        received.push(JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>);
+        res.statusCode = 204;
+        res.end();
+      });
+    });
+    await new Promise<void>(resolve => receiver.listen(0, '127.0.0.1', resolve));
+
+    try {
+      const address = receiver.address() as { port: number };
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const account = { brand: { domain: 'wholesale-webhook.example' }, operator: 'pinnacle-agency.example' };
+      await simulateCallTool(server, 'sync_accounts', {
+        accounts: [{
+          ...account,
+          billing: 'operator',
+          sandbox: true,
+          notification_configs: [{
+            subscriber_id: 'wholesale-feed-sync',
+            url: `http://127.0.0.1:${address.port}/webhooks/adcp/wholesale-feed`,
+            event_types: ['product.priced', 'product.created'],
+            active: true,
+          }],
+        }],
+      });
+
+      const forced = await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'force_wholesale_feed_webhook',
+        params: {
+          event_type: 'product.priced',
+          entity_id: 'prod_training_wholesale',
+        },
+      });
+
+      expect(forced.result.success).toBe(true);
+      expect(forced.result.delivered).toBe(1);
+      expect(received).toHaveLength(1);
+      expect(received[0].notification_type).toBe('product.priced');
+      expect(received[0].subscriber_id).toBe('wholesale-feed-sync');
+      expect((received[0].event as Record<string, unknown>).event_type).toBe('product.priced');
+      expect(((received[0].event as Record<string, unknown>).payload as Record<string, unknown>).product_id).toBe('prod_training_wholesale');
+
+      const created = await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'force_wholesale_feed_webhook',
+        params: {
+          event_type: 'product.created',
+          entity_id: 'prod_training_wholesale_created',
+        },
+      });
+
+      expect(created.result.success).toBe(true);
+      expect(created.result.delivered).toBe(1);
+      expect(received).toHaveLength(2);
+      expect(received[1].notification_type).toBe('product.created');
+      const createdPayload = (received[1].event as Record<string, unknown>).payload as Record<string, unknown>;
+      expect((createdPayload.product as Record<string, unknown>).product_id).toBe('prod_training_wholesale_created');
+    } finally {
+      await new Promise<void>(resolve => receiver.close(() => resolve()));
+    }
   });
 
   it('lists protocol tasks without get_adcp_capabilities itself', async () => {

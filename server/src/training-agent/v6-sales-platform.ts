@@ -108,6 +108,7 @@ function buildTrainingCtx(
 ): TrainingContext {
   return {
     mode: 'open',
+    tenantId: 'sales',
     principal: ctx?.authInfo?.clientId ?? ctx?.account?.authInfo?.principal ?? 'anonymous',
     ...(storyboardCompat && { storyboardCompat }),
   };

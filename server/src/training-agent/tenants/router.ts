@@ -20,8 +20,11 @@ import { wrapResponseForSigning } from '../response-signing.js';
 import { salesCapabilityProjection } from '../v6-sales-platform.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
 import type { TrainingContext } from '../types.js';
+import { getAgentUrl } from '../config.js';
 
 const logger = createLogger('training-agent-tenant-router');
+const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
+const SIGNAL_WHOLESALE_EVENTS = ['signal.created', 'signal.updated', 'signal.priced', 'signal.removed'] as const;
 
 const SALES_LEGACY_CAPABILITY_SCENARIOS = [
   'force_creative_status',
@@ -375,6 +378,11 @@ function projectSalesCapabilities(
           supported_protocols?: unknown;
           creative?: Record<string, unknown>;
           media_buy?: Record<string, unknown>;
+          signals?: Record<string, unknown>;
+          wholesale_feed_versioning?: Record<string, unknown>;
+          wholesale_feed_webhooks?: Record<string, unknown>;
+          webhook_signing?: Record<string, unknown>;
+          identity?: Record<string, unknown>;
           compliance_testing?: Record<string, unknown>;
         };
       };
@@ -424,10 +432,78 @@ function projectSalesCapabilities(
         scenarios: [...scenarios],
       };
     }
+    projectWholesaleCapabilities(structured, tenantId, storyboardCompat);
     return Buffer.from(JSON.stringify(parsed), 'utf8');
   } catch {
     return body;
   }
+}
+
+function projectWholesaleCapabilities(
+  structured: {
+    media_buy?: Record<string, unknown>;
+    signals?: Record<string, unknown>;
+    wholesale_feed_versioning?: Record<string, unknown>;
+    wholesale_feed_webhooks?: Record<string, unknown>;
+    webhook_signing?: Record<string, unknown>;
+    identity?: Record<string, unknown>;
+  },
+  tenantId: string,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): void {
+  if (storyboardCompat?.version === '3.0') {
+    delete structured.wholesale_feed_versioning;
+    delete structured.wholesale_feed_webhooks;
+    return;
+  }
+
+  const productWholesale = tenantId === 'sales';
+  const signalWholesale = tenantId === 'signals';
+  if (!productWholesale && !signalWholesale) {
+    delete structured.wholesale_feed_versioning;
+    delete structured.wholesale_feed_webhooks;
+    return;
+  }
+
+  if (productWholesale) {
+    const mediaBuy = structured.media_buy && typeof structured.media_buy === 'object' ? structured.media_buy : {};
+    structured.media_buy = { ...mediaBuy, buying_modes: ['brief', 'wholesale', 'refine'] };
+    delete structured.signals;
+  }
+
+  if (signalWholesale) {
+    const signals = structured.signals && typeof structured.signals === 'object' ? structured.signals : {};
+    const features = signals.features && typeof signals.features === 'object' ? signals.features as Record<string, unknown> : {};
+    structured.signals = {
+      ...signals,
+      discovery_modes: ['brief', 'wholesale'],
+      features: { ...features, catalog_signals: true },
+    };
+  }
+
+  structured.wholesale_feed_versioning = {
+    supported: true,
+    pricing_version_separate: true,
+    cache_scope_account: true,
+  };
+  structured.wholesale_feed_webhooks = {
+    supported: true,
+    event_types: [
+      ...(productWholesale ? PRODUCT_WHOLESALE_EVENTS : []),
+      ...(signalWholesale ? SIGNAL_WHOLESALE_EVENTS : []),
+      'wholesale_feed.bulk_change',
+    ],
+  };
+  structured.webhook_signing = {
+    supported: true,
+    profile: 'adcp/webhook-signing/v1',
+    algorithms: ['ed25519'],
+    legacy_hmac_fallback: true,
+  };
+  structured.identity = {
+    ...(structured.identity ?? {}),
+    brand_json_url: `${getAgentUrl()}/.well-known/brand.json`,
+  };
 }
 
 /**

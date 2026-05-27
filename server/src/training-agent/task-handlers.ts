@@ -6,7 +6,7 @@
  * session state, not from LLM calls.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -18,7 +18,7 @@ import { PostgresTaskStore } from '@adcp/sdk';
 import { mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting, AccountRef } from './types.js';
+import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting, AccountRef, SessionState } from './types.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
   Product,
@@ -68,6 +68,37 @@ type Destination = NonNullable<ActivateSignalRequest['destinations']>[number];
 type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
 type PricingOption = Product['pricing_options'][number];
 type AuctionPricingOption = Exclude<PricingOption, { pricing_model: 'cpa' }>;
+type WholesaleFeedRequest = {
+  account?: AccountRef;
+  if_wholesale_feed_version?: string;
+  if_pricing_version?: string;
+  pagination?: { max_results?: number; cursor?: string };
+};
+type WholesaleFeedMeta = {
+  wholesale_feed_version: string;
+  pricing_version: string;
+  cache_scope: 'public' | 'account';
+};
+
+const PRODUCT_WHOLESALE_FEED_VERSION = 'training-products-feed-v1';
+const PRODUCT_WHOLESALE_PRICING_VERSION = 'training-products-pricing-v1';
+const SIGNAL_WHOLESALE_FEED_VERSION = 'training-signals-feed-v1';
+const SIGNAL_WHOLESALE_PRICING_VERSION = 'training-signals-pricing-v1';
+// The current SDK storyboard runner injects this fallback on get_signals even
+// when the authored sample_request declares discovery_mode: "wholesale".
+const SDK_STORYBOARD_FALLBACK_SIGNAL_SPEC = 'E2E fallback signal discovery';
+const PRODUCT_WHOLESALE_FEED_WEBHOOK_EVENT_TYPES = [
+  'product.created',
+  'product.updated',
+  'product.priced',
+  'product.removed',
+] as const;
+const SIGNAL_WHOLESALE_FEED_WEBHOOK_EVENT_TYPES = [
+  'signal.created',
+  'signal.updated',
+  'signal.priced',
+  'signal.removed',
+] as const;
 
 type GetMediaBuysArgs = GetMediaBuysRequest & ToolArgs & {
   status_filter?: string[];
@@ -1554,6 +1585,102 @@ const ERROR_IN_BODY_TOOLS = new Set<string>([
   'activate_signal',
 ]);
 
+function accountDomain(account: AccountRef | undefined): string | undefined {
+  if (!account || typeof account !== 'object') return undefined;
+  const brand = (account as { brand?: { domain?: unknown } }).brand;
+  return typeof brand?.domain === 'string' ? brand.domain : undefined;
+}
+
+function accountId(account: AccountRef | undefined): string | undefined {
+  if (!account || typeof account !== 'object') return undefined;
+  const value = (account as { account_id?: unknown }).account_id;
+  return typeof value === 'string' ? value : undefined;
+}
+
+function cacheScopeForWholesaleRequest(req: WholesaleFeedRequest): 'public' | 'account' {
+  const domain = accountDomain(req.account);
+  const id = accountId(req.account);
+  // The reference training agent models public-rate-card accounts by default
+  // and reserves one deterministic account identity for account-overlay
+  // storyboards. Production sellers use their real account pricing state.
+  return domain === 'account-overlay.example' || id === 'acct_account_overlay'
+    ? 'account'
+    : 'public';
+}
+
+function stableMapDigest(map: Map<string, Record<string, unknown>>): string {
+  if (map.size === 0) return 'base';
+  const entries = [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  return createHash('sha256').update(JSON.stringify(entries)).digest('hex').slice(0, 16);
+}
+
+function productWholesaleFeedMeta(req: WholesaleFeedRequest, session: SessionState): WholesaleFeedMeta {
+  const seededProductsRevision = stableMapDigest(session.complyExtensions.seededProducts);
+  const seededPricingRevision = stableMapDigest(session.complyExtensions.seededPricingOptions);
+  return {
+    wholesale_feed_version: `${PRODUCT_WHOLESALE_FEED_VERSION}.${seededProductsRevision}`,
+    pricing_version: `${PRODUCT_WHOLESALE_PRICING_VERSION}.${seededPricingRevision}`,
+    cache_scope: cacheScopeForWholesaleRequest(req),
+  };
+}
+
+function signalWholesaleFeedMeta(req: WholesaleFeedRequest): WholesaleFeedMeta {
+  return {
+    wholesale_feed_version: SIGNAL_WHOLESALE_FEED_VERSION,
+    pricing_version: SIGNAL_WHOLESALE_PRICING_VERSION,
+    cache_scope: cacheScopeForWholesaleRequest(req),
+  };
+}
+
+function wholesaleFeedUnchanged(req: WholesaleFeedRequest, meta: WholesaleFeedMeta): boolean {
+  return req.if_wholesale_feed_version === meta.wholesale_feed_version
+    && (req.if_pricing_version === undefined || req.if_pricing_version === meta.pricing_version);
+}
+
+function wholesaleCapabilityProfile(ctx: TrainingContext): {
+  productWholesale: boolean;
+  signalWholesale: boolean;
+  eventTypes: string[];
+} {
+  if (ctx.storyboardCompat?.version === '3.0') {
+    return {
+      productWholesale: false,
+      signalWholesale: false,
+      eventTypes: [],
+    };
+  }
+  const productWholesale = ctx.tenantId === undefined || ctx.tenantId === 'sales';
+  const signalWholesale = ctx.tenantId === undefined || ctx.tenantId === 'signals';
+  return {
+    productWholesale,
+    signalWholesale,
+    eventTypes: [
+      ...(productWholesale ? PRODUCT_WHOLESALE_FEED_WEBHOOK_EVENT_TYPES : []),
+      ...(signalWholesale ? SIGNAL_WHOLESALE_FEED_WEBHOOK_EVENT_TYPES : []),
+      ...(productWholesale || signalWholesale ? ['wholesale_feed.bulk_change'] : []),
+    ],
+  };
+}
+
+function signalMatchesRef(
+  signal: ReturnType<typeof getAllSignals>[number],
+  ref: Record<string, unknown>,
+  signalSourceUrl: string,
+): boolean {
+  const signalId = typeof ref.signal_id === 'string' ? ref.signal_id : undefined;
+  if (!signalId || signalId !== signal.signalAgentSegmentId) return false;
+  if (ref.scope === 'data_provider') {
+    return ref.data_provider_domain === signal.providerDomain;
+  }
+  if (ref.scope === 'signal_source') {
+    return ref.signal_source_url === signalSourceUrl;
+  }
+  if (ref.scope === 'product') {
+    return true;
+  }
+  return false;
+}
+
 // ── Tool definitions ──────────────────────────────────────────────
 
 const TOOLS = [
@@ -1572,6 +1699,15 @@ const TOOLS = [
         brand: { type: 'object' },
         filters: { type: 'object' },
         fields: { type: 'array', items: { type: 'string' } },
+        if_wholesale_feed_version: { type: 'string' },
+        if_pricing_version: { type: 'string' },
+        pagination: {
+          type: 'object',
+          properties: {
+            max_results: { type: 'integer', minimum: 1, maximum: 100 },
+            cursor: { type: 'string' },
+          },
+        },
       },
       required: ['buying_mode'],
     },
@@ -1831,10 +1967,14 @@ const TOOLS = [
         signal_spec: { type: 'string', description: 'Natural language description of desired signals' },
         brief: { type: 'string', description: 'Alias for signal_spec (SDK compatibility)' },
         signal_ids: { type: 'array', items: { type: 'object' }, description: 'Specific signals to look up by ID' },
+        signal_refs: { type: 'array', items: { type: 'object' }, description: 'Specific signal references to look up' },
         account: ACCOUNT_REF_SCHEMA,
         destinations: { type: 'array', items: { type: 'object' }, description: 'Filter to specific deployment targets' },
         countries: { type: 'array', items: { type: 'string' } },
+        discovery_mode: { type: 'string', enum: ['brief', 'wholesale'] },
         filters: { type: 'object' },
+        if_wholesale_feed_version: { type: 'string' },
+        if_pricing_version: { type: 'string' },
         max_results: { type: 'integer' },
         // See list_creative_formats above — declared so legacy dispatch keeps
         // `pagination` on the wire.
@@ -1937,7 +2077,50 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
       }] as TaskError[],
     };
   }
+  if (buyingMode !== 'wholesale' && (req as WholesaleFeedRequest).if_wholesale_feed_version !== undefined) {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'if_wholesale_feed_version is only valid with buying_mode "wholesale".',
+        field: 'if_wholesale_feed_version',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
+  if ((req as WholesaleFeedRequest).if_pricing_version !== undefined) {
+    if (buyingMode !== 'wholesale') {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'if_pricing_version is only valid with buying_mode "wholesale".',
+          field: 'if_pricing_version',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+    if ((req as WholesaleFeedRequest).if_wholesale_feed_version === undefined) {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'if_pricing_version requires if_wholesale_feed_version.',
+          field: 'if_pricing_version',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+  }
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const wholesaleMeta = buyingMode === 'wholesale'
+    ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session)
+    : undefined;
+
+  if (wholesaleMeta && wholesaleFeedUnchanged(req as WholesaleFeedRequest, wholesaleMeta)) {
+    return {
+      status: 'completed' as const,
+      unchanged: true,
+      ...wholesaleMeta,
+    } as GetProductsResponse;
+  }
 
   let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
 
@@ -2225,13 +2408,45 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   const responseProducts = isThreeZeroStoryboardCompat(ctx)
     ? products.map(productForThreeZeroStoryboardCompat)
     : products;
-  session.lastGetProductsContext = { products: responseProducts, proposals };
+  session.lastGetProductsContext = {
+    products: responseProducts,
+    proposals: buyingMode === 'wholesale' ? [] : proposals,
+  };
+  let pageProducts = responseProducts;
+  let pagination: { has_more: boolean; total_count: number; cursor?: string } | undefined;
+  if (req.pagination) {
+    const offset = decodeOffsetCursor('products', req.pagination.cursor);
+    if (offset === null) {
+      return {
+        errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] as TaskError[],
+      };
+    }
+    const maxResults = Math.min(
+      typeof req.pagination.max_results === 'number' && req.pagination.max_results >= 1
+        ? req.pagination.max_results
+        : 50,
+      100,
+    );
+    const pageEnd = Math.min(offset + maxResults, responseProducts.length);
+    pageProducts = responseProducts.slice(offset, pageEnd);
+    const hasMore = pageEnd < responseProducts.length;
+    pagination = {
+      has_more: hasMore,
+      total_count: responseProducts.length,
+      ...(hasMore && { cursor: encodeOffsetCursor('products', pageEnd) }),
+    };
+  }
 
   const response = {
     status: 'completed' as const,
-    products: responseProducts,
-    cache_scope: req.account ? ('account' as const) : ('public' as const),
-    ...(proposals.length > 0 && { proposals }),
+    products: pageProducts,
+    cache_scope: wholesaleMeta?.cache_scope ?? (req.account ? ('account' as const) : ('public' as const)),
+    ...(wholesaleMeta && {
+      wholesale_feed_version: wholesaleMeta.wholesale_feed_version,
+      pricing_version: wholesaleMeta.pricing_version,
+    }),
+    ...(pagination && { pagination }),
+    ...(buyingMode !== 'wholesale' && proposals.length > 0 && { proposals }),
     ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
     ...(canonicalFormatAdvisories.length > 0 && {
       errors: canonicalFormatAdvisories as unknown as GetProductsResponse['errors'],
@@ -4099,6 +4314,7 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
   const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethod(op));
   const protocolMethodsRequiredFor = signingCap.required_for.filter(isProtocolMethod);
   const protocolMethodsSupportedFor = signingCap.supported_for?.filter(isProtocolMethod) ?? [];
+  const wholesaleProfile = wholesaleCapabilityProfile(ctx);
   const complianceScenarios = [
     'force_creative_status',
     'force_account_status',
@@ -4134,7 +4350,28 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
     },
     protocol_version: '3.0',
     tasks,
+    ...((wholesaleProfile.productWholesale || wholesaleProfile.signalWholesale) && {
+      wholesale_feed_versioning: {
+        supported: true,
+        pricing_version_separate: true,
+        cache_scope_account: true,
+      },
+      wholesale_feed_webhooks: {
+        supported: true,
+        event_types: wholesaleProfile.eventTypes,
+      },
+      webhook_signing: {
+        supported: true,
+        profile: 'adcp/webhook-signing/v1',
+        algorithms: ['ed25519'],
+        legacy_hmac_fallback: true,
+      },
+      identity: {
+        brand_json_url: `${getAgentUrl()}/.well-known/brand.json`,
+      },
+    }),
     media_buy: {
+      buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
       supports_proposals: true,
       features: {
         inline_creative_management: true,
@@ -4199,6 +4436,14 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
       supported_billing: [...SUPPORTED_BILLINGS],
       sandbox: true,
     },
+    ...(wholesaleProfile.signalWholesale && {
+      signals: {
+        discovery_modes: ['brief', 'wholesale'],
+        features: {
+          catalog_signals: true,
+        },
+      },
+    }),
     compliance_testing: {
       scenarios: complianceScenarios,
     },
@@ -4216,11 +4461,80 @@ const MAX_SIGNAL_RESULTS = 10;
 export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetSignalsRequest & ToolArgs & {
     brief?: string;
+    discovery_mode?: 'brief' | 'wholesale';
+    if_wholesale_feed_version?: string;
+    if_pricing_version?: string;
     pagination?: { max_results?: number; cursor?: string };
   };
   // Accept both signal_spec (protocol) and brief (SDK test tool)
   const rawSpec = req.signal_spec || req.brief;
-  const signalSpec = typeof rawSpec === 'string' ? rawSpec : undefined;
+  const hasWholesaleRunnerFallbackSpec =
+    req.discovery_mode === 'wholesale'
+    && req.signal_spec === SDK_STORYBOARD_FALLBACK_SIGNAL_SPEC
+    && req.brief === undefined;
+  const signalSpec = req.discovery_mode === 'wholesale'
+    ? undefined
+    : typeof rawSpec === 'string'
+      ? rawSpec
+      : undefined;
+  const signalRefs = (req as GetSignalsRequest & { signal_refs?: Array<Record<string, unknown>> }).signal_refs;
+  if (req.discovery_mode !== 'wholesale' && req.if_wholesale_feed_version !== undefined) {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'if_wholesale_feed_version is only valid with discovery_mode "wholesale".',
+        field: 'if_wholesale_feed_version',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
+  if (req.if_pricing_version !== undefined) {
+    if (req.discovery_mode !== 'wholesale') {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'if_pricing_version is only valid with discovery_mode "wholesale".',
+          field: 'if_pricing_version',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+    if (req.if_wholesale_feed_version === undefined) {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'if_pricing_version requires if_wholesale_feed_version.',
+          field: 'if_pricing_version',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+  }
+  if (
+    req.discovery_mode === 'wholesale'
+    && (
+	      (req.signal_spec !== undefined && !hasWholesaleRunnerFallbackSpec)
+	      || req.brief !== undefined
+	      || (Array.isArray(req.signal_ids) && req.signal_ids.length > 0)
+      || (Array.isArray(signalRefs) && signalRefs.length > 0)
+    )
+  ) {
+    const field = req.signal_spec !== undefined && !hasWholesaleRunnerFallbackSpec
+      ? 'signal_spec'
+      : req.brief !== undefined
+        ? 'brief'
+        : Array.isArray(signalRefs) && signalRefs.length > 0
+          ? 'signal_refs'
+          : 'signal_ids';
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'signal_spec, brief, signal_refs, and signal_ids must not be provided when discovery_mode is "wholesale".',
+        field,
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
   // Pagination shape (pagination.max_results, schema cap 100) takes precedence
   // over the legacy top-level `max_results` (no schema cap; this handler
   // historically capped at 50 to keep semantic-search results focused). The two
@@ -4246,14 +4560,28 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     };
   }
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const wholesaleMeta = req.discovery_mode === 'wholesale'
+    ? signalWholesaleFeedMeta(req as WholesaleFeedRequest)
+    : undefined;
+
+  if (wholesaleMeta && wholesaleFeedUnchanged(req as WholesaleFeedRequest, wholesaleMeta)) {
+    return {
+      unchanged: true,
+      ...wholesaleMeta,
+    };
+  }
 
   const allSignals = getAllSignals();
   let results = allSignals;
+  const agentUrl = getAgentUrl();
 
-  // Exact lookup by signal_ids
-  if (req.signal_ids?.length) {
-    const idSet = new Set(req.signal_ids.map(sid => sid.id));
-    results = results.filter(s => idSet.has(s.signalAgentSegmentId));
+  // Exact lookup by signal_refs or legacy signal_ids.
+  if (req.signal_ids?.length || signalRefs?.length) {
+    const idSet = new Set(req.signal_ids?.map(sid => sid.id) ?? []);
+    results = results.filter(s =>
+      idSet.has(s.signalAgentSegmentId)
+      || signalRefs?.some(ref => signalMatchesRef(s, ref, agentUrl)),
+    );
   }
 
   // Natural language search via signal_spec
@@ -4304,9 +4632,6 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   const pageEnd = Math.min(offset + maxResults, totalMatching);
   results = results.slice(offset, pageEnd);
   const hasMore = pageEnd < totalMatching;
-
-  // Build the training agent URL for deployment targets
-  const agentUrl = getAgentUrl();
 
   // Build response signals with deployments
   const signals: SignalResponse[] = results.map(s => {
@@ -4370,6 +4695,10 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     signals: SignalResponse[];
     pagination: { has_more: boolean; total_count: number; cursor?: string };
     note?: string;
+    unchanged?: boolean;
+    wholesale_feed_version?: string;
+    pricing_version?: string;
+    cache_scope?: 'public' | 'account';
   } = {
     signals,
     pagination: {
@@ -4380,6 +4709,11 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
       // pagination-integrity catches stale tokens on terminal pages.
       ...(hasMore && { cursor: encodeOffsetCursor('signals', pageEnd) }),
     },
+    ...(wholesaleMeta && {
+      wholesale_feed_version: wholesaleMeta.wholesale_feed_version,
+      pricing_version: wholesaleMeta.pricing_version,
+      cache_scope: wholesaleMeta.cache_scope,
+    }),
   };
   if (hasIdentityTerm) {
     const isCreditQuery = rawTerms.includes('credit');

@@ -206,6 +206,14 @@ REQUIRED_CLEAN_CURRENT_SALES=(
   "notification_config_event_scope"
   "notification_config_lifecycle"
   "notification_config_rejections"
+  "wholesale_feed_products"
+  "wholesale_feed_product_webhooks"
+  "wholesale_feed_bulk_webhooks"
+)
+REQUIRED_CLEAN_CURRENT_SIGNALS=(
+  "wholesale_feed_signals"
+  "wholesale_feed_signal_webhooks"
+  "wholesale_feed_bulk_webhooks"
 )
 REQUIRED_CLEAN_CURRENT_CREATIVE=(
   "creative/billing_out_of_band"
@@ -289,6 +297,21 @@ for entry in "${TENANTS[@]}"; do
 
   if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "sales" ]; then
     for storyboard_id in "${REQUIRED_CLEAN_CURRENT_SALES[@]}"; do
+      if storyboard_passed "${storyboard_id}" "${log}"; then
+        echo "  ✓ required-clean ${storyboard_id}"
+      else
+        status="✗"
+        if [ -n "${failed_floor}" ]; then
+          failed_floor="${failed_floor}; required-clean ${storyboard_id} did not pass"
+        else
+          failed_floor="required-clean ${storyboard_id} did not pass"
+        fi
+      fi
+    done
+  fi
+
+  if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "signals" ]; then
+    for storyboard_id in "${REQUIRED_CLEAN_CURRENT_SIGNALS[@]}"; do
       if storyboard_passed "${storyboard_id}" "${log}"; then
         echo "  ✓ required-clean ${storyboard_id}"
       else

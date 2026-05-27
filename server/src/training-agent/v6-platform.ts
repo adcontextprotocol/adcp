@@ -117,6 +117,7 @@ function translateV5Result<T extends object>(result: unknown): T {
 function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undefined): TrainingContext {
   return {
     mode: 'open',
+    tenantId: 'signals',
     principal: account?.authInfo?.principal ?? 'anonymous',
   };
 }
