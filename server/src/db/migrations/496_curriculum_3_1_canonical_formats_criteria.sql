@@ -53,6 +53,8 @@ BEGIN
   LOOP
     IF ex->>'id' = 's2_ex1' THEN
       exercise_matched := true;
+      -- S2 exercise 1 prose is migration-owned for the 3.1 canonical-format
+      -- lab; re-runs intentionally restore this title and description.
       ex := jsonb_set(ex, '{title}', to_jsonb('Creative production and canonical-format authoring'::text));
       ex := jsonb_set(ex, '{description}', to_jsonb('Build, preview, and sync creatives while also authoring against 3.1 product format_options[] declarations.'::text));
 
@@ -148,6 +150,9 @@ SELECT _append_criterion('S2', 's2_ex1', 's2_ex1_sc_format_kind_selection',
 
 SELECT _append_criterion('S2', 's2_ex1', 's2_ex1_sc_format_options_cardinality',
   'Reads product format_options[] and explains single-option, multi-option, and multi-size fan-out declarations, including when a buyer should select a format_option_id.');
+
+SELECT _append_criterion('S2', 's2_ex1', 's2_ex1_sc_option_vs_capability_id',
+  'Distinguishes product-level format_option_id from creative-agent capability_id and avoids substituting one namespace for the other in media-buy products or creative manifests.');
 
 SELECT _append_criterion('S2', 's2_ex1', 's2_ex1_sc_source_taxonomy',
   'Chooses the correct asset_source model across buyer_uploaded, agent_synthesized, seller_pre_rendered_from_brief, seller_human_designed, and publisher_host_recorded workflows, and maps that choice to the manifest assets or seller/publisher-supplied inputs required.');

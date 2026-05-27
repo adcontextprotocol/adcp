@@ -7,3 +7,5 @@ Add canonical-format coverage to the S2 creative specialist curriculum, includin
 Foundations and buyer-track learning pages now mention 3.1 `format_options[]` at orientation depth and point learners to S2 for canonical-first validation details.
 
 Recertification trigger wiring is intentionally deferred to the follow-up issue referenced from the PR; this patch only adds stable criterion IDs and curriculum coverage.
+
+Also clarifies that `creative_approval_mode` is a discovery declaration for auto-approval-dependent behavior, not a notification or approval workflow.

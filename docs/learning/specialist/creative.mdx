@@ -129,7 +129,7 @@ export AGENT_URL="https://test-agent.adcontextprotocol.org/creative/mcp"
 |---|---|---|
 | Creative ad server | `https://test-agent.adcontextprotocol.org/creative/mcp` | Exercises 2, 4 |
 | Stateless transformation / template agent | `https://test-agent.adcontextprotocol.org/creative-builder/mcp` | Exercises 1, 5 |
-| Sales agent (push-and-preview) | `https://test-agent.adcontextprotocol.org/sales/mcp` | Exercise 3 |
+| Sales agent (push-and-preview) | `https://test-agent.adcontextprotocol.org/sales/mcp` | Exercises 3, 6 |
 
 See the [Quickstart](/docs/quickstart) for a walkthrough of your first call.
 
@@ -184,6 +184,7 @@ Vendors often offer multiple pricing options per creative — volume/commitment 
 6. **Canonical-formats authoring** — Using the validated reference fixtures in `static/examples/products/canonical/`: the multi-format display fixture (`nytimes_homepage_mrec.json`) and the generative video fixture (`veo_generative_video_15s.json`):
    - Read each product's `format_options[]` and identify every available `format_kind`
    - Select `format_option_id` when the product publishes one, and explain why a single-option product may not expose a separate selector
+   - Explain why a creative-agent `capability_id` is not a substitute for a media-buy product's `format_option_id`
    - Write the manifest asset map implied by the selected option's slots, including when the buyer ships rendered assets and when the buyer ships a brief, video brief, or structured object
    - Explain single-option vs multi-option products: when one product accepts several canonical alternatives, and when one option fans out to several sizes through `v1_format_ref[]`
    - Explain why the seller validates against the canonical shape first and the product's narrowing second, while the creative agent's own capability can only narrow what it promises to produce
@@ -202,7 +203,8 @@ Vendors often offer multiple pricing options per creative — volume/commitment 
 | Dimension | Weight | What Addie evaluates |
 |-----------|--------|---------------------|
 | Interaction models | 20% | Correctly identifies and works with all three creative agent types |
-| Cross-platform and canonical formats | 25% | Adapts creatives across channels and formats; reads `format_options[]`, selects `format_kind` and `format_option_id`, explains single-option, multi-option, and `v1_format_ref[]` fan-out cardinality, maps `asset_source` values to buyer-provided, agent-synthesized, seller-rendered, seller-designed, and publisher-hosted workflows, and explains canonical-first/product-second validation order |
+| Cross-platform adaptation | 15% | Adapts creatives across display, video, native, preview, measurement, and broadcast workflows |
+| Canonical formats | 10% | Reads `format_options[]`, selects `format_kind` and `format_option_id`, explains single-option, multi-option, and `v1_format_ref[]` fan-out cardinality, maps `asset_source` values to buyer-provided, agent-synthesized, seller-rendered, seller-designed, and publisher-hosted workflows, and explains canonical-first/product-second validation order |
 | Compliance | 25% | Configures disclosures, provenance, and regulatory requirements |
 | Pricing and accounts | 15% | Understands rate cards, reads pricing from `list_creatives` and `list_creative_formats`, interprets build costs, closes the `report_usage` loop |
 | Analytical skill | 15% | Interprets creative feature evaluation and delivery results |
