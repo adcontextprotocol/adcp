@@ -318,7 +318,7 @@ For managed-network deployments in AdCP, the normative delegation pattern remain
 `/.well-known/adagents.json` pointer file. New deployments SHOULD use that pattern.
 </Warning>
 
-When `https://{publisher}/.well-known/adagents.json` returns `404`, validators MAY attempt a compatibility fallback via `https://{publisher}/ads.txt`:
+When `https://{publisher}/.well-known/adagents.json` returns `404`, or returns an S3/CloudFront-style `403` `AccessDenied` XML response, validators MAY attempt a compatibility fallback via `https://{publisher}/ads.txt`:
 
 1. Read `ads.txt` and parse `managerdomain` entries.
    - Accepted form: `MANAGERDOMAIN=example.com` (IAB directive form only).
@@ -331,6 +331,7 @@ When `https://{publisher}/.well-known/adagents.json` returns `404`, validators M
 - **One hop only**: maximum depth is exactly one (`publisher -> managerdomain`). Do not chain managerdomain lookups.
 - **Cycle detection required**: if `managerdomain` points to a visited domain, ignore it.
 - **`#noagents` opt-out**: if a managerdomain line has a trailing comment containing the token `noagents` (case-insensitive), clients MUST ignore that managerdomain for adagents discovery. Example: `MANAGERDOMAIN=example.com #NOAGENTS`.
+- **Trigger statuses are narrow**: validators SHOULD only attempt this fallback when the publisher's direct `adagents.json` fetch returns `404` or an S3/CloudFront-style `403` `AccessDenied` XML response. Other statuses and failures — generic `403` denial, `500`, timeout, malformed JSON, content-type mismatch, or schema validation failure — do not trigger `managerdomain`.
 - **Explicit publisher scoping required**: a manager-hosted `adagents.json` MUST positively name the source publisher domain in a `publisher_domain` field that is reachable from at least one `authorized_agents[]` entry. "Reachable" means one of the following paths resolves to the source domain:
 
   1. **Per-agent paths.** The agent entry directly carries the publisher domain under `publisher_properties[].publisher_domain`, inside `publisher_properties[].publisher_domains[]` (the compact managed-network form), or under `collections[].publisher_domain`.
