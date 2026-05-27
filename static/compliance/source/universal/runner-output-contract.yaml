@@ -399,6 +399,12 @@ validation_result:
       comply-test-controller-response.json > UpstreamTrafficSuccess >
       recorded_calls > DigestAttestation) swap raw payload introspection
       for digest-based echo verification:
+        - `recorded_calls[].payload_length` MUST be the byte length of the
+          exact payload bytes covered by `payload_digest_sha256`: RFC 8785
+          (JCS) canonical bytes for JSON-shaped content after redaction, or
+          post-redaction raw body bytes for non-JSON content. It is not the
+          original outbound body length before JSON parsing, redaction, or
+          canonicalization.
         - The runner verifies `identifier_paths` by computing SHA-256 of each
           resolved identifier value, sending the digests in the controller
           query's `params.identifier_value_digests`, and reading the

@@ -50,6 +50,9 @@ jobs:
       - name: Repo unit tests
         run: npm run test:unit
 
+      - name: Storyboard lint tests
+        run: npm run test:storyboard-raw-mode-required && npm run test:storyboard-upstream-traffic-paths
+
       - name: Schema link plugin tests
         run: npm run test:schema-links
 
