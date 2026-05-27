@@ -16,6 +16,10 @@
       "description": "Budget amount for this forecast point. Required for spend curves; omit for availability forecasts where the metrics represent total available inventory. For allocation-level forecasts, this is the absolute budget for that allocation (not the percentage). For proposal-level forecasts, this is the total proposal budget. When omitted, use metrics.spend to express the estimated cost of the available inventory.",
       "minimum": 0
     },
+    "dimensions": {
+      "$ref": "/schemas/core/forecast-point-dimensions.json",
+      "description": "Dimensional slice represented by this forecast point, such as country, region, placement, device type, platform, or audience. Each point declares one primary dimension family. Use multiple points with dimensions to expose country/placement availability within one product or proposal without creating separate products solely for each dimension. Dimensions describe the forecast row and are independent of pricing_options."
+    },
     "metrics": {
       "type": "object",
       "description": "Forecasted metric values. Keys are forecastable-metric enum values for delivery/engagement or event-type enum values for outcomes. Values are ForecastRange objects (low/mid/high). Use { \"mid\": value } for point estimates. When budget is present, these are the expected metrics at that spend level. When budget is omitted, these represent total available inventory — use spend to express the estimated cost. Additional keys beyond the documented properties are allowed for event-type values (purchase, lead, app_install, etc.).",
@@ -39,6 +43,62 @@
       },
       "additionalProperties": {
         "$ref": "/schemas/core/forecast-range.json"
+      }
+    },
+    "viewability": {
+      "type": "object",
+      "description": "Forecasted viewability metrics. Mirrors delivery-metrics.viewability, but numeric values are ForecastRange objects because forecast rows may provide low/mid/high bounds. Use this for pre-buy viewability expectations by forecast point without folding measurement metrics into pricing_options.",
+      "properties": {
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Vendor expected to produce or verify these viewability values."
+        },
+        "measurable_impressions": {
+          "$ref": "/schemas/core/forecast-range.json",
+          "description": "Forecasted impressions where viewability can be measured. Coverage denominator for viewable_rate and viewed_seconds."
+        },
+        "viewable_impressions": {
+          "$ref": "/schemas/core/forecast-range.json",
+          "description": "Forecasted impressions expected to meet the viewability threshold defined by standard."
+        },
+        "viewable_rate": {
+          "allOf": [
+            { "$ref": "/schemas/core/forecast-range.json" },
+            {
+              "properties": {
+                "low": { "maximum": 1 },
+                "mid": { "maximum": 1 },
+                "high": { "maximum": 1 }
+              }
+            }
+          ],
+          "description": "Forecasted viewable impression rate (viewable_impressions / measurable_impressions). Range 0.0 to 1.0."
+        },
+        "viewed_seconds": {
+          "$ref": "/schemas/core/forecast-range.json",
+          "description": "Forecasted average in-view duration per measurable impression, in seconds."
+        },
+        "standard": {
+          "$ref": "/schemas/enums/viewability-standard.json",
+          "description": "Viewability measurement standard applied to these forecasted values."
+        }
+      },
+      "additionalProperties": true,
+      "anyOf": [
+        { "not": { "anyOf": [
+          { "required": ["measurable_impressions"] },
+          { "required": ["viewable_impressions"] },
+          { "required": ["viewable_rate"] },
+          { "required": ["viewed_seconds"] }
+        ] } },
+        { "required": ["standard"] }
+      ]
+    },
+    "vendor_metric_values": {
+      "type": "array",
+      "description": "Forecasted values for vendor-defined metrics that the product's reporting_capabilities.vendor_metrics declared. Mirrors delivery-metrics.vendor_metric_values, but value and measurable_impressions use ForecastRange. These forecasted measurement values are independent of pricing_options.",
+      "items": {
+        "$ref": "/schemas/core/forecast-vendor-metric-value.json"
       }
     }
   },

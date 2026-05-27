@@ -190,6 +190,14 @@
           "$ref": "/schemas/core/forecast-point.json",
           "description": "A single point on a budget-to-outcome curve"
         },
+        "forecast-point-dimensions": {
+          "$ref": "/schemas/core/forecast-point-dimensions.json",
+          "description": "Dimensional slice represented by a forecast point"
+        },
+        "forecast-vendor-metric-value": {
+          "$ref": "/schemas/core/forecast-vendor-metric-value.json",
+          "description": "Forecasted vendor-defined measurement value with low/mid/high bounds"
+        },
         "catalog": {
           "$ref": "/schemas/core/catalog.json",
           "description": "A typed data feed — structural (offering, product, inventory, store, promotion) or vertical (hotel, flight, job, vehicle, real_estate, education, destination). Can be synced, inline, or fetched from a URL."

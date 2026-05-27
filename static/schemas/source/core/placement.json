@@ -12,7 +12,8 @@
     },
     "placement_id": {
       "type": "string",
-      "description": "Placement identifier in the publisher namespace. When `publisher_domain` is present, this matches a placement ID in that publisher's adagents.json catalog or a seller-defined inline placement in that publisher namespace. Buyers use this with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `creative_assignments[].placement_ids` strings are only unambiguous in single-publisher contexts."
+      "description": "Placement identifier in the publisher namespace. When `publisher_domain` is present, this matches a placement ID in that publisher's adagents.json catalog or a seller-defined inline placement in that publisher namespace. Buyers use this with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `creative_assignments[].placement_ids` strings are only unambiguous in single-publisher contexts.",
+      "x-entity": "placement"
     },
     "publisher_domain": {
       "type": "string",

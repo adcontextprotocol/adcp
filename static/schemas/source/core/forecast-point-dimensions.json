@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/forecast-point-dimensions.json",
+  "title": "Forecast Point Dimensions",
+  "description": "Dimensional slice represented by a ForecastPoint. Use this when one product or proposal needs to expose availability or forecasted delivery by country, region, placement, device, or audience without creating separate products solely for each slice. Each row declares one primary dimension family via `kind`; mixed families across points are alternative cuts, not additive partitions. Dimension values are descriptors of the forecast row and are independent of pricing_options.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "Geo Forecast Dimension",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "geo",
+          "description": "Dimension family discriminator."
+        },
+        "geo_level": {
+          "$ref": "/schemas/enums/geo-level.json",
+          "description": "Geographic level for this forecast point."
+        },
+        "system": {
+          "type": "string",
+          "description": "Classification system for metro or postal_area levels (e.g., 'nielsen_dma', 'us_zip'). Required when geo_level is 'metro' or 'postal_area'."
+        },
+        "geo_code": {
+          "type": "string",
+          "description": "Geographic code within the level and system. Country: ISO 3166-1 alpha-2 ('US'). Region: ISO 3166-2 with country prefix ('US-CA'). Metro/postal: system-specific code ('501', '10001')."
+        },
+        "geo_name": {
+          "type": "string",
+          "description": "Human-readable geographic name (e.g., 'United States', 'California', 'New York DMA')."
+        }
+      },
+      "required": ["kind", "geo_level", "geo_code"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "geo_level": {
+                "type": "string",
+                "enum": ["metro", "postal_area"]
+              }
+            },
+            "required": ["geo_level"]
+          },
+          "then": {
+            "required": ["system"]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "Placement Forecast Dimension",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "placement",
+          "description": "Dimension family discriminator."
+        },
+        "placement_ref": {
+          "$ref": "/schemas/core/placement-ref.json",
+          "description": "Structured placement reference for this forecast row. References an entry from the product's placements array."
+        },
+        "placement_name": {
+          "type": "string",
+          "description": "Human-readable placement name, useful when the buyer has not resolved the placement catalog."
+        }
+      },
+      "required": ["kind", "placement_ref"],
+      "additionalProperties": false
+    },
+    {
+      "title": "Device Type Forecast Dimension",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "device_type",
+          "description": "Dimension family discriminator."
+        },
+        "device_type": {
+          "$ref": "/schemas/enums/device-type.json",
+          "description": "Device form factor for this forecast row."
+        }
+      },
+      "required": ["kind", "device_type"],
+      "additionalProperties": false
+    },
+    {
+      "title": "Device Platform Forecast Dimension",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "device_platform",
+          "description": "Dimension family discriminator."
+        },
+        "device_platform": {
+          "$ref": "/schemas/enums/device-platform.json",
+          "description": "Operating system or platform for this forecast row."
+        }
+      },
+      "required": ["kind", "device_platform"],
+      "additionalProperties": false
+    },
+    {
+      "title": "Audience Forecast Dimension",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "audience",
+          "description": "Dimension family discriminator."
+        },
+        "audience_id": {
+          "type": "string",
+          "description": "Audience segment identifier for this forecast row.",
+          "x-entity": "audience"
+        },
+        "audience_source": {
+          "$ref": "/schemas/enums/audience-source.json",
+          "description": "Origin of the audience segment."
+        },
+        "audience_name": {
+          "type": "string",
+          "description": "Human-readable audience segment name."
+        }
+      },
+      "required": ["kind", "audience_id", "audience_source"],
+      "additionalProperties": false
+    }
+  ]
+}
