@@ -98,7 +98,7 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Sync the governance agent on an explicit account (by account_id)",
+      "description": "Sync the governance agent on an account-id namespace account",
       "data": {
         "idempotency_key": "e1b3a6c8-5678-489a-bcde-f01234567891",
         "accounts": [
@@ -122,7 +122,7 @@
       }
     },
     {
-      "description": "Sync the governance agent on an implicit account (by brand + operator)",
+      "description": "Sync the governance agent on a buyer-declared account by natural key",
       "data": {
         "idempotency_key": "f2c4b7d9-6789-489b-cdef-012345678902",
         "accounts": [

@@ -296,7 +296,7 @@
       }
     },
     {
-      "description": "Settings-update mode — register webhook subscribers on an existing explicit account by account_id",
+      "description": "Settings-update mode — register webhook subscribers on an existing account-id namespace account",
       "data": {
         "idempotency_key": "f2c4b7d9-6789-49bc-defa-2345678901bc",
         "accounts": [

@@ -1,6 +1,6 @@
 ---
 title: Accounts and agents
-description: "AdCP accounts and agents: the four entities in every transaction (brand, account, operator, agent), explicit vs implicit account models, and billing configuration."
+description: "AdCP accounts and agents: the four entities in every transaction (brand, account, operator, agent), account-id namespaces, buyer-declared accounts, and billing configuration."
 "og:title": "AdCP — Accounts and agents"
 ---
 
@@ -448,7 +448,7 @@ The agent requests accounts by natural key — `(brand, operator)`. The seller d
 | `operator` | One account for all brands under this operator | Agent sends (Pinnacle Media, Acme) and (Pinnacle Media, Nova) — seller maps both to the Pinnacle Media account |
 | `brand` | One account for this brand regardless of operator | Agent sends (Acme, Pinnacle Media) and (Acme, Summit Agency) — seller maps both to the Acme account |
 | `operator_brand` | Dedicated account for this operator+brand pair | Agent sends (Pinnacle Media, Acme) — seller creates a specific Acme-via-Pinnacle account |
-| `agent` | Agent-scoped account shared across declared brand/operator pairs | Agent sends any brand — seller maps the declarations to the standing agent-scoped account |
+| `agent` | Agent-scoped account with no brand- or operator-specific split | Agent sends any brand — seller maps the request to the standing agent-scoped account |
 
 The agent does not choose the scope — the seller assigns it based on its own account policy. An agent requesting `(brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com")` might receive an operator-scoped account, a brand-scoped account, or a dedicated operator_brand account depending on the seller.
 

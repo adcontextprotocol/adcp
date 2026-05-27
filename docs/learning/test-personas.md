@@ -46,7 +46,7 @@ Marcus's integration handles product discovery, creative sync, and media buy cre
 ### Misconceptions and blind spots
 - Assumes `native` is still a valid channel. Will be confused when validation fails.
 - Assumes capability discovery still uses `adcp-extension.json`. Will look for agent card extension docs that no longer exist.
-- Thinks `account_id` is just a string he passes. Doesn't know about `AccountReference` objects or the explicit vs. implicit account model.
+- Thinks `account_id` is just a string he passes. Doesn't know about `AccountReference` objects or the account-id namespace vs. buyer-declared account model.
 - Expects `promoted_offering` to still be a string field on media buys.
 - Assumes pricing fields haven't changed names.
 - Will probably search for "migration" or "upgrade" rather than "what's new."

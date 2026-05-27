@@ -236,7 +236,7 @@ The challenge value MUST be cryptographically random, single-use, and scoped to 
 
 On proof failure, the seller returns a per-account failure with `action: "failed"`, `errors[].code: "VALIDATION_ERROR"` (or `INVALID_REQUEST` for malformed URLs), and `error.field` pointing at `accounts[i].notification_configs[j].url`. The previous persisted subscriber set remains unchanged. `dry_run: true` MUST NOT send network challenges; it can only report structural validation and what would require proof.
 
-Example — register a buyer-side endpoint plus an audit bus on an explicit account:
+Example — register a buyer-side endpoint plus an audit bus on an account-id namespace account:
 
 ```json
 {
