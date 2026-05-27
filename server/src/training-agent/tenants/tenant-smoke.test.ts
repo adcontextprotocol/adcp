@@ -27,6 +27,7 @@ const SALES_CURRENT_SCENARIOS = [
   'seed_media_buy',
   'seed_creative_format',
   'seed_measurement_catalog',
+  'query_provenance_audit_observations',
 ];
 
 const SALES_THREE_ZERO_COMPAT_SCENARIOS = [

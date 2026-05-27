@@ -44,10 +44,11 @@
               "seed_creative_format",
               "seed_measurement_catalog",
               "query_upstream_traffic",
+              "query_provenance_audit_observations",
               "force_upstream_unavailable"
             ]
           },
-          "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive releases. Adopters who advertise `force_creative_purge` opt in to deterministic creative purge coverage for account-level lifecycle webhooks. Adopters who advertise `seed_measurement_catalog` opt in to deterministic measurement-catalog fixtures used by vendor_metric precondition storyboards. Adopters who advertise `query_upstream_traffic` opt in to the upstream-traffic conformance contract; storyboards that declare `check: upstream_traffic` grade `not_applicable` against adopters who do not advertise it. Adopters who advertise `force_upstream_unavailable` opt in to stale-cache conformance testing via the `stale_response_advisory` storyboard."
+          "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive releases. Adopters who advertise `force_creative_purge` opt in to deterministic creative purge coverage for account-level lifecycle webhooks. Adopters who advertise `seed_measurement_catalog` opt in to deterministic measurement-catalog fixtures used by vendor_metric precondition storyboards. Adopters who advertise `query_upstream_traffic` opt in to the upstream-traffic conformance contract; storyboards that declare `check: upstream_traffic` grade `not_applicable` against adopters who do not advertise it. Adopters who advertise `query_provenance_audit_observations` opt in to sandbox-only audit-observation assertions for accepted creatives. Adopters who advertise `force_upstream_unavailable` opt in to stale-cache conformance testing via the `stale_response_advisory` storyboard."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -86,6 +87,11 @@
           {
             "required": [
               "recorded_calls"
+            ]
+          },
+          {
+            "required": [
+              "audit_observations"
             ]
           }
         ]
@@ -151,6 +157,11 @@
             "required": [
               "recorded_calls"
             ]
+          },
+          {
+            "required": [
+              "audit_observations"
+            ]
           }
         ]
       }
@@ -214,6 +225,11 @@
           {
             "required": [
               "recorded_calls"
+            ]
+          },
+          {
+            "required": [
+              "audit_observations"
             ]
           }
         ]
@@ -294,6 +310,11 @@
             "required": [
               "recorded_calls"
             ]
+          },
+          {
+            "required": [
+              "audit_observations"
+            ]
           }
         ]
       }
@@ -320,6 +341,80 @@
       },
       "required": [
         "success"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "error"
+            ]
+          },
+          {
+            "required": [
+              "scenarios"
+            ]
+          },
+          {
+            "required": [
+              "previous_state"
+            ]
+          },
+          {
+            "required": [
+              "simulated"
+            ]
+          },
+          {
+            "required": [
+              "forced"
+            ]
+          },
+          {
+            "required": [
+              "recorded_calls"
+            ]
+          },
+          {
+            "required": [
+              "audit_observations"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "ProvenanceAuditObservationsSuccess",
+      "description": "A query_provenance_audit_observations scenario returned sandbox-recorded audit observations for a creative. This hook is for conformance only; public seller responses do not have to expose internal audit-log state.",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
+        "creative_id": {
+          "type": "string",
+          "description": "Creative ID whose audit observations were queried.",
+          "x-entity": "creative"
+        },
+        "audit_observations": {
+          "type": "array",
+          "description": "Audit observations recorded for the creative in the sandbox session.",
+          "items": {
+            "$ref": "/schemas/creative/audit-observation.json"
+          }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "success",
+        "creative_id",
+        "audit_observations"
       ],
       "additionalProperties": true,
       "not": {
@@ -592,6 +687,11 @@
             "required": [
               "forced"
             ]
+          },
+          {
+            "required": [
+              "audit_observations"
+            ]
           }
         ]
       }
@@ -666,6 +766,11 @@
           {
             "required": [
               "recorded_calls"
+            ]
+          },
+          {
+            "required": [
+              "audit_observations"
             ]
           }
         ]

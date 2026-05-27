@@ -1433,8 +1433,8 @@ function provenanceError(
 
 /**
  * Apply seller-side `creative_policy` enforcement to a single creative
- * submission. Returns the first PROVENANCE_* error if any structural
- * check fails, or `null` when the creative passes.
+ * submission. Returns the first PROVENANCE_* error if any check fails, plus
+ * any non-blocking audit observations returned by the verifier.
  *
  * Cascade order (stable; storyboard assertions on `errors[0]` rely on it):
  *   1. PROVENANCE_REQUIRED                       — provenance object absent
@@ -1448,16 +1448,14 @@ function provenanceError(
  * implementation accumulates errors instead of returning the first, the
  * order above is the canonical priority for sorting.
  *
- * The truth-of-claim surface (PROVENANCE_CLAIM_CONTRADICTED, requires
- * calling `get_creative_features` against an on-list verifier) is out
- * of scope for this initial implementation — the structural codes are
- * sufficient to exercise the wire contract end to end.
+ * The truth-of-claim and audit-observation surfaces call `get_creative_features`
+ * against an on-list verifier after structural checks pass.
  */
 async function enforceProvenancePolicy(
   creative: CreativeForEnforcement,
   policy: CreativePolicyView | null,
-): Promise<TaskError | null> {
-  if (!policy) return null;
+): Promise<{ error: TaskError | null; auditObservations: CreativeAuditObservation[] }> {
+  if (!policy) return { error: null, auditObservations: [] };
   const provenance = resolveManifestProvenance(creative);
   // creative_id is buyer-controlled — sanitize before interpolating into
   // the field path so a payload with newlines or oversized strings can't
@@ -1467,22 +1465,22 @@ async function enforceProvenancePolicy(
 
   // 1. provenance_required — any provenance object must exist
   if (policy.provenance_required && !provenance) {
-    return provenanceError(
+    return { error: provenanceError(
       'PROVENANCE_REQUIRED',
       `Seller's creative_policy.provenance_required is true; the submitted creative has no provenance object on the manifest.`,
       `creatives[${safeId}].creative_manifest`,
-    );
+    ), auditObservations: [] };
   }
 
   // 2. require_digital_source_type
   if (policy.provenance_requirements?.require_digital_source_type) {
     const dst = provenance?.digital_source_type;
     if (dst === undefined || dst === null) {
-      return provenanceError(
+      return { error: provenanceError(
         'PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING',
         `Seller requires digital_source_type but the resolved provenance has none.`,
         `${fieldRoot}.digital_source_type`,
-      );
+      ), auditObservations: [] };
     }
   }
 
@@ -1491,18 +1489,18 @@ async function enforceProvenancePolicy(
   if (policy.provenance_requirements?.require_disclosure_metadata) {
     const disclosure = provenance?.disclosure as { required?: unknown; jurisdictions?: unknown[] } | undefined;
     if (!disclosure || typeof disclosure.required !== 'boolean') {
-      return provenanceError(
+      return { error: provenanceError(
         'PROVENANCE_DISCLOSURE_MISSING',
         `Seller requires disclosure metadata but the resolved provenance has no disclosure.required boolean.`,
         `${fieldRoot}.disclosure`,
-      );
+      ), auditObservations: [] };
     }
     if (disclosure.required === true && (!Array.isArray(disclosure.jurisdictions) || disclosure.jurisdictions.length === 0)) {
-      return provenanceError(
+      return { error: provenanceError(
         'PROVENANCE_DISCLOSURE_MISSING',
         `Seller requires disclosure metadata; disclosure.required is true but disclosure.jurisdictions is empty.`,
         `${fieldRoot}.disclosure.jurisdictions`,
-      );
+      ), auditObservations: [] };
     }
   }
 
@@ -1510,11 +1508,11 @@ async function enforceProvenancePolicy(
   if (policy.provenance_requirements?.require_embedded_provenance) {
     const embedded = provenance?.embedded_provenance;
     if (!Array.isArray(embedded) || embedded.length === 0) {
-      return provenanceError(
+      return { error: provenanceError(
         'PROVENANCE_EMBEDDED_MISSING',
         `Seller requires embedded_provenance but the resolved provenance has none.`,
         `${fieldRoot}.embedded_provenance`,
-      );
+      ), auditObservations: [] };
     }
   }
 
@@ -1542,11 +1540,11 @@ async function enforceProvenancePolicy(
         // payload with newlines / ANSI escapes / oversized strings can't
         // poison the message a downstream consumer renders. The field path
         // is server-constructed from constants (no buyer data), so it's safe.
-        return provenanceError(
+        return { error: provenanceError(
           'PROVENANCE_VERIFIER_NOT_ACCEPTED',
           `Buyer's verify_agent.agent_url "${sanitizeForError(url)}" is not in the seller's accepted_verifiers list.`,
           `${fieldRoot}.${layer.kind}[${layer.index}].verify_agent.agent_url`,
-        );
+        ), auditObservations: [] };
       }
     }
   }
@@ -1556,7 +1554,7 @@ async function enforceProvenancePolicy(
   //    claim. Closes adcp#3802. Returns the verifier-emitted contradiction
   //    metadata (audit-safe allowlist only — no detail_url, no extension
   //    fields) for error.details.
-  const contradiction = await runProvenanceVerifier(creative, policy);
+  const { contradiction, auditObservations } = await runProvenanceVerifier(creative, policy);
   if (contradiction) {
     const err = provenanceError(
       'PROVENANCE_CLAIM_CONTRADICTED',
@@ -1571,10 +1569,10 @@ async function enforceProvenancePolicy(
       confidence: contradiction.confidence,
       ...(contradiction.substituted_for ? { substituted_for: contradiction.substituted_for } : {}),
     };
-    return err;
+    return { error: err, auditObservations };
   }
 
-  return null;
+  return { error: null, auditObservations };
 }
 
 /**
@@ -3959,12 +3957,12 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     // accepted_verifiers BEFORE persisting the creative. Per-creative failure
     // is surfaced as action: 'failed' + errors[]; the surrounding session and
     // any other creatives in the batch are unaffected (best-effort processing).
-    const policyError = await enforceProvenancePolicy(creative as unknown as CreativeForEnforcement, effectivePolicy);
-    if (policyError) {
+    const policyResult = await enforceProvenancePolicy(creative as unknown as CreativeForEnforcement, effectivePolicy);
+    if (policyResult.error) {
       results.push({
         creative_id: creativeId,
         action: 'failed',
-        errors: [policyError],
+        errors: [policyResult.error],
       });
       continue;
     }
@@ -4014,6 +4012,11 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         purge: existingCreative?.purge,
         webhookActivity: existingCreative?.webhookActivity,
       });
+      if (policyResult.auditObservations.length) {
+        session.complyExtensions.provenanceAuditObservations.set(creativeId, policyResult.auditObservations);
+      } else {
+        session.complyExtensions.provenanceAuditObservations.delete(creativeId);
+      }
     }
 
     results.push({
@@ -4556,6 +4559,7 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
     'seed_media_buy',
     'seed_creative_format',
     'seed_measurement_catalog',
+    ...(!isThreeZeroStoryboardCompat(ctx) ? ['query_provenance_audit_observations'] : []),
   ];
   return {
     adcp: {
@@ -5544,6 +5548,25 @@ interface CreativeFeatureResult {
   confidence?: number;
 }
 
+interface CreativeAuditObservation {
+  code: 'OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED';
+  severity: 'audit-worthy';
+  recovery: 'informational';
+  field: string;
+  message: string;
+  details: {
+    agent_url: string;
+    feature_id?: string;
+    claimed_value: {
+      human_oversight: 'edited' | 'directed';
+      disclosure_required: false;
+    };
+    observed_value?: boolean | number | string | null;
+    confidence?: number;
+    substituted_for?: string;
+  };
+}
+
 const AI_TRUE_DST = new Set([
   'trained_algorithmic_media',
   'composite_with_trained_algorithmic_media',
@@ -5566,6 +5589,43 @@ function detectAiFromManifest(creative_manifest: GetCreativeFeaturesArgs['creati
   return { value: false, confidence: 0.3 };
 }
 
+function buildOversightDisclosureAuditObservations(
+  creative_manifest: GetCreativeFeaturesArgs['creative_manifest'],
+  opts: {
+    agent_url: string;
+    feature_id?: string;
+    observed_value?: boolean | number | string | null;
+    confidence?: number;
+    substituted_for?: string;
+  },
+): CreativeAuditObservation[] {
+  const provenance = creative_manifest?.provenance;
+  const humanOversight = provenance?.human_oversight;
+  const disclosure = provenance?.disclosure as { required?: unknown } | undefined;
+  if ((humanOversight !== 'edited' && humanOversight !== 'directed') || disclosure?.required !== false) {
+    return [];
+  }
+
+  return [{
+    code: 'OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED',
+    severity: 'audit-worthy',
+    recovery: 'informational',
+    field: 'creative_manifest.provenance.disclosure.required',
+    message: `Creative claims human-${humanOversight} AI output does not require disclosure; retain for audit review.`,
+    details: {
+      agent_url: opts.agent_url,
+      ...(opts.feature_id ? { feature_id: opts.feature_id } : {}),
+      claimed_value: {
+        human_oversight: humanOversight,
+        disclosure_required: false,
+      },
+      ...(opts.observed_value !== undefined ? { observed_value: opts.observed_value } : {}),
+      ...(typeof opts.confidence === 'number' ? { confidence: opts.confidence } : {}),
+      ...(opts.substituted_for ? { substituted_for: opts.substituted_for } : {}),
+    },
+  }];
+}
+
 export async function handleGetCreativeFeatures(args: ToolArgs, _ctx: TrainingContext) {
   const req = args as unknown as GetCreativeFeaturesArgs;
   const requested = req.feature_ids?.length ? new Set(req.feature_ids) : null;
@@ -5577,7 +5637,15 @@ export async function handleGetCreativeFeatures(args: ToolArgs, _ctx: TrainingCo
     { feature_id: 'ai_confidence', value: ai.confidence },
   ];
   const results = requested ? allFeatures.filter(f => requested.has(f.feature_id)) : allFeatures;
-  return { results };
+  const aiResult = results.find(f => f.feature_id === 'ai_generated');
+  const audit_observations = buildOversightDisclosureAuditObservations(req.creative_manifest, {
+    agent_url: getAgentUrl(),
+    ...(aiResult ? { feature_id: aiResult.feature_id, observed_value: aiResult.value, confidence: aiResult.confidence } : {}),
+  });
+  return {
+    results,
+    ...(audit_observations.length ? { audit_observations } : {}),
+  };
 }
 
 /**
@@ -5595,11 +5663,14 @@ export async function handleGetCreativeFeatures(args: ToolArgs, _ctx: TrainingCo
 async function runProvenanceVerifier(
   creative: CreativeForEnforcement,
   policy: CreativePolicyView,
-): Promise<{ agent_url: string; feature_id: string; claimed_value: string; observed_value: boolean; confidence: number; substituted_for?: string } | null> {
+): Promise<{
+  contradiction: { agent_url: string; feature_id: string; claimed_value: string; observed_value: boolean; confidence: number; substituted_for?: string } | null;
+  auditObservations: CreativeAuditObservation[];
+}> {
   const provenance = resolveManifestProvenance(creative);
   const claimed = provenance?.digital_source_type;
-  if (typeof claimed !== 'string') return null; // no claim to refute; structural codes handle absence
-  if (!policy.accepted_verifiers?.length) return null;
+  if (!policy.accepted_verifiers?.length) return { contradiction: null, auditObservations: [] };
+  if (!provenance) return { contradiction: null, auditObservations: [] };
 
   // Pick the buyer's nominated verifier when on-list, else the first
   // on-list entry the seller would use. The seller is the verifier-of-
@@ -5616,8 +5687,10 @@ async function runProvenanceVerifier(
   const featureId = chosen.feature_id ?? 'ai_generated';
 
   // In-process call to the verifier handler. Real sellers do this over
-  // the network; the contract result is the same. Synthesize a manifest
-  // from whichever shape the creative carries: sync_creatives puts
+  // the network; the contract result is the same. This runs before the
+  // digital_source_type short-circuit because audit observations can be
+  // claim-driven even when there is no DST value to refute. Synthesize a
+  // manifest from whichever shape the creative carries: sync_creatives puts
   // assets at the top level, build_creative / preview_creative nest them
   // under creative_manifest. Either path resolves to the same input.
   const synthesized = creative.creative_manifest ?? creative.manifest ?? {
@@ -5630,13 +5703,24 @@ async function runProvenanceVerifier(
   const features = await handleGetCreativeFeatures(
     { creative_manifest: synthesized, feature_ids: [featureId] } as unknown as ToolArgs,
     {} as unknown as TrainingContext,
-  ) as unknown as { results?: CreativeFeatureResult[] };
+  ) as unknown as { results?: CreativeFeatureResult[]; audit_observations?: CreativeAuditObservation[] };
   const result = features.results?.find(r => r.feature_id === featureId);
-  if (!result) return null;
+  if (!result) return { contradiction: null, auditObservations: [] };
 
   const verifierSaysAi = result.value === true;
-  const claimsAi = AI_TRUE_DST.has(claimed);
+  const claimsAi = typeof claimed === 'string' && AI_TRUE_DST.has(claimed);
   const confidence = typeof result.confidence === 'number' ? result.confidence : 0;
+  // Surface the seller-selected verifier identity in public audit details;
+  // the in-process handler's local identity is an implementation detail.
+  const auditObservations = (features.audit_observations ?? []).map(observation => ({
+    ...observation,
+    details: {
+      ...observation.details,
+      agent_url: chosen.agent_url,
+      ...(substituted ? { substituted_for: substituted } : {}),
+    },
+  }));
+  if (typeof claimed !== 'string') return { contradiction: null, auditObservations }; // no claim to refute; structural codes handle absence
 
   // Contradiction: buyer says non-AI but verifier sees AI with confidence
   // above the seller's threshold. The reverse direction (buyer claims AI
@@ -5647,15 +5731,18 @@ async function runProvenanceVerifier(
   const CONFIDENCE_THRESHOLD = 0.9;
   if (verifierSaysAi && !claimsAi && confidence >= CONFIDENCE_THRESHOLD) {
     return {
-      agent_url: chosen.agent_url,
-      feature_id: featureId,
-      claimed_value: claimed,
-      observed_value: verifierSaysAi,
-      confidence,
-      ...(substituted ? { substituted_for: substituted } : {}),
+      contradiction: {
+        agent_url: chosen.agent_url,
+        feature_id: featureId,
+        claimed_value: claimed,
+        observed_value: verifierSaysAi,
+        confidence,
+        ...(substituted ? { substituted_for: substituted } : {}),
+      },
+      auditObservations,
     };
   }
-  return null;
+  return { contradiction: null, auditObservations };
 }
 
 function pickBuyerNominatedVerifierUrl(provenance: Record<string, unknown> | undefined): string | null {

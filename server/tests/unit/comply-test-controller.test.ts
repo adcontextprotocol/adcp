@@ -7,6 +7,8 @@ import {
 } from '../../src/training-agent/task-handlers.js';
 import {
   clearSessions,
+  getSession,
+  sessionKeyFromArgs,
 } from '../../src/training-agent/state.js';
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
@@ -181,12 +183,224 @@ describe('comply_test_controller', () => {
         'force_wholesale_feed_webhook',
         'seed_creative_format',
         'seed_measurement_catalog',
+        'query_provenance_audit_observations',
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(12);
+      expect(scenarios.length).toBe(13);
       // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
+    });
+  });
+
+  describe('query_provenance_audit_observations', () => {
+    it('returns audit observations recorded during accepted provenance sync', async () => {
+      const creativeId = 'creative-audit-directed';
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'product-audit-observation',
+          fixture: {
+            product_id: 'product-audit-observation',
+            name: 'Audit Observation Product',
+            delivery_type: 'non_guaranteed',
+            channels: ['display'],
+            creative_policy: {
+              accepted_verifiers: [{
+                agent_url: 'https://governance.encypher.seller.example',
+                feature_id: 'ai_generated',
+              }],
+            },
+            pricing_options: [{
+              pricing_option_id: 'audit-cpm',
+              pricing_model: 'cpm',
+              rate: 5,
+              currency: 'USD',
+            }],
+          },
+        },
+      });
+
+      const { result: syncResult, isError: syncIsError } = await simulateCallTool(server, 'sync_creatives', {
+        account: ACCOUNT,
+        brand: BRAND,
+        creatives: [{
+          creative_id: creativeId,
+          name: 'Audit observation creative',
+          format_id: { agent_url: 'https://external-creative.example.com', id: 'display_300x250' },
+          assets: {
+            image: {
+              asset_type: 'image',
+              url: 'https://test-assets.adcontextprotocol.org/acme-outdoor/ai-generated-true.jpg',
+              width: 300,
+              height: 250,
+            },
+          },
+          provenance: {
+            digital_source_type: 'composite_with_trained_algorithmic_media',
+            human_oversight: 'directed',
+            disclosure: { required: false },
+            embedded_provenance: [{
+              method: 'provenance_markers',
+              provider: 'Encypher',
+              verify_agent: {
+                agent_url: 'https://governance.encypher.seller.example',
+                feature_id: 'ai_generated',
+              },
+            }],
+          },
+        }],
+      });
+      expect(syncIsError).toBeFalsy();
+      expect((syncResult.creatives as any[])[0].action).toMatch(/created|updated/);
+
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'query_provenance_audit_observations',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: { creative_id: creativeId },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.creative_id).toBe(creativeId);
+      const observations = result.audit_observations as any[];
+      expect(observations.length).toBeGreaterThan(0);
+      expect(observations[0].code).toBe('OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED');
+      expect(observations[0].details.claimed_value).toEqual({
+        human_oversight: 'directed',
+        disclosure_required: false,
+      });
+
+      const { result: purgeResult } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'force_creative_purge',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: { creative_id: creativeId, purge_kind: 'hard' },
+      });
+      expect(purgeResult.success).toBe(true);
+
+      const sessionKey = sessionKeyFromArgs({ account: ACCOUNT }, DEFAULT_CTX.mode, DEFAULT_CTX.userId, DEFAULT_CTX.moduleId);
+      const session = await getSession(sessionKey);
+      expect(session.creatives.has(creativeId)).toBe(false);
+      expect(session.complyExtensions.provenanceAuditObservations.has(creativeId)).toBe(false);
+
+      const { result: afterPurge } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'query_provenance_audit_observations',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: { creative_id: creativeId },
+      });
+      expect(afterPurge.success).toBe(false);
+      expect(afterPurge.error).toBe('NOT_FOUND');
+    });
+
+    it('does not record audit observations when accepted verifier policy sees no provenance', async () => {
+      const creativeId = 'creative-audit-no-provenance';
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'product-audit-no-provenance',
+          fixture: {
+            product_id: 'product-audit-no-provenance',
+            name: 'Audit No Provenance Product',
+            delivery_type: 'non_guaranteed',
+            channels: ['display'],
+            creative_policy: {
+              accepted_verifiers: [{
+                agent_url: 'https://governance.encypher.seller.example',
+                feature_id: 'ai_generated',
+              }],
+            },
+            pricing_options: [{
+              pricing_option_id: 'audit-no-provenance-cpm',
+              pricing_model: 'cpm',
+              rate: 5,
+              currency: 'USD',
+            }],
+          },
+        },
+      });
+
+      const { result: syncResult, isError: syncIsError } = await simulateCallTool(server, 'sync_creatives', {
+        account: ACCOUNT,
+        brand: BRAND,
+        creatives: [{
+          creative_id: creativeId,
+          name: 'No provenance creative',
+          format_id: { agent_url: 'https://external-creative.example.com', id: 'display_300x250' },
+          assets: {
+            image: {
+              asset_type: 'image',
+              url: 'https://test-assets.adcontextprotocol.org/acme-outdoor/ai-generated-true.jpg',
+              width: 300,
+              height: 250,
+            },
+          },
+        }],
+      });
+      expect(syncIsError).toBeFalsy();
+      expect((syncResult.creatives as any[])[0].action).toMatch(/created|updated/);
+
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'query_provenance_audit_observations',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: { creative_id: creativeId },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.audit_observations).toEqual([]);
+      const sessionKey = sessionKeyFromArgs({ account: ACCOUNT }, DEFAULT_CTX.mode, DEFAULT_CTX.userId, DEFAULT_CTX.moduleId);
+      const session = await getSession(sessionKey);
+      expect(session.complyExtensions.provenanceAuditObservations.has(creativeId)).toBe(false);
+    });
+
+    it('returns INVALID_PARAMS when params are missing', async () => {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'query_provenance_audit_observations',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_PARAMS');
+    });
+
+    it('returns INVALID_PARAMS when creative_id is empty', async () => {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'query_provenance_audit_observations',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: { creative_id: '' },
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_PARAMS');
+    });
+
+    it('returns NOT_FOUND when the creative was never synced', async () => {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'query_provenance_audit_observations',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: { creative_id: 'missing-creative' },
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('returns UNKNOWN_SCENARIO in 3.0 compatibility mode', async () => {
+      const threeZeroServer = createTrainingAgentServer({ ...DEFAULT_CTX, storyboardCompat: { version: '3.0' } });
+      const { result } = await simulateCallTool(threeZeroServer, 'comply_test_controller', {
+        scenario: 'query_provenance_audit_observations',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: { creative_id: 'creative-audit-directed' },
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNKNOWN_SCENARIO');
     });
   });
 

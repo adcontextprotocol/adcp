@@ -250,6 +250,11 @@ export interface ComplyExtensions {
    * storyboards can distinguish product/reporting preconditions from the
    * external measurement.metrics[] discovery precondition. */
   seededMeasurementCatalogs: Map<string, SeededMeasurementCatalog>;
+  /** Audit observations recorded while processing sandbox creative submissions.
+   * Keyed by creative_id so conformance storyboards can assert non-blocking
+   * provenance observations without exposing the seller's internal audit log
+   * through public sync_creatives responses. */
+  provenanceAuditObservations: Map<string, unknown[]>;
   /** Single-shot directive registered via comply_test_controller.force_create_media_buy_arm.
    * Consumed by the next create_media_buy call from this session and cleared. A second
    * force_create_media_buy_arm before consumption overwrites the directive. Buyer-side
