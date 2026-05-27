@@ -9,6 +9,6 @@
     "operator": "Account is shared across all brands for this operator",
     "brand": "Account is shared across all operators for this brand",
     "operator_brand": "Account is dedicated to a specific operator+brand combination",
-    "agent": "The agent's default account with no brand or operator association"
+    "agent": "Agent-scoped account shared across multiple declared brand/operator pairs, with no brand- or operator-specific account split. This is an account scoping result, not a hidden credential-implied default for requests that omit account."
   }
 }

@@ -26,7 +26,7 @@
         "properties": {
           "account": {
             "$ref": "/schemas/core/account-ref.json",
-            "description": "Account to sync governance agents for. Use account_id for explicit accounts or brand + operator for implicit accounts."
+            "description": "Account to sync governance agents for. Use account_id for account-id namespaces or brand + operator for buyer-declared accounts."
           },
           "governance_agents": {
             "type": "array",

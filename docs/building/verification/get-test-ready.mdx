@@ -52,9 +52,9 @@ Claiming `sales-guaranteed` when you only run RTB ships you into storyboards you
 
 The runner must obtain a sandbox account before it can do anything. Your `require_operator_auth` flag chooses the path:
 
-**Implicit accounts (`require_operator_auth: false`).** Your agent accepts `sync_accounts` from any authenticated buyer. The runner calls `sync_accounts` with `sandbox: true` to mint a test account on demand. Most new sales agents start here.
+**Buyer-declared accounts (`require_operator_auth: false`).** Your agent accepts `sync_accounts` from any authenticated buyer. The runner calls `sync_accounts` with `sandbox: true` to mint a test account on demand. Most new sales agents start here.
 
-**Explicit accounts (`require_operator_auth: true`).** Accounts must be pre-provisioned by a human on your side. The runner calls `list_accounts` with a sandbox filter to discover pre-existing test accounts. Publish a short note telling operators how to request one — include the contact, the expected turnaround, and what credentials they'll receive.
+**Account-id namespaces (`require_operator_auth: true`).** Accounts must be pre-provisioned by a human on your side or by an upstream platform. The runner calls `list_accounts` with a sandbox filter to discover pre-existing test accounts. If your credential is bound to exactly one sandbox account, return that singleton. Publish a short note telling operators how to request one — include the contact, the expected turnaround, and what credentials they'll receive.
 
 Full details and examples: [Sandbox mode](/docs/media-buy/advanced-topics/sandbox).
 

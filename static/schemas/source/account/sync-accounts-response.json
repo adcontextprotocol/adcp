@@ -30,7 +30,7 @@
             "properties": {
               "account_id": {
                 "type": "string",
-                "description": "Seller-assigned account identifier. Use this in subsequent create_media_buy and other account-scoped operations.",
+                "description": "Seller-assigned account identifier. Use this in subsequent create_media_buy and other account-scoped operations when the seller's account model uses account_id references. For buyer-declared accounts, this may be echoed as the seller's internal handle, but the seller MUST continue accepting the natural-key AccountRef for subsequent calls.",
                 "x-entity": "account"
               },
               "brand": {
@@ -143,7 +143,7 @@
               },
               "sandbox": {
                 "type": "boolean",
-                "description": "Whether this is a sandbox account, echoed from the request. Only present for implicit accounts."
+                "description": "Whether this is a sandbox account, echoed from the request. Only present for buyer-declared accounts."
               },
               "notification_configs": {
                 "type": "array",

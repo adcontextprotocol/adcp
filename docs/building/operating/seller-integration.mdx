@@ -163,12 +163,12 @@ Production sales agents should implement the accounts protocol. [`sync_accounts`
 
 The account model depends on your platform:
 
-- **Walled gardens** (social platforms, AI platforms, retail media networks) typically use explicit accounts — set `require_operator_auth: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) so each operator authenticates independently.
-- **Open platforms** (publishers, SSPs) can use implicit accounts — the agent is trusted and declares accounts via `sync_accounts`.
+- **Walled gardens** (social platforms, AI platforms, retail media networks) typically use account-id namespaces — set `require_operator_auth: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) so each operator authenticates independently, expose `list_accounts` when the upstream platform owns the namespace, and require buyers to pass discovered `account_id` values.
+- **Open platforms** (publishers, SSPs) can use buyer-declared accounts — the agent is trusted and declares accounts via `sync_accounts`.
 
 See [Accounts and Agents](/docs/building/by-layer/L2/accounts-and-agents) for full workflows.
 
-**Sandbox support is strongly recommended.** Declare `account.sandbox: true` in your capabilities so buyers can provision test accounts and validate the full integration — product discovery, media buy creation, delivery reporting — before committing real spend. Without sandbox, buyers must test against live inventory, which slows adoption and increases onboarding friction. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox) for implementation details.
+**Sandbox support is strongly recommended.** Declare `account.sandbox: true` in your capabilities so buyers can validate the full integration — product discovery, media buy creation, delivery reporting — before committing real spend. Buyer-declared account sellers provision test accounts through `sync_accounts` with `sandbox: true`; account-id namespace sellers expose pre-existing sandbox accounts through `list_accounts` or out-of-band setup. Without sandbox, buyers must test against live inventory, which slows adoption and increases onboarding friction. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox) for implementation details.
 
 ## Delivery reporting
 

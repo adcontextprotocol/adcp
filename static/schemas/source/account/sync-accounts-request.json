@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/sync-accounts-request.json",
   "title": "Sync Accounts Request",
-  "description": "Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account entry:\n\n- **Provisioning mode** (`brand` + `operator` + `billing` at the entry root): the agent declares which brands it represents, who operates on each brand's behalf, and the billing model. The seller provisions or links accounts via upsert. Used for implicit accounts (`require_operator_auth: false`).\n\n- **Settings-update mode** (`account` field carrying an [`AccountRef`](/schemas/core/account-ref.json)): targets an existing account by `account_id` (or by natural key for the implicit case). The seller updates the account's settable state (notification subscriptions, payment terms, billing entity refinements) — no provisioning side effects. Used for explicit accounts (`require_operator_auth: true`) where accounts are pre-provisioned out of band, and discovered via `list_accounts`. Implicit-account sellers MAY also accept this mode for settings updates against accounts they previously provisioned.\n\nExactly one of the two key shapes is allowed per entry. Sellers that do not implement settings-update mode MUST return `UNSUPPORTED_PROVISIONING` on entries keyed by `account.account_id`; sellers that do not provision MUST return `UNSUPPORTED_PROVISIONING` on entries keyed by the natural-key trio.",
+  "description": "Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account entry:\n\n- **Provisioning mode** (`brand` + `operator` + `billing` at the entry root): the agent declares which brands it represents, who operates on each brand's behalf, and the billing model. The seller provisions or links accounts via upsert. Used when brand + operator (+ sandbox) is the durable protocol key for buyer-declared accounts (`require_operator_auth: false`). Sellers MAY echo a seller-assigned account_id, but they MUST continue accepting the natural-key AccountRef for every account provisioned this way.\n\n- **Settings-update mode** (`account` field carrying an [`AccountRef`](/schemas/core/account-ref.json)): targets an existing account by `account_id` (or by natural key for buyer-declared accounts). The seller updates the account's settable state (notification subscriptions, payment terms, billing entity refinements) — no provisioning side effects. Used for account_id namespaces only when the seller exposes this task for account settings; the account_id itself is discovered via `list_accounts` for upstream-managed namespaces or supplied out-of-band for seller-defined namespaces. Buyer-declared account sellers MAY also accept this mode for settings updates against accounts they previously provisioned.\n\nExactly one of the two key shapes is allowed per entry. Sellers that do not implement settings-update mode MUST return `UNSUPPORTED_PROVISIONING` on entries keyed by `account.account_id`; sellers that do not provision through sync_accounts MUST return `UNSUPPORTED_PROVISIONING` on entries keyed by the natural-key trio. Account-id namespace provisioning is out of scope unless a future explicit capability declares it.",
   "type": "object",
   "allOf": [
     {
@@ -27,7 +27,7 @@
         "properties": {
           "account": {
             "$ref": "/schemas/core/account-ref.json",
-            "description": "Settings-update key. When present, this entry targets an existing account by `account_id` (explicit) or natural key (implicit, settings-update against a previously-provisioned account). Mutually exclusive with the flat `brand` + `operator` + `billing` provisioning trio. When `account` is present, the seller MUST NOT create a new account — entries that would otherwise trigger provisioning are rejected with `UNSUPPORTED_PROVISIONING`."
+            "description": "Settings-update key. When present, this entry targets an existing account by `account_id` (seller-owned account namespace) or natural key (buyer-declared account settings-update against a previously-provisioned account). Mutually exclusive with the flat `brand` + `operator` + `billing` provisioning trio. When `account` is present, the seller MUST NOT create a new account — entries that would otherwise trigger provisioning are rejected with `UNSUPPORTED_PROVISIONING`."
           },
           "brand": {
             "$ref": "/schemas/core/brand-ref.json",
@@ -52,7 +52,7 @@
           },
           "sandbox": {
             "type": "boolean",
-            "description": "When true, provision this as a sandbox account with no real platform calls or billing. Only applicable to implicit accounts (require_operator_auth: false) in provisioning mode. For explicit accounts, sandbox accounts are pre-existing test accounts discovered via list_accounts."
+            "description": "When true, provision this as a sandbox account with no real platform calls or billing. Only applicable to buyer-declared accounts (require_operator_auth: false) in provisioning mode. For account-id namespaces, sandbox accounts are pre-existing test accounts discovered via list_accounts or supplied out-of-band."
           },
           "preferred_reporting_protocol": {
             "$ref": "/schemas/enums/cloud-storage-protocol.json",

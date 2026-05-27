@@ -28,7 +28,7 @@ Check this before using sandbox mode. If `account.sandbox` is not declared or is
 
 How you enter sandbox mode depends on the seller's account model (`require_operator_auth`). The two paths are completely different — make sure you follow the right one.
 
-### Implicit accounts (`require_operator_auth: false`)
+### Buyer-declared accounts (`require_operator_auth: false`)
 
 The seller trusts the agent and does not require per-operator authentication. Sandbox is part of the **natural key** — the same brand/operator pair can have both a production and a sandbox account, distinguished by `sandbox: true`.
 
@@ -60,7 +60,7 @@ The seller trusts the agent and does not require per-operator authentication. Sa
 }
 ```
 
-### Explicit accounts (`require_operator_auth: true`)
+### Account-id namespaces (`require_operator_auth: true`)
 
 The seller requires each operator to authenticate directly. Sandbox accounts are **pre-existing test accounts on the seller's platform** — think Stripe test mode, Google Ads sandbox accounts, or Snap test advertiser accounts. You do not create them; you discover them.
 
@@ -98,7 +98,7 @@ The seller returns pre-existing test accounts:
 
 ### Quick reference
 
-| | Implicit (`require_operator_auth: false`) | Explicit (`require_operator_auth: true`) |
+| | Buyer-declared (`require_operator_auth: false`) | Account-id namespace (`require_operator_auth: true`) |
 |---|---|---|
 | **Sandbox accounts** | Declared by buyer via `sync_accounts` | Pre-existing on seller's platform |
 | **Discovery** | N/A — buyer creates them | `list_accounts` with `sandbox: true` |
@@ -116,9 +116,9 @@ Success responses include `sandbox: true` to confirm the request was processed i
 }
 ```
 
-## Full lifecycle example (implicit account)
+## Full lifecycle example (buyer-declared account)
 
-This example shows the implicit account path. For explicit accounts, replace the natural key account reference with `{ "account_id": "acct_sandbox_acme_001" }` in each step.
+This example shows the buyer-declared account path. For account-id namespaces, resolve the sandbox account through `list_accounts` (or out-of-band onboarding for seller-defined IDs), then replace the natural key account reference with `{ "account_id": "acct_sandbox_acme_001" }` in each step.
 
 ### 1. Discover products
 

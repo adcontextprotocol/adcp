@@ -13,7 +13,7 @@
   "properties": {
     "account": {
       "$ref": "/schemas/core/account-ref.json",
-      "description": "Account that will own the list. Pass a natural key (brand, operator, optional sandbox) or a seller-assigned account_id from list_accounts. When omitted, the seller assigns the list to the agent's default account if exactly one is accessible; otherwise returns an error."
+      "description": "Account that will own the list. Pass a natural key (brand, operator, optional sandbox) or a seller-assigned account_id from list_accounts. When omitted, this task applies its task-local single-account shortcut: the seller may assign the list only when exactly one account is accessible to the authenticated caller; otherwise it MUST return an account-required or ambiguous-account error. Omission MUST NOT mean an undocumented credential-local default account."
     },
     "name": {
       "type": "string",

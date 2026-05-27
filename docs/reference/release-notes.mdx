@@ -1014,9 +1014,9 @@ Brand schema extensions (`border_radius`, `elevation`, `spacing`, extended color
 
 11. **Product Discovery and Planning Ergonomics** — Product discovery adds `exclusivity` and `preferred_delivery_types`; products may omit `delivery_measurement`; packages and proposals support per-package `start_time` / `end_time`; and `get_products` now supports `time_budget` with `incomplete` response reporting.
 
-12. **Accounts and Sandbox Refinements** — `sync_accounts` adds `payment_terms`, sandbox capability moves to the account capability block, and sandbox now participates in the account natural key for implicit account flows.
+12. **Accounts and Sandbox Refinements** — `sync_accounts` adds `payment_terms`, sandbox capability moves to the account capability block, and sandbox now participates in the account natural key for buyer-declared account flows.
 
-13. **Governance Agent Sync** — `sync_governance` task for syncing governance agent endpoints to specific accounts. Supports both explicit accounts (`account_id`) and implicit accounts (`brand` + `operator`) via account references. Replace semantics per call. Governance sync is now a dedicated tool — removed from `sync_accounts` and `list_accounts`.
+13. **Governance Agent Sync** — `sync_governance` task for syncing governance agent endpoints to specific accounts. Supports both account-id namespaces (`account_id`) and buyer-declared accounts (`brand` + `operator`) via account references. Replace semantics per call. Governance sync is now a dedicated tool — removed from `sync_accounts` and `list_accounts`.
 
 ### Breaking Changes
 
