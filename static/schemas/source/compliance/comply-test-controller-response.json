@@ -533,7 +533,7 @@
               "payload_length": {
                 "type": "integer",
                 "minimum": 0,
-                "description": "Byte length of the post-redaction canonicalized body. Required in both `raw` and `digest` modes — symmetric across modes so runners can detect adopter-side truncation regardless of attestation choice. In raw mode this MUST equal the byte length of the `payload` value as serialized for transmission; in digest mode this is the length of the canonicalized body the digest covers. Mismatch between observed payload length and reported `payload_length` is a controller-side bug worth surfacing in the report."
+                "description": "Byte length of the post-redaction body bytes represented by this recorded_call. Required in both `raw` and `digest` modes — symmetric across modes so runners can detect adopter-side truncation regardless of attestation choice. In `raw` mode this MUST equal the UTF-8 byte length of the emitted `payload` value after the same recursive secret-key redaction the controller applied before returning it. In `digest` mode this MUST equal the exact number of bytes fed into SHA-256 for `payload_digest_sha256`: RFC 8785 (JCS) canonical bytes for JSON-shaped content after redaction, or the post-redaction raw body bytes for non-JSON content. Digest-mode `payload_length` is therefore NOT the original outbound body length before JSON parsing, redaction, or canonicalization. Mismatch between observed payload length and reported `payload_length` is a controller-side bug worth surfacing in the report."
               },
               "identifier_match_proofs": {
                 "type": "array",

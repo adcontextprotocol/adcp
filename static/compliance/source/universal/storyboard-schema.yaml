@@ -1498,11 +1498,28 @@
 #                              # it by fabricating a constant placeholder hash,
 #                              # because the placeholder will not match the
 #                              # storyboard's supplied value.
-#                              # Path syntax: same dotted-with-[*] form as
-#                              # `payload_must_contain.path`. Each path MAY
-#                              # resolve to a single value or an array; all
-#                              # resolved values MUST be present in the
-#                              # recorded payload. Replaces the earlier
+#                              # Portable path grammar (normative):
+#                              # request-payload-relative dotted paths where
+#                              # each segment is an identifier key optionally
+#                              # followed by one `[*]` array wildcard. Example:
+#                              #   "audiences[*].add[*].hashed_email"
+#                              # Supported segment form:
+#                              #   [A-Za-z_][A-Za-z0-9_-]* or
+#                              #   [A-Za-z_][A-Za-z0-9_-]*[*]
+#                              # Unsupported forms MUST be rejected at
+#                              # storyboard load/lint time rather than treated
+#                              # as paths that resolve to zero values:
+#                              # bracket-quoted keys (`foo["bar"]`), numeric
+#                              # indexes (`items[0]`), recursive descent
+#                              # (`$..foo`), absolute roots (`$.foo`), empty
+#                              # segments, and reserved roots (`request.*`,
+#                              # `response.*`, `context.*`). The path is
+#                              # already relative to the storyboard step's
+#                              # sample_request; adding an explicit root makes
+#                              # the same storyboard ambiguous across runners.
+#                              # Each path MAY resolve to a single value or an
+#                              # array; all resolved values MUST be present in
+#                              # the recorded payload. Replaces the earlier
 #                              # `buyer_identifier_echo: boolean` shorthand
 #                              # (which left "what counts as an identifier" to
 #                              # convention) with an explicit enumeration.
@@ -1584,6 +1601,11 @@
 #       - `payload_must_contain` arbitrary path assertions: NOT supported in
 #         digest mode. Each entry grades `not_applicable` per affected call,
 #         with a note explaining the mode constraint.
+#       - `payload_length`: MUST equal the exact byte length covered by
+#         `payload_digest_sha256` — RFC 8785 (JCS) canonical bytes for
+#         JSON-shaped content after redaction, or post-redaction raw body bytes
+#         for non-JSON content. It is not the original outbound body length
+#         before JSON parsing, redaction, or canonicalization.
 #       - `identifier_paths` echo verification: supported via the controller's
 #         `identifier_match_proofs[]`. The runner computes SHA-256 of each
 #         resolved identifier value, sends the digests in
