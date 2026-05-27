@@ -263,6 +263,14 @@
             "snapshot"
           ]
         },
+        "creative_approval_mode": {
+          "type": "string",
+          "description": "Tenant-wide applicability signal for media-buy creative approval behavior. This is not a notification or new approval workflow. `auto_approve` means human review does not block serving eligibility after creatives are assigned and automated validation passes. `require_human` means one or more products/accounts may require manual review before creatives become eligible to serve; buyers and compliance runners MUST treat this as a worst-case ceiling across this seller's portfolio unless a future product-level override says otherwise. Compliance runners use this mainly to decide whether auto-approval-dependent storyboards apply. When absent, approval behavior is legacy-unspecified; runners SHOULD NOT treat omission as an affirmative auto-approval claim. `ai_assisted` is intentionally not part of the enum until a behavioral contract is defined.",
+          "enum": [
+            "auto_approve",
+            "require_human"
+          ]
+        },
         "features": {
           "$ref": "/schemas/core/media-buy-features.json"
         },
