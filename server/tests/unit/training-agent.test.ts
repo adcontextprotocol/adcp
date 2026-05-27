@@ -137,13 +137,14 @@ async function simulateCallToolAsTask(
 async function simulateGetTask(
   server: ReturnType<typeof createTrainingAgentServer>,
   taskId: string,
+  params: Record<string, unknown> = {},
 ): Promise<Record<string, unknown>> {
   const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
   const handler = requestHandlers.get('tasks/get');
   if (!handler) {
     throw new Error('tasks/get handler not found');
   }
-  return handler({ method: 'tasks/get', params: { taskId } }, {});
+  return handler({ method: 'tasks/get', params: { taskId, ...params } }, {});
 }
 
 /**
@@ -152,13 +153,14 @@ async function simulateGetTask(
 async function simulateGetTaskResult(
   server: ReturnType<typeof createTrainingAgentServer>,
   taskId: string,
+  params: Record<string, unknown> = {},
 ): Promise<Record<string, unknown>> {
   const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
   const handler = requestHandlers.get('tasks/result');
   if (!handler) {
     throw new Error('tasks/result handler not found');
   }
-  return handler({ method: 'tasks/result', params: { taskId } }, {});
+  return handler({ method: 'tasks/result', params: { taskId, ...params } }, {});
 }
 
 /**
@@ -166,13 +168,14 @@ async function simulateGetTaskResult(
  */
 async function simulateListTasks(
   server: ReturnType<typeof createTrainingAgentServer>,
+  params: Record<string, unknown> = {},
 ): Promise<Record<string, unknown>> {
   const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
   const handler = requestHandlers.get('tasks/list');
   if (!handler) {
     throw new Error('tasks/list handler not found');
   }
-  return handler({ method: 'tasks/list', params: {} }, {});
+  return handler({ method: 'tasks/list', params }, {});
 }
 
 /**
@@ -181,13 +184,14 @@ async function simulateListTasks(
 async function simulateCancel(
   server: ReturnType<typeof createTrainingAgentServer>,
   taskId: string,
+  params: Record<string, unknown> = {},
 ): Promise<Record<string, unknown>> {
   const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
   const handler = requestHandlers.get('tasks/cancel');
   if (!handler) {
     throw new Error('tasks/cancel handler not found');
   }
-  return handler({ method: 'tasks/cancel', params: { taskId } }, {});
+  return handler({ method: 'tasks/cancel', params: { taskId, ...params } }, {});
 }
 
 // ── Catalog (buildCatalog) ─────────────────────────────────────────
@@ -6420,8 +6424,9 @@ describe('get_adcp_capabilities handler', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
 
-    expect(result.adcp).toEqual({
+    expect(result.adcp).toMatchObject({
       major_versions: [3],
+      supported_versions: ['3.0', '3.1-beta.5'],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
     });
     expect(result.protocol_version).toBe('3.0');
@@ -7230,9 +7235,12 @@ describe('MCP Tasks protocol', () => {
   it('returns CreateTaskResult for task-augmented get_products call', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const response = await simulateCallToolAsTask(server, 'get_products', {
+      adcp_version: '3.1',
+      adcp_major_version: 3,
       buying_mode: 'wholesale',
     });
 
+    expect(response.adcp_version).toBe('3.0');
     expect(response.task).toBeDefined();
     const task = response.task as Record<string, unknown>;
     expect(task.taskId).toBeDefined();
@@ -7261,7 +7269,11 @@ describe('MCP Tasks protocol', () => {
     });
     const taskId = (createResponse.task as Record<string, unknown>).taskId as string;
 
-    const getResponse = await simulateGetTask(server, taskId);
+    const getResponse = await simulateGetTask(server, taskId, {
+      adcp_version: '3.1',
+      adcp_major_version: 3,
+    });
+    expect(getResponse.adcp_version).toBe('3.0');
     expect(getResponse.taskId).toBe(taskId);
     expect(getResponse.status).toBe('completed');
   });
@@ -7273,7 +7285,11 @@ describe('MCP Tasks protocol', () => {
     });
     const taskId = (createResponse.task as Record<string, unknown>).taskId as string;
 
-    const result = await simulateGetTaskResult(server, taskId);
+    const result = await simulateGetTaskResult(server, taskId, {
+      adcp_version: '3.1',
+      adcp_major_version: 3,
+    });
+    expect(result.adcp_version).toBe('3.0');
     const parsed = result.structuredContent as Record<string, unknown> | undefined;
     expect(parsed).toBeDefined();
     expect(Array.isArray(parsed!.products)).toBe(true);
@@ -7291,9 +7307,59 @@ describe('MCP Tasks protocol', () => {
     await simulateCallToolAsTask(server, 'get_products', { buying_mode: 'wholesale' });
     await simulateCallToolAsTask(server, 'get_products', { buying_mode: 'brief', brief: 'ctv' });
 
-    const listResponse = await simulateListTasks(server);
+    const listResponse = await simulateListTasks(server, {
+      adcp_version: '3.1',
+      adcp_major_version: 3,
+    });
+    expect(listResponse.adcp_version).toBe('3.0');
     const tasks = listResponse.tasks as Array<Record<string, unknown>>;
     expect(tasks.length).toBe(2);
+  });
+
+  it('rejects unsupported adcp_version on task lifecycle methods', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const createResponse = await simulateCallToolAsTask(server, 'get_products', {
+      buying_mode: 'wholesale',
+    });
+    const taskId = (createResponse.task as Record<string, unknown>).taskId as string;
+    const unsupported = {
+      adcp_version: '99.0',
+      context: { correlation_id: 'task-version-unsupported' },
+    };
+
+    for (const call of [
+      () => simulateGetTask(server, taskId, unsupported),
+      () => simulateGetTaskResult(server, taskId, unsupported),
+      () => simulateListTasks(server, unsupported),
+      () => simulateCancel(server, taskId, unsupported),
+    ]) {
+      await expect(call()).rejects.toMatchObject({
+        code: -32602,
+        data: {
+          adcp_version: '99.0',
+          supported_versions: ['3.0', '3.1-beta.5'],
+          supported_majors: [3],
+          context: { correlation_id: 'task-version-unsupported' },
+          adcp_error: {
+            code: 'VERSION_UNSUPPORTED',
+            field: 'adcp_version',
+          },
+        },
+      });
+    }
+  });
+
+  it('echoes served adcp_version on task lifecycle JSON-RPC errors', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await expect(
+      simulateGetTask(server, 'nonexistent-task-id', { adcp_version: '3.1', adcp_major_version: 3 }),
+    ).rejects.toMatchObject({
+      code: -32602,
+      data: {
+        adcp_version: '3.0',
+      },
+    });
   });
 
   it('structured errors complete the task (with adcp_error in result)', async () => {
@@ -9053,8 +9119,9 @@ describe('AdCP protocol compliance', () => {
     });
     expect(isError).toBe(true);
     expect(result.code).toBe('VERSION_UNSUPPORTED');
-    const details = result.details as { supported_major_versions?: number[] };
-    expect(details?.supported_major_versions).toContain(3);
+    const details = result.details as { supported_versions?: string[]; supported_majors?: number[] };
+    expect(details?.supported_versions).toContain('3.0');
+    expect(details?.supported_majors).toContain(3);
   });
 
   it('accepts supported adcp_major_version', async () => {
@@ -9066,6 +9133,174 @@ describe('AdCP protocol compliance', () => {
     });
     expect(isError).toBeFalsy();
     expect(Array.isArray(result.products)).toBe(true);
+  });
+
+  it('advertises supported_versions and echoes the default served adcp_version', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'get_adcp_capabilities', {});
+
+    expect(isError).toBeFalsy();
+    expect(parsed.adcp_version).toBe('3.0');
+    expect(parsed.adcp).toMatchObject({
+      major_versions: [3],
+      supported_versions: ['3.0', '3.1-beta.5'],
+    });
+  });
+
+  it('echoes the exact served release for supported adcp_version pins', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'get_products', {
+      adcp_version: '3.0',
+      adcp_major_version: 3,
+      buying_mode: 'brief',
+      brief: 'test',
+    });
+
+    expect(isError).toBeFalsy();
+    expect(parsed.adcp_version).toBe('3.0');
+    expect(Array.isArray(parsed.products)).toBe(true);
+  });
+
+  it('echoes exact supported pre-release adcp_version pins', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'get_products', {
+      adcp_version: '3.1-beta.5',
+      adcp_major_version: 3,
+      buying_mode: 'brief',
+      brief: 'test',
+    });
+
+    expect(isError).toBeFalsy();
+    expect(parsed.adcp_version).toBe('3.1-beta.5');
+    expect(Array.isArray(parsed.products)).toBe(true);
+  });
+
+  it('downshifts same-major release pins and echoes the served release', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'get_products', {
+      adcp_version: '3.1',
+      adcp_major_version: 3,
+      buying_mode: 'brief',
+      brief: 'test',
+    });
+
+    expect(isError).toBeFalsy();
+    expect(parsed.adcp_version).toBe('3.0');
+    expect(Array.isArray(parsed.products)).toBe(true);
+  });
+
+  it('rejects cross-major adcp_version pins with structured supported_versions details', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'get_products', {
+      adcp_version: '4.0',
+      adcp_major_version: 4,
+      buying_mode: 'brief',
+      brief: 'test',
+    });
+
+    expect(isError).toBe(true);
+    expect(parsed.adcp_error).toMatchObject({
+      code: 'VERSION_UNSUPPORTED',
+      field: 'adcp_version',
+      details: {
+        adcp_version: '4.0',
+        adcp_major_version: 4,
+        supported_versions: ['3.0', '3.1-beta.5'],
+        supported_majors: [3],
+      },
+    });
+  });
+
+  it('requires pre-release adcp_version pins to match exactly', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'get_products', {
+      adcp_version: '3.1-beta',
+      adcp_major_version: 3,
+      buying_mode: 'brief',
+      brief: 'test',
+    });
+
+    expect(isError).toBe(true);
+    expect(parsed.adcp_error).toMatchObject({
+      code: 'VERSION_UNSUPPORTED',
+      field: 'adcp_version',
+      details: {
+        adcp_version: '3.1-beta',
+        supported_versions: ['3.0', '3.1-beta.5'],
+        supported_majors: [3],
+      },
+    });
+  });
+
+  it('echoes served adcp_version on MCP error envelopes', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { parsed, isError } = await simulateCallToolRaw(server, 'nonexistent_tool', {
+      adcp_version: '3.1',
+      adcp_major_version: 3,
+    });
+
+    expect(isError).toBe(true);
+    expect(parsed.adcp_version).toBe('3.0');
+    expect(parsed.adcp_error).toMatchObject({ code: 'INVALID_REQUEST' });
+  });
+
+  it('echoes served adcp_version on errors-in-body responses', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'version-body-error.example' }, operator: 'version-body-error.example' };
+    const product = buildCatalog()[0].product;
+    const pricingOptionId = (product.pricing_options as Array<Record<string, unknown>>)[0].pricing_option_id as string;
+
+    const { parsed: created } = await simulateCallToolRaw(server, 'create_media_buy', {
+      account,
+      adcp_version: '3.1',
+      adcp_major_version: 3,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{ product_id: product.product_id, budget: 50000, pricing_option_id: pricingOptionId }],
+    });
+
+    await simulateCallToolRaw(server, 'update_media_buy', {
+      account,
+      adcp_version: '3.1',
+      adcp_major_version: 3,
+      media_buy_id: created.media_buy_id as string,
+      canceled: true,
+    });
+    const { parsed, isError } = await simulateCallToolRaw(server, 'update_media_buy', {
+      account,
+      adcp_version: '3.1',
+      adcp_major_version: 3,
+      media_buy_id: created.media_buy_id as string,
+      canceled: true,
+    });
+
+    expect(isError).toBeFalsy();
+    expect(parsed.adcp_version).toBe('3.0');
+    expect((parsed.errors as Array<Record<string, unknown>>)[0]).toMatchObject({ code: 'NOT_CANCELLABLE' });
+  });
+
+  it('echoes served adcp_version on idempotency replay responses', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const product = buildCatalog()[0].product;
+    const pricingOptionId = (product.pricing_options as Array<Record<string, unknown>>)[0].pricing_option_id as string;
+    const args = {
+      account: { brand: { domain: 'version-replay.example' }, operator: 'version-replay.example' },
+      adcp_version: '3.1',
+      adcp_major_version: 3,
+      idempotency_key: `version-replay-${randomUUID()}`,
+      start_time: '2027-08-01T00:00:00Z',
+      end_time: '2027-09-01T00:00:00Z',
+      packages: [{ product_id: product.product_id, budget: 50000, pricing_option_id: pricingOptionId }],
+    };
+
+    const first = await simulateCallToolRaw(server, 'create_media_buy', args);
+    const second = await simulateCallToolRaw(server, 'create_media_buy', args);
+
+    expect(first.isError).toBeFalsy();
+    expect(first.parsed.adcp_version).toBe('3.0');
+    expect(second.isError).toBeFalsy();
+    expect(second.parsed.replayed).toBe(true);
+    expect(second.parsed.adcp_version).toBe('3.0');
   });
 
   it('persists property_list and collection_list in package targeting', async () => {

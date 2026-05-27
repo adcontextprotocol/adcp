@@ -220,6 +220,8 @@ describe('tenant routing smoke', () => {
       const body = await r.json() as {
         result?: {
           structuredContent?: {
+            adcp_version?: string;
+            adcp?: { major_versions?: number[]; supported_versions?: string[] };
             media_buy?: {
               supported_optimization_metrics?: string[];
               vendor_metric_optimization?: { supported_targets?: string[] };
@@ -229,6 +231,9 @@ describe('tenant routing smoke', () => {
         };
       };
       const mediaBuy = body.result?.structuredContent?.media_buy;
+      expect(body.result?.structuredContent?.adcp_version).toBe('3.0');
+      expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
+      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5']);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
       expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(SALES_CURRENT_SCENARIOS);
@@ -263,15 +268,22 @@ describe('tenant routing smoke', () => {
           method: 'tools/call',
           params: {
             name: 'comply_test_controller',
-            arguments: { account: { sandbox: true }, scenario: 'list_scenarios' },
+            arguments: {
+              account: { sandbox: true },
+              adcp_version: '3.1',
+              adcp_major_version: 3,
+              scenario: 'list_scenarios',
+            },
           },
         }),
       });
       const listed = await list.json() as {
         result?: {
-          structuredContent?: { scenarios?: string[] };
+          structuredContent?: { status?: string; adcp_version?: string; scenarios?: string[] };
         };
       };
+      expect(listed.result?.structuredContent?.status).toBe('completed');
+      expect(listed.result?.structuredContent?.adcp_version).toBe('3.0');
       expect(listed.result?.structuredContent?.scenarios).toEqual(expect.arrayContaining(SALES_CURRENT_SCENARIOS));
 
       const r = await fetch(url, {
@@ -285,6 +297,8 @@ describe('tenant routing smoke', () => {
             name: 'comply_test_controller',
             arguments: {
               account: { sandbox: true, brand: { domain: 'tenant-seed.example' } },
+              adcp_version: '3.1',
+              adcp_major_version: 3,
               brand: { domain: 'tenant-seed.example' },
               scenario: 'seed_measurement_catalog',
               params: {
@@ -298,11 +312,55 @@ describe('tenant routing smoke', () => {
       });
       const body = await r.json() as {
         result?: {
-          structuredContent?: { success?: boolean; context?: { correlation_id?: string } };
+          structuredContent?: { status?: string; adcp_version?: string; success?: boolean; context?: { correlation_id?: string } };
         };
       };
+      expect(body.result?.structuredContent?.status).toBe('completed');
+      expect(body.result?.structuredContent?.adcp_version).toBe('3.0');
       expect(body.result?.structuredContent?.success).toBe(true);
       expect(body.result?.structuredContent?.context?.correlation_id).toBe('tenant-seed-measurement-catalog');
+
+      const unsupported = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 4,
+          method: 'tools/call',
+          params: {
+            name: 'comply_test_controller',
+            arguments: {
+              account: { sandbox: true },
+              adcp_version: '4.0',
+              scenario: 'list_scenarios',
+              context: { correlation_id: 'tenant-local-version-unsupported' },
+            },
+          },
+        }),
+      });
+      const unsupportedBody = await unsupported.json() as {
+        result?: {
+          isError?: boolean;
+          structuredContent?: {
+            adcp_error?: {
+              code?: string;
+              field?: string;
+              details?: { adcp_version?: string; supported_versions?: string[] };
+            };
+            context?: { correlation_id?: string };
+          };
+        };
+      };
+      expect(unsupportedBody.result?.isError).toBe(true);
+      expect(unsupportedBody.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'VERSION_UNSUPPORTED',
+        field: 'adcp_version',
+        details: {
+          adcp_version: '4.0',
+          supported_versions: ['3.0', '3.1-beta.5'],
+        },
+      });
+      expect(unsupportedBody.result?.structuredContent?.context?.correlation_id).toBe('tenant-local-version-unsupported');
     } finally {
       await close();
     }

@@ -19,6 +19,7 @@ import { getTenantResponseSigningMaterial } from './signing.js';
 import { wrapResponseForSigning } from '../response-signing.js';
 import { salesCapabilityProjection } from '../v6-sales-platform.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
+import { adcpError, resolveServedAdcpVersion } from '../task-handlers.js';
 import type { TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 
@@ -45,6 +46,9 @@ const SALES_CURRENT_SCENARIOS = [
   'seed_creative_format',
   'seed_measurement_catalog',
 ] as const;
+
+const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5'] as const;
+const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
 
 function salesComplyScenarios(storyboardCompat?: TrainingContext['storyboardCompat']): string[] {
   return storyboardCompat?.version === '3.0'
@@ -301,6 +305,20 @@ async function tryHandleLocalComplyScenario(
   ) return false;
 
   const { context, ...handlerArgs } = rawArgs;
+  const versionResolution = resolveServedAdcpVersion(handlerArgs);
+  if (!versionResolution.ok) {
+    res.json({
+      jsonrpc: '2.0',
+      id: req.body.id ?? null,
+      result: adcpError('VERSION_UNSUPPORTED', {
+        message: versionResolution.message,
+        details: versionResolution.details,
+        field: versionResolution.field,
+      }, context),
+    });
+    return true;
+  }
+
   const result = await runWithSessionContext(async () => {
     const body = rawArgs.scenario === 'list_scenarios'
       ? {
@@ -315,6 +333,8 @@ async function tryHandleLocalComplyScenario(
     return body as Record<string, unknown>;
   });
   const structuredContent = {
+    status: 'completed',
+    adcp_version: versionResolution.servedVersion,
     ...result,
     ...(context !== undefined && { context }),
   };
@@ -374,7 +394,10 @@ function projectSalesCapabilities(
   try {
     const parsed = JSON.parse(body.toString('utf8')) as {
       result?: {
+        content?: Array<{ type?: string; text?: string }>;
         structuredContent?: {
+          adcp_version?: unknown;
+          adcp?: Record<string, unknown>;
           supported_protocols?: unknown;
           creative?: Record<string, unknown>;
           media_buy?: Record<string, unknown>;
@@ -389,6 +412,19 @@ function projectSalesCapabilities(
     };
     const structured = parsed.result?.structuredContent;
     if (!structured || typeof structured !== 'object') return body;
+    const servedVersion = typeof structured.adcp_version === 'string'
+      ? structured.adcp_version
+      : TRAINING_AGENT_DEFAULT_ADCP_VERSION;
+    structured.adcp_version = servedVersion;
+    const adcp = structured.adcp && typeof structured.adcp === 'object'
+      ? structured.adcp
+      : {};
+    structured.adcp = {
+      ...adcp,
+      supported_versions: Array.isArray(adcp.supported_versions)
+        ? adcp.supported_versions
+        : [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
+    };
     if (
       tenantId === 'creative'
       && storyboardCompat?.version !== '3.0'
@@ -433,6 +469,10 @@ function projectSalesCapabilities(
       };
     }
     projectWholesaleCapabilities(structured, tenantId, storyboardCompat);
+    const firstText = parsed.result?.content?.[0];
+    if (firstText?.type === 'text') {
+      firstText.text = JSON.stringify(structured);
+    }
     return Buffer.from(JSON.stringify(parsed), 'utf8');
   } catch {
     return body;
