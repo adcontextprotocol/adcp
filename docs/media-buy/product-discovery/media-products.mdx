@@ -19,6 +19,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `description` (string, required)
 - `publisher_properties` (list[PublisherPropertySelector], required): Publisher properties covered by this product. See [Property Targeting](#property-targeting).
 - `channels` (list[string], optional): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD declare `channels` on products that span non-obvious channels, particularly retail media, CTV/OLV, and multi-channel bundles. Product channels SHOULD be a subset of the union of their properties' `supported_channels`. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
+- `video_placement_types` (list[string], optional): Declared video placement types that may be included in this product, using IAB Tech Lab/OpenRTB 2.6 `video.plcmt` definitions with AdCP-native names: `instream`, `accompanying_content`, `interstitial`, and `standalone`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
 - `format_ids` (list[FormatID], conditional): Legacy named-format references. Products must include `format_ids`, `format_options`, or both. See [Creative Formats](/docs/creative/formats).
 - `format_options` (list[ProductFormatDeclaration], conditional): 3.1+ canonical format-option declarations accepted by this product. Buyers prefer `format_options` when both format fields are present. Product-level formats are the upper bound for the sellable product; placement-level formats can narrow this set but cannot add formats the product does not accept. Buyer `FormatOptionRef` selectors use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-declared options and `{scope: "product", format_option_id}` for product-local options.
 - `placements` (list[Placement], optional): Specific public ad placements within this product. Each placement declares `kind` (`publisher_ref` or `seller_inline`) and `mode` (`targetable` or `included`); seller-private delivery objects are not exposed here. See [Placements](#placements).
@@ -194,6 +195,7 @@ Products can optionally declare specific public ad placements within their inven
 - **`placement_id`** - Placement ID in the publisher namespace. Buyers reference it with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `placement_ids` strings are only unambiguous in single-publisher contexts.
 - **`mode: "targetable"`** - The buyer may reference this publisher-scoped placement when assigning creatives or otherwise selecting placements within the product
 - **`mode: "included"`** - The public placement is part of the product's described composition, but the buyer cannot cherry-pick it by `placement_id`
+- **`video_placement_types`** - Declared video placement types for OLV and other video placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
 - **Publisher reference rule** - Publisher-referenced product placements resolve to `{publisher_domain, placement_id}` in the publisher's `adagents.json`
 - **Private inventory rule** - Seller-private delivery objects, ad-server mappings, and source/origin details must stay out of `get_products`
 - **Creative assignment** - Different creatives can be assigned to targetable placements
@@ -205,6 +207,21 @@ Products can optionally declare specific public ad placements within their inven
 `mode` is required for new senders as of May 25, 2026. During the six-month migration window ending November 25, 2026, buyers may tolerate legacy products where `placements[]` entries omit `mode` and treat those placements as targetable for creative assignment. After November 25, 2026, buyers should fail closed on missing `mode`.
 
 Publishers can authorize agents for specific placements in `adagents.json` with `authorized_agents[].placement_ids` or `authorized_agents[].placement_tags`. Sales agents should only return publisher-referenced placements they are authorized to sell.
+
+#### Video placement types
+
+Video products can declare `video_placement_types` at the product level, placement level, or both. The vocabulary follows the IAB Tech Lab/OpenRTB 2.6 `video.plcmt` definitions, but AdCP uses readable field and value names rather than the OpenRTB wire name:
+
+| Value | Meaning |
+|---|---|
+| `instream` | Video ads before, during, or after streaming video content requested by the user |
+| `accompanying_content` | Video ads in a player with accompanying video content associated with the page or app content |
+| `interstitial` | Video ads shown as an interstitial experience, typically between content or app states |
+| `standalone` | Video ads shown without associated video content, also called no-content or standalone video |
+
+The field is an array because a sellable product can aggregate multiple placement types. For example, an OLV network product might include both `instream` and `accompanying_content`, while individual targetable placements narrow to one type. When both product and placement declarations are present, the product-level array should be the union of the video placement types the seller may deliver under that product.
+
+This is a discovery signal, not a verification claim. Buyers can filter for products that can satisfy a requested type with `get_products.filters.video_placement_types`, but sellers should not return mixed, non-targetable bundles for an instream-only filter unless they can constrain delivery to instream inventory during planning or purchase.
 
 #### Format precedence with placements
 
