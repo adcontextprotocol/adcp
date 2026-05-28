@@ -563,6 +563,14 @@ phases:
             path: "context.correlation_id"
             value: "media_buy_seller--check_buy_status"
             description: "Context correlation_id returned unchanged"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "media_buy_id"
+            description: "get_media_buys returns the media_buy_id created earlier"
+          - check: field_value
+            path: "media_buys[0].context.correlation_id"
+            value: "media_buy_seller--create_media_buy"
+            description: "get_media_buys includes persisted media-buy context from create_media_buy"
 
   - id: creative_sync
     title: "Creative sync"

@@ -126,6 +126,8 @@ phases:
             - product_id: "$context.product_id"
               budget: 10000
               pricing_option_id: "$context.pricing_option_id"
+              context:
+                buyer_ref: "pending-creatives-line-001"
 
           context:
             correlation_id: "pending_creatives_to_start--create_buy_no_creatives"
@@ -155,6 +157,14 @@ phases:
             path: "context.correlation_id"
             value: "pending_creatives_to_start--create_buy_no_creatives"
             description: "Context correlation_id returned unchanged"
+          - check: field_equals_context
+            path: "packages[0].product_id"
+            context_key: "product_id"
+            description: "Created package echoes the requested product_id for package-to-product correlation"
+          - check: field_value
+            path: "packages[0].context.buyer_ref"
+            value: "pending-creatives-line-001"
+            description: "Created package echoes package-level context for legacy package correlation"
 
   - id: supply_creatives
     title: "Supply creatives and assign to the package"
@@ -272,3 +282,11 @@ phases:
             path: "media_buys[0].status"
             allowed_values: ["pending_start", "active"]
             description: "Persisted status is past pending_creatives"
+          - check: field_equals_context
+            path: "media_buys[0].packages[0].product_id"
+            context_key: "product_id"
+            description: "Read package retains the product_id from the explicit create request"
+          - check: field_value
+            path: "media_buys[0].packages[0].context.buyer_ref"
+            value: "pending-creatives-line-001"
+            description: "Read package includes persisted package context for legacy package correlation"
