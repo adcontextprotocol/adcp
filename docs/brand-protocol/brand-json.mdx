@@ -840,6 +840,36 @@ Canonical creative formats still use `asset_group_id: "logo"` for the manifest a
 }
 ```
 
+#### Ingesting brand books
+
+Tools that create a draft `brand.json` from a brand-guide PDF should keep asset extraction and guideline interpretation separate.
+
+Use deterministic extraction to produce candidate asset IDs:
+
+- embedded PDF images for photography, mockups, raster icons, and examples
+- rendered-page crops for vector logos, marks, color swatches, and logo specimens that are not embedded image files
+
+Then use a multimodal model to classify those candidate IDs into proposed `logos[]`, `assets[]`, `colors`, and `visual_guidelines` rules. The model should map back to known candidate IDs; it should not be treated as the source of original asset bytes.
+
+A draft ingestion record can point from a proposed logo entry back to evidence:
+
+```json
+{
+  "asset_id": "candidate_logo_0007",
+  "source_page": 15,
+  "extraction_method": "rendered_page_crop",
+  "proposed_logo": {
+    "id": "primary_wordmark_dark_card",
+    "variant": "wordmark",
+    "background": "dark-bg",
+    "slots": ["logo_card_dark", "marketplace_listing"]
+  },
+  "review_status": "needs_review"
+}
+```
+
+Do not publish those candidates directly as canonical `logos[]` until a reviewer confirms the crop, assigns the correct slots/backgrounds, and replaces the candidate file with a durable HTTPS logo asset URL. If the source PDF lacks hosted assets, operator authorization, or trademark evidence, that is an ingestion warning rather than a schema gap.
+
 ### Colorways
 
 Named color pairings that define how colors work together. Allows a creative brief to reference "use my primary colorway" without specifying every color:

@@ -233,6 +233,57 @@ The fictional fixtures in `static/examples/brand-json/` exercise both the curren
 
 Both validate against `static/schemas/source/brand.json` and are covered by `npm run test:examples`.
 
+## Brand-book ingestion workflow
+
+The same fields support an automated "brand guide PDF to draft `brand.json`" workflow, but the extraction pipeline needs two distinct asset sources. A model that reads the PDF can identify logo intent and usage rules, but it should not be treated as the source of original asset bytes.
+
+Recommended ingestion pipeline:
+
+1. Extract PDF text by page for names, colors, typography, tone, restrictions, and page-level evidence.
+2. Extract embedded image objects with deterministic IDs such as `pdf_image_0001`.
+3. Render selected pages and crop candidate regions for vector/page-art assets that do not appear as embedded images. This is especially important for primary logos, marks, color swatches, and logo variant specimens.
+4. Assign every candidate a stable local `asset_id`, source page, extraction method, crop box when applicable, dimensions, and file path.
+5. Ask a multimodal model to classify candidates by `asset_id`, not to "extract images" directly. The model output should map candidate IDs to proposed `logos[]`, `assets[]`, color swatches, typography samples, photography examples, misuse examples, and `visual_guidelines` rules.
+6. Validate every returned `asset_id` against the manifest. Treat model-reported counts and summary fields as advisory, not authoritative.
+7. Save the result as a draft with source evidence and review status. Do not publish until durable HTTPS asset URLs, operator authority, and any rights/trademark evidence are present.
+
+This produces two useful evidence layers:
+
+- **Semantic evidence**: page references and extracted rules, such as "this is the primary wordmark for dark logo cards" or "this color is accent only."
+- **Asset evidence**: concrete candidate files that reviewers can approve, replace, or reject before publishing.
+
+Ingestion systems should store candidate metadata separately from published `brand.json` fields. A candidate crop can suggest:
+
+```jsonc
+{
+  "asset_id": "candidate_logo_0007",
+  "source_page": 15,
+  "extraction_method": "rendered_page_crop",
+  "crop_box": { "x": 303, "y": 202, "width": 522, "height": 240 },
+  "proposed_logo": {
+    "id": "primary_wordmark_dark_card",
+    "variant": "wordmark",
+    "background": "dark-bg",
+    "slots": ["logo_card_dark", "marketplace_listing"]
+  },
+  "review_status": "needs_review"
+}
+```
+
+Only after review and durable hosting should it become a `logos[]` entry with a real HTTPS `url`.
+
+### Multimodal crop coordinates
+
+When using a multimodal model to identify page regions, implementations should not assume returned boxes are native rendered-image pixels. Some models return normalized coordinates. Ingesters should record the coordinate space explicitly and verify crop results with a second vision or image-quality pass before presenting candidates as usable logo assets.
+
+Minimum review checks for a logo candidate:
+
+- The crop contains the intended mark, not a solid background, text label, or guideline annotation.
+- The crop is centered and has acceptable clear space.
+- The candidate is not a misuse example, mockup, duplicate, mask, or alpha fragment.
+- The candidate's `slots[]` and `background` are consistent with the surrounding guide text.
+- The candidate has or can be replaced by a durable, authorized hosted asset URL.
+
 ## Open questions
 
 1. Should lockups support multiple partner marks explicitly now, or start with aggregate partner constraints and add per-partner modeling later?
