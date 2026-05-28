@@ -53,8 +53,15 @@ const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
 function bearerToken(req: Request): string | undefined {
   const auth = req.headers.authorization;
   if (typeof auth === 'string') {
-    const match = auth.match(/^Bearer\s+(.+)$/i);
-    if (match) return match[1].trim();
+    const scheme = 'bearer';
+    if (
+      auth.length > scheme.length
+      && auth.slice(0, scheme.length).toLowerCase() === scheme
+      && (auth[scheme.length] === ' ' || auth[scheme.length] === '\t')
+    ) {
+      const token = auth.slice(scheme.length + 1).trim();
+      if (token.length > 0) return token;
+    }
   }
   const legacy = req.headers['x-adcp-auth'];
   return typeof legacy === 'string' && legacy.length > 0 ? legacy : undefined;
