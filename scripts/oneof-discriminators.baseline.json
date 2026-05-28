@@ -196,11 +196,6 @@
       "variants": 2,
       "note": "0:[dimensions] | 1:[parameters_from_format_id]"
     },
-    "core/format.json##/properties/supported_macros/items/oneOf": {
-      "kind": "dangerous",
-      "variants": 2,
-      "note": "shared-required=[∅]; 0:ref-only(/schemas/enums/universal-macro.json) | 1:string"
-    },
     "core/product-filters.json##/properties/geo_proximity/items/oneOf": {
       "kind": "narrowable",
       "variants": 3,

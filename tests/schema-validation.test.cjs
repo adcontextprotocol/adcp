@@ -388,7 +388,59 @@ async function runTests() {
     return true;
   });
 
-  // Test 8: Validate media-buy available_actions SLAWindow wire shape
+  // Test 8: Validate list_creative_formats supported_macros permits universal and custom macro strings
+  await test('list_creative_formats supported_macros accepts universal and custom macro names', async () => {
+    const responseSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/list-creative-formats-response.json'));
+    const formatSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/format.json'));
+    const supportedMacrosItems = formatSchema.properties?.supported_macros?.items;
+    const macroBranches = supportedMacrosItems?.anyOf || [];
+    if (supportedMacrosItems?.oneOf) {
+      return 'supported_macros.items must use anyOf, not oneOf';
+    }
+    if (!macroBranches.some(branch => branch.$ref === '/schemas/enums/universal-macro.json')) {
+      return 'supported_macros.items is missing the UniversalMacro enum branch';
+    }
+    if (!macroBranches.some(branch => branch.type === 'string')) {
+      return 'supported_macros.items is missing the custom string branch';
+    }
+
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validate = await testAjv.compileAsync(responseSchema);
+    const response = {
+      status: 'completed',
+      formats: [
+        {
+          format_id: {
+            agent_url: 'https://creative-agent.example.com',
+            id: 'display_standard'
+          },
+          name: 'Display standard',
+          supported_macros: [
+            'MEDIA_BUY_ID',
+            'CREATIVE_ID',
+            'CACHEBUSTER',
+            'CLICK_URL',
+            'PUBLISHER_CUSTOM_ID'
+          ]
+        }
+      ]
+    };
+
+    if (!validate(response)) {
+      return validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
+    }
+    return true;
+  });
+
+  // Test 9: Validate media-buy available_actions SLAWindow wire shape
   await test('get_media_buys available_actions uses generated SLAWindow duration shape', async () => {
     const responseSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/get-media-buys-response.json'));
     const testAjv = new Ajv({
@@ -443,7 +495,7 @@ async function runTests() {
     return true;
   });
 
-  // Test 9: Validate provisional media-buy confirmation guards
+  // Test 10: Validate provisional media-buy confirmation guards
   await test('provisional media buys cannot be active or carry committed_metrics', async () => {
     const createSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-response.json'));
     const getSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/get-media-buys-response.json'));
@@ -548,7 +600,7 @@ async function runTests() {
     return true;
   });
 
-  // Test 10: Validate ForecastPoint dimension and viewability compatibility gates
+  // Test 11: Validate ForecastPoint dimension and viewability compatibility gates
   await test('ForecastPoint dimension and viewability compatibility gates behave as intended', async () => {
     const dimensionsSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-point-dimensions.json'));
     const uniqueProps = dimensionsSchema['x-adcp-validation']?.unique_item_properties || [];
@@ -940,7 +992,7 @@ async function runTests() {
     return true;
   });
 
-  // Test 10: Validate schema examples against their schemas
+  // Test 12: Validate schema examples against their schemas
   await test('Schema examples validate against their own schemas', async () => {
     // Skip schemas that require format-aware validation (creative manifests need format context)
     const FORMAT_AWARE_SCHEMAS = ['sync-creatives-request.json', 'list-creatives-response.json'];
