@@ -1,5 +1,121 @@
 # Changelog
 
+## 3.1.0-beta.6
+
+### Minor Changes
+
+- f23cefc: Add `get_creative_features.audit_observations[]` for non-blocking creative governance audit observations.
+
+  The first standardized observation is `OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED`, emitted when provenance declares `human_oversight: edited` or `directed` while also declaring `disclosure.required: false`. This surfaces the editorial-responsibility carve-out claim for audit routing without treating it as `PROVENANCE_CLAIM_CONTRADICTED` or a rejection reason by itself.
+
+  Docs now define the seller and governance-agent handling pattern, and a media-buy conformance storyboard exercises the observable flow where a seller calls an on-list verifier and accepts the creative instead of treating the audit observation as a rejection.
+
+  Closes #4438.
+
+- 057ddf6: compliance: require baseline `sync_governance` registration in money-moving sales specialisms
+
+  Adds a `sync_governance` registration step to the 3.1 beta compliance flows that move or monitor spend: `sales-social`, `sales-catalog-driven`, `sales-guaranteed`, `sales-non-guaranteed`, `sales-broadcast-tv`, and the generative seller flow under `creative-generative`. The step stops at account-level governance-agent registration and does not add `check_governance` enforcement to these parent tracks.
+
+  This remains a minor beta compliance fix under the conformance-suite policy in `docs/reference/versioning.mdx`: the wire contract and `sync_governance` task already exist, and this PR aligns the beta grader with that existing baseline rather than adding a new protocol surface. Existing beta sellers claiming these money-moving specialisms must now implement `sync_governance` registration and the one-governance-agent rejection rule to remain conformant in 3.1 grading.
+
+  The `governance-aware-seller` specialism remains the opt-in claim for the full governance-check loop (`check_governance`, denial propagation, conditions, and recovery) after baseline registration.
+
+- fba3451: Add the canonical-format `validate_input` conformance storyboard for 3.1.
+
+  The training agent now exposes `validate_input` on sales, creative, and
+  creative-builder tenants, returns the three 3.1 result discriminators for
+  canonical/product targets, and the storyboard matrix requires the new coverage
+  to stay clean on each surface that advertises the tool.
+
+- 8fcf7f9: Add published registry change-feed schemas for `/api/registry/feed`.
+
+  The new `core/registry-feed-response.json` wrapper references `core/registry-event.json`, which now validates the current registry event vocabulary across property, agent, publisher, and authorization changes. Registry docs and specs now cite the schemas and align examples with the implemented cursor and filter contract.
+
+- 17a648c: Add account-level `notification_configs[]` lifecycle and semantic rejection storyboards for 3.1, plus an exact `list_accounts.account` filter so buyers can re-read one account by seller account ID or natural key. The training agent now supports the new account-level notification configuration contract and the release gates exercise both current 3.1 storyboards and 3.0 compatibility.
+- 752d586: Add dimensional and measurement-aware fields to delivery forecast points.
+
+  `ForecastPoint` now supports dimensional rows for geography, placement, device, platform, audience, and intersections such as placement x country via `dimensions`, letting sellers expose country and placement availability without splitting one sellable product into product-per-dimension variants. Forecast points also support `viewability` and `vendor_metric_values` using `ForecastRange` values so pre-buy forecasts can mirror delivery reporting while remaining independent of product `pricing_options`. Geo forecast dimensions reuse the existing metro/postal system enums, forecast viewability requires `standard` whenever forecast values are present, and proposal-level rows can carry `product_id` when a dimensional row maps back to an executable product allocation.
+
+- dc806c3: Clarify media-buy and creative contract edge cases for the 3.1 beta.
+
+  Adds normative guidance for canonical-format matching: legacy named formats are normalized before comparison, product capability checks are directional, under-specified requests do not satisfy fixed product constraints, and range constraints require containment rather than overlap.
+
+  Documents the stored-creative adapter handoff boundary: buyers send only `creative_id` on the AdCP wire, while any generic `id` alias is seller-side adapter compatibility data copied from `creative_id`.
+
+  Tightens media-buy lifecycle semantics by requiring `revision` on create/get/update success responses and requiring `confirmed_at` on created/read media buys while allowing `null` only for provisional buys that already have a `media_buy_id` and are retrievable before seller commitment.
+
+  This is a 3.1 beta schema tightening that catches the schemas up to existing normative `MUST` text for `revision` and commitment timestamps, rather than a new post-GA contract. The nullable `confirmed_at` shape is buyer-observable (`string | null` instead of only `string`) so buyers can distinguish committed synchronous creates from provisional buys that exist but are not yet seller-committed.
+
+- f3705ae: Add contextual signal coverage forecasts for signal discovery and product-relative availability planning.
+
+  Signals can now include optional `coverage_forecast` data with an explicit denominator, bucket overlap semantics, bucket completeness, and forecast points keyed by canonical signal dimensions. Forecast points gain a `signal` dimension kind and `coverage_rate` becomes a standard forecastable metric for availability breakdowns.
+
+  The feature is additive on the wire. Existing `coverage_percentage` remains available for compatibility, but richer planning should use `coverage_forecast` when sellers can disclose the denominator and value-level distribution.
+
+- a091c67: Add `media_buy.creative_approval_mode` to `get_adcp_capabilities` so sellers can declare whether human review can block serving eligibility after creatives are assigned and automated validation passes.
+
+  Sellers with any reachable manual-review workflow declare `require_human`, which lets compliance runners skip auto-approval-dependent storyboards instead of reporting false failures. Omission is legacy-unspecified rather than an affirmative `auto_approve` claim; the `pending_creatives_to_start` storyboard now runs only when sellers explicitly declare `auto_approve`.
+
+- 1584e44: spec(signals): make deprecated `coverage_percentage` optional on signal responses.
+
+  `get_signals.signals[]` and wholesale feed signal payloads now keep `coverage_percentage` as an optional deprecated legacy scalar instead of a required deprecated field. `coverage_forecast` is the source of truth for detailed signal coverage planning; the scalar remains a backward-compatible fallback for clients that still consume it.
+
+  Adds validation coverage for `coverage_rate.low` and `coverage_rate.high` upper bounds, and pins the intended valid signal forecast shape where `presence: "present"` omits `signal_value`.
+
+  Closes #5089.
+
+### Patch Changes
+
+- 97daa5a: Clarify account namespace semantics for `account_id` references. Account-id mode now explicitly covers both seller-defined IDs supplied out-of-band and upstream-managed namespaces discovered through `list_accounts`; sellers MUST expose `list_accounts` when a credential can access more than one account and SHOULD expose a singleton row when a credential can access exactly one account. `sync_accounts` provisioning remains the buyer-declared natural-key path, and sellers MAY echo `account_id` there only if they continue accepting natural-key `AccountRef` values for subsequent calls. Required-account tasks must receive an explicit `AccountRef`; optional account omission is task-local, not a hidden credential-implied default. These statements codify the existing 3.0 account-scoped request expectations without changing the wire shape, fields, enums, or discriminators.
+
+  Refs #4341.
+
+- 1ccc37a: Expand the canonical-formats compliance storyboard track for #4591 with seeded
+  producer coverage for v1-only, v2-only, custom v2-only, experimental, and
+  divergent dual-emission product declarations.
+
+  The training agent now preserves fixture-seeded `format_options`-only products
+  without inventing v1 fallbacks, and emits a producer advisory when a dual-emitted
+  product's `format_options[].v1_format_ref[]` does not resolve to that product's
+  `format_ids[]`. The v5 dispatcher and v6 sales adapter both preserve populated
+  success payloads that carry non-fatal `errors[]` advisories.
+
+  The sales training-agent tenant also advertises the seller-level vendor-metric
+  optimization capability fields needed to exercise the new vendor-metric
+  storyboards instead of capability-skipping them.
+
+  Add #4983 vendor-metric external-catalog precondition coverage as a separate 3.1
+  storyboard that accepts either compatibility acceptance or `TERMS_REJECTED`
+  rejection when vendor-catalog membership is unproven by the current harness,
+  with the future 3.2 true catalog-miss cutover documented in the storyboard narrative.
+
+- 0ce96be: Add deterministic vendor_metric measurement-catalog-miss coverage for 3.1 storyboards.
+- 7e38ca2: Allow static admin API key callers to read registry compliance diagnostics and outbound monitoring data across seller agents, without granting mutating agent-owner operations.
+- c17be45: Accept HTTP Basic authentication in the universal `security_baseline` compliance storyboard. Basic credentials now have a dedicated valid/invalid probe path and can satisfy `auth_mechanism_verified` alongside Bearer API keys and OAuth discovery.
+- a091c67: Update the brand-rights governance-denied storyboard to assert `rights_status` on the rejected response arm.
+- d4b7e74: Add a shallow buyer-track canonical-format primer covering `format_options[]`, `format_kind`, `asset_source`, and buyer handling of canonical-format `FORMAT_*` codes.
+- 9ee8082: Add canonical-format coverage to the S2 creative specialist curriculum, including a hands-on authoring lab, glossary entries, and stable success criteria for targeted recertification.
+
+  Foundations and buyer-track learning pages now mention 3.1 `format_options[]` at orientation depth and point learners to S2 for canonical-first validation details.
+
+  Recertification trigger wiring is intentionally deferred to the follow-up issue referenced from the PR; this patch only adds stable criterion IDs and curriculum coverage.
+
+  Also clarifies that `creative_approval_mode` is a discovery declaration for auto-approval-dependent behavior, not a notification or approval workflow.
+
+- 48af987: Add 3.1 creative lifecycle webhook storyboard coverage and training-agent support for account-level creative notification configs.
+- e30c0b6: Fix the training-agent `get_products` handler to reject non-string `brief` values with a structured `INVALID_REQUEST` instead of throwing on `toLowerCase()`.
+- d7acb9d: Fix `supported_macros` schema validation for standard universal macro names.
+
+  `core/format.supported_macros.items` now uses `anyOf` so universal macro enum
+  values such as `MEDIA_BUY_ID`, `CREATIVE_ID`, `CACHEBUSTER`, and `CLICK_URL`
+  validate without conflicting with the custom string branch. Fixes #5099.
+
+- 62af2cc: Allow the ads.txt `managerdomain` fallback when a publisher's direct `adagents.json` fetch returns an S3/CloudFront-style `403` `AccessDenied` XML response as well as `404`, while preserving manager-side scoping checks.
+- 7390f7f: Prevent protocol tarball signature sidecars from being republished for old
+  versions, revalidate CDN sidecars, and verify the published tarball tuple with
+  retries in the release workflow.
+- a091c67: Gate schema-validation temporal checks with per-step `requires_tool: create_media_buy` so agents that do not advertise media-buy creation skip those checks instead of false-failing.
+
 ## 3.1.0-beta.5
 
 ### Patch Changes
