@@ -642,7 +642,7 @@ asyncio.run(main())
 |------------|-------------|------------|
 | `AUTH_MISSING` | No credentials presented | Provide credentials via auth header |
 | `AUTH_INVALID` | Credentials rejected (expired / revoked) | Human credential rotation required; do not auto-retry |
-| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id |
+| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify `media_buy_id`; for legacy correlation use `get_media_buys` + `context.internal_campaign_id` |
 | `INVALID_DATE_RANGE` | Invalid start/end dates | Use YYYY-MM-DD format, ensure start < end |
 | `DATE_RANGE_NOT_SUPPORTED` | Product only supports lifetime reporting | Omit `start_date` and `end_date`. Check `reporting_capabilities.date_range_support` on the product. |
 | `UNSUPPORTED_GRANULARITY` | Requested `time_granularity` is not in the product's `windowed_pull_granularities` | Re-issue with a granularity from `error.details.supported_granularities`, or omit `time_granularity` to fall back to cumulative date-range pulls. See [Windowed pull recovery](#windowed-pull-recovery). |
