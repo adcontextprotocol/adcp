@@ -68,7 +68,7 @@ async def discover_products():
 asyncio.run(discover_products())
 ```
 
-```bash CLI
+```bash CLI requires-env=ADCP_AUTH_TOKEN
 uvx adcp \
   https://test-agent.adcontextprotocol.org/sales/mcp \
   get_products \
@@ -976,7 +976,7 @@ async def discover_commerce_products():
 asyncio.run(discover_commerce_products())
 ```
 
-```bash CLI
+```bash CLI requires-env=ADCP_AUTH_TOKEN
 uvx adcp \
   https://test-agent.adcontextprotocol.org/sales/mcp \
   get_products \

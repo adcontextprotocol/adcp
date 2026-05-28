@@ -40,7 +40,7 @@ asyncio.run(list_formats())
 
 ### Using uvx (Python CLI)
 
-```bash
+```bash requires-env=ADCP_AUTH_TOKEN
 uvx adcp \
   https://test-agent.adcontextprotocol.org/creative/mcp \
   list_creative_formats \
