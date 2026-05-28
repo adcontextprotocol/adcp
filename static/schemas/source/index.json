@@ -608,6 +608,10 @@
           "$ref": "/schemas/enums/channels.json",
           "description": "Advertising channels (display, video, dooh, ctv, audio, etc.)"
         },
+        "video-placement-type": {
+          "$ref": "/schemas/enums/video-placement-type.json",
+          "description": "Declared video placement classifications using IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions"
+        },
         "task-status": {
           "$ref": "/schemas/enums/task-status.json",
           "description": "Standardized task status values based on A2A TaskState enum"
