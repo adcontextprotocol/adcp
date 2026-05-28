@@ -115,7 +115,7 @@ phases:
           - signal_agent_segment_id for activation
           - signal_id with source: "agent_native"
           - name, description, and value_type
-          - coverage_percentage
+          - coverage_forecast when detailed availability is disclosed; deprecated coverage_percentage may be present as a legacy scalar fallback
           - pricing_options
           - signal_type: "owned"
 
