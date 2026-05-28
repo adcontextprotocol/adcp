@@ -110,7 +110,9 @@ phases:
 
         sample_request:
           buying_mode: "brief"
-          brief: "Show all available advertising products"
+          brief: "Return a small representative sample of available advertising products"
+          pagination:
+            max_results: 5
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -158,6 +160,8 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium display inventory with pricing details"
+          pagination:
+            max_results: 5
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -224,7 +228,9 @@ phases:
 
         sample_request:
           buying_mode: "brief"
-          brief: "Show all available advertising products with creative format requirements"
+          brief: "Return one representative product with creative format requirements"
+          pagination:
+            max_results: 1
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -232,6 +238,9 @@ phases:
           context:
             correlation_id: "schema_validation--get_products_for_formats"
 
+        context_outputs:
+          - name: product_format_id
+            path: "products[0].format_ids[0]"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -261,9 +270,10 @@ phases:
       - id: list_formats_match
         title: "Verify format catalog includes product formats"
         narrative: |
-          Call list_creative_formats and verify that the formats returned include
-          the same agent_url as the format_ids on products. The seller's format
-          catalog must cover every format referenced by its products.
+          Call list_creative_formats for the first format_id returned on a
+          product and verify that the format catalog resolves that exact
+          reference. The seller's format catalog must cover that referenced
+          format.
         task: list_creative_formats
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
@@ -271,7 +281,7 @@ phases:
         comply_scenario: schema_compliance
         stateful: false
         expected: |
-          Return formats matching the agent's own product format_ids:
+          Return the format matching the agent's own product format_id:
           - format_id.agent_url must match the agent's own URL
           - format_id.id values must include those referenced by products
           - Each format must define asset requirements (types, dimensions, mime types)
@@ -280,6 +290,10 @@ phases:
           list_creative_formats, buyers cannot construct valid sync_creatives requests.
 
         sample_request:
+          format_ids:
+            - "$context.product_format_id"
+          pagination:
+            max_results: 1
           context:
             correlation_id: "schema_validation--list_formats_match"
 
@@ -292,6 +306,10 @@ phases:
           - check: field_present
             path: "formats[0].format_id.id"
             description: "Formats include format_id with id"
+          - check: field_value
+            path: "formats[0].format_id"
+            value: "$context.product_format_id"
+            description: "Filtered format response returns the product's exact format_id"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
@@ -314,6 +332,7 @@ phases:
           Send a create_media_buy request where end_time is before start_time. The agent
           must reject this with an INVALID_REQUEST error.
         task: create_media_buy
+        requires_tool: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
@@ -380,6 +399,7 @@ phases:
           universal/idempotency.yaml), and the storyboard couldn't tell
           which rule fired.
         task: create_media_buy
+        requires_tool: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
@@ -448,6 +468,7 @@ phases:
           auto-adjusts the start_time forward, and returns a media_buy_id.
           idempotency_key is present because the request is a real mutation.
         task: create_media_buy
+        requires_tool: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
@@ -514,6 +535,7 @@ phases:
           Synthetic assertion over accumulated flags from the two optional
           phases. Fails only if neither path contributed past_start_handled.
         task: assert_contribution
+        requires_tool: create_media_buy
         comply_scenario: temporal_validation
         stateful: false
         expected: |

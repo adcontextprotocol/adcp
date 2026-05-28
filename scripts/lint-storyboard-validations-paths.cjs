@@ -17,6 +17,8 @@
  *   - field_value
  *   - field_value_or_absent
  *   - field_absent
+ *   - envelope_field_present
+ *   - envelope_field_absent
  *
  * Non-path-bearing checks (error_code, response_schema, http_status_in,
  * http_status, any_of, on_401_require_header) are skipped — they don't
@@ -43,6 +45,8 @@ const PATH_BEARING_CHECKS = new Set([
   'field_value',
   'field_value_or_absent',
   'field_absent',
+  'envelope_field_present',
+  'envelope_field_absent',
 ]);
 
 function loadAllowlist() {
@@ -303,6 +307,48 @@ function pathResolvesAgainstResponseOrEnvelope(schema, segments) {
   return false;
 }
 
+function pathIsForbiddenByRequiredNot(node, segments, seen = new Set()) {
+  if (!node || typeof node !== 'object') return false;
+  if (segments.length !== 1) return false;
+
+  if (node.$ref) {
+    if (seen.has(node.$ref)) return false;
+    const next = new Set(seen);
+    next.add(node.$ref);
+    return pathIsForbiddenByRequiredNot(loadSchema(node.$ref), segments, next);
+  }
+
+  const [seg] = segments;
+  const notNode = node.not;
+  const notVariants = notNode && typeof notNode === 'object'
+    ? [notNode, ...(Array.isArray(notNode.anyOf) ? notNode.anyOf : []), ...(Array.isArray(notNode.oneOf) ? notNode.oneOf : [])]
+    : [];
+  for (const variant of notVariants) {
+    const required = variant && typeof variant === 'object' && Array.isArray(variant.required)
+      ? variant.required
+      : [];
+    if (required.includes(seg)) return true;
+  }
+
+  const variants = node.oneOf || node.anyOf || node.allOf;
+  if (Array.isArray(variants)) {
+    for (const variant of variants) {
+      if (pathIsForbiddenByRequiredNot(variant, segments, seen)) return true;
+    }
+  }
+
+  return false;
+}
+
+function absentPathForbiddenState(schema, segments) {
+  const envelope = loadSchema(ENVELOPE_REF);
+  const forbiddenByEnvelope = Boolean(envelope && pathIsForbiddenByRequiredNot(envelope, segments));
+  return {
+    forbiddenBySchema: pathIsForbiddenByRequiredNot(schema, segments),
+    forbiddenByEnvelope,
+  };
+}
+
 function lintDoc(doc, filePath, allowlist = []) {
   const violations = [];
   if (!doc) return violations;
@@ -336,7 +382,29 @@ function lintDoc(doc, filePath, allowlist = []) {
       const rawPath = v.path;
       if (typeof rawPath !== 'string' || rawPath.length === 0) continue;
       const segments = parsePath(rawPath);
+      if (v.check === 'envelope_field_present' || v.check === 'envelope_field_absent') {
+        const envelope = loadSchema(ENVELOPE_REF);
+        const resolvesOnEnvelope = Boolean(envelope && pathResolves(envelope, segments));
+        const forbiddenOnEnvelope = Boolean(envelope && pathIsForbiddenByRequiredNot(envelope, segments));
+        if (v.check === 'envelope_field_present' && resolvesOnEnvelope) continue;
+        if (v.check === 'envelope_field_absent' && (resolvesOnEnvelope || forbiddenOnEnvelope)) continue;
+        if (isAllowlisted(allowlist, filePath, step.stepId, rawPath)) continue;
+        violations.push({
+          rule: 'path_not_in_schema',
+          filePath,
+          stepId: step.stepId,
+          responseRef: step.responseRef,
+          validationPath: rawPath,
+          check: v.check,
+          index: i,
+        });
+        continue;
+      }
       if (pathResolvesAgainstResponseOrEnvelope(schema, segments)) continue;
+      if (v.check === 'field_absent' || v.check === 'envelope_field_absent') {
+        const { forbiddenBySchema, forbiddenByEnvelope } = absentPathForbiddenState(schema, segments);
+        if (v.check === 'field_absent' && forbiddenBySchema && !forbiddenByEnvelope) continue;
+      }
       if (isAllowlisted(allowlist, filePath, step.stepId, rawPath)) continue;
       violations.push({
         rule: 'path_not_in_schema',

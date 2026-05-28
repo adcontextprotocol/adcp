@@ -77,6 +77,22 @@ export interface AgentRegistryMetadata {
   updated_at: Date;
 }
 
+/**
+ * A single advisory notice emitted by the compliance runner at run-summary
+ * level. Defined in static/compliance/source/universal/runner-output-contract.yaml.
+ *
+ * Forward-compat: receivers MUST treat unknown `code` and `severity` values as
+ * well-formed and surface them verbatim — do not validate or filter these fields.
+ */
+export interface NoticeEntry {
+  severity: string;
+  code: string;
+  message: string;
+  effective_version?: string | null;
+  capability_path?: string | null;
+  reference_url?: string | null;
+}
+
 export interface ComplianceRun {
   id: string;
   agent_url: string;
@@ -95,6 +111,7 @@ export interface ComplianceRun {
   triggered_by: TriggeredBy;
   triggered_org_id: string | null;
   dry_run: boolean;
+  notices_json: NoticeEntry[] | null;
 }
 
 export interface TrackSummaryEntry {
@@ -119,8 +136,15 @@ export interface AgentComplianceStatus {
   previous_status: string | null;
   status_changed_at: Date | null;
   updated_at: Date;
+  /** id of the most recent non-dry-run row in agent_compliance_runs */
+  last_run_id: string | null;
   /** triggered_by of the most recent non-dry-run in agent_compliance_runs */
   last_triggered_by: TriggeredBy | null;
+}
+
+export interface ComplianceStatusWithStoryboardCounts {
+  status: AgentComplianceStatus;
+  storyboardCounts: { passing: number; total: number };
 }
 
 export type StoryboardStatus = 'passing' | 'failing' | 'partial' | 'untested';
@@ -234,6 +258,12 @@ export interface RecordComplianceRunInput {
   dry_run?: boolean;
   storyboard_statuses?: StoryboardStatusEntry[];
   step_diagnostics?: StepDiagnosticEntry[];
+  /**
+   * Advisory notices emitted by the runner at run-summary level. Stored as
+   * JSONB. Forward-compat: unknown codes/severities are preserved verbatim.
+   * See NoticeEntry and runner-output-contract.yaml.
+   */
+  notices_json?: NoticeEntry[] | null;
 }
 
 // =====================================================
@@ -313,8 +343,9 @@ export class ComplianceDatabase {
           agent_url, lifecycle_stage, overall_status, headline,
           total_duration_ms, tracks_json, tracks_passed, tracks_failed,
           tracks_skipped, tracks_partial, agent_profile_json,
-          observations_json, triggered_by, triggered_org_id, dry_run
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          observations_json, triggered_by, triggered_org_id, dry_run,
+          notices_json
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         RETURNING *`,
         [
           input.agent_url,
@@ -332,6 +363,7 @@ export class ComplianceDatabase {
           input.triggered_by ?? 'heartbeat',
           input.triggered_org_id ?? null,
           input.dry_run ?? true,
+          input.notices_json ? JSON.stringify(input.notices_json) : null,
         ],
       );
       const run = runResult.rows[0] as ComplianceRun;
@@ -554,11 +586,12 @@ export class ComplianceDatabase {
   async getComplianceStatus(agentUrl: string): Promise<AgentComplianceStatus | null> {
     const result = await query(
       `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
+              r.id AS last_run_id,
               r.triggered_by AS last_triggered_by
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
        LEFT JOIN LATERAL (
-         SELECT triggered_by FROM agent_compliance_runs
+         SELECT id, triggered_by FROM agent_compliance_runs
          WHERE agent_url = s.agent_url AND dry_run = false
          ORDER BY tested_at DESC LIMIT 1
        ) r ON true
@@ -566,6 +599,49 @@ export class ComplianceDatabase {
       [agentUrl],
     );
     return result.rows[0] || null;
+  }
+
+  async getComplianceStatusWithStoryboardCounts(agentUrl: string): Promise<ComplianceStatusWithStoryboardCounts | null> {
+    const result = await query(
+      `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
+              r.id AS last_run_id,
+              r.triggered_by AS last_triggered_by,
+              COALESCE(sb_counts.passing, 0)::int AS storyboards_passing,
+              COALESCE(sb_counts.total, 0)::int AS storyboards_total
+       FROM agent_compliance_status s
+       LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
+       LEFT JOIN LATERAL (
+         SELECT id, triggered_by FROM agent_compliance_runs
+         WHERE agent_url = s.agent_url AND dry_run = false
+         ORDER BY tested_at DESC LIMIT 1
+       ) r ON true
+       LEFT JOIN LATERAL (
+         SELECT
+           COUNT(*) FILTER (WHERE ss.status = 'passing') AS passing,
+           COUNT(*) AS total
+         FROM agent_storyboard_status ss
+         WHERE ss.agent_url = s.agent_url
+           AND (
+             r.id IS NULL OR EXISTS (
+               SELECT 1 FROM agent_storyboard_status latest
+               WHERE latest.agent_url = s.agent_url
+                 AND latest.run_id = r.id
+             )
+           )
+       ) sb_counts ON true
+       WHERE s.agent_url = $1`,
+      [agentUrl],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    const { storyboards_passing, storyboards_total, ...status } = row;
+    return {
+      status: status as AgentComplianceStatus,
+      storyboardCounts: {
+        passing: Number(storyboards_passing ?? 0),
+        total: Number(storyboards_total ?? 0),
+      },
+    };
   }
 
   async bulkGetRegistryMetadata(agentUrls: string[]): Promise<Map<string, AgentRegistryMetadata>> {
@@ -588,11 +664,12 @@ export class ComplianceDatabase {
 
     const result = await query(
       `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
+              r.id AS last_run_id,
               r.triggered_by AS last_triggered_by
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
        LEFT JOIN LATERAL (
-         SELECT triggered_by FROM agent_compliance_runs
+         SELECT id, triggered_by FROM agent_compliance_runs
          WHERE agent_url = s.agent_url AND dry_run = false
          ORDER BY tested_at DESC LIMIT 1
        ) r ON true
@@ -692,6 +769,28 @@ export class ComplianceDatabase {
     }
     if (!Array.isArray(list)) return [];
     return list.filter((s: unknown): s is string => typeof s === 'string');
+  }
+
+  /**
+   * Return the notices_json array from the most recent non-dry-run compliance
+   * run for the agent. Returns an empty array when no run exists or when the
+   * latest run stored no notices.
+   *
+   * Forward-compat: unknown codes/severities are preserved verbatim — callers
+   * MUST NOT validate or filter notice.code / notice.severity values.
+   */
+  async getLatestNotices(agentUrl: string): Promise<NoticeEntry[]> {
+    const result = await query(
+      `SELECT notices_json
+       FROM agent_compliance_runs
+       WHERE agent_url = $1 AND dry_run = FALSE
+       ORDER BY tested_at DESC
+       LIMIT 1`,
+      [agentUrl],
+    );
+    const raw = result.rows[0]?.notices_json;
+    if (!Array.isArray(raw)) return [];
+    return raw as NoticeEntry[];
   }
 
   // ----- Due-for-Check Query -----
@@ -808,7 +907,11 @@ export class ComplianceDatabase {
 
   // ----- Storyboard Status Queries -----
 
-  async getStoryboardStatuses(agentUrl: string): Promise<Array<{
+  async getStoryboardStatuses(agentUrl: string, options: {
+    runId?: string | null;
+    requireRowsForRunId?: string | null;
+    requireRowsForLatestRun?: boolean;
+  } = {}): Promise<Array<{
     storyboard_id: string;
     status: string;
     last_tested_at: Date | null;
@@ -819,24 +922,78 @@ export class ComplianceDatabase {
     triggered_by: string | null;
   }>> {
     const result = await query(
-      `SELECT storyboard_id, status, last_tested_at, last_passed_at, last_failed_at,
+      `WITH latest_run AS (
+         SELECT id
+         FROM agent_compliance_runs
+         WHERE agent_url = $1
+           AND dry_run = false
+         ORDER BY tested_at DESC
+         LIMIT 1
+       )
+       SELECT storyboard_id, status, last_tested_at, last_passed_at, last_failed_at,
               steps_passed, steps_total, triggered_by
-       FROM agent_storyboard_status
-       WHERE agent_url = $1
+       FROM agent_storyboard_status s
+       WHERE s.agent_url = $1
+         AND ($2::uuid IS NULL OR s.run_id = $2::uuid)
+         AND (
+           $3::uuid IS NULL OR EXISTS (
+             SELECT 1 FROM agent_storyboard_status latest
+             WHERE latest.agent_url = $1
+               AND latest.run_id = $3::uuid
+           )
+         )
+         AND (
+           $4::boolean = false
+           OR NOT EXISTS (SELECT 1 FROM latest_run)
+           OR EXISTS (
+             SELECT 1 FROM agent_storyboard_status latest
+             JOIN latest_run lr ON latest.run_id = lr.id
+             WHERE latest.agent_url = $1
+           )
+         )
        ORDER BY storyboard_id`,
-      [agentUrl],
+      [agentUrl, options.runId ?? null, options.requireRowsForRunId ?? null, options.requireRowsForLatestRun === true],
     );
     return result.rows;
   }
 
-  async getStoryboardStatusCounts(agentUrl: string): Promise<{ passing: number; total: number }> {
+  async getStoryboardStatusCounts(agentUrl: string, options: {
+    runId?: string | null;
+    requireRowsForRunId?: string | null;
+    requireRowsForLatestRun?: boolean;
+  } = {}): Promise<{ passing: number; total: number }> {
     const result = await query(
-      `SELECT
+      `WITH latest_run AS (
+         SELECT id
+         FROM agent_compliance_runs
+         WHERE agent_url = $1
+           AND dry_run = false
+         ORDER BY tested_at DESC
+         LIMIT 1
+       )
+       SELECT
          COUNT(*) FILTER (WHERE status = 'passing') AS passing,
          COUNT(*) AS total
-       FROM agent_storyboard_status
-       WHERE agent_url = $1`,
-      [agentUrl],
+       FROM agent_storyboard_status s
+       WHERE s.agent_url = $1
+         AND ($2::uuid IS NULL OR s.run_id = $2::uuid)
+         AND (
+           $3::uuid IS NULL OR EXISTS (
+             SELECT 1 FROM agent_storyboard_status latest
+             WHERE latest.agent_url = $1
+               AND latest.run_id = $3::uuid
+           )
+         )
+         AND (
+           $4::boolean = false
+           OR NOT EXISTS (SELECT 1 FROM latest_run)
+           OR EXISTS (
+             SELECT 1 FROM agent_storyboard_status latest
+             JOIN latest_run lr ON latest.run_id = lr.id
+             WHERE latest.agent_url = $1
+           )
+         )`,
+      [agentUrl, options.runId ?? null, options.requireRowsForRunId ?? null, options.requireRowsForLatestRun === true],
     );
     const row = result.rows[0];
     return { passing: parseInt(row?.passing ?? '0'), total: parseInt(row?.total ?? '0') };
@@ -853,11 +1010,30 @@ export class ComplianceDatabase {
     if (agentUrls.length === 0) return new Map();
 
     const result = await query(
-      `SELECT agent_url, storyboard_id, status, last_tested_at, last_passed_at,
-              steps_passed, steps_total
-       FROM agent_storyboard_status
-       WHERE agent_url = ANY($1)
-       ORDER BY agent_url, storyboard_id`,
+      `WITH latest_runs AS (
+         SELECT DISTINCT ON (agent_url) agent_url, id
+         FROM agent_compliance_runs
+         WHERE agent_url = ANY($1)
+           AND dry_run = false
+         ORDER BY agent_url, tested_at DESC
+       ),
+       latest_run_flags AS (
+         SELECT
+           lr.agent_url,
+           EXISTS (
+             SELECT 1 FROM agent_storyboard_status latest
+             WHERE latest.agent_url = lr.agent_url
+               AND latest.run_id = lr.id
+           ) AS has_rows
+         FROM latest_runs lr
+       )
+       SELECT s.agent_url, s.storyboard_id, s.status, s.last_tested_at, s.last_passed_at,
+              s.steps_passed, s.steps_total
+       FROM agent_storyboard_status s
+       LEFT JOIN latest_run_flags lf ON lf.agent_url = s.agent_url
+       WHERE s.agent_url = ANY($1)
+         AND COALESCE(lf.has_rows, true) = true
+       ORDER BY s.agent_url, s.storyboard_id`,
       [agentUrls],
     );
 

@@ -62,7 +62,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `currency` | ISO 4217 currency for media-buy-level monetary values |
 | `total_budget` | Total campaign budget (in `currency`) |
 | `creative_deadline` | Creative upload deadline (ISO 8601) |
-| `confirmed_at` | ISO 8601 timestamp when the seller confirmed this media buy |
+| `confirmed_at` | ISO 8601 timestamp when the seller committed to this media buy. May be `null` until seller commitment occurs in deferred/manual approval flows; stable after it is set. |
 | `cancellation` | Cancellation metadata (present only when `status` is `canceled`). Object with `canceled_at` (ISO 8601), `canceled_by` (`"buyer"` or `"seller"`), and optional `reason`. |
 | `revision` | Current revision number. Pass in `update_media_buy` for optimistic concurrency. |
 | `valid_actions` | Actions the buyer can perform in the current state (e.g., `["pause", "cancel", "update_budget"]`). See [valid actions mapping](#valid-actions-mapping). |
@@ -110,6 +110,10 @@ Creative revisions are represented as `approval_status: "rejected"` with a speci
 | `package_id` | No | Package affected, when the change targeted a specific package |
 
 History entries are **append-only** — sellers MUST NOT modify or delete previously emitted entries. Callers MAY cache entries by revision number.
+
+`revision` increments only when the seller applies a mutating state change or update. Reads, validation-only calls, and exact idempotency replays do not create history entries or bump revision. Buyers should treat the returned revision as the token for their next `update_media_buy` call intended to change state.
+
+`confirmed_at` is not a delivery status timestamp. It records seller commitment and remains stable through later pause/resume, activation, completion, cancellation, and reporting changes.
 
 ### Snapshot Object
 

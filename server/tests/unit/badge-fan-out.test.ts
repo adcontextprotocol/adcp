@@ -102,6 +102,23 @@ describe('runBadgeFanOut', () => {
     expect(db.revokeBadge).not.toHaveBeenCalled();
   });
 
+  it('scopes storyboard reads to runId when full-suite callers provide one', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
+
+    const db = makeDb({
+      latestStatuses: [status('sales_broadcast_tv', 'passing')],
+    });
+
+    await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      runId: 'run-full-suite',
+    });
+
+    expect(db.getStoryboardStatuses).toHaveBeenCalledWith('https://example.com/mcp', { runId: 'run-full-suite' });
+  });
+
   it('passes undefined membershipOrgId when the org lookup returns no row, causing all badges to revoke', async () => {
     queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0, command: 'SELECT', oid: 0, fields: [] } as never);
 

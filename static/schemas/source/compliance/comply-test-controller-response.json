@@ -32,6 +32,7 @@
               "force_media_buy_status",
               "force_create_media_buy_arm",
               "force_task_completion",
+              "force_creative_purge",
               "force_session_status",
               "simulate_delivery",
               "simulate_budget_spend",
@@ -41,10 +42,13 @@
               "seed_plan",
               "seed_media_buy",
               "seed_creative_format",
-              "query_upstream_traffic"
+              "seed_measurement_catalog",
+              "query_upstream_traffic",
+              "query_provenance_audit_observations",
+              "force_upstream_unavailable"
             ]
           },
-          "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive minor bumps. Adopters who advertise `query_upstream_traffic` opt in to the upstream-traffic conformance contract; storyboards that declare `check: upstream_traffic` grade `not_applicable` against adopters who do not advertise it."
+          "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive releases. Adopters who advertise `force_creative_purge` opt in to deterministic creative purge coverage for account-level lifecycle webhooks. Adopters who advertise `seed_measurement_catalog` opt in to deterministic measurement-catalog fixtures used by vendor_metric precondition storyboards. Adopters who advertise `query_upstream_traffic` opt in to the upstream-traffic conformance contract; storyboards that declare `check: upstream_traffic` grade `not_applicable` against adopters who do not advertise it. Adopters who advertise `query_provenance_audit_observations` opt in to sandbox-only audit-observation assertions for accepted creatives. Adopters who advertise `force_upstream_unavailable` opt in to stale-cache conformance testing via the `stale_response_advisory` storyboard."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -83,6 +87,11 @@
           {
             "required": [
               "recorded_calls"
+            ]
+          },
+          {
+            "required": [
+              "audit_observations"
             ]
           }
         ]
@@ -148,13 +157,18 @@
             "required": [
               "recorded_calls"
             ]
+          },
+          {
+            "required": [
+              "audit_observations"
+            ]
           }
         ]
       }
     },
     {
       "title": "SimulationSuccess",
-      "description": "A simulate_delivery or simulate_budget_spend scenario succeeded. For delivery: simulated contains impressions/clicks/reported_spend/conversions and cumulative contains running totals. For budget: simulated contains spend_percentage/computed_spend/budget.",
+      "description": "A simulate_delivery or simulate_budget_spend scenario succeeded. For delivery: simulated contains the metrics injected by this call (impressions/clicks/reported_spend/conversions plus optional reach/frequency/reach_window/viewability values) and cumulative contains running totals or latest non-additive metric state. For budget: simulated contains spend_percentage/computed_spend/budget.",
       "type": "object",
       "properties": {
         "success": {
@@ -211,6 +225,11 @@
           {
             "required": [
               "recorded_calls"
+            ]
+          },
+          {
+            "required": [
+              "audit_observations"
             ]
           }
         ]
@@ -291,6 +310,11 @@
             "required": [
               "recorded_calls"
             ]
+          },
+          {
+            "required": [
+              "audit_observations"
+            ]
           }
         ]
       }
@@ -317,6 +341,80 @@
       },
       "required": [
         "success"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "error"
+            ]
+          },
+          {
+            "required": [
+              "scenarios"
+            ]
+          },
+          {
+            "required": [
+              "previous_state"
+            ]
+          },
+          {
+            "required": [
+              "simulated"
+            ]
+          },
+          {
+            "required": [
+              "forced"
+            ]
+          },
+          {
+            "required": [
+              "recorded_calls"
+            ]
+          },
+          {
+            "required": [
+              "audit_observations"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "ProvenanceAuditObservationsSuccess",
+      "description": "A query_provenance_audit_observations scenario returned sandbox-recorded audit observations for a creative. This hook is for conformance only; public seller responses do not have to expose internal audit-log state.",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
+        "creative_id": {
+          "type": "string",
+          "description": "Creative ID whose audit observations were queried.",
+          "x-entity": "creative"
+        },
+        "audit_observations": {
+          "type": "array",
+          "description": "Audit observations recorded for the creative in the sandbox session.",
+          "items": {
+            "$ref": "/schemas/creative/audit-observation.json"
+          }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "success",
+        "creative_id",
+        "audit_observations"
       ],
       "additionalProperties": true,
       "not": {
@@ -401,7 +499,7 @@
               },
               "content_type": {
                 "type": "string",
-                "description": "Media type of the outbound request body, mirroring the agent's outbound `Content-Type` header (e.g., `application/json`, `application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`). In raw mode this describes the returned `payload`; in digest mode it describes the body the digest was computed over. Storyboard `payload_must_contain` JSONPath assertions are valid only when content_type is `application/json` or has a `+json` suffix AND attestation_mode is `raw` — digest mode and non-JSON content types grade `payload_must_contain` as not_applicable. Required so the runner can choose the right matcher deterministically."
+                "description": "Media type of the outbound request body, mirroring the agent's outbound `Content-Type` header (e.g., `application/json`, `application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`). In raw mode this describes the returned `payload`; in digest mode it describes the body the digest was computed over. Storyboard `payload_must_contain` JSONPath-lite assertions are valid only when content_type is `application/json` or has a `+json` suffix AND attestation_mode is `raw` — digest mode and non-JSON content types grade `payload_must_contain` as not_applicable. Required so the runner can choose the right matcher deterministically."
               },
               "attestation_mode": {
                 "type": "string",
@@ -435,7 +533,7 @@
               "payload_length": {
                 "type": "integer",
                 "minimum": 0,
-                "description": "Byte length of the post-redaction canonicalized body. Required in both `raw` and `digest` modes — symmetric across modes so runners can detect adopter-side truncation regardless of attestation choice. In raw mode this MUST equal the byte length of the `payload` value as serialized for transmission; in digest mode this is the length of the canonicalized body the digest covers. Mismatch between observed payload length and reported `payload_length` is a controller-side bug worth surfacing in the report."
+                "description": "Byte length of the post-redaction body bytes represented by this recorded_call. Required in both `raw` and `digest` modes — symmetric across modes so runners can detect adopter-side truncation regardless of attestation choice. In `raw` mode this MUST equal the UTF-8 byte length of the emitted `payload` value after the same recursive secret-key redaction the controller applied before returning it. In `digest` mode this MUST equal the exact number of bytes fed into SHA-256 for `payload_digest_sha256`: RFC 8785 (JCS) canonical bytes for JSON-shaped content after redaction, or the post-redaction raw body bytes for non-JSON content. Digest-mode `payload_length` is therefore NOT the original outbound body length before JSON parsing, redaction, or canonicalization. Mismatch between observed payload length and reported `payload_length` is a controller-side bug worth surfacing in the report."
               },
               "identifier_match_proofs": {
                 "type": "array",
@@ -589,6 +687,11 @@
             "required": [
               "forced"
             ]
+          },
+          {
+            "required": [
+              "audit_observations"
+            ]
           }
         ]
       }
@@ -664,6 +767,11 @@
             "required": [
               "recorded_calls"
             ]
+          },
+          {
+            "required": [
+              "audit_observations"
+            ]
           }
         ]
       }
@@ -677,6 +785,7 @@
         "success": true,
         "scenarios": [
           "force_creative_status",
+          "force_creative_purge",
           "force_account_status",
           "force_media_buy_status"
         ]

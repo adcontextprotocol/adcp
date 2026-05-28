@@ -117,6 +117,24 @@ The storyboard runner operates in two modes depending on whether your agent impl
 | **Observational** | No test controller | Response schemas and buyer-initiated flows |
 | **Deterministic** | Test controller present | Full lifecycle state machines, error codes, operation gates |
 
+### Reading `partial`
+
+`partial` is a coverage result, not automatically a failure. The runner uses it when one or more selected scenarios could not be graded even though no executed assertion failed. The most common cause is intentional: production endpoints MUST NOT expose `comply_test_controller`, so controller-seeded or controller-forced phases skip with `missing_test_controller`.
+
+Read `steps_not_selected` separately from `steps_skipped`. Not-selected scenarios were outside the suite or run mode you asked for. Skipped scenarios were inside the selected suite, but the runner could not execute them because of an applicability gate, missing test surface, missing tool, or prerequisite.
+
+Use the summary counters and skip reasons to decide what the result means:
+
+| Summary | Interpretation |
+|---------|----------------|
+| `0 failed`, `steps_not_selected > 0`, `steps_skipped = 0` | Expected for the selected run mode, such as sandbox-only testing that excludes live-only probes |
+| `0 failed`, only capability-gate `not_applicable` skips | Clean pass for the capability scope the seller declared |
+| `0 failed`, `missing_test_controller` skips | Buyer-visible path passed, but deterministic lifecycle coverage was not graded |
+| Any `missing_tool` skip for a declared protocol or specialism | The seller overclaimed or forgot to expose a required tool |
+| Any failed step | Not conformant for the declared scope until fixed |
+
+For production-path sandbox validation, a result like `84 passed, 0 failed, 0 skipped, 80 not selected` is a clean sandbox-only selection result: the excluded probes were never part of that run. A result like `84 passed, 0 failed, 80 skipped` needs the skip breakdown before it means anything. Skips because an optional capability was not claimed are selected-scope skips. Skips with `missing_test_controller` are deterministic coverage gaps: the suite tested the public sandbox path and reported that controller-seeded lifecycle scenarios were not graded. To get full green on those, run against a dev/staging endpoint that exposes the controller, pre-seed the required state and tell the runner to assert seeded-state coverage, or accept and publish the skipped coverage list as an explicit limitation.
+
 ## Validate through Addie
 
 [Addie](https://agenticadvertising.org) provides interactive testing without any CLI setup. Paste your agent URL in any conversation to get started.

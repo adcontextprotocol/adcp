@@ -32,7 +32,7 @@ import { createLogger } from '../logger.js';
 const logger = createLogger('addie-bolt-app');
 import { sanitizeSpeakerName } from './prompts.js';
 import { captureEvent } from '../utils/posthog.js';
-import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
+import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type AddieResponse, type UserScopedToolsResult } from './claude-client.js';
 import { buildSlackCostScope } from './claude-cost-tracker.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
@@ -1680,7 +1680,7 @@ async function handleUserMessage({
   };
 
   // Process with Claude using streaming
-  let response;
+  let response: AddieResponse | undefined;
   let fullText = '';
   const toolsUsed: string[] = [];
   const toolExecutions: { tool_name: string; parameters: Record<string, unknown>; result: string }[] = [];
@@ -1933,22 +1933,31 @@ async function handleUserMessage({
       } else {
         // Stop the stream with feedback buttons and any inline images.
         try {
-          // Extract image URLs from streamed text for Slack Block Kit image blocks
-          const { images: streamImages } = extractMarkdownImages(fullText);
-          const MAX_SLACK_IMAGES = 3;
-          const imageBlocks = streamImages.slice(0, MAX_SLACK_IMAGES).map(img => ({
-            type: 'image' as const,
-            image_url: img.url,
-            alt_text: img.alt,
-          }));
-          // Don't pass markdown_text — the SDK buffer already has all text from
-          // append() calls. Passing it again would duplicate the message.
-          await streamer.stop({
-            blocks: [
-              ...imageBlocks,
-              buildFeedbackBlock(),
-            ],
-          });
+          // Cap-exceeded responses have no streamed text — deliver the cap
+          // message as the terminal text so the user isn't left with silence.
+          if (response?.flag_reason === 'cost_cap_exceeded') {
+            const capGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'dm-streaming-cap-exceeded' });
+            const capValidation = validateOutput(capGuarded.text);
+            const capText = wrapUrlsForSlack(capValidation.sanitized);
+            await streamer.stop({ markdown_text: capText, blocks: [buildFeedbackBlock()] });
+          } else {
+            // Extract image URLs from streamed text for Slack Block Kit image blocks
+            const { images: streamImages } = extractMarkdownImages(fullText);
+            const MAX_SLACK_IMAGES = 3;
+            const imageBlocks = streamImages.slice(0, MAX_SLACK_IMAGES).map(img => ({
+              type: 'image' as const,
+              image_url: img.url,
+              alt_text: img.alt,
+            }));
+            // Don't pass markdown_text — the SDK buffer already has all text from
+            // append() calls. Passing it again would duplicate the message.
+            await streamer.stop({
+              blocks: [
+                ...imageBlocks,
+                buildFeedbackBlock(),
+              ],
+            });
+          }
         } catch (stopError) {
           logger.warn({ stopError }, 'Addie Bolt: Stream stop failed, falling back to say()');
           // Fallback: send via say() so the user isn't left without a response
@@ -1959,11 +1968,14 @@ async function handleUserMessage({
             const slackText = wrapUrlsForSlack(fallbackText);
             // Slack rejects section blocks with empty mrkdwn text. If streaming
             // produced nothing (e.g. upstream overload before any deltas), fall
-            // back to a plain apology so the user isn't left silent.
+            // back to a plain apology so the user isn't left silent. For
+            // cost_cap_exceeded, deliver the cap message directly.
             if (!slackText.trim()) {
-              const apology = isRetriesExhaustedError(stopError)
-                ? `${stopError.reason}. Please try again in a moment.`
-                : "I'm sorry, I encountered an error. Please try again.";
+              const apology = response?.flag_reason === 'cost_cap_exceeded'
+                ? response.text
+                : isRetriesExhaustedError(stopError)
+                  ? `${stopError.reason}. Please try again in a moment.`
+                  : "I'm sorry, I encountered an error. Please try again.";
               await say(apology);
             } else {
               await say({

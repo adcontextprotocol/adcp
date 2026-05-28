@@ -81,9 +81,9 @@
             "description": "ISO 8601 timestamp for creative upload deadline"
           },
           "confirmed_at": {
-            "type": "string",
+            "type": ["string", "null"],
             "format": "date-time",
-            "description": "ISO 8601 timestamp when the seller confirmed this media buy. A successful create_media_buy response constitutes order confirmation."
+            "description": "ISO 8601 timestamp when the seller committed to this media buy. May be null until seller commitment occurs in deferred/manual approval flows. Once populated, remains stable through later pause, resume, activation, completion, cancellation, and reporting transitions."
           },
           "cancellation": {
             "type": "object",
@@ -112,7 +112,7 @@
           },
           "revision": {
             "type": "integer",
-            "description": "Current revision number. Pass this in update_media_buy for optimistic concurrency.",
+            "description": "Current optimistic concurrency token. Pass this in update_media_buy requests intended to change state. Sellers increment it on mutating state changes/updates and reject stale tokens with CONFLICT when a revision token is provided.",
             "minimum": 1
           },
           "created_at": {
@@ -399,11 +399,45 @@
             "$ref": "/schemas/core/ext.json"
           }
         },
+        "allOf": [
+          {
+            "$comment": "When get_media_buys gains canonical media_buy_status during the 3.1 -> 3.2 status migration, extend this provisional-buy guard to reject media_buy_status: active alongside legacy status: active.",
+            "if": {
+              "properties": {
+                "confirmed_at": {
+                  "type": "null"
+                }
+              },
+              "required": ["confirmed_at"]
+            },
+            "then": {
+              "not": {
+                "properties": {
+                  "status": {
+                    "const": "active"
+                  }
+                },
+                "required": ["status"]
+              },
+              "properties": {
+                "packages": {
+                  "items": {
+                    "not": {
+                      "required": ["committed_metrics"]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
         "required": [
           "media_buy_id",
           "status",
           "currency",
           "total_budget",
+          "confirmed_at",
+          "revision",
           "packages"
         ],
         "additionalProperties": true

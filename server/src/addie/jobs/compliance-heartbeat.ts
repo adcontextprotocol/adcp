@@ -91,7 +91,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         'heartbeat',
       );
       dbInput.dry_run = false;
-      const { statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+      const { run, statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
 
       result.checked++;
       if (dbInput.overall_status === 'passing') {
@@ -132,6 +132,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             complianceDb,
             agentUrl: agent.agent_url,
             declaredSpecialisms,
+            runId: run.id,
           });
 
           if (badgeResult.issued.length > 0 || badgeResult.revoked.length > 0) {

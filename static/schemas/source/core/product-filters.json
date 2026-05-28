@@ -14,7 +14,7 @@
     },
     "is_fixed_price": {
       "type": "boolean",
-      "description": "Filter by pricing availability: true = products offering fixed pricing (at least one option with fixed_price), false = products offering auction pricing (at least one option without fixed_price). Products with both fixed and auction options match both true and false."
+      "description": "Filter by pricing availability and returned pricing options: true = products offering fixed pricing (at least one option with fixed_price), false = products offering auction pricing (at least one option without fixed_price). Products with both fixed and auction options match both true and false, but sellers MUST return only the pricing_options entries matching the requested pricing type so buyers can deterministically select from the returned options."
     },
     "format_ids": {
       "type": "array",
@@ -202,9 +202,25 @@
     },
     "signal_targeting": {
       "type": "array",
-      "description": "Filter to products supporting specific signals from data provider catalogs. Products must have the requested signals in their data_provider_signals and signal_targeting_allowed must be true (or all signals requested).",
+      "description": "Filter to products where the requested signals are buyer-selectable and jointly composable: the signals are available through inline signal_targeting_options and/or through get_signals for wholesale signal discovery, signal_targeting_allowed is true, and the requested set can coexist under the product's signal_targeting_rules. Each filter entry uses signal_ref, with deprecated signal_id accepted during the SignalRef migration window, and may include targeting_mode='include' or 'exclude' to require the product option or product rules to support that use. When targeting_mode is omitted, include is assumed. SignalRef scope 'product' is seller-local exact option matching only, not a portable semantic identifier across products or sellers; buyers wanting portable discovery should use scope 'data_provider' or get_signals. included_signals and deprecated bundled/non-selectable data_provider_signals do not satisfy this filter because they cannot be selected on create_media_buy.",
       "items": {
-        "$ref": "/schemas/core/signal-targeting.json"
+        "type": "object",
+        "allOf": [
+          {
+            "$ref": "/schemas/core/signal-targeting.json"
+          }
+        ],
+        "properties": {
+          "targeting_mode": {
+            "type": "string",
+            "description": "Desired use of this signal on the product. 'include' requires the product option to allow use in an any group. 'exclude' requires the product option to allow use in a none group.",
+            "enum": [
+              "include",
+              "exclude"
+            ],
+            "default": "include"
+          }
+        }
       },
       "minItems": 1
     },

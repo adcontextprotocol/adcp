@@ -291,6 +291,16 @@ export class AgentInventoryProfilesDatabase {
     );
     return result.rowCount ?? 0;
   }
+
+  async deleteProfiles(agentUrls: string[]): Promise<number> {
+    if (agentUrls.length === 0) return 0;
+
+    const result = await query(
+      'DELETE FROM agent_inventory_profiles WHERE agent_url = ANY($1)',
+      [agentUrls]
+    );
+    return result.rowCount ?? 0;
+  }
 }
 
 // ─── Cursor encoding ─────────────────────────────────────────────────────────

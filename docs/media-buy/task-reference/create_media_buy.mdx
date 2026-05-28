@@ -185,8 +185,8 @@ npx @adcp/sdk@latest \
 |-----------|------|----------|-------------|
 | `product_id` | string | Yes | Product ID from `get_products` |
 | `pricing_option_id` | string | Yes | Pricing option ID from product's `pricing_options` array |
-| `format_ids` | FormatID[] | No | v1 path. Format IDs that will be used — must be supported by product. When omitted (and `capability_ids` is also omitted), defaults to all formats supported by the product. V2-native buyer SDKs targeting a heterogeneous seller population SHOULD dual-emit this alongside `capability_ids` so v1-only sellers receive an explicit format set rather than defaulting to all-formats. |
-| `capability_ids` | string[] | No | v2 path. References to entries in the product's `format_options[i].capability_id` (see [canonical formats](/docs/creative/canonical-formats)). Lets V2-mental-model buyers author a `create_media_buy` without translating back through `v1_format_ref[]`. When both `capability_ids` and `format_ids` are sent, `capability_ids` wins (the seller routes by it; `format_ids` becomes a v1-compat hint the resolving seller ignores). Sellers MUST reject with `UNSUPPORTED_FEATURE` (field path `packages[i].capability_ids[j]`) when an entry doesn't match a `format_options[]` entry, when the product is v1-only (carries `format_ids` but no `format_options[]`), or when the product's `format_options[]` entries don't publish `capability_id` values (the seller SHOULD set `error.details.reason: "capability_ids_not_published"` so buyers can fall back to `format_ids[]`). |
+| `format_ids` | FormatID[] | No | Legacy named-format selector. Format IDs that will be used — must be supported by product. When omitted (and no 3.1+ format-option selector is present), defaults to all formats supported by the product. Format-option-aware buyer SDKs targeting a heterogeneous seller population SHOULD dual-emit this alongside `format_option_refs` so legacy-format-only sellers receive an explicit format set rather than defaulting to all-formats. |
+| `format_option_refs` | FormatOptionRef[] | No | 3.1+ format-option selector. Structured references to entries in the package's target product `format_options[]`: `{scope: "publisher", publisher_domain, format_option_id}` for publisher-catalog-backed options, or `{scope: "product", format_option_id}` for product-local options (see [canonical formats](/docs/creative/canonical-formats)). When present, `format_option_refs` wins over `format_ids`. Sellers MUST reject with `UNSUPPORTED_FEATURE` (field path `packages[i].format_option_refs[j]`) when an entry doesn't match a `format_options[]` entry, when the product is legacy-format-only, or when the product's `format_options[]` entries don't publish selectable `format_option_id` values. |
 | `budget` | number | Yes | Budget in currency specified by pricing option |
 | `impressions` | number | No | Impression goal for this package |
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
@@ -210,13 +210,18 @@ npx @adcp/sdk@latest \
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Seller's unique identifier |
-| `confirmed_at` | ISO 8601 timestamp of order confirmation. A successful response constitutes confirmation. |
+| `confirmed_at` | ISO 8601 timestamp when the seller committed to the media buy. Stable after it is set. May be `null` in deferred/manual approval flows until seller commitment occurs. |
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
+| `revision` | Initial media-buy revision. Use this value as the `revision` token on the next `update_media_buy` call intended to change state. |
 | `packages` | Array of created packages with complete state. Packages may include per-package `creative_deadline` when different from the media buy deadline. |
+
+`confirmed_at` is seller commitment time, not a delivery-status timestamp. Do not update it when a buy later pauses, resumes, starts delivery, completes, or reports performance. A committed synchronous create stamps it immediately. Use the `submitted` response branch when no `media_buy_id` is being returned to the buyer. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment. A provisional buy with `confirmed_at: null` MUST NOT be `active` and MUST NOT include `packages[].committed_metrics`.
 
 #### Reporting contract on confirmed packages
 
 Each package in the response MAY carry `committed_metrics` — the binding reporting contract the seller has agreed to populate in delivery reports for this package. The field is a unified array carrying both standard metrics (from the closed `available-metric.json` enum) and vendor-defined metrics (anchored on a BrandRef), with each entry tagged by an explicit `scope` discriminator and timestamped via `committed_at`:
+
+When `confirmed_at` is `null`, sellers MUST omit `packages[].committed_metrics`. The first response that sets `confirmed_at` MAY include the initial committed-metrics set, and each such entry's `committed_at` MUST equal `confirmed_at`.
 
 ```json
 {
@@ -260,7 +265,7 @@ Returned when the buy cannot be confirmed synchronously — e.g., guaranteed buy
 
 | Field | Description |
 |-------|-------------|
-| `status` | Literal `"submitted"` — discriminates this shape from the sync success branch, whose `status` carries a `MediaBuyStatus` value (`pending_creatives` / `pending_start` / `active`). |
+| `status` | Literal `"submitted"` — discriminates this shape from the sync success branch, which uses `media_buy_status` for lifecycle state. During the 3.1 migration window, sellers MAY also emit deprecated top-level MediaBuyStatus values on synchronous success for back-compat. |
 | `task_id` | Handle the buyer polls with `tasks/get` or receives on webhook callbacks. |
 | `message` | Optional human-readable explanation (e.g., "Awaiting IO signature from sales team"). |
 | `errors` | Optional advisory warnings (non-blocking). Terminal failures belong in the Error Response. |
@@ -531,6 +536,89 @@ Include the `catalogs` field in a package to make it catalog-driven. Each catalo
 ```
 
 The platform distributes budget across catalog items based on performance. For per-item reporting, use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) which returns `by_catalog_item` breakdowns. Creative variants for catalog-driven packages represent individual catalog items rendered as ads.
+
+**Package with explicit signal targeting:**
+
+Use `targeting_overlay.signal_targeting_groups` when the buyer wants seller-offered signals applied to a specific package. The selected product must set `signal_targeting_allowed: true` and make the signal eligible through inline `signal_targeting_options` when present, through `get_signals` for wholesale products that omit inline options, and through `signal_targeting_rules`. The grouped expression shape is always used: top-level `operator: "all"` with child groups using `operator: "any"` for include groups and `operator: "none"` for exclusion groups. For simple include-only targeting, send one `any` group. For binary signals, send `value: true` in both include and exclusion groups; exclusion is expressed by the parent `none` group, not by `value: false`. Signals are referenced with `signal_ref`: use `scope: "product"` for a product-local signal option, `scope: "data_provider"` with `data_provider_domain` for a signal defined by a data provider's published adagents.json signal catalog, or `scope: "signal_source"` with `signal_source_url` for a source-native signal. This is distinct from `audience_include` / `audience_exclude`, which only reference first-party audiences registered through `sync_audiences`. Send `signal_agent_segment_id` only when the selected product option or `get_signals` result exposed it as a separate execution handle required by the seller.
+
+```json test=false
+{
+  "brand": { "domain": "acmecorp.com" },
+  "packages": [{
+    "product_id": "retail_video_premium",
+    "pricing_option_id": "media_cpm_usd",
+    "budget": 25000,
+    "targeting_overlay": {
+      "signal_targeting_groups": {
+        "operator": "all",
+        "groups": [{
+          "operator": "any",
+          "signals": [{
+            "signal_ref": {
+              "scope": "data_provider",
+              "data_provider_domain": "pinnacle-data.example",
+              "signal_id": "auto_intenders"
+            },
+            "value_type": "binary",
+            "value": true,
+            "pricing_option_id": "signal_cpm_usd_250",
+            "signal_agent_segment_id": "seller_sig_auto_intenders"
+          }]
+        }]
+      }
+    }
+  }],
+  "start_time": "asap",
+  "end_time": "2026-09-30T23:59:59Z"
+}
+```
+
+Include plus exclusion example:
+
+```json test=false
+{
+  "brand": { "domain": "acmecorp.com" },
+  "packages": [{
+    "product_id": "retail_video_premium",
+    "pricing_option_id": "media_cpm_usd",
+    "budget": 25000,
+    "targeting_overlay": {
+      "signal_targeting_groups": {
+        "operator": "all",
+        "groups": [
+          {
+            "operator": "any",
+            "signals": [
+              {
+                "signal_ref": { "scope": "product", "signal_id": "high_intent_shoppers" },
+                "value_type": "binary",
+                "value": true
+              },
+              {
+                "signal_ref": { "scope": "product", "signal_id": "loyalty_members" },
+                "value_type": "binary",
+                "value": true
+              }
+            ]
+          },
+          {
+            "operator": "none",
+            "signals": [
+              {
+                "signal_ref": { "scope": "product", "signal_id": "recent_purchasers" },
+                "value_type": "binary",
+                "value": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }],
+  "start_time": "asap",
+  "end_time": "2026-09-30T23:59:59Z"
+}
+```
 
 ### Campaign with Inline Creatives
 
@@ -918,7 +1006,7 @@ Common errors and resolutions:
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
 | `PRODUCT_NOT_FOUND` | Invalid product_id | Verify product exists via `get_products` |
-| `UNSUPPORTED_FEATURE` | Format not supported by the product — covers both v1 (`format_ids[]` not in the product's accepted formats) and v2 (`capability_ids[]` entry doesn't resolve against the product's `format_options[]`, the product is v1-only with no `format_options[]` at all, or the product's `format_options[]` entries don't publish `capability_id` values) | Check the product's `format_ids` and/or `format_options[]` from `get_products` — re-author against a supported format, or pick a `capability_id` from the product's published `format_options[]` |
+| `UNSUPPORTED_FEATURE` | Format not supported by the product — covers both legacy named-format selectors (`format_ids[]` not in the product's accepted formats) and 3.1+ format-option selectors (`format_option_refs[]` entries that do not resolve against the product's `format_options[]`, legacy-format-only products with no `format_options[]`, or product `format_options[]` entries that do not publish selectable `format_option_id` values) | Check the product's `format_ids` and/or `format_options[]` from `get_products` — re-author against a supported format, or pick a `format_option_ref` from the product's published `format_options[]` |
 | `BUDGET_TOO_LOW` | Budget below product minimum | Increase budget or choose different product |
 | `TARGETING_TOO_NARROW` | Targeting yields zero inventory | Broaden geographic or audience criteria |
 | `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
@@ -942,16 +1030,16 @@ Example error response:
 
 ### Format Specification
 
-Each package SHOULD specify the formats it will use, via either `format_ids[]` (v1 path — structured `{agent_url, id}` references) or `capability_ids[]` (v2 path — references into the product's `format_options[]`). Omitting both defaults to all formats supported by the product. Specifying lets the system:
+Each package SHOULD specify the formats it will use, via either `format_ids[]` (legacy named-format path — structured `{agent_url, id}` references) or `format_option_refs[]` (3.1+ format-option path — references into the product's `format_options[]`). Omitting all format selectors defaults to all formats supported by the product. Specifying lets the system:
 
 - Publish placeholder creatives in ad servers
 - Pin exactly what creative assets are needed
 - Validate that the product supports the requested formats
 - Track which assets are missing
 
-Use `capability_ids[]` when the buyer's codebase is V2-native (reads `Product.format_options[]`); use `format_ids[]` when integrating with v1-only sellers or libraries. Dual-emission is allowed and recommended for buyer SDKs targeting a mixed seller population — see the `format_ids` row above.
+Use `format_option_refs[]` when the buyer's codebase reads `Product.format_options[]`; use `format_ids[]` when integrating with legacy-format-only sellers or libraries. Dual-emission is allowed and recommended for buyer SDKs targeting a mixed seller population — see the `format_ids` row above.
 
-V2-path example (buyer authoring against `Product.format_options[i].capability_id` directly):
+3.1+ format-option example (buyer authoring against a publisher-scoped `Product.format_options[]` entry):
 
 ```json test=false
 {
@@ -959,7 +1047,13 @@ V2-path example (buyer authoring against `Product.format_options[i].capability_i
     {
       "product_id": "prod_d979b543",
       "pricing_option_id": "cpm_usd_auction",
-      "capability_ids": ["nytimes_homepage_image"],
+      "format_option_refs": [
+        {
+          "scope": "publisher",
+          "publisher_domain": "daily-pulse.example",
+          "format_option_id": "daily_pulse_homepage_image"
+        }
+      ],
       "budget": 2500,
       "bid_price": 5.00
     }
@@ -1022,7 +1116,7 @@ When creating a media buy, format specification enables:
 2. get_products → Find products (returns format_ids[] and/or format_options[])
 3. Validate compatibility → Ensure products support desired formats
 4. create_media_buy → Specify formats via format_ids[] (v1) or
-                       capability_ids[] (v2); omit for all-formats default
+                       format_option_refs[] (v2); omit for all-formats default
    └── Publisher creates placeholders
    └── Clear creative requirements established
 5. sync_creatives → Upload actual files matching formats
@@ -1036,7 +1130,7 @@ Publishers MUST validate:
 - Format specifications match `list_creative_formats` output
 - Creative requirements can be fulfilled within timeline
 
-Invalid format example (v1 path):
+Invalid legacy named-format example:
 
 ```json
 {
@@ -1052,15 +1146,18 @@ Invalid format example (v1 path):
 }
 ```
 
-Invalid capability example (v2 path):
+Invalid 3.1+ format-option example:
 
 ```json
 {
   "errors": [{
     "code": "UNSUPPORTED_FEATURE",
-    "message": "Product 'ctv_sports_premium' has no format_options[] entry with capability_id 'audio_standard'",
-    "field": "packages[0].capability_ids[0]",
-    "supported_capability_ids": ["ctv_video_30s_premium", "ctv_video_15s_premium"]
+    "message": "Product 'ctv_sports_premium' has no format_options[] entry for format option 'audio_standard'",
+    "field": "packages[0].format_option_refs[0]",
+    "supported_format_option_refs": [
+      { "scope": "publisher", "publisher_domain": "streamhaus.example", "format_option_id": "ctv_video_30s_premium" },
+      { "scope": "publisher", "publisher_domain": "streamhaus.example", "format_option_id": "ctv_video_15s_premium" }
+    ]
   }]
 }
 ```

@@ -77,13 +77,18 @@ Sellers that implement compliance test controller MUST:
           "seed_pricing_option",
           "seed_creative",
           "seed_plan",
-          "seed_media_buy"
+          "seed_media_buy",
+          "seed_creative_format",
+          "seed_measurement_catalog",
+          "query_upstream_traffic",
+          "query_provenance_audit_observations",
+          "force_upstream_unavailable"
         ],
         "description": "The seller-side transition or fixture-seed to trigger."
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} — task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} — task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?}. seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, tool?, purpose_filter?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
       }
     },
     "required": ["scenario"]
@@ -306,6 +311,10 @@ Injects synthetic delivery data for a media buy. Subsequent calls to `get_media_
 | `clicks` | integer | No | Clicks to simulate |
 | `reported_spend` | object | No | `{ amount: number, currency: string }` — spend as reported in delivery data, does not affect budget |
 | `conversions` | integer | No | Conversions to simulate |
+| `reach` | number | No | Unique reach count to surface at `totals.reach` |
+| `frequency` | number | No | Average frequency per reach unit to surface at `totals.frequency` |
+| `reach_window` | object | No | Measurement window for simulated reach/frequency. Shape: `{ kind: "cumulative" }`, `{ kind: "period", period: Duration }`, or `{ kind: "rolling", period: Duration }` |
+| `viewability` | object | No | Viewability block to surface at `totals.viewability`, including `measurable_impressions`, `viewable_impressions`, `viewable_rate`, `viewed_seconds`, and `standard`. `standard` SHOULD be supplied whenever measured viewability values are present |
 
 **Example:**
 
@@ -316,6 +325,16 @@ Injects synthetic delivery data for a media buy. Subsequent calls to `get_media_
     "media_buy_id": "mb-789",
     "impressions": 10000,
     "clicks": 150,
+    "reach": 4000,
+    "frequency": 2.5,
+    "reach_window": { "kind": "rolling", "period": { "interval": 7, "unit": "days" } },
+    "viewability": {
+      "measurable_impressions": 9000,
+      "viewable_impressions": 7200,
+      "viewable_rate": 0.8,
+      "viewed_seconds": 4.3,
+      "standard": "mrc"
+    },
     "reported_spend": { "amount": 150.00, "currency": "USD" }
   }
 }
@@ -364,6 +383,8 @@ Creates (or upserts) a product fixture with a caller-supplied `product_id` so su
 |-------|------|----------|-------------|
 | `product_id` | string | Yes | Stable identifier the storyboard will reference |
 | `fixture` | object | No | Product shape. Minimum useful fields: `delivery_type`, `channels`, `pricing_options[]`, `format_ids[]`. Sellers MAY fill in defaults for omitted fields. |
+
+For vendor-metric precondition tests, prefer `seed_measurement_catalog` for the external vendor catalog. A product fixture may also carry `measurement_catalogs[]` entries shaped as `{ vendor, metrics[] }` as a compatibility fallback for local harnesses that need the product contract and referenced measurement snapshot in one fixture. If both are supplied for the same vendor, the explicit `seed_measurement_catalog` snapshot takes precedence for that compliance session.
 
 **Example:**
 
@@ -493,9 +514,38 @@ Creates a media buy fixture at a specified lifecycle state, bypassing the `creat
 }
 ```
 
+### `seed_measurement_catalog`
+
+Seeds a measurement vendor's `get_adcp_capabilities.measurement.metrics[]` snapshot for the compliance session, when the seller's controller advertises this scenario. Media-buy storyboards use an explicit `comply_test_controller` step with this scenario to distinguish a product-level vendor metric capability from the external vendor-catalog discovery precondition. Storyboards may also carry this snapshot in `seed_product.fixture.measurement_catalogs[]` as a compatibility fallback for controllers whose SDK adapter set has not adopted the scenario yet. When both sources are present for the same vendor, the explicit `seed_measurement_catalog` seed is authoritative.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `vendor` | BrandRef | Yes | Measurement vendor whose catalog is being seeded |
+| `metrics` | object[] | Yes | Catalog entries; each entry must include `metric_id` and may include the optional fields from `measurement.metrics[]` |
+
+**Example:**
+
+```json
+{
+  "scenario": "seed_measurement_catalog",
+  "params": {
+    "vendor": { "domain": "attentionvendor.example" },
+    "metrics": [
+      {
+        "metric_id": "attention_catalog_baseline",
+        "unit": "score",
+        "description": "Baseline attention metric present in this vendor catalog."
+      }
+    ]
+  }
+}
+```
+
 ### Seeding semantics and ordering
 
-- **Fixture shape.** `fixture` is kept permissive (`additionalProperties: true`) so storyboard authors can declare the minimum shape each test needs. Fixtures SHOULD conform to the corresponding domain schema (`core/product.json` for `seed_product`, `core/pricing-option.json` for `seed_pricing_option`, `media-buy/sync-creatives-request.json` creative-item shape for `seed_creative`, `core/media-buy.json` for `seed_media_buy`, the plan schema for `seed_plan`). Sellers MAY reject clearly malformed fixtures with `INVALID_PARAMS`.
+- **Fixture shape.** `fixture` is kept permissive (`additionalProperties: true`) so storyboard authors can declare the minimum shape each test needs. Fixtures SHOULD conform to the corresponding domain schema (`core/product.json` for `seed_product`, `core/pricing-option.json` for `seed_pricing_option`, `media-buy/sync-creatives-request.json` creative-item shape for `seed_creative`, `core/media-buy.json` for `seed_media_buy`, the plan schema for `seed_plan`). `seed_measurement_catalog.metrics[]` mirrors `get_adcp_capabilities.measurement.metrics[]`. Sellers MAY reject clearly malformed fixtures with `INVALID_PARAMS`.
 - **Idempotency on re-seed.** A second call with the same primary ID and a `fixture` equivalent to the first SHOULD succeed and return `success: true` with `previous_state: "existing"`. A second call with a **diverging** fixture MUST return `INVALID_PARAMS` with `error_detail` explaining which fields diverged — sellers MUST NOT merge or update silently. Storyboards that need to change fixture state mid-run MUST use `force_*` scenarios, not a re-seed. This keeps the same storyboard deterministic across sellers.
 - **Foreign-key ordering.** The runner seeds fixtures in dependency order so sellers receive referenced parents before their children. The dependency DAG:
 
@@ -559,18 +609,38 @@ Creates a media buy fixture at a specified lifecycle state, bypassing the `creat
   "simulated": {
     "impressions": 10000,
     "clicks": 150,
+    "reach": 4000,
+    "frequency": 2.5,
+    "reach_window": { "kind": "rolling", "period": { "interval": 7, "unit": "days" } },
+    "viewability": {
+      "measurable_impressions": 9000,
+      "viewable_impressions": 7200,
+      "viewable_rate": 0.8,
+      "viewed_seconds": 4.3,
+      "standard": "mrc"
+    },
     "reported_spend": { "amount": 150.00, "currency": "USD" }
   },
   "cumulative": {
     "impressions": 25000,
     "clicks": 380,
+    "reach": 4000,
+    "frequency": 2.5,
+    "reach_window": { "kind": "rolling", "period": { "interval": 7, "unit": "days" } },
+    "viewability": {
+      "measurable_impressions": 9000,
+      "viewable_impressions": 7200,
+      "viewable_rate": 0.8,
+      "viewed_seconds": 4.3,
+      "standard": "mrc"
+    },
     "reported_spend": { "amount": 375.00, "currency": "USD" }
   },
   "message": "Delivery simulated for mb-789: 10000 impressions, 150 clicks, $150.00 spend"
 }
 ```
 
-The `simulated` field echoes back the values injected by this call. The `cumulative` field returns running totals across all simulation calls for this media buy, so callers can verify expected state before checking `get_media_buy_delivery`.
+The `simulated` field echoes back the values injected by this call. The `cumulative` field returns running totals across additive counters and spend for this media buy, plus the latest non-additive reach-window and viewability state, so callers can verify expected state before checking `get_media_buy_delivery`.
 
 **`simulate_budget_spend` response:**
 

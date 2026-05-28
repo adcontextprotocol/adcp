@@ -29,6 +29,7 @@ import { generateIllustration } from '../services/illustration-generator.js';
 import { createIllustration, approveIllustration } from '../db/illustration-db.js';
 import { resolveEscalationsForPerspective } from '../db/escalation-db.js';
 import { listMyContent as listMyContentService, MyContentError } from '../services/my-content-service.js';
+import { checkContentSubmissionTier } from '../services/membership-tiers.js';
 
 const logger = createLogger('content-routes');
 
@@ -397,6 +398,20 @@ export async function proposeContentForUser(
       success: false,
       error: `Submission rate limit exceeded (${PROPOSE_MAX_PER_WINDOW} per ${PROPOSE_WINDOW_MS / 60000} minutes). Try again in ${retrySeconds} seconds.`,
     };
+  }
+
+  // Membership tier gate — Professional+ required for content submission.
+  // System users (system:* prefix) and site admins are exempt, matching the
+  // rate-limiter carve-out and the existing admin bypass pattern below.
+  if (!user.id.startsWith('system:') && !(await isWebUserAAOAdmin(user.id))) {
+    const eligible = await checkContentSubmissionTier(user.id);
+    if (!eligible) {
+      logger.warn({ userId: user.id }, 'proposeContentForUser blocked — insufficient membership tier');
+      return {
+        success: false,
+        error: 'Publishing perspectives is a benefit of Professional, Builder, Partner, or Leader membership. To submit content, upgrade at https://agenticadvertising.org/dashboard/membership.',
+      };
+    }
   }
 
   // Validate required fields
@@ -1187,12 +1202,13 @@ export function createContentRouter(): Router {
 
       if (!result.success) {
         // Map errors to appropriate HTTP status codes
+        const isTierGate = result.error?.includes('/dashboard/membership');
         const status = result.error?.includes('not found') ? 404
-                     : result.error?.includes('must be a member') ? 403
+                     : (result.error?.includes('must be a member') || isTierGate) ? 403
                      : 400;
         return res.status(status).json({
           error: status === 404 ? 'Collection not found'
-               : status === 403 ? 'Not a member'
+               : status === 403 ? 'Membership required'
                : 'Validation error',
           message: result.error,
         });

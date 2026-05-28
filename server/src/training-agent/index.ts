@@ -51,12 +51,12 @@ import {
   STRICT_PROTOCOL_METHODS_REQUIRED_FOR,
 } from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
-import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
 
 const logger = createLogger('training-agent-routes');
 
 const TRAINING_AGENT_TOKEN = process.env.TRAINING_AGENT_TOKEN;
-const PUBLIC_TEST_AGENT_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN || PUBLIC_TEST_AGENT.token;
+const DOCUMENTED_PUBLIC_TEST_AGENT_TOKEN = '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
+const PUBLIC_TEST_AGENT_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN || DOCUMENTED_PUBLIC_TEST_AGENT_TOKEN;
 const STARTUP_TIME = new Date().toISOString();
 
 // WorkOS client for API key validation (reuses main app's credentials)
@@ -84,7 +84,11 @@ function buildBearerAuthenticator(): Authenticator | null {
   }
   const staticKeys: Record<string, AuthPrincipal> = {};
   if (TRAINING_AGENT_TOKEN) staticKeys[TRAINING_AGENT_TOKEN] = { principal: 'static:primary' };
-  if (PUBLIC_TEST_AGENT_TOKEN) staticKeys[PUBLIC_TEST_AGENT_TOKEN] = { principal: 'static:public' };
+  if (PUBLIC_TEST_AGENT_TOKEN) {
+    staticKeys[PUBLIC_TEST_AGENT_TOKEN] = {
+      principal: 'static:public',
+    };
+  }
 
   const authenticators: Authenticator[] = [];
   if (Object.keys(staticKeys).length > 0) {
@@ -330,7 +334,7 @@ const TENANT_BRAND_AGENT_DESCRIPTION: Record<typeof TENANT_IDS[number], string> 
   brand: 'Training-agent brand tenant — brand rights and discovery',
 };
 
-export function createTrainingAgentRouter(): Router {
+export function createTrainingAgentRouter(options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): Router {
   const router = Router();
 
   startSessionCleanup();
@@ -367,6 +371,7 @@ export function createTrainingAgentRouter(): Router {
   mountTenantRoutes(router, TENANT_IDS, {
     rateLimit: mcpRateLimiter,
     requireAuth: requireTokenDefault,
+    storyboardCompat: options.storyboardCompat,
   });
 
   // Legacy single-URL `/mcp` route — preserved as a back-compat alias for
@@ -389,7 +394,7 @@ export function createTrainingAgentRouter(): Router {
     let server: ReturnType<typeof createTrainingAgentServer> | null = null;
     try {
       const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
-      const ctx: TrainingContext = { mode: 'open', principal };
+      const ctx: TrainingContext = { mode: 'open', principal, ...(options.storyboardCompat && { storyboardCompat: options.storyboardCompat }) };
       server = createTrainingAgentServer(ctx);
 
       // Streamable HTTP transport requires both `application/json` and
@@ -470,7 +475,13 @@ export function createTrainingAgentRouter(): Router {
       let server: ReturnType<typeof createTrainingAgentServer> | null = null;
       try {
         const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
-        const ctx: TrainingContext = { mode: 'open', principal, strict: true, ...(digestMode !== undefined && { digestMode }) };
+        const ctx: TrainingContext = {
+          mode: 'open',
+          principal,
+          strict: true,
+          ...(digestMode !== undefined && { digestMode }),
+          ...(options.storyboardCompat && { storyboardCompat: options.storyboardCompat }),
+        };
         server = createTrainingAgentServer(ctx);
 
         const acceptHeader = req.headers.accept;
@@ -753,7 +764,7 @@ export function createTrainingAgentRouter(): Router {
         tenant_id: tenantId,
         url: `${agentUrl}/${tenantId}/mcp`,
         specialisms: TENANT_SPECIALISMS[tenantId],
-        tools: toolsForTenant(tenantId),
+        tools: toolsForTenant(tenantId, { storyboardCompat: options.storyboardCompat }),
       })),
       last_updated: STARTUP_TIME,
     });

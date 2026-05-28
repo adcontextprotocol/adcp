@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
   "banner": {
-    "content": "🚀 AdCP 3.1 beta is now available — [see what's new](/docs/reference/whats-new-in-3-1)",
+    "content": "AdCP 3.1 is in active development — [see what's coming →](/docs/reference/release-notes)",
     "dismissible": true
   },
   "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
@@ -585,7 +585,8 @@
                     },
                     "pages": [
                       "docs/registry/index",
-                      "docs/registry/registering-an-agent"
+                      "docs/registry/registering-an-agent",
+                      "docs/registry/maintaining-your-agent"
                     ]
                   },
                   "docs/reference/gmsf-reference",
@@ -650,6 +651,7 @@
                     "pages": [
                       "docs/learning/policies/nondiscrimination",
                       "docs/learning/policies/learner-records",
+                      "docs/learning/policies/recertification",
                       "docs/learning/policies/complaints",
                       "docs/learning/policies/conflict-of-interest",
                       "docs/learning/policies/intellectual-property",
@@ -1156,7 +1158,8 @@
                 },
                 "pages": [
                   "docs/registry/index",
-                  "docs/registry/registering-an-agent"
+                  "docs/registry/registering-an-agent",
+                  "docs/registry/maintaining-your-agent"
                 ]
               },
               "docs/reference/gmsf-reference",
@@ -1218,6 +1221,7 @@
                 "pages": [
                   "docs/learning/policies/nondiscrimination",
                   "docs/learning/policies/learner-records",
+                  "docs/learning/policies/recertification",
                   "docs/learning/policies/complaints",
                   "docs/learning/policies/conflict-of-interest",
                   "docs/learning/policies/intellectual-property",

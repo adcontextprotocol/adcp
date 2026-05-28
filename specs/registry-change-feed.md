@@ -51,10 +51,14 @@ Append-only within a 90-day retention window.
 | `property.reactivated` | Stale property resolved again | Available inventory again |
 | `agent.discovered` | New agent found via crawl or registration | New seller/creative/signals partner |
 | `agent.removed` | Agent no longer in any adagents.json | Authorization may be revoked |
+| `agent.verification_earned` | Agent earns an AAO Verified badge | Buyer routing decisions may expand |
+| `agent.verification_lost` | Agent loses an AAO Verified badge | Buyer routing decisions may need tightening |
+| `publisher.adagents_discovered` | Crawl finds a publisher adagents.json for the first time | Properties, agents, and authorizations may be available |
 | `publisher.adagents_changed` | Crawl detects adagents.json diff | Properties, authorizations may have changed |
 | `agent.profile_updated` | Inventory profile changed (new markets, channels, etc.) | Search results may change |
 | `authorization.granted` | Agent authorized for publisher in adagents.json | New selling relationship; TMP routers must update |
 | `authorization.revoked` | Agent removed from publisher's adagents.json | Selling relationship ended; TMP routers must update |
+| `authorization.modified` | Visible authorization metadata changed | TMP routers must update cached authorization metadata |
 | `agent.compliance_changed` | Compliance status transition (heartbeat or manual) | Buyer routing decisions may need updating |
 
 ### Event Payload Examples
@@ -99,11 +103,11 @@ Append-only within a 90-day retention window.
   "authorization_type": "property_ids",
   "property_ids": ["primetime_ctv", "news_live"],
   "placement_ids": ["pre_roll_30s", "mid_roll_15s"],
-  "collections": [{ "publisher_domain": "streamer.example.com", "collection_id": "primetime_drama" }],
+  "collections": [{ "publisher_domain": "streamer.example.com", "collection_ids": ["primetime_drama"] }],
   "countries": ["US", "CA"],
   "delegation_type": "direct",
   "exclusive": false,
-  "signing_keys": [{ "algorithm": "ed25519", "public_key": "base64..." }],
+  "signing_keys": [{ "kid": "pub-2026-04", "kty": "OKP", "alg": "EdDSA", "crv": "Ed25519", "x": "abc123" }],
   "effective_from": "2026-04-01T00:00:00Z",
   "effective_until": "2027-03-31T23:59:59Z"
 }
@@ -146,13 +150,17 @@ Poll the change feed.
 
 **Authentication:** Required. Member-only endpoint.
 
+**Schema:** Response payloads validate against
+`static/schemas/source/core/registry-feed-response.json`; each item in
+`events[]` validates against `static/schemas/source/core/registry-event.json`.
+
 **Parameters:**
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `cursor` | UUID | (none) | Last event_id processed. Omit for start of retention window. |
 | `types` | string | all | Comma-separated event types. Supports glob: `property.*` |
-| `limit` | integer | 1000 | Max events per response. Max 10000. |
+| `limit` | integer | 100 | Max events per response. Max 10000. |
 
 **Response:**
 ```json
@@ -164,15 +172,16 @@ Poll the change feed.
       "entity_type": "property",
       "entity_id": "019539a0-b1c2-...",
       "payload": { "..." : "..." },
+      "actor": "crawler",
       "created_at": "2026-03-31T10:00:00Z"
     }
   ],
-  "next_cursor": "019539a1-...",
+  "cursor": "019539a1-...",
   "has_more": true
 }
 ```
 
-Consumers save `next_cursor` and pass it as `cursor` on the next poll. When `has_more` is false, the consumer is caught up.
+Consumers save `cursor` and pass it as `cursor` on the next poll. When `has_more` is false, the consumer is caught up.
 
 ### `POST /api/registry/crawl-request`
 
@@ -274,13 +283,14 @@ Events are written at the point of change, not reconstructed later:
 | Crawler diff (agent no longer in any adagents.json) | `agent.removed` |
 | Crawler diff (adagents.json content changed) | `publisher.adagents_changed` |
 | Crawler diff (authorization added/removed) | `authorization.granted`, `authorization.revoked` |
+| Authorization row body update | `authorization.modified` |
 | Crawler diff (agent inventory profile changed) | `agent.profile_updated` |
 | Catalog governance (dispute resolved, classification changed) | `property.updated` |
 | Staleness cron (90-day inactivity) | `property.stale` |
 | Resolve reactivation (stale property resolved) | `property.reactivated` |
 | Compliance heartbeat status transition | `agent.compliance_changed` |
 
-**Seed operations** do not write individual events. A single `catalog.seed_complete` summary event is written. Consumers who need full state after a seed should use `/catalog/sync`.
+**Seed operations** do not write individual registry feed events. Consumers who need full state after a seed should use `/catalog/sync`.
 
 ---
 

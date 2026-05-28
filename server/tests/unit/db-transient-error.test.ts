@@ -22,6 +22,9 @@ describe('isTransientConnectionError', () => {
     expect(
       isTransientConnectionError(new Error('Connection terminated due to connection timeout')),
     ).toBe(true);
+    expect(isTransientConnectionError(new Error('timeout exceeded when trying to connect'))).toBe(
+      true,
+    );
   });
 
   it('matches even when the message is wrapped with extra prefix or suffix', () => {

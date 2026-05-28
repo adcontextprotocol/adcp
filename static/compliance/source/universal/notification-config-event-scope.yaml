@@ -86,10 +86,10 @@ phases:
               sandbox: true
               notification_configs:
                 - subscriber_id: "delivery-reports"
-                  url: "https://buyer.example/webhooks/adcp/account"
+                  url: "https://example.com/webhooks/adcp/account"
                   event_types:
                     - "scheduled"
-                  active: true
+                  active: false
           idempotency_key: "$generate:uuid_v4#notification_config_event_scope_reject_scheduled"
           context:
             correlation_id: "notification_config_event_scope--reject_scheduled"
@@ -109,8 +109,9 @@ phases:
             path: "accounts[0].errors[0].code"
             allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
             description: "Media-buy-anchored event type is rejected as a correctable request validation error"
-          - check: field_present
+          - check: field_value
             path: "accounts[0].errors[0].field"
+            value: "notification_configs[0].event_types[0]"
             description: "Error identifies the invalid event_types field so SDKs can correct the registration"
           - check: field_value
             path: "context.correlation_id"

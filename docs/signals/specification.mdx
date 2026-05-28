@@ -75,9 +75,9 @@ Every signal request involves two roles:
 
 ### Identifiers
 
-- **`signal_agent_segment_id`**: Unique identifier for a signal. Signal agents MUST return this for each signal. Orchestrators MUST use this in `activate_signal` requests.
+- **`signal_agent_segment_id`**: Opaque signal handle issued by the signal source. Signals Protocol responses MUST return this for each signal and orchestrators MUST use it in `activate_signal` requests. For seller-offered media-buy signal targeting, buyers use `signal_ref` as the named signal reference and include `signal_agent_segment_id` only when the selected product option exposes a distinct execution handle.
 
-- **`activation_key`**: Key for campaign targeting. Signal agents MUST return this when `is_live: true` AND the caller has access to the deployment. Orchestrators MUST use this for targeting (not `signal_agent_segment_id`).
+- **`activation_key`**: Key for external deployment targeting. Signal agents MUST return this when `is_live: true` AND the caller has access to the deployment. Orchestrators MUST use this for platform or destination targeting (not `signal_agent_segment_id`). For seller-offered signals selected on a sales-agent media buy, use `packages[].targeting_overlay.signal_targeting_groups`; include `activation_key` only when the seller requires a prior activation key.
 
 ### Governance metadata
 
@@ -101,7 +101,7 @@ The Signals Protocol defines two tasks. See task reference pages for complete re
 Discover signals matching campaign criteria.
 
 **Requirements:**
-- Orchestrators MUST include `signal_spec` or `signal_ids`
+- Orchestrators MUST include `signal_spec`, `signal_refs`, or deprecated `signal_ids`
 - Signal agents MUST return all required fields per response schema
 - Signal agents MUST include `activation_key` when `is_live: true` AND caller has deployment access
 
@@ -165,7 +165,9 @@ A conformant Signals Protocol orchestrator MUST:
 1. Authenticate with signal agents
 2. Include required fields as defined in request schemas
 3. Handle async activation responses
-4. Use `activation_key` for campaign targeting
+4. Use `activation_key` for external deployment targeting, and use package-level `signal_targeting_groups` for seller-offered signal selection on sales-agent media buys
+
+When a seller-offered signal should be applied only to specific packages on a sales-agent buy, orchestrators SHOULD carry that selection in `create_media_buy.packages[].targeting_overlay.signal_targeting_groups`, including the selected signal `pricing_option_id` when required and the selected `signal_ref`. `get_signals` is the broad wholesale discovery surface, while the selected product's `signal_targeting_allowed`, optional inline `signal_targeting_options`, and `signal_targeting_rules` govern buy-time eligibility and pricing. `included_signals` is descriptive only: it identifies signals already bundled into or planned into the product, but does not make them selectable. If a wholesale product allows signal targeting but omits inline options, buyers use `get_signals` as the selectable signal feed. If the product option or `get_signals` result exposes a separate `signal_agent_segment_id` required by the seller, buyers echo it as an execution handle; otherwise `signal_ref` is sufficient. This is the package-level binding; `audience_include` and `audience_exclude` remain scoped to buyer-managed audiences from `sync_audiences`.
 
 ## Implementation Notes
 

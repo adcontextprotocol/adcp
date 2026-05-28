@@ -254,4 +254,30 @@ describe('AgentInventoryProfilesDatabase', () => {
       );
     });
   });
+
+  // ── deleteProfiles ──────────────────────────────────────────────
+
+  describe('deleteProfiles', () => {
+    it('deletes only the requested profiles', async () => {
+      mockedQuery.mockResolvedValueOnce(mockResult([], 2));
+
+      const deleted = await db.deleteProfiles([
+        'https://a.example.com',
+        'https://b.example.com',
+      ]);
+
+      expect(deleted).toBe(2);
+      expect(mockedQuery).toHaveBeenCalledWith(
+        expect.stringContaining('agent_url = ANY($1)'),
+        [['https://a.example.com', 'https://b.example.com']]
+      );
+    });
+
+    it('does not query when no profiles are requested', async () => {
+      const deleted = await db.deleteProfiles([]);
+
+      expect(deleted).toBe(0);
+      expect(mockedQuery).not.toHaveBeenCalled();
+    });
+  });
 });

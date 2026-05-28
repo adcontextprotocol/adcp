@@ -17,12 +17,15 @@ import {
   handleTestControllerRequest,
 } from '@adcp/sdk';
 import type { TestControllerStore } from '@adcp/sdk';
+import type { WebhookAuthentication, WebhookEmitResult } from '@adcp/sdk/server';
 import type { BrandReference } from '@adcp/sdk';
 import type {
   TrainingContext,
   ToolArgs,
   SessionState,
   MediaBuyState,
+  MediaBuyAvailableActionState,
+  PackageState,
   CreativeState,
   GovernancePlanState,
   AccountRef,
@@ -33,6 +36,10 @@ import type {
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
+import { getAccountNotificationSubscribers } from './account-handlers.js';
+import { emitAccountNotificationWebhook } from './webhooks.js';
+import { buildCatalog } from './product-factory.js';
+import { getAllSignals } from './signal-providers.js';
 
 // ── State machine transition tables ───────────────────────────────
 
@@ -86,6 +93,103 @@ export function getDeliverySimulation(session: SessionState, mediaBuyId: string)
 /** Get budget simulation data for an entity (used by get_account_financials). */
 export function getBudgetSimulation(session: SessionState, entityId: string): ComplyBudgetSimulation | undefined {
   return session.complyExtensions.budgetSimulations.get(entityId);
+}
+
+function getOrCreateDeliveryAccumulator(session: SessionState, mediaBuyId: string, currency: string): ComplyDeliveryAccumulator {
+  const ext = session.complyExtensions;
+  let cumulative = ext.deliverySimulations.get(mediaBuyId);
+  if (!cumulative) {
+    enforceMapCap(ext.deliverySimulations, mediaBuyId, 'delivery simulations');
+    cumulative = {
+      impressions: 0,
+      clicks: 0,
+      reportedSpend: { amount: 0, currency },
+      conversions: 0,
+    };
+    ext.deliverySimulations.set(mediaBuyId, cumulative);
+  }
+  return cumulative;
+}
+
+function applyExtendedDeliveryParams(cumulative: ComplyDeliveryAccumulator, params: Record<string, unknown>) {
+  if (typeof params.is_final === 'boolean') cumulative.isFinal = params.is_final;
+  if (typeof params.finalized_at === 'string') cumulative.finalizedAt = params.finalized_at;
+  if (typeof params.measurement_window === 'string') cumulative.measurementWindow = params.measurement_window;
+  if (typeof params.reach === 'number') cumulative.reach = params.reach;
+  if (typeof params.frequency === 'number') cumulative.frequency = params.frequency;
+  if (params.reach_window && typeof params.reach_window === 'object' && !Array.isArray(params.reach_window)) {
+    cumulative.reachWindow = params.reach_window as ComplyDeliveryAccumulator['reachWindow'];
+  }
+  if (params.viewability && typeof params.viewability === 'object' && !Array.isArray(params.viewability)) {
+    cumulative.viewability = params.viewability as ComplyDeliveryAccumulator['viewability'];
+  }
+}
+
+function extendedDeliverySnapshot(cumulative: ComplyDeliveryAccumulator): Record<string, unknown> {
+  return {
+    ...(cumulative.isFinal !== undefined ? { is_final: cumulative.isFinal } : {}),
+    ...(cumulative.finalizedAt ? { finalized_at: cumulative.finalizedAt } : {}),
+    ...(cumulative.measurementWindow ? { measurement_window: cumulative.measurementWindow } : {}),
+    ...(cumulative.reach !== undefined ? { reach: cumulative.reach } : {}),
+    ...(cumulative.frequency !== undefined ? { frequency: cumulative.frequency } : {}),
+    ...(cumulative.reachWindow ? { reach_window: cumulative.reachWindow } : {}),
+    ...(cumulative.viewability ? { viewability: cumulative.viewability } : {}),
+  };
+}
+
+function normalizeSeedPackage(pkg: Record<string, unknown>, mbStart: string, mbEnd: string): PackageState {
+  const packageId = String(pkg.packageId ?? pkg.package_id ?? `pkg_${randomUUID().slice(0, 8)}`);
+  const productId = String(pkg.productId ?? pkg.product_id ?? 'seeded_product');
+  const pricingOptionId = String(pkg.pricingOptionId ?? pkg.pricing_option_id ?? 'seeded_pricing');
+  const creativeAssignments = pkg.creativeAssignments ?? pkg.creative_assignments;
+  return {
+    packageId,
+    productId,
+    budget: typeof pkg.budget === 'number' ? pkg.budget : 0,
+    pricingOptionId,
+    bidPrice: typeof pkg.bidPrice === 'number' ? pkg.bidPrice : typeof pkg.bid_price === 'number' ? pkg.bid_price : undefined,
+    impressions: typeof pkg.impressions === 'number' ? pkg.impressions : undefined,
+    paused: typeof pkg.paused === 'boolean' ? pkg.paused : false,
+    canceled: typeof pkg.canceled === 'boolean' ? pkg.canceled : undefined,
+    startTime: typeof pkg.startTime === 'string' ? pkg.startTime : typeof pkg.start_time === 'string' ? pkg.start_time : mbStart,
+    endTime: typeof pkg.endTime === 'string' ? pkg.endTime : typeof pkg.end_time === 'string' ? pkg.end_time : mbEnd,
+    formatIds: Array.isArray(pkg.formatIds) ? pkg.formatIds as PackageState['formatIds'] : Array.isArray(pkg.format_ids) ? pkg.format_ids as PackageState['formatIds'] : undefined,
+    creativeAssignments: Array.isArray(creativeAssignments) ? creativeAssignments.map(String) : [],
+    targeting: (pkg.targeting ?? pkg.targeting_overlay) as PackageState['targeting'],
+    optimizationGoals: Array.isArray(pkg.optimizationGoals) ? pkg.optimizationGoals as PackageState['optimizationGoals'] : Array.isArray(pkg.optimization_goals) ? pkg.optimization_goals as PackageState['optimizationGoals'] : undefined,
+  };
+}
+
+function normalizeAvailableActions(actions: unknown): MediaBuyAvailableActionState[] | undefined {
+  if (!Array.isArray(actions)) return undefined;
+  const normalized: MediaBuyAvailableActionState[] = [];
+  for (const entry of actions) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const src = entry as Record<string, unknown>;
+    if (typeof src.action !== 'string') continue;
+    if (
+      src.mode !== 'self_serve'
+      && src.mode !== 'conditional_self_serve'
+      && src.mode !== 'requires_proposal'
+      && src.mode !== 'requires_approval'
+    ) continue;
+    const mode = src.mode;
+    const sla = src.sla && typeof src.sla === 'object' && !Array.isArray(src.sla)
+      ? src.sla as Record<string, unknown>
+      : undefined;
+    normalized.push({
+      action: src.action,
+      mode,
+      ...(sla && {
+        sla: {
+          ...(typeof sla.response_max === 'string' && { response_max: sla.response_max }),
+          ...(typeof sla.completion_max === 'string' && { completion_max: sla.completion_max }),
+        },
+      }),
+      ...(typeof src.terms_ref === 'string' && { terms_ref: src.terms_ref }),
+    });
+  }
+  return normalized.length ? normalized : undefined;
 }
 
 /** Get account status set by comply test controller. */
@@ -174,7 +278,124 @@ function validateTransition(
 
 // ── TestControllerStore factory ───────────────────────────────────
 
-function createStore(session: SessionState): TestControllerStore {
+function lifecycleReasonCode(prev: string, status: string): string {
+  if (status === 'approved') return 'review_passed';
+  if (status === 'pending_review') return 'seller_rereview';
+  if (status === 'archived') return 'seller_archive';
+  if (status === 'rejected') {
+    if (prev === 'processing') return 'processing_failure';
+    if (prev === 'pending_review') return 'review_failure';
+    return 'policy_revocation';
+  }
+  return 'policy_revocation';
+}
+
+function webhookAuthenticationFromConfig(
+  auth: { schemes: string[]; credentials?: string } | undefined,
+): WebhookAuthentication | undefined {
+  if (!auth?.credentials) return undefined;
+  const schemes = auth.schemes.map(s => s.toLowerCase().replace(/-/g, '_'));
+  if (schemes.includes('bearer')) return { type: 'bearer', token: auth.credentials };
+  if (schemes.includes('hmac_sha256')) return { type: 'hmac_sha256', secret: auth.credentials };
+  return undefined;
+}
+
+function redactWebhookActivityUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.username = '';
+    parsed.password = '';
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return '[invalid-url]';
+  }
+}
+
+function recordWebhookActivityResult(
+  creative: CreativeState,
+  base: Omit<NonNullable<CreativeState['webhookActivity']>[number], 'completed_at' | 'attempt' | 'status' | 'url' | 'http_status_code' | 'response_time_ms' | 'error_message'>,
+  subscriberUrl: string,
+  result: WebhookEmitResult | undefined,
+  error: unknown,
+): void {
+  const errorMessage = error instanceof Error ? error.message : (error ? String(error) : undefined);
+  recordCreativeWebhookActivity(creative, {
+    ...base,
+    completed_at: new Date().toISOString(),
+    attempt: result?.attempts ?? 1,
+    status: result?.delivered ? 'success' : 'failed',
+    url: redactWebhookActivityUrl(subscriberUrl),
+    ...(result?.final_status && { http_status_code: result.final_status }),
+    response_time_ms: 0,
+    payload_size_bytes: base.payload_size_bytes,
+    error_message: errorMessage ?? (result?.errors.length ? result.errors.join('; ') : null),
+  });
+}
+
+async function emitCreativeStatusChanged(
+  sessionKey: string,
+  principal: string | undefined,
+  creative: CreativeState,
+  prev: string,
+  status: string,
+  reasonDetail?: string,
+): Promise<void> {
+  if (!['processing', 'pending_review', 'approved'].includes(prev)) return;
+  const subscribers = getAccountNotificationSubscribers(sessionKey, 'creative.status_changed', principal, creative.accountId, creative.accountRef);
+  if (subscribers.length === 0) return;
+  const firedAt = new Date().toISOString();
+  const notificationId = `cs_${creative.creativeId}_${randomUUID()}`;
+  for (const subscriber of subscribers) {
+    const idempotencyKey = randomUUID();
+    const payload: Record<string, unknown> = {
+      idempotency_key: idempotencyKey,
+      notification_id: notificationId,
+      notification_type: 'creative.status_changed',
+      fired_at: firedAt,
+      subscriber_id: subscriber.subscriberId,
+      account_id: subscriber.accountId,
+      creative_id: creative.creativeId,
+      transition: {
+        from: prev,
+        to: status,
+        observed_at: firedAt,
+      },
+      reason_code: lifecycleReasonCode(prev, status),
+      ...(reasonDetail && { reason_detail: reasonDetail }),
+      initiator: 'seller',
+    };
+    const activityBase = {
+      idempotency_key: idempotencyKey,
+      subscriber_id: subscriber.subscriberId,
+      fired_at: firedAt,
+      notification_type: 'creative.status_changed',
+      payload_size_bytes: Buffer.byteLength(JSON.stringify(payload), 'utf8'),
+    } as const;
+    try {
+      const result = await emitAccountNotificationWebhook({
+        url: subscriber.url,
+        payload,
+        operationId: `${subscriber.accountId}:${subscriber.subscriberId}:${notificationId}:${idempotencyKey}`,
+        notificationType: 'creative.status_changed',
+        authentication: webhookAuthenticationFromConfig(subscriber.authentication),
+      });
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, result, undefined);
+    } catch (err) {
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, undefined, err);
+    }
+  }
+}
+
+function recordCreativeWebhookActivity(
+  creative: CreativeState,
+  record: NonNullable<CreativeState['webhookActivity']>[number],
+): void {
+  creative.webhookActivity = [record, ...(creative.webhookActivity ?? [])].slice(0, 50);
+}
+
+function createStore(session: SessionState, sessionKey: string, principal?: string): TestControllerStore {
   return {
     async forceCreativeStatus(creativeId, status, rejectionReason) {
       const creative = session.creatives.get(creativeId);
@@ -195,6 +416,7 @@ function createStore(session: SessionState): TestControllerStore {
 
       creative.status = status;
       propagateCreativeImpairment(session, creativeId, prev, status, rejectionReason);
+      await emitCreativeStatusChanged(sessionKey, principal, creative, prev, status, rejectionReason);
       return { success: true, previous_state: prev, current_state: status, message: `Creative ${creativeId} transitioned from ${prev} to ${status}` };
     },
 
@@ -295,19 +517,9 @@ function createStore(session: SessionState): TestControllerStore {
       const clicks = params.clicks || 0;
       const conversions = params.conversions || 0;
       const reportedSpend = params.reported_spend;
+      const typedParams = params as Record<string, unknown>;
 
-      const ext = session.complyExtensions;
-      let cumulative = ext.deliverySimulations.get(mediaBuyId);
-      if (!cumulative) {
-        enforceMapCap(ext.deliverySimulations, mediaBuyId, 'delivery simulations');
-        cumulative = {
-          impressions: 0,
-          clicks: 0,
-          reportedSpend: { amount: 0, currency: reportedSpend?.currency || mb.currency },
-          conversions: 0,
-        };
-        ext.deliverySimulations.set(mediaBuyId, cumulative);
-      }
+      const cumulative = getOrCreateDeliveryAccumulator(session, mediaBuyId, reportedSpend?.currency || mb.currency);
 
       cumulative.impressions += impressions;
       cumulative.clicks += clicks;
@@ -316,12 +528,20 @@ function createStore(session: SessionState): TestControllerStore {
         cumulative.reportedSpend.amount += reportedSpend.amount;
         cumulative.reportedSpend.currency = reportedSpend.currency;
       }
+      applyExtendedDeliveryParams(cumulative, typedParams);
 
       const simulated: Record<string, unknown> = {};
       if (impressions) simulated.impressions = impressions;
       if (clicks) simulated.clicks = clicks;
       if (reportedSpend) simulated.reported_spend = reportedSpend;
       if (conversions) simulated.conversions = conversions;
+      if (typedParams.reach !== undefined) simulated.reach = typedParams.reach;
+      if (typedParams.frequency !== undefined) simulated.frequency = typedParams.frequency;
+      if (typedParams.reach_window !== undefined) simulated.reach_window = typedParams.reach_window;
+      if (typedParams.viewability !== undefined) simulated.viewability = typedParams.viewability;
+      if (typedParams.is_final !== undefined) simulated.is_final = typedParams.is_final;
+      if (typedParams.finalized_at !== undefined) simulated.finalized_at = typedParams.finalized_at;
+      if (typedParams.measurement_window !== undefined) simulated.measurement_window = typedParams.measurement_window;
 
       return {
         success: true,
@@ -331,6 +551,7 @@ function createStore(session: SessionState): TestControllerStore {
           clicks: cumulative.clicks,
           reported_spend: cumulative.reportedSpend,
           conversions: cumulative.conversions,
+          ...extendedDeliverySnapshot(cumulative),
         },
         message: `Delivery simulated for ${mediaBuyId}: ${impressions} impressions, ${clicks} clicks${reportedSpend ? `, $${reportedSpend.amount.toFixed(2)} spend` : ''}`,
       };
@@ -483,6 +704,16 @@ function createStore(session: SessionState): TestControllerStore {
       enforceMapCap(session.mediaBuys, mediaBuyId, 'media buys');
       const existing = session.mediaBuys.get(mediaBuyId);
       const now = new Date().toISOString();
+      const startTime = (fx.start_time as string | undefined) ?? existing?.startTime ?? now;
+      const endTime =
+        (fx.end_time as string | undefined)
+        ?? existing?.endTime
+        ?? new Date(Date.now() + 30 * 86_400_000).toISOString();
+      const packages = Array.isArray(fx.packages)
+        ? fx.packages
+            .filter(pkg => pkg && typeof pkg === 'object' && !Array.isArray(pkg))
+            .map(pkg => normalizeSeedPackage(pkg as Record<string, unknown>, startTime, endTime))
+        : existing?.packages ?? [];
       session.mediaBuys.set(mediaBuyId, {
         mediaBuyId,
         accountRef:
@@ -492,13 +723,10 @@ function createStore(session: SessionState): TestControllerStore {
         brandRef: (fx.brand as BrandRef | undefined) ?? existing?.brandRef,
         status: (fx.status as string | undefined) ?? existing?.status ?? 'active',
         currency: (fx.currency as string | undefined) ?? existing?.currency ?? 'USD',
-        packages: (fx.packages as MediaBuyState['packages']) ?? existing?.packages ?? [],
-        startTime:
-          (fx.start_time as string | undefined) ?? existing?.startTime ?? now,
-        endTime:
-          (fx.end_time as string | undefined)
-          ?? existing?.endTime
-          ?? new Date(Date.now() + 30 * 86_400_000).toISOString(),
+        packages,
+        availableActions: normalizeAvailableActions(fx.available_actions) ?? existing?.availableActions,
+        startTime,
+        endTime,
         revision: existing?.revision ?? 1,
         confirmedAt: existing?.confirmedAt ?? now,
         createdAt: existing?.createdAt ?? now,
@@ -526,7 +754,21 @@ function createStore(session: SessionState): TestControllerStore {
  * adcontextprotocol/adcp-client — the dedup below means it is safe to leave this
  * entry in place during the transition; remove once a release has landed and the
  * cross-impl tests no longer rely on it). */
-const LOCAL_SCENARIOS = ['force_create_media_buy_arm', 'force_task_completion', 'seed_creative_format'] as const;
+const LOCAL_SCENARIOS = [
+  'force_create_media_buy_arm',
+  'force_task_completion',
+  'force_creative_purge',
+  'force_wholesale_feed_webhook',
+  'seed_creative_format',
+  'seed_measurement_catalog',
+  'query_provenance_audit_observations',
+] as const;
+
+function localScenariosFor(ctx: TrainingContext): string[] {
+  return ctx.storyboardCompat?.version === '3.0'
+    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'query_provenance_audit_observations')
+    : [...LOCAL_SCENARIOS];
+}
 
 // ── Tool definition ───────────────────────────────────────────────
 
@@ -593,7 +835,10 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   // (`deterministic_testing`, etc.) which don't include `account` at all
   // on error-surface probes.
   const account = rawArgs.account as { sandbox?: boolean } | undefined;
-  if (account && account.sandbox === false) {
+  const params = (rawArgs.params ?? {}) as Record<string, unknown>;
+  const isLiveModeProbe = rawArgs.scenario === 'force_creative_status'
+    && params.creative_id === 'comply-live-mode-probe-000';
+  if ((account && account.sandbox === false) || isLiveModeProbe) {
     return {
       success: false,
       error: 'FORBIDDEN',
@@ -613,6 +858,39 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
   if (scenario === 'force_task_completion') {
     return handleForceTaskCompletion(sessionKey, rawArgs);
+  }
+  if (scenario === 'force_creative_purge') {
+    if (ctx.storyboardCompat?.version === '3.0') {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: 'force_creative_purge is not available in AdCP 3.0 compatibility mode',
+      };
+    }
+    return handleForceCreativePurge(session, sessionKey, ctx.principal, rawArgs);
+  }
+  if (scenario === 'force_wholesale_feed_webhook') {
+    if (ctx.storyboardCompat?.version === '3.0') {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: 'force_wholesale_feed_webhook is not available in AdCP 3.0 compatibility mode',
+      };
+    }
+    return handleForceWholesaleFeedWebhook(sessionKey, ctx.principal, rawArgs);
+  }
+  if (scenario === 'seed_measurement_catalog') {
+    return handleSeedMeasurementCatalog(session, rawArgs);
+  }
+  if (scenario === 'query_provenance_audit_observations') {
+    if (ctx.storyboardCompat?.version === '3.0') {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: 'query_provenance_audit_observations is not available in AdCP 3.0 compatibility mode',
+      };
+    }
+    return handleQueryProvenanceAuditObservations(session, rawArgs);
   }
   // seed_creative_format is a training-agent extension not in the SDK's
   // CONTROLLER_SCENARIOS. Handle it before the SDK dispatcher so the SDK
@@ -655,30 +933,59 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     return { success: true, message: `Creative format "${formatId}" seeded — list_creative_formats will use the seeded catalog process-wide` };
   }
 
-  // Pre-capture vendor_metric_values from simulate_delivery before the SDK dispatcher
-  // strips them. The SDK's TestControllerStore.simulateDelivery interface only accepts
-  // standard scalar params; vendor_metric_values passthrough is a future adcp/client
-  // addition. Until then, read from rawArgs here and store in the accumulator directly
-  // so task-handlers.ts can emit them in get_media_buy_delivery by_package entries.
+  // Pre-capture extended simulate_delivery fields before the SDK dispatcher strips
+  // unknown params. The SDK's TestControllerStore.simulateDelivery interface can lag
+  // this repo's controller schema, so rawArgs remains the compatibility path for
+  // new delivery metrics until the SDK accepts them natively.
   if (scenario === 'simulate_delivery') {
     const params = (rawArgs.params ?? {}) as Record<string, unknown>;
     const mediaBuyId = params.media_buy_id as string | undefined;
     const vendorMetricValues = params.vendor_metric_values;
     const mb = mediaBuyId ? findMediaBuy(session, mediaBuyId) : undefined;
-    if (mb && Array.isArray(vendorMetricValues) && vendorMetricValues.length > 0) {
-      const ext = session.complyExtensions;
-      let cumulative = ext.deliverySimulations.get(mediaBuyId!);
-      if (!cumulative) {
-        enforceMapCap(ext.deliverySimulations, mediaBuyId!, 'delivery simulations');
-        cumulative = { impressions: 0, clicks: 0, reportedSpend: { amount: 0, currency: mb.currency }, conversions: 0 };
-        ext.deliverySimulations.set(mediaBuyId!, cumulative);
+    if (mb) {
+      const cumulative = getOrCreateDeliveryAccumulator(session, mediaBuyId!, mb.currency);
+      applyExtendedDeliveryParams(cumulative, params);
+      if (Array.isArray(vendorMetricValues) && vendorMetricValues.length > 0) {
+        cumulative.vendorMetricValues = vendorMetricValues;
       }
-      cumulative.vendorMetricValues = vendorMetricValues;
     }
   }
 
-  const store = createStore(session);
+  const store = createStore(session, sessionKey, ctx.principal);
   const sdkResponse = await handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
+
+  if (
+    scenario === 'simulate_delivery'
+    && sdkResponse
+    && typeof sdkResponse === 'object'
+    && (sdkResponse as { success?: boolean }).success === true
+  ) {
+    const params = (rawArgs.params ?? {}) as Record<string, unknown>;
+    const mediaBuyId = params.media_buy_id as string | undefined;
+    const cumulative = mediaBuyId ? getDeliverySimulation(session, mediaBuyId) : undefined;
+    const simulatedExtras: Record<string, unknown> = {};
+    if (params.reach !== undefined) simulatedExtras.reach = params.reach;
+    if (params.frequency !== undefined) simulatedExtras.frequency = params.frequency;
+    if (params.reach_window !== undefined) simulatedExtras.reach_window = params.reach_window;
+    if (params.viewability !== undefined) simulatedExtras.viewability = params.viewability;
+    if (params.is_final !== undefined) simulatedExtras.is_final = params.is_final;
+    if (params.finalized_at !== undefined) simulatedExtras.finalized_at = params.finalized_at;
+    if (params.measurement_window !== undefined) simulatedExtras.measurement_window = params.measurement_window;
+    if (Object.keys(simulatedExtras).length > 0 || cumulative) {
+      const response = sdkResponse as unknown as Record<string, unknown>;
+      return {
+        ...response,
+        simulated: {
+          ...((response.simulated && typeof response.simulated === 'object') ? response.simulated as Record<string, unknown> : {}),
+          ...simulatedExtras,
+        },
+        cumulative: {
+          ...((response.cumulative && typeof response.cumulative === 'object') ? response.cumulative as Record<string, unknown> : {}),
+          ...(cumulative ? extendedDeliverySnapshot(cumulative) : {}),
+        },
+      };
+    }
+  }
 
   // Augment list_scenarios with our local scenarios so storyboards detect support.
   // The SDK answers from store-method presence, which doesn't see the local handlers.
@@ -691,11 +998,449 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     && (sdkResponse as { success?: boolean }).success === true
     && Array.isArray((sdkResponse as { scenarios?: unknown }).scenarios)
   ) {
-    const r = sdkResponse as { success: true; scenarios: string[] } & Record<string, unknown>;
-    return { ...r, scenarios: Array.from(new Set([...r.scenarios, ...LOCAL_SCENARIOS])) };
+    const r = sdkResponse as unknown as { success: true; scenarios: string[] } & Record<string, unknown>;
+    return { ...r, scenarios: Array.from(new Set([...r.scenarios, ...localScenariosFor(ctx)])) };
   }
 
   return sdkResponse;
+}
+
+function entityTypeForWholesaleEvent(eventType: string): 'product' | 'signal' | 'feed' | null {
+  if (eventType.startsWith('product.')) return 'product';
+  if (eventType.startsWith('signal.')) return 'signal';
+  if (eventType === 'wholesale_feed.bulk_change') return 'feed';
+  return null;
+}
+
+function defaultWholesaleProduct(productId: string): Record<string, unknown> {
+  const product = buildCatalog()[0]?.product;
+  return product
+    ? { ...product, product_id: productId }
+    : {
+      product_id: productId,
+      name: 'Training wholesale product',
+      description: 'Synthetic wholesale feed product emitted by the training agent.',
+      channels: ['display'],
+      delivery_type: 'non_guaranteed',
+      pricing_options: [{ pricing_option_id: 'po_training_cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 12 }],
+    };
+}
+
+function defaultWholesaleSignal(signalId: string): Record<string, unknown> {
+  const signal = getAllSignals()[0];
+  const providerDomain = signal?.providerDomain ?? 'training-signals.example';
+  return {
+    signal_agent_segment_id: signalId,
+    signal_ref: {
+      scope: 'data_provider',
+      data_provider_domain: providerDomain,
+      signal_id: signalId,
+    },
+    name: signal?.name ?? 'Training wholesale signal',
+    description: signal?.description ?? 'Synthetic wholesale feed signal emitted by the training agent.',
+    value_type: signal?.valueType ?? 'binary',
+    signal_type: signal?.signalType ?? 'marketplace',
+    data_provider: signal?.providerName ?? 'Training Signals',
+    coverage_percentage: signal?.coveragePercentage ?? 10,
+    deployments: [{
+      type: 'agent',
+      agent_url: getAgentUrl(),
+      is_live: false,
+      estimated_activation_duration_minutes: 0,
+    }],
+    pricing_options: (signal?.pricingOptions ?? [{ pricingOptionId: 'po_training_signal_cpm', model: 'cpm', cpm: 1.5, currency: 'USD' }]).map(po => ({
+      pricing_option_id: po.pricingOptionId,
+      model: po.model,
+      currency: po.currency,
+      ...(po.model === 'cpm' && { cpm: po.cpm }),
+      ...(po.model === 'percent_of_media' && { percent: po.percent, ...(po.maxCpm !== undefined && { max_cpm: po.maxCpm }) }),
+      ...(po.model === 'flat_fee' && { amount: po.amount, period: po.period }),
+    })),
+    ...(signal?.valueType === 'categorical' && signal.categories ? { categories: signal.categories } : {}),
+    ...(signal?.valueType === 'numeric' && signal.range ? { range: signal.range } : {}),
+  };
+}
+
+function defaultWholesaleEventPayload(eventType: string, entityId: string, appliesTo: Record<string, unknown>): Record<string, unknown> {
+  if (eventType === 'product.created' || eventType === 'product.updated') {
+    return {
+      product_id: entityId,
+      product: defaultWholesaleProduct(entityId),
+      ...(eventType === 'product.updated' && { changed_fields: ['pricing_options'] }),
+      applies_to: appliesTo,
+    };
+  }
+  if (eventType === 'product.priced') {
+    return {
+      product_id: entityId,
+      pricing_options: [{ pricing_option_id: 'po_training_cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 12 }],
+      applies_to: appliesTo,
+    };
+  }
+  if (eventType === 'signal.created' || eventType === 'signal.updated') {
+    return {
+      signal_agent_segment_id: entityId,
+      signal_ref: {
+        scope: 'data_provider',
+        data_provider_domain: getAllSignals()[0]?.providerDomain ?? 'training-signals.example',
+        signal_id: entityId,
+      },
+      signal: defaultWholesaleSignal(entityId),
+      ...(eventType === 'signal.updated' && { changed_fields: ['pricing_options'] }),
+      applies_to: appliesTo,
+    };
+  }
+  if (eventType === 'signal.priced') {
+    return {
+      signal_agent_segment_id: entityId,
+      pricing_options: [{ pricing_option_id: 'po_training_signal_cpm', model: 'cpm', cpm: 1.5, currency: 'USD' }],
+      applies_to: appliesTo,
+    };
+  }
+  if (eventType === 'wholesale_feed.bulk_change') {
+    return {
+      summary: 'Training wholesale feed refresh',
+      affected_entity_type: entityId === 'signal' ? 'signal' : 'product',
+      affected_count: 1,
+      recommendation: 'wholesale_resync',
+      applies_to: appliesTo,
+    };
+  }
+  if (eventType.startsWith('product.')) return { product_id: entityId, applies_to: appliesTo };
+  if (eventType.startsWith('signal.')) return { signal_agent_segment_id: entityId, applies_to: appliesTo };
+  return { applies_to: appliesTo };
+}
+
+async function handleForceWholesaleFeedWebhook(
+  sessionKey: string,
+  principal: string | undefined,
+  rawArgs: Record<string, unknown>,
+): Promise<object> {
+  const params = (rawArgs.params ?? {}) as Record<string, unknown>;
+  const eventType = typeof params.event_type === 'string' ? params.event_type : undefined;
+  if (!eventType) {
+    return { success: false, error: 'INVALID_PARAMS', error_detail: 'force_wholesale_feed_webhook requires params.event_type' };
+  }
+  const entityType = entityTypeForWholesaleEvent(eventType);
+  if (!entityType) {
+    return { success: false, error: 'INVALID_PARAMS', error_detail: `Unsupported wholesale feed event type: ${eventType}` };
+  }
+  const notificationType = eventType as Parameters<typeof getAccountNotificationSubscribers>[1];
+  const accountRef = (rawArgs.account ?? params.account) as AccountRef | undefined;
+  const subscribers = getAccountNotificationSubscribers(sessionKey, notificationType, principal, undefined, accountRef);
+  const firedAt = new Date().toISOString();
+  const notificationId = randomUUID();
+  const cacheScope = params.cache_scope === 'account' ? 'account' : 'public';
+  const appliesTo = cacheScope === 'account'
+    ? { scope: 'account', ...(typeof params.account_id === 'string' ? { account_ids: [params.account_id] } : {}) }
+    : { scope: 'public' };
+  const entityId = typeof params.entity_id === 'string'
+    ? params.entity_id
+    : entityType === 'product'
+      ? 'prod_training_wholesale'
+      : entityType === 'signal'
+        ? 'seg_training_wholesale'
+        : 'product';
+  const eventPayload = (params.payload && typeof params.payload === 'object')
+    ? params.payload as Record<string, unknown>
+    : defaultWholesaleEventPayload(eventType, entityId, appliesTo);
+  const event = {
+    event_id: notificationId,
+    event_type: eventType,
+    entity_type: entityType,
+    entity_id: entityId,
+    created_at: firedAt,
+    payload: eventPayload,
+  };
+  const basePayload = {
+    notification_id: notificationId,
+    notification_type: eventType,
+    fired_at: firedAt,
+    wholesale_feed_version: typeof params.wholesale_feed_version === 'string' ? params.wholesale_feed_version : `training-${eventType}-v1`,
+    cache_scope: cacheScope,
+    event,
+  };
+
+  let delivered = 0;
+  const failures: string[] = [];
+  for (const subscriber of subscribers) {
+    const idempotencyKey = `whk_${randomUUID()}`;
+    const payload = {
+      ...basePayload,
+      idempotency_key: idempotencyKey,
+      subscriber_id: subscriber.subscriberId,
+      account_id: subscriber.accountId,
+    };
+    try {
+      const result = await emitAccountNotificationWebhook({
+        url: subscriber.url,
+        payload,
+        operationId: `${subscriber.accountId}:${subscriber.subscriberId}:${notificationId}:${idempotencyKey}`,
+        notificationType: eventType,
+        authentication: webhookAuthenticationFromConfig(subscriber.authentication),
+      });
+      if (result.delivered) {
+        delivered += 1;
+      } else {
+        failures.push(...result.errors);
+      }
+    } catch (err) {
+      failures.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return {
+    success: failures.length === 0,
+    notification_type: eventType,
+    subscribers: subscribers.length,
+    delivered,
+    ...(failures.length > 0 && { failures }),
+  };
+}
+
+function measurementVendorCatalogKey(vendor: { domain?: unknown; brand_id?: unknown }): string | null {
+  const domain = vendor.domain;
+  if (typeof domain !== 'string' || domain.length === 0) return null;
+  const brandId = typeof vendor.brand_id === 'string' ? vendor.brand_id : '';
+  return `${domain.toLowerCase()}|${brandId}`;
+}
+
+function canonicalJson(value: unknown, seen = new WeakSet<object>()): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? String(value);
+  if (seen.has(value)) return '"__cycle__"';
+  seen.add(value);
+  if (Array.isArray(value)) return `[${value.map(v => canonicalJson(v, seen)).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  const entries = Object.keys(record)
+    .sort()
+    .map(k => `${JSON.stringify(k)}:${canonicalJson(record[k], seen)}`);
+  return `{${entries.join(',')}}`;
+}
+
+function handleSeedMeasurementCatalog(session: SessionState, rawArgs: Record<string, unknown>): object {
+  const params = rawArgs.params as Record<string, unknown> | undefined;
+  if (!params || typeof params !== 'object') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'seed_measurement_catalog requires params',
+    };
+  }
+
+  const vendor = params.vendor as { domain?: unknown; brand_id?: unknown } | undefined;
+  const key = vendor ? measurementVendorCatalogKey(vendor) : null;
+  if (!vendor || !key) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'seed_measurement_catalog requires params.vendor.domain',
+    };
+  }
+  const vendorDomain = (vendor.domain as string).toLowerCase();
+
+  const rawMetrics = params.metrics;
+  if (!Array.isArray(rawMetrics)) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'seed_measurement_catalog requires params.metrics[]',
+    };
+  }
+  if (rawMetrics.length === 0) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'seed_measurement_catalog requires at least one metric',
+    };
+  }
+
+  const metrics: Array<{ metric_id: string; [key: string]: unknown }> = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < rawMetrics.length; i++) {
+    const metric = rawMetrics[i];
+    if (!metric || typeof metric !== 'object' || Array.isArray(metric)) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: `seed_measurement_catalog params.metrics[${i}] must be an object`,
+      };
+    }
+    const entry = metric as Record<string, unknown>;
+    if (typeof entry.metric_id !== 'string' || entry.metric_id.length === 0) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: `seed_measurement_catalog params.metrics[${i}].metric_id is required`,
+      };
+    }
+    if (seen.has(entry.metric_id)) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: `seed_measurement_catalog duplicate metric_id "${entry.metric_id}"`,
+      };
+    }
+    seen.add(entry.metric_id);
+    metrics.push({ ...entry, metric_id: entry.metric_id });
+  }
+  metrics.sort((a, b) => a.metric_id.localeCompare(b.metric_id));
+
+  const nextCatalog = {
+    vendor: {
+      domain: vendorDomain,
+      ...(typeof vendor.brand_id === 'string' && { brand_id: vendor.brand_id }),
+    },
+    metrics,
+  };
+  const existing = session.complyExtensions.seededMeasurementCatalogs.get(key);
+  if (existing) {
+    if (canonicalJson(existing) !== canonicalJson(nextCatalog)) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: `Measurement catalog for ${vendorDomain} diverges from the previously seeded fixture`,
+      };
+    }
+    return {
+      success: true,
+      message: 'Fixture re-seeded (equivalent)',
+    };
+  }
+
+  enforceMapCap(session.complyExtensions.seededMeasurementCatalogs, key, 'seeded measurement catalogs');
+  session.complyExtensions.seededMeasurementCatalogs.set(key, nextCatalog);
+
+  return {
+    success: true,
+    message: `Measurement catalog for ${vendorDomain} seeded with ${metrics.length} metric(s)`,
+  };
+}
+
+function purgeReasonCode(kind: 'soft' | 'hard', supplied: unknown): string {
+  if (typeof supplied === 'string' && supplied.length > 0) return supplied;
+  return kind === 'hard' ? 'legal_erasure' : 'retention_expired';
+}
+
+async function emitCreativePurged(
+  sessionKey: string,
+  principal: string | undefined,
+  creative: CreativeState,
+  purgeKind: 'soft' | 'hard',
+  reasonCode: string,
+  purgedAt: string,
+  reasonDetail?: string,
+): Promise<void> {
+  const subscribers = getAccountNotificationSubscribers(sessionKey, 'creative.purged', principal, creative.accountId, creative.accountRef);
+  if (subscribers.length === 0) return;
+  const notificationId = `cp_${creative.creativeId}_${randomUUID()}`;
+  for (const subscriber of subscribers) {
+    const idempotencyKey = randomUUID();
+    const payload: Record<string, unknown> = {
+      idempotency_key: idempotencyKey,
+      notification_id: notificationId,
+      notification_type: 'creative.purged',
+      fired_at: purgedAt,
+      subscriber_id: subscriber.subscriberId,
+      account_id: subscriber.accountId,
+      creative_id: creative.creativeId,
+      purge_kind: purgeKind,
+      purged_at: purgedAt,
+      reason_code: reasonCode,
+      ...(reasonDetail && { reason_detail: reasonDetail }),
+      initiator: purgeKind === 'hard' ? 'seller' : 'system',
+    };
+    const activityBase = {
+      idempotency_key: idempotencyKey,
+      subscriber_id: subscriber.subscriberId,
+      fired_at: purgedAt,
+      notification_type: 'creative.purged',
+      payload_size_bytes: Buffer.byteLength(JSON.stringify(payload), 'utf8'),
+    } as const;
+    try {
+      const result = await emitAccountNotificationWebhook({
+        url: subscriber.url,
+        payload,
+        operationId: `${subscriber.accountId}:${subscriber.subscriberId}:${notificationId}:${idempotencyKey}`,
+        notificationType: 'creative.purged',
+        authentication: webhookAuthenticationFromConfig(subscriber.authentication),
+      });
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, result, undefined);
+    } catch (err) {
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, undefined, err);
+    }
+  }
+}
+
+async function handleForceCreativePurge(session: SessionState, sessionKey: string, principal: string | undefined, rawArgs: Record<string, unknown>): Promise<object> {
+  const params = rawArgs.params as Record<string, unknown> | undefined;
+  if (!params || typeof params !== 'object') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'force_creative_purge requires params',
+    };
+  }
+
+  const creativeId = params.creative_id;
+  if (typeof creativeId !== 'string' || creativeId.length === 0) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'creative_id is required',
+    };
+  }
+  const creative = session.creatives.get(creativeId);
+  if (!creative) {
+    return {
+      success: false,
+      error: 'NOT_FOUND',
+      current_state: null,
+      error_detail: `Creative ${creativeId} not found`,
+    };
+  }
+
+  const rawKind = params.purge_kind ?? 'soft';
+  if (rawKind !== 'soft' && rawKind !== 'hard') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      current_state: creative.status,
+      error_detail: "purge_kind must be 'soft' or 'hard'",
+    };
+  }
+  const purgeKind = rawKind;
+  const reasonCode = purgeReasonCode(purgeKind, params.reason_code);
+  const reasonDetail = typeof params.reason_detail === 'string' ? params.reason_detail : undefined;
+  const purgedAt = new Date().toISOString();
+  const previousState = creative.purge ? 'purged' : creative.status;
+  if (creative.purge) {
+    return {
+      success: true,
+      previous_state: previousState,
+      current_state: 'purged',
+      message: `Creative ${creativeId} is already purged`,
+    };
+  }
+
+  if (purgeKind === 'hard') {
+    session.creatives.delete(creativeId);
+    session.complyExtensions.provenanceAuditObservations.delete(creativeId);
+  } else {
+    creative.purge = {
+      kind: 'soft',
+      at: purgedAt,
+      reasonCode,
+    };
+  }
+  await emitCreativePurged(sessionKey, principal, creative, purgeKind, reasonCode, purgedAt, reasonDetail);
+
+  return {
+    success: true,
+    previous_state: previousState,
+    current_state: 'purged',
+    purged: { creative_id: creativeId, purge_kind: purgeKind, purged_at: purgedAt, reason_code: reasonCode },
+    message: `Creative ${creativeId} purged (${purgeKind})`,
+  };
 }
 
 /**
@@ -912,6 +1657,40 @@ function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, u
     previous_state: 'submitted',
     current_state: 'completed',
     message: `Task ${taskId} transitioned from submitted to completed`,
+  };
+}
+
+function handleQueryProvenanceAuditObservations(session: SessionState, rawArgs: Record<string, unknown>): object {
+  const params = rawArgs.params as Record<string, unknown> | undefined;
+  if (!params || typeof params !== 'object') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'query_provenance_audit_observations requires params',
+    };
+  }
+
+  const creativeId = params.creative_id;
+  if (typeof creativeId !== 'string' || creativeId.length === 0) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'creative_id is required',
+    };
+  }
+
+  if (!session.creatives.has(creativeId)) {
+    return {
+      success: false,
+      error: 'NOT_FOUND',
+      error_detail: `Creative "${creativeId}" not found in this sandbox session`,
+    };
+  }
+
+  return {
+    success: true,
+    creative_id: creativeId,
+    audit_observations: session.complyExtensions.provenanceAuditObservations.get(creativeId) ?? [],
   };
 }
 

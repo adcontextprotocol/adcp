@@ -59,12 +59,12 @@ The network decides which platform serves each impression based on context, rele
 
 ## Account model for networks
 
-Networks typically use implicit accounts (`require_operator_auth: false`). The buyer agent is trusted and declares brands via `sync_accounts`. The network then manages its own accounts with each underlying AI platform:
+Networks typically use buyer-declared accounts (`require_operator_auth: false`). The buyer agent is trusted and declares brands via `sync_accounts`. The network then manages its own account-id namespaces with each underlying AI platform:
 
 ```
-Buyer agent -> Network (implicit accounts, agent-trusted)
-Network -> AI Platform A (explicit accounts, operator auth)
-Network -> AI Platform B (explicit accounts, operator auth)
+Buyer agent -> Network (buyer-declared accounts, agent-trusted)
+Network -> AI Platform A (account-id namespace, operator auth)
+Network -> AI Platform B (account-id namespace, operator auth)
 ```
 
 Declare capabilities accordingly:

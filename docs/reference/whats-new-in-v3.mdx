@@ -305,7 +305,7 @@ This page covers the full v2 → v3 shift. If you already adopted `3.0.0-rc.1`, 
 
 ### Planning, accounts, and sandbox refinements
 
-`account_resolution` is removed; buyers now use `require_operator_auth` to determine the auth and account model. Sandbox support moves to `account.sandbox`, and sandbox can participate in the natural account key for implicit-account flows. Product discovery adds `preferred_delivery_types`, `exclusivity`, and `time_budget`, with `incomplete` in responses when the seller cannot finish within the requested budget. Packages and product allocations can now carry per-package `start_time` / `end_time`, and `delivery_measurement` becomes optional on products.
+`account_resolution` is removed; buyers now use `require_operator_auth` to determine the auth model and initial account-reference shape. Sandbox support moves to `account.sandbox`, and sandbox can participate in the natural account key for buyer-declared account flows. Product discovery adds `preferred_delivery_types`, `exclusivity`, and `time_budget`, with `incomplete` in responses when the seller cannot finish within the requested budget. Packages and product allocations can now carry per-package `start_time` / `end_time`, and `delivery_measurement` becomes optional on products.
 
 ### Compliance and governance refinements
 
@@ -715,7 +715,7 @@ Brand `tone` is now an object type only — string format is removed. Structured
 
 ### Account resolution removed
 
-`account_resolution` capability field is removed. `require_operator_auth` now determines both the auth model and account reference style: `true` means explicit accounts (discover via `list_accounts`, pass `account_id`), `false` means implicit accounts (declare via `sync_accounts`, pass natural key).
+`account_resolution` capability field is removed. `require_operator_auth` now determines the auth model and account reference style: `true` means account-id namespaces (discover via `list_accounts` when exposed, pass `account_id`), `false` means buyer-declared accounts (declare via `sync_accounts`, pass natural key).
 
 | v2/beta/rc.1 field | v3 rc.2 field |
 |---------------------|---------------|

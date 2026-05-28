@@ -627,6 +627,491 @@ async function runTests() {
 
   log('');
 
+  log('SignalRef scope hygiene:', 'info');
+  await testSchemaValidation(
+    '/schemas/core/signal-ref.json',
+    { scope: 'product', signal_id: 'high_intent_shoppers' },
+    'SignalRef product scope accepts product-local signal_id'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'product', signal_id: 'high_intent_shoppers', data_provider_domain: 'pinnacle-data.example' },
+    'SignalRef product scope rejects data_provider_domain carry-over'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'product', signal_id: 'high_intent_shoppers', signal_source_url: 'https://signals.example/.well-known/adcp/signals' },
+    'SignalRef product scope rejects signal_source_url carry-over'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'product', signal_id: 'high_intent_shoppers', source: 'agent' },
+    'SignalRef product scope rejects SignalId source carry-over'
+  );
+  await testSchemaValidation(
+    '/schemas/core/signal-ref.json',
+    { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'auto_intenders' },
+    'SignalRef data_provider scope accepts provider catalog signal'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'auto_intenders', agent_url: 'https://signals.example' },
+    'SignalRef data_provider scope rejects agent_url carry-over'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'auto_intenders', signal_source_url: 'https://signals.example/.well-known/adcp/signals' },
+    'SignalRef data_provider scope rejects signal_source_url carry-over'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'auto_intenders', id: 'legacy_id' },
+    'SignalRef data_provider scope rejects SignalId id carry-over'
+  );
+  await testSchemaValidation(
+    '/schemas/core/signal-ref.json',
+    { scope: 'signal_source', signal_source_url: 'https://signals.example/.well-known/adcp/signals', signal_id: 'custom_model_run_123' },
+    'SignalRef signal_source scope accepts source-native signal'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'signal_source', signal_source_url: 'https://signals.example/.well-known/adcp/signals', signal_id: 'custom_model_run_123', data_provider_domain: 'pinnacle-data.example' },
+    'SignalRef signal_source scope rejects data_provider_domain carry-over'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-ref.json',
+    { scope: 'signal_source', signal_source_url: 'https://signals.example/.well-known/adcp/signals', signal_id: 'custom_model_run_123', source: 'agent' },
+    'SignalRef signal_source scope rejects SignalId source carry-over'
+  );
+  log('');
+
+  log('product signal targeting invariants:', 'info');
+  const productBase = {
+    product_id: 'signal_targeting_product',
+    name: 'Signal Targeting Product',
+    description: 'Test',
+    publisher_properties: [
+      { publisher_domain: 'example.com', selection_type: 'all' }
+    ],
+    format_ids: [{ agent_url: 'https://creative.example.com', id: 'video_30s' }],
+    delivery_type: 'guaranteed',
+    delivery_measurement: { provider: 'Test' },
+    pricing_options: [{ pricing_option_id: 'cpm', pricing_model: 'cpm', rate: 10, currency: 'USD', is_fixed: true }],
+    reporting_capabilities: {
+      available_reporting_frequencies: ['daily'],
+      expected_delay_minutes: 240,
+      timezone: 'UTC',
+      supports_webhooks: false,
+      available_metrics: ['impressions'],
+      date_range_support: 'date_range'
+    }
+  };
+  const productSignalOption = {
+    signal_ref: { scope: 'product', signal_id: 'high_intent_shoppers' },
+    name: 'High intent shoppers',
+    value_type: 'binary'
+  };
+  const dataProviderSignalRefOnly = {
+    signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'auto_intenders' }
+  };
+  const legacySignalId = {
+    source: 'catalog',
+    data_provider_domain: 'pinnacle-data.example',
+    id: 'auto_intenders'
+  };
+  const signalListingCore = {
+    signal_agent_segment_id: 'sig_auto_intenders',
+    name: 'Auto intenders',
+    description: 'People likely to be in market for a vehicle.',
+    signal_type: 'marketplace',
+    coverage_percentage: 12,
+    deployments: [
+      { type: 'platform', platform: 'example_dsp', is_live: true }
+    ]
+  };
+  const signalListingCoreWithoutLegacyCoverage = { ...signalListingCore };
+  delete signalListingCoreWithoutLegacyCoverage.coverage_percentage;
+  const signalCoverageForecast = {
+    method: 'estimate',
+    forecast_range_unit: 'availability',
+    scope: {
+      kind: 'inventory',
+      label: 'network price-priority inventory'
+    },
+    bucket_semantics: 'exclusive',
+    bucket_completeness: 'partial',
+    points: [
+      {
+        label: 'auto intent present',
+        dimensions: [
+          {
+            kind: 'signal',
+            signal_ref: {
+              scope: 'data_provider',
+              data_provider_domain: 'pinnacle-data.example',
+              signal_id: 'auto_intenders'
+            },
+            presence: 'present'
+          }
+        ],
+        metrics: {
+          impressions: { mid: 120000 },
+          coverage_rate: { mid: 0.12 }
+        }
+      }
+    ]
+  };
+
+  await testSchemaValidation(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options: [productSignalOption],
+      signal_targeting_rules: { resolution_model: 'seller_planned', selection_mode: 'optional' }
+    },
+    'Product accepts signal_targeting_options and seller-planned resolution when signal_targeting_allowed is true'
+  );
+  await testSchemaValidation(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      included_signals: [dataProviderSignalRefOnly]
+    },
+    'Product accepts included_signals as non-targetable data-provider refs without redefining signal metadata'
+  );
+  await testSchemaValidation(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options: [dataProviderSignalRefOnly]
+    },
+    'Product accepts data-provider signal_targeting_options without redefining name or value_type'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      included_signals: [{ signal_ref: { scope: 'product', signal_id: 'seller_defined_signal' } }]
+    },
+    'Product rejects product-local included_signals without inline name and value_type'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options: [{ signal_ref: { scope: 'product', signal_id: 'seller_defined_signal' } }]
+    },
+    'Product rejects product-local signal_targeting_options without inline name and value_type'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options: [{ signal_id: legacySignalId }]
+    },
+    'Product signal_targeting_options require canonical signal_ref even though shared listings accept legacy signal_id'
+  );
+  await testSchemaValidation(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_rules: { resolution_model: 'direct_targeting', selection_mode: 'optional' }
+    },
+    'Product accepts signal_targeting_rules without inline options when signal targeting is allowed'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: true,
+      signal_targeting_options: [productSignalOption],
+      signal_targeting_rules: { resolution_model: 'buyer_planned', selection_mode: 'optional' }
+    },
+    'Product rejects invalid signal_targeting_rules resolution_model'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_options: [productSignalOption]
+    },
+    'Product rejects signal_targeting_options without signal_targeting_allowed: true'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: false,
+      signal_targeting_options: [productSignalOption]
+    },
+    'Product rejects signal_targeting_options with signal_targeting_allowed: false'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_rules: { selection_mode: 'optional' }
+    },
+    'Product rejects signal_targeting_rules without signal_targeting_allowed: true'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      ...productBase,
+      signal_targeting_allowed: false,
+      signal_targeting_rules: { selection_mode: 'optional' }
+    },
+    'Product rejects signal_targeting_rules with signal_targeting_allowed: false'
+  );
+  log('');
+
+  log('SignalId compatibility during SignalRef migration:', 'info');
+  await testSchemaValidation(
+    '/schemas/signals/get-signals-response.json',
+    {
+      status: 'completed',
+      cache_scope: 'public',
+      signals: [
+        {
+          signal_id: legacySignalId,
+          ...signalListingCore
+        }
+      ]
+    },
+    'get_signals response accepts deprecated signal_id without signal_ref during migration window'
+  );
+  await testSchemaValidation(
+    '/schemas/core/audience-selector.json',
+    {
+      type: 'signal',
+      signal_id: legacySignalId,
+      value_type: 'binary',
+      value: true
+    },
+    'AudienceSelector accepts deprecated signal_id without signal_ref during migration window'
+  );
+  await testSchemaValidation(
+    '/schemas/core/targeting.json',
+    {
+      signal_targeting: [
+        {
+          signal_id: legacySignalId,
+          value_type: 'binary',
+          value: true
+        }
+      ]
+    },
+    'Targeting overlay accepts deprecated flat signal_targeting during migration window'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'wholesale',
+      filters: {
+        signal_targeting: [
+          {
+            signal_id: legacySignalId,
+            value_type: 'binary',
+            value: true,
+            targeting_mode: 'include'
+          }
+        ]
+      }
+    },
+    'get_products filters.signal_targeting accepts deprecated signal_id during SignalRef migration window'
+  );
+  await testSchemaValidation(
+    '/schemas/core/wholesale-feed-event.json',
+    {
+      event_id: '018f4f28-6b5d-7f50-9d57-111111111111',
+      event_type: 'signal.created',
+      entity_type: 'signal',
+      entity_id: 'sig_auto_intenders',
+      created_at: '2026-05-25T10:00:00Z',
+      payload: {
+        signal_agent_segment_id: 'sig_auto_intenders',
+        applies_to: { scope: 'public' },
+        signal: {
+          signal_id: legacySignalId,
+          ...signalListingCoreWithoutLegacyCoverage,
+          coverage_forecast: signalCoverageForecast
+        }
+      }
+    },
+    'Wholesale signal event accepts deprecated signal_id, optional legacy coverage_percentage, relaxed data_provider/pricing_options, and coverage_forecast'
+  );
+
+  log('Registry change feed schemas:', 'info');
+  await testSchemaValidation(
+    '/schemas/core/registry-feed-response.json',
+    {
+      events: [
+        {
+          event_id: '019539a0-1234-7000-8000-000000000001',
+          event_type: 'property.created',
+          entity_type: 'property',
+          entity_id: '019539a0-b1c2-7000-8000-000000000002',
+          payload: {
+            property_rid: '019539a0-b1c2-7000-8000-000000000002',
+            classification: 'property',
+            source: 'contributed',
+            identifiers: [{ type: 'domain', value: 'streamer.example.com' }]
+          },
+          actor: 'pipeline:crawler',
+          created_at: '2026-03-31T10:00:00.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000003',
+          event_type: 'authorization.granted',
+          entity_type: 'authorization',
+          entity_id: 'https://ads.agency.example.com:streamer.example.com',
+          payload: {
+            agent_url: 'https://ads.agency.example.com',
+            publisher_domain: 'streamer.example.com',
+            authorization_type: 'property_ids',
+            property_ids: ['primetime_ctv'],
+            placement_ids: ['pre_roll_30s'],
+            countries: ['US', 'CA'],
+            delegation_type: 'direct',
+            exclusive: false,
+            signing_keys: [{ kid: 'pub-2026-04', kty: 'OKP', alg: 'EdDSA', crv: 'Ed25519', x: 'abc123' }]
+          },
+          actor: 'pipeline:crawler',
+          created_at: '2026-03-31T10:01:00.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000007',
+          event_type: 'agent.discovered',
+          entity_type: 'agent',
+          entity_id: 'https://new-agent.example.com',
+          payload: {
+            agent_url: 'https://new-agent.example.com',
+            channels: [],
+            property_types: [],
+            markets: [],
+            categories: [],
+            tags: [],
+            delivery_types: [],
+            property_count: 0,
+            publisher_count: 0,
+            has_tmp: false
+          },
+          actor: 'pipeline:crawler',
+          created_at: '2026-03-31T10:01:30.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000004',
+          event_type: 'agent.compliance_changed',
+          entity_type: 'agent',
+          entity_id: 'https://ads.agency.example.com',
+          payload: {
+            agent_url: 'https://ads.agency.example.com',
+            previous_status: 'passing',
+            current_status: 'degraded',
+            headline: 'media_buy track failing: 2 scenarios down',
+            tracks: { core: 'pass', media_buy: 'partial', creative: 'skip', governance: 'silent' },
+            storyboards_passing: 24,
+            storyboards_total: 27,
+            storyboards: [
+              { storyboard_id: 'media_buy_seller', status: 'failing', steps_passed: 4, steps_total: 7 },
+              { storyboard_id: 'optional_controller', status: 'untested' },
+              { storyboard_id: 'mixed_flow', status: 'partial', steps_passed: 3, steps_total: 5 }
+            ]
+          },
+          actor: 'pipeline:compliance-heartbeat',
+          created_at: '2026-03-31T10:02:00.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000008',
+          event_type: 'agent.verification_earned',
+          entity_type: 'agent',
+          entity_id: 'https://ads.agency.example.com',
+          payload: {
+            agent_url: 'https://ads.agency.example.com',
+            role: 'media-buy',
+            verified_specialisms: ['sales-catalog-driven'],
+            adcp_version: '3.1.0-beta.5'
+          },
+          actor: 'pipeline:compliance-heartbeat',
+          created_at: '2026-03-31T10:02:30.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000009',
+          event_type: 'agent.verification_lost',
+          entity_type: 'agent',
+          entity_id: 'https://ads.agency.example.com',
+          payload: {
+            agent_url: 'https://ads.agency.example.com',
+            role: 'media-buy',
+            reason: 'media_buy track failing'
+          },
+          actor: 'pipeline:compliance-heartbeat',
+          created_at: '2026-03-31T10:02:45.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000010',
+          event_type: 'publisher.adagents_discovered',
+          entity_type: 'publisher',
+          entity_id: 'streamer.example.com',
+          payload: {
+            publisher_domain: 'streamer.example.com',
+            agent_count: 2,
+            property_count: 4,
+            source: 'catalog_crawl',
+            discovery_method: 'direct',
+            manager_domain: null
+          },
+          actor: 'pipeline:catalog_crawl',
+          created_at: '2026-03-31T10:03:00.000Z'
+        }
+      ],
+      cursor: '019539a0-1234-7000-8000-000000000010',
+      has_more: false
+    },
+    'Registry feed response validates typed property, authorization, and compliance events'
+  );
+  await testSchemaRejection(
+    '/schemas/core/registry-event.json',
+    {
+      event_id: '019539a0-1234-7000-8000-000000000005',
+      event_type: 'authorization.granted',
+      entity_type: 'authorization',
+      entity_id: 'https://ads.agency.example.com:streamer.example.com',
+      payload: {
+        agent_url: 'https://ads.agency.example.com'
+      },
+      actor: 'pipeline:crawler',
+      created_at: '2026-03-31T10:03:00.000Z'
+    },
+    'Registry authorization events reject missing publisher_domain'
+  );
+  await testSchemaRejection(
+    '/schemas/core/registry-event.json',
+    {
+      event_id: '019539a0-1234-7000-8000-000000000006',
+      event_type: 'agent.compliance_changed',
+      entity_type: 'publisher',
+      entity_id: 'https://ads.agency.example.com',
+      payload: {
+        agent_url: 'https://ads.agency.example.com',
+        previous_status: 'passing',
+        current_status: 'degraded',
+        tracks: { core: 'pass' },
+        storyboards_passing: 1,
+        storyboards_total: 2
+      },
+      actor: 'pipeline:compliance-heartbeat',
+      created_at: '2026-03-31T10:04:00.000Z'
+    },
+    'Registry event discriminator rejects mismatched entity_type'
+  );
+  log('');
+
   // Product `publisher_properties` rejects `publisher_domains[]` compact form (#4508):
   //
   // What's being exercised: the rejection comes from the `allOf` clause in

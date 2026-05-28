@@ -46,7 +46,7 @@ Marcus's integration handles product discovery, creative sync, and media buy cre
 ### Misconceptions and blind spots
 - Assumes `native` is still a valid channel. Will be confused when validation fails.
 - Assumes capability discovery still uses `adcp-extension.json`. Will look for agent card extension docs that no longer exist.
-- Thinks `account_id` is just a string he passes. Doesn't know about `AccountReference` objects or the explicit vs. implicit account model.
+- Thinks `account_id` is just a string he passes. Doesn't know about `AccountReference` objects or the account-id namespace vs. buyer-declared account model.
 - Expects `promoted_offering` to still be a string field on media buys.
 - Assumes pricing fields haven't changed names.
 - Will probably search for "migration" or "upgrade" rather than "what's new."
@@ -109,7 +109,7 @@ He knows ad tech deeply (ran ad ops at a mid-size SSP before this) and has built
 ### What he doesn't know
 - That AdCP has a specific `sponsored_intelligence` channel for his use case
 - How `sync_catalogs` standardizes the catalog pipe he's been building custom for each platform
-- How the accounts model works for a network (implicit accounts, agent-trusted model) vs. a first-party platform (explicit accounts, walled garden)
+- How the accounts model works for a network (buyer-declared accounts, agent-trusted model) vs. a first-party platform (account-id namespace, walled garden)
 - How `adagents.json` works — he needs it for buyer agents to discover his network, and he needs to understand it from the AI platforms he connects to
 - How governance policies flow through a network — do brands push content standards to his network, and does his network push them to each AI platform?
 - How `optimization_goals` and `sync_event_sources` work across the network boundary — his network aggregates delivery data from multiple platforms
@@ -141,7 +141,7 @@ Determine whether AdCP works for a network topology (buyer → network → platf
 ### Pages he'd likely visit
 1. `/docs/sponsored-intelligence/overview` — Core page, looking for network-specific guidance
 2. `/docs/building/implementation/seller-integration` — How to appear as a seller to buyer agents
-3. `/docs/accounts/overview` — Network account model (agent-trusted, implicit accounts)
+3. `/docs/accounts/overview` — Network account model (agent-trusted, buyer-declared accounts)
 4. `/docs/building/integration/accounts-and-agents` — Multi-level account delegation
 5. `/docs/creative/catalogs` — Catalog sync mechanics for pass-through
 6. `/docs/governance/overview` — How governance flows through intermediaries
@@ -153,7 +153,7 @@ Determine whether AdCP works for a network topology (buyer → network → platf
 12. `/docs/reference/media-channel-taxonomy` — `sponsored_intelligence` channel definition
 
 ### Success criteria
-- He understands how his network appears to buyers (seller agent with implicit accounts) and how it interacts with AI platforms (operator with explicit accounts on each platform)
+- He understands how his network appears to buyers (seller agent with buyer-declared accounts) and how it interacts with AI platforms (operator with account-id namespaces on each platform)
 - He can model his aggregated products — products that span multiple underlying AI platforms with different pricing
 - He knows how catalogs flow through: buyer → his network → AI platform, using `sync_catalogs` on both legs
 - He understands the governance flow — content standards from brands can be enforced at his network layer and forwarded to platforms

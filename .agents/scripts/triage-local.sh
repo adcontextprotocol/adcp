@@ -9,7 +9,7 @@
 #
 # Examples:
 #   .agents/scripts/triage-local.sh 3112              # fresh triage
-#   .agents/scripts/triage-local.sh 3112 execute      # bias toward Execute
+#   .agents/scripts/triage-local.sh 3112 execute      # authorize first draft PR if safe
 #   .agents/scripts/triage-local.sh 3112 clarify      # force clarify
 #
 # Required env vars (or .env file in the cwd):
@@ -74,7 +74,7 @@ if [ -n "$MODIFIER" ]; then
       exit 64
       ;;
   esac
-  nudge="MANUAL NUDGE: triage-local.sh requested triage with /$MODIFIER. Treat as an explicit request; skip already-engaged check. Honor the modifier (execute / clarify / defer)."
+  nudge="MANUAL NUDGE: triage-local.sh requested triage with /$MODIFIER. Treat as an explicit request; skip already-engaged check. Honor the modifier (execute authorizes a first draft PR only if all Execute safety checks pass; clarify / defer force those outcomes)."
   kind="manual"
   action="triage"
 else

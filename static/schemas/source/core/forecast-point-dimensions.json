@@ -1,0 +1,266 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/forecast-point-dimensions.json",
+  "title": "Forecast Point Dimensions",
+  "description": "Dimension constraints represented by a ForecastPoint. Use this when one product, proposal, or signal coverage forecast needs to expose availability or forecasted delivery by country, region, placement, device, audience, signal value, or intersections such as placement x country without creating separate products solely for each slice. Each item declares one dimension family via `kind`; when multiple items are present, the point represents their intersection. Sellers MUST NOT emit more than one item for each `kind` in a point. Consumers MUST NOT treat repeated kinds as OR semantics; repeated peer values such as two countries are a seller conformance issue. Dimension values are descriptors of the forecast row and are independent of pricing_options.",
+  "x-adcp-validation": {
+    "unique_item_properties": ["kind"],
+    "description": "`dimensions[]` is an array for readable intersection syntax, but `kind` is a logical set key. JSON Schema draft-07 cannot express unique-by-property for this array shape, so conformance tooling should reject repeated `kind` values."
+  },
+  "type": "array",
+  "minItems": 1,
+  "uniqueItems": true,
+  "items": {
+    "oneOf": [
+      {
+        "title": "Geo Forecast Dimension",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "geo",
+            "description": "Dimension family discriminator."
+          },
+          "geo_level": {
+            "$ref": "/schemas/enums/geo-level.json",
+            "description": "Geographic level for this forecast point."
+          },
+          "system": {
+            "type": "string",
+            "description": "Classification system for metro or postal_area levels. Required when geo_level is 'metro' or 'postal_area'. Metro rows use metro-system enum values such as 'nielsen_dma'; postal rows use postal-system enum values such as 'us_zip'. Omit for country and region rows."
+          },
+          "geo_code": {
+            "type": "string",
+            "description": "Geographic code within the level and system. Country: ISO 3166-1 alpha-2 ('US'). Region: ISO 3166-2 with country prefix ('US-CA'). Metro/postal: system-specific code ('501', '10001')."
+          },
+          "geo_name": {
+            "type": "string",
+            "description": "Human-readable geographic name (e.g., 'United States', 'California', 'New York DMA')."
+          }
+        },
+        "required": ["kind", "geo_level", "geo_code"],
+        "allOf": [
+          {
+            "if": {
+              "properties": { "geo_level": { "const": "country" } },
+              "required": ["geo_level"]
+            },
+            "then": {
+              "properties": {
+                "geo_code": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{2}$",
+                  "description": "ISO 3166-1 alpha-2 country code."
+                }
+              },
+              "not": { "required": ["system"] }
+            }
+          },
+          {
+            "if": {
+              "properties": { "geo_level": { "const": "region" } },
+              "required": ["geo_level"]
+            },
+            "then": {
+              "properties": {
+                "geo_code": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$",
+                  "description": "ISO 3166-2 subdivision code."
+                }
+              },
+              "not": { "required": ["system"] }
+            }
+          },
+          {
+            "if": {
+              "properties": { "geo_level": { "const": "metro" } },
+              "required": ["geo_level"]
+            },
+            "then": {
+              "properties": {
+                "system": { "$ref": "/schemas/enums/metro-system.json" }
+              },
+              "required": ["system"]
+            }
+          },
+          {
+            "if": {
+              "properties": { "geo_level": { "const": "postal_area" } },
+              "required": ["geo_level"]
+            },
+            "then": {
+              "properties": {
+                "system": { "$ref": "/schemas/enums/postal-system.json" }
+              },
+              "required": ["system"]
+            }
+          }
+        ],
+        "additionalProperties": false
+      },
+      {
+        "title": "Placement Forecast Dimension",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "placement",
+            "description": "Dimension family discriminator."
+          },
+          "placement_ref": {
+            "$ref": "/schemas/core/placement-ref.json",
+            "description": "Structured placement reference for this forecast row. References an entry from the product's placements array."
+          },
+          "placement_name": {
+            "type": "string",
+            "description": "Human-readable placement name, useful when the buyer has not resolved the placement catalog."
+          }
+        },
+        "required": ["kind", "placement_ref"],
+        "additionalProperties": false
+      },
+      {
+        "title": "Device Type Forecast Dimension",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "device_type",
+            "description": "Dimension family discriminator."
+          },
+          "device_type": {
+            "$ref": "/schemas/enums/device-type.json",
+            "description": "Device form factor for this forecast row."
+          }
+        },
+        "required": ["kind", "device_type"],
+        "additionalProperties": false
+      },
+      {
+        "title": "Device Platform Forecast Dimension",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "device_platform",
+            "description": "Dimension family discriminator."
+          },
+          "device_platform": {
+            "$ref": "/schemas/enums/device-platform.json",
+            "description": "Operating system or platform for this forecast row."
+          }
+        },
+        "required": ["kind", "device_platform"],
+        "additionalProperties": false
+      },
+      {
+        "title": "Audience Forecast Dimension",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "audience",
+            "description": "Dimension family discriminator."
+          },
+          "audience_id": {
+            "type": "string",
+            "description": "Audience segment identifier for this forecast row.",
+            "x-entity": "audience"
+          },
+          "audience_source": {
+            "$ref": "/schemas/enums/audience-source.json",
+            "description": "Origin of the audience segment."
+          },
+          "audience_name": {
+            "type": "string",
+            "description": "Human-readable audience segment name."
+          }
+        },
+        "required": ["kind", "audience_id", "audience_source"],
+        "additionalProperties": false
+      },
+      {
+        "title": "Signal Forecast Dimension",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "signal",
+            "description": "Dimension family discriminator."
+          },
+          "signal_ref": {
+            "$ref": "/schemas/core/signal-ref.json",
+            "description": "Canonical signal reference for this forecast row. Required when the row needs to disambiguate product-local, data-provider, or signal-source identity. Product-relative forecasts SHOULD use signal_ref."
+          },
+          "signal_id": {
+            "type": "string",
+            "description": "Signal identifier shorthand for this forecast row. Use only when the enclosing context already identifies the signal unambiguously, such as a coverage_forecast nested directly under one get_signals signal item. Otherwise use signal_ref.",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "x-entity": "signal"
+          },
+          "signal_value": {
+            "type": ["string", "number", "boolean", "null"],
+            "description": "Signal value bucket represented by this point. Use null with presence 'absent' to represent inventory where the signal is not present. Omit when the row describes any present value rather than one specific value."
+          },
+          "presence": {
+            "type": "string",
+            "enum": ["present", "absent"],
+            "description": "Whether the signal is present for this point. Use 'absent' for the explicit not-present bucket."
+          },
+          "signal_name": {
+            "type": "string",
+            "description": "Human-readable signal name, useful when the buyer has not resolved the signal definition."
+          },
+          "signal_value_name": {
+            "type": "string",
+            "description": "Human-readable label for the signal value bucket."
+          }
+        },
+        "required": ["kind", "presence"],
+        "anyOf": [
+          { "required": ["signal_ref"] },
+          { "required": ["signal_id"] }
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "presence": {
+                  "const": "absent"
+                }
+              },
+              "required": ["presence"]
+            },
+            "then": {
+              "properties": {
+                "signal_value": {
+                  "type": "null"
+                }
+              },
+              "required": ["signal_value"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "presence": {
+                  "const": "present"
+                }
+              },
+              "required": ["presence"]
+            },
+            "then": {
+              "properties": {
+                "signal_value": {
+                  "type": ["string", "number", "boolean"]
+                }
+              }
+            }
+          }
+        ],
+        "additionalProperties": false
+      }
+    ]
+  }
+}

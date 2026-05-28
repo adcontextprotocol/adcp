@@ -183,7 +183,7 @@ describe('issueDomainChallenge', () => {
     expect(createFn).not.toHaveBeenCalled();
   });
 
-  it('returns workos_misconfigured when existing pending domain has a token but no verificationPrefix (no delete, no recreate)', async () => {
+  it('returns apex-record instructions when existing pending domain has a token but no verificationPrefix', async () => {
     const deleteFn = vi.fn();
     const createFn = vi.fn();
     const workos = makeWorkos({
@@ -206,14 +206,17 @@ describe('issueDomainChallenge', () => {
       orgId: ORG,
       rawDomain: DOMAIN,
     });
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe('workos_misconfigured');
-    // Must not churn WorkOS — recreate won't help if the env template is the bug.
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.workos_domain_id).toBe('dom_no_prefix');
+      expect(result.verification_token).toBe('tok_present');
+      expect(result.verification_prefix).toBeNull();
+    }
     expect(deleteFn).not.toHaveBeenCalled();
     expect(createFn).not.toHaveBeenCalled();
   });
 
-  it('returns workos_misconfigured when createOrganizationDomain succeeds but returns no verificationPrefix', async () => {
+  it('returns apex-record instructions when createOrganizationDomain succeeds but returns no verificationPrefix', async () => {
     const createFn = vi.fn().mockResolvedValue({
       id: 'dom_new_no_prefix',
       state: 'pending',
@@ -232,8 +235,12 @@ describe('issueDomainChallenge', () => {
       orgId: ORG,
       rawDomain: DOMAIN,
     });
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe('workos_misconfigured');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.workos_domain_id).toBe('dom_new_no_prefix');
+      expect(result.verification_token).toBe('tok_new');
+      expect(result.verification_prefix).toBeNull();
+    }
     expect(createFn).toHaveBeenCalledTimes(1);
   });
 
@@ -449,7 +456,13 @@ describe('verifyDomainChallenge', () => {
   it('returns still_pending on 422 from workos.verify', async () => {
     const workos = makeWorkos({
       getOrganization: vi.fn().mockResolvedValue({
-        domains: [{ id: 'd1', domain: DOMAIN, state: 'pending' }],
+        domains: [{
+          id: 'd1',
+          domain: DOMAIN,
+          state: 'pending',
+          verificationToken: 'tok_pending',
+          verificationPrefix: null,
+        }],
       }),
       verifyOrganizationDomain: vi.fn().mockRejectedValue({ status: 422 }),
     });
@@ -460,7 +473,12 @@ describe('verifyDomainChallenge', () => {
       rawDomain: DOMAIN,
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe('still_pending');
+    if (!result.ok) {
+      expect(result.code).toBe('still_pending');
+      expect(result.message).toContain(DOMAIN);
+      expect(result.message).not.toContain('verification_prefix');
+      expect(result.dns_record_name).toBe(DOMAIN);
+    }
   });
 
   it('returns ok with newly_verified=true on a fresh verify success', async () => {

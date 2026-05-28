@@ -176,7 +176,7 @@ phases:
         expected: |
           The buy succeeds with governance conditions attached:
           - media_buy_id: present
-          - status: active or pending_creatives
+          - media_buy_status: active, pending_start, or pending_creatives (deprecated top-level status may mirror this during the 3.1 migration window)
           - governance_context: token from the governance agent
           - conditions visible to the buyer
         sample_request:

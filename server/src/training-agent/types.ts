@@ -16,6 +16,8 @@ type AccountReference = CreateMediaBuyRequest['account'];
 
 export interface TrainingContext {
   mode: 'open' | 'training';
+  /** Per-tenant route id for capability projection on /sales, /signals, etc. */
+  tenantId?: 'sales' | 'signals' | 'governance' | 'creative' | 'creative-builder' | 'brand';
   userId?: string;
   moduleId?: string;
   trackId?: string;
@@ -29,6 +31,10 @@ export interface TrainingContext {
    *  presence-gated signing at the auth layer. Default `/mcp` leaves
    *  `required_for` empty so unsigned bearer callers keep working. */
   strict?: boolean;
+  /** Local storyboard-runner compatibility shims. Never set in deployed routes. */
+  storyboardCompat?: { version: '3.0' };
+  /** Whether creative usage is billed through AdCP. Defaults to true for legacy/shared routes. */
+  creativeBillsThroughAdcp?: boolean;
   /**
    * `covers_content_digest` mode advertised by this route. Only meaningful
    * when `strict` is true. Defaults to `'either'` (the `/mcp-strict` route).
@@ -95,6 +101,14 @@ export interface PublisherProfile {
     vendor: { domain: string; brand_id?: string };
     metric_id: string;
   }>;
+  /** Optional: vendor-defined metrics this publisher can optimize against */
+  vendorMetricOptimization?: {
+    supported_metrics: Array<{
+      vendor: { domain: string; brand_id?: string };
+      metric_id: string;
+      supported_targets?: Array<'cost_per' | 'threshold_rate'>;
+    }>;
+  };
   /** Optional: shows this publisher carries */
   shows?: ShowDefinition[];
   /** Hero image URL for product and proposal cards */
@@ -184,6 +198,22 @@ export interface ComplyDeliveryAccumulator {
   clicks: number;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
+  isFinal?: boolean;
+  finalizedAt?: string;
+  measurementWindow?: string;
+  reach?: number;
+  frequency?: number;
+  reachWindow?: {
+    kind: 'cumulative' | 'period' | 'rolling';
+    period?: { interval: number; unit: string };
+  };
+  viewability?: {
+    measurable_impressions?: number;
+    viewable_impressions?: number;
+    viewable_rate?: number;
+    viewed_seconds?: number;
+    standard?: string;
+  };
   /** vendor_metric_values injected via comply_test_controller simulate_delivery. */
   vendorMetricValues?: unknown[];
 }
@@ -192,6 +222,11 @@ export interface ComplyBudgetSimulation {
   spendPercentage: number;
   computedSpend: { amount: number; currency: string };
   budget: { amount: number; currency: string };
+}
+
+export interface SeededMeasurementCatalog {
+  vendor: { domain: string; brand_id?: string };
+  metrics: Array<{ metric_id: string; [key: string]: unknown }>;
 }
 
 export interface ComplyExtensions {
@@ -210,6 +245,16 @@ export interface ComplyExtensions {
    * giving storyboards a deterministic, size-controlled result set for
    * pagination-integrity assertions. Keyed by the format's id string. */
   seededCreativeFormats: Map<string, Record<string, unknown>>;
+  /** Measurement vendor catalogs seeded via comply_test_controller.seed_measurement_catalog.
+   * Keyed by `(vendor.domain, vendor.brand_id)` so vendor_metric optimization
+   * storyboards can distinguish product/reporting preconditions from the
+   * external measurement.metrics[] discovery precondition. */
+  seededMeasurementCatalogs: Map<string, SeededMeasurementCatalog>;
+  /** Audit observations recorded while processing sandbox creative submissions.
+   * Keyed by creative_id so conformance storyboards can assert non-blocking
+   * provenance observations without exposing the seller's internal audit log
+   * through public sync_creatives responses. */
+  provenanceAuditObservations: Map<string, unknown[]>;
   /** Single-shot directive registered via comply_test_controller.force_create_media_buy_arm.
    * Consumed by the next create_media_buy call from this session and cleared. A second
    * force_create_media_buy_arm before consumption overwrites the directive. Buyer-side
@@ -284,7 +329,7 @@ export interface ToolArgs { account?: AccountRef; brand?: BrandRef }
 
 export interface AccountRef {
   account_id?: string;
-  brand?: { domain: string };
+  brand?: { domain: string; brand_id?: string };
   operator?: string;
   sandbox?: boolean;
 }
@@ -303,6 +348,27 @@ export interface MediaBuyHistoryEntry {
   packageId?: string;
 }
 
+export interface MediaBuyAvailableActionState {
+  action: string;
+  mode: 'self_serve' | 'conditional_self_serve' | 'requires_proposal' | 'requires_approval';
+  sla?: {
+    response_max?: string;
+    completion_max?: string;
+  };
+  terms_ref?: string;
+}
+
+export interface MediaBuyProductAllowedActionState {
+  action: string;
+  modes: MediaBuyAvailableActionState['mode'][];
+  allowed_statuses?: string[];
+  sla?: {
+    response_max?: string;
+    completion_max?: string;
+  };
+  terms_ref?: string;
+}
+
 export interface MediaBuyState {
   mediaBuyId: string;
   accountRef: AccountRef;
@@ -310,6 +376,8 @@ export interface MediaBuyState {
   status: string;
   currency: string;
   packages: PackageState[];
+  productAllowedActions?: MediaBuyProductAllowedActionState[];
+  availableActions?: MediaBuyAvailableActionState[];
   startTime: string;
   endTime: string;
   revision: number;
@@ -399,12 +467,35 @@ export interface CreativeManifest {
 
 export interface CreativeState {
   creativeId: string;
+  accountId?: string;
+  accountRef?: AccountRef;
   formatId: FormatID;
   name?: string;
   status: string;
   syncedAt: string;
   manifest?: CreativeManifest;
   pricingOptionId?: string;
+  purge?: {
+    kind: 'soft';
+    at: string;
+    reasonCode: string;
+  };
+  webhookActivity?: CreativeWebhookActivityRecord[];
+}
+
+export interface CreativeWebhookActivityRecord {
+  idempotency_key: string;
+  subscriber_id: string;
+  fired_at: string;
+  completed_at: string;
+  notification_type: 'creative.status_changed' | 'creative.purged';
+  attempt: number;
+  status: 'success' | 'failed';
+  url: string;
+  http_status_code?: number;
+  response_time_ms?: number;
+  payload_size_bytes?: number;
+  error_message?: string | null;
 }
 
 export interface UsageRecord {
@@ -416,6 +507,9 @@ export interface UsageRecord {
   mediaSpend?: number;
   vendorCost: number;
   currency: string;
+  final?: boolean;
+  finalizedAt?: string;
+  measurementWindow?: string;
   reportedAt: string;
 }
 

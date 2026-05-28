@@ -120,7 +120,7 @@ phases:
           - signal_agent_segment_id for activation
           - signal_id with source, data_provider_domain, and id
           - name, description, and value_type (binary, categorical, or numeric)
-          - coverage_percentage (audience reach estimate)
+          - coverage_forecast when detailed availability is disclosed; deprecated coverage_percentage may be present as a legacy scalar fallback
           - pricing_options with at least one pricing model
           - signal_type: "marketplace"
 
@@ -155,10 +155,6 @@ phases:
           - check: field_present
             path: "signals[0].pricing_options"
             description: "Each signal has pricing options"
-          - check: field_present
-            path: "signals[0].coverage_percentage"
-            description: "Each signal has a coverage estimate"
-
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"

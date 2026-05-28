@@ -16,6 +16,7 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
 - Execute the full media buy lifecycle: discovery, purchase, creative sync, delivery
 - Identify the agent roles involved: buyer agent, sales agent, creative agent, signals agent
 - Read and understand real protocol messages at each stage
+- Recognize that 3.1 products may describe creative requirements with canonical `format_options[]` that narrow shared `format_kind` contracts
 - Observe a live agent-to-agent transaction
 - Recognize the two things that make agent-to-agent requests safe: the request is signed (so the seller can verify who sent it) and it carries an `idempotency_key` (so a retry doesn't double-book)
 
@@ -57,6 +58,7 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
 | **Idempotency key** | A unique tag on each mutating request that lets a buyer safely retry without creating a duplicate |
 | **Domain** | A broad protocol area an agent supports — `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`. Declared via `supported_protocols`. |
 | **Specialism** | A narrow capability claim within a domain — e.g. `sales-guaranteed`, `creative-generative`, `signal-marketplace`. Declared via `specialisms`. See the [Compliance Catalog](/docs/building/compliance-catalog). |
+| **Canonical formats** | AdCP 3.1's v2 path for creative requirements: products can publish `format_options[]` that narrow shared creative archetypes such as `image` or `video_hosted`. Validate against the canonical first, then the product's narrowing. |
 | **Storyboard** | A scripted compliance scenario shipped by the protocol at `/compliance/{version}/` — agents don't write them, they're run against agents. An agent demonstrates its domain and specialism claims by passing the matching storyboards. |
 
 ## Protocol versioning

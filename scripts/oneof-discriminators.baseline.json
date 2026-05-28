@@ -49,12 +49,12 @@
     "brand/acquire-rights-response.json##/oneOf": {
       "kind": "dangerous",
       "variants": 4,
-      "note": "shared-required=[∅]; 0:req=[rights_id,status,brand_id,terms,generation_credentials,rights_constraint] | 1:req=[rights_id,status,brand_id] | 2:req=[rights_id,status,brand_id,reason] | 3:req=[errors]"
+      "note": "shared-required=[∅]; 0:req=[rights_id,rights_status,brand_id,terms,generation_credentials,rights_constraint] | 1:req=[rights_id,rights_status,brand_id] | 2:req=[rights_id,rights_status,brand_id,reason] | 3:req=[errors]"
     },
     "brand/creative-approval-response.json##/oneOf": {
       "kind": "dangerous",
       "variants": 4,
-      "note": "shared-required=[∅]; 0:req=[status,rights_id] | 1:req=[status,rights_id,reason] | 2:req=[status,rights_id] | 3:req=[errors]"
+      "note": "shared-required=[∅]; 0:req=[approval_status,rights_id] | 1:req=[approval_status,rights_id,reason] | 2:req=[approval_status,rights_id] | 3:req=[errors]"
     },
     "brand/get-brand-identity-response.json##/oneOf": {
       "kind": "narrowable",
@@ -84,7 +84,7 @@
     "brand/verify-brand-claim-response.json##/oneOf": {
       "kind": "narrowable",
       "variants": 2,
-      "note": "0:[claim_type,status] | 1:[errors]"
+      "note": "0:[claim_type,verification_status] | 1:[errors]"
     },
     "brand/verify-brand-claims-response.json##/definitions/result_entry/oneOf": {
       "kind": "narrowable",
@@ -98,8 +98,8 @@
     },
     "compliance/comply-test-controller-response.json##/oneOf": {
       "kind": "dangerous",
-      "variants": 7,
-      "note": "shared-required=[success]; 0:req=[success,scenarios] | 1:req=[success,previous_state,current_state] | 2:req=[success,simulated] | 3:req=[success,forced] | 4:req=[success] | 5:req=[success,recorded_calls,total_count,since_timestamp] | 6:req=[success,error]"
+      "variants": 8,
+      "note": "shared-required=[success]; 0:req=[success,scenarios] | 1:req=[success,previous_state,current_state] | 2:req=[success,simulated] | 3:req=[success,forced] | 4:req=[success] | 5:req=[success,creative_id,audit_observations] | 6:req=[success,recorded_calls,total_count,since_timestamp] | 7:req=[success,error]"
     },
     "content-standards/calibrate-content-response.json##/oneOf": {
       "kind": "narrowable",
@@ -159,7 +159,7 @@
     "core/audience-selector.json##/oneOf": {
       "kind": "dangerous",
       "variants": 4,
-      "note": "shared-required=[type]; 0:req=[type,signal_id,value_type,value] | 1:req=[type,signal_id,value_type,values] | 2:req=[type,signal_id,value_type] | 3:req=[type,description]"
+      "note": "shared-required=[type]; 0:req=[type,value_type,value] | 1:req=[type,value_type,values] | 2:req=[type,value_type] | 3:req=[type,description]"
     },
     "core/catchment.json##/oneOf": {
       "kind": "narrowable",
@@ -195,11 +195,6 @@
       "kind": "narrowable",
       "variants": 2,
       "note": "0:[dimensions] | 1:[parameters_from_format_id]"
-    },
-    "core/format.json##/properties/supported_macros/items/oneOf": {
-      "kind": "dangerous",
-      "variants": 2,
-      "note": "shared-required=[∅]; 0:ref-only(/schemas/enums/universal-macro.json) | 1:string"
     },
     "core/product-filters.json##/properties/geo_proximity/items/oneOf": {
       "kind": "narrowable",

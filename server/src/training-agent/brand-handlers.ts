@@ -661,7 +661,7 @@ function buildBrandJsonEntry(
 
 export function handleGetBrandIdentity(
   args: ToolArgs,
-  _ctx: TrainingContext,
+  ctx: TrainingContext,
 ) {
   const req = args as { brand_id: string; fields?: string[]; authorized?: boolean };
   const brandId = req.brand_id;
@@ -670,7 +670,10 @@ export function handleGetBrandIdentity(
 
   const talent = BRAND_MAP.get(brandId);
   if (!talent) {
-    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
+    const code = ctx.storyboardCompat?.version === '3.0'
+      ? 'BRAND_NOT_FOUND'
+      : 'REFERENCE_NOT_FOUND';
+    return { errors: [{ code, message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
   }
 
   const requested = fields ?? [...ALL_FIELDS];
@@ -993,6 +996,7 @@ export async function handleAcquireRights(
         return {
           rights_id: rightsId,
           status: 'rejected',
+          rights_status: 'rejected',
           brand_id: talent.brand_id,
           reason: msg,
         };
@@ -1009,6 +1013,7 @@ export async function handleAcquireRights(
       return {
         rights_id: rightsId,
         status: 'rejected',
+        rights_status: 'rejected',
         brand_id: talent.brand_id,
         reason: isStructured ? rule.reason : rule,
         ...(isStructured && rule.suggestions ? { suggestions: rule.suggestions } : {}),
@@ -1023,6 +1028,7 @@ export async function handleAcquireRights(
       return {
         rights_id: rightsId,
         status: 'pending_approval',
+        rights_status: 'pending_approval',
         brand_id: talent.brand_id,
         detail: `${talentName}'s management requires review for ${keyword} category campaigns. Request submitted for talent approval.`,
         estimated_response_time: '48h',
@@ -1059,6 +1065,7 @@ export async function handleAcquireRights(
   return {
     rights_id: rightsId,
     status: 'acquired',
+    rights_status: 'acquired',
     brand_id: talent.brand_id,
     terms: {
       pricing_option_id: pricingOptionId,

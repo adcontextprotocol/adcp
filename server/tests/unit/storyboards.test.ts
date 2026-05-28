@@ -119,17 +119,15 @@ describe('getTestKitForStoryboard', () => {
 
   it('resolves to a kit when a storyboard declares prerequisites.test_kit', () => {
     const summaries = listStoryboards();
-    // Scan at most 20 to keep the test fast — we're testing the resolver, not the catalog.
-    for (const summary of summaries.slice(0, 20)) {
+    for (const summary of summaries) {
       const sb = getStoryboard(summary.id);
       if (!sb?.prerequisites?.test_kit) continue;
       const kit = getTestKitForStoryboard(sb.id);
-      if (kit) {
-        expect(kit.id).toBeTruthy();
-        expect(kit.name).toBeTruthy();
-        return; // one positive case is enough to cover the resolver path
-      }
+      expect(kit).toBeDefined();
+      expect(kit!.id).toBeTruthy();
+      return; // one positive case is enough to cover the resolver path
     }
+    throw new Error('Expected at least one storyboard to declare prerequisites.test_kit');
   });
 });
 
@@ -180,11 +178,13 @@ describe('compareAdcpVersions', () => {
 
 describe('getStoryboardsForVersion', () => {
   it('returns every storyboard when target is the highest supported version', () => {
-    // All current storyboards have unset `introduced_in` (always-applied),
-    // so a 3.0 target returns every storyboard in the catalog.
     const all = getAllStoryboards();
-    const for30 = getStoryboardsForVersion('3.0');
-    expect(for30.length).toBe(all.length);
+    const highestIntroduced = all.reduce((highest, sb) => {
+      if (!sb.introduced_in) return highest;
+      return compareAdcpVersions(sb.introduced_in, highest) > 0 ? sb.introduced_in : highest;
+    }, '3.0');
+    const forHighest = getStoryboardsForVersion(highestIntroduced);
+    expect(forHighest.length).toBe(all.length);
   });
 
   it('omits storyboards with introduced_in above the target', () => {

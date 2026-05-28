@@ -6,11 +6,13 @@
  * session state, not from LLM calls.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
+  ErrorCode,
   ListToolsRequestSchema,
+  McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
@@ -18,7 +20,8 @@ import { PostgresTaskStore } from '@adcp/sdk';
 import { mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting } from './types.js';
+import { isPrivateHostname, safeFetchAxiosLike } from '../utils/url-security.js';
+import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting, AccountRef, SessionState } from './types.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
   Product,
@@ -27,6 +30,7 @@ import type {
   CreateMediaBuyRequest,
   UpdateMediaBuyRequest,
   GetProductsRequest,
+  GetProductsResponse,
   GetMediaBuysRequest,
   GetMediaBuyDeliveryRequest,
   ListCreativeFormatsRequest,
@@ -36,11 +40,12 @@ import type {
   ActivateSignalRequest,
   GetCreativeDeliveryRequest,
   GetAdCPCapabilitiesRequest,
-  BuildCreativeResponse,
   ListCreativesResponse,
   PreviewCreativeResponse,
+  BuildCreativeResponse,
   CreativeManifest as AdcpCreativeManifest,
 } from '@adcp/sdk';
+import { CreativeManifestSchema } from '@adcp/sdk/types';
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -48,11 +53,14 @@ function escapeHtmlAttr(s: string): string {
 }
 
 /** Build a structured MCP error response for tool calls (L3 error compliance). */
-function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string }, context?: unknown) {
+export function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string }, context?: unknown, adcpVersion?: string) {
   const errorObj = { code, ...opts };
   const body = context !== undefined
     ? { adcp_error: errorObj, context }
     : { adcp_error: errorObj };
+  if (adcpVersion) {
+    (body as Record<string, unknown>).adcp_version = adcpVersion;
+  }
   return {
     isError: true,
     content: [{ type: 'text' as const, text: JSON.stringify(body) }],
@@ -67,6 +75,157 @@ type Destination = NonNullable<ActivateSignalRequest['destinations']>[number];
 type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
 type PricingOption = Product['pricing_options'][number];
 type AuctionPricingOption = Exclude<PricingOption, { pricing_model: 'cpa' }>;
+type WholesaleFeedRequest = {
+  account?: AccountRef;
+  if_wholesale_feed_version?: string;
+  if_pricing_version?: string;
+  pagination?: { max_results?: number; cursor?: string };
+};
+type WholesaleFeedMeta = {
+  wholesale_feed_version: string;
+  pricing_version: string;
+  cache_scope: 'public' | 'account';
+};
+type ValidateInputTarget = {
+  kind: 'canonical' | 'product' | 'third_party_format';
+  id: string;
+};
+type ValidateInputArgs = ToolArgs & {
+  account?: AccountRef;
+  brand?: { domain?: string; name?: string };
+  manifest?: {
+    format_kind?: string;
+    format_id?: FormatID;
+    format_option_ref?: Record<string, unknown>;
+    assets?: Record<string, unknown>;
+  };
+  targets?: ValidateInputTarget[];
+};
+type ValidateInputViolation = {
+  rule: string;
+  field: string;
+  expected?: unknown;
+  predicted?: unknown;
+  retry_with?: Record<string, unknown>;
+};
+type ValidateInputResult = {
+  target: ValidateInputTarget;
+  result_kind: 'validated_pass' | 'validated_fail' | 'unvalidatable_nondeterministic';
+  violations?: ValidateInputViolation[];
+};
+type CanonicalSlot = {
+  asset_group_id: string;
+  asset_type: string;
+  required?: boolean;
+  min?: number;
+  max?: number;
+};
+
+const PRODUCT_WHOLESALE_FEED_VERSION = 'training-products-feed-v1';
+const PRODUCT_WHOLESALE_PRICING_VERSION = 'training-products-pricing-v1';
+const SIGNAL_WHOLESALE_FEED_VERSION = 'training-signals-feed-v1';
+const SIGNAL_WHOLESALE_PRICING_VERSION = 'training-signals-pricing-v1';
+// The current SDK storyboard runner injects this fallback on get_signals even
+// when the authored sample_request declares discovery_mode: "wholesale".
+const SDK_STORYBOARD_FALLBACK_SIGNAL_SPEC = 'E2E fallback signal discovery';
+const PRODUCT_WHOLESALE_FEED_WEBHOOK_EVENT_TYPES = [
+  'product.created',
+  'product.updated',
+  'product.priced',
+  'product.removed',
+] as const;
+const SIGNAL_WHOLESALE_FEED_WEBHOOK_EVENT_TYPES = [
+  'signal.created',
+  'signal.updated',
+  'signal.priced',
+  'signal.removed',
+] as const;
+const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
+  image: [
+    { asset_group_id: 'image_main', asset_type: 'image', required: true },
+    { asset_group_id: 'headline', asset_type: 'text' },
+    { asset_group_id: 'body_text', asset_type: 'text' },
+    { asset_group_id: 'primary_text', asset_type: 'text' },
+    { asset_group_id: 'cta', asset_type: 'text' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  html5: [
+    { asset_group_id: 'html5_bundle', asset_type: 'zip', required: true },
+    { asset_group_id: 'backup_image', asset_type: 'image' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  display_tag: [
+    { asset_group_id: 'tag_url', asset_type: 'url', required: true },
+    { asset_group_id: 'backup_image', asset_type: 'image' },
+  ],
+  image_carousel: [
+    { asset_group_id: 'cards', asset_type: 'card', required: true, min: 2, max: 10 },
+    { asset_group_id: 'primary_text', asset_type: 'text' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  video_hosted: [
+    { asset_group_id: 'video_main', asset_type: 'video', required: true },
+    { asset_group_id: 'headline', asset_type: 'text' },
+    { asset_group_id: 'primary_text', asset_type: 'text' },
+    { asset_group_id: 'cta', asset_type: 'text' },
+    { asset_group_id: 'brand_name', asset_type: 'text' },
+    { asset_group_id: 'companion_banner', asset_type: 'image' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  video_vast: [
+    { asset_group_id: 'vast_tag', asset_type: 'vast', required: true },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  audio_hosted: [
+    { asset_group_id: 'audio_main', asset_type: 'audio', required: true },
+    { asset_group_id: 'companion_image', asset_type: 'image' },
+    { asset_group_id: 'brand_name', asset_type: 'text' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  audio_daast: [
+    { asset_group_id: 'daast_tag', asset_type: 'daast', required: true },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  sponsored_placement: [
+    { asset_group_id: 'source_catalog', asset_type: 'catalog', required: true },
+    { asset_group_id: 'hero_asset', asset_type: 'image' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  native_in_feed: [
+    { asset_group_id: 'title', asset_type: 'text', required: true },
+    { asset_group_id: 'body_text', asset_type: 'text' },
+    { asset_group_id: 'main_image', asset_type: 'image' },
+    { asset_group_id: 'icon', asset_type: 'image' },
+    { asset_group_id: 'cta', asset_type: 'text' },
+    { asset_group_id: 'advertiser_name', asset_type: 'text', required: true },
+    { asset_group_id: 'sponsored_label', asset_type: 'text' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url', required: true },
+    { asset_group_id: 'display_url', asset_type: 'text' },
+    { asset_group_id: 'rating', asset_type: 'text' },
+    { asset_group_id: 'price', asset_type: 'text' },
+    { asset_group_id: 'impression_tracker', asset_type: 'pixel_tracker' },
+    { asset_group_id: 'viewability_tracker', asset_type: 'pixel_tracker' },
+    { asset_group_id: 'click_tracker', asset_type: 'pixel_tracker' },
+  ],
+  responsive_creative: [
+    { asset_group_id: 'headlines', asset_type: 'text', required: true, min: 3, max: 15 },
+    { asset_group_id: 'long_headlines', asset_type: 'text', min: 1, max: 5 },
+    { asset_group_id: 'descriptions', asset_type: 'text', required: true, min: 2, max: 5 },
+    { asset_group_id: 'images_landscape', asset_type: 'image', min: 1, max: 20 },
+    { asset_group_id: 'images_square', asset_type: 'image', min: 1, max: 20 },
+    { asset_group_id: 'images_vertical', asset_type: 'image', min: 1, max: 20 },
+    { asset_group_id: 'video', asset_type: 'video', min: 0, max: 5 },
+    { asset_group_id: 'logo', asset_type: 'image', required: true, min: 1, max: 5 },
+    { asset_group_id: 'landing_page_url', asset_type: 'url', required: true },
+  ],
+  agent_placement: [
+    { asset_group_id: 'offering_ref', asset_type: 'text' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+};
+const MAX_VALIDATE_INPUT_TARGETS = 50;
+const VALID_CANONICAL_FORMAT_KINDS = new Set([...Object.keys(CANONICAL_FORMAT_SLOTS), 'custom']);
+const NONDETERMINISTIC_INCOMPATIBLE_SOURCES = new Set(['buyer_uploaded', 'publisher_host_recorded']);
 
 type GetMediaBuysArgs = GetMediaBuysRequest & ToolArgs & {
   status_filter?: string[];
@@ -156,6 +315,74 @@ function validateTargeting(t: unknown, pathLabel: string): { targeting?: Package
   };
 }
 
+interface VendorMetricRefView {
+  vendor?: { domain?: unknown; brand_id?: unknown };
+  metric_id?: unknown;
+  supported_targets?: unknown;
+  scope?: unknown;
+}
+
+interface VendorMetricOptimizationView {
+  supported_metrics?: VendorMetricRefView[];
+}
+
+interface ReportingCapabilitiesView {
+  vendor_metrics?: VendorMetricRefView[];
+}
+
+interface MeasurementCatalogView {
+  vendor?: { domain?: unknown; brand_id?: unknown };
+  metrics?: Array<{ metric_id?: unknown }>;
+}
+
+function vendorMetricKey(entry: VendorMetricRefView | undefined): string | null {
+  const domain = entry?.vendor?.domain;
+  const metricId = entry?.metric_id;
+  if (typeof domain !== 'string' || domain.length === 0 || typeof metricId !== 'string' || metricId.length === 0) {
+    return null;
+  }
+  const brandId = typeof entry?.vendor?.brand_id === 'string' ? entry.vendor.brand_id : '';
+  return `${domain.toLowerCase()}|${brandId}|${metricId}`;
+}
+
+function vendorCatalogKey(entry: VendorMetricRefView | undefined): string | null {
+  const domain = entry?.vendor?.domain;
+  if (typeof domain !== 'string' || domain.length === 0) return null;
+  const brandId = typeof entry?.vendor?.brand_id === 'string' ? entry.vendor.brand_id : '';
+  return `${domain.toLowerCase()}|${brandId}`;
+}
+
+function productMeasurementCatalogForGoal(product: Product | undefined, goal: VendorMetricRefView): MeasurementCatalogView | undefined {
+  if (!product) return undefined;
+  const catalogKey = vendorCatalogKey(goal);
+  if (!catalogKey) return undefined;
+  const catalogs = (product as Product & {
+    measurement_catalogs?: unknown;
+    measurement_catalog?: unknown;
+  }).measurement_catalogs ?? (product as Product & { measurement_catalog?: unknown }).measurement_catalog;
+  const list = Array.isArray(catalogs) ? catalogs : catalogs ? [catalogs] : [];
+  return list.find((entry): entry is MeasurementCatalogView => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    return vendorCatalogKey(entry as MeasurementCatalogView) === catalogKey;
+  });
+}
+
+function hasFixedPrice(option: PricingOption): boolean {
+  return (option as { fixed_price?: unknown }).fixed_price !== undefined;
+}
+
+function applyFixedPriceFilter(product: Product, fixedPrice: boolean): Product | null {
+  const pricing_options = product.pricing_options.filter(po => hasFixedPrice(po) === fixedPrice);
+  if (pricing_options.length === 0) return null;
+  return { ...product, pricing_options };
+}
+
+function applyFixedPriceFilterToProducts(products: Product[], fixedPrice: boolean): Product[] {
+  return products
+    .map(product => applyFixedPriceFilter(product, fixedPrice))
+    .filter((product): product is Product => product !== null);
+}
+
 // Proposal lifecycle fields not yet in @adcp/sdk — remove after client update
 interface ProposalLifecycle {
   proposal_status?: 'draft' | 'committed';
@@ -165,13 +392,46 @@ function proposalLifecycle(proposal: Proposal): ProposalLifecycle {
   return proposal as unknown as ProposalLifecycle;
 }
 
+const THREE_ZERO_LEGACY_PROPOSAL_ID = 'balanced_reach_q2';
+const THREE_ZERO_LEGACY_PROPOSAL_TARGET_ID = 'sparq_social_amplification';
+
+function isThreeZeroStoryboardCompat(ctx: TrainingContext): boolean {
+  return ctx.storyboardCompat?.version === '3.0';
+}
+
+function productForThreeZeroStoryboardCompat(product: Product): Product {
+  const {
+    product_card: _productCard,
+    product_card_detailed: _productCardDetailed,
+    ...rest
+  } = product as Product & {
+    product_card?: unknown;
+    product_card_detailed?: unknown;
+  };
+  return rest as Product;
+}
+
+function includeThreeOneFields(ctx: TrainingContext): boolean {
+  return !isThreeZeroStoryboardCompat(ctx);
+}
+
+function creativeBillsThroughAdcp(ctx: TrainingContext): boolean {
+  return ctx.creativeBillsThroughAdcp !== false;
+}
+
+function resolveThreeZeroProposalAlias(proposals: Proposal[]): Proposal | undefined {
+  return proposals.find(p => p.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_TARGET_ID);
+}
+
 import { buildCatalog, buildShowsForProducts, buildProposals } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import {
   getSession, sessionKeyFromArgs,
+  findSessionMatching,
   runWithSessionContext, flushDirtySessions,
   getComplianceCreatives, getComplianceCreative,
+  getComplianceMediaBuys, getComplianceMediaBuy,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
 } from './state.js';
 import { getAgentUrl } from './config.js';
@@ -212,6 +472,7 @@ import {
   ACCOUNT_TOOLS,
   SUPPORTED_BILLINGS,
   handleListAccounts,
+  resolveAccountIdForRef,
   handleSyncAccounts,
   handleSyncGovernance,
 } from './account-handlers.js';
@@ -254,7 +515,238 @@ import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { selectSigningCapability } from './request-signing.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5'] as const;
+const DEFAULT_ADCP_VERSION = '3.0';
+const CURRENT_ADCP_VERSION = '3.1-beta.5';
 const MAX_PACKAGES_PER_BUY = 50;
+
+interface ParsedAdcpReleaseVersion {
+  raw: string;
+  major: number;
+  minor: number;
+  prerelease?: string;
+}
+
+interface VersionUnsupportedDetails {
+  adcp_version?: string;
+  adcp_major_version?: number;
+  supported_versions: string[];
+  supported_majors: number[];
+  rejected_adcp_version?: string;
+}
+
+type VersionResolution =
+  | { ok: true; servedVersion: string }
+  | { ok: false; message: string; field: 'adcp_version' | 'adcp_major_version'; details: VersionUnsupportedDetails };
+
+type McpRequestHandler = (request: { params?: Record<string, unknown> }, extra: unknown) => Promise<unknown> | unknown;
+
+const TASK_PROTOCOL_METHODS = ['tasks/get', 'tasks/result', 'tasks/list', 'tasks/cancel'] as const;
+
+function parseAdcpReleaseVersion(value: unknown): ParsedAdcpReleaseVersion | undefined {
+  if (typeof value !== 'string') return undefined;
+  const match = value.match(/^(\d+)\.(\d+)(?:-([A-Za-z0-9.-]+))?$/);
+  if (!match) return undefined;
+  return {
+    raw: value,
+    major: Number.parseInt(match[1], 10),
+    minor: Number.parseInt(match[2], 10),
+    ...(match[3] && { prerelease: match[3] }),
+  };
+}
+
+function compareAdcpReleaseVersions(left: ParsedAdcpReleaseVersion, right: ParsedAdcpReleaseVersion): number {
+  if (left.major !== right.major) return left.major - right.major;
+  if (left.minor !== right.minor) return left.minor - right.minor;
+  if (left.prerelease === right.prerelease) return 0;
+  if (!left.prerelease) return 1;
+  if (!right.prerelease) return -1;
+  return left.prerelease.localeCompare(right.prerelease);
+}
+
+const PARSED_SUPPORTED_RELEASE_VERSIONS = SUPPORTED_RELEASE_VERSIONS
+  .map(version => parseAdcpReleaseVersion(version))
+  .filter((version): version is ParsedAdcpReleaseVersion => version !== undefined)
+  .sort(compareAdcpReleaseVersions);
+
+function highestSupportedRelease(major?: number): string | undefined {
+  const candidates = major === undefined
+    ? PARSED_SUPPORTED_RELEASE_VERSIONS
+    : PARSED_SUPPORTED_RELEASE_VERSIONS.filter(version => version.major === major);
+  return candidates.at(-1)?.raw;
+}
+
+function supportedVersionDetails(args: Record<string, unknown>): VersionUnsupportedDetails {
+  const requestedRelease = parseAdcpReleaseVersion(args.adcp_version);
+  const requestedMajor = typeof args.adcp_major_version === 'number' && Number.isInteger(args.adcp_major_version)
+    ? args.adcp_major_version
+    : undefined;
+  return {
+    ...(requestedRelease && { adcp_version: requestedRelease.raw }),
+    ...(requestedMajor !== undefined && { adcp_major_version: requestedMajor }),
+    ...(!requestedRelease && typeof args.adcp_version === 'string' && { rejected_adcp_version: args.adcp_version }),
+    supported_versions: [...SUPPORTED_RELEASE_VERSIONS],
+    supported_majors: [...SUPPORTED_MAJOR_VERSIONS],
+  };
+}
+
+export function resolveServedAdcpVersion(args: Record<string, unknown>): VersionResolution {
+  const requestedReleaseRaw = args.adcp_version;
+  const requestedMajorRaw = args.adcp_major_version;
+  const requestedMajor = typeof requestedMajorRaw === 'number' && Number.isInteger(requestedMajorRaw)
+    ? requestedMajorRaw
+    : undefined;
+
+  if (requestedReleaseRaw !== undefined) {
+    const requestedRelease = parseAdcpReleaseVersion(requestedReleaseRaw);
+    if (!requestedRelease) {
+      return {
+        ok: false,
+        message: `AdCP version ${JSON.stringify(requestedReleaseRaw)} is not supported`,
+        field: 'adcp_version',
+        details: supportedVersionDetails(args),
+      };
+    }
+
+    if (requestedMajor !== undefined && requestedMajor !== requestedRelease.major) {
+      return {
+        ok: false,
+        message: `Request carries adcp_version="${requestedRelease.raw}" (major ${requestedRelease.major}) and adcp_major_version=${requestedMajor}; majors must agree.`,
+        field: 'adcp_version',
+        details: supportedVersionDetails(args),
+      };
+    }
+
+    if ((SUPPORTED_RELEASE_VERSIONS as readonly string[]).includes(requestedRelease.raw)) {
+      return { ok: true, servedVersion: requestedRelease.raw };
+    }
+
+    if (requestedRelease.prerelease) {
+      return {
+        ok: false,
+        message: `AdCP version ${requestedRelease.raw} is not supported`,
+        field: 'adcp_version',
+        details: supportedVersionDetails(args),
+      };
+    }
+
+    const downshift = PARSED_SUPPORTED_RELEASE_VERSIONS
+      .filter(version => version.major === requestedRelease.major)
+      .filter(version => !version.prerelease)
+      .filter(version => compareAdcpReleaseVersions(version, requestedRelease) <= 0)
+      .at(-1);
+
+    if (downshift) {
+      return { ok: true, servedVersion: downshift.raw };
+    }
+
+    return {
+      ok: false,
+      message: `AdCP version ${requestedRelease.raw} is not supported`,
+      field: 'adcp_version',
+      details: supportedVersionDetails(args),
+    };
+  }
+
+  if (requestedMajorRaw !== undefined) {
+    if (requestedMajor === undefined) {
+      return {
+        ok: false,
+        message: `AdCP major version ${JSON.stringify(requestedMajorRaw)} is not supported`,
+        field: 'adcp_major_version',
+        details: supportedVersionDetails(args),
+      };
+    }
+    const servedVersion = highestSupportedRelease(requestedMajor);
+    if (servedVersion) return { ok: true, servedVersion };
+    return {
+      ok: false,
+      message: `AdCP major version ${requestedMajor} is not supported`,
+      field: 'adcp_major_version',
+      details: supportedVersionDetails(args),
+    };
+  }
+
+  return { ok: true, servedVersion: DEFAULT_ADCP_VERSION };
+}
+
+export function resolveServedAdcpVersionForTool(toolName: string, args: Record<string, unknown>): VersionResolution {
+  if (
+    toolName === 'validate_input'
+    && args.adcp_version === undefined
+    && args.adcp_major_version === undefined
+  ) {
+    return resolveServedAdcpVersion({ ...args, adcp_version: CURRENT_ADCP_VERSION });
+  }
+  return resolveServedAdcpVersion(args);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function mcpErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  return error.message.replace(/^MCP error -?\d+: /, '');
+}
+
+function versionUnsupportedJsonRpcError(resolution: Extract<VersionResolution, { ok: false }>, context?: unknown): McpError {
+  const adcpError = {
+    code: 'VERSION_UNSUPPORTED',
+    message: resolution.message,
+    details: resolution.details,
+    field: resolution.field,
+  };
+  return new McpError(ErrorCode.InvalidParams, resolution.message, {
+    ...resolution.details,
+    adcp_error: adcpError,
+    ...(context !== undefined && { context }),
+  });
+}
+
+function rethrowWithServedAdcpVersion(error: unknown, servedAdcpVersion: string): never {
+  if (error instanceof McpError) {
+    const existingData = isRecord(error.data) ? error.data : {};
+    throw new McpError(error.code, mcpErrorMessage(error), {
+      ...existingData,
+      adcp_version: servedAdcpVersion,
+    });
+  }
+  throw error;
+}
+
+function addServedAdcpVersion(result: unknown, servedAdcpVersion: string, context?: unknown): unknown {
+  if (!isRecord(result)) return result;
+  return {
+    ...result,
+    adcp_version: servedAdcpVersion,
+    ...(context !== undefined && result.context === undefined && { context }),
+  };
+}
+
+function installTaskProtocolVersionNegotiation(server: Server): void {
+  const handlers = (server as unknown as { _requestHandlers?: Map<string, McpRequestHandler> })._requestHandlers;
+  if (!handlers) return;
+
+  for (const method of TASK_PROTOCOL_METHODS) {
+    const original = handlers.get(method);
+    if (!original) continue;
+    handlers.set(method, async (request, extra) => {
+      const rawParams = isRecord(request.params) ? request.params : {};
+      const { context: callerContext, ...versionArgs } = rawParams;
+      const versionResolution = resolveServedAdcpVersion(versionArgs);
+      if (!versionResolution.ok) {
+        throw versionUnsupportedJsonRpcError(versionResolution, callerContext);
+      }
+      try {
+        const result = await original(request, extra);
+        return addServedAdcpVersion(result, versionResolution.servedVersion, callerContext);
+      } catch (error) {
+        rethrowWithServedAdcpVersion(error, versionResolution.servedVersion);
+      }
+    });
+  }
+}
 
 // ── MCP Tasks store (SDK-managed) ─────────────────────────────────
 
@@ -297,7 +789,10 @@ function toolSupportsTask(toolName: string): boolean {
  * from seeing each other's idempotency outcomes.
  */
 function deriveAccountScope(args: Record<string, unknown>): string | undefined {
-  const account = (args.account as { account_id?: string; brand?: { domain?: string } } | undefined);
+  const usageAccount = Array.isArray(args.usage)
+    ? (args.usage[0] as { account?: unknown } | undefined)?.account
+    : undefined;
+  const account = (args.account ?? usageAccount) as { account_id?: string; brand?: { domain?: string } } | undefined;
   if (account?.account_id && typeof account.account_id === 'string') {
     return `a:${account.account_id}`;
   }
@@ -307,6 +802,17 @@ function deriveAccountScope(args: Record<string, unknown>): string | undefined {
     return `b:${domain.toLowerCase()}`;
   }
   return undefined;
+}
+
+function withUsageAccountScope<T extends Record<string, unknown>>(req: T): T {
+  if (req.account !== undefined) return req;
+  const usageAccount = Array.isArray(req.usage)
+    ? (req.usage[0] as { account?: unknown } | undefined)?.account
+    : undefined;
+  if (usageAccount && typeof usageAccount === 'object') {
+    return { ...req, account: usageAccount };
+  }
+  return req;
 }
 
 /** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
@@ -348,6 +854,39 @@ interface TaskError {
   field?: string;
   details?: unknown;
   recovery?: string;
+  source?: 'producer' | 'sdk';
+  sdk_id?: string;
+}
+
+const RESPONSE_ENVELOPE_KEYS = new Set([
+  'errors',
+  'context',
+  'ext',
+  'status',
+  'context_id',
+  'task_id',
+  'timestamp',
+  'message',
+  'replayed',
+  'adcp_error',
+  'push_notification_config',
+  'governance_context',
+  'adcp_version',
+  'adcp_major_version',
+]);
+
+export function hasAdcpSuccessPayload(resultObj: Record<string, unknown> | undefined): boolean {
+  if (!resultObj) return false;
+  if (resultObj.status === 'submitted' && typeof resultObj.task_id === 'string') return true;
+  return Object.keys(resultObj).some(key => !RESPONSE_ENVELOPE_KEYS.has(key) && resultObj[key] !== undefined);
+}
+
+function permitsAdvisoryErrors(toolName: string, resultObj: Record<string, unknown> | undefined): boolean {
+  if (toolName === 'get_products') return hasAdcpSuccessPayload(resultObj);
+  if (toolName === 'create_media_buy') {
+    return resultObj?.status === 'submitted' && typeof resultObj.task_id === 'string';
+  }
+  return false;
 }
 
 /** Signal deployment entry in get_signals response. */
@@ -527,6 +1066,261 @@ function validActionsForStatus(status: string): string[] {
   }
 }
 
+function availableActionsForStatus(status: string, explicit?: MediaBuyAvailableActionState[]): MediaBuyAvailableActionState[] {
+  if (explicit !== undefined) return explicit;
+  return validActionsForStatus(status).map(action => ({
+    action,
+    mode: 'self_serve' as const,
+  }));
+}
+
+const NON_TERMINAL_MEDIA_BUY_STATUSES = new Set(['pending_creatives', 'pending_start', 'active', 'paused']);
+
+function allowedActionAppliesToStatus(action: MediaBuyProductAllowedActionState, status: string): boolean {
+  if (action.allowed_statuses?.length) return action.allowed_statuses.includes(status);
+  return NON_TERMINAL_MEDIA_BUY_STATUSES.has(status);
+}
+
+function normalizeProductAllowedActions(product: Product | undefined): MediaBuyProductAllowedActionState[] {
+  const rawActions = (product as unknown as { allowed_actions?: unknown } | undefined)?.allowed_actions;
+  if (!Array.isArray(rawActions)) return [];
+
+  const normalized: MediaBuyProductAllowedActionState[] = [];
+  const seen = new Set<string>();
+  for (const rawAction of rawActions) {
+    if (!rawAction || typeof rawAction !== 'object' || Array.isArray(rawAction)) continue;
+    const src = rawAction as Record<string, unknown>;
+    if (typeof src.action !== 'string' || seen.has(src.action)) continue;
+    if (!Array.isArray(src.modes)) continue;
+    const modes = src.modes.filter((mode): mode is MediaBuyAvailableActionState['mode'] =>
+      mode === 'self_serve'
+      || mode === 'conditional_self_serve'
+      || mode === 'requires_proposal'
+      || mode === 'requires_approval',
+    );
+    if (modes.length === 0) continue;
+    const sla = src.sla && typeof src.sla === 'object' && !Array.isArray(src.sla)
+      ? src.sla as Record<string, unknown>
+      : undefined;
+    normalized.push({
+      action: src.action,
+      modes,
+      ...(Array.isArray(src.allowed_statuses) && {
+        allowed_statuses: src.allowed_statuses.filter(status => typeof status === 'string') as string[],
+      }),
+      ...(sla && {
+        sla: {
+          ...(typeof sla.response_max === 'string' && { response_max: sla.response_max }),
+          ...(typeof sla.completion_max === 'string' && { completion_max: sla.completion_max }),
+        },
+      }),
+      ...(typeof src.terms_ref === 'string' && { terms_ref: src.terms_ref }),
+    });
+    seen.add(src.action);
+  }
+  return normalized;
+}
+
+function deriveProductAllowedActionsForPackages(
+  packages: PackageState[],
+  productMap: Map<string, Product>,
+): MediaBuyProductAllowedActionState[] | undefined {
+  const actions: MediaBuyProductAllowedActionState[] = [];
+  const seen = new Set<string>();
+  for (const pkg of packages) {
+    for (const action of normalizeProductAllowedActions(productMap.get(pkg.productId))) {
+      if (seen.has(action.action)) continue;
+      actions.push(action);
+      seen.add(action.action);
+    }
+  }
+  return actions.length ? actions : undefined;
+}
+
+function deriveAvailableActionsFromProductAllowedActions(
+  allowedActions: MediaBuyProductAllowedActionState[] | undefined,
+  status: string,
+): MediaBuyAvailableActionState[] | undefined {
+  if (!allowedActions) return undefined;
+  return allowedActions
+    .filter(action => allowedActionAppliesToStatus(action, status))
+    .map(action => ({
+      action: action.action,
+      mode: action.modes[0],
+      ...(action.sla && { sla: action.sla }),
+      ...(action.terms_ref && { terms_ref: action.terms_ref }),
+    }));
+}
+
+function availableActionsForMediaBuy(mb: MediaBuyState, status: string): MediaBuyAvailableActionState[] {
+  const productDerived = deriveAvailableActionsFromProductAllowedActions(mb.productAllowedActions, status);
+  if (productDerived !== undefined) return productDerived;
+  return availableActionsForStatus(status, mb.availableActions);
+}
+
+type AttemptedMediaBuyAction =
+  | 'pause'
+  | 'resume'
+  | 'cancel'
+  | 'extend_flight'
+  | 'shorten_flight'
+  | 'update_flight_dates'
+  | 'increase_budget'
+  | 'decrease_budget'
+  | 'reallocate_budget'
+  | 'update_targeting'
+  | 'update_pacing'
+  | 'update_frequency_caps'
+  | 'replace_creative'
+  | 'update_creative_assignments'
+  | 'add_packages'
+  | 'remove_packages';
+
+interface AttemptedMediaBuyActionEntry {
+  action: AttemptedMediaBuyAction;
+  packageId?: string;
+}
+
+function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): AttemptedMediaBuyActionEntry[] {
+  const actions: AttemptedMediaBuyActionEntry[] = [];
+  const seen = new Set<string>();
+  const addAction = (action: AttemptedMediaBuyAction, packageId?: string) => {
+    const key = `${packageId ?? '*'}:${action}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    actions.push({ action, ...(packageId && { packageId }) });
+  };
+
+  if (req.paused === true) addAction('pause');
+  if (req.paused === false) addAction('resume');
+  if (req.canceled === true) addAction('cancel');
+
+  const currentStart = new Date(mb.startTime).getTime();
+  const currentEnd = new Date(mb.endTime).getTime();
+  const requestedStart = req.start_time as unknown;
+  if (typeof requestedStart === 'string') {
+    const nextStart = new Date(requestedStart).getTime();
+    if (!Number.isNaN(nextStart) && nextStart !== currentStart) addAction('update_flight_dates');
+  } else if (requestedStart && typeof requestedStart === 'object' && typeof (requestedStart as { datetime?: unknown }).datetime === 'string') {
+    const nextStart = new Date((requestedStart as { datetime: string }).datetime).getTime();
+    if (!Number.isNaN(nextStart) && nextStart !== currentStart) addAction('update_flight_dates');
+  }
+  if (typeof req.end_time === 'string') {
+    const nextEnd = new Date(req.end_time).getTime();
+    if (!Number.isNaN(nextEnd)) {
+      if (nextEnd > currentEnd) addAction('extend_flight');
+      if (nextEnd < currentEnd) addAction('shorten_flight');
+    }
+  }
+
+  if (req.packages?.length) {
+    let totalBefore = 0;
+    let totalAfter = 0;
+    let sawBudget = false;
+    for (const update of req.packages as PackageUpdateExt[]) {
+      const pkgId = update.package_id || '';
+      const pkg = mb.packages.find(p => p.packageId === pkgId);
+      if (!pkg) continue;
+      totalBefore += pkg.budget;
+      totalAfter += update.budget ?? pkg.budget;
+      if (update.budget !== undefined) {
+        sawBudget = true;
+        if (update.budget > pkg.budget) addAction('increase_budget', pkgId);
+        if (update.budget < pkg.budget) addAction('decrease_budget', pkgId);
+      }
+      if (update.start_time) addAction('update_flight_dates', pkgId);
+      if (update.end_time) {
+        const currentPackageEnd = new Date(pkg.endTime).getTime();
+        const nextPackageEnd = new Date(update.end_time).getTime();
+        if (!Number.isNaN(nextPackageEnd)) {
+          if (nextPackageEnd > currentPackageEnd) addAction('extend_flight', pkgId);
+          if (nextPackageEnd < currentPackageEnd) addAction('shorten_flight', pkgId);
+        }
+      }
+      if (update.targeting_overlay || update.targeting || update.keyword_targets_add || update.keyword_targets_remove || update.negative_keywords_add || update.negative_keywords_remove) addAction('update_targeting', pkgId);
+      if (update.pacing) addAction('update_pacing', pkgId);
+      if (
+        update.targeting_overlay
+        && typeof update.targeting_overlay === 'object'
+        && 'frequency_cap' in (update.targeting_overlay as Record<string, unknown>)
+      ) addAction('update_frequency_caps', pkgId);
+      if (update.creative_assignments) addAction('update_creative_assignments', pkgId);
+      if (update.creatives) addAction('replace_creative', pkgId);
+      if (update.canceled === true) addAction('remove_packages', pkgId);
+    }
+    if (sawBudget && totalAfter === totalBefore && seenHasAction(seen, 'increase_budget') && seenHasAction(seen, 'decrease_budget')) {
+      addAction('reallocate_budget');
+    }
+  }
+
+  if (req.new_packages?.length) addAction('add_packages');
+  return actions;
+}
+
+function seenHasAction(seen: Set<string>, action: AttemptedMediaBuyAction): boolean {
+  for (const key of seen) {
+    if (key.endsWith(`:${action}`)) return true;
+  }
+  return false;
+}
+
+function actionNotAllowedError(
+  attemptedAction: string,
+  reason: 'wrong_status' | 'not_supported_on_product' | 'not_supported_on_buy' | 'mode_mismatch',
+  availableActions: MediaBuyAvailableActionState[],
+  context?: unknown,
+): { errors: TaskError[]; context?: unknown } {
+  return {
+    errors: [{
+      code: 'ACTION_NOT_ALLOWED',
+      message: `Action ${attemptedAction} is not available through direct update_media_buy`,
+      recovery: reason === 'wrong_status' || reason === 'mode_mismatch' ? 'correctable' : 'terminal',
+      details: {
+        attempted_action: attemptedAction,
+        reason,
+        currently_available_actions: availableActions,
+      },
+    }],
+    ...(context !== undefined && { context }),
+  };
+}
+
+function rejectUnavailableAction(
+  mb: MediaBuyState,
+  req: UpdateMediaBuyArgs,
+  status: string,
+  productMap: Map<string, Product>,
+): { errors: TaskError[]; context?: unknown } | null {
+  if (!mb.productAllowedActions && !mb.availableActions) return null;
+
+  const availableActions = availableActionsForMediaBuy(mb, status);
+  for (const attempt of actionsForUpdateRequest(mb, req)) {
+    const packageAllowedActions = attempt.packageId
+      ? normalizeProductAllowedActions(productMap.get(mb.packages.find(pkg => pkg.packageId === attempt.packageId)?.productId ?? ''))
+      : undefined;
+    const scopedAvailableActions = packageAllowedActions
+      ? deriveAvailableActionsFromProductAllowedActions(packageAllowedActions, status) ?? []
+      : availableActions;
+    const advertised = new Map(scopedAvailableActions.map(entry => [entry.action, entry]));
+    const entry = advertised.get(attempt.action);
+    if (!entry) {
+      const productAction = packageAllowedActions
+        ? packageAllowedActions.find(action => action.action === attempt.action)
+        : mb.productAllowedActions?.find(action => action.action === attempt.action);
+      const reason = productAction
+        ? 'wrong_status'
+        : packageAllowedActions || mb.productAllowedActions
+          ? 'not_supported_on_product'
+          : 'not_supported_on_buy';
+      return actionNotAllowedError(attempt.action, reason, availableActions, req.context);
+    }
+    if (entry.mode !== 'self_serve' && entry.mode !== 'conditional_self_serve') {
+      return actionNotAllowedError(attempt.action, 'mode_mismatch', availableActions, req.context);
+    }
+  }
+  return null;
+}
+
 // ── Cached catalog and formats (built once at first use) ──────────
 let cachedCatalog: CatalogProduct[] | null = null;
 let cachedFormats: ReturnType<typeof buildFormats> | null = null;
@@ -601,13 +1395,14 @@ function backfillTrainingProductDefaults(product: Product, ownAgentUrl: string):
     description?: string;
     publisher_properties?: Array<{ publisher_domain: string; selection_type: string }>;
     format_ids?: Array<{ agent_url?: string; id?: string }>;
+    format_options?: unknown[];
     pricing_options?: unknown[];
     reporting_capabilities?: Record<string, unknown>;
   };
-  if (!Array.isArray(p.format_ids) || p.format_ids.length === 0) {
+  if ((!Array.isArray(p.format_ids) || p.format_ids.length === 0) && (!Array.isArray(p.format_options) || p.format_options.length === 0)) {
     p.format_ids = [{ agent_url: ownAgentUrl, id: 'display_300x250' }];
   } else {
-    for (const fid of p.format_ids) {
+    for (const fid of p.format_ids ?? []) {
       if (typeof fid === 'object' && fid !== null && !fid.agent_url) {
         fid.agent_url = ownAgentUrl;
       }
@@ -750,7 +1545,7 @@ function resolveManifestProvenance(creative: CreativeForEnforcement): Record<str
  */
 function sanitizeForError(value: string, maxLen = 256): string {
   // eslint-disable-next-line no-control-regex
-  return value.replace(/[ -]/g, '').slice(0, maxLen);
+  return value.replace(/[\x00-\x1F\x7F]/g, '').slice(0, maxLen);
 }
 
 /**
@@ -772,8 +1567,8 @@ function provenanceError(
 
 /**
  * Apply seller-side `creative_policy` enforcement to a single creative
- * submission. Returns the first PROVENANCE_* error if any structural
- * check fails, or `null` when the creative passes.
+ * submission. Returns the first PROVENANCE_* error if any check fails, plus
+ * any non-blocking audit observations returned by the verifier.
  *
  * Cascade order (stable; storyboard assertions on `errors[0]` rely on it):
  *   1. PROVENANCE_REQUIRED                       — provenance object absent
@@ -787,16 +1582,14 @@ function provenanceError(
  * implementation accumulates errors instead of returning the first, the
  * order above is the canonical priority for sorting.
  *
- * The truth-of-claim surface (PROVENANCE_CLAIM_CONTRADICTED, requires
- * calling `get_creative_features` against an on-list verifier) is out
- * of scope for this initial implementation — the structural codes are
- * sufficient to exercise the wire contract end to end.
+ * The truth-of-claim and audit-observation surfaces call `get_creative_features`
+ * against an on-list verifier after structural checks pass.
  */
 async function enforceProvenancePolicy(
   creative: CreativeForEnforcement,
   policy: CreativePolicyView | null,
-): Promise<TaskError | null> {
-  if (!policy) return null;
+): Promise<{ error: TaskError | null; auditObservations: CreativeAuditObservation[] }> {
+  if (!policy) return { error: null, auditObservations: [] };
   const provenance = resolveManifestProvenance(creative);
   // creative_id is buyer-controlled — sanitize before interpolating into
   // the field path so a payload with newlines or oversized strings can't
@@ -806,22 +1599,22 @@ async function enforceProvenancePolicy(
 
   // 1. provenance_required — any provenance object must exist
   if (policy.provenance_required && !provenance) {
-    return provenanceError(
+    return { error: provenanceError(
       'PROVENANCE_REQUIRED',
       `Seller's creative_policy.provenance_required is true; the submitted creative has no provenance object on the manifest.`,
       `creatives[${safeId}].creative_manifest`,
-    );
+    ), auditObservations: [] };
   }
 
   // 2. require_digital_source_type
   if (policy.provenance_requirements?.require_digital_source_type) {
     const dst = provenance?.digital_source_type;
     if (dst === undefined || dst === null) {
-      return provenanceError(
+      return { error: provenanceError(
         'PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING',
         `Seller requires digital_source_type but the resolved provenance has none.`,
         `${fieldRoot}.digital_source_type`,
-      );
+      ), auditObservations: [] };
     }
   }
 
@@ -830,18 +1623,18 @@ async function enforceProvenancePolicy(
   if (policy.provenance_requirements?.require_disclosure_metadata) {
     const disclosure = provenance?.disclosure as { required?: unknown; jurisdictions?: unknown[] } | undefined;
     if (!disclosure || typeof disclosure.required !== 'boolean') {
-      return provenanceError(
+      return { error: provenanceError(
         'PROVENANCE_DISCLOSURE_MISSING',
         `Seller requires disclosure metadata but the resolved provenance has no disclosure.required boolean.`,
         `${fieldRoot}.disclosure`,
-      );
+      ), auditObservations: [] };
     }
     if (disclosure.required === true && (!Array.isArray(disclosure.jurisdictions) || disclosure.jurisdictions.length === 0)) {
-      return provenanceError(
+      return { error: provenanceError(
         'PROVENANCE_DISCLOSURE_MISSING',
         `Seller requires disclosure metadata; disclosure.required is true but disclosure.jurisdictions is empty.`,
         `${fieldRoot}.disclosure.jurisdictions`,
-      );
+      ), auditObservations: [] };
     }
   }
 
@@ -849,11 +1642,11 @@ async function enforceProvenancePolicy(
   if (policy.provenance_requirements?.require_embedded_provenance) {
     const embedded = provenance?.embedded_provenance;
     if (!Array.isArray(embedded) || embedded.length === 0) {
-      return provenanceError(
+      return { error: provenanceError(
         'PROVENANCE_EMBEDDED_MISSING',
         `Seller requires embedded_provenance but the resolved provenance has none.`,
         `${fieldRoot}.embedded_provenance`,
-      );
+      ), auditObservations: [] };
     }
   }
 
@@ -881,11 +1674,11 @@ async function enforceProvenancePolicy(
         // payload with newlines / ANSI escapes / oversized strings can't
         // poison the message a downstream consumer renders. The field path
         // is server-constructed from constants (no buyer data), so it's safe.
-        return provenanceError(
+        return { error: provenanceError(
           'PROVENANCE_VERIFIER_NOT_ACCEPTED',
           `Buyer's verify_agent.agent_url "${sanitizeForError(url)}" is not in the seller's accepted_verifiers list.`,
           `${fieldRoot}.${layer.kind}[${layer.index}].verify_agent.agent_url`,
-        );
+        ), auditObservations: [] };
       }
     }
   }
@@ -895,7 +1688,7 @@ async function enforceProvenancePolicy(
   //    claim. Closes adcp#3802. Returns the verifier-emitted contradiction
   //    metadata (audit-safe allowlist only — no detail_url, no extension
   //    fields) for error.details.
-  const contradiction = await runProvenanceVerifier(creative, policy);
+  const { contradiction, auditObservations } = await runProvenanceVerifier(creative, policy);
   if (contradiction) {
     const err = provenanceError(
       'PROVENANCE_CLAIM_CONTRADICTED',
@@ -910,10 +1703,10 @@ async function enforceProvenancePolicy(
       confidence: contradiction.confidence,
       ...(contradiction.substituted_for ? { substituted_for: contradiction.substituted_for } : {}),
     };
-    return err;
+    return { error: err, auditObservations };
   }
 
-  return null;
+  return { error: null, auditObservations };
 }
 
 /**
@@ -971,6 +1764,82 @@ function overlaySeededProducts(
   }
 }
 
+type CanonicalFormatRef = { agent_url?: string; id?: string };
+type CanonicalFormatOption = {
+  format_option_id?: string;
+  format_kind?: string;
+  v1_format_ref?: CanonicalFormatRef[];
+};
+
+function collectCanonicalFormatAdvisories(products: Product[]): TaskError[] {
+  const errors: TaskError[] = [];
+
+  for (let productIndex = 0; productIndex < products.length; productIndex++) {
+    const product = products[productIndex] as Product & {
+      format_ids?: CanonicalFormatRef[];
+      format_options?: CanonicalFormatOption[];
+    };
+    if (!Array.isArray(product.format_ids) || !Array.isArray(product.format_options)) continue;
+    if (product.format_ids.length === 0 || product.format_options.length === 0) continue;
+
+    const declaredRefs = new Set(
+      product.format_ids
+        .filter((ref): ref is Required<CanonicalFormatRef> =>
+          typeof ref.agent_url === 'string' && typeof ref.id === 'string',
+        )
+        .map(ref => `${canonicalizeAgentUrl(ref.agent_url)}#${ref.id}`),
+    );
+    const missingRefs: Array<{
+      format_option_index: number;
+      ref_index: number;
+      agent_url: string;
+      id: string;
+      format_option_id?: string;
+      format_kind?: string;
+    }> = [];
+
+    product.format_options.forEach((option, optionIndex) => {
+      if (!Array.isArray(option.v1_format_ref)) return;
+      option.v1_format_ref.forEach((ref, refIndex) => {
+        if (typeof ref.agent_url !== 'string' || typeof ref.id !== 'string') return;
+        const key = `${canonicalizeAgentUrl(ref.agent_url)}#${ref.id}`;
+        if (!declaredRefs.has(key)) {
+          const missingRef: (typeof missingRefs)[number] = {
+            format_option_index: optionIndex,
+            ref_index: refIndex,
+            agent_url: ref.agent_url,
+            id: ref.id,
+          };
+          if (typeof option.format_option_id === 'string') {
+            missingRef.format_option_id = option.format_option_id;
+          }
+          if (typeof option.format_kind === 'string') {
+            missingRef.format_kind = option.format_kind;
+          }
+          missingRefs.push(missingRef);
+        }
+      });
+    });
+
+    if (missingRefs.length > 0) {
+      errors.push({
+        code: 'FORMAT_DECLARATION_DIVERGENT',
+        message: `Product ${product.product_id} dual-emits format_options v1_format_ref entries that are absent from format_ids.`,
+        field: `products[${productIndex}].format_options`,
+        recovery: 'correctable',
+        source: 'producer',
+        details: {
+          product_id: product.product_id,
+          divergence_reason: 'v1_format_ref_not_declared_on_product',
+          missing_refs: missingRefs,
+        },
+      });
+    }
+  }
+
+  return errors;
+}
+
 // ── Channel aliases for brief matching (module-scoped for perf) ──
 
 const BRIEF_CHANNEL_ALIASES: Record<string, string> = {
@@ -989,6 +1858,58 @@ const BRIEF_CHANNEL_ALIASES: Record<string, string> = {
   'influencer': 'influencer',
   'radio': 'radio',
 };
+
+// Vendor-metric briefs often ask for a measurement outcome (emissions,
+// brand lift, attention) rather than the literal field name. Score against
+// each product's declared vendor metrics so the named vendor/metric pair wins
+// even when the product card text has no ordinary keyword overlap.
+function inferVendorMetricBriefTerms(domain: string, metricId: string): string[] {
+  const identity = `${domain} ${metricId} ${metricId.replace(/[_-]+/g, ' ')}`;
+  const terms = new Set<string>();
+
+  if (/(attention|focus)/.test(identity)) terms.add('attention');
+  if (/(gco2e|co2|carbon|emission|scope3|sustainability)/.test(identity)) {
+    terms.add('emission');
+    terms.add('emissions');
+    terms.add('carbon');
+    terms.add('scope3');
+    terms.add('sustainability');
+  }
+  if (/(brand.?lift|awareness|incremental|panel)/.test(identity)) {
+    terms.add('brand lift');
+    terms.add('brand-lift');
+    terms.add('awareness');
+    terms.add('incremental');
+    terms.add('panel');
+  }
+
+  return [...terms];
+}
+
+function vendorMetricBriefScore(product: Product, briefLower: string): number {
+  const supportedMetrics = (product as Product & { vendor_metric_optimization?: VendorMetricOptimizationView })
+    .vendor_metric_optimization?.supported_metrics;
+  if (!supportedMetrics?.length) return 0;
+
+  let bestScore = 0;
+  for (const metric of supportedMetrics) {
+    const domain = typeof metric.vendor?.domain === 'string' ? metric.vendor.domain.toLowerCase() : '';
+    const metricId = typeof metric.metric_id === 'string' ? metric.metric_id.toLowerCase() : '';
+    const metricPhrase = metricId.replace(/[_-]+/g, ' ');
+    const categoryTerms = inferVendorMetricBriefTerms(domain, metricId);
+
+    let score = 0;
+    if (domain && briefLower.includes(domain)) score += 14;
+    if (metricId && (briefLower.includes(metricId) || briefLower.includes(metricPhrase))) score += 14;
+    if (categoryTerms.some(term => briefLower.includes(term))) {
+      score += 6;
+    }
+    if (briefLower.includes('vendor metric') || briefLower.includes('vendor-metric')) score += 2;
+    bestScore = Math.max(bestScore, score);
+  }
+
+  return bestScore;
+}
 
 // ── Shared schema fragments ──────────────────────────────────────
 
@@ -1020,6 +1941,113 @@ const ERROR_IN_BODY_TOOLS = new Set<string>([
   'activate_signal',
 ]);
 
+function accountDomain(account: AccountRef | undefined): string | undefined {
+  if (!account || typeof account !== 'object') return undefined;
+  const brand = (account as { brand?: { domain?: unknown } }).brand;
+  return typeof brand?.domain === 'string' ? brand.domain : undefined;
+}
+
+function accountId(account: AccountRef | undefined): string | undefined {
+  if (!account || typeof account !== 'object') return undefined;
+  const value = (account as { account_id?: unknown }).account_id;
+  return typeof value === 'string' ? value : undefined;
+}
+
+function cacheScopeForWholesaleRequest(req: WholesaleFeedRequest): 'public' | 'account' {
+  const domain = accountDomain(req.account);
+  const id = accountId(req.account);
+  // The reference training agent models public-rate-card accounts by default
+  // and reserves one deterministic account identity for account-overlay
+  // storyboards. Production sellers use their real account pricing state.
+  return domain === 'account-overlay.example' || id === 'acct_account_overlay'
+    ? 'account'
+    : 'public';
+}
+
+function stableMapDigest(map: Map<string, Record<string, unknown>>): string {
+  if (map.size === 0) return 'base';
+  const entries = [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  return createHash('sha256').update(JSON.stringify(entries)).digest('hex').slice(0, 16);
+}
+
+function productWholesaleFeedMeta(req: WholesaleFeedRequest, session: SessionState): WholesaleFeedMeta {
+  const seededProductsRevision = stableMapDigest(session.complyExtensions.seededProducts);
+  const seededPricingRevision = stableMapDigest(session.complyExtensions.seededPricingOptions);
+  return {
+    wholesale_feed_version: `${PRODUCT_WHOLESALE_FEED_VERSION}.${seededProductsRevision}`,
+    pricing_version: `${PRODUCT_WHOLESALE_PRICING_VERSION}.${seededPricingRevision}`,
+    cache_scope: cacheScopeForWholesaleRequest(req),
+  };
+}
+
+function signalWholesaleFeedMeta(req: WholesaleFeedRequest): WholesaleFeedMeta {
+  return {
+    wholesale_feed_version: SIGNAL_WHOLESALE_FEED_VERSION,
+    pricing_version: SIGNAL_WHOLESALE_PRICING_VERSION,
+    cache_scope: cacheScopeForWholesaleRequest(req),
+  };
+}
+
+function wholesaleFeedUnchanged(req: WholesaleFeedRequest, meta: WholesaleFeedMeta): boolean {
+  return req.if_wholesale_feed_version === meta.wholesale_feed_version
+    && (req.if_pricing_version === undefined || req.if_pricing_version === meta.pricing_version);
+}
+
+function wholesaleCapabilityProfile(ctx: TrainingContext): {
+  productWholesale: boolean;
+  signalWholesale: boolean;
+  eventTypes: string[];
+} {
+  if (ctx.storyboardCompat?.version === '3.0') {
+    return {
+      productWholesale: false,
+      signalWholesale: false,
+      eventTypes: [],
+    };
+  }
+  const productWholesale = ctx.tenantId === undefined || ctx.tenantId === 'sales';
+  const signalWholesale = ctx.tenantId === undefined || ctx.tenantId === 'signals';
+  return {
+    productWholesale,
+    signalWholesale,
+    eventTypes: [
+      ...(productWholesale ? PRODUCT_WHOLESALE_FEED_WEBHOOK_EVENT_TYPES : []),
+      ...(signalWholesale ? SIGNAL_WHOLESALE_FEED_WEBHOOK_EVENT_TYPES : []),
+      ...(productWholesale || signalWholesale ? ['wholesale_feed.bulk_change'] : []),
+    ],
+  };
+}
+
+function supportedCanonicalFormatsCapability(): Array<Record<string, unknown>> {
+  return Object.entries(CANONICAL_FORMAT_SLOTS).map(([formatKind, slots]) => ({
+    format: {
+      format_kind: formatKind,
+      params: {
+        slots: slots.map(slot => ({ ...slot })),
+      },
+    },
+  }));
+}
+
+function signalMatchesRef(
+  signal: ReturnType<typeof getAllSignals>[number],
+  ref: Record<string, unknown>,
+  signalSourceUrl: string,
+): boolean {
+  const signalId = typeof ref.signal_id === 'string' ? ref.signal_id : undefined;
+  if (!signalId || signalId !== signal.signalAgentSegmentId) return false;
+  if (ref.scope === 'data_provider') {
+    return ref.data_provider_domain === signal.providerDomain;
+  }
+  if (ref.scope === 'signal_source') {
+    return ref.signal_source_url === signalSourceUrl;
+  }
+  if (ref.scope === 'product') {
+    return true;
+  }
+  return false;
+}
+
 // ── Tool definitions ──────────────────────────────────────────────
 
 const TOOLS = [
@@ -1038,6 +2066,15 @@ const TOOLS = [
         brand: { type: 'object' },
         filters: { type: 'object' },
         fields: { type: 'array', items: { type: 'string' } },
+        if_wholesale_feed_version: { type: 'string' },
+        if_pricing_version: { type: 'string' },
+        pagination: {
+          type: 'object',
+          properties: {
+            max_results: { type: 'integer', minimum: 1, maximum: 100 },
+            cursor: { type: 'string' },
+          },
+        },
       },
       required: ['buying_mode'],
     },
@@ -1064,6 +2101,34 @@ const TOOLS = [
           },
         },
       },
+    },
+  },
+  {
+    name: 'validate_input',
+    description: 'Dry-run a creative manifest against canonical formats, seeded products, or third-party format references. Returns per-target validated_pass, validated_fail, or unvalidatable_nondeterministic without registering a creative.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        account: ACCOUNT_REF_SCHEMA,
+        brand: { type: 'object', properties: { domain: { type: 'string' }, name: { type: 'string' } } },
+        manifest: { type: 'object' },
+        targets: {
+          type: 'array',
+          minItems: 1,
+          maxItems: MAX_VALIDATE_INPUT_TARGETS,
+          items: {
+            type: 'object',
+            properties: {
+              kind: { type: 'string', enum: ['canonical', 'product', 'third_party_format'] },
+              id: { type: 'string' },
+            },
+            required: ['kind', 'id'],
+          },
+        },
+      },
+      required: ['manifest'],
     },
   },
   {
@@ -1188,6 +2253,9 @@ const TOOLS = [
         media_buy_id: { type: 'string' },
         include_pricing: { type: 'boolean', description: 'Include pricing from the account rate card on each creative (default: false). Requires account.' },
         include_snapshot: { type: 'boolean', description: 'Include delivery snapshot per creative' },
+        include_purged: { type: 'boolean', description: 'Include soft-purged creative tombstones' },
+        include_webhook_activity: { type: 'boolean', description: 'Include recent lifecycle webhook activity per creative' },
+        webhook_activity_limit: { type: 'integer', minimum: 1, maximum: 200 },
         filters: { type: 'object', properties: { creative_ids: { type: 'array', items: { type: 'string' } }, statuses: { type: 'array', items: { type: 'string' } } } },
         // See list_creative_formats above — declared so legacy dispatch keeps
         // `pagination` on the wire.
@@ -1294,10 +2362,14 @@ const TOOLS = [
         signal_spec: { type: 'string', description: 'Natural language description of desired signals' },
         brief: { type: 'string', description: 'Alias for signal_spec (SDK compatibility)' },
         signal_ids: { type: 'array', items: { type: 'object' }, description: 'Specific signals to look up by ID' },
+        signal_refs: { type: 'array', items: { type: 'object' }, description: 'Specific signal references to look up' },
         account: ACCOUNT_REF_SCHEMA,
         destinations: { type: 'array', items: { type: 'object' }, description: 'Filter to specific deployment targets' },
         countries: { type: 'array', items: { type: 'string' } },
+        discovery_mode: { type: 'string', enum: ['brief', 'wholesale'] },
         filters: { type: 'object' },
+        if_wholesale_feed_version: { type: 'string' },
+        if_pricing_version: { type: 'string' },
         max_results: { type: 'integer' },
         // See list_creative_formats above — declared so legacy dispatch keeps
         // `pagination` on the wire.
@@ -1361,6 +2433,9 @@ const TOOLS = [
               media_spend: { type: 'number' },
               vendor_cost: { type: 'number' },
               currency: { type: 'string' },
+              final: { type: 'boolean' },
+              finalized_at: { type: 'string' },
+              measurement_window: { type: 'string' },
             },
             required: ['account', 'vendor_cost', 'currency'],
           },
@@ -1381,12 +2456,82 @@ const TOOLS = [
   },
 ];
 
+function visibleToolsForContext(ctx: TrainingContext): typeof TOOLS {
+  return TOOLS.filter(tool => {
+    if (tool.name !== 'validate_input') return true;
+    if (isThreeZeroStoryboardCompat(ctx)) return false;
+    return true;
+  }) as typeof TOOLS;
+}
+
+export function visibleTrainingToolNamesForContext(ctx: TrainingContext): string[] {
+  return visibleToolsForContext(ctx).map(tool => tool.name);
+}
+
+function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: string): boolean {
+  return !(toolName === 'validate_input' && servedAdcpVersion.startsWith('3.0'));
+}
+
 // ── Task handler implementations ──────────────────────────────────
 
-export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
+  const brief = (req as Record<string, unknown>).brief;
+  if (brief !== undefined && typeof brief !== 'string') {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'brief must be a string.',
+        field: 'brief',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
+  if (buyingMode !== 'wholesale' && (req as WholesaleFeedRequest).if_wholesale_feed_version !== undefined) {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'if_wholesale_feed_version is only valid with buying_mode "wholesale".',
+        field: 'if_wholesale_feed_version',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
+  if ((req as WholesaleFeedRequest).if_pricing_version !== undefined) {
+    if (buyingMode !== 'wholesale') {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'if_pricing_version is only valid with buying_mode "wholesale".',
+          field: 'if_pricing_version',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+    if ((req as WholesaleFeedRequest).if_wholesale_feed_version === undefined) {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'if_pricing_version requires if_wholesale_feed_version.',
+          field: 'if_pricing_version',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+  }
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const wholesaleMeta = buyingMode === 'wholesale'
+    ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session)
+    : undefined;
+
+  if (wholesaleMeta && wholesaleFeedUnchanged(req as WholesaleFeedRequest, wholesaleMeta)) {
+    return {
+      status: 'completed' as const,
+      unchanged: true,
+      ...wholesaleMeta,
+    } as GetProductsResponse;
+  }
 
   let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
 
@@ -1412,6 +2557,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     if (deliveryTypeFilter) {
       products = products.filter(p => p.delivery_type === deliveryTypeFilter);
     }
+    const fixedPriceFilter = req.filters.is_fixed_price;
+    if (typeof fixedPriceFilter === 'boolean') {
+      products = applyFixedPriceFilterToProducts(products, fixedPriceFilter);
+    }
     const requiredVendorMetrics = (req.filters as { required_vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> }).required_vendor_metrics;
     if (requiredVendorMetrics?.length) {
       products = products.filter(p => {
@@ -1426,10 +2575,11 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
       });
     }
   }
+  const filteredProducts = products;
 
   // Brief mode: channel-aware keyword matching
-  if (buyingMode === 'brief' && req.brief) {
-    const briefLower = req.brief.toLowerCase();
+  if (buyingMode === 'brief' && brief) {
+    const briefLower = brief.toLowerCase();
     const terms = briefLower.split(/\s+/);
 
     // Extract channel names mentioned in the brief — these get heavy weight
@@ -1446,23 +2596,31 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
         const channelScore = briefChannels.size > 0
           ? (p.channels?.filter(c => briefChannels.has(c)).length ?? 0) * 10
           : 0;
-        const totalScore = channelScore + keywordScore;
-        return totalScore > 0 ? { product: p, totalScore, channelScore, keywordScore } : null;
+        const vendorMetricScore = vendorMetricBriefScore(p, briefLower);
+        const totalScore = channelScore + keywordScore + vendorMetricScore;
+        return totalScore > 0 ? { product: p, totalScore, channelScore, keywordScore, vendorMetricScore } : null;
       })
       .filter((s): s is NonNullable<typeof s> => s !== null)
       .sort((a, b) => b.totalScore - a.totalScore);
 
     // Cap at top 5 most relevant products so learners see brief mode as curated discovery
     const MAX_BRIEF_RESULTS = 5;
-    products = scored.slice(0, MAX_BRIEF_RESULTS).map(s => ({
-      ...s.product,
-      brief_relevance: `Matches ${s.channelScore > 0 ? `${s.channelScore / 10} channel(s)` : 'keywords only'}. ${s.product.description}`,
-    }));
+    products = scored.slice(0, MAX_BRIEF_RESULTS).map(s => {
+      const matchParts = [
+        ...(s.channelScore > 0 ? [`${s.channelScore / 10} channel(s)`] : []),
+        ...(s.keywordScore > 0 ? ['keywords'] : []),
+        ...(s.vendorMetricScore > 0 ? ['vendor-metric optimization'] : []),
+      ];
+      return {
+        ...s.product,
+        brief_relevance: `Matches ${matchParts.join(' and ')}. ${s.product.description}`,
+      };
+    });
 
     // If no keyword matches, return top products as suggestions
     if (products.length === 0) {
-      products = getCatalog().slice(0, MAX_BRIEF_RESULTS).map(cp => ({
-        ...cp.product,
+      products = filteredProducts.slice(0, MAX_BRIEF_RESULTS).map(p => ({
+        ...p,
         brief_relevance: 'Suggested product — no direct keyword match with your brief.',
       }));
     }
@@ -1474,17 +2632,15 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string }
     | { scope: 'proposal'; proposal_id: string; action?: 'include' | 'omit' | 'finalize'; ask?: string };
 
-  type RefinementAppliedEntry = {
-    scope: 'request' | 'product' | 'proposal';
-    product_id?: string;
-    proposal_id?: string;
-    status: 'applied' | 'partial' | 'unable';
-    notes?: string;
-  };
+  type RefinementAppliedEntry =
+    | { scope: 'request'; status: 'applied' | 'partial' | 'unable'; notes?: string }
+    | { scope: 'product'; product_id: string; status: 'applied' | 'partial' | 'unable'; notes?: string }
+    | { scope: 'proposal'; proposal_id: string; status: 'applied' | 'partial' | 'unable'; notes?: string };
 
   const refinementApplied: RefinementAppliedEntry[] = [];
   const proposalOmitIds = new Set<string>();
   if (buyingMode === 'refine' && req.refine) {
+    const refineOps = req.refine as unknown as RefineEntry[];
     const previousProducts = session.lastGetProductsContext?.products || products;
     const previousProposals = session.lastGetProductsContext?.proposals || getProposals();
     const omitIds = new Set<string>();
@@ -1493,7 +2649,29 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     const askAckNotes = (ask?: string) =>
       ask ? { notes: `Ask acknowledged but not applied by training agent: ${ask}` } : {};
 
-    for (const op of req.refine as unknown as RefineEntry[]) {
+    // Validate proposal references before applying any refinements. This keeps
+    // failed multi-entry refine calls from partially finalizing earlier entries.
+    for (let opIndex = 0; opIndex < refineOps.length; opIndex++) {
+      const op = refineOps[opIndex];
+      if (op.scope !== 'proposal') continue;
+      let proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
+      if (!proposal && isThreeZeroStoryboardCompat(ctx) && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
+        proposal = resolveThreeZeroProposalAlias([...previousProposals, ...getProposals()]);
+      }
+      if (!proposal) {
+        return {
+          errors: [{
+            code: 'PROPOSAL_NOT_FOUND',
+            message: `Proposal not found: ${op.proposal_id}`,
+            field: `refine[${opIndex}].proposal_id`,
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
+    }
+
+    for (let opIndex = 0; opIndex < refineOps.length; opIndex++) {
+      const op = refineOps[opIndex];
       if (op.scope === 'product') {
         const action = op.action ?? 'include';
         if (action === 'omit') {
@@ -1507,9 +2685,9 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
           const source = previousProducts.find(p => p.product_id === op.product_id);
           if (source) {
             const sourceChannels = source.channels;
-            for (const p of getCatalog()) {
-              if (p.product.channels?.some(c => sourceChannels?.includes(c))) {
-                includeIds.add(p.product.product_id);
+            for (const p of filteredProducts) {
+              if (p.channels?.some(c => sourceChannels?.includes(c))) {
+                includeIds.add(p.product_id);
               }
             }
           }
@@ -1517,11 +2695,11 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
         }
       } else if (op.scope === 'proposal') {
         const action = op.action ?? 'include';
-        const proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
-        if (!proposal) {
-          refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'unable', notes: `Proposal not found: ${op.proposal_id}` });
-          continue;
+        let proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
+        if (!proposal && isThreeZeroStoryboardCompat(ctx) && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
+          proposal = resolveThreeZeroProposalAlias([...previousProposals, ...getProposals()]);
         }
+        if (!proposal) continue;
         if (action === 'omit') {
           proposalOmitIds.add(op.proposal_id);
           refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied' });
@@ -1586,9 +2764,9 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
 
     // Apply includes first (expand), then omits (filter) for products
     if (includeIds.size > 0) {
-      products = getCatalog()
-        .filter(cp => includeIds.has(cp.product.product_id))
-        .map(cp => ({ ...cp.product }));
+      products = filteredProducts
+        .filter(p => includeIds.has(p.product_id))
+        .map(p => ({ ...p }));
     }
     if (omitIds.size > 0) {
       products = products.filter(p => !omitIds.has(p.product_id));
@@ -1599,7 +2777,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   // This prevents keyword capping from accidentally breaking proposals.
   const productIds = new Set(products.map(p => p.product_id));
   if (buyingMode === 'brief') {
-    const catalogById = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+    const catalogById = new Map(filteredProducts.map(p => [p.product_id, p]));
     for (const proposal of getProposals()) {
       const missing = proposal.allocations.filter(a => !productIds.has(a.product_id));
       const present = proposal.allocations.filter(a => productIds.has(a.product_id));
@@ -1620,19 +2798,72 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     ? session.lastGetProductsContext.proposals
     : getProposals();
 
-  const proposals = sourceProposals.filter(proposal =>
-    proposal.allocations.every(a => productIds.has(a.product_id)) &&
-    !proposalOmitIds.has(proposal.proposal_id),
-  );
+  const productsById = new Map(products.map(p => [p.product_id, p]));
+  const proposals = sourceProposals
+    .filter(proposal =>
+      proposal.allocations.every(a => productIds.has(a.product_id)) &&
+      !proposalOmitIds.has(proposal.proposal_id),
+    )
+    .map(proposal => ({
+      ...proposal,
+      allocations: proposal.allocations.map(alloc => {
+        const selectedPricing = productsById.get(alloc.product_id)?.pricing_options[0];
+        return selectedPricing
+          ? { ...alloc, pricing_option_id: selectedPricing.pricing_option_id }
+          : alloc;
+      }),
+    }));
+  const canonicalFormatAdvisories = collectCanonicalFormatAdvisories(products);
 
   // Store context for refine
-  session.lastGetProductsContext = { products, proposals };
-
-  return {
-    products,
-    ...(proposals.length > 0 && { proposals }),
-    ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
+  const responseProducts = isThreeZeroStoryboardCompat(ctx)
+    ? products.map(productForThreeZeroStoryboardCompat)
+    : products;
+  session.lastGetProductsContext = {
+    products: responseProducts,
+    proposals: buyingMode === 'wholesale' ? [] : proposals,
   };
+  let pageProducts = responseProducts;
+  let pagination: { has_more: boolean; total_count: number; cursor?: string } | undefined;
+  if (req.pagination) {
+    const offset = decodeOffsetCursor('products', req.pagination.cursor);
+    if (offset === null) {
+      return {
+        errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] as TaskError[],
+      };
+    }
+    const maxResults = Math.min(
+      typeof req.pagination.max_results === 'number' && req.pagination.max_results >= 1
+        ? req.pagination.max_results
+        : 50,
+      100,
+    );
+    const pageEnd = Math.min(offset + maxResults, responseProducts.length);
+    pageProducts = responseProducts.slice(offset, pageEnd);
+    const hasMore = pageEnd < responseProducts.length;
+    pagination = {
+      has_more: hasMore,
+      total_count: responseProducts.length,
+      ...(hasMore && { cursor: encodeOffsetCursor('products', pageEnd) }),
+    };
+  }
+
+  const response = {
+    status: 'completed' as const,
+    products: pageProducts,
+    cache_scope: wholesaleMeta?.cache_scope ?? (req.account ? ('account' as const) : ('public' as const)),
+    ...(wholesaleMeta && {
+      wholesale_feed_version: wholesaleMeta.wholesale_feed_version,
+      pricing_version: wholesaleMeta.pricing_version,
+    }),
+    ...(pagination && { pagination }),
+    ...(buyingMode !== 'wholesale' && proposals.length > 0 && { proposals }),
+    ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
+    ...(canonicalFormatAdvisories.length > 0 && {
+      errors: canonicalFormatAdvisories as unknown as GetProductsResponse['errors'],
+    }),
+  };
+  return response;
 }
 
 export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
@@ -1696,6 +2927,497 @@ export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingCo
       ...(hasMore && { cursor: encodeCreativeCursor(pageEnd) }),
     },
   };
+}
+
+function defaultTargetsForManifest(manifest: ValidateInputArgs['manifest']): ValidateInputTarget[] {
+  if (typeof manifest?.format_kind === 'string') {
+    return [{ kind: 'canonical', id: manifest.format_kind }];
+  }
+  return [];
+}
+
+function schemaIssueField(path: Array<string | number>): string {
+  if (path.length === 0) return 'manifest';
+  return `manifest.${path.map(part => typeof part === 'number' ? `[${part}]` : part).join('.')}`.replace(/\.\[/g, '[');
+}
+
+function validateManifestSchema(manifest: NonNullable<ValidateInputArgs['manifest']>): ValidateInputViolation[] {
+  const parsed = CreativeManifestSchema.safeParse(manifest);
+  if (parsed.success) return [];
+  return parsed.error.issues.map(issue => ({
+    rule: 'schema',
+    field: schemaIssueField(issue.path.filter((part): part is string | number => typeof part === 'string' || typeof part === 'number')),
+    expected: issue.message,
+    predicted: issue.code,
+  }));
+}
+
+function validateExternalUrlValue(field: string, raw: unknown): ValidateInputViolation | null {
+  if (typeof raw !== 'string') return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return { rule: 'url', field, expected: 'valid http/https URL', predicted: raw };
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return { rule: 'url_scheme', field, expected: 'http or https', predicted: parsed.protocol };
+  }
+  if (isPrivateHostname(parsed.hostname)) {
+    return { rule: 'url_host_public', field, expected: 'public hostname', predicted: parsed.hostname };
+  }
+  return null;
+}
+
+function collectAssetUrlViolations(
+  value: unknown,
+  path: string,
+  violations: ValidateInputViolation[],
+  seen: WeakSet<object>,
+): void {
+  if (!value || typeof value !== 'object') return;
+  if (seen.has(value)) return;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => collectAssetUrlViolations(entry, `${path}[${index}]`, violations, seen));
+    return;
+  }
+
+  const object = value as Record<string, unknown>;
+  for (const [key, entry] of Object.entries(object)) {
+    const childPath = `${path}.${key}`;
+    if (key === 'url' || key.endsWith('_url')) {
+      const violation = validateExternalUrlValue(childPath, entry);
+      if (violation) violations.push(violation);
+    }
+    collectAssetUrlViolations(entry, childPath, violations, seen);
+  }
+}
+
+function validateAssetUrls(manifest: NonNullable<ValidateInputArgs['manifest']>): ValidateInputViolation[] {
+  const violations: ValidateInputViolation[] = [];
+  const assets = manifest.assets ?? {};
+  const seen = new WeakSet<object>();
+  for (const [slotId, slotValue] of Object.entries(assets)) {
+    collectAssetUrlViolations(slotValue, `assets.${slotId}`, violations, seen);
+  }
+  return violations;
+}
+
+function assetTypeOf(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const assetType = (value as { asset_type?: unknown }).asset_type;
+  return typeof assetType === 'string' ? assetType : undefined;
+}
+
+function slotValues(assets: Record<string, unknown> | undefined, slotId: string): unknown[] {
+  const value = assets?.[slotId];
+  if (value === undefined || value === null) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function slotCount(assets: Record<string, unknown> | undefined, slotId: string): number {
+  return slotValues(assets, slotId).length;
+}
+
+function validateManifestSlots(
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+  slots: CanonicalSlot[],
+): ValidateInputViolation[] {
+  const violations: ValidateInputViolation[] = [];
+  const assets = manifest.assets ?? {};
+
+  for (const slot of slots) {
+    const count = slotCount(assets, slot.asset_group_id);
+    if (slot.required && count === 0) {
+      violations.push({
+        rule: 'required_slot',
+        field: `assets.${slot.asset_group_id}`,
+        expected: { asset_type: slot.asset_type },
+      });
+      continue;
+    }
+    if (count === 0) continue;
+    if (slot.min !== undefined && count < slot.min) {
+      violations.push({
+        rule: 'slot_min_items',
+        field: `assets.${slot.asset_group_id}`,
+        expected: slot.min,
+        predicted: count,
+      });
+    }
+    if (slot.max !== undefined && count > slot.max) {
+      violations.push({
+        rule: 'slot_max_items',
+        field: `assets.${slot.asset_group_id}`,
+        expected: slot.max,
+        predicted: count,
+      });
+    }
+    for (const [index, value] of slotValues(assets, slot.asset_group_id).entries()) {
+      const predicted = assetTypeOf(value);
+      if (predicted !== slot.asset_type) {
+        violations.push({
+          rule: 'asset_type',
+          field: Array.isArray(assets[slot.asset_group_id])
+            ? `assets.${slot.asset_group_id}[${index}].asset_type`
+            : `assets.${slot.asset_group_id}.asset_type`,
+          expected: slot.asset_type,
+          predicted,
+        });
+      }
+    }
+  }
+
+  return violations;
+}
+
+function normalizeCanonicalSlots(value: unknown): CanonicalSlot[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const slots: CanonicalSlot[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') continue;
+    const slot = entry as Record<string, unknown>;
+    if (typeof slot.asset_group_id !== 'string' || typeof slot.asset_type !== 'string') continue;
+    slots.push({
+      asset_group_id: slot.asset_group_id,
+      asset_type: slot.asset_type,
+      ...(typeof slot.required === 'boolean' && { required: slot.required }),
+      ...(typeof slot.min === 'number' && { min: slot.min }),
+      ...(typeof slot.max === 'number' && { max: slot.max }),
+    });
+  }
+  return slots.length > 0 ? slots : undefined;
+}
+
+function selectedFormatDeclaration(
+  product: Product,
+  manifest: ValidateInputArgs['manifest'],
+): Record<string, unknown> | undefined {
+  const declarations = (product as unknown as { format_options?: unknown[] }).format_options;
+  if (!Array.isArray(declarations)) return undefined;
+  const formatOptionRef = manifest?.format_option_ref && typeof manifest.format_option_ref === 'object'
+    ? manifest.format_option_ref
+    : undefined;
+  const formatOptionId = typeof formatOptionRef?.format_option_id === 'string'
+    ? formatOptionRef.format_option_id
+    : undefined;
+  const publisherDomain = typeof formatOptionRef?.publisher_domain === 'string'
+    ? formatOptionRef.publisher_domain
+    : undefined;
+  const scope = typeof formatOptionRef?.scope === 'string'
+    ? formatOptionRef.scope
+    : undefined;
+  const formatKindMatches = declarations.filter((entry): entry is Record<string, unknown> => {
+    if (!entry || typeof entry !== 'object') return false;
+    const declaration = entry as Record<string, unknown>;
+    if (manifest?.format_kind && declaration.format_kind !== manifest.format_kind) return false;
+    return true;
+  });
+  if (formatOptionId) {
+    return formatKindMatches.find(declaration => {
+      if (declaration.format_option_id !== formatOptionId) return false;
+      const declarationPublisherDomain = typeof declaration.publisher_domain === 'string'
+        ? declaration.publisher_domain
+        : undefined;
+      if (scope === 'publisher') {
+        return Boolean(publisherDomain) && declarationPublisherDomain === publisherDomain;
+      }
+      if (scope === 'product') {
+        return declarationPublisherDomain === undefined;
+      }
+      return declarationPublisherDomain === publisherDomain;
+    });
+  }
+  return formatKindMatches.length === 1 ? formatKindMatches[0] : undefined;
+}
+
+function nondeterministicSourceViolation(formatParams: Record<string, unknown>): ValidateInputViolation | null {
+  const source = typeof formatParams.asset_source === 'string'
+    ? formatParams.asset_source
+    : (typeof formatParams.item_production_model === 'string' ? formatParams.item_production_model : undefined);
+  if (!source || !NONDETERMINISTIC_INCOMPATIBLE_SOURCES.has(source)) return null;
+  return {
+    rule: 'synthesis_nondeterministic_source_compatibility',
+    field: formatParams.asset_source !== undefined ? 'params.asset_source' : 'params.item_production_model',
+    expected: 'seller_pre_rendered_from_brief, seller_human_designed, or agent_synthesized',
+    predicted: source,
+  };
+}
+
+function thirdPartyResolutionViolation(target: ValidateInputTarget, expected: string, predicted?: unknown): ValidateInputResult {
+  return {
+    target,
+    result_kind: 'validated_fail',
+    violations: [{
+      rule: 'third_party_format_resolution',
+      field: 'targets[].id',
+      expected,
+      predicted: predicted ?? target.id,
+    }],
+  };
+}
+
+function parseThirdPartyFormatTarget(target: ValidateInputTarget): { url: string; digest: string } | ValidateInputResult {
+  const marker = '@sha256:';
+  const markerIndex = target.id.lastIndexOf(marker);
+  if (markerIndex <= 0) {
+    return thirdPartyResolutionViolation(target, 'https URI followed by @sha256:<64 lowercase hex digest>');
+  }
+  const url = target.id.slice(0, markerIndex);
+  const digest = target.id.slice(markerIndex + marker.length);
+  if (!/^[a-f0-9]{64}$/.test(digest)) {
+    return thirdPartyResolutionViolation(target, '64 lowercase hex SHA-256 digest', digest);
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') {
+      return thirdPartyResolutionViolation(target, 'https URI', parsed.protocol);
+    }
+    if (isPrivateHostname(parsed.hostname)) {
+      return thirdPartyResolutionViolation(target, 'public hostname', parsed.hostname);
+    }
+  } catch {
+    return thirdPartyResolutionViolation(target, 'valid https URI', url);
+  }
+  return { url, digest };
+}
+
+async function validateThirdPartyTarget(
+  target: ValidateInputTarget,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): Promise<ValidateInputResult> {
+  const parsedTarget = parseThirdPartyFormatTarget(target);
+  if ('result_kind' in parsedTarget) return parsedTarget;
+
+  let response: { status: number; data: Buffer };
+  try {
+    response = await safeFetchAxiosLike(parsedTarget.url, {
+      method: 'GET',
+      timeoutMs: 5000,
+      maxResponseBytes: 1024 * 1024,
+      maxRedirects: 0,
+    });
+  } catch (error) {
+    return thirdPartyResolutionViolation(target, 'fetchable digest-pinned third-party format schema', error instanceof Error ? error.message : String(error));
+  }
+  if (response.status < 200 || response.status >= 300) {
+    return thirdPartyResolutionViolation(target, 'HTTP 2xx response', response.status);
+  }
+
+  const body = response.data;
+  const digest = createHash('sha256').update(body).digest('hex');
+  if (digest !== parsedTarget.digest) {
+    return thirdPartyResolutionViolation(target, `sha256:${parsedTarget.digest}`, `sha256:${digest}`);
+  }
+
+  let definition: unknown;
+  try {
+    definition = JSON.parse(body.toString('utf8'));
+  } catch {
+    return thirdPartyResolutionViolation(target, 'JSON format definition');
+  }
+  const def = definition && typeof definition === 'object'
+    ? definition as Record<string, unknown>
+    : {};
+  const params = def.params && typeof def.params === 'object'
+    ? def.params as Record<string, unknown>
+    : {};
+  const slots = normalizeCanonicalSlots(def.slots) ?? normalizeCanonicalSlots(params.slots);
+  if (!slots) {
+    return thirdPartyResolutionViolation(target, 'format definition with slots[] or params.slots[]');
+  }
+  const violations = validateManifestSlots(manifest, slots);
+  return violations.length > 0
+    ? { target, result_kind: 'validated_fail', violations }
+    : { target, result_kind: 'validated_pass' };
+}
+
+function validateCanonicalTarget(
+  target: ValidateInputTarget,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): ValidateInputResult {
+  if (!VALID_CANONICAL_FORMAT_KINDS.has(target.id) || target.id === 'custom') {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'canonical_target_supported',
+        field: 'targets[].id',
+        expected: [...VALID_CANONICAL_FORMAT_KINDS].filter(id => id !== 'custom'),
+        predicted: target.id,
+      }],
+    };
+  }
+  if (manifest.format_kind !== target.id) {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'format_kind',
+        field: 'manifest.format_kind',
+        expected: target.id,
+        predicted: manifest.format_kind,
+      }],
+    };
+  }
+  const violations = validateManifestSlots(manifest, CANONICAL_FORMAT_SLOTS[target.id] ?? []);
+  return violations.length > 0
+    ? { target, result_kind: 'validated_fail', violations }
+    : { target, result_kind: 'validated_pass' };
+}
+
+function validateProductTarget(
+  target: ValidateInputTarget,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+  product: Product | undefined,
+): ValidateInputResult {
+  if (!product) {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'product_target_found',
+        field: 'targets[].id',
+        expected: 'known product_id',
+        predicted: target.id,
+      }],
+    };
+  }
+  if (typeof manifest.format_kind !== 'string') {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'format_kind',
+        field: 'manifest.format_kind',
+        expected: 'canonical format_kind for product validation',
+        predicted: manifest.format_kind,
+      }],
+    };
+  }
+  const declaration = selectedFormatDeclaration(product, manifest);
+  if (!declaration) {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'product_format_option_supported',
+        field: 'manifest.format_kind',
+        expected: (product as unknown as { format_options?: Array<{ format_kind?: string }> }).format_options?.map(o => o.format_kind) ?? [],
+        predicted: manifest.format_kind,
+      }],
+    };
+  }
+  const formatKind = typeof declaration.format_kind === 'string' ? declaration.format_kind : undefined;
+  if (!formatKind || !VALID_CANONICAL_FORMAT_KINDS.has(formatKind) || formatKind === 'custom') {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'product_format_kind_supported',
+        field: 'products[].format_options[].format_kind',
+        expected: [...VALID_CANONICAL_FORMAT_KINDS].filter(id => id !== 'custom'),
+        predicted: formatKind,
+      }],
+    };
+  }
+  const params = declaration.params && typeof declaration.params === 'object'
+    ? declaration.params as Record<string, unknown>
+    : {};
+  const slots = normalizeCanonicalSlots(params.slots) ?? CANONICAL_FORMAT_SLOTS[formatKind] ?? [];
+  const violations = validateManifestSlots(manifest, slots);
+  if (params.synthesis_nondeterministic === true) {
+    const sourceViolation = nondeterministicSourceViolation(params);
+    if (sourceViolation) {
+      return { target, result_kind: 'validated_fail', violations: [...violations, sourceViolation] };
+    }
+    if (violations.length > 0) {
+      return { target, result_kind: 'validated_fail', violations };
+    }
+    return { target, result_kind: 'unvalidatable_nondeterministic' };
+  }
+  return violations.length > 0
+    ? { target, result_kind: 'validated_fail', violations }
+    : { target, result_kind: 'validated_pass' };
+}
+
+export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext): Promise<object> {
+  const req = args as unknown as ValidateInputArgs;
+  if (!req.manifest) {
+    return {
+      status: 'completed',
+      results: [{
+        target: { kind: 'canonical', id: 'unknown' },
+        result_kind: 'validated_fail',
+        violations: [{ rule: 'manifest_required', field: 'manifest', expected: 'creative manifest' }],
+      }],
+    };
+  }
+  const targets = req.targets?.length ? req.targets : defaultTargetsForManifest(req.manifest);
+  if (targets.length === 0) {
+    return {
+      status: 'completed',
+      results: [{
+        target: { kind: 'canonical', id: 'unknown' },
+        result_kind: 'validated_fail',
+        violations: [{ rule: 'target_required', field: 'targets', expected: 'at least one validation target' }],
+      }],
+    };
+  }
+  if (targets.length > MAX_VALIDATE_INPUT_TARGETS) {
+    return {
+      status: 'completed',
+      results: [{
+        target: { kind: 'canonical', id: 'unknown' },
+        result_kind: 'validated_fail',
+        violations: [{
+          rule: 'too_many_targets',
+          field: 'targets',
+          expected: `at most ${MAX_VALIDATE_INPUT_TARGETS} validation targets`,
+          predicted: targets.length,
+        }],
+      }],
+    };
+  }
+
+  const schemaViolations = [
+    ...validateManifestSchema(req.manifest),
+    ...validateAssetUrls(req.manifest),
+  ];
+  if (schemaViolations.length > 0) {
+    return {
+      status: 'completed',
+      results: targets.map(target => ({
+        target,
+        result_kind: 'validated_fail',
+        violations: schemaViolations,
+      })),
+    };
+  }
+
+  const productTargets = targets.filter(target => target.kind === 'product');
+  const productsById = new Map<string, Product>();
+  if (productTargets.length > 0) {
+    const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+    for (const catalogProduct of getCatalog()) {
+      productsById.set(catalogProduct.product.product_id, { ...catalogProduct.product });
+    }
+    overlaySeededProducts(session, productsById);
+  }
+
+  const results: ValidateInputResult[] = await Promise.all(targets.map(target => {
+    if (target.kind === 'canonical') {
+      return validateCanonicalTarget(target, req.manifest!);
+    }
+    if (target.kind === 'product') {
+      return validateProductTarget(target, req.manifest!, productsById.get(target.id));
+    }
+    return validateThirdPartyTarget(target, req.manifest!);
+  }));
+
+  return { status: 'completed', results };
 }
 
 export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
@@ -1960,20 +3682,170 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     }
   }
 
+  // Validate vendor_metric optimization_goals against the product's
+  // vendor_metric_optimization declarations and the package's reporting
+  // contract. This goal kind is only meaningful when the seller can both
+  // optimize toward the vendor metric and commit to reporting the same
+  // (vendor, metric_id) key back to the buyer.
+  if (Array.isArray(req.packages)) {
+    for (let i = 0; i < req.packages.length; i++) {
+      const pkg = req.packages[i] as {
+        product_id?: string;
+        optimization_goals?: unknown;
+        committed_metrics?: unknown;
+      };
+      const goals = pkg?.optimization_goals;
+      if (!Array.isArray(goals)) continue;
+      const product = pkg.product_id
+        ? productMap.get(pkg.product_id) as (Product & { vendor_metric_optimization?: VendorMetricOptimizationView }) | undefined
+        : undefined;
+      if (!product) continue;
+      const supportedMetrics = product?.vendor_metric_optimization?.supported_metrics;
+      const reportableMetrics = (product?.reporting_capabilities as ReportingCapabilitiesView | undefined)?.vendor_metrics;
+      const committedMetrics = Array.isArray(pkg.committed_metrics)
+        ? (pkg.committed_metrics as VendorMetricRefView[])
+        : [];
+      for (let j = 0; j < goals.length; j++) {
+        const goal = goals[j] as VendorMetricRefView & { kind?: unknown; target?: { kind?: unknown; value?: unknown } };
+        if (goal?.kind !== 'vendor_metric') continue;
+        const key = vendorMetricKey(goal);
+        if (!key) {
+          const field = typeof goal?.vendor?.domain !== 'string' || goal.vendor.domain.length === 0
+            ? `packages[${i}].optimization_goals[${j}].vendor.domain`
+            : `packages[${i}].optimization_goals[${j}].metric_id`;
+          return {
+            errors: [{
+              code: 'INVALID_REQUEST',
+              message: 'vendor_metric goal requires non-empty vendor.domain and metric_id',
+              field,
+            }] as TaskError[],
+          };
+        }
+
+        const supported = Array.isArray(supportedMetrics)
+          ? supportedMetrics.find(entry => vendorMetricKey(entry) === key)
+          : undefined;
+        if (!supported) {
+          return {
+            errors: [{
+              // Vendor-metric optimization is negotiated against vendor
+              // measurement/reporting terms. The normative docs route
+              // capability and reporting-coherence misses through
+              // TERMS_REJECTED, even though legacy seller-native metric
+              // shape checks above still use INVALID_REQUEST.
+              code: 'TERMS_REJECTED',
+              message: `vendor_metric goal "${goal.metric_id}" is not in product's vendor_metric_optimization.supported_metrics`,
+              field: `packages[${i}].optimization_goals[${j}].metric_id`,
+            }] as TaskError[],
+          };
+        }
+
+        const target = goal.target;
+        if (target !== undefined && (target === null || typeof target !== 'object' || typeof (target as { kind?: unknown }).kind !== 'string')) {
+          return {
+            errors: [{
+              code: 'INVALID_REQUEST',
+              message: 'vendor_metric target.kind is required when target is present',
+              field: `packages[${i}].optimization_goals[${j}].target.kind`,
+            }] as TaskError[],
+          };
+        }
+
+        const targetKind = (target as { kind?: string; value?: unknown } | undefined)?.kind;
+        const targetValue = (target as { value?: unknown } | undefined)?.value;
+        if (target !== undefined && (typeof targetValue !== 'number' || !Number.isFinite(targetValue) || targetValue <= 0)) {
+          return {
+            errors: [{
+              code: 'INVALID_REQUEST',
+              message: 'vendor_metric target.value must be a positive number when target is present',
+              field: `packages[${i}].optimization_goals[${j}].target.value`,
+            }] as TaskError[],
+          };
+        }
+
+        if (targetKind) {
+          const supportedTargets = Array.isArray(supported.supported_targets)
+            ? supported.supported_targets
+            : [];
+          if (!supportedTargets.includes(targetKind as (typeof supportedTargets)[number])) {
+            return {
+              errors: [{
+                code: 'TERMS_REJECTED',
+                message: `vendor_metric target.kind "${targetKind}" is not in product's vendor_metric_optimization.supported_metrics[].supported_targets`,
+                field: `packages[${i}].optimization_goals[${j}].target.kind`,
+              }] as TaskError[],
+            };
+          }
+        }
+
+        const hasCommittedMetric = committedMetrics.some(entry =>
+          entry?.scope === 'vendor' && vendorMetricKey(entry) === key,
+        );
+        if (!hasCommittedMetric) {
+          return {
+            errors: [{
+              code: 'TERMS_REJECTED',
+              message: `vendor_metric goal "${goal.metric_id}" requires a matching vendor-scope committed_metrics entry`,
+              field: `packages[${i}].committed_metrics`,
+            }] as TaskError[],
+          };
+        }
+
+        const hasReportableMetric = Array.isArray(reportableMetrics)
+          ? reportableMetrics.some(entry => vendorMetricKey(entry) === key)
+          : false;
+        if (!hasReportableMetric) {
+          return {
+            errors: [{
+              code: 'TERMS_REJECTED',
+              message: `committed_metrics entry for vendor_metric goal "${goal.metric_id}" is not in product's reporting_capabilities.vendor_metrics`,
+              field: `packages[${i}].committed_metrics`,
+            }] as TaskError[],
+          };
+        }
+
+        const catalogKey = vendorCatalogKey(goal);
+        const seededCatalog = catalogKey ? session.complyExtensions.seededMeasurementCatalogs.get(catalogKey) : undefined;
+        const productCatalog = productMeasurementCatalogForGoal(product, goal);
+        const catalogMetrics = seededCatalog?.metrics ?? productCatalog?.metrics;
+        if (
+          Array.isArray(catalogMetrics)
+          && !catalogMetrics.some(entry => entry?.metric_id === goal.metric_id)
+        ) {
+          return {
+            errors: [{
+              code: 'TERMS_REJECTED',
+              message: `vendor_metric goal "${goal.metric_id}" is not in ${goal.vendor?.domain}'s measurement.metrics catalog`,
+              field: `packages[${i}].optimization_goals[${j}].metric_id`,
+            }] as TaskError[],
+          };
+        }
+      }
+    }
+  }
+
   // Proposal-based creation: expand proposal allocations into packages
   if (req.proposal_id && !req.packages?.length) {
     // Check session proposals first (may have finalized versions), then global catalog
-    const proposal = session.lastGetProductsContext?.proposals?.find(p => p.proposal_id === req.proposal_id)
+    let proposal = session.lastGetProductsContext?.proposals?.find(p => p.proposal_id === req.proposal_id)
       || getProposals().find(p => p.proposal_id === req.proposal_id);
+    if (!proposal && isThreeZeroStoryboardCompat(ctx) && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
+      proposal = resolveThreeZeroProposalAlias([...(session.lastGetProductsContext?.proposals ?? []), ...getProposals()]);
+    }
     if (!proposal) {
       return {
-        errors: [{ code: 'INVALID_REQUEST', message: `Proposal not found: ${req.proposal_id}` }] as TaskError[],
+        errors: [{
+          code: 'PROPOSAL_NOT_FOUND',
+          message: `Proposal not found: ${req.proposal_id}`,
+          field: 'proposal_id',
+          recovery: 'correctable',
+        }] as TaskError[],
       };
     }
 
     // Enforce proposal lifecycle: draft proposals cannot be purchased directly
     const proposalStatus = proposalLifecycle(proposal).proposal_status;
-    if (proposalStatus === 'draft') {
+    if (proposalStatus === 'draft' && !(isThreeZeroStoryboardCompat(ctx) && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID)) {
       return {
         errors: [{ code: 'PROPOSAL_NOT_COMMITTED', message: `Proposal "${req.proposal_id}" has draft status — finalize it first using get_products with buying_mode "refine" and action "finalize".` }] as TaskError[],
       };
@@ -1989,7 +3861,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     // Enforce IO acceptance when required
     const insertionOrder = proposalLifecycle(proposal).insertion_order;
     const ioAcceptance = (req as unknown as Record<string, unknown>).io_acceptance as { io_id: string; accepted_at: string; signatory: string } | undefined;
-    if (insertionOrder?.requires_signature && !ioAcceptance) {
+    if (
+      insertionOrder?.requires_signature
+      && !ioAcceptance
+      && !(isThreeZeroStoryboardCompat(ctx) && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID)
+    ) {
       return {
         errors: [{ code: 'IO_REQUIRED', message: `Proposal "${req.proposal_id}" requires a signed insertion order. Include io_acceptance with io_id "${insertionOrder.io_id}" on create_media_buy.` }] as TaskError[],
       };
@@ -2229,6 +4105,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   // Persist governance_context if provided (spec: sellers MUST persist and return on get_media_buys)
   const governanceContext = govCtx && govCtx.length <= 4096 ? govCtx : undefined;
+  const productAllowedActions = deriveProductAllowedActionsForPackages(createdPackages, productMap);
 
   const mediaBuy: MediaBuyState = {
     mediaBuyId,
@@ -2237,6 +4114,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     status: 'active',
     currency: 'USD',
     packages: createdPackages,
+    ...(productAllowedActions && { productAllowedActions }),
     startTime: resolvedStart,
     endTime: buyEnd,
     revision: 1,
@@ -2250,6 +4128,8 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
   const status = deriveStatus(mediaBuy);
+  const productAvailableActions = deriveAvailableActionsFromProductAllowedActions(productAllowedActions, status);
+  if (productAvailableActions !== undefined) mediaBuy.availableActions = productAvailableActions;
   // Emit `media_buy_status` (canonical 3.1 field per #4895). Body-level
   // `status` carrying MediaBuyStatus is deprecated and removed in 3.2
   // (#4906) — emitting it here would collide with envelope `status`
@@ -2257,10 +4137,13 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // against the per-task response schema.
   return {
     media_buy_id: mediaBuyId,
+    ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
+    status,
     media_buy_status: status,
     revision: mediaBuy.revision,
     confirmed_at: mediaBuy.confirmedAt,
     valid_actions: validActionsForStatus(status),
+    available_actions: availableActionsForMediaBuy(mediaBuy, status),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
       product_id: pkg.productId,
@@ -2278,12 +4161,20 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   };
 }
 
-export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
+export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const req = args as unknown as GetMediaBuysArgs;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const filterIds = req.media_buy_ids;
 
   let buys = Array.from(session.mediaBuys.values());
+  if (!filterIds?.length && buys.length === 0) {
+    // Broad list on an empty session: provide compliance fixtures so demo.example.com
+    // sessions show realistic media buy data without the learner first creating a buy.
+    // ID-lookup paths skip this — loading all fixtures to filter down is wasteful when
+    // the caller already knows the IDs it wants (and unknown IDs should return empty,
+    // not a fixture). Sessions that have created their own buys return only those.
+    buys = getComplianceMediaBuys();
+  }
   if (filterIds?.length) {
     buys = buys.filter(b => filterIds.includes(b.mediaBuyId));
     // Media buy lookup is scoped to the caller's session (brand/account-derived).
@@ -2349,6 +4240,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
         created_at: mb.createdAt,
         updated_at: mb.updatedAt,
         valid_actions: validActionsForStatus(status),
+        available_actions: availableActionsForMediaBuy(mb, status),
         currency: mb.currency,
         total_budget: totalBudget,
         start_time: mb.startTime,
@@ -2413,6 +4305,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
       return buy;
     }),
     pagination: paginationBlock,
+    ...(req.context !== undefined && { context: req.context }),
   };
 }
 
@@ -2422,7 +4315,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
   const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
-  const mb = session.mediaBuys.get(mediaBuyId);
+  const mb = session.mediaBuys.get(mediaBuyId) ?? getComplianceMediaBuy(mediaBuyId);
 
   if (!mb) {
     return {
@@ -2539,6 +4432,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       model: pricingModel, // #1525: alias for @adcp/sdk < 4.11.0
       rate,
       currency: mb.currency,
+      ...(includeThreeOneFields(ctx) && simDeliveryEarly?.isFinal !== undefined ? { is_final: simDeliveryEarly.isFinal } : {}),
+      ...(includeThreeOneFields(ctx) && simDeliveryEarly?.isFinal === true && simDeliveryEarly.finalizedAt ? { finalized_at: simDeliveryEarly.finalizedAt } : {}),
+      ...(includeThreeOneFields(ctx) && simDeliveryEarly?.measurementWindow ? { measurement_window: simDeliveryEarly.measurementWindow } : {}),
       paused: false,
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
       // vendor_metric_values are media-buy-scoped in simulate_delivery, so they
@@ -2633,6 +4529,21 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       };
     })()
     : {};
+  const simulatedReachMetrics = simDelivery && (
+    simDelivery.reach !== undefined
+    || simDelivery.frequency !== undefined
+    || simDelivery.reachWindow
+  )
+    ? {
+      ...(simDelivery.reach !== undefined ? { reach: simDelivery.reach } : {}),
+      ...(simDelivery.reach !== undefined && derivedReachUnit ? { reach_unit: derivedReachUnit } : {}),
+      ...(simDelivery.frequency !== undefined ? { frequency: simDelivery.frequency } : {}),
+      ...(simDelivery.reachWindow ? { reach_window: simDelivery.reachWindow } : {}),
+    }
+    : {};
+  const simulatedViewability = simDelivery?.viewability
+    ? { viewability: simDelivery.viewability }
+    : {};
 
   return {
     reporting_period: {
@@ -2643,6 +4554,8 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     media_buy_deliveries: [{
       media_buy_id: mb.mediaBuyId,
       status: deriveStatus(mb),
+      ...(includeThreeOneFields(ctx) && simDelivery?.isFinal !== undefined ? { is_final: simDelivery.isFinal } : {}),
+      ...(includeThreeOneFields(ctx) && simDelivery?.isFinal === true && simDelivery.finalizedAt ? { finalized_at: simDelivery.finalizedAt } : {}),
       totals: {
         impressions: totalImpressions,
         spend: roundedSpend,
@@ -2660,7 +4573,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
           frequency: +(totalImpressions / totalReach).toFixed(1),
         } : {}),
         ...goalDerivedReach,
+        ...simulatedReachMetrics,
         ...conversionTotals,
+        ...simulatedViewability,
       },
       by_package: byPackage,
     }],
@@ -2680,8 +4595,10 @@ function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/
 
 export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCreativesRequest & ToolArgs & { dry_run?: boolean };
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(sessionKey);
   const isDryRun = req.dry_run === true;
+  const accountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
   if (!req.creatives?.length) {
     return {
@@ -2720,12 +4637,12 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     // accepted_verifiers BEFORE persisting the creative. Per-creative failure
     // is surfaced as action: 'failed' + errors[]; the surrounding session and
     // any other creatives in the batch are unaffected (best-effort processing).
-    const policyError = await enforceProvenancePolicy(creative as unknown as CreativeForEnforcement, effectivePolicy);
-    if (policyError) {
+    const policyResult = await enforceProvenancePolicy(creative as unknown as CreativeForEnforcement, effectivePolicy);
+    if (policyResult.error) {
       results.push({
         creative_id: creativeId,
         action: 'failed',
-        errors: [policyError],
+        errors: [policyResult.error],
       });
       continue;
     }
@@ -2758,17 +4675,28 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     }
 
     const existing = session.creatives.has(creativeId);
+    const existingCreative = session.creatives.get(creativeId);
 
     if (!isDryRun) {
       session.creatives.set(creativeId, {
         creativeId,
+        accountId: accountId ?? existingCreative?.accountId,
+        accountRef: req.account ?? existingCreative?.accountRef,
         formatId,
         name: creative.name,
-        status: 'approved',
+        status: existingCreative?.status ?? 'approved',
         syncedAt: new Date().toISOString(),
         // manifest is a training-agent extension, not in SDK CreativeAsset type
         manifest: (creative as unknown as { manifest?: CreativeManifest }).manifest,
+        pricingOptionId: existingCreative?.pricingOptionId,
+        purge: existingCreative?.purge,
+        webhookActivity: existingCreative?.webhookActivity,
       });
+      if (policyResult.auditObservations.length) {
+        session.complyExtensions.provenanceAuditObservations.set(creativeId, policyResult.auditObservations);
+      } else {
+        session.complyExtensions.provenanceAuditObservations.delete(creativeId);
+      }
     }
 
     results.push({
@@ -2813,12 +4741,40 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   };
 }
 
+function accountRefsOverlap(stored: AccountRef | undefined, requested: AccountRef): boolean {
+  if (!stored) return false;
+  if (requested.account_id || stored.account_id) {
+    return Boolean(requested.account_id && stored.account_id && requested.account_id === stored.account_id);
+  }
+  if (requested.brand?.domain && stored.brand?.domain && requested.brand.domain !== stored.brand.domain) return false;
+  if (requested.operator || stored.operator) {
+    return Boolean(requested.operator && stored.operator && requested.operator === stored.operator);
+  }
+  return Boolean(requested.brand?.domain && stored.brand?.domain && requested.brand.domain === stored.brand.domain);
+}
+
 export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as ListCreativesRequest & ToolArgs & { creative_ids?: string[]; include_pricing?: boolean; include_snapshot?: boolean };
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const req = args as unknown as ListCreativesRequest & ToolArgs & {
+    creative_ids?: string[];
+    include_pricing?: boolean;
+    include_snapshot?: boolean;
+    include_purged?: boolean;
+    include_webhook_activity?: boolean;
+    webhook_activity_limit?: number;
+  };
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(sessionKey);
   const filterIds = req.creative_ids || req.filters?.creative_ids;
+  const requestedAccountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
   let creatives = Array.from(session.creatives.values());
+  if (creatives.length === 0 && !req.include_webhook_activity) {
+    // Controller-seeded creative storyboards can write under the test-kit
+    // brand session while the list request keys by account_id. Prefer that
+    // freshly seeded library over falling back to static compliance fixtures.
+    const seededSession = await findSessionMatching(s => s.creatives.size > 0);
+    if (seededSession) creatives = Array.from(seededSession.creatives.values());
+  }
   if (filterIds?.length) {
     creatives = creatives.filter(c => filterIds.includes(c.creativeId));
   } else if (creatives.length === 0) {
@@ -2827,6 +4783,24 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     // resolve without the SDK's controller_seeding auto-fire. Sessions that
     // have synced their own creatives return only those — no mixing.
     creatives = getComplianceCreatives();
+  }
+  if (req.include_webhook_activity) {
+    creatives = req.account && requestedAccountId
+      ? creatives.filter(c => Boolean(c.accountId) && c.accountId === requestedAccountId)
+      : [];
+  } else if (req.account) {
+    creatives = creatives.filter(c => {
+      if (requestedAccountId && c.accountId) return c.accountId === requestedAccountId;
+      if (c.accountRef) return accountRefsOverlap(c.accountRef, req.account!);
+      return !req.include_webhook_activity;
+    });
+  }
+  if (!req.include_purged) {
+    creatives = creatives.filter(c => !c.purge);
+  }
+  if (req.filters?.statuses?.length) {
+    const statuses = new Set<string>(req.filters.statuses as string[]);
+    creatives = creatives.filter(c => statuses.has(c.status));
   }
 
   const totalMatching = creatives.length;
@@ -2853,7 +4827,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   // Spec today says "When false or omitted, pricing is not computed"; the
   // emission-on-omit behaviour here is deliberate per the has_creative_library
   // gate in #2847 and tracks the spec-side clarification referenced there.
-  const emitPricing = Boolean(req.account) && req.include_pricing !== false;
+  const emitPricing = creativeBillsThroughAdcp(ctx) && Boolean(req.account) && req.include_pricing !== false;
   const agentUrl = getAgentUrl();
 
   return {
@@ -2895,6 +4869,17 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       if (req.include_snapshot) {
         base.snapshot_unavailable_reason = 'SNAPSHOT_UNSUPPORTED';
       }
+      if (c.purge) {
+        base.purge = {
+          kind: c.purge.kind,
+          at: c.purge.at,
+          reason_code: c.purge.reasonCode,
+        };
+      }
+      if (req.include_webhook_activity) {
+        const limit = Math.min(Math.max(req.webhook_activity_limit ?? 50, 1), 200);
+        base.webhook_activity = (c.webhookActivity ?? []).slice(0, limit);
+      }
       return base;
     }),
   };
@@ -2925,7 +4910,7 @@ function getCreativePricing(account: { account_id?: string }, creative: import('
   };
 }
 
-export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
+export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const req = args as unknown as UpdateMediaBuyArgs;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const mediaBuyId = req.media_buy_id || '';
@@ -2946,6 +4931,12 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       : `Media buy is ${currentStatus} and cannot be updated`;
     return { errors: [{ code, message }] };
   }
+
+  const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+  overlaySeededProducts(session, productMap);
+
+  const actionRejection = rejectUnavailableAction(mb, req, currentStatus, productMap);
+  if (actionRejection) return actionRejection;
 
   // Revision check for optimistic concurrency
   const reqRevision = req.revision;
@@ -2973,10 +4964,14 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     // body `status: MediaBuyStatus` removed in 3.2 (#4906).
     return {
       media_buy_id: mb.mediaBuyId,
+      ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
+      status,
       media_buy_status: status,
       revision: mb.revision,
       valid_actions: validActionsForStatus(status),
+      available_actions: availableActionsForMediaBuy(mb, status),
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
+      ...(req.context !== undefined && { context: req.context }),
     };
   }
 
@@ -3127,9 +5122,6 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         errors: [{ code: 'LIMIT_EXCEEDED', message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}.` }] as TaskError[],
       };
     }
-    const catalog = getCatalog();
-    const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
-
     for (let i = 0; i < newPackages.length; i++) {
       const npkg = newPackages[i];
       const productId = npkg.product_id;
@@ -3161,6 +5153,12 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       mb.packages.push(newPkg);
       mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_added', summary: `New package ${pkgId} added (product: ${productId})`, packageId: pkgId });
     }
+    const updatedAllowedActions = deriveProductAllowedActionsForPackages(mb.packages, productMap);
+    if (updatedAllowedActions) {
+      mb.productAllowedActions = updatedAllowedActions;
+    } else {
+      delete mb.productAllowedActions;
+    }
   }
 
   mb.updatedAt = now;
@@ -3170,9 +5168,12 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // body `status: MediaBuyStatus` removed in 3.2 (#4906).
   const result = {
     media_buy_id: mb.mediaBuyId,
+    ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
+    status,
     media_buy_status: status,
     revision: mb.revision,
     valid_actions: validActionsForStatus(status),
+    available_actions: availableActionsForMediaBuy(mb, status),
     ...(mb.canceledAt && {
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
     }),
@@ -3190,12 +5191,16 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       }),
     })),
     ...(warnings.length > 0 && { warnings }),
+    ...(req.context !== undefined && { context: req.context }),
   };
   return result;
 }
 
-export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
-  const tasks = TOOLS
+export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
+  const versionResolution = resolveServedAdcpVersion(args as unknown as Record<string, unknown>);
+  const servedAdcpVersion = versionResolution.ok ? versionResolution.servedVersion : DEFAULT_ADCP_VERSION;
+  const tasks = visibleToolsForContext(ctx)
+    .filter(tool => toolAvailableForServedAdcpVersion(tool.name, servedAdcpVersion))
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
@@ -3219,9 +5224,30 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
   const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethod(op));
   const protocolMethodsRequiredFor = signingCap.required_for.filter(isProtocolMethod);
   const protocolMethodsSupportedFor = signingCap.supported_for?.filter(isProtocolMethod) ?? [];
+  const wholesaleProfile = wholesaleCapabilityProfile(ctx);
+  const complianceScenarios = [
+    'force_creative_status',
+    'force_account_status',
+    'force_media_buy_status',
+    'force_create_media_buy_arm',
+    'force_task_completion',
+    ...(!isThreeZeroStoryboardCompat(ctx) ? ['force_creative_purge'] : []),
+    'force_session_status',
+    'simulate_delivery',
+    'simulate_budget_spend',
+    'seed_product',
+    'seed_pricing_option',
+    'seed_creative',
+    'seed_plan',
+    'seed_media_buy',
+    'seed_creative_format',
+    'seed_measurement_catalog',
+    ...(!isThreeZeroStoryboardCompat(ctx) ? ['query_provenance_audit_observations'] : []),
+  ];
   return {
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
+      supported_versions: [...SUPPORTED_RELEASE_VERSIONS],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
     },
     supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
@@ -3236,7 +5262,28 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
     },
     protocol_version: '3.0',
     tasks,
+    ...((wholesaleProfile.productWholesale || wholesaleProfile.signalWholesale) && {
+      wholesale_feed_versioning: {
+        supported: true,
+        pricing_version_separate: true,
+        cache_scope_account: true,
+      },
+      wholesale_feed_webhooks: {
+        supported: true,
+        event_types: wholesaleProfile.eventTypes,
+      },
+      webhook_signing: {
+        supported: true,
+        profile: 'adcp/webhook-signing/v1',
+        algorithms: ['ed25519'],
+        legacy_hmac_fallback: true,
+      },
+      identity: {
+        brand_json_url: `${getAgentUrl()}/.well-known/brand.json`,
+      },
+    }),
     media_buy: {
+      buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
       supports_proposals: true,
       features: {
         inline_creative_management: true,
@@ -3259,6 +5306,9 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
         supported_event_types: ['purchase', 'add_to_cart', 'lead', 'page_view'],
         supported_hashed_identifiers: ['hashed_email'],
         supported_action_sources: ['website', 'app'],
+      },
+      vendor_metric_optimization: {
+        supported_targets: ['threshold_rate'],
       },
       // Seller-level rollup of metric-optimization capabilities. Honest
       // union across catalog products (product-factory.ts assigns these
@@ -3286,6 +5336,11 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
       supports_transformation: true,
       supports_compliance: false,
       has_creative_library: true,
+      ...(includeThreeOneFields(ctx) ? {
+        bills_through_adcp: creativeBillsThroughAdcp(ctx),
+        supported_formats: supportedCanonicalFormatsCapability(),
+        canonical_catalog_version: '3.1',
+      } : {}),
     },
     account: {
       require_operator_auth: false,
@@ -3297,15 +5352,16 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
       supported_billing: [...SUPPORTED_BILLINGS],
       sandbox: true,
     },
+    ...(wholesaleProfile.signalWholesale && {
+      signals: {
+        discovery_modes: ['brief', 'wholesale'],
+        features: {
+          catalog_signals: true,
+        },
+      },
+    }),
     compliance_testing: {
-      scenarios: [
-        'force_creative_status',
-        'force_account_status',
-        'force_media_buy_status',
-        'force_session_status',
-        'simulate_delivery',
-        'simulate_budget_spend',
-      ],
+      scenarios: complianceScenarios,
     },
     agent: {
       name: 'AdCP Training Agent',
@@ -3321,11 +5377,80 @@ const MAX_SIGNAL_RESULTS = 10;
 export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetSignalsRequest & ToolArgs & {
     brief?: string;
+    discovery_mode?: 'brief' | 'wholesale';
+    if_wholesale_feed_version?: string;
+    if_pricing_version?: string;
     pagination?: { max_results?: number; cursor?: string };
   };
   // Accept both signal_spec (protocol) and brief (SDK test tool)
   const rawSpec = req.signal_spec || req.brief;
-  const signalSpec = typeof rawSpec === 'string' ? rawSpec : undefined;
+  const hasWholesaleRunnerFallbackSpec =
+    req.discovery_mode === 'wholesale'
+    && req.signal_spec === SDK_STORYBOARD_FALLBACK_SIGNAL_SPEC
+    && req.brief === undefined;
+  const signalSpec = req.discovery_mode === 'wholesale'
+    ? undefined
+    : typeof rawSpec === 'string'
+      ? rawSpec
+      : undefined;
+  const signalRefs = (req as GetSignalsRequest & { signal_refs?: Array<Record<string, unknown>> }).signal_refs;
+  if (req.discovery_mode !== 'wholesale' && req.if_wholesale_feed_version !== undefined) {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'if_wholesale_feed_version is only valid with discovery_mode "wholesale".',
+        field: 'if_wholesale_feed_version',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
+  if (req.if_pricing_version !== undefined) {
+    if (req.discovery_mode !== 'wholesale') {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'if_pricing_version is only valid with discovery_mode "wholesale".',
+          field: 'if_pricing_version',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+    if (req.if_wholesale_feed_version === undefined) {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'if_pricing_version requires if_wholesale_feed_version.',
+          field: 'if_pricing_version',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+  }
+  if (
+    req.discovery_mode === 'wholesale'
+    && (
+	      (req.signal_spec !== undefined && !hasWholesaleRunnerFallbackSpec)
+	      || req.brief !== undefined
+	      || (Array.isArray(req.signal_ids) && req.signal_ids.length > 0)
+      || (Array.isArray(signalRefs) && signalRefs.length > 0)
+    )
+  ) {
+    const field = req.signal_spec !== undefined && !hasWholesaleRunnerFallbackSpec
+      ? 'signal_spec'
+      : req.brief !== undefined
+        ? 'brief'
+        : Array.isArray(signalRefs) && signalRefs.length > 0
+          ? 'signal_refs'
+          : 'signal_ids';
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'signal_spec, brief, signal_refs, and signal_ids must not be provided when discovery_mode is "wholesale".',
+        field,
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
   // Pagination shape (pagination.max_results, schema cap 100) takes precedence
   // over the legacy top-level `max_results` (no schema cap; this handler
   // historically capped at 50 to keep semantic-search results focused). The two
@@ -3351,14 +5476,28 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     };
   }
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const wholesaleMeta = req.discovery_mode === 'wholesale'
+    ? signalWholesaleFeedMeta(req as WholesaleFeedRequest)
+    : undefined;
+
+  if (wholesaleMeta && wholesaleFeedUnchanged(req as WholesaleFeedRequest, wholesaleMeta)) {
+    return {
+      unchanged: true,
+      ...wholesaleMeta,
+    };
+  }
 
   const allSignals = getAllSignals();
   let results = allSignals;
+  const agentUrl = getAgentUrl();
 
-  // Exact lookup by signal_ids
-  if (req.signal_ids?.length) {
-    const idSet = new Set(req.signal_ids.map(sid => sid.id));
-    results = results.filter(s => idSet.has(s.signalAgentSegmentId));
+  // Exact lookup by signal_refs or legacy signal_ids.
+  if (req.signal_ids?.length || signalRefs?.length) {
+    const idSet = new Set(req.signal_ids?.map(sid => sid.id) ?? []);
+    results = results.filter(s =>
+      idSet.has(s.signalAgentSegmentId)
+      || signalRefs?.some(ref => signalMatchesRef(s, ref, agentUrl)),
+    );
   }
 
   // Natural language search via signal_spec
@@ -3409,9 +5548,6 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   const pageEnd = Math.min(offset + maxResults, totalMatching);
   results = results.slice(offset, pageEnd);
   const hasMore = pageEnd < totalMatching;
-
-  // Build the training agent URL for deployment targets
-  const agentUrl = getAgentUrl();
 
   // Build response signals with deployments
   const signals: SignalResponse[] = results.map(s => {
@@ -3475,6 +5611,10 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     signals: SignalResponse[];
     pagination: { has_more: boolean; total_count: number; cursor?: string };
     note?: string;
+    unchanged?: boolean;
+    wholesale_feed_version?: string;
+    pricing_version?: string;
+    cache_scope?: 'public' | 'account';
   } = {
     signals,
     pagination: {
@@ -3485,6 +5625,11 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
       // pagination-integrity catches stale tokens on terminal pages.
       ...(hasMore && { cursor: encodeOffsetCursor('signals', pageEnd) }),
     },
+    ...(wholesaleMeta && {
+      wholesale_feed_version: wholesaleMeta.wholesale_feed_version,
+      pricing_version: wholesaleMeta.pricing_version,
+      cache_scope: wholesaleMeta.cache_scope,
+    }),
   };
   if (hasIdentityTerm) {
     const isCreditQuery = rawTerms.includes('credit');
@@ -3789,6 +5934,10 @@ function buildHtmlAssets(html: string): AdcpCreativeManifest['assets'] {
   return { serving_tag: { asset_type: 'html', content: html } };
 }
 
+function buildCreativeCompleted<T extends object>(payload: T): T & { status: 'completed' } {
+  return { status: 'completed', ...payload };
+}
+
 export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
   const req = args as unknown as BuildCreativeArgs;
   const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
@@ -3810,9 +5959,9 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
   if (req.creative_id) {
     const creative = session.creatives.get(req.creative_id) ?? getComplianceCreative(req.creative_id);
     if (!creative) {
-      return {
+      return buildCreativeCompleted({
         errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative "${req.creative_id}" not found. Use sync_creatives to upload or list_creatives to browse.` }],
-      };
+      });
     }
 
     const formatId = targetIds[0] || creative.formatId;
@@ -3824,23 +5973,23 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
         format_id: { agent_url: agentUrl, id: formatId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
       },
-      };
+    };
 
     // Return pricing when account is provided (paid creative agent mode)
-    if (req.account) {
+    if (creativeBillsThroughAdcp(ctx) && req.account) {
       const pricing = getCreativePricing(req.account, creative);
       creative.pricingOptionId = pricing.pricing_option_id;
-      return {
+      return buildCreativeCompleted({
         ...base,
         pricing_option_id: pricing.pricing_option_id,
         vendor_cost: 0, // CPM-priced: cost accrues at serve time
         currency: pricing.currency,
         consumption: {},
         ...(governanceContext && { governance_context: governanceContext }),
-      };
+      });
     }
 
-    return { ...base, ...(governanceContext && { governance_context: governanceContext }) };
+    return buildCreativeCompleted({ ...base, ...(governanceContext && { governance_context: governanceContext }) });
   }
 
   // Mode 2: Stateless transformation (creative_manifest + target_format_id)
@@ -3866,7 +6015,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
         };
       });
 
-      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }) };
+      return buildCreativeCompleted({ creative_manifests, ...(governanceContext && { governance_context: governanceContext }) });
     }
 
     // Single format response
@@ -3874,13 +6023,13 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     const format = validFormatIds.get(fmtId.id);
     const { w, h } = getDimensions(format);
 
-    return {
+    return buildCreativeCompleted({
       creative_manifest: {
         format_id: { agent_url: agentUrl, id: fmtId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssetCount}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
       ...(governanceContext && { governance_context: governanceContext }),
-      };
+    });
   }
 
   // Mode 3: Generative build (target_format_id + message, no manifest or library creative)
@@ -3894,25 +6043,25 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
           assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
         };
       });
-      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }) };
+      return buildCreativeCompleted({ creative_manifests, ...(governanceContext && { governance_context: governanceContext }) });
     }
 
     const fmtId = targetIds[0];
     const format = validFormatIds.get(fmtId.id);
     const { w, h } = getDimensions(format);
 
-    return {
+    return buildCreativeCompleted({
       creative_manifest: {
         format_id: { agent_url: agentUrl, id: fmtId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       },
       ...(governanceContext && { governance_context: governanceContext }),
-      };
+    });
   }
 
-  return {
+  return buildCreativeCompleted({
     errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_id (library mode), creative_manifest (transformation mode), or target_format_id (generative mode).' }],
-  };
+  });
 }
 
 // ── Preview creative handler ────────────────────────────────────
@@ -4033,6 +6182,7 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
 
 interface ReportUsageArgs extends ToolArgs {
   idempotency_key?: string;
+  account?: { account_id?: string; brand?: { domain: string }; operator?: string };
   reporting_period: { start: string; end: string };
   usage: Array<{
     account: { account_id?: string; brand?: { domain: string }; operator?: string };
@@ -4043,6 +6193,9 @@ interface ReportUsageArgs extends ToolArgs {
     media_spend?: number;
     vendor_cost: number;
     currency: string;
+    final?: boolean;
+    finalized_at?: string;
+    measurement_window?: string;
   }>;
 }
 
@@ -4082,6 +6235,25 @@ interface CreativeFeatureResult {
   confidence?: number;
 }
 
+interface CreativeAuditObservation {
+  code: 'OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED';
+  severity: 'audit-worthy';
+  recovery: 'informational';
+  field: string;
+  message: string;
+  details: {
+    agent_url: string;
+    feature_id?: string;
+    claimed_value: {
+      human_oversight: 'edited' | 'directed';
+      disclosure_required: false;
+    };
+    observed_value?: boolean | number | string | null;
+    confidence?: number;
+    substituted_for?: string;
+  };
+}
+
 const AI_TRUE_DST = new Set([
   'trained_algorithmic_media',
   'composite_with_trained_algorithmic_media',
@@ -4104,6 +6276,43 @@ function detectAiFromManifest(creative_manifest: GetCreativeFeaturesArgs['creati
   return { value: false, confidence: 0.3 };
 }
 
+function buildOversightDisclosureAuditObservations(
+  creative_manifest: GetCreativeFeaturesArgs['creative_manifest'],
+  opts: {
+    agent_url: string;
+    feature_id?: string;
+    observed_value?: boolean | number | string | null;
+    confidence?: number;
+    substituted_for?: string;
+  },
+): CreativeAuditObservation[] {
+  const provenance = creative_manifest?.provenance;
+  const humanOversight = provenance?.human_oversight;
+  const disclosure = provenance?.disclosure as { required?: unknown } | undefined;
+  if ((humanOversight !== 'edited' && humanOversight !== 'directed') || disclosure?.required !== false) {
+    return [];
+  }
+
+  return [{
+    code: 'OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED',
+    severity: 'audit-worthy',
+    recovery: 'informational',
+    field: 'creative_manifest.provenance.disclosure.required',
+    message: `Creative claims human-${humanOversight} AI output does not require disclosure; retain for audit review.`,
+    details: {
+      agent_url: opts.agent_url,
+      ...(opts.feature_id ? { feature_id: opts.feature_id } : {}),
+      claimed_value: {
+        human_oversight: humanOversight,
+        disclosure_required: false,
+      },
+      ...(opts.observed_value !== undefined ? { observed_value: opts.observed_value } : {}),
+      ...(typeof opts.confidence === 'number' ? { confidence: opts.confidence } : {}),
+      ...(opts.substituted_for ? { substituted_for: opts.substituted_for } : {}),
+    },
+  }];
+}
+
 export async function handleGetCreativeFeatures(args: ToolArgs, _ctx: TrainingContext) {
   const req = args as unknown as GetCreativeFeaturesArgs;
   const requested = req.feature_ids?.length ? new Set(req.feature_ids) : null;
@@ -4115,7 +6324,15 @@ export async function handleGetCreativeFeatures(args: ToolArgs, _ctx: TrainingCo
     { feature_id: 'ai_confidence', value: ai.confidence },
   ];
   const results = requested ? allFeatures.filter(f => requested.has(f.feature_id)) : allFeatures;
-  return { results };
+  const aiResult = results.find(f => f.feature_id === 'ai_generated');
+  const audit_observations = buildOversightDisclosureAuditObservations(req.creative_manifest, {
+    agent_url: getAgentUrl(),
+    ...(aiResult ? { feature_id: aiResult.feature_id, observed_value: aiResult.value, confidence: aiResult.confidence } : {}),
+  });
+  return {
+    results,
+    ...(audit_observations.length ? { audit_observations } : {}),
+  };
 }
 
 /**
@@ -4133,11 +6350,14 @@ export async function handleGetCreativeFeatures(args: ToolArgs, _ctx: TrainingCo
 async function runProvenanceVerifier(
   creative: CreativeForEnforcement,
   policy: CreativePolicyView,
-): Promise<{ agent_url: string; feature_id: string; claimed_value: string; observed_value: boolean; confidence: number; substituted_for?: string } | null> {
+): Promise<{
+  contradiction: { agent_url: string; feature_id: string; claimed_value: string; observed_value: boolean; confidence: number; substituted_for?: string } | null;
+  auditObservations: CreativeAuditObservation[];
+}> {
   const provenance = resolveManifestProvenance(creative);
   const claimed = provenance?.digital_source_type;
-  if (typeof claimed !== 'string') return null; // no claim to refute; structural codes handle absence
-  if (!policy.accepted_verifiers?.length) return null;
+  if (!policy.accepted_verifiers?.length) return { contradiction: null, auditObservations: [] };
+  if (!provenance) return { contradiction: null, auditObservations: [] };
 
   // Pick the buyer's nominated verifier when on-list, else the first
   // on-list entry the seller would use. The seller is the verifier-of-
@@ -4154,8 +6374,10 @@ async function runProvenanceVerifier(
   const featureId = chosen.feature_id ?? 'ai_generated';
 
   // In-process call to the verifier handler. Real sellers do this over
-  // the network; the contract result is the same. Synthesize a manifest
-  // from whichever shape the creative carries: sync_creatives puts
+  // the network; the contract result is the same. This runs before the
+  // digital_source_type short-circuit because audit observations can be
+  // claim-driven even when there is no DST value to refute. Synthesize a
+  // manifest from whichever shape the creative carries: sync_creatives puts
   // assets at the top level, build_creative / preview_creative nest them
   // under creative_manifest. Either path resolves to the same input.
   const synthesized = creative.creative_manifest ?? creative.manifest ?? {
@@ -4168,13 +6390,24 @@ async function runProvenanceVerifier(
   const features = await handleGetCreativeFeatures(
     { creative_manifest: synthesized, feature_ids: [featureId] } as unknown as ToolArgs,
     {} as unknown as TrainingContext,
-  ) as unknown as { results?: CreativeFeatureResult[] };
+  ) as unknown as { results?: CreativeFeatureResult[]; audit_observations?: CreativeAuditObservation[] };
   const result = features.results?.find(r => r.feature_id === featureId);
-  if (!result) return null;
+  if (!result) return { contradiction: null, auditObservations: [] };
 
   const verifierSaysAi = result.value === true;
-  const claimsAi = AI_TRUE_DST.has(claimed);
+  const claimsAi = typeof claimed === 'string' && AI_TRUE_DST.has(claimed);
   const confidence = typeof result.confidence === 'number' ? result.confidence : 0;
+  // Surface the seller-selected verifier identity in public audit details;
+  // the in-process handler's local identity is an implementation detail.
+  const auditObservations = (features.audit_observations ?? []).map(observation => ({
+    ...observation,
+    details: {
+      ...observation.details,
+      agent_url: chosen.agent_url,
+      ...(substituted ? { substituted_for: substituted } : {}),
+    },
+  }));
+  if (typeof claimed !== 'string') return { contradiction: null, auditObservations }; // no claim to refute; structural codes handle absence
 
   // Contradiction: buyer says non-AI but verifier sees AI with confidence
   // above the seller's threshold. The reverse direction (buyer claims AI
@@ -4185,15 +6418,18 @@ async function runProvenanceVerifier(
   const CONFIDENCE_THRESHOLD = 0.9;
   if (verifierSaysAi && !claimsAi && confidence >= CONFIDENCE_THRESHOLD) {
     return {
-      agent_url: chosen.agent_url,
-      feature_id: featureId,
-      claimed_value: claimed,
-      observed_value: verifierSaysAi,
-      confidence,
-      ...(substituted ? { substituted_for: substituted } : {}),
+      contradiction: {
+        agent_url: chosen.agent_url,
+        feature_id: featureId,
+        claimed_value: claimed,
+        observed_value: verifierSaysAi,
+        confidence,
+        ...(substituted ? { substituted_for: substituted } : {}),
+      },
+      auditObservations,
     };
   }
-  return null;
+  return { contradiction: null, auditObservations };
 }
 
 function pickBuyerNominatedVerifierUrl(provenance: Record<string, unknown> | undefined): string | null {
@@ -4212,7 +6448,8 @@ function pickBuyerNominatedVerifierUrl(provenance: Record<string, unknown> | und
 
 export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ReportUsageArgs;
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const sessionScopeReq = withUsageAccountScope(req as unknown as Record<string, unknown>) as unknown as ToolArgs;
+  const session = await getSession(sessionKeyFromArgs(sessionScopeReq, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!req.reporting_period || !req.usage?.length) {
     return { errors: [{ code: 'INVALID_USAGE_DATA', message: 'reporting_period and at least one usage record are required.' }] };
@@ -4223,7 +6460,7 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   }
 
   let accepted = 0;
-  const errors: Array<{ code: string; message: string; field?: string }> = [];
+  const errors: Array<{ code: string; message: string; field?: string; recovery?: string }> = [];
 
   for (let i = 0; i < req.usage.length; i++) {
     const record = req.usage[i];
@@ -4252,6 +6489,16 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
 
     // Validate creative_id exists if provided
     if (record.creative_id) {
+      if (!creativeBillsThroughAdcp(ctx)) {
+        errors.push({
+          code: 'BILLING_OUT_OF_BAND',
+          message: 'Creative usage for this account bills out of band; do not retry report_usage for billing reconciliation.',
+          field: `usage[${i}]`,
+          recovery: 'terminal',
+        });
+        continue;
+      }
+
       const creative = session.creatives.get(record.creative_id) ?? getComplianceCreative(record.creative_id);
       if (!creative) {
         errors.push({ code: 'CREATIVE_NOT_FOUND', message: `Creative "${record.creative_id}" not found in session.`, field: `usage[${i}].creative_id` });
@@ -4288,6 +6535,9 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
       mediaSpend: record.media_spend,
       vendorCost: record.vendor_cost,
       currency: record.currency,
+      final: record.final,
+      finalizedAt: record.finalized_at,
+      measurementWindow: record.measurement_window,
       reportedAt: new Date().toISOString(),
     });
     accepted++;
@@ -4298,9 +6548,9 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   // When all records are rejected (accepted === 0), return as errors for
   // proper error signaling.
   if (accepted === 0 && errors.length) {
-    return { accepted: 0, errors };
+    return { status: 'completed', accepted: 0, errors };
   }
-  const result: Record<string, unknown> = { accepted };
+  const result: Record<string, unknown> = { status: 'completed', accepted };
   if (errors.length) result.rejected = errors;
   return result;
 }
@@ -4312,6 +6562,7 @@ type ToolHandler = (args: ToolArgs, ctx: TrainingContext) => object | Promise<ob
 const HANDLER_MAP: Record<string, ToolHandler> = {
   get_products: handleGetProducts,
   list_creative_formats: handleListCreativeFormats,
+  validate_input: handleValidateInput,
   create_media_buy: handleCreateMediaBuy,
   get_media_buys: handleGetMediaBuys,
   get_media_buy_delivery: handleGetMediaBuyDelivery,
@@ -4371,13 +6622,23 @@ export async function executeTrainingAgentTool(
   args: ToolArgs,
   ctx: TrainingContext,
 ): Promise<{ success: boolean; data?: object; error?: string }> {
+  const versionResolution = resolveServedAdcpVersionForTool(toolName, args as unknown as Record<string, unknown>);
+  if (!versionResolution.ok) {
+    return { success: false, error: versionResolution.message };
+  }
+  if (
+    !visibleTrainingToolNamesForContext(ctx).includes(toolName)
+    || !toolAvailableForServedAdcpVersion(toolName, versionResolution.servedVersion)
+  ) {
+    return { success: false, error: `Unknown tool: ${toolName}` };
+  }
   const handler = HANDLER_MAP[toolName];
   if (!handler) {
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
   try {
     const result = await Promise.resolve(handler(args, ctx));
-    return { success: true, data: result };
+    return { success: true, data: addServedAdcpVersion(result, versionResolution.servedVersion) as object };
   } catch (error) {
     logger.error({ error, tool: toolName }, 'Training agent in-process tool error');
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -4407,7 +6668,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return { tools: TOOLS };
+    return { tools: visibleToolsForContext(ctx) };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
@@ -4422,6 +6683,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       return result;
     });
   });
+  installTaskProtocolVersionNegotiation(server);
 
   async function dispatchCallTool(
     request: { params: { name: string; arguments?: unknown; task?: { ttl?: number } } },
@@ -4433,29 +6695,31 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // echo caller's context object back unchanged in every response).
     const rawArgs = (args as Record<string, unknown> | undefined) ?? {};
     const { context: callerContext, ...handlerArgs } = rawArgs;
+    const versionResolution = resolveServedAdcpVersionForTool(name, handlerArgs);
 
     const handler = HANDLER_MAP[name];
 
-    if (!handler) {
-      // Pre-handler validation failures don't touch session state, so flushing
-      // is a no-op; leaving flushable=true keeps behaviour consistent for
-      // requests whose handlers DO legitimately mutate before failing.
-      return { result: adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext), flushable: true };
-    }
-
-    const requestedVersion = (handlerArgs as { adcp_major_version?: unknown }).adcp_major_version;
-    if (
-      requestedVersion !== undefined
-      && !(SUPPORTED_MAJOR_VERSIONS as readonly number[]).includes(requestedVersion as number)
-    ) {
+    if (!versionResolution.ok) {
       return {
         result: adcpError('VERSION_UNSUPPORTED', {
-          message: `AdCP major version ${String(requestedVersion)} is not supported`,
-          details: { supported_major_versions: SUPPORTED_MAJOR_VERSIONS },
-          field: 'adcp_major_version',
+          message: versionResolution.message,
+          details: versionResolution.details,
+          field: versionResolution.field,
         }, callerContext),
         flushable: true,
       };
+    }
+    const servedAdcpVersion = versionResolution.servedVersion;
+
+    if (
+      !handler
+      || !visibleTrainingToolNamesForContext(ctx).includes(name)
+      || !toolAvailableForServedAdcpVersion(name, servedAdcpVersion)
+    ) {
+      // Pre-handler validation failures don't touch session state, so flushing
+      // is a no-op; leaving flushable=true keeps behaviour consistent for
+      // requests whose handlers DO legitimately mutate before failing.
+      return { result: adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext, servedAdcpVersion), flushable: true };
     }
 
     // Check for task-augmented request (explicit `task` field in params).
@@ -4498,7 +6762,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
             message: `idempotency_key is required for ${name}. Generate a UUID v4 and include it on every mutating request; reuse the same key for network retries.`,
             field: 'idempotency_key',
             recovery: 'correctable',
-          }, callerContext),
+          }, callerContext, servedAdcpVersion),
           flushable: true,
         };
       }
@@ -4508,7 +6772,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
             message: 'idempotency_key must match ^[A-Za-z0-9_.:-]{16,255}$ (UUID v4 recommended).',
             field: 'idempotency_key',
             recovery: 'correctable',
-          }, callerContext),
+          }, callerContext, servedAdcpVersion),
           flushable: true,
         };
       }
@@ -4523,7 +6787,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           result: adcpError('IDEMPOTENCY_EXPIRED', {
             message: 'idempotency_key is past the replay window. Generate a fresh UUID v4 and resend.',
             recovery: 'correctable',
-          }, callerContext),
+          }, callerContext, servedAdcpVersion),
           flushable: true,
         };
       }
@@ -4537,7 +6801,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         return {
           result: adcpError('IDEMPOTENCY_CONFLICT', {
             message: 'idempotency_key was used with a different payload within the replay window. Either resend the exact original payload (to return the cached response) or generate a fresh UUID v4 to submit this new payload.',
-          }, callerContext),
+          }, callerContext, servedAdcpVersion),
           flushable: true,
         };
       }
@@ -4549,7 +6813,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           result: adcpError('RATE_LIMITED', {
             message: 'A concurrent request with this idempotency_key is already in progress. Retry after a short delay.',
             recovery: 'transient',
-          }, callerContext),
+          }, callerContext, servedAdcpVersion),
           flushable: true,
         };
       }
@@ -4564,6 +6828,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // requires envelope `status`.
         const body: Record<string, unknown> = { ...(outcome.response as Record<string, unknown>), replayed: true };
         if (body.status === undefined) body.status = 'completed';
+        body.adcp_version = servedAdcpVersion;
         if (callerContext !== undefined) body.context = callerContext;
         toolResult = {
           content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -4579,17 +6844,21 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       }
     }
 
-    // Execute the tool handler. Structured AdCP errors (handler returns
-    // { errors: [...] }) are well-formed responses — the task completes
-    // successfully with an adcp_error envelope. Only thrown exceptions
-    // mark the task as failed.
+    // Execute the tool handler. Structured AdCP error-only bodies (handler
+    // returns { errors: [...] }) are well-formed responses — the task
+    // completes successfully with an adcp_error envelope. Some response
+    // schemas also permit non-fatal advisories in errors[] alongside a
+    // populated success body; those must stay on the success response.
     if (skipHandler) {
       // toolResult already set from idempotency replay path above
     } else try {
       const result = await Promise.resolve(handler((handlerArgs as ToolArgs) || {}, ctx));
-      const resultObj = result as { errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }> };
-      const hasErrors = resultObj.errors && resultObj.errors.length > 0;
-      if (hasErrors) {
+      const resultObj = result as Record<string, unknown> & {
+        errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }>;
+      };
+      const hasErrors = Array.isArray(resultObj.errors) && resultObj.errors.length > 0;
+      const hasAdvisorySuccessPayload = permitsAdvisoryErrors(name, resultObj);
+      if (hasErrors && !hasAdvisorySuccessPayload) {
         // Error-in-body responses are errors from the buyer's POV — do NOT
         // cache (security.mdx rule 3). cachableResponse stays null so the
         // post-dispatch gate below never inserts this into the replay cache.
@@ -4601,6 +6870,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           // happens to describe application-level errors — `completed` is
           // the correct TaskStatus regardless of body shape.
           const body: Record<string, unknown> = { status: 'completed', errors: resultObj.errors };
+          body.adcp_version = servedAdcpVersion;
           if (callerContext !== undefined) body.context = callerContext;
           toolResult = {
             content: [{ type: 'text', text: JSON.stringify(body) }],
@@ -4616,7 +6886,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
               : resultObj.errors!.length > 1
                 ? { all_errors: resultObj.errors }
                 : undefined,
-          }, callerContext);
+          }, callerContext, servedAdcpVersion);
         }
       } else {
         // Inner response (what gets cached for replay). Per security.mdx:
@@ -4636,6 +6906,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // `inner` and we honor that value.
         const response: Record<string, unknown> = { ...inner };
         if (response.status === undefined) response.status = 'completed';
+        response.adcp_version = servedAdcpVersion;
         if (name === 'create_media_buy') response.replayed = false;
         if (callerContext !== undefined) response.context = callerContext;
         // `structuredContent` is authoritative on success so raw-probe
@@ -4655,7 +6926,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       toolResult = adcpError('SERVICE_UNAVAILABLE', {
         message: error instanceof Error ? error.message : 'Unknown error',
         recovery: 'transient',
-      }, callerContext);
+      }, callerContext, servedAdcpVersion);
     }
 
     // TypeScript: by this point toolResult is guaranteed set — either the
@@ -4665,7 +6936,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     }
 
     // Resolve the in-flight claim from check(). Cache only successful inner
-    // responses (security.mdx rule 2+3); errors, structured { errors: [...] }
+    // responses (security.mdx rule 2+3); errors, structured error-only
     // bodies, and exceptions all release the claim so a retry re-executes.
     if (idempotencyClaimed && typeof idempotencyKey === 'string') {
       const store = getIdempotencyStore();
@@ -4744,7 +7015,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       'Created MCP task',
     );
 
-    return { result: { task } as object, flushable: !handlerThrew };
+    return { result: { task, adcp_version: servedAdcpVersion } as object, flushable: !handlerThrew };
   }
 
   // tasks/get, tasks/result, tasks/list, tasks/cancel are auto-registered

@@ -1,0 +1,34 @@
+name = "adcp-artifacts-cdn"
+main = "src/index.js"
+compatibility_date = "2026-05-24"
+workers_dev = true
+
+[[r2_buckets]]
+binding = "ARTIFACTS"
+bucket_name = "adcp-artifacts"
+
+# Production cutover routes. Keep these out of wrangler.toml so a normal
+# Worker deploy cannot accidentally flip adcontextprotocol.org paths.
+[[routes]]
+pattern = "adcontextprotocol.org/schemas"
+zone_name = "adcontextprotocol.org"
+
+[[routes]]
+pattern = "adcontextprotocol.org/schemas/*"
+zone_name = "adcontextprotocol.org"
+
+[[routes]]
+pattern = "adcontextprotocol.org/compliance"
+zone_name = "adcontextprotocol.org"
+
+[[routes]]
+pattern = "adcontextprotocol.org/compliance/*"
+zone_name = "adcontextprotocol.org"
+
+[[routes]]
+pattern = "adcontextprotocol.org/protocol"
+zone_name = "adcontextprotocol.org"
+
+[[routes]]
+pattern = "adcontextprotocol.org/protocol/*"
+zone_name = "adcontextprotocol.org"

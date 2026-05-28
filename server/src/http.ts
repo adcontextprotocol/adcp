@@ -1098,11 +1098,12 @@ export class HTTPServer {
         const brand = await this.brandDb.getDiscoveredBrandByDomain(domain);
         if (!brand || brand.is_public === false) return res.status(404).json({ error: 'Brand not found' });
 
-        // Only serve brand_json and community source types. Enriched (Brandfetch) entries are
-        // not brand-attested — serving them under this URL would misrepresent third-party data
-        // as brand-authoritative. editDiscoveredBrand promotes enriched→community on first
-        // human edit, so curated rows land here under the community type.
-        if (brand.source_type !== 'brand_json' && brand.source_type !== 'community') {
+        // Serve brand_json (brand-attested), community (human-curated), and enriched
+        // (Brandfetch-derived) source types. Provenance is signaled to consumers via
+        // the X-AAO-Source response header so agents can decide how much trust to
+        // place in each row — the JSON body itself stays clean of non-spec fields.
+        const ALLOWED_SOURCE_TYPES = new Set(['brand_json', 'community', 'enriched']);
+        if (!ALLOWED_SOURCE_TYPES.has(brand.source_type as string)) {
           return res.status(404).json({ error: 'Brand not found' });
         }
 
@@ -1121,6 +1122,7 @@ export class HTTPServer {
 
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Cache-Control', 'public, max-age=300');
+        res.setHeader('X-AAO-Source', brand.source_type as string);
         return res.json(brandJson);
       } catch (error) {
         logger.error({ err: error, domain }, 'Failed to serve brand.json');

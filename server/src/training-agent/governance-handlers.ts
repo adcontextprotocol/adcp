@@ -1639,6 +1639,7 @@ function buildCheckResponse(check: GovernanceCheckState) {
   return {
     check_id: check.checkId,
     status: check.status,
+    verdict: check.status,
     plan_id: check.planId,
     explanation: check.explanation,
     mode: check.mode,

@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.5/enums/impairment-offline-state.json",
+  "title": "Impairment Offline State",
+  "description": "Canonical offline values that may appear in impairment.transition.to. Each value is the offline endpoint of a specific resource type's lifecycle enum. The resource_type ↔ offline_state pairing is validated by the impairment.coherence assertion — not by this schema — so a single shared enum is sufficient at the field-validation layer.",
+  "type": "string",
+  "enum": [
+    "suspended",
+    "rejected",
+    "withdrawn",
+    "insufficient",
+    "depublished"
+  ],
+  "enumDescriptions": {
+    "suspended": "Offline value of audience-status. Valid when resource_type='audience'.",
+    "rejected": "Offline value of creative-status. Valid when resource_type='creative'. Reached from approved when seller revokes post-approval.",
+    "withdrawn": "Offline value of catalog-item-status. Valid when resource_type='catalog_item'. Seller-initiated removal, distinct from review-failure rejection.",
+    "insufficient": "Offline value of assessment-status surfaced through event-source-health.status. Valid when resource_type='event_source'. Covers source-offline (zero events received over the evaluation window) — disambiguate via events_received_24h and last_event_at.",
+    "depublished": "Synthetic offline marker — property has no per-resource status field; publication state is derived from brand.json / adagents.json. Valid when resource_type='property'."
+  }
+}

@@ -181,6 +181,120 @@ async function runTests() {
     'get_signals request'
   );
 
+  await validateExample(
+    {
+      "product_id": "retail_display_open_exchange",
+      "name": "Retail Display Open Exchange",
+      "description": "Open exchange display inventory with optional retail intent signals",
+      "publisher_properties": [
+        {
+          "publisher_domain": "retailmedia.example",
+          "selection_type": "all"
+        }
+      ],
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250_image"
+        }
+      ],
+      "delivery_type": "non_guaranteed",
+      "pricing_options": [
+        {
+          "pricing_option_id": "auction_cpm",
+          "pricing_model": "cpm",
+          "currency": "USD",
+          "floor_price": 3.00
+        }
+      ],
+      "reporting_capabilities": {
+        "available_reporting_frequencies": ["daily"],
+        "expected_delay_minutes": 240,
+        "timezone": "UTC",
+        "supports_webhooks": true,
+        "available_metrics": ["impressions", "spend"],
+        "date_range_support": "date_range"
+      },
+      "signal_targeting_allowed": true,
+      "signal_targeting_rules": {
+        "resolution_model": "direct_targeting",
+        "selection_mode": "optional",
+        "max_signal_targeting_groups": 2,
+        "max_signals_per_targeting_group": 3
+      },
+      "signal_targeting_options": [
+        {
+          "signal_ref": {
+            "scope": "data_provider",
+            "data_provider_domain": "pinnacle-data.example",
+            "signal_id": "auto_intenders"
+          },
+          "allowed_targeting_modes": ["include", "exclude"],
+          "selection_group": "retail_audience",
+          "pricing_options": [
+            {
+              "pricing_option_id": "signal_cpm_usd_250",
+              "model": "cpm",
+              "cpm": 2.50,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "included_signals": [
+        {
+          "signal_ref": {
+            "scope": "data_provider",
+            "data_provider_domain": "pinnacle-data.example",
+            "signal_id": "retail_category_shoppers"
+          }
+        }
+      ]
+    },
+    '/schemas/core/product.json',
+    'product with signal_targeting_options and included_signals'
+  );
+
+  await validateExample(
+    {
+      "signal_targeting_groups": {
+        "operator": "all",
+        "groups": [
+          {
+            "operator": "any",
+            "signals": [
+              {
+                "signal_ref": {
+                  "scope": "data_provider",
+                  "data_provider_domain": "pinnacle-data.example",
+                  "signal_id": "auto_intenders"
+                },
+                "value_type": "binary",
+                "value": true,
+                "pricing_option_id": "signal_cpm_usd_250"
+              }
+            ]
+          },
+          {
+            "operator": "none",
+            "signals": [
+              {
+                "signal_ref": {
+                  "scope": "product",
+                  "signal_id": "recent_purchasers"
+                },
+                "value_type": "binary",
+                "value": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    '/schemas/core/targeting.json',
+    'targeting overlay with signal_targeting_groups'
+  );
+
   // Conversion tracking examples
   await validateExample(
     {

@@ -2,7 +2,7 @@ id: governance_aware_seller/governance_multi_agent_rejected
 version: "1.0.0"
 title: "Seller rejects sync_governance with more than one governance agent"
 category: governance_aware_seller
-summary: "Verifies that a governance-aware seller rejects a sync_governance request carrying more than one governance_agents entry, enforcing the maxItems: 1 constraint."
+summary: "Verifies that any seller required to implement sync_governance rejects a request carrying more than one governance_agents entry, enforcing the maxItems: 1 constraint."
 track: media_buy
 required_tools:
   - sync_governance
@@ -28,9 +28,8 @@ agent:
   interaction_model: media_buy_seller
   capabilities:
     - sells_media
-    - governance_aware
   examples:
-    - "Any governance-aware seller that validates sync_governance request schema"
+    - "Any media buy seller that validates sync_governance request schema"
 
 caller:
   role: buyer_agent
