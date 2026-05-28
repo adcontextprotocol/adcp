@@ -15,8 +15,6 @@ import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
 import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type RegistryHolder } from './registry.js';
 import { buildSignedRevocationList } from '../governance-revocations.js';
-import { getTenantResponseSigningMaterial } from './signing.js';
-import { wrapResponseForSigning } from '../response-signing.js';
 import { salesCapabilityProjection } from '../v6-sales-platform.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
 import { adcpError, resolveServedAdcpVersion } from '../task-handlers.js';
@@ -133,13 +131,6 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
   return async (req: Request, res: Response): Promise<void> => {
     setCORSHeaders(res);
 
-    // Wrap res with the response-signing middleware. Buffers writes from
-    // the MCP transport, signs the buffered body with the tenant's
-    // response-signing key, and writes back with RFC 9421 Signature /
-    // Signature-Input / Content-Digest headers. Non-2xx and non-JSON
-    // responses pass through unsigned.
-    const responseSigner = getTenantResponseSigningMaterial(tenantId);
-    wrapResponseForSigning(req, res, responseSigner.signerKey, tenantId);
     wrapTenantToolDiscoveryProjection(req, res, storyboardCompat);
     wrapSalesCapabilitiesProjection(req, res, tenantId, storyboardCompat);
 

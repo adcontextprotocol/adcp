@@ -7162,6 +7162,7 @@ describe('get_adcp_capabilities handler', () => {
       supported_versions: ['3.0', '3.1-beta.5'],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
     });
+    expect(result.adcp_version).toBe('3.0');
     expect(result.protocol_version).toBe('3.0');
     expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand']);
   });
@@ -9858,6 +9859,22 @@ describe('AdCP protocol compliance', () => {
     expect(details?.supported_majors).toContain(3);
   });
 
+  it('rejects unsupported adcp_version with VERSION_UNSUPPORTED', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'get_products', {
+      adcp_version: '99.0',
+      buying_mode: 'brief',
+      brief: 'test',
+    });
+    expect(isError).toBe(true);
+    expect(result.code).toBe('VERSION_UNSUPPORTED');
+    expect(result.field).toBe('adcp_version');
+    const details = result.details as { adcp_version?: string; supported_versions?: string[]; supported_majors?: number[] };
+    expect(details?.adcp_version).toBe('99.0');
+    expect(details?.supported_versions).toContain('3.0');
+    expect(details?.supported_majors).toContain(3);
+  });
+
   it('accepts supported adcp_major_version', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result, isError } = await simulateCallTool(server, 'get_products', {
@@ -9866,6 +9883,7 @@ describe('AdCP protocol compliance', () => {
       brief: 'test',
     });
     expect(isError).toBeFalsy();
+    expect(result.adcp_version).toBe('3.1-beta.5');
     expect(Array.isArray(result.products)).toBe(true);
   });
 

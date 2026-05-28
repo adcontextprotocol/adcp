@@ -625,6 +625,7 @@ async function main() {
         try {
           const targetUrl = agentUrl.replace(/\/mcp$/, variant.routeSuffix);
           const result = await runStoryboard(targetUrl, storyboard, {
+            ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
             auth: { type: 'bearer', token: AUTH_TOKEN },
             allow_http: true,
             contracts: ['webhook_receiver_runner'],
@@ -669,6 +670,7 @@ async function main() {
         // `signed_requests` stays on `/mcp` so bearer-authed unsigned calls
         // keep working.
         const result = await runStoryboard(agentUrl, storyboard, {
+          ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
           auth: { type: 'bearer', token: AUTH_TOKEN },
           allow_http: true,
           contracts: ['webhook_receiver_runner'],

@@ -23,6 +23,7 @@ vi.mock('../../src/services/storyboards.js', () => ({
 }));
 
 vi.mock('../../src/services/adcp-taxonomy.js', () => ({
+  SUPPORTED_BADGE_VERSIONS: ['3.0'],
   isStableSpecialism: vi.fn(() => true),
 }));
 

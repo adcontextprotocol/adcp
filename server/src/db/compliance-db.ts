@@ -96,6 +96,8 @@ export interface NoticeEntry {
 export interface ComplianceRun {
   id: string;
   agent_url: string;
+  requested_compliance_target: string | null;
+  adcp_version: string | null;
   lifecycle_stage: LifecycleStage;
   overall_status: OverallRunStatus;
   headline: string | null;
@@ -124,6 +126,8 @@ export interface TrackSummaryEntry {
 
 export interface AgentComplianceStatus {
   agent_url: string;
+  requested_compliance_target: string | null;
+  adcp_version: string | null;
   status: ComplianceStatus;
   lifecycle_stage: LifecycleStage;
   last_checked_at: Date | null;
@@ -190,6 +194,8 @@ export const DEFAULT_BADGE_ADCP_VERSION = '3.0';
 
 export interface StoryboardStatusEntry {
   storyboard_id: string;
+  requested_compliance_target?: string | null;
+  adcp_version?: string | null;
   status: StoryboardStatus;
   steps_passed: number;
   steps_total: number;
@@ -235,6 +241,8 @@ export interface ComplianceStepDiagnosticRow extends StepDiagnosticEntry {
 
 export interface RecordComplianceRunInput {
   agent_url: string;
+  requested_compliance_target?: string | null;
+  adcp_version?: string | null;
   lifecycle_stage: LifecycleStage;
   overall_status: OverallRunStatus;
   headline?: string;
@@ -340,15 +348,17 @@ export class ComplianceDatabase {
       // 1. Insert the run
       const runResult = await client.query(
         `INSERT INTO agent_compliance_runs (
-          agent_url, lifecycle_stage, overall_status, headline,
+          agent_url, requested_compliance_target, adcp_version, lifecycle_stage, overall_status, headline,
           total_duration_ms, tracks_json, tracks_passed, tracks_failed,
           tracks_skipped, tracks_partial, agent_profile_json,
           observations_json, triggered_by, triggered_org_id, dry_run,
           notices_json
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
         RETURNING *`,
         [
           input.agent_url,
+          input.requested_compliance_target ?? null,
+          input.adcp_version ?? null,
           input.lifecycle_stage,
           input.overall_status,
           input.headline ?? null,
@@ -382,13 +392,13 @@ export class ComplianceDatabase {
         `INSERT INTO agent_compliance_status (
           agent_url, status, last_checked_at,
           last_passed_at, last_failed_at,
-          tracks_summary_json, headline,
+          tracks_summary_json, headline, requested_compliance_target, adcp_version,
           previous_status, status_changed_at, updated_at
         ) VALUES (
           $1, $2, NOW(),
           CASE WHEN $2 = 'passing' THEN NOW() ELSE NULL END,
           CASE WHEN $2 IN ('failing', 'degraded') THEN NOW() ELSE NULL END,
-          $3, $4,
+          $3, $4, $5, $6,
           NULL, NOW(), NOW()
         )
         ON CONFLICT (agent_url) DO UPDATE SET
@@ -423,6 +433,8 @@ export class ComplianceDatabase {
           END,
           tracks_summary_json = $3,
           headline = $4,
+          requested_compliance_target = $5,
+          adcp_version = $6,
           updated_at = NOW()
         RETURNING status, previous_status`,
         [
@@ -430,6 +442,8 @@ export class ComplianceDatabase {
           newStatus,
           JSON.stringify(tracksSummary),
           input.headline ?? null,
+          input.requested_compliance_target ?? null,
+          input.adcp_version ?? null,
         ],
       );
 
@@ -456,13 +470,13 @@ export class ComplianceDatabase {
             `INSERT INTO agent_storyboard_status (
               agent_url, storyboard_id, status, last_tested_at,
               last_passed_at, last_failed_at, run_id,
-              steps_passed, steps_total, triggered_by, updated_at
+              steps_passed, steps_total, triggered_by, requested_compliance_target, adcp_version, updated_at
             )
             SELECT
               $1, sb_id, sb_status, NOW(),
               CASE WHEN sb_status = 'passing' THEN NOW() ELSE NULL END,
               CASE WHEN sb_status IN ('failing', 'partial') THEN NOW() ELSE NULL END,
-              $4, sb_passed, sb_total, $7, NOW()
+              $4, sb_passed, sb_total, $7, $8, $9, NOW()
             FROM unnest($2::text[], $3::text[], $5::int[], $6::int[])
               AS t(sb_id, sb_status, sb_passed, sb_total)
             ON CONFLICT (agent_url, storyboard_id) DO UPDATE SET
@@ -480,8 +494,20 @@ export class ComplianceDatabase {
               steps_passed = EXCLUDED.steps_passed,
               steps_total = EXCLUDED.steps_total,
               triggered_by = EXCLUDED.triggered_by,
+              requested_compliance_target = EXCLUDED.requested_compliance_target,
+              adcp_version = EXCLUDED.adcp_version,
               updated_at = NOW()`,
-            [input.agent_url, sbIds, sbStatuses, run.id, sbStepsPassed, sbStepsTotal, input.triggered_by ?? 'heartbeat'],
+            [
+              input.agent_url,
+              sbIds,
+              sbStatuses,
+              run.id,
+              sbStepsPassed,
+              sbStepsTotal,
+              input.triggered_by ?? 'heartbeat',
+              input.requested_compliance_target ?? null,
+              input.adcp_version ?? null,
+            ],
           );
           await client.query('RELEASE SAVEPOINT storyboard_upsert');
         } catch (sbErr) {
@@ -572,7 +598,13 @@ export class ComplianceDatabase {
         ? { previous: row.previous_status as ComplianceStatus, current: row.status as ComplianceStatus }
         : null;
 
-      return { run, statusTransition: transition, storyboardStatuses: input.storyboard_statuses ?? [] };
+      const storyboardStatuses = (input.storyboard_statuses ?? []).map(s => ({
+        ...s,
+        requested_compliance_target: s.requested_compliance_target ?? input.requested_compliance_target ?? null,
+        adcp_version: s.adcp_version ?? input.adcp_version ?? null,
+      }));
+
+      return { run, statusTransition: transition, storyboardStatuses };
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -913,6 +945,8 @@ export class ComplianceDatabase {
     requireRowsForLatestRun?: boolean;
   } = {}): Promise<Array<{
     storyboard_id: string;
+    requested_compliance_target: string | null;
+    adcp_version: string | null;
     status: string;
     last_tested_at: Date | null;
     last_passed_at: Date | null;
@@ -930,7 +964,7 @@ export class ComplianceDatabase {
          ORDER BY tested_at DESC
          LIMIT 1
        )
-       SELECT storyboard_id, status, last_tested_at, last_passed_at, last_failed_at,
+       SELECT storyboard_id, requested_compliance_target, adcp_version, status, last_tested_at, last_passed_at, last_failed_at,
               steps_passed, steps_total, triggered_by
        FROM agent_storyboard_status s
        WHERE s.agent_url = $1
@@ -1001,6 +1035,8 @@ export class ComplianceDatabase {
 
   async bulkGetStoryboardStatuses(agentUrls: string[]): Promise<Map<string, Array<{
     storyboard_id: string;
+    requested_compliance_target: string | null;
+    adcp_version: string | null;
     status: string;
     last_tested_at: Date | null;
     last_passed_at: Date | null;
@@ -1027,7 +1063,7 @@ export class ComplianceDatabase {
            ) AS has_rows
          FROM latest_runs lr
        )
-       SELECT s.agent_url, s.storyboard_id, s.status, s.last_tested_at, s.last_passed_at,
+       SELECT s.agent_url, s.storyboard_id, s.requested_compliance_target, s.adcp_version, s.status, s.last_tested_at, s.last_passed_at,
               s.steps_passed, s.steps_total
        FROM agent_storyboard_status s
        LEFT JOIN latest_run_flags lf ON lf.agent_url = s.agent_url
@@ -1038,7 +1074,7 @@ export class ComplianceDatabase {
     );
 
     const map = new Map<string, Array<{
-      storyboard_id: string; status: string;
+      storyboard_id: string; requested_compliance_target: string | null; adcp_version: string | null; status: string;
       last_tested_at: Date | null; last_passed_at: Date | null;
       steps_passed: number; steps_total: number;
     }>>();

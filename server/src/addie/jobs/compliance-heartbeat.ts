@@ -21,9 +21,11 @@ import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
 import { runBadgeFanOut } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
+import { hostedComplianceTarget } from '../../services/hosted-compliance-version.js';
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
 const complianceDb = new ComplianceDatabase();
+const complianceTarget = hostedComplianceTarget();
 
 interface HeartbeatOptions {
   limit?: number;
@@ -74,7 +76,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         userAgent: AAO_UA_COMPLIANCE,
       };
 
-      const complianceResult = await comply(agent.agent_url, complyOptions);
+      const complianceResult = await comply(agent.agent_url, complyOptions, complianceTarget);
 
       logOutboundRequest({
         agent_url: agent.agent_url,
@@ -202,6 +204,8 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       try {
         await complianceDb.recordComplianceRun({
           agent_url: agent.agent_url,
+          requested_compliance_target: complianceTarget.requested,
+          adcp_version: complianceTarget.version,
           lifecycle_stage: agent.lifecycle_stage as LifecycleStage,
           overall_status: 'failing',
           headline,

@@ -11,6 +11,14 @@ import {
   type Storyboard,
   type StoryboardSummary,
 } from '../../src/services/storyboards.js';
+import {
+  DEFAULT_HOSTED_COMPLIANCE_LINE,
+  DEFAULT_HOSTED_COMPLIANCE_VERSION,
+  hostedComplianceOptions,
+  hostedComplianceTarget,
+  withHostedComplianceOptions,
+} from '../../src/services/hosted-compliance-version.js';
+import { loadComplianceIndex } from '@adcp/sdk/testing';
 
 /**
  * These tests cover the wrapper in services/storyboards.ts. Catalog content
@@ -137,6 +145,36 @@ describe('wrapper contract', () => {
     const summary: StoryboardSummary = first;
     expect(typeof summary.phase_count).toBe('number');
     expect(typeof summary.step_count).toBe('number');
+  });
+
+  it('uses the hosted stable compliance bundle by default', () => {
+    const target = hostedComplianceTarget();
+    const index = loadComplianceIndex(hostedComplianceOptions(target));
+    expect(index.adcp_version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
+    expect(target.requested).toBe(DEFAULT_HOSTED_COMPLIANCE_LINE);
+    expect(target.version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
+  });
+
+  it('resolves compliance target aliases against checked-in caches', () => {
+    const stable = hostedComplianceTarget('3.0');
+    expect(stable.requested).toBe('3.0');
+    expect(stable.version).toMatch(/^3\.0\.\d+$/);
+
+    const beta = hostedComplianceTarget('3.1-beta');
+    expect(beta.requested).toBe('3.1-beta');
+    expect(beta.version).toMatch(/^3\.1\.0-beta\.\d+$/);
+  });
+
+  it('rejects unsupported compliance targets before path resolution', () => {
+    expect(() => hostedComplianceTarget('../3.0.12')).toThrow(/Unsupported AdCP compliance target/);
+    expect(() => hostedComplianceTarget('3.1-latest')).toThrow(/Unsupported AdCP compliance target/);
+  });
+
+  it('canonicalizes alias versions passed through SDK option helpers', () => {
+    const target = hostedComplianceTarget('3.0');
+    const options = withHostedComplianceOptions({ version: '3.0' }, target);
+    expect(options.version).toBe(target.version);
+    expect(options.complianceDir).toContain(target.version);
   });
 });
 
