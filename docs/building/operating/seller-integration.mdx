@@ -17,7 +17,7 @@ Platforms that implement AdCP are discoverable by buyer agents out of the box. P
 
 ## What you need to implement
 
-AdCP sell-side integration has three parts:
+AdCP sell-side integration has four parts:
 
 <Steps>
 
@@ -48,6 +48,39 @@ Buyer agents check `adagents.json` to find authorized sales agents, verify relat
 <Note>
 This shows a simplified structure. The full adagents.json schema uses separate `properties` and `authorized_agents` arrays with a `delegation_type` field. See the [adagents.json tech spec](/docs/governance/property/adagents) for the complete schema.
 </Note>
+
+### Publish your brand identity
+
+Publish `brand.json` at `https://{your-domain}/.well-known/brand.json` for the selling organization. `adagents.json` tells buyers which publisher authorizes a sales agent; `brand.json` tells buyers which operator is claiming the sales path, which properties it represents, and where to find signing keys.
+
+For publisher-owned sales teams, list owned or direct properties. For networks and SSPs, list represented properties with `relationship: "delegated"` or `relationship: "ad_network"` and make sure that value matches the publisher's `authorized_agents[].delegation_type` in `adagents.json`. The two files form the bilateral verification chain: the operator declares "I sell this property", and the publisher confirms "this operator is authorized to sell it".
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "id": "example_publisher",
+  "url": "https://publisher.example.com",
+  "names": [{ "en_US": "Example Publisher" }],
+  "properties": [
+    {
+      "type": "website",
+      "identifier": "publisher.example.com",
+      "relationship": "direct"
+    }
+  ],
+  "agents": [
+    {
+      "type": "sales",
+      "url": "https://ads.publisher.example.com",
+      "id": "publisher_sales",
+      "jwks_uri": "https://ads.publisher.example.com/.well-known/jwks.json"
+    }
+  ]
+}
+```
+
+The `agents[].jwks_uri` lets buyers resolve your public signing keys. Sellers that send AdCP webhooks should publish a webhook-signing JWK with `adcp_use: "webhook-signing"` in that JWKS so buyers can verify outbound webhook signatures. See [request signing](/docs/building/by-layer/L1/request-signing) for the key-publication and webhook-signing profile.
 
 ### Expose your inventory
 

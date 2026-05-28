@@ -1005,7 +1005,7 @@ Properties default to `owned` — the brand operates the property directly. For 
 | `delegated` | Brand manages monetization — in charge of ad sales | Mediavine managing a food blog |
 | `ad_network` | Brand sells as part of a network/exchange — a path, not the path | PubMatic as an SSP |
 
-This is the AdCP equivalent of `sellers.json` — the operator's public declaration of which publishers they work with. The publisher confirms by setting the matching `delegation_type` on the agent's authorization in their [adagents.json](/docs/governance/property/adagents). See [ad networks](/docs/sponsored-intelligence/networks) for the bilateral verification pattern.
+This is the AdCP equivalent of `sellers.json` — the operator's public declaration of which publishers they work with. The publisher confirms by setting the matching `delegation_type` on the agent's authorization in their [adagents.json](/docs/governance/property/adagents). Sellers implementing this workflow should publish both files as part of [making inventory available to AI agents](/docs/building/operating/seller-integration#publish-your-brand-identity). See [ad networks](/docs/sponsored-intelligence/networks) for the bilateral verification pattern.
 
 ## Resolution algorithm
 
