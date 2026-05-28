@@ -338,6 +338,14 @@ There is no inheritance/override block. Each consumer-side question has a single
 
 **Identity fields** (`name`, `names`, `logos`, `colors`, `fonts`, `tone`, `voice`, `tagline`, `visual_guidelines`, `avatar`): brand-level value is authoritative; the house value is not consulted. Brand teams own brand identity.
 
+### Authorized Operator Resolution
+
+`authorized_operators[]` entries may be scoped by brand, country, activity, and time. Consumers evaluating an operator relationship MUST ignore an entry when the current time is before `valid_from` or at/after `valid_until`. Omitted validity fields mean the house has not published a machine-readable start or end bound.
+
+When `scopes` is omitted, consumers should treat the entry as backwards-compatible broad authorization for the listed brands and countries. When `scopes` is present, the operator is authorized only for the listed activities, or for all activities when it explicitly contains `all`.
+
+`authorized_operators[]` does not replace publisher-side inventory authorization. For delegated or network inventory, buyers still need the publisher's matching `adagents.json` authorization; the brand file establishes who may represent the brand or house, while `adagents.json` establishes who may sell a publisher's inventory.
+
 **Compliance and governance fields**: the resolved value is the **strictest of** the house-level and brand-level values. A brand cannot weaken a house's governance assertions; it can only add stricter constraints. Applies to:
 
 - `data_subject_contestation` — both contacts SHOULD be presented to data subjects (consumers may use either; brand-level does NOT replace house-level)

@@ -798,7 +798,7 @@
     },
     "authorized_operator": {
       "type": "object",
-      "description": "An entity authorized to represent brands from this house. Verified by resolving the operator's domain.",
+      "description": "An entity authorized to represent brands from this house. Verified by resolving the operator's domain. Optional validity fields let houses time-box agency-of-record and delegated-operator relationships without changing historical entries.",
       "properties": {
         "domain": {
           "$ref": "#/definitions/domain",
@@ -820,6 +820,26 @@
             "type": "string",
             "pattern": "^[A-Z]{2}$"
           }
+        },
+        "scopes": {
+          "type": "array",
+          "description": "Activities this operator is authorized to perform for the listed brands and countries. Omit for backwards-compatible broad authorization. Use ['all'] only when every listed scope is delegated.",
+          "items": {
+            "type": "string",
+            "enum": ["all", "media_buying", "creative_generation", "rights_clearance", "governance", "measurement", "agent_operations"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "valid_from": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this operator authorization starts. Omit when authorization is already active or the start date is not tracked."
+        },
+        "valid_until": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this operator authorization expires. Consumers MUST treat entries at or after this timestamp as inactive for authorization decisions."
         }
       },
       "required": ["domain", "brands"],
@@ -2124,16 +2144,21 @@
         {
           "domain": "wpp.com",
           "brands": ["nike", "air_jordan"],
-          "countries": ["US", "GB", "DE", "FR"]
+          "countries": ["US", "GB", "DE", "FR"],
+          "scopes": ["media_buying", "creative_generation"],
+          "valid_from": "2026-01-01T00:00:00Z",
+          "valid_until": "2027-01-01T00:00:00Z"
         },
         {
           "domain": "dentsu.co.jp",
           "brands": ["nike"],
-          "countries": ["JP"]
+          "countries": ["JP"],
+          "scopes": ["media_buying"]
         },
         {
           "domain": "nike.com",
-          "brands": ["*"]
+          "brands": ["*"],
+          "scopes": ["all"]
         }
       ],
       "last_updated": "2026-01-15T10:00:00Z"
