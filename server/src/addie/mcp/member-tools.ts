@@ -3989,6 +3989,21 @@ export function createMemberToolHandlers(
       if (capsError) {
         const presentation = presentCapabilityResolutionError(capsError);
         logger.warn({ agentUrl: resolved.resolvedUrl, ...presentation.logFields }, presentation.logMsg);
+        if (capsError.kind === 'unsupported_adcp_version') {
+          const safeVersion = fenceAgentValue(capsError.complianceVersion ?? '', 80);
+          const safeSupported = (capsError.supportedVersions ?? [])
+            .map(v => fenceAgentValue(v, 40))
+            .filter(Boolean)
+            .join(', ');
+          const supportedLine = safeSupported || '`(none advertised)`';
+          return (
+            `**Unsupported compliance target.** The selected compliance target resolves to ` +
+            `${safeVersion}, but the agent at ${resolved.resolvedUrl} advertises ` +
+            `\`adcp.supported_versions\`: ${supportedLine}.\n\n` +
+            `Select a compliance target the seller actually supports, then re-run ` +
+            `\`evaluate_agent_quality\`.`
+          );
+        }
         const safeSpec = fenceAgentValue(capsError.specialism ?? '', 80);
         if (capsError.kind === 'specialism_parent_protocol_missing') {
           const safeParent = fenceAgentValue(capsError.parentProtocol ?? '', 80);
@@ -4188,9 +4203,9 @@ export function createMemberToolHandlers(
     }
 
     // Resolve capabilities → bundles. `resolveStoryboardsForCapabilities` fails
-    // closed for two distinct agent-config problems: a specialism whose parent
-    // protocol is missing from supported_protocols, or a specialism whose
-    // bundle isn't in the local cache. Classify and coach accordingly.
+    // closed for agent-config or target-selection problems: missing parent
+    // protocol, unknown specialism, or unsupported compliance cache version.
+    // Classify and coach accordingly.
     let resolvedBundles: Array<{ ref: { id: string; kind: string }; storyboards: Storyboard[] }>;
     try {
       const res = resolveStoryboardsForCapabilities({
@@ -4207,17 +4222,29 @@ export function createMemberToolHandlers(
       const safeDeclared = specialisms.map(s => fenceAgentValue(s, 80)).filter(Boolean).join(', ');
       const safeProtocolsDeclared = supportedProtocols.map(p => fenceAgentValue(p, 80)).filter(Boolean).join(', ');
 
-      if (capsError?.kind === 'specialism_parent_protocol_missing') {
+      if (capsError) {
         const presentation = presentCapabilityResolutionError(capsError);
         logger.warn({ agentUrl: resolved.resolvedUrl, ...presentation.logFields }, presentation.logMsg);
-        const safeSpec = fenceAgentValue(capsError.specialism ?? '', 80);
-        const safeParent = fenceAgentValue(capsError.parentProtocol ?? '', 80);
-        output += `**Capabilities misconfigured.** The agent declares the ${safeSpec} specialism, but its parent protocol ${safeParent} is missing from \`supported_protocols\`. Every specialism must roll up to a declared protocol.\n\n`;
-        if (safeProtocolsDeclared) {
-          output += `Currently declared protocols: ${safeProtocolsDeclared}.\n\n`;
+        if (capsError.kind === 'unsupported_adcp_version') {
+          const safeVersion = fenceAgentValue(capsError.complianceVersion ?? '', 80);
+          const safeSupported = (capsError.supportedVersions ?? [])
+            .map(v => fenceAgentValue(v, 40))
+            .filter(Boolean)
+            .join(', ');
+          output += `**Unsupported compliance target.** The selected compliance target resolves to ${safeVersion}, but the agent advertises \`adcp.supported_versions\`: ${safeSupported || '`(none advertised)`'}.\n\n`;
+          output += `Select a compatible compliance target, then re-run \`recommend_storyboards\`.\n`;
+          return output;
         }
-        output += `Add the ${safeParent} protocol to the \`supported_protocols\` array in \`get_adcp_capabilities\`, redeploy, then re-run \`recommend_storyboards\`.\n`;
-        return output;
+        if (capsError.kind === 'specialism_parent_protocol_missing') {
+          const safeSpec = fenceAgentValue(capsError.specialism ?? '', 80);
+          const safeParent = fenceAgentValue(capsError.parentProtocol ?? '', 80);
+          output += `**Capabilities misconfigured.** The agent declares the ${safeSpec} specialism, but its parent protocol ${safeParent} is missing from \`supported_protocols\`. Every specialism must roll up to a declared protocol.\n\n`;
+          if (safeProtocolsDeclared) {
+            output += `Currently declared protocols: ${safeProtocolsDeclared}.\n\n`;
+          }
+          output += `Add the ${safeParent} protocol to the \`supported_protocols\` array in \`get_adcp_capabilities\`, redeploy, then re-run \`recommend_storyboards\`.\n`;
+          return output;
+        }
       }
 
       logger.warn({ err: error, agentUrl: resolved.resolvedUrl, supportedProtocols, specialisms }, 'recommend_storyboards: unknown specialism');

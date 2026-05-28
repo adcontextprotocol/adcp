@@ -3248,6 +3248,18 @@
             return;
           }
 
+          if (errBody.error_kind === 'unsupported_adcp_version') {
+            const complianceVersion = errBody.compliance_version || 'the selected cache';
+            const supportedVersions = errBody.supported_versions || '(none advertised)';
+            let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);">';
+            html += '<strong>Unsupported compliance target.</strong> This check selected <code>' + escapeHtml(String(complianceVersion)) + '</code>, but the agent advertises <code>adcp.supported_versions</code>:';
+            html += '<div style="margin-top:var(--space-2);font-family:var(--font-mono);font-size:var(--text-xs);">' + escapeHtml(String(supportedVersions)) + '</div>';
+            html += '<div style="margin-top:var(--space-2);font-size:var(--text-xs);color:var(--color-error-600);">Select a compliance target the agent supports, or update the agent\'s capabilities if it is ready for this target.</div>';
+            html += '</div>';
+            panel.innerHTML = html;
+            return;
+          }
+
           // Capability probe failed for an unclassified reason. We deliberately
           // do NOT fall back to the unfiltered storyboard catalog here: without
           // the agent's declared protocols + specialisms, every storyboard we

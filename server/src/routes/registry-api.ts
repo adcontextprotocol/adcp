@@ -2573,14 +2573,21 @@ registry.registerPath({
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
     422: {
-      description: "Agent requires authentication, or declares a specialism not in the local compliance cache",
+      description: "Agent requires authentication, or declared capabilities cannot be resolved for the selected compliance target",
       content: {
         "application/json": {
           schema: z.object({
             error: z.string(),
+            error_kind: z.enum(["specialism_parent_protocol_missing", "unknown_specialism", "unsupported_adcp_version"]).optional(),
             needs_auth: z.boolean().optional(),
             unknown_specialism: z.boolean().optional(),
+            specialism_parent_protocol_missing: z.boolean().optional(),
+            specialism: z.string().optional(),
+            parent_protocol: z.string().optional(),
+            compliance_version: z.string().optional(),
+            supported_versions: z.string().optional(),
             declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared, for unknown-specialism errors" }),
+            declared_protocols: z.array(z.string()).optional().openapi({ description: "Protocols the agent declared, for capability-resolution errors" }),
             known_specialisms: z.array(z.string()).optional().openapi({ description: "Specialism ids present in this server's local compliance cache" }),
           }),
         },
@@ -6090,7 +6097,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           const legacyFlag =
             capsError.kind === 'specialism_parent_protocol_missing'
               ? { specialism_parent_protocol_missing: true }
-              : { unknown_specialism: true };
+              : capsError.kind === 'unknown_specialism'
+                ? { unknown_specialism: true }
+                : {};
           return res.status(422).json({
             error: presentation.headline,
             ...presentation.restBody,
