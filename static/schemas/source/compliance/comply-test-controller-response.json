@@ -528,7 +528,7 @@
               "payload_digest_sha256": {
                 "type": "string",
                 "pattern": "^[a-f0-9]{64}$",
-                "description": "SHA-256 digest of the canonicalized outbound request body, lowercase hex (64 chars). Required when `attestation_mode` is `digest`; MUST be absent when `attestation_mode` is `raw`. Canonicalization order is normative: (1) controllers MUST apply the recursive secret-key redaction (same pattern as the raw-mode payload field) BEFORE computing the digest; (2) for `application/json` and `*+json` content types, controllers MUST then serialize the redacted body to RFC 8785 (JCS) canonical form — sorted keys, no extraneous whitespace — and digest the resulting bytes. Storyboard-supplied identifiers (hashed PII, request correlation values) MUST NOT be redacted before digest computation; they are the load-bearing match target for `identifier_match_proofs` and digesting them away makes echo verification impossible. Both `payload_digest_sha256` AND `identifier_match_proofs` MUST be computed against the same post-redaction canonical bytes — diverging the two surfaces breaks coherence between digest replay and identifier echo. JCS edge cases: payloads containing `NaN` or `Infinity` numbers MUST grade `not_applicable` for digest mode (RFC 8785 forbids them); payloads carrying numeric identifiers MUST serialize them as JSON strings before digest computation (adtech bid payloads regularly carry IDs outside ±2^53 where I-JSON / RFC 7493 number round-tripping diverges across implementations). For non-JSON content types the digest is computed over the post-redaction raw body bytes."
+                "description": "SHA-256 digest of the canonicalized outbound request body, lowercase hex (64 chars). Required when `attestation_mode` is `digest`; MUST be absent when `attestation_mode` is `raw`. Canonicalization order is normative: (1) controllers MUST apply the recursive secret-key redaction (same pattern as the raw-mode payload field) BEFORE computing the digest; (2) for `application/json` and `*+json` content types, controllers MUST then serialize the redacted body to RFC 8785 (JCS) canonical form — sorted keys, no extraneous whitespace — and digest the resulting bytes. Storyboard-supplied identifiers (hashed PII, request correlation values) MUST NOT be redacted before digest computation; they are the load-bearing match target for `identifier_match_proofs` and digesting them away makes echo verification impossible. Both `payload_digest_sha256` AND `identifier_match_proofs` MUST be computed against the same post-redaction canonical bytes — diverging the two surfaces breaks coherence between digest replay and identifier echo. JCS edge cases: when a digest-mode `query_upstream_traffic` response cannot be produced because the parsed JSON-like value tree contains a non-finite numeric value (`NaN`, `+Infinity`, or `-Infinity`), controllers MUST NOT coerce that value to `null`, a string, or any other placeholder for digest computation; they MUST return the typed ControllerError code `JCS_NON_FINITE_NUMBER`. Runners MUST grade the affected upstream_traffic digest validation `not_applicable` because RFC 8785 forbids non-finite numbers. Payloads carrying numeric identifiers MUST serialize them as JSON strings before digest computation (adtech bid payloads regularly carry IDs outside ±2^53 where I-JSON / RFC 7493 number round-tripping diverges across implementations). For non-JSON content types the digest is computed over the post-redaction raw body bytes."
               },
               "payload_length": {
                 "type": "integer",
@@ -698,7 +698,7 @@
     },
     {
       "title": "ControllerError",
-      "description": "The scenario failed — invalid transition, unknown entity, unsupported scenario, or invalid params",
+      "description": "The scenario failed or could not produce a conformant response — invalid transition, unknown entity, unsupported scenario, invalid params, forbidden sandbox access, non-finite JCS canonicalization, or internal failure",
       "type": "object",
       "properties": {
         "success": {
@@ -714,9 +714,10 @@
             "UNKNOWN_SCENARIO",
             "INVALID_PARAMS",
             "FORBIDDEN",
+            "JCS_NON_FINITE_NUMBER",
             "INTERNAL_ERROR"
           ],
-          "description": "Structured error code"
+          "description": "Structured error code. `JCS_NON_FINITE_NUMBER` is reserved for digest-mode upstream_traffic responses that cannot be RFC 8785/JCS-canonicalized because the parsed JSON-like value tree contains a non-finite numeric value (`NaN`, `+Infinity`, or `-Infinity`); controllers MUST NOT coerce those values during digest computation, and runners grade that validation `not_applicable`, not failed."
         },
         "error_detail": {
           "type": "string",

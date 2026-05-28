@@ -600,7 +600,33 @@ async function runTests() {
     return true;
   });
 
-  // Test 11: Validate ForecastPoint dimension and viewability compatibility gates
+  // Test 11: Validate comply_test_controller accepts the JCS non-finite error code
+  await test('Comply controller response accepts JCS non-finite controller error', async () => {
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validateComplyResponse = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'compliance/comply-test-controller-response.json')));
+    const response = {
+      status: 'completed',
+      success: false,
+      error: 'JCS_NON_FINITE_NUMBER',
+      error_detail: 'Digest-mode upstream traffic could not be JCS-canonicalized because the parsed JSON-like value tree contained a non-finite numeric value.'
+    };
+
+    if (!validateComplyResponse(response)) {
+      return `JCS_NON_FINITE_NUMBER response unexpectedly failed validation: ${validateComplyResponse.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    return true;
+  });
+
+  // Test 12: Validate ForecastPoint dimension and viewability compatibility gates
   await test('ForecastPoint dimension and viewability compatibility gates behave as intended', async () => {
     const dimensionsSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-point-dimensions.json'));
     const uniqueProps = dimensionsSchema['x-adcp-validation']?.unique_item_properties || [];
@@ -992,7 +1018,7 @@ async function runTests() {
     return true;
   });
 
-  // Test 12: Validate schema examples against their schemas
+  // Test 13: Validate schema examples against their schemas
   await test('Schema examples validate against their own schemas', async () => {
     // Skip schemas that require format-aware validation (creative manifests need format context)
     const FORMAT_AWARE_SCHEMAS = ['sync-creatives-request.json', 'list-creatives-response.json'];

@@ -668,6 +668,7 @@ Controllers MUST use structured error codes so the storyboard runner can assert 
 | `UNKNOWN_SCENARIO` | Scenario not implemented by this seller |
 | `INVALID_PARAMS` | Missing or malformed params, or precondition not met (e.g., `simulate_budget_spend` on an entity with no budget configured) |
 | `FORBIDDEN` | Production account referenced from a sandbox connection |
+| `JCS_NON_FINITE_NUMBER` | Digest-mode `query_upstream_traffic` cannot canonicalize a parsed JSON-like value tree containing `NaN`, `+Infinity`, or `-Infinity`; controllers must not coerce these values, and runners grade the affected validation `not_applicable` |
 | `INTERNAL_ERROR` | Transient seller-side failure (e.g., sandbox database unavailable). The runner SHOULD retry once before treating as a failure. |
 
 <Note>

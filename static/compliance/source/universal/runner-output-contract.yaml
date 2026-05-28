@@ -420,6 +420,16 @@ validation_result:
           recorded_calls returned in raw mode, so a mixed-mode response
           (some calls raw, some digest) produces partial coverage rather
           than blanket not_applicable.
+        - If the controller cannot produce a digest-mode upstream_traffic
+          response because the parsed JSON-like value tree contains a
+          non-finite numeric value (`NaN`, `+Infinity`, or `-Infinity`),
+          it MUST NOT coerce that value to `null`, a string, or any other
+          placeholder for digest computation; it returns ControllerError
+          with error code `JCS_NON_FINITE_NUMBER`. The runner emits the affected
+          upstream_traffic validation_result with `passed: true` and a
+          `note` citing the RFC 8785/JCS non-finite-number constraint,
+          contributing to `validations_not_applicable` on run_summary
+          (NOT steps_failed).
         - `min_count` and `endpoint_pattern` are unchanged — count and URL
           matching work identically in both modes.
       Storyboards that strictly require raw introspection set

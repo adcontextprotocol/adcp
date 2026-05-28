@@ -140,7 +140,7 @@ What the scaffold handles for you:
 - **Dispatch and `UNKNOWN_SCENARIO`.** Scenarios you do not register return `UNKNOWN_SCENARIO` automatically — never a schema error.
 - **Param validation.** Invalid params produce `INVALID_PARAMS` with a readable `error_detail` without reaching your adapter.
 - **Seed idempotency.** Calling `seed_product` twice with the same `product_id` and an equivalent `fixture` returns `previous_state: "existing"`; a divergent `fixture` returns `INVALID_PARAMS`. Your adapter is only invoked on the first seed.
-- **Typed error envelopes.** Throw `TestControllerError(code, message, currentState?)` with `code` in `'INVALID_TRANSITION' | 'NOT_FOUND' | 'FORBIDDEN' | 'INVALID_PARAMS'` from any adapter.
+- **Typed error envelopes.** Throw `TestControllerError(code, message, currentState?)` with `code` from the controller error-code table. Common adapter codes are `'INVALID_TRANSITION' | 'NOT_FOUND' | 'FORBIDDEN' | 'INVALID_PARAMS'`; digest-mode `query_upstream_traffic` implementations may also return `JCS_NON_FINITE_NUMBER` when RFC 8785/JCS canonicalization encounters a non-finite numeric value.
 
 The scaffold does **not** own the state machine. Transition rules live in your adapters, so compliance testing and production share one source of truth — the mechanic the [anti-teach-to-test section](#avoiding-the-teach-to-test-trap) depends on.
 
