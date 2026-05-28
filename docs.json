@@ -25,8 +25,8 @@
   "theme": "mint",
   "colors": {
     "primary": "#047857",
-    "light": "#07C983",
-    "dark": "#047857"
+    "light": "#34D399",
+    "dark": "#065F46"
   },
   "navbar": {
     "links": [
