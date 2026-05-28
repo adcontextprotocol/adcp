@@ -125,6 +125,10 @@
             "format": "date-time",
             "description": "Last update timestamp"
           },
+          "context": {
+            "$ref": "/schemas/core/context.json",
+            "description": "Opaque media-buy-level correlation data echoed unchanged from the create_media_buy request. Sellers MUST include persisted context on read surfaces when the media buy was created through AdCP with context, so buyers can reconcile seller-assigned media_buy_id values with their own tracking state. Sellers MAY omit context for media buys created outside AdCP or created without context. Sellers MUST NOT parse this object for business logic."
+          },
           "valid_actions": {
             "type": "array",
             "description": "Flat-vocabulary actions the buyer can perform on this media buy in its current state. Eliminates the need for agents to internalize the state machine — the seller declares what is permitted right now. Deprecated in favor of `available_actions[]`, which carries `mode` (self_serve / conditional_self_serve / requires_proposal / requires_approval), optional SLA, and optional `terms_ref`. Sellers SHOULD populate both during the 3.x deprecation window; consumers MUST prefer `available_actions[]` when both are present. Removed in 4.0.",
@@ -209,7 +213,7 @@
                 },
                 "product_id": {
                   "type": "string",
-                  "description": "Product identifier this package is purchased from",
+                  "description": "Product identifier this package is purchased from. For packages created from an explicit create_media_buy package request, every response package object that represents that requested package MUST echo the request package's product_id.",
                   "x-entity": "product"
                 },
                 "budget": {
@@ -283,6 +287,10 @@
                   "type": "string",
                   "format": "date-time",
                   "description": "ISO 8601 timestamp for creative upload or change deadline for this package. After this deadline, creative changes are rejected. When absent, the media buy's creative_deadline applies."
+                },
+                "context": {
+                  "$ref": "/schemas/core/context.json",
+                  "description": "Opaque package-level correlation data echoed unchanged from the create_media_buy package request. Sellers MUST include persisted package context on read surfaces when the package was created through AdCP with context, so buyers can reconcile seller-assigned package_id values with their own line items; this is the legacy-safe fallback when an older seller did not echo product_id on the create response. Sellers MAY omit context for packages created outside AdCP or created without context. Sellers MUST NOT parse this object for business logic."
                 },
                 "creative_approvals": {
                   "type": "array",

@@ -68,6 +68,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `valid_actions` | Actions the buyer can perform in the current state (e.g., `["pause", "cancel", "update_budget"]`). See [valid actions mapping](#valid-actions-mapping). |
 | `history` | Revision history entries, most recent first. Only present when `include_history > 0`. Append-only — entries are never modified or deleted. |
 | `webhook_activity` | Recent reporting and health webhook fires for the calling principal, most-recent first. Only present when `include_webhook_activity` is true AND the seller surfaces fire history for this buy. See [Webhook activity](#webhook-activity) for three-state presence semantics. |
+| `context` | Opaque media-buy-level correlation data echoed unchanged from `create_media_buy`. Sellers MUST include persisted context when the media buy was created through AdCP with context, and MAY omit it for media buys created outside AdCP or without context. Use it to reconcile `media_buy_id` with buyer tracking state. |
 | `packages` | Array of packages with creative status and optional snapshots |
 
 ### Package Object
@@ -75,6 +76,7 @@ Returns an array of media buys with current status, creative approval state, and
 | Field | Description |
 |-------|-------------|
 | `package_id` | Seller's package identifier |
+| `product_id` | Product identifier this package is purchased from. For packages created from an explicit `create_media_buy` package request, every response package object that represents that requested package MUST echo the request package's `product_id`. |
 | `currency` | Optional package-level currency override (defaults to media buy `currency`) |
 | `bid_price` | Current bid price for auction-based packages (in package `currency` if present, otherwise media buy `currency`) |
 | `start_time` | Flight start time (ISO 8601). Check this before interpreting delivery status. |
@@ -83,6 +85,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `canceled` | Whether this package has been canceled (irreversible) |
 | `cancellation` | Cancellation metadata (present only when `canceled` is true). Object with `canceled_at` (ISO 8601), `canceled_by` (`"buyer"` or `"seller"`), and optional `reason`. |
 | `creative_deadline` | Per-package creative deadline (ISO 8601). When absent, the media buy's `creative_deadline` applies. |
+| `context` | Opaque package-level correlation data echoed unchanged from the `create_media_buy` package request. Sellers MUST include persisted context when the package was created through AdCP with context, and MAY omit it for packages created outside AdCP or without context. Buyers targeting mixed seller populations can use the per-package correlation value they included on create, commonly `context.buyer_ref`, to map `package_id` back to their line items when a legacy create response did not echo `product_id`. |
 | `creative_approvals` | Array of creative approval states (see below) |
 | `format_ids_pending` | Format IDs from `format_ids_to_provide` not yet uploaded |
 | `snapshot_unavailable_reason` | Reason code when `include_snapshot: true` but no snapshot is returned for this package |

@@ -72,6 +72,10 @@
         "$ref": "/schemas/core/package.json"
       }
     },
+    "context": {
+      "$ref": "/schemas/core/context.json",
+      "description": "Opaque media-buy-level correlation data echoed unchanged from the create_media_buy request. Sellers MUST include persisted context on read surfaces such as get_media_buys when the media buy was created through AdCP with context, so buyers can reconcile seller-assigned media_buy_id values with their own tracking state. Sellers MAY omit context for media buys created outside AdCP or created without context. Sellers MUST NOT parse this object for business logic."
+    },
     "invoice_recipient": {
       "$ref": "/schemas/core/business-entity.json",
       "description": "Per-buy override for who receives the invoice. When provided, the seller invoices this entity instead of the account's default billing_entity. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
