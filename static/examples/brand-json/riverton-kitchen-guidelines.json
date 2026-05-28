@@ -224,6 +224,7 @@
     "color_constraints": [
       {
         "color": {
+          "kind": "name",
           "name": "market_yellow"
         },
         "applies_to": [
@@ -231,12 +232,15 @@
         ],
         "forbidden_on": [
           {
+            "kind": "surface",
             "surface": "background"
           },
           {
+            "kind": "surface",
             "surface": "text"
           },
           {
+            "kind": "surface",
             "surface": "logo_background"
           }
         ],
@@ -250,10 +254,12 @@
       },
       {
         "color": {
+          "kind": "name",
           "name": "market_yellow"
         },
         "never_pair_with": [
           {
+            "kind": "name",
             "name": "linen"
           }
         ],
@@ -276,14 +282,17 @@
         "clear_space": "1x cap height",
         "allowed_backgrounds": [
           {
+            "kind": "name",
             "name": "white"
           },
           {
+            "kind": "name",
             "name": "linen"
           }
         ],
         "forbidden_backgrounds": [
           {
+            "kind": "name",
             "name": "market_yellow"
           }
         ],

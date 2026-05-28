@@ -47,9 +47,9 @@ Add definitions to `static/schemas/source/brand.json` and expose them on `visual
   "visual_guidelines": {
     "color_constraints": [
       {
-        "color": { "name": "market_yellow" },
+        "color": { "kind": "name", "name": "market_yellow" },
         "applies_to": ["accent"],
-        "forbidden_on": [{ "surface": "background" }],
+        "forbidden_on": [{ "kind": "surface", "surface": "background" }],
         "severity": "must",
         "description": "Market yellow is accent only and must not be used as a dominant background."
       }
@@ -69,7 +69,7 @@ Add definitions to `static/schemas/source/brand.json` and expose them on `visual
       {
         "lockup_type": "co_brand",
         "ordering": "brand_first",
-        "separator": { "type": "keyline", "color": { "name": "text" }, "width": "1px" },
+        "separator": { "type": "keyline", "color": { "kind": "name", "name": "text" }, "width": "1px" },
         "min_gap": "1x clear space",
         "partner_max_optical_weight_ratio": 1,
         "description": "Separate partner marks with a keyline and keep partner marks optically no larger than the brand mark."
@@ -85,11 +85,11 @@ Use for rules that filter color selection:
 
 ```jsonc
 {
-  "color": { "name": "market_yellow" },
+  "color": { "kind": "name", "name": "market_yellow" },
   "applies_to": ["accent"],
-  "allowed_on": [{ "surface": "accent" }],
-  "forbidden_on": [{ "surface": "background" }, { "surface": "text" }],
-  "never_pair_with": [{ "name": "lettuce_green" }],
+  "allowed_on": [{ "kind": "surface", "surface": "accent" }],
+  "forbidden_on": [{ "kind": "surface", "surface": "background" }, { "kind": "surface", "surface": "text" }],
+  "never_pair_with": [{ "kind": "name", "name": "lettuce_green" }],
   "contexts": ["digital", "print", "ctv_end_card"],
   "severity": "must",
   "description": "Market yellow is accent only."
@@ -98,9 +98,9 @@ Use for rules that filter color selection:
 
 `color` and list entries use a `color_ref` shape:
 
-- `{ "name": "primary" }` references a key in `colors`.
-- `{ "value": "#FFD449" }` references a literal color.
-- `{ "surface": "background" }` references a usage surface rather than a palette value.
+- `{ "kind": "name", "name": "primary" }` references a key in `colors`.
+- `{ "kind": "value", "value": "#FFD449" }` references a literal color.
+- `{ "kind": "surface", "surface": "background" }` references a usage surface rather than a palette value.
 
 ### `logo_usage_rules[]`
 
@@ -115,8 +115,8 @@ Use for constraints that agents can check when selecting or placing a logo:
   "contexts": ["display", "ctv_end_card"],
   "minimum_size": { "height": "18px" },
   "clear_space": "1x cap height",
-  "allowed_backgrounds": [{ "name": "white" }, { "name": "linen" }],
-  "forbidden_backgrounds": [{ "name": "market_yellow" }],
+  "allowed_backgrounds": [{ "kind": "name", "name": "white" }, { "kind": "name", "name": "linen" }],
+  "forbidden_backgrounds": [{ "kind": "name", "name": "market_yellow" }],
   "forbidden_contexts": ["photography_without_knockout"],
   "severity": "must"
 }
@@ -206,7 +206,7 @@ Use for co-brand, partner, sponsor, program, or secondary-mark lockups:
   "contexts": ["partner_campaign", "sponsored_content"],
   "separator": {
     "type": "keyline",
-    "color": { "name": "text" },
+    "color": { "kind": "name", "name": "text" },
     "width": "1px"
   },
   "min_gap": "1x clear space",

@@ -168,8 +168,13 @@
     },
     "color_ref": {
       "type": "object",
-      "description": "Reference to a brand color or usage surface for machine-readable guideline constraints. Use name for palette lookup keys in colors, value for a literal hex color, and surface for layout surfaces such as background or text.",
+      "description": "Reference to a brand color or usage surface for machine-readable guideline constraints. Use kind=name for palette lookup keys in colors, kind=value for a literal hex color, and kind=surface for layout surfaces such as background or text.",
       "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["name", "value", "surface"],
+          "description": "Discriminator for the color reference variant."
+        },
         "name": {
           "type": "string",
           "description": "Key from the colors object, such as market_yellow, river_green, or any custom palette key. Unambiguous lookup into colors{}."
@@ -185,9 +190,18 @@
         }
       },
       "oneOf": [
-        { "required": ["name"] },
-        { "required": ["value"] },
-        { "required": ["surface"] }
+        {
+          "properties": { "kind": { "const": "name" } },
+          "required": ["kind", "name"]
+        },
+        {
+          "properties": { "kind": { "const": "value" } },
+          "required": ["kind", "value"]
+        },
+        {
+          "properties": { "kind": { "const": "surface" } },
+          "required": ["kind", "surface"]
+        }
       ],
       "additionalProperties": false
     },
@@ -1229,6 +1243,7 @@
         "logo_tags": {
           "type": "array",
           "items": { "type": "string" },
+          "minItems": 1,
           "description": "Logo tags this rule applies to."
         },
         "contexts": {
@@ -1239,6 +1254,7 @@
         "slots": {
           "type": "array",
           "items": { "$ref": "#/definitions/logo_slot" },
+          "minItems": 1,
           "uniqueItems": true,
           "description": "Canonical renderer slots where this rule applies. Use this for deterministic logo-card, profile-mark, end-card, and lockup selection."
         },

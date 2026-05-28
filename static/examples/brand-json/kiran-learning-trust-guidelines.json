@@ -277,9 +277,11 @@
         "clear_space": "1x full mark height",
         "allowed_backgrounds": [
           {
+            "kind": "name",
             "name": "warm_gray"
           },
           {
+            "kind": "name",
             "name": "white"
           }
         ],
@@ -304,6 +306,7 @@
         "separator": {
           "type": "keyline",
           "color": {
+            "kind": "name",
             "name": "charcoal"
           },
           "width": "1px"

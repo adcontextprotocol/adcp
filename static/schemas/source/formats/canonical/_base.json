@@ -130,6 +130,21 @@
             "then": { "not": { "required": ["max_chars"] } }
           },
           {
+            "$comment": "Logo slot narrowing is only meaningful on the canonical logo asset group.",
+            "if": {
+              "not": {
+                "properties": { "asset_group_id": { "const": "logo" } },
+                "required": ["asset_group_id"]
+              }
+            },
+            "then": {
+              "not": { "anyOf": [
+                { "required": ["logo_slots"] },
+                { "required": ["required_logo_slots"] }
+              ] }
+            }
+          },
+          {
             "$comment": "Non-size asset types (url, catalog, html, css, javascript, webhook, daast, vast, card, object, pixel_tracker, vast_tracker, daast_tracker) reject both — there's no defined per-slot size semantics on those.",
             "if": {
               "properties": { "asset_type": { "enum": ["url", "catalog", "html", "css", "javascript", "webhook", "daast", "vast", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"] } },

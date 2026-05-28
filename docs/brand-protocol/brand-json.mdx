@@ -840,7 +840,62 @@ Canonical creative formats still use `asset_group_id: "logo"` for the manifest a
 }
 ```
 
-#### Ingesting brand books
+### Color constraints
+
+Use `visual_guidelines.color_constraints[]` for machine-readable color usage and pairing rules, such as accent-only colors, forbidden background combinations, or colors that should never appear together.
+
+```json
+{
+  "visual_guidelines": {
+    "color_constraints": [
+      {
+        "color": { "kind": "name", "name": "market_yellow" },
+        "applies_to": ["accent"],
+        "forbidden_on": [
+          { "kind": "surface", "surface": "background" },
+          { "kind": "surface", "surface": "text" }
+        ],
+        "never_pair_with": [{ "kind": "name", "name": "linen" }],
+        "contexts": ["digital", "print", "ctv_end_card"],
+        "severity": "must",
+        "description": "Market yellow is accent only."
+      }
+    ]
+  }
+}
+```
+
+Each `color_ref` uses an explicit `kind` discriminator: `kind: "name"` looks up a key in `colors{}`, `kind: "value"` carries a literal hex color, and `kind: "surface"` identifies a layout surface such as `background`, `text`, or `logo_background`.
+
+### Mark lockups
+
+Use `visual_guidelines.mark_lockups[]` for co-brand, partner, sponsor, program, or secondary-mark layout rules. These fields make ordering, spacing, separators, and size-ratio guidance queryable while leaving optical balancing to layout/render review.
+
+```json
+{
+  "visual_guidelines": {
+    "mark_lockups": [
+      {
+        "lockup_type": "co_brand",
+        "ordering": "brand_first",
+        "brand_logo_id": "primary_horizontal",
+        "contexts": ["partner_campaign", "sponsored_content"],
+        "separator": {
+          "type": "keyline",
+          "color": { "kind": "name", "name": "text" },
+          "width": "1px"
+        },
+        "min_gap": "1x clear space",
+        "brand_min_optical_weight_ratio": 1,
+        "partner_max_optical_weight_ratio": 1,
+        "severity": "must"
+      }
+    ]
+  }
+}
+```
+
+### Tooling notes: ingesting brand books
 
 Tools that create a draft `brand.json` from a brand-guide PDF should keep asset extraction and guideline interpretation separate.
 
