@@ -792,6 +792,54 @@ Logo placement and clear space rules for automated creative production:
 | `min_height` | string | Minimum logo height for legibility (e.g., `40px`) |
 | `background_contrast` | enum | `light_only`, `dark_only`, `any` |
 
+### Logo selection slots
+
+Use `logos[].slots[]` when a renderer needs to choose the right logo variant for a specific surface, such as a light logo card, dark logo card, profile mark, CTV end card, co-brand lockup, or marketplace listing. `logos[].id` gives downstream rules a stable target that does not depend on a mutable asset URL.
+
+```json
+{
+  "logos": [
+    {
+      "id": "primary_horizontal",
+      "url": "https://assets.example.com/logos/primary.svg",
+      "orientation": "horizontal",
+      "background": "light-bg",
+      "variant": "primary",
+      "slots": ["logo_card_light", "nav_header", "marketplace_listing"]
+    },
+    {
+      "id": "knockout_horizontal",
+      "url": "https://assets.example.com/logos/knockout.svg",
+      "orientation": "horizontal",
+      "background": "dark-bg",
+      "variant": "secondary",
+      "slots": ["logo_card_dark", "ad_end_card"]
+    }
+  ]
+}
+```
+
+Canonical creative formats still use `asset_group_id: "logo"` for the manifest asset group. If a product narrows that slot with `format_options[].params.slots[].logo_slots[]`, builders should select from `brand.json` `logos[]` where `logos[].slots[]` intersects the requested slots. If the format also declares `required_logo_slots[]`, missing coverage should surface as a validation warning or approval mapping instead of falling back silently to prose.
+
+`visual_guidelines.logo_usage_rules[]` can then apply placement constraints to a stable `logo_id`:
+
+```json
+{
+  "visual_guidelines": {
+    "logo_usage_rules": [
+      {
+        "logo_id": "primary_horizontal",
+        "slots": ["logo_card_light", "marketplace_listing"],
+        "minimum_size": { "height": "18px" },
+        "clear_space": "1x cap height",
+        "forbidden_contexts": ["photography_without_knockout"],
+        "severity": "must"
+      }
+    ]
+  }
+}
+```
+
 ### Colorways
 
 Named color pairings that define how colors work together. Allows a creative brief to reference "use my primary colorway" without specifying every color:

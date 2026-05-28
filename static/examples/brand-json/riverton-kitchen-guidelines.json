@@ -1,0 +1,369 @@
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "id": "riverton_kitchen",
+  "names": [
+    {
+      "en": "Riverton Kitchen"
+    }
+  ],
+  "last_updated": "2026-05-27T00:00:00Z",
+  "url": "https://riverton-kitchen.example",
+  "description": "Fictional quick-service restaurant brand positioned around crisp ingredients, flexible meals, and approachable value.",
+  "industries": [
+    "quick_service_restaurant",
+    "food_and_beverage"
+  ],
+  "target_audience": "People seeking a fast meal that still feels fresh, local, and personal.",
+  "tagline": [
+    {
+      "en": "Built fresh, close by."
+    }
+  ],
+  "logos": [
+    {
+      "id": "primary_horizontal",
+      "url": "https://assets.riverton-kitchen.example/logos/riverton-primary.svg",
+      "orientation": "horizontal",
+      "background": "light-bg",
+      "variant": "primary",
+      "slots": [
+        "logo_card_light",
+        "nav_header",
+        "email_header",
+        "marketplace_listing"
+      ],
+      "usage": "Primary wordmark for white or pale neutral backgrounds. Do not place directly over photography."
+    },
+    {
+      "id": "knockout_horizontal",
+      "url": "https://assets.riverton-kitchen.example/logos/riverton-knockout.svg",
+      "orientation": "horizontal",
+      "background": "dark-bg",
+      "variant": "secondary",
+      "slots": [
+        "logo_card_dark",
+        "ad_end_card",
+        "footer"
+      ],
+      "usage": "Knockout wordmark for dark green, slate, or photography only when contrast is high."
+    },
+    {
+      "id": "leaf_profile_mark",
+      "url": "https://assets.riverton-kitchen.example/logos/riverton-leaf-icon.svg",
+      "orientation": "square",
+      "background": "transparent-bg",
+      "variant": "icon",
+      "slots": [
+        "profile_mark",
+        "favicon",
+        "app_icon",
+        "social_profile_mark"
+      ],
+      "usage": "Use as app icon, social profile mark, or small-space brand marker; never lock up with the wordmark."
+    }
+  ],
+  "colors": {
+    "primary": "#146B3A",
+    "secondary": "#FFD449",
+    "accent": [
+      "#0E9AA7",
+      "#E95D2A"
+    ],
+    "background": "#FFFFFF",
+    "text": "#14322A",
+    "river_green": "#146B3A",
+    "market_yellow": "#FFD449",
+    "water_blue": "#0E9AA7",
+    "tomato": "#E95D2A",
+    "kale": "#14322A",
+    "linen": "#F7F2E8",
+    "white": "#FFFFFF"
+  },
+  "fonts": {
+    "primary": {
+      "family": "Riverton Display",
+      "fallbacks": [
+        "Arial",
+        "sans-serif"
+      ]
+    },
+    "secondary": {
+      "family": "Riverton Text",
+      "fallbacks": [
+        "Inter",
+        "Arial",
+        "sans-serif"
+      ]
+    }
+  },
+  "tone": {
+    "voice": "plainspoken, upbeat, specific, and neighborly",
+    "attributes": [
+      "fresh",
+      "quick",
+      "warm",
+      "confident",
+      "local",
+      "direct"
+    ],
+    "dos": [
+      "Lead with appetite and immediacy.",
+      "Use short copy that sounds like a person at the counter.",
+      "Name concrete ingredients instead of generic quality claims.",
+      "Keep headlines in sentence case."
+    ],
+    "donts": [
+      "Do not overuse freshness claims.",
+      "Do not use forced puns, rhymes, or alliteration.",
+      "Do not make premium dining claims.",
+      "Do not use all caps for headlines."
+    ]
+  },
+  "visual_guidelines": {
+    "photography": {
+      "realism": "natural",
+      "lighting": "clean studio daylight",
+      "color_temperature": "neutral",
+      "contrast": "high",
+      "depth_of_field": "medium",
+      "subject": {
+        "product_focus": "detail",
+        "setting": "studio",
+        "ingredients": "Show whole ingredients and assembled meals with visible texture and separation."
+      },
+      "framing": {
+        "subject_position": "edge-aware",
+        "crop_style": "tight product crop with generous negative space",
+        "perspective": "overhead or shallow angled table view"
+      },
+      "preferred_aspect_ratios": [
+        "1:1",
+        "4:5",
+        "16:9"
+      ],
+      "tags": [
+        "ingredient-led",
+        "bright surfaces",
+        "real food",
+        "no stock lifestyle scenes"
+      ]
+    },
+    "graphic_style": {
+      "style_type": "geometric",
+      "stroke_style": "mixed",
+      "tags": [
+        "bold",
+        "flat",
+        "ingredient shapes",
+        "simple arrows"
+      ]
+    },
+    "shapes": {
+      "primary_shape": "leaf arrow",
+      "secondary_shapes": [
+        "ingredient tiles",
+        "horizontal meal bands"
+      ],
+      "usage": {
+        "max_per_layout": 2,
+        "overlap_allowed": false
+      }
+    },
+    "iconography": {
+      "style": "flat",
+      "corner_style": "mixed",
+      "usage": {
+        "max_per_frame": 1,
+        "size_ratio": "1:12",
+        "guidance": "Use icons only for simple ordering cues, never as decorative filler."
+      }
+    },
+    "composition": {
+      "overlays": {
+        "gradient_style": "none"
+      },
+      "texture": {
+        "style": "none"
+      },
+      "backgrounds": {
+        "types_allowed": [
+          "solid_color",
+          "image",
+          "video"
+        ],
+        "guidance": "Use white, linen, or river green as dominant backgrounds. Market yellow is an accent only."
+      }
+    },
+    "logo_placement": {
+      "preferred_position": "bottom-right",
+      "min_clear_space": "1x cap height",
+      "min_height": "18px digital / 6mm print",
+      "background_contrast": "any"
+    },
+    "colorways": [
+      {
+        "name": "green_primary",
+        "foreground": "#FFFFFF",
+        "background": "#146B3A",
+        "accent": "#FFD449"
+      },
+      {
+        "name": "linen_food_story",
+        "foreground": "#14322A",
+        "background": "#F7F2E8",
+        "accent": "#E95D2A"
+      },
+      {
+        "name": "white_ordering",
+        "foreground": "#146B3A",
+        "background": "#FFFFFF",
+        "accent": "#FFD449"
+      }
+    ],
+    "color_constraints": [
+      {
+        "color": {
+          "role": "market_yellow"
+        },
+        "applies_to": [
+          "accent"
+        ],
+        "forbidden_on": [
+          {
+            "surface": "background"
+          },
+          {
+            "surface": "text"
+          },
+          {
+            "surface": "logo_background"
+          }
+        ],
+        "contexts": [
+          "digital",
+          "print",
+          "ctv_end_card"
+        ],
+        "severity": "must",
+        "description": "Market yellow is accent only and must not be used as a dominant background or behind the primary wordmark."
+      },
+      {
+        "color": {
+          "role": "market_yellow"
+        },
+        "never_pair_with": [
+          {
+            "role": "linen"
+          }
+        ],
+        "severity": "should",
+        "description": "Avoid low-energy yellow and linen combinations in food-led layouts."
+      }
+    ],
+    "logo_usage_rules": [
+      {
+        "logo_id": "primary_horizontal",
+        "logo_variant": "primary",
+        "slots": [
+          "logo_card_light",
+          "nav_header",
+          "marketplace_listing"
+        ],
+        "minimum_size": {
+          "height": "18px"
+        },
+        "clear_space": "1x cap height",
+        "allowed_backgrounds": [
+          {
+            "role": "white"
+          },
+          {
+            "role": "linen"
+          }
+        ],
+        "forbidden_backgrounds": [
+          {
+            "role": "market_yellow"
+          }
+        ],
+        "forbidden_contexts": [
+          "photography_without_knockout"
+        ],
+        "severity": "must",
+        "description": "Use the primary wordmark only when the background preserves legibility and clear space."
+      }
+    ],
+    "type_scale": {
+      "heading": {
+        "font": "primary",
+        "size": "44-96px",
+        "line_height": "1.05",
+        "letter_spacing": "0",
+        "text_transform": "none"
+      },
+      "subheading": {
+        "font": "primary",
+        "size": "24-40px",
+        "line_height": "1.1",
+        "letter_spacing": "0",
+        "text_transform": "none"
+      },
+      "body": {
+        "font": "secondary",
+        "size": "14-18px",
+        "line_height": "1.35",
+        "letter_spacing": "0",
+        "text_transform": "none"
+      },
+      "caption": {
+        "font": "secondary",
+        "size": "11-13px",
+        "line_height": "1.3",
+        "letter_spacing": "0",
+        "text_transform": "none"
+      }
+    },
+    "motion": {
+      "transition_style": "fade",
+      "animation_speed": "moderate",
+      "pacing": "moderate",
+      "kinetic_typography": false,
+      "tags": [
+        "ingredient reveal",
+        "simple end-card hold"
+      ]
+    },
+    "restrictions": [
+      "Do not recolor, outline, crop, stretch, rotate, or add effects to the wordmark.",
+      "Do not use market yellow as a dominant background.",
+      "Do not use market yellow behind the primary wordmark.",
+      "Do not place text over food photography.",
+      "Do not use gradients in typography or backgrounds.",
+      "Do not use more than four brand colors in a single layout.",
+      "Do not use stock imagery of people eating.",
+      "Do not lock the leaf icon up with the wordmark."
+    ]
+  },
+  "ext": {
+    "example_status": "fictional_public_schema_fitness_example",
+    "source_pattern": "Synthetic conversion from a hypothetical brand standards PDF. No real brand source text or asset URL is represented.",
+    "schema_fit_notes": {
+      "strong_fit": [
+        "colors",
+        "fonts",
+        "tone",
+        "visual_guidelines.photography",
+        "visual_guidelines.iconography",
+        "visual_guidelines.motion",
+        "visual_guidelines.restrictions",
+        "visual_guidelines.color_constraints",
+        "visual_guidelines.logo_usage_rules",
+        "logos[].slots[]"
+      ],
+      "remaining_source_gaps": [
+        "No durable downloadable production asset package or trademark registration data is modeled because the hypothetical source guide does not provide it."
+      ]
+    }
+  }
+}

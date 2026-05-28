@@ -90,6 +90,18 @@
             "minimum": 1,
             "description": "Per-slot file size limit in kilobytes. Valid only when `asset_type` is `image`, `video`, `audio`, or `zip`. Mutually exclusive with `max_chars` (which applies to text asset types). Schema enforces via if/then so a producer can't set both on the same slot."
           },
+          "logo_slots": {
+            "type": "array",
+            "items": { "$ref": "/schemas/enums/logo-slot.json" },
+            "uniqueItems": true,
+            "description": "When `asset_group_id` is `logo`, renderer-facing brand.json logo slots acceptable for this format slot. Producers selecting from brand.json SHOULD prefer `logos[]` entries whose `slots[]` intersects this list, then apply `visual_guidelines.logo_usage_rules[]`."
+          },
+          "required_logo_slots": {
+            "type": "array",
+            "items": { "$ref": "/schemas/enums/logo-slot.json" },
+            "uniqueItems": true,
+            "description": "Subset of `logo_slots` for which this format expects explicit logo coverage. A manifest or brand-derived logo pool SHOULD include at least one usable logo for each required slot; if coverage is missing, builders SHOULD surface a validation warning or approval mapping instead of guessing from prose."
+          },
           "description": {
             "type": "string",
             "description": "Human-readable description of what the slot expects from the buyer."
