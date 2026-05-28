@@ -12,29 +12,6 @@
 
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '../../logger.js';
-
-const logger = createLogger('addie-member-tools');
-const complianceTarget = hostedComplianceTarget();
-function targetFromInput(input: Record<string, unknown>): ReturnType<typeof hostedComplianceTarget> {
-  const requested = input.compliance_target;
-  try {
-    return typeof requested === 'string' && requested.trim()
-      ? hostedComplianceTarget(requested.trim())
-      : complianceTarget;
-  } catch {
-    throw new ToolError('Invalid compliance_target. Use 3.0, 3.1-beta, or an exact bundled version.');
-  }
-}
-
-function formatComplianceTarget(target = complianceTarget, resolvedVersion = target.version): string {
-  return target.requested === resolvedVersion
-    ? resolvedVersion
-    : `${target.requested} (resolved ${resolvedVersion})`;
-}
-
-function isDefaultComplianceTarget(target: ReturnType<typeof hostedComplianceTarget>): boolean {
-  return target.requested === complianceTarget.requested && target.version === complianceTarget.version;
-}
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
 import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
@@ -141,6 +118,29 @@ import { getWorkos } from '../../auth/workos-client.js';
 import { resolveUserRole } from '../../utils/resolve-user-role.js';
 import { recordAgentTestRun } from '../../db/agent-test-db.js';
 import { canonicalizeAgentUrl } from '../../db/publisher-db.js';
+
+const logger = createLogger('addie-member-tools');
+const complianceTarget = hostedComplianceTarget();
+function targetFromInput(input: Record<string, unknown>): ReturnType<typeof hostedComplianceTarget> {
+  const requested = input.compliance_target;
+  try {
+    return typeof requested === 'string' && requested.trim()
+      ? hostedComplianceTarget(requested.trim())
+      : complianceTarget;
+  } catch {
+    throw new ToolError('Invalid compliance_target. Use 3.0, 3.1-beta, or an exact bundled version.');
+  }
+}
+
+function formatComplianceTarget(target = complianceTarget, resolvedVersion = target.version): string {
+  return target.requested === resolvedVersion
+    ? resolvedVersion
+    : `${target.requested} (resolved ${resolvedVersion})`;
+}
+
+function isDefaultComplianceTarget(target: ReturnType<typeof hostedComplianceTarget>): boolean {
+  return target.requested === complianceTarget.requested && target.version === complianceTarget.version;
+}
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
