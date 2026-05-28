@@ -76,7 +76,7 @@ Returns an array of media buys with current status, creative approval state, and
 | Field | Description |
 |-------|-------------|
 | `package_id` | Seller's package identifier |
-| `product_id` | Product identifier this package is purchased from. For packages created from an explicit `create_media_buy` package request, every response package object that represents that requested package MUST echo the request package's `product_id`. |
+| `product_id` | Product identifier this package is purchased from. For packages created from an explicit `create_media_buy` package request, sellers MUST echo the request package's `product_id` on every response package object that represents that requested package. |
 | `currency` | Optional package-level currency override (defaults to media buy `currency`) |
 | `bid_price` | Current bid price for auction-based packages (in package `currency` if present, otherwise media buy `currency`) |
 | `start_time` | Flight start time (ISO 8601). Check this before interpreting delivery status. |

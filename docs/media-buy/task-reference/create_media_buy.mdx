@@ -183,7 +183,7 @@ npx @adcp/sdk@latest \
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `product_id` | string | Yes | Product ID from `get_products`. Every response package object that represents this requested package MUST echo this value. |
+| `product_id` | string | Yes | Product ID from `get_products`. Sellers MUST echo this value on every response package object that represents this requested package. |
 | `pricing_option_id` | string | Yes | Pricing option ID from product's `pricing_options` array |
 | `format_ids` | FormatID[] | No | Legacy named-format selector. Format IDs that will be used — must be supported by product. When omitted (and no 3.1+ format-option selector is present), defaults to all formats supported by the product. Format-option-aware buyer SDKs targeting a heterogeneous seller population SHOULD dual-emit this alongside `format_option_refs` so legacy-format-only sellers receive an explicit format set rather than defaulting to all-formats. |
 | `format_option_refs` | FormatOptionRef[] | No | 3.1+ format-option selector. Structured references to entries in the package's target product `format_options[]`: `{scope: "publisher", publisher_domain, format_option_id}` for publisher-catalog-backed options, or `{scope: "product", format_option_id}` for product-local options (see [canonical formats](/docs/creative/canonical-formats)). When present, `format_option_refs` wins over `format_ids`. Sellers MUST reject with `UNSUPPORTED_FEATURE` (field path `packages[i].format_option_refs[j]`) when an entry doesn't match a `format_options[]` entry, when the product is legacy-format-only, or when the product's `format_options[]` entries don't publish selectable `format_option_id` values. |
@@ -927,7 +927,9 @@ The `context` field is an opaque object that sellers echo unchanged in responses
 
 Context works at two levels:
 - **Media buy level** — echoed in the `create_media_buy` response
-- **Package level** — echoed in each package's response, webhooks, and read surfaces, useful for mapping `package_id` back to your internal line items. For explicit package requests, 3.1+ sellers MUST also echo `product_id`; when targeting mixed seller populations, include package context such as `context.buyer_ref` as a legacy-safe fallback.
+- **Package level** — echoed in each package's response, webhooks, and read surfaces, useful for mapping `package_id` back to your internal line items. For explicit package requests, sellers MUST also echo `product_id`.
+
+When targeting mixed seller populations, include package context such as `context.buyer_ref` as a legacy-safe fallback for older sellers that may not echo `product_id`.
 
 **Mapping to internal campaign and line item IDs:**
 
