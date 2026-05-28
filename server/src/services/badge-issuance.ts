@@ -221,6 +221,18 @@ export async function runBadgeFanOut(params: {
   const overallPassing = storyboardStatuses.length > 0 &&
     storyboardStatuses.every(s => s.status === 'passing');
 
+  if (!membershipOrgId) {
+    return processAgentBadges(
+      complianceDb,
+      agentUrl,
+      declaredSpecialisms,
+      storyboardStatuses,
+      overallPassing,
+      undefined,
+      SUPPORTED_BADGE_VERSIONS[0],
+    );
+  }
+
   for (const adcpVersion of SUPPORTED_BADGE_VERSIONS) {
     // Per-version try/catch matches the heartbeat behavior: a failure
     // at one version must not poison another version's issuance, and a

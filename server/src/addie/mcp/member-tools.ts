@@ -62,6 +62,8 @@ import {
   hostedComplianceOptions,
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
+  isDefaultHostedComplianceTarget,
+  badgeEligibleVersionsForHostedComplianceTarget,
 } from '../../services/hosted-compliance-version.js';
 import { AgentContextDatabase, validateAuthTokenChars, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
@@ -128,18 +130,26 @@ function targetFromInput(input: Record<string, unknown>): ReturnType<typeof host
       ? hostedComplianceTarget(requested.trim())
       : complianceTarget;
   } catch {
-    throw new ToolError('Invalid compliance_target. Use 3.0, 3.1-beta, or an exact bundled version.');
+    throw new ToolError('Invalid compliance_target. Use 3.1, 3.0, 3.1-beta, or an exact bundled version.');
   }
 }
 
-function formatComplianceTarget(target = complianceTarget, resolvedVersion = target.version): string {
-  return target.requested === resolvedVersion
+function formatComplianceTarget(
+  target = complianceTarget,
+  resolvedVersion = target.version,
+  options: { includeBadgeEligibility?: boolean } = {},
+): string {
+  let label = target.requested === resolvedVersion
     ? resolvedVersion
     : `${target.requested} (resolved ${resolvedVersion})`;
-}
 
-function isDefaultComplianceTarget(target: ReturnType<typeof hostedComplianceTarget>): boolean {
-  return target.requested === complianceTarget.requested && target.version === complianceTarget.version;
+  if (options.includeBadgeEligibility) {
+    const versions = badgeEligibleVersionsForHostedComplianceTarget(target);
+    label += versions.length
+      ? ` — badge eligible for public AdCP ${versions.join('/')} badges`
+      : ' — diagnostic only';
+  }
+  return label;
 }
 
 const memberDb = new MemberDatabase();
@@ -1131,7 +1141,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to evaluate' },
         tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable, driven by the agent\'s get_adcp_capabilities response)' },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" for the latest checked-in stable 3.0.x cache or "3.1-beta" for the latest checked-in 3.1 beta cache. Defaults to 3.0.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1" for the badge-eligible default line, "3.0" for a diagnostic 3.0 run, or "3.1-beta" for an explicit beta diagnostic run. Defaults to 3.1.' },
       },
       required: ['agent_url'],
     },
@@ -1238,7 +1248,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to discover and recommend storyboards for' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.1", "3.0", or "3.1-beta". Defaults to 3.1.' },
       },
       required: ['agent_url'],
     },
@@ -1252,7 +1262,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         storyboard_id: { type: 'string', description: 'Storyboard ID (from recommend_storyboards)' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.1", "3.0", or "3.1-beta". Defaults to 3.1.' },
       },
       required: ['storyboard_id'],
     },
@@ -1268,7 +1278,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL to test' },
         storyboard_id: { type: 'string', description: 'Storyboard ID to run' },
         dry_run: { type: 'boolean', description: 'If true (default), use test data that won\'t affect production state', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1", "3.0", or "3.1-beta". Defaults to 3.1. Explicit non-default targets are diagnostic-only.' },
       },
       required: ['agent_url', 'storyboard_id'],
     },
@@ -1286,7 +1296,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         step_id: { type: 'string', description: 'Step ID to run (from storyboard detail or previous step\'s next.step_id)' },
         context: { type: 'object', description: 'Accumulated context from previous step (pass the context field from the previous run_storyboard_step result)', additionalProperties: true },
         dry_run: { type: 'boolean', description: 'If true (default), use test data', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1", "3.0", or "3.1-beta". Defaults to 3.1. Explicit non-default targets are diagnostic-only.' },
       },
       required: ['agent_url', 'storyboard_id', 'step_id'],
     },
@@ -3717,7 +3727,7 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const tracks = input.tracks as ComplianceTrack[] | undefined;
     const runTarget = targetFromInput(input);
-    const writesCanonicalComplianceState = isDefaultComplianceTarget(runTarget);
+    const writesCanonicalComplianceState = isDefaultHostedComplianceTarget(runTarget);
     let skippedCanonicalWriteForTarget = false;
 
     const urlError = validateAgentUrl(agentUrl);
@@ -3900,7 +3910,7 @@ export function createMemberToolHandlers(
       const safeName = sanitizeAgentField(result.agent_profile.name, 120);
       output += `## Quality Evaluation: ${safeName || resolved.resolvedUrl}\n\n`;
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
-      output += `**Compliance target:** ${formatComplianceTarget(runTarget, result.adcp_version ?? runTarget.version)}\n`;
+      output += `**Compliance target:** ${formatComplianceTarget(runTarget, result.adcp_version ?? runTarget.version, { includeBadgeEligibility: true })}\n`;
       if (skippedCanonicalWriteForTarget) {
         output += `_Explicit non-default compliance targets are diagnostic only; public compliance status and badges were not updated._\n`;
       }

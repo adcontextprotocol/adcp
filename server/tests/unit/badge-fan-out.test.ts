@@ -8,6 +8,7 @@ vi.mock('../../src/db/client.js', () => ({
 
 import { query } from '../../src/db/client.js';
 import { runBadgeFanOut } from '../../src/services/badge-issuance.js';
+import { SUPPORTED_BADGE_VERSIONS } from '../../src/services/adcp-taxonomy.js';
 import type {
   AgentVerificationBadge,
   BadgeRole,
@@ -97,8 +98,9 @@ describe('runBadgeFanOut', () => {
     });
 
     expect(db.getStoryboardStatuses).toHaveBeenCalledWith('https://example.com/mcp');
-    // Both roles should be issued — no revoke of the role we didn't retest
-    expect(db.upsertBadge).toHaveBeenCalledTimes(2);
+    // Both roles should be issued at every public badge version — no revoke
+    // of the role we didn't retest.
+    expect(db.upsertBadge).toHaveBeenCalledTimes(2 * SUPPORTED_BADGE_VERSIONS.length);
     expect(db.revokeBadge).not.toHaveBeenCalled();
   });
 
@@ -150,10 +152,8 @@ describe('runBadgeFanOut', () => {
       declaredSpecialisms: ['sales-broadcast-tv'],
     });
 
-    // With one supported version (3.0) we get one issuance; the test
-    // documents the aggregation contract (one entry per (role, version)
-    // pair) so adding 3.1 to SUPPORTED_BADGE_VERSIONS will surface here.
-    expect(result.issued.length).toBeGreaterThanOrEqual(1);
-    expect(result.issued.every(i => typeof i.adcp_version === 'string')).toBe(true);
+    expect(result.issued.map(i => i.adcp_version)).toEqual([...SUPPORTED_BADGE_VERSIONS]);
+    expect((db.upsertBadge as ReturnType<typeof vi.fn>).mock.calls.map(call => call[0].adcp_version))
+      .toEqual([...SUPPORTED_BADGE_VERSIONS]);
   });
 });

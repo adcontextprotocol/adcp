@@ -93,8 +93,24 @@ function latestBetaComplianceVersionForLine(line: string): string {
   return latest;
 }
 
+function latestBadgeEligibleComplianceVersionForLine(line: string): string {
+  try {
+    return latestStableComplianceVersionForLine(line);
+  } catch (stableError) {
+    if (line !== DEFAULT_HOSTED_COMPLIANCE_LINE) {
+      throw stableError;
+    }
+
+    // During the 3.1 readiness window, the badge-eligible line is 3.1
+    // while the checked-in compliance cache is still published as a beta
+    // bundle. Keep the public target at the stable line alias (`3.1`) and
+    // let explicit beta aliases remain non-default diagnostic runs.
+    return latestBetaComplianceVersionForLine(line);
+  }
+}
+
 export const DEFAULT_HOSTED_COMPLIANCE_VERSION =
-  latestStableComplianceVersionForLine(DEFAULT_HOSTED_COMPLIANCE_LINE);
+  latestBadgeEligibleComplianceVersionForLine(DEFAULT_HOSTED_COMPLIANCE_LINE);
 
 export function hostedComplianceDir(version = DEFAULT_HOSTED_COMPLIANCE_VERSION): string {
   return repoPath('dist', 'compliance', version);
@@ -110,7 +126,7 @@ function hostedSchemaRootForVersion(version: string, target: HostedComplianceTar
 
 export function resolveHostedComplianceVersion(target: string = DEFAULT_HOSTED_COMPLIANCE_LINE): string {
   if (/^[1-9][0-9]*\.[0-9]+$/.test(target)) {
-    return latestStableComplianceVersionForLine(target);
+    return latestBadgeEligibleComplianceVersionForLine(target);
   }
   const betaMatch = target.match(/^([1-9][0-9]*\.[0-9]+)-beta$/);
   if (betaMatch) {
@@ -132,6 +148,17 @@ export function hostedComplianceTarget(target: string = DEFAULT_HOSTED_COMPLIANC
     complianceDir: hostedComplianceDir(version),
     schemaRoot: hostedSchemaRoot(version),
   };
+}
+
+export function isDefaultHostedComplianceTarget(target: HostedComplianceTarget): boolean {
+  return target.requested === DEFAULT_HOSTED_COMPLIANCE_LINE &&
+    target.version === DEFAULT_HOSTED_COMPLIANCE_VERSION;
+}
+
+export function badgeEligibleVersionsForHostedComplianceTarget(
+  target: HostedComplianceTarget,
+): readonly string[] {
+  return isDefaultHostedComplianceTarget(target) ? SUPPORTED_BADGE_VERSIONS : [];
 }
 
 function assertHostedArtifacts(version: string): void {
