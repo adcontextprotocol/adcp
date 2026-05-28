@@ -613,11 +613,15 @@ async function runTests() {
       if (result !== true) return result;
     }
 
-    const coverageRateOutOfRange = {
-      metrics: { coverage_rate: { mid: 1.2 } }
-    };
-    let result = assertInvalid(validateForecastPoint, coverageRateOutOfRange, 'coverage_rate above 1.0');
-    if (result !== true) return result;
+    let result;
+    for (const [value, label] of [
+      [{ metrics: { coverage_rate: { mid: 1.2 } } }, 'coverage_rate mid above 1.0'],
+      [{ metrics: { coverage_rate: { low: 1.5, high: 2.0 } } }, 'coverage_rate low/high above 1.0'],
+      [{ metrics: { coverage_rate: { low: 0.2, high: 1.5 } } }, 'coverage_rate high above 1.0']
+    ]) {
+      result = assertInvalid(validateForecastPoint, value, label);
+      if (result !== true) return result;
+    }
 
     const signalCoverageForecast = {
       method: 'estimate',
@@ -653,6 +657,27 @@ async function runTests() {
       ]
     };
     result = assertValid(validateSignalCoverageForecast, signalCoverageForecast, 'signal coverage forecast');
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateSignalCoverageForecast,
+      {
+        ...signalCoverageForecast,
+        points: [
+          {
+            label: 'present',
+            dimensions: [
+              { kind: 'signal', signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' }, presence: 'present' }
+            ],
+            metrics: {
+              impressions: { mid: 720000 },
+              coverage_rate: { mid: 0.72 }
+            }
+          }
+        ]
+      },
+      'signal coverage forecast present bucket without signal_value'
+    );
     if (result !== true) return result;
 
     result = assertInvalid(
@@ -761,9 +786,13 @@ async function runTests() {
 
     const completeExclusiveCoverageRatesPartition = (forecast) => {
       if (forecast.bucket_semantics !== 'exclusive' || forecast.bucket_completeness !== 'complete') return true;
-      const mids = forecast.points.map(point => point.metrics?.coverage_rate?.mid);
-      if (mids.some(value => typeof value !== 'number')) return false;
-      return Math.abs(mids.reduce((sum, value) => sum + value, 0) - 1) < 0.000001;
+      for (const key of ['low', 'mid', 'high']) {
+        const values = forecast.points.map(point => point.metrics?.coverage_rate?.[key]);
+        if (values.every(value => value === undefined)) continue;
+        if (values.some(value => typeof value !== 'number')) return false;
+        if (Math.abs(values.reduce((sum, value) => sum + value, 0) - 1) >= 0.000001) return false;
+      }
+      return true;
     };
 
     if (!completeExclusiveCoverageRatesPartition({
@@ -788,6 +817,42 @@ async function runTests() {
       return 'complete exclusive coverage partition must have coverage_rate mid values summing to 1';
     }
 
+    if (!completeExclusiveCoverageRatesPartition({
+      ...signalCoverageForecast,
+      bucket_completeness: 'complete',
+      points: [
+        {
+          ...signalCoverageForecast.points[0],
+          metrics: { coverage_rate: { low: 0.25, mid: 0.28, high: 0.3 } }
+        },
+        {
+          ...signalCoverageForecast.points[1],
+          label: 'present',
+          metrics: { coverage_rate: { low: 0.75, mid: 0.72, high: 0.7 } }
+        }
+      ]
+    })) {
+      return 'complete exclusive coverage partition with low/mid/high rates summing to 1 was incorrectly flagged';
+    }
+
+    if (completeExclusiveCoverageRatesPartition({
+      ...signalCoverageForecast,
+      bucket_completeness: 'complete',
+      points: [
+        {
+          ...signalCoverageForecast.points[0],
+          metrics: { coverage_rate: { low: 0.25, mid: 0.28, high: 0.3 } }
+        },
+        {
+          ...signalCoverageForecast.points[1],
+          label: 'present',
+          metrics: { coverage_rate: { low: 0.7, mid: 0.72, high: 0.7 } }
+        }
+      ]
+    })) {
+      return 'complete exclusive coverage partition must have coverage_rate low values summing to 1 when lows are supplied';
+    }
+
     result = assertValid(
       validateGetSignalsResponse,
       {
@@ -804,13 +869,12 @@ async function runTests() {
             name: 'Weather',
             description: 'Weather context',
             signal_type: 'marketplace',
-            coverage_percentage: 72,
             coverage_forecast: signalCoverageForecast,
             deployments: []
           }
         ]
       },
-      'get_signals response with coverage_forecast'
+      'get_signals response with coverage_forecast and no legacy coverage_percentage'
     );
     if (result !== true) return result;
 

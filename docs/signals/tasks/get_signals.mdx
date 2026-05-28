@@ -89,7 +89,7 @@ The response structure is identical across protocols, with only the transport wr
       "description": "string",
       "signal_type": "string",
       "data_provider": "string",
-      "coverage_percentage": "number",
+      "coverage_percentage": "number (optional, deprecated)",
       "coverage_forecast": {
         "method": "estimate",
         "forecast_range_unit": "availability",
@@ -178,8 +178,8 @@ The response structure is identical across protocols, with only the transport wr
     - `owned` — first-party segment derived from data the signal source directly owns
     - `custom` — source-native segment built on demand from models, composites, or buyer inputs (not attributable to a standing upstream provider)
   - **data_provider**: Human-readable source name when applicable. For `scope: "data_provider"` signals this is the data provider; for `scope: "signal_source"` signals it may identify the signal source or proprietary origin.
-  - **coverage_percentage**: Legacy scalar percentage of audience coverage. When **coverage_forecast** is also present, this is the seller's total present-coverage estimate for the same signal. If `coverage_forecast` includes an absent bucket over the same denominator, `coverage_percentage` should align with `100 * (1 - absent coverage_rate.mid)`.
-  - **coverage_forecast**: Optional forecast-shaped availability guidance for the signal. `scope` declares the denominator, `bucket_semantics` declares whether returned value buckets are `exclusive` or `overlapping`, and `bucket_completeness` declares whether the returned buckets are a full denominator partition or a partial histogram. Each point can use a `kind: "signal"` dimension with canonical `signal_ref`, `presence: "present"` for values, or `presence: "absent"` plus `signal_value: null` for the not-present bucket. `metrics.coverage_rate` is a 0.0-1.0 fraction of the declared scope.
+  - **coverage_percentage**: Optional deprecated legacy scalar percentage of audience coverage. Use only as a fallback for clients that do not consume `coverage_forecast`. When **coverage_forecast** is present, `coverage_forecast` is authoritative for signal-level discovery and this scalar is fallback-only. If `coverage_forecast` includes an absent bucket over the same denominator, `coverage_percentage` should align with `100 * (1 - absent coverage_rate.mid)`.
+  - **coverage_forecast**: Optional forecast-shaped availability guidance for the signal. `scope` declares the denominator, `bucket_semantics` declares whether returned value buckets are `exclusive` or `overlapping`, and `bucket_completeness` declares whether the returned buckets are a full denominator partition or a partial histogram. Each point can use a `kind: "signal"` dimension with canonical `signal_ref`, `presence: "present"` for any present value, `presence: "present"` plus `signal_value` for a specific value bucket, or `presence: "absent"` plus `signal_value: null` for the not-present bucket. `metrics.coverage_rate` is a 0.0-1.0 fraction of the declared scope.
   - **deployments**: Array of destination deployments
     - **agent_url**: URL identifying the destination agent
     - **account**: Account identifier if applicable
@@ -276,15 +276,43 @@ Because the authenticated caller matches the deployment target, the response inc
     {
       "signal_ref": {
         "scope": "data_provider",
-        "data_provider_domain": "experian.com",
+        "data_provider_domain": "pinnacle-data.example",
         "signal_id": "luxury_auto_intenders"
       },
       "signal_agent_segment_id": "luxury_auto_intenders",
       "name": "Luxury Automotive Intenders",
       "description": "High-income individuals researching luxury vehicles",
       "signal_type": "marketplace",
-      "data_provider": "Experian",
-      "coverage_percentage": 12,
+      "data_provider": "Pinnacle Data",
+      "coverage_forecast": {
+        "method": "estimate",
+        "forecast_range_unit": "availability",
+        "scope": {
+          "kind": "inventory",
+          "label": "eligible destination inventory"
+        },
+        "bucket_semantics": "exclusive",
+        "bucket_completeness": "partial",
+        "points": [
+          {
+            "label": "present",
+            "dimensions": [
+              {
+                "kind": "signal",
+                "signal_ref": {
+                  "scope": "data_provider",
+                  "data_provider_domain": "pinnacle-data.example",
+                  "signal_id": "luxury_auto_intenders"
+                },
+                "presence": "present"
+              }
+            ],
+            "metrics": {
+              "coverage_rate": { "mid": 0.12 }
+            }
+          }
+        ]
+      },
       "deployments": [
         {
           "type": "agent",
@@ -680,10 +708,10 @@ Discover all available deployments across platforms:
   - **description** (string): Detailed signal description
   - **signal_type** (string): `marketplace` (resold third-party), `owned` (signal source first-party data), or `custom` (source-native segment built on demand)
   - **data_provider** (string, optional): Human-readable source/provider name when applicable
-  - **coverage_percentage** (number): Legacy scalar estimated reach percentage
-  - **coverage_forecast** (object, optional): Forecast-shaped coverage breakdown with an explicit denominator and per-value availability points. Use `bucket_semantics: "exclusive"` when returned buckets do not overlap, or `"overlapping"` when multi-value signals can make returned rates sum above 1.0. Use `bucket_completeness: "complete"` only when the returned buckets cover the declared denominator; otherwise use `"partial"` and buyers must treat omitted share as undisclosed, other, or unsupported buckets.
+  - **coverage_percentage** (number, optional, deprecated): Legacy scalar estimated reach percentage. Use only as a fallback when `coverage_forecast` is absent or unsupported by the client.
+  - **coverage_forecast** (object, optional): Forecast-shaped coverage breakdown with an explicit denominator and availability points. Use `presence: "present"` with omitted `signal_value` for an aggregate "any present value" bucket; add `signal_value` only when the row is for a specific value. Use `bucket_semantics: "exclusive"` when returned buckets do not overlap, or `"overlapping"` when multi-value signals can make returned rates sum above 1.0. Use `bucket_completeness: "complete"` only when the returned buckets cover the declared denominator; otherwise use `"partial"` and buyers must treat omitted share as undisclosed, other, or unsupported buckets.
 
-Use `coverage_forecast` for signal-first discovery: "how much inventory has this signal or its values?" Use product or proposal forecasts with `kind: "signal"` dimensions for product-specific planning: "how does this signal restrict this product's baseline availability?" Bucket-specific filtering is client-side for now; request filters such as `min_coverage_percentage` still use the legacy scalar.
+Use `coverage_forecast` as the authoritative field for signal-first discovery: "how much inventory has this signal or its values?" Use product or proposal forecasts with `kind: "signal"` dimensions as the authoritative surface for product-specific planning: "how does this signal restrict this product's baseline availability?" Bucket-specific filtering is client-side for now; request filters such as `min_coverage_percentage` still use the legacy scalar.
   - **deployments** (array): Platform-specific deployment information
     - **platform** (string): Target platform name
     - **account** (string, nullable): Specific account if account-specific
@@ -1131,7 +1159,8 @@ def generate_signals_message(signals, request):
                 price_commentary = ""
         else:
             price_commentary = ""
-        return f"I found a perfect match: '{signal.name}' from {signal.data_provider} with {signal.coverage_percentage}% coverage. {deployment_status} {price_commentary}"
+        coverage_commentary = f" with {signal.coverage_percentage}% coverage" if getattr(signal, "coverage_percentage", None) is not None else ""
+        return f"I found a perfect match: '{signal.name}' from {signal.data_provider}{coverage_commentary}. {deployment_status} {price_commentary}"
     else:
         return f"I found {len(signals)} signals matching your {extract_key_criteria(request.signal_spec)} criteria. {describe_best_option(best_signal)} {get_pricing_range(signals)}."
 

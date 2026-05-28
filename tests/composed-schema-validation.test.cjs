@@ -729,6 +729,8 @@ async function runTests() {
       { type: 'platform', platform: 'example_dsp', is_live: true }
     ]
   };
+  const signalListingCoreWithoutLegacyCoverage = { ...signalListingCore };
+  delete signalListingCoreWithoutLegacyCoverage.coverage_percentage;
   const signalCoverageForecast = {
     method: 'estimate',
     forecast_range_unit: 'availability',
@@ -936,12 +938,12 @@ async function runTests() {
         applies_to: { scope: 'public' },
         signal: {
           signal_id: legacySignalId,
-          ...signalListingCore,
+          ...signalListingCoreWithoutLegacyCoverage,
           coverage_forecast: signalCoverageForecast
         }
       }
     },
-    'Wholesale signal event accepts deprecated signal_id, relaxed data_provider/pricing_options, and coverage_forecast'
+    'Wholesale signal event accepts deprecated signal_id, optional legacy coverage_percentage, relaxed data_provider/pricing_options, and coverage_forecast'
   );
 
   log('Registry change feed schemas:', 'info');
