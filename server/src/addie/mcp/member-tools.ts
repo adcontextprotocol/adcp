@@ -3804,7 +3804,7 @@ export function createMemberToolHandlers(
                     complianceDb,
                     agentUrl: resolved.resolvedUrl,
                     declaredSpecialisms,
-                    runId: run.id,
+                    runId: tracks ? null : run.id,
                   });
                 } catch (badgeError) {
                   logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Badge fan-out failed after owner_test run');
