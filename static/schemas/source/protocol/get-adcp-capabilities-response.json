@@ -97,7 +97,7 @@
             },
             {
               "title": "IdempotencyUnsupported",
-              "description": "Seller does NOT honor idempotency_key replay protection — sending a key is a no-op, the seller will NOT return IDEMPOTENCY_CONFLICT or IDEMPOTENCY_EXPIRED, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., get_media_buys by buyer_ref) before retrying spend-committing operations against this seller. replay_ttl_seconds and in_flight_max_seconds MUST be absent — they have no meaning without replay support.",
+              "description": "Seller does NOT honor idempotency_key replay protection — sending a key is a no-op, the seller will NOT return IDEMPOTENCY_CONFLICT or IDEMPOTENCY_EXPIRED, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., get_media_buys plus request context such as context.internal_campaign_id or package context such as context.buyer_ref) before retrying spend-committing operations against this seller. replay_ttl_seconds and in_flight_max_seconds MUST be absent — they have no meaning without replay support.",
               "properties": {
                 "supported": {
                   "const": false,

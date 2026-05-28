@@ -92,7 +92,7 @@ Declares whether this seller honors `idempotency_key` replay protection. From 3.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `supported` | boolean | **Required.** Whether the seller deduplicates replays. When `false`, sending an `idempotency_key` is a no-op — the seller will NOT return `IDEMPOTENCY_CONFLICT` or `IDEMPOTENCY_EXPIRED`, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., `get_media_buys` by `buyer_ref`) before retrying spend-committing operations. |
+| `supported` | boolean | **Required.** Whether the seller deduplicates replays. When `false`, sending an `idempotency_key` is a no-op — the seller will NOT return `IDEMPOTENCY_CONFLICT` or `IDEMPOTENCY_EXPIRED`, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., `get_media_buys` plus request context such as `context.internal_campaign_id` or package context such as `context.buyer_ref`) before retrying spend-committing operations. |
 | `replay_ttl_seconds` | integer | Required when `supported: true`. How long the seller retains a canonical response for a key. Minimum `3600` (1h); recommended `86400` (24h); maximum `604800` (7d). |
 
 ```json

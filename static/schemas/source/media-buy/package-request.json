@@ -15,7 +15,7 @@
   "properties": {
     "product_id": {
       "type": "string",
-      "description": "Product ID for this package",
+      "description": "Product ID for this package. Every response package object that represents this requested package MUST echo this value, allowing buyers to correlate seller-assigned package_id values back to requested products without relying on deprecated top-level buyer_ref fields.",
       "x-entity": "product"
     },
     "format_ids": {
@@ -197,7 +197,8 @@
       "description": "Agency estimate or authorization number for this package. Overrides the media buy-level estimate number when different packages correspond to different agency estimates (e.g., different stations or flights within the same buy)."
     },
     "context": {
-      "$ref": "/schemas/core/context.json"
+      "$ref": "/schemas/core/context.json",
+      "description": "Opaque package-level correlation data echoed unchanged in the package response, webhooks, and read surfaces. Buyers targeting mixed seller populations SHOULD include a per-package correlation value here, commonly context.buyer_ref, so responses from legacy sellers that do not echo product_id can still be mapped back to the requested product or line item. Do not use deprecated top-level buyer_ref for v3 correlation."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

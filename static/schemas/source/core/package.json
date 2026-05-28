@@ -12,7 +12,7 @@
     },
     "product_id": {
       "type": "string",
-      "description": "ID of the product this package is based on",
+      "description": "ID of the product this package is based on. For packages created from an explicit create_media_buy package request, every response package object that represents that requested package MUST echo the request package's product_id so buyers can correlate returned packages without relying on deprecated top-level buyer_ref fields. When interoperating with legacy sellers that do not echo product_id, buyers can fall back to package-level context correlation such as context.buyer_ref.",
       "x-entity": "product"
     },
     "budget": {
@@ -253,7 +253,8 @@
       "description": "ISO 8601 timestamp for creative upload or change deadline for this package. After this deadline, creative changes are rejected. When absent, the media buy's creative_deadline applies."
     },
     "context": {
-      "$ref": "/schemas/core/context.json"
+      "$ref": "/schemas/core/context.json",
+      "description": "Opaque package-level correlation data echoed unchanged in responses, webhooks, and read surfaces. Buyers targeting mixed seller populations SHOULD include a per-package correlation value here, commonly context.buyer_ref, so responses from legacy sellers that do not echo product_id can still be mapped back to the requested product or line item. Sellers MUST preserve this object unchanged and MUST NOT parse it for business logic."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
