@@ -230,10 +230,14 @@ Register a webhook subscription for change notifications.
 ```json
 {
   "url": "https://buyer.example.com/hooks/registry",
-  "events": ["property.*", "agent.discovered"],
-  "secret": "subscriber-provided-hmac-secret"
+  "events": ["property.*", "agent.discovered"]
 }
 ```
+
+Default subscriptions do not require a shared webhook secret. The registry signs
+outbound deliveries with its `adcp_use: "webhook-signing"` key using the AdCP
+RFC 9421 webhook profile. This surface does not define a registry-specific
+`secret`, `X-Registry-Signature`, or versioned-HMAC signing mode.
 
 **Response:**
 ```json
@@ -253,16 +257,41 @@ Webhooks are notifications, not event delivery. The payload says "something chan
 
 ```
 POST https://buyer.example.com/hooks/registry
-X-Registry-Signature: sha256={hmac}
-X-Registry-Event: property.created
+Signature-Input: sig1=("@method" "@target-uri" "@authority" "content-type" "content-digest");
+                 created=1770044400;expires=1770044700;nonce="...";
+                 keyid="registry-webhook-2026";alg="ed25519";tag="adcp/webhook-signing/v1"
+Signature: sig1=:<base64url-unpadded>:
+Content-Digest: sha-256=:<base64url-unpadded>:
+Content-Type: application/json
 
 {
   "event_count": 3,
   "latest_event_id": "019...",
-  "event_types": ["property.created", "property.updated"],
-  "feed_url": "https://agenticadvertising.org/api/registry/feed?cursor=019..."
+  "event_types": ["property.created", "property.updated"]
 }
 ```
+
+**Signature verification and anti-replay:** Receivers MUST verify registry
+webhooks with the AdCP RFC 9421 webhook profile defined in
+`docs/building/by-layer/L1/security.mdx` §Webhook callbacks. The signed
+`content-digest` binds the body bytes; `created` / `expires` bound the validity
+window; and the receiver's `(keyid, nonce)` replay cache rejects captured
+deliveries replayed inside that window. A registry-specific HMAC signature
+scheme MUST NOT be introduced.
+
+**Receiver dedup:** The webhook is still only a notification. After signature
+verification, receivers poll `GET /api/registry/feed` from their last saved
+cursor and treat the feed as authoritative. The sender MUST NOT provide a
+cursor-bearing feed URL that overrides receiver state; using
+`latest_event_id` as the next request cursor would skip the events the
+notification is announcing. Receivers MAY suppress redundant polls by
+remembering the largest `latest_event_id` observed per subscription, but they
+MUST NOT treat a repeated notification as event replay or recovery.
+
+Implementations that need a simple dispatch header MAY include
+`X-Registry-Event`, but receivers MUST route from the JSON payload's
+`event_types` and the authoritative feed response. The dispatch header is not a
+trust anchor unless it is explicitly covered by a future webhook-signing profile.
 
 **Coalescing:** Events are batched per subscriber per 30-second window. A seed operation that creates 1000 properties produces one webhook notification, not 1000.
 
