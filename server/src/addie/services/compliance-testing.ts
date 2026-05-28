@@ -17,6 +17,7 @@ import {
   type SampleBrief,
   SAMPLE_BRIEFS,
   getBriefsByVertical,
+  CapabilityResolutionError,
 } from '@adcp/sdk/testing';
 import {
   hostedComplianceTarget,
@@ -70,13 +71,14 @@ export function defaultComplianceTarget(): HostedComplianceTarget {
 // ── Capability-resolution error classification ───────────────────
 //
 // `@adcp/sdk`'s `resolveStoryboardsForCapabilities` fails closed with
-// plain `Error` instances for two distinct agent-config problems:
+// agent-config problems:
 //   1. Declared specialism whose parent protocol isn't in supported_protocols.
 //   2. Declared specialism whose bundle isn't in the local compliance cache.
-// Both surface through `comply()` and any caller that invokes the resolver
-// directly. They are *agent-config* faults (or, for #2, a stale local cache),
-// not platform errors — callers should log at warn and return actionable
-// coaching, not alarm on them as system failures.
+//   3. Selected compliance cache version isn't in adcp.supported_versions.
+// They surface through `comply()` and any caller that invokes the resolver
+// directly. They are *agent-config* or target-selection faults (or, for #2, a
+// stale local cache), not platform errors — callers should log at warn and
+// return actionable coaching, not alarm on them as system failures.
 //
 // Until @adcp/sdk exports typed errors (tracked upstream at
 // adcontextprotocol/adcp-client#734), we classify by message regex. The
@@ -99,12 +101,15 @@ export function defaultComplianceTarget(): HostedComplianceTarget {
 
 export type CapabilityResolutionErrorKind =
   | 'specialism_parent_protocol_missing'
-  | 'unknown_specialism';
+  | 'unknown_specialism'
+  | 'unsupported_adcp_version';
 
 export interface CapabilityResolutionErrorInfo {
   kind: CapabilityResolutionErrorKind;
   specialism?: string;
   parentProtocol?: string;
+  complianceVersion?: string;
+  supportedVersions?: string[];
 }
 
 // Anchored at start of message. Specialism capture forbids `"\r\n` (ends the
@@ -114,6 +119,9 @@ const PARENT_PROTOCOL_MISSING_RE =
   /^Agent declared specialism "([^"\r\n]{1,256})" \(parent protocol: ([^)\r\n]{1,256})\) but did not include/;
 const UNKNOWN_SPECIALISM_RE =
   /^Agent declared specialism "([^"\r\n]{1,256})" but no bundle exists/;
+const UNSUPPORTED_ADCP_VERSION_RE =
+  /^Compliance cache version ([^\s\r\n]{1,80}) is not supported by this seller\. Seller advertises adcp\.supported_versions \[([^\]\r\n]{0,512})\]\./;
+const SAFE_VERSION_TOKEN_RE = /^[0-9A-Za-z.+_-]{1,40}$/;
 
 // Strip control chars, backticks, and collapse whitespace on extracted
 // values. Backticks would break markdown fences in Addie-facing output;
@@ -125,6 +133,16 @@ function sanitizeClassifiedValue(value: string, maxLen = 120): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maxLen);
+}
+
+function parseSupportedVersionList(value: string): string[] {
+  return value
+    .split(',')
+    .map(part => {
+      const cleaned = sanitizeClassifiedValue(part, 40);
+      return SAFE_VERSION_TOKEN_RE.test(cleaned) ? cleaned : '';
+    })
+    .filter(Boolean);
 }
 
 function knownProtocolsFromIndex(): Set<string> {
@@ -143,6 +161,24 @@ export function classifyCapabilityResolutionError(
 ): CapabilityResolutionErrorInfo | undefined {
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
   if (!msg) return undefined;
+
+  if (err instanceof CapabilityResolutionError && err.code === 'unsupported_adcp_version') {
+    const match = msg.match(UNSUPPORTED_ADCP_VERSION_RE);
+    return {
+      kind: 'unsupported_adcp_version',
+      complianceVersion: match ? sanitizeClassifiedValue(match[1], 80) : undefined,
+      supportedVersions: match ? parseSupportedVersionList(match[2]) : [],
+    };
+  }
+
+  const unsupportedVersionMatch = msg.match(UNSUPPORTED_ADCP_VERSION_RE);
+  if (unsupportedVersionMatch) {
+    return {
+      kind: 'unsupported_adcp_version',
+      complianceVersion: sanitizeClassifiedValue(unsupportedVersionMatch[1], 80),
+      supportedVersions: parseSupportedVersionList(unsupportedVersionMatch[2]),
+    };
+  }
 
   const parentMatch = msg.match(PARENT_PROTOCOL_MISSING_RE);
   if (parentMatch) {
@@ -197,6 +233,9 @@ export function presentCapabilityResolutionError(
 ): CapabilityResolutionErrorPresentation {
   const specialism = info.specialism ?? '';
   const parentProtocol = info.parentProtocol ?? '';
+  const complianceVersion = info.complianceVersion ?? '';
+  const supportedVersions = info.supportedVersions ?? [];
+  const supportedVersionsText = supportedVersions.length > 0 ? supportedVersions.join(', ') : '(none advertised)';
 
   if (info.kind === 'specialism_parent_protocol_missing') {
     return {
@@ -209,6 +248,21 @@ export function presentCapabilityResolutionError(
         error_kind: 'specialism_parent_protocol_missing',
         specialism,
         parent_protocol: parentProtocol,
+      },
+    };
+  }
+
+  if (info.kind === 'unsupported_adcp_version') {
+    return {
+      headline:
+        `Agent does not support selected compliance cache "${complianceVersion}". ` +
+        `Seller advertises adcp.supported_versions [${supportedVersionsText}].`,
+      logMsg: 'Agent does not support selected compliance cache version',
+      logFields: { complianceVersion, supportedVersions: supportedVersionsText },
+      restBody: {
+        error_kind: 'unsupported_adcp_version',
+        compliance_version: complianceVersion,
+        supported_versions: supportedVersionsText,
       },
     };
   }

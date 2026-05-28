@@ -7407,7 +7407,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "422":
-          description: Agent requires authentication, or declares a specialism not in the local compliance cache
+          description: Agent requires authentication, or declared capabilities cannot be resolved for the selected compliance target
           content:
             application/json:
               schema:
@@ -7415,15 +7415,36 @@ paths:
                 properties:
                   error:
                     type: string
+                  error_kind:
+                    type: string
+                    enum:
+                      - specialism_parent_protocol_missing
+                      - unknown_specialism
+                      - unsupported_adcp_version
                   needs_auth:
                     type: boolean
                   unknown_specialism:
                     type: boolean
+                  specialism_parent_protocol_missing:
+                    type: boolean
+                  specialism:
+                    type: string
+                  parent_protocol:
+                    type: string
+                  compliance_version:
+                    type: string
+                  supported_versions:
+                    type: string
                   declared_specialisms:
                     type: array
                     items:
                       type: string
                     description: Specialisms the agent declared, for unknown-specialism errors
+                  declared_protocols:
+                    type: array
+                    items:
+                      type: string
+                    description: Protocols the agent declared, for capability-resolution errors
                   known_specialisms:
                     type: array
                     items:
