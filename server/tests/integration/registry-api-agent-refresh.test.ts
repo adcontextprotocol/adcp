@@ -23,6 +23,7 @@ const RUN_SUFFIX = Math.random().toString(36).slice(2, 8);
 const OWNER_USER_ID = `user_test_refresh_owner_${RUN_SUFFIX}`;
 const OTHER_USER_ID = `user_test_refresh_other_${RUN_SUFFIX}`;
 const ADMIN_USER_ID = `user_test_refresh_admin_${RUN_SUFFIX}`;
+const STATIC_ADMIN_USER_ID = 'admin_api_key';
 const TEST_ORG_ID = `org_test_refresh_${RUN_SUFFIX}`;
 // Each test that expects a 200 uses its own URL — the per-agent rate-limit
 // closure inside the router is stateful across test cases, so reusing one
@@ -38,6 +39,7 @@ const ALL_OWNED_URLS = [
   ownedAgentUrl('rate-limit'),
   ownedAgentUrl('saved-bearer'),
   ownedAgentUrl('badge-fanout'),
+  ownedAgentUrl('static-admin'),
 ];
 
 // Toggle which user the auth middleware stamps onto the request. Tests
@@ -46,20 +48,25 @@ let currentUserId: string | null = OWNER_USER_ID;
 
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../src/middleware/auth.js');
-  const requireAuth = (req: { user?: unknown }, res: { status: (n: number) => { json: (b: unknown) => void } }, next: () => void) => {
+  const stampUser = (req: { user?: unknown; isStaticAdminApiKey?: boolean }) => {
+    if (currentUserId === null) return;
+    req.user = { id: currentUserId, email: `${currentUserId}@test.com` };
+    if (currentUserId === STATIC_ADMIN_USER_ID) {
+      req.isStaticAdminApiKey = true;
+    }
+  };
+  const requireAuth = (req: { user?: unknown; isStaticAdminApiKey?: boolean }, res: { status: (n: number) => { json: (b: unknown) => void } }, next: () => void) => {
     if (currentUserId === null) {
       return res.status(401).json({ error: 'Authentication required' });
     }
-    req.user = { id: currentUserId, email: `${currentUserId}@test.com` };
+    stampUser(req);
     next();
   };
   return {
     ...actual,
     requireAuth,
-    optionalAuth: (req: { user?: unknown }, _res: unknown, next: () => void) => {
-      if (currentUserId !== null) {
-        req.user = { id: currentUserId, email: `${currentUserId}@test.com` };
-      }
+    optionalAuth: (req: { user?: unknown; isStaticAdminApiKey?: boolean }, _res: unknown, next: () => void) => {
+      stampUser(req);
       next();
     },
     requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
@@ -266,6 +273,42 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     const res = await request(app).post(url(agentUrl)).send();
     expect(res.status).toBe(200);
     expect(refreshSingleAgentMock).toHaveBeenCalledWith(agentUrl, expect.any(Object));
+  });
+
+  it('static admin API key can refresh and rerun compliance for an agent it does not own', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
+    const agentUrl = ownedAgentUrl('static-admin');
+
+    const res = await request(app).post(url(agentUrl)).send();
+
+    expect(res.status).toBe(200);
+    expect(res.body.compliance).toMatchObject({
+      ran: true,
+      overall_status: 'passing',
+      storyboards_passing: 1,
+      storyboards_total: 1,
+    });
+    expect(refreshSingleAgentMock).toHaveBeenCalledWith(agentUrl, expect.any(Object));
+    expect(complyMock).toHaveBeenCalledWith(
+      agentUrl,
+      expect.objectContaining({
+        timeout_ms: 90_000,
+        userAgent: AAO_UA_COMPLIANCE,
+      }),
+    );
+
+    const latestRun = await pool.query(
+      `SELECT triggered_by, triggered_org_id
+       FROM agent_compliance_runs
+       WHERE agent_url = $1
+       ORDER BY tested_at DESC
+       LIMIT 1`,
+      [agentUrl],
+    );
+    expect(latestRun.rows[0]).toMatchObject({
+      triggered_by: 'manual',
+      triggered_org_id: null,
+    });
   });
 
   it('non-owner non-admin gets 403', async () => {
