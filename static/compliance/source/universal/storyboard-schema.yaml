@@ -1418,6 +1418,34 @@
 #   recorded calls during the assertion window grade as failed (the
 #   "controller present and observed nothing" path is the façade signal).
 #
+#   Runner attestation-mode selection (normative):
+#     Conforming runners MUST choose params.attestation_mode for
+#     comply_test_controller query_upstream_traffic calls in a way that
+#     preserves assertion coverage:
+#       1. If any upstream_traffic validation in the current step sets
+#          attestation_mode_required: "raw", request "raw".
+#       2. Else if any upstream_traffic validation in the current step declares
+#          payload_must_contain, request "raw"; arbitrary payload-path
+#          assertions cannot be evaluated from digest attestations.
+#       3. Else if every upstream_traffic validation in the current step can
+#          be evaluated from count/endpoint/purpose plus identifier_paths, and
+#          the runner can supply params.identifier_value_digests for all
+#          resolved identifier values, the runner SHOULD request "digest" when
+#          it knows the matching upstream calls are JSON-shaped
+#          (`application/json` or `*/*+json`). If the runner does not know the
+#          matching calls are JSON-shaped, request "raw"; digest-mode
+#          identifier_match_proofs are intentionally unavailable for non-JSON
+#          payloads, so an unconditional digest request can turn an otherwise
+#          evaluable identifier_paths assertion into not_applicable.
+#       4. Otherwise, request "raw".
+#     Controllers MAY still return digest-mode attestations for a raw request
+#     when local policy forbids raw payload disclosure; raw-required and
+#     payload_must_contain assertions then grade not_applicable as described
+#     below.
+#     Storyboard authors SHOULD NOT invent non-schema attestation-mode hints.
+#     Use attestation_mode_required: "raw" only for hard raw requirements;
+#     otherwise rely on this runner selection rule.
+#
 #   Fields:
 #     min_count: integer (default: 1)
 #                              # Minimum number of recorded calls that match
