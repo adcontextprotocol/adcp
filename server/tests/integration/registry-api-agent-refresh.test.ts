@@ -17,6 +17,7 @@ import type { Pool } from 'pg';
 import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
+import { AAO_UA_COMPLIANCE } from '../../src/config/user-agents.js';
 
 const RUN_SUFFIX = Math.random().toString(36).slice(2, 8);
 const OWNER_USER_ID = `user_test_refresh_owner_${RUN_SUFFIX}`;
@@ -36,6 +37,7 @@ const ALL_OWNED_URLS = [
   ownedAgentUrl('paused'),
   ownedAgentUrl('rate-limit'),
   ownedAgentUrl('saved-bearer'),
+  ownedAgentUrl('badge-fanout'),
 ];
 
 // Toggle which user the auth middleware stamps onto the request. Tests
@@ -102,6 +104,43 @@ vi.mock('../../src/crawler.js', async () => {
   return actual;
 });
 
+const complyMock = vi.fn();
+vi.mock('../../src/addie/services/compliance-testing.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/addie/services/compliance-testing.js')>('../../src/addie/services/compliance-testing.js');
+  return {
+    ...actual,
+    comply: (agentUrl: string, options?: unknown) => complyMock(agentUrl, options),
+  };
+});
+
+function makeComplianceResult(options: { specialisms?: string[]; storyboardId?: string } = {}) {
+  const specialisms = options.specialisms ?? [];
+  const storyboardId = options.storyboardId ?? 'media_buy_seller';
+  return {
+    overall_status: 'passing',
+    total_duration_ms: 42,
+    summary: {
+      headline: 'All storyboards passing',
+      tracks_passed: 1,
+      tracks_failed: 0,
+      tracks_skipped: 0,
+      tracks_partial: 0,
+    },
+    tracks: [{
+      track: 'media-buy',
+      status: 'pass',
+      duration_ms: 42,
+      scenarios: [{
+        scenario: `${storyboardId}/capability_discovery`,
+        overall_passed: true,
+        steps: [{ step_id: 'get_adcp_capabilities', passed: true }],
+      }],
+    }],
+    observations: [],
+    agent_profile: { specialisms },
+  };
+}
+
 describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   let server: HTTPServer;
   let app: unknown;
@@ -114,9 +153,14 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     await runMigrations();
 
     await pool.query(
-      `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
-       VALUES ($1, 'Test Refresh Org', NOW(), NOW())
-       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      `INSERT INTO organizations (
+         workos_organization_id, name, membership_tier, subscription_status, created_at, updated_at
+       )
+       VALUES ($1, 'Test Refresh Org', 'company_standard', 'active', NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE
+         SET membership_tier = EXCLUDED.membership_tier,
+             subscription_status = EXCLUDED.subscription_status,
+             updated_at = NOW()`,
       [TEST_ORG_ID],
     );
     await pool.query(
@@ -143,6 +187,11 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
 
   afterAll(async () => {
     const allUrls = [...ALL_OWNED_URLS, OTHER_AGENT_URL];
+    await pool.query('DELETE FROM agent_verification_badges WHERE agent_url = ANY($1)', [allUrls]);
+    await pool.query('DELETE FROM agent_compliance_step_diagnostics WHERE agent_url = ANY($1)', [allUrls]);
+    await pool.query('DELETE FROM agent_storyboard_status WHERE agent_url = ANY($1)', [allUrls]);
+    await pool.query('DELETE FROM agent_compliance_status WHERE agent_url = ANY($1)', [allUrls]);
+    await pool.query('DELETE FROM agent_compliance_runs WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_health_snapshot WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_capabilities_snapshot WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = $1', [TEST_ORG_ID]);
@@ -165,6 +214,8 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       oauth_required: false,
       checked_at: new Date().toISOString(),
     });
+    complyMock.mockReset();
+    complyMock.mockResolvedValue(makeComplianceResult());
   });
 
   const url = (agentUrl: string) => `/api/registry/agents/${encodeURIComponent(agentUrl)}/refresh`;
@@ -178,8 +229,35 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       tools_count: 4,
       inferred_type: 'governance',
       type_promoted: true,
+      compliance: {
+        ran: true,
+        overall_status: 'passing',
+        storyboards_passing: 1,
+        storyboards_total: 1,
+      },
     });
     expect(refreshSingleAgentMock).toHaveBeenCalledWith(agentUrl, expect.any(Object));
+    expect(complyMock).toHaveBeenCalledWith(
+      agentUrl,
+      expect.objectContaining({
+        timeout_ms: 90_000,
+        userAgent: AAO_UA_COMPLIANCE,
+        test_session_id: expect.stringMatching(/^owner-refresh-\d+-[0-9a-f-]{36}$/),
+      }),
+    );
+
+    const latestRun = await pool.query(
+      `SELECT triggered_by, triggered_org_id
+       FROM agent_compliance_runs
+       WHERE agent_url = $1
+       ORDER BY tested_at DESC
+       LIMIT 1`,
+      [agentUrl],
+    );
+    expect(latestRun.rows[0]).toMatchObject({
+      triggered_by: 'owner_test',
+      triggered_org_id: TEST_ORG_ID,
+    });
   });
 
   it('admin can refresh an agent they do not own', async () => {
@@ -267,5 +345,38 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     );
 
     await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
+  });
+
+  it('fans out badge issuance for an owner refresh with a passing specialism', async () => {
+    const agentUrl = ownedAgentUrl('badge-fanout');
+    complyMock.mockResolvedValueOnce(makeComplianceResult({
+      specialisms: ['sales-broadcast-tv'],
+      storyboardId: 'sales_broadcast_tv',
+    }));
+
+    const res = await request(app).post(url(agentUrl)).send();
+
+    expect(res.status).toBe(200);
+    expect(res.body.compliance).toMatchObject({
+      ran: true,
+      storyboards_passing: 1,
+      storyboards_total: 1,
+    });
+
+    const badges = await pool.query(
+      `SELECT role, status, verified_specialisms, membership_org_id
+       FROM agent_verification_badges
+       WHERE agent_url = $1
+       ORDER BY role`,
+      [agentUrl],
+    );
+    expect(badges.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'media-buy',
+        status: 'active',
+        verified_specialisms: ['sales-broadcast-tv'],
+        membership_org_id: TEST_ORG_ID,
+      }),
+    ]));
   });
 });

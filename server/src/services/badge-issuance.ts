@@ -170,8 +170,10 @@ export async function runBadgeFanOut(params: {
   complianceDb: ComplianceDatabase;
   agentUrl: string;
   declaredSpecialisms: string[];
+  /** Full-suite runs pass their run id so stale prior storyboard rows cannot issue/degrade badges. */
+  runId?: string | null;
 }): Promise<BadgeIssuanceResult> {
-  const { complianceDb, agentUrl, declaredSpecialisms } = params;
+  const { complianceDb, agentUrl, declaredSpecialisms, runId } = params;
   const aggregate: BadgeIssuanceResult = { issued: [], revoked: [], degraded: [], unchanged: [] };
 
   if (declaredSpecialisms.length === 0) {
@@ -203,7 +205,9 @@ export async function runBadgeFanOut(params: {
   // earlier storyboard's last result — essential for partial runs
   // (single-storyboard owner_test) so unrelated storyboards' badges
   // aren't degraded just because they weren't touched this run.
-  const latestStatuses = await complianceDb.getStoryboardStatuses(agentUrl);
+  const latestStatuses = runId
+    ? await complianceDb.getStoryboardStatuses(agentUrl, { runId })
+    : await complianceDb.getStoryboardStatuses(agentUrl);
   const storyboardStatuses: StoryboardStatusEntry[] = latestStatuses.map(s => ({
     storyboard_id: s.storyboard_id,
     status: s.status as StoryboardStatus,

@@ -324,6 +324,23 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     ]));
   });
 
+  it('static admin API key can read bulk storyboard status through real Postgres SQL', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
+    const res = await request(app)
+      .post('/api/registry/agents/storyboard-status')
+      .send({ agent_urls: [AGENT_URL] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.agents[AGENT_URL]).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        storyboard_id: 'debug_storyboard',
+        status: 'failing',
+        steps_passed: 1,
+        steps_total: 2,
+      }),
+    ]));
+  });
+
   it('static admin API key can read per-step diagnostics for any agent', async () => {
     currentUserId = STATIC_ADMIN_USER_ID;
     const res = await request(app)

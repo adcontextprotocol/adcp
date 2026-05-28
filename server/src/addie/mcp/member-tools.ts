@@ -3787,7 +3787,7 @@ export function createMemberToolHandlers(
                 // See migration 490.
                 triggered_org_id: organizationId,
               };
-              await complianceDb.recordComplianceRun(dbInput);
+              const { run } = await complianceDb.recordComplianceRun(dbInput);
               // notifyComplianceChange intentionally omitted: owner test runs are
               // exploratory; compliance-change notifications fire on heartbeat
               // transitions only to prevent iteration-loop spam.
@@ -3798,12 +3798,13 @@ export function createMemberToolHandlers(
               // Verification-change notifications are intentionally skipped —
               // the owner already received the result in their chat response.
               const declaredSpecialisms = result.agent_profile?.specialisms ?? [];
-              if (declaredSpecialisms.length > 0) {
+              if (declaredSpecialisms.length > 0 && dbInput.storyboard_statuses?.length) {
                 try {
                   await runBadgeFanOut({
                     complianceDb,
                     agentUrl: resolved.resolvedUrl,
                     declaredSpecialisms,
+                    runId: tracks ? null : run.id,
                   });
                 } catch (badgeError) {
                   logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Badge fan-out failed after owner_test run');
