@@ -1,4 +1,4 @@
--- Migration 498: clarify seller-side brand.json identity in Academy curriculum.
+-- Migration 499: clarify seller-side brand.json identity in Academy curriculum.
 --
 -- Issue #5094 exposed a training/docs gap: brand.json was often described as
 -- buyer/advertiser identity, while seller/publisher/platform use was implied.
