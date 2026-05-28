@@ -1,4 +1,4 @@
--- Migration 496: record the AdCP compliance target and bundle version for each run.
+-- Migration 497: record the AdCP compliance target and bundle version for each run.
 --
 -- Compliance execution must be auditable by version. A run row now records
 -- both the requested target (for example '3.0' or '3.1-beta') and the
