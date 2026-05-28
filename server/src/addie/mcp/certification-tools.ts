@@ -1171,6 +1171,8 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'AdCP quickstart', url: `${DOCS_BASE}/docs/quickstart` },
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
+    { label: 'Seller setup for brand.json', url: `${DOCS_BASE}/docs/brand-protocol/seller-setup` },
+    { label: 'adagents.json publisher authorization', url: `${DOCS_BASE}/docs/governance/property/adagents` },
   ],
   A2B: [
     { label: 'A2B: Testing your first agent call', url: `${DOCS_BASE}/docs/learning/foundations/a2b-testing-your-first-agent` },
@@ -1183,6 +1185,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   A3: [
     { label: 'AdCP protocol overview', url: `${DOCS_BASE}/docs/intro` },
     { label: 'Brand protocol and brand.json', url: `${DOCS_BASE}/docs/brand-protocol` },
+    { label: 'Seller setup for brand.json', url: `${DOCS_BASE}/docs/brand-protocol/seller-setup` },
     { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
     { label: 'Policy registry', url: `${DOCS_BASE}/docs/governance/policy-registry` },
@@ -1196,6 +1199,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   // Track B: Publisher / Seller
   B1: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
+    { label: 'Seller setup for brand.json', url: `${DOCS_BASE}/docs/brand-protocol/seller-setup` },
     { label: 'Get products task', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
     { label: 'Media products', url: `${DOCS_BASE}/docs/media-buy/product-discovery/media-products` },
     { label: 'Shows and episodes', url: `${DOCS_BASE}/docs/media-buy/product-discovery/collections-and-installments` },
@@ -1231,6 +1235,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   B4: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
+    { label: 'Seller setup for brand.json', url: `${DOCS_BASE}/docs/brand-protocol/seller-setup` },
     { label: 'Build an Agent (skill files and storyboards)', url: `${DOCS_BASE}/docs/building/by-layer/L4/build-an-agent` },
     { label: 'Validate Your Agent (storyboard CLI)', url: `${DOCS_BASE}/docs/building/verification/validate-your-agent` },
     { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/by-layer/L4/choose-your-sdk` },
@@ -1251,6 +1256,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   C2: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
     { label: 'Brand ecosystem walkthrough', url: `${DOCS_BASE}/docs/brand-protocol` },
+    { label: 'Seller verification walkthrough', url: `${DOCS_BASE}/docs/verification/overview` },
     { label: 'Brand architecture and resolution', url: `${DOCS_BASE}/docs/brand-protocol/key-concepts` },
     { label: 'Rights licensing walkthrough', url: `${DOCS_BASE}/docs/brand-protocol/walkthrough-rights-licensing` },
     { label: 'brand.json specification', url: `${DOCS_BASE}/docs/brand-protocol/brand-json` },
@@ -1306,6 +1312,8 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   D2: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
     { label: 'Agent-to-Agent protocol', url: `${DOCS_BASE}/docs/building/integration/a2a-guide` },
+    { label: 'Seller setup for brand.json', url: `${DOCS_BASE}/docs/brand-protocol/seller-setup` },
+    { label: 'Seller verification walkthrough', url: `${DOCS_BASE}/docs/verification/overview` },
     { label: 'Property governance', url: `${DOCS_BASE}/docs/governance/property/index` },
     { label: 'Campaign governance', url: `${DOCS_BASE}/docs/governance/campaign` },
     { label: 'Campaign governance specification', url: `${DOCS_BASE}/docs/governance/campaign/specification` },

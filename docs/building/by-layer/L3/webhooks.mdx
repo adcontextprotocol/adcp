@@ -273,7 +273,7 @@ Covered components are fixed: `@method`, `@target-uri`, `@authority`, `content-t
 
 - Error codes use the `webhook_signature_*` prefix (see [Webhook error taxonomy](/docs/building/by-layer/L1/security#webhook-error-taxonomy)).
 - `tag` MUST be `adcp/webhook-signing/v1`.
-- Resolve `keyid` via the seller's `adagents.json` `agents[]` entry (you already have the seller's agent URL from your integration).
+- Resolve `keyid` via the seller operator's `brand.json` `agents[].jwks_uri`, applying any publisher `adagents.json` `signing_keys[]` pin when present (you already have the seller's agent URL from your integration).
 
 **Receiver implementation sketch:**
 ```typescript
@@ -283,7 +283,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 app.post('/webhooks/adcp/*', async (req, res) => {
   try {
     // 1. Parse Signature-Input / Signature headers and reject on malformed.
-    // 2. Resolve keyid against the seller's adagents.json JWKS.
+    // 2. Resolve keyid against the seller operator's brand.json JWKS.
     // 3. Run the AdCP webhook verifier checklist (14 steps).
     await verifyAdcpWebhookSignature(req, {
       sellerAgentUrl: req.sellerContext.agentUrl, // known from your integration

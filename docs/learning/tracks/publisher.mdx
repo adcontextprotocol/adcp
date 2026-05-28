@@ -63,6 +63,9 @@ How a hosted sales agent works: product discovery, catalog integration, capabili
   <Card title="Capability discovery" icon="magnifying-glass" href="/docs/protocol/get_adcp_capabilities">
     How agents advertise their capabilities so other agents can discover what they offer.
   </Card>
+  <Card title="Seller setup" icon="store" href="/docs/brand-protocol/seller-setup">
+    How to publish seller identity, property relationships, signing keys, and publisher authorization files.
+  </Card>
   <Card title="Version negotiation" icon="code-branch" href="/docs/reference/versioning#version-negotiation">
     Advertise your supported `adcp.major_versions`; reject mismatched requests with `VERSION_UNSUPPORTED`.
   </Card>
@@ -80,6 +83,7 @@ How a hosted sales agent works: product discovery, catalog integration, capabili
 - **Product catalog design** — products, formats, pricing models, targeting options, availability, and shows/episodes for content-centric inventory
 - **Catalog integration** — `sync_catalogs` for product data, 13 catalog types, feed field mappings
 - **Capability advertising** — `get_adcp_capabilities` so buyers know what you support
+- **Seller identity setup** — publish `brand.json` for the organization operating the sales agent and `adagents.json` for publisher authorization; buyers use both to verify who operates the sales path and whether the publisher authorizes it
 - **Object-presence capability principle** — capabilities are declared by the presence of an object, not by booleans. If you support a feature, include the object; if you don't, omit it. Buyers check for the object, not for `"feature": true`.
 - **Version advertising** — declare `adcp.major_versions` so multi-version buyers can migrate on their own schedule; validate incoming `adcp_major_version` and return `VERSION_UNSUPPORTED` when out of range
 - **Lifecycle commitments** — `create_media_buy` MAY return `pending_creatives` or `pending_start`; MUST transition `pending_start` → `active` when the flight date arrives, and notify orchestrators via webhook. Rejection is only valid from the pending states
@@ -209,6 +213,7 @@ Create a working sales agent that responds to real buyer queries. Point your AI 
 - Creative format support for at least 2 formats
 - Handles `get_products`, `create_media_buy`, `list_creative_formats`, `get_media_buy_delivery`
 - Account setup via `sync_accounts`
+- Well-known discovery files: `brand.json` for the sales-agent operator's identity, endpoint declarations, and signing-key discovery; `adagents.json` for publisher properties and agent authorization
 - Proper error responses for invalid requests — including `VERSION_UNSUPPORTED`, `GOVERNANCE_DENIED`, `TERMS_REJECTED`, `IDEMPOTENCY_CONFLICT`, and `IDEMPOTENCY_EXPIRED` where applicable
 - Idempotency enforcement on every mutating request: reject missing or malformed `idempotency_key` with `INVALID_REQUEST` before touching business logic; cache only on success; scope per authenticated agent
 - Lifecycle transitions: seller moves media buys through `pending_creatives` → `pending_start` → `active` and notifies via webhook on each transition

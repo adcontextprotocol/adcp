@@ -980,7 +980,7 @@ Properties are digital touchpoints associated with brands:
 | `store` | enum | No | App store (`apple`, `google`, etc.) |
 | `region` | string | No | ISO country code or `global` |
 | `primary` | boolean | No | Is this the primary property? |
-| `relationship` | enum | No | How this brand relates to the property: `owned` (default), `direct`, `delegated`, `ad_network`. Matches `delegation_type` in adagents.json for bilateral verification. See [ad networks](/docs/sponsored-intelligence/networks). |
+| `relationship` | enum | No | How this brand relates to the property: `owned` (default), `direct`, `delegated`, `ad_network`. Delegated/network values match `delegation_type` in adagents.json for bilateral verification; `owned` is a brand.json-only ownership claim. See [ad networks](/docs/sponsored-intelligence/networks). |
 
 ### Property types
 
@@ -1005,7 +1005,7 @@ Properties default to `owned` — the brand operates the property directly. For 
 | `delegated` | Brand manages monetization — in charge of ad sales | Mediavine managing a food blog |
 | `ad_network` | Brand sells as part of a network/exchange — a path, not the path | PubMatic as an SSP |
 
-This is the AdCP equivalent of `sellers.json` — the operator's public declaration of which publishers they work with. The publisher confirms by setting the matching `delegation_type` on the agent's authorization in their [adagents.json](/docs/governance/property/adagents). Sellers implementing this workflow should publish both files as part of [making inventory available to AI agents](/docs/building/operating/seller-integration#publish-your-brand-identity). See [ad networks](/docs/sponsored-intelligence/networks) for the bilateral verification pattern.
+This is the AdCP equivalent of `sellers.json` — the operator's public declaration of which publishers they work with. For delegated or network paths, the publisher confirms by setting the matching `delegation_type` on the agent's authorization in their [adagents.json](/docs/governance/property/adagents). For first-party inventory, `relationship: "owned"` is the operator's inline ownership declaration. Sell-side implementations need the operator's `brand.json` claim and, when inventory is publisher-authorized or delegated, the publisher's matching `adagents.json` authorization. See [seller setup](/docs/brand-protocol/seller-setup) for the step-by-step sell-side pattern and [ad networks](/docs/sponsored-intelligence/networks) for network-specific guidance.
 
 ## Resolution algorithm
 

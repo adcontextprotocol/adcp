@@ -1,0 +1,205 @@
+---
+title: Seller setup
+sidebarTitle: For sellers
+description: "How publishers, sales agents, networks, and SSPs use brand.json and adagents.json together for seller identity, signing-key discovery, and supply path verification."
+"og:title": "AdCP — Seller setup for brand.json"
+---
+
+`brand.json` is not only for advertisers. On the sell side, it is the public company record for the organization operating an AdCP sales path: name, logo, domains, sales agents, and signing-key discovery. `adagents.json` is the publisher's authorization record: which properties exist and which agents may sell them.
+
+Buyer agents need both views. `brand.json` answers "who is this seller or platform, and what is it claiming?" `adagents.json` answers "does the publisher authorize this agent to sell this inventory?"
+
+## Requirement boundary
+
+The practical rule is:
+
+- **If you operate an AdCP agent**, that agent needs operator identity and signing-key discovery. Publish a `brand.json` entry for the operating organization, list the agent in `agents[]`, and expose public keys through `agents[].jwks_uri` or the default `/.well-known/jwks.json`.
+- **If you publish inventory**, you need a publisher authorization record. Publish `adagents.json` on the publisher domain so buyers can verify which agents may sell which properties.
+- **If you both publish inventory and operate the sales agent**, do both on the same organization/domain.
+- **If you delegate sales to another operator**, your `adagents.json` is the authorization hinge. Your own `brand.json` is still recommended for publisher identity, portfolio context, and governance, but the delegated operator's `brand.json` carries the sales-agent identity buyers interact with.
+
+The protocol requirement is verifiability: public keys must be discoverable, and signed requests or webhooks must validate against those keys. Production agents should protect private signing keys with KMS/HSM or a managed secret system, but AdCP does not mandate a specific vendor or hosting pattern. This page covers the discovery and verification records; implementation details for key storage and signing live in [request signing](/docs/building/by-layer/L1/request-signing).
+
+## Who publishes what
+
+| Organization | Publish `brand.json`? | Publish `adagents.json`? | Why |
+|---|---|---|---|
+| Publisher selling direct | Yes | Yes | The publisher is both the inventory owner and the sales operator. Buyers verify its identity, sales endpoint, keys, and property authorization from the same organization. |
+| Publisher delegating sales | Recommended | Yes | The publisher's `adagents.json` authorizes the external sales agent. Its `brand.json` gives buyers the publisher's own identity and house/portfolio context, but the external operator's `brand.json` carries the sales-agent identity. |
+| Network, SSP, or sales representative | Yes | Usually no, unless it also owns properties | The operator's `brand.json` declares its sales agent, signing keys, and represented properties. The publisher confirms the relationship in its own `adagents.json`. |
+
+If the publisher and sales operator are the same company, both files can live on the same domain. If a third-party platform sells for the publisher, the operator's `brand.json` lives on the operator domain and the publisher's `adagents.json` lives on the publisher domain.
+
+## How verification works
+
+The sell-side chain is bilateral:
+
+1. The seller's `brand.json` declares the sales agent in `agents[]`.
+2. The seller's `brand.json` declares the properties it owns, sells directly, manages, or represents in `properties[]`.
+3. The publisher's `adagents.json` declares the same sales agent in `authorized_agents[]`.
+4. For delegated or network paths, the `relationship` value in `brand.json` matches the publisher's `delegation_type` in `adagents.json`. For first-party inventory, `relationship: "owned"` is inline ownership and has no `delegation_type` counterpart.
+5. The signing key used by the agent is discoverable from the seller's `brand.json` `agents[].jwks_uri`; for mutating seller authorizations, the publisher also pins allowed keys in `adagents.json` `authorized_agents[].signing_keys[]`.
+
+The result is a verifiable supply path. The operator publicly says "I sell this property"; the publisher publicly says "this operator is authorized to sell it."
+
+## Direct publisher example
+
+A publisher with its own sales agent publishes `brand.json` at `https://streamhaus.example/.well-known/brand.json`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "id": "streamhaus",
+  "url": "https://streamhaus.example",
+  "names": [{ "en_US": "StreamHaus" }],
+  "industries": ["media"],
+  "properties": [
+    {
+      "type": "ctv_app",
+      "identifier": "com.streamhaus.ctv",
+      "relationship": "owned"
+    }
+  ],
+  "agents": [
+    {
+      "type": "sales",
+      "id": "streamhaus_sales",
+      "url": "https://ads.streamhaus.example/mcp",
+      "jwks_uri": "https://ads.streamhaus.example/.well-known/jwks.json"
+    }
+  ]
+}
+```
+
+The same publisher publishes `adagents.json` at `https://streamhaus.example/.well-known/adagents.json`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
+  "contact": {
+    "name": "StreamHaus",
+    "email": "adops@streamhaus.example",
+    "domain": "streamhaus.example"
+  },
+  "properties": [
+    {
+      "property_id": "streamhaus_ctv",
+      "property_type": "ctv_app",
+      "name": "StreamHaus CTV App",
+      "publisher_domain": "streamhaus.example",
+      "identifiers": [{ "type": "bundle_id", "value": "com.streamhaus.ctv" }]
+    }
+  ],
+  "authorized_agents": [
+    {
+      "authorization_type": "property_ids",
+      "url": "https://ads.streamhaus.example/mcp",
+      "authorized_for": "StreamHaus direct CTV inventory",
+      "property_ids": ["streamhaus_ctv"],
+      "signing_keys": [
+        {
+          "kid": "streamhaus-sales-prod-2026",
+          "kty": "OKP",
+          "alg": "EdDSA",
+          "crv": "Ed25519",
+          "x": "w8zcY1LZqV4n1oKbfyq3n2q3sL2uV3z7kEw1m9Qjv4A",
+          "use": "sig"
+        }
+      ]
+    }
+  ]
+}
+```
+
+The buyer verifies that `agents[].url` in `brand.json` matches `authorized_agents[].url` in `adagents.json`, that StreamHaus owns the property it claims, and that signed mutating responses use a key pinned by StreamHaus in `signing_keys[]`.
+
+## Delegated seller example
+
+When a network sells another publisher's inventory, the network publishes its own `brand.json`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "id": "northwind_media",
+  "url": "https://northwind.example",
+  "names": [{ "en_US": "Northwind Media" }],
+  "industries": ["advertising"],
+  "properties": [
+    {
+      "type": "website",
+      "identifier": "streamhaus.example",
+      "relationship": "delegated"
+    }
+  ],
+  "agents": [
+    {
+      "type": "sales",
+      "id": "northwind_sales",
+      "url": "https://northwind.example/mcp",
+      "jwks_uri": "https://northwind.example/.well-known/jwks.json"
+    }
+  ]
+}
+```
+
+StreamHaus confirms the relationship in `https://streamhaus.example/.well-known/adagents.json`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
+  "contact": {
+    "name": "StreamHaus",
+    "email": "adops@streamhaus.example",
+    "domain": "streamhaus.example"
+  },
+  "properties": [
+    {
+      "property_id": "streamhaus_web",
+      "property_type": "website",
+      "name": "StreamHaus",
+      "publisher_domain": "streamhaus.example",
+      "identifiers": [{ "type": "domain", "value": "streamhaus.example" }]
+    }
+  ],
+  "authorized_agents": [
+    {
+      "authorization_type": "property_ids",
+      "url": "https://northwind.example/mcp",
+      "authorized_for": "StreamHaus inventory via delegated sales agreement",
+      "property_ids": ["streamhaus_web"],
+      "delegation_type": "delegated",
+      "signing_keys": [
+        {
+          "kid": "northwind-sales-prod-2026",
+          "kty": "OKP",
+          "alg": "EdDSA",
+          "crv": "Ed25519",
+          "x": "Xe2lAKRJR_zr3FQRdSNwp3zsrv_IXnVCWJXDcWXwkLI",
+          "use": "sig"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Northwind's `brand.json` alone is not authorization. Any operator can claim a property. The publisher's matching `adagents.json` entry is what turns the claim into an authorized supply path.
+
+## Setup checklist
+
+1. Publish `brand.json` for each organization that operates an AdCP sales agent at `https://{seller-domain}/.well-known/brand.json`.
+2. Add a `sales` entry to `agents[]` for each AdCP sales endpoint the organization operates.
+3. Publish the endpoint's JWKS through `agents[].jwks_uri`, or rely on the default `/.well-known/jwks.json` on the agent origin.
+4. Add every owned, direct, delegated, or network-represented property to `properties[]` with the right `relationship`; use `owned` for first-party inventory.
+5. Publish `adagents.json` on each publisher domain that owns the inventory.
+6. In `authorized_agents[]`, list the seller's agent URL, authorization scope, matching `delegation_type` for delegated or network paths, and `signing_keys[]` for any mutating seller authorization.
+7. Keep both files aligned when a sales relationship, endpoint, or signing key starts, changes, or ends.
+
+## Where to go next
+
+- [brand.json reference](/docs/brand-protocol/brand-json) — field-level details for `agents[]`, `properties[]`, and property relationships
+- [adagents.json reference](/docs/governance/property/adagents) — publisher-side authorization and `delegation_type`
+- [Seller verification](/docs/verification/overview) — buyer-side walkthrough of the full verification chain
+- [Seller integration guide](/docs/building/operating/seller-integration) — full AdCP sales-agent implementation path

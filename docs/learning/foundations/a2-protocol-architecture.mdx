@@ -33,7 +33,10 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
     How agents advertise their capabilities so other agents can discover what they offer.
   </Card>
   <Card title="AdAgents.json" icon="file-code" href="/docs/governance/property/adagents">
-    The agent discovery mechanism — like robots.txt for advertising agents.
+    Publisher authorization for which agents can sell or enrich inventory.
+  </Card>
+  <Card title="Seller setup" icon="store" href="/docs/brand-protocol/seller-setup">
+    How sellers use brand.json with adagents.json for identity and supply path verification.
   </Card>
   <Card title="A2A guide" icon="arrows-left-right" href="/docs/building/integration/a2a-guide">
     The Agent-to-Agent protocol — how specialized agents collaborate on complex campaigns.
@@ -52,7 +55,8 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
 | **Brand agent** | Manages brand identity and guidelines via `brand.json` |
 | **Creative agent** | Any agent implementing the Creative Protocol — produces and adapts advertising assets via `build_creative`. This can be a standalone service or a sales agent that declares `"creative"` in `supported_protocols`. |
 | **Signals agent** | Provides measurement and audience data via `get_signals` |
-| **adagents.json** | Publisher-hosted file declaring agent capabilities (like robots.txt for agents) |
+| **brand.json** | Public identity record for an advertiser, publisher, seller, or platform: name, brand assets, agents, and signing-key discovery |
+| **adagents.json** | Publisher-hosted file declaring properties and the agents authorized to sell or enrich them |
 | **Tool discovery** | The process of an agent reading another agent's capabilities to know what tasks it supports |
 | **Request signing** | A cryptographic signature on the request that lets the seller verify who sent it and that it wasn't tampered with in transit |
 | **Idempotency key** | A unique tag on each mutating request that lets a buyer safely retry without creating a duplicate |
