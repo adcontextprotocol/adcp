@@ -335,9 +335,6 @@ export class AdAgentsManager {
         return result;
       }
 
-      // Only include raw data for successful responses
-      result.raw_data = adagentsData;
-
       // Check if this is a URL reference
       let wasUrlReference = false;
       if (this.isUrlReference(adagentsData)) {
@@ -355,6 +352,11 @@ export class AdAgentsManager {
           return result;
         }
       }
+
+      // Surface the canonical (post-pointer) manifest so downstream
+      // callers like validate_adagents count agents/properties from the
+      // authoritative file rather than the pointer stub (#5093).
+      result.raw_data = adagentsData;
 
       this.validateStructure(adagentsData, result);
       this.validateContent(adagentsData, result);
