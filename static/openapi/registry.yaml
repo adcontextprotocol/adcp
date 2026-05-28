@@ -583,7 +583,7 @@ components:
           type:
             - string
             - "null"
-          description: Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta.
+          description: Requested compliance target before alias resolution, e.g. 3.1, 3.0, or 3.1-beta.
         adcp_version:
           type:
             - string
@@ -1410,7 +1410,7 @@ components:
           type:
             - string
             - "null"
-          description: Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Null for legacy rows before target recording.
+          description: Requested compliance target before alias resolution, e.g. 3.1, 3.0, or 3.1-beta. Null for legacy rows before target recording.
         adcp_version:
           type:
             - string
@@ -1615,7 +1615,7 @@ components:
           type:
             - string
             - "null"
-          description: Requested compliance target from the run that produced this storyboard verdict, e.g. 3.0 or 3.1-beta.
+          description: Requested compliance target from the run that produced this storyboard verdict, e.g. 3.1, 3.0, or 3.1-beta.
         adcp_version:
           type:
             - string
@@ -6892,10 +6892,18 @@ paths:
                         description: True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed.
                       requested_compliance_target:
                         type: string
-                        description: Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Present when `ran` is true.
+                        description: Requested compliance target before alias resolution, e.g. 3.1, 3.0, or 3.1-beta. Present when `ran` is true.
                       adcp_version:
                         type: string
-                        description: Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12. Present when `ran` is true.
+                        description: Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12 or 3.1.0-beta.7. Present when `ran` is true.
+                      badge_eligible:
+                        type: boolean
+                        description: True when this run can update public badge state.
+                      badge_eligible_adcp_versions:
+                        type: array
+                        items:
+                          type: string
+                        description: Public badge versions this run can issue, e.g. ['3.1', '3.0'].
                       overall_status:
                         type: string
                         description: Aggregate verdict from the run (passing / failing / partial / unknown). Only present when `ran` is true.
@@ -8093,6 +8101,12 @@ paths:
                     type: string
                   requested_compliance_target:
                     type: string
+                  badge_eligible:
+                    type: boolean
+                  badge_eligible_adcp_versions:
+                    type: array
+                    items:
+                      type: string
                   phases: {}
                   summary: {}
                   observations: {}
@@ -8104,6 +8118,8 @@ paths:
                   - agent
                   - adcp_version
                   - requested_compliance_target
+                  - badge_eligible
+                  - badge_eligible_adcp_versions
                   - total_duration_ms
         "400":
           description: Invalid agent URL
@@ -8204,6 +8220,12 @@ paths:
                     type: string
                   requested_compliance_target:
                     type: string
+                  badge_eligible:
+                    type: boolean
+                  badge_eligible_adcp_versions:
+                    type: array
+                    items:
+                      type: string
                   phases: {}
                   total_duration_ms:
                     type: number
@@ -8213,6 +8235,8 @@ paths:
                   - reference_agent
                   - adcp_version
                   - requested_compliance_target
+                  - badge_eligible
+                  - badge_eligible_adcp_versions
                   - total_duration_ms
         "400":
           description: Invalid agent URL

@@ -301,7 +301,7 @@ export const PropertyRegistryItemSchema = z
 export const AgentComplianceSchema = z
   .object({
     status: z.enum(["passing", "degraded", "failing", "unknown"]),
-    requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta." }),
+    requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.1, 3.0, or 3.1-beta." }),
     adcp_version: z.string().nullable().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the latest run, e.g. 3.0.12." }),
     lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
     tracks: z.record(z.string(), z.string()).openapi({ example: { core: "pass", products: "fail" } }),
@@ -336,7 +336,7 @@ export const VerificationBadgeSchema = z
 export const AgentComplianceDetailSchema = z
   .object({
     agent_url: z.string(),
-    requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Null for legacy rows before target recording." }),
+    requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.1, 3.0, or 3.1-beta. Null for legacy rows before target recording." }),
     adcp_version: z.string().nullable().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the latest run, e.g. 3.0.12. Null for legacy rows before version recording." }),
     status: z.enum(["passing", "degraded", "failing", "unknown", "opted_out"]),
     lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
@@ -376,7 +376,7 @@ export const AgentVerificationSchema = z
 export const StoryboardStatusSchema = z
   .object({
     storyboard_id: z.string(),
-    requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target from the run that produced this storyboard verdict, e.g. 3.0 or 3.1-beta." }),
+    requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target from the run that produced this storyboard verdict, e.g. 3.1, 3.0, or 3.1-beta." }),
     adcp_version: z.string().nullable().optional().openapi({ description: "Concrete AdCP compliance bundle version from the run that produced this storyboard verdict." }),
     title: z.string(),
     category: z.string().nullable(),

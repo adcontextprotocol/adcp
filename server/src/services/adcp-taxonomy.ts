@@ -42,7 +42,7 @@ export function isVerificationMode(value: unknown): value is VerificationMode {
  * Order matters: highest version first so heartbeat reports and queue
  * draining surface the newest version's pass/fail state first.
  */
-export const SUPPORTED_BADGE_VERSIONS = ['3.0'] as const;
+export const SUPPORTED_BADGE_VERSIONS = ['3.1', '3.0'] as const;
 export type SupportedBadgeVersion = typeof SUPPORTED_BADGE_VERSIONS[number];
 
 export function isSupportedBadgeVersion(value: unknown): value is SupportedBadgeVersion {

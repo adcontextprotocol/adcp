@@ -26,6 +26,7 @@ import {
   hostedComplianceOptions,
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
+  badgeEligibleVersionsForHostedComplianceTarget,
 } from "../services/hosted-compliance-version.js";
 import {
   comply,
@@ -127,6 +128,11 @@ import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
 const logger = createLogger("registry-api");
 const complianceTarget = hostedComplianceTarget();
 const complianceOptions = hostedComplianceOptions(complianceTarget);
+const badgeEligibleAdcpVersions = [...badgeEligibleVersionsForHostedComplianceTarget(complianceTarget)];
+const badgeEligibilityMetadata = (eligible: boolean) => ({
+  badge_eligible: eligible,
+  badge_eligible_adcp_versions: eligible ? badgeEligibleAdcpVersions : [],
+});
 const propertyCheckService = new PropertyCheckService();
 const propertyCheckDb = new PropertyCheckDatabase();
 const bulkCheckService = new BulkPropertyCheckService();
@@ -2328,8 +2334,10 @@ registry.registerPath({
             error: z.string().optional(),
             compliance: z.object({
               ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed." }),
-              requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Present when `ran` is true." }),
-              adcp_version: z.string().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12. Present when `ran` is true." }),
+              requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.1, 3.0, or 3.1-beta. Present when `ran` is true." }),
+              adcp_version: z.string().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12 or 3.1.0-beta.7. Present when `ran` is true." }),
+              badge_eligible: z.boolean().optional().openapi({ description: "True when this run can update public badge state." }),
+              badge_eligible_adcp_versions: z.array(z.string()).optional().openapi({ description: "Public badge versions this run can issue, e.g. ['3.1', '3.0']." }),
               overall_status: z.string().optional().openapi({ description: "Aggregate verdict from the run (passing / failing / partial / unknown). Only present when `ran` is true." }),
               storyboards_passing: z.number().int().optional().openapi({ description: "Number of storyboards passing on this run." }),
               storyboards_total: z.number().int().optional().openapi({ description: "Number of storyboards evaluated on this run." }),
@@ -2960,6 +2968,8 @@ registry.registerPath({
             }),
             adcp_version: z.string(),
             requested_compliance_target: z.string(),
+            badge_eligible: z.boolean(),
+            badge_eligible_adcp_versions: z.array(z.string()),
             phases: z.any(),
             summary: z.any(),
             observations: z.any(),
@@ -3003,6 +3013,8 @@ registry.registerPath({
             reference_agent: z.object({ url: z.string(), name: z.string(), profile: z.any(), summary: z.any() }),
             adcp_version: z.string(),
             requested_compliance_target: z.string(),
+            badge_eligible: z.boolean(),
+            badge_eligible_adcp_versions: z.array(z.string()),
             phases: z.any(),
             total_duration_ms: z.number(),
           }),
@@ -5497,6 +5509,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         ran: boolean;
         requested_compliance_target?: string;
         adcp_version?: string;
+        badge_eligible?: boolean;
+        badge_eligible_adcp_versions?: string[];
         overall_status?: string;
         storyboards_passing?: number;
         storyboards_total?: number;
@@ -5539,6 +5553,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               ran: true,
               requested_compliance_target: complianceTarget.requested,
               adcp_version: complyResult.adcp_version,
+              ...badgeEligibilityMetadata(badgeEligibleAdcpVersions.length > 0),
               overall_status: dbInput.overall_status,
               storyboards_passing: passing,
               storyboards_total: storyboardStatuses.length,
@@ -6372,6 +6387,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           },
           requested_compliance_target: complianceTarget.requested,
           adcp_version: complyResult.adcp_version,
+          ...badgeEligibilityMetadata(badgeEligibleAdcpVersions.length > 0),
           phases: annotatedPhases,
           summary: complyResult.summary,
           observations: complyResult.observations,
@@ -6483,6 +6499,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           },
           requested_compliance_target: complianceTarget.requested,
           adcp_version: userResult.adcp_version,
+          ...badgeEligibilityMetadata(false),
           phases: comparisonPhases,
           total_duration_ms: Math.max(userResult.total_duration_ms, referenceResult.total_duration_ms),
         });

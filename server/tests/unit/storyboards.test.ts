@@ -16,6 +16,7 @@ import {
   DEFAULT_HOSTED_COMPLIANCE_VERSION,
   hostedComplianceOptions,
   hostedComplianceTarget,
+  isDefaultHostedComplianceTarget,
   withHostedComplianceOptions,
 } from '../../src/services/hosted-compliance-version.js';
 import { loadComplianceIndex } from '@adcp/sdk/testing';
@@ -147,12 +148,15 @@ describe('wrapper contract', () => {
     expect(typeof summary.step_count).toBe('number');
   });
 
-  it('uses the hosted stable compliance bundle by default', () => {
+  it('uses the hosted badge-eligible compliance bundle by default', () => {
     const target = hostedComplianceTarget();
     const index = loadComplianceIndex(hostedComplianceOptions(target));
     expect(index.adcp_version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
+    expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.1');
     expect(target.requested).toBe(DEFAULT_HOSTED_COMPLIANCE_LINE);
     expect(target.version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
+    expect(target.version).toMatch(/^3\.1\.(?:\d+|0-beta\.\d+)$/);
+    expect(isDefaultHostedComplianceTarget(target)).toBe(true);
   });
 
   it('resolves compliance target aliases against checked-in caches', () => {
@@ -163,6 +167,11 @@ describe('wrapper contract', () => {
     const beta = hostedComplianceTarget('3.1-beta');
     expect(beta.requested).toBe('3.1-beta');
     expect(beta.version).toMatch(/^3\.1\.0-beta\.\d+$/);
+  });
+
+  it('keeps explicit non-default targets diagnostic-only', () => {
+    expect(isDefaultHostedComplianceTarget(hostedComplianceTarget('3.0'))).toBe(false);
+    expect(isDefaultHostedComplianceTarget(hostedComplianceTarget('3.1-beta'))).toBe(false);
   });
 
   it('rejects unsupported compliance targets before path resolution', () => {

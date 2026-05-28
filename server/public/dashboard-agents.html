@@ -2010,9 +2010,9 @@
       // Header count: "1 badge" / "N badges" / "N badges across M roles"
       // The "across M roles" suffix only appears when at least one role
       // has parallel-version badges (i.e. distinctRoleCount < badges.length).
-      // Today with SUPPORTED_BADGE_VERSIONS = ['3.0'] every agent has at
-      // most one badge per role, so this only kicks in once parallel
-      // versions ship.
+      // Parallel-version badge issuance means one role can hold both 3.1
+      // and 3.0 badges. Keep the role suffix so the count doesn't read as
+      // duplicate roles.
       const badgeCountSummary = badges.length === 1
         ? '1 badge'
         : `${badges.length} badges${distinctRoleCount < badges.length ? ` across ${distinctRoleCount} role${distinctRoleCount === 1 ? '' : 's'}` : ''}`;

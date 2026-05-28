@@ -53,6 +53,10 @@ describe('specialism status', () => {
 });
 
 describe('SUPPORTED_BADGE_VERSIONS', () => {
+  it('keeps public badge issuance enabled for 3.1 and 3.0, newest first', () => {
+    expect(SUPPORTED_BADGE_VERSIONS).toEqual(['3.1', '3.0']);
+  });
+
   it('is a non-empty array of MAJOR.MINOR strings', () => {
     expect(SUPPORTED_BADGE_VERSIONS.length).toBeGreaterThan(0);
     for (const v of SUPPORTED_BADGE_VERSIONS) {
