@@ -14,6 +14,14 @@
       "description": "Brand identifier within the house portfolio. Lowercase alphanumeric with underscores. House chooses this ID.",
       "pattern": "^[a-z0-9_]+$"
     },
+    "logo_slot": {
+      "$ref": "/schemas/enums/logo-slot.json"
+    },
+    "logo_id": {
+      "type": "string",
+      "description": "Stable identifier for a logo entry within this brand.json document. Use lowercase words separated by underscores or hyphens; do not key integrations on mutable asset URLs.",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
     "trademark": {
       "type": "object",
       "description": "A registered trademark. May appear at house level (corporate marks, e.g., 'NIKE' owned by Nike, Inc.) or at brand level (brand-specific marks, e.g., 'CONVERSE' owned by Converse). Resolution between house- and brand-level trademarks is union — both lists are valid claims about marks the publisher controls.",
@@ -102,6 +110,10 @@
       "type": "object",
       "description": "Brand logo asset with structured fields for orientation, background compatibility, and variant type",
       "properties": {
+        "id": {
+          "$ref": "#/definitions/logo_id",
+          "description": "Stable identifier for this logo entry. Recommended when logo usage rules or mark lockups need to bind to a specific logo asset."
+        },
         "url": {
           "type": "string",
           "format": "uri",
@@ -127,6 +139,12 @@
           "description": "Additional semantic tags for custom categorization beyond the standard orientation, background, and variant fields",
           "items": { "type": "string" }
         },
+        "slots": {
+          "type": "array",
+          "description": "Canonical renderer slots where this logo is appropriate. Consumers SHOULD prefer this over inferring from tags or usage prose when selecting a logo for a specific UI surface.",
+          "items": { "$ref": "#/definitions/logo_slot" },
+          "uniqueItems": true
+        },
         "usage": {
           "type": "string",
           "description": "Human-readable description of when to use this logo variant (e.g., 'Primary logo for use on light backgrounds')"
@@ -147,6 +165,50 @@
         { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
         { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }
       ]
+    },
+    "color_ref": {
+      "type": "object",
+      "description": "Reference to a brand color or usage surface for machine-readable guideline constraints. Use kind=name for palette lookup keys in colors, kind=value for a literal hex color, and kind=surface for layout surfaces such as background or text.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["name", "value", "surface"],
+          "description": "Discriminator for the color reference variant."
+        },
+        "name": {
+          "type": "string",
+          "description": "Key from the colors object, such as market_yellow, river_green, or any custom palette key. Unambiguous lookup into colors{}."
+        },
+        "value": {
+          "$ref": "#/definitions/hex_color",
+          "description": "Literal hex color when no palette key exists."
+        },
+        "surface": {
+          "type": "string",
+          "enum": ["background", "foreground", "text", "logo_background", "cta", "accent", "border", "icon", "graphic_element"],
+          "description": "Usage surface rather than a specific color value."
+        }
+      },
+      "oneOf": [
+        {
+          "properties": { "kind": { "const": "name" } },
+          "required": ["kind", "name"]
+        },
+        {
+          "properties": { "kind": { "const": "value" } },
+          "required": ["kind", "value"]
+        },
+        {
+          "properties": { "kind": { "const": "surface" } },
+          "required": ["kind", "surface"]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "guideline_severity": {
+      "type": "string",
+      "enum": ["must", "should"],
+      "description": "Strength of a machine-readable brand guideline constraint."
     },
     "colors": {
       "type": "object",
@@ -1115,6 +1177,197 @@
       "required": ["name", "foreground", "background"],
       "additionalProperties": true
     },
+    "color_constraint": {
+      "type": "object",
+      "description": "Machine-readable rule constraining how a brand color may be used or paired. Use for accent-only colors, forbidden foreground/background combinations, and palette pairs that should never appear together.",
+      "properties": {
+        "color": {
+          "$ref": "#/definitions/color_ref",
+          "description": "Color role or value this constraint governs."
+        },
+        "applies_to": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["background", "foreground", "text", "logo_background", "cta", "accent", "border", "icon", "graphic_element"]
+          },
+          "description": "Surfaces where this color may be used."
+        },
+        "allowed_on": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/color_ref" },
+          "description": "Backgrounds, surfaces, or color roles where this color is allowed."
+        },
+        "forbidden_on": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/color_ref" },
+          "description": "Backgrounds, surfaces, or color roles where this color is forbidden."
+        },
+        "never_pair_with": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/color_ref" },
+          "description": "Color roles or values that must not be paired with this color."
+        },
+        "contexts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Channels or creative contexts where this constraint applies, such as digital, print, social, or ctv_end_card."
+        },
+        "severity": { "$ref": "#/definitions/guideline_severity" },
+        "description": {
+          "type": "string",
+          "description": "Human-readable rationale or source-language summary for the rule."
+        }
+      },
+      "required": ["color"],
+      "additionalProperties": true
+    },
+    "logo_usage_rule": {
+      "type": "object",
+      "description": "Machine-readable logo selection and placement rule. Complements logos[].usage by making enforceable minimum size, clear-space, background, and context constraints queryable.",
+      "properties": {
+        "logo_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Specific logo asset URL this rule applies to. Omit when the rule applies by variant or tags."
+        },
+        "logo_id": {
+          "$ref": "#/definitions/logo_id",
+          "description": "Stable `logos[].id` this rule applies to. Prefer this over logo_url when the rule targets a specific logo entry."
+        },
+        "logo_variant": {
+          "type": "string",
+          "enum": ["primary", "secondary", "icon", "wordmark", "full-lockup"],
+          "description": "Logo variant this rule applies to."
+        },
+        "logo_tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Logo tags this rule applies to."
+        },
+        "contexts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Creative contexts where this rule applies."
+        },
+        "slots": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/logo_slot" },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Canonical renderer slots where this rule applies. Use this for deterministic logo-card, profile-mark, end-card, and lockup selection."
+        },
+        "minimum_size": {
+          "type": "object",
+          "description": "Minimum rendered size needed for legibility.",
+          "properties": {
+            "width": { "type": "string", "description": "Minimum width, such as 48px or 12mm." },
+            "height": { "type": "string", "description": "Minimum height, such as 18px or 6mm." }
+          },
+          "additionalProperties": false
+        },
+        "clear_space": {
+          "type": "string",
+          "description": "Minimum clear space around the logo, expressed in brand terms or units."
+        },
+        "allowed_backgrounds": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/color_ref" },
+          "description": "Background color roles, values, or surfaces where this logo may be placed."
+        },
+        "forbidden_backgrounds": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/color_ref" },
+          "description": "Background color roles, values, or surfaces where this logo must not be placed."
+        },
+        "forbidden_contexts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Contexts where this logo must not be used, such as photography_without_knockout."
+        },
+        "severity": { "$ref": "#/definitions/guideline_severity" },
+        "description": {
+          "type": "string",
+          "description": "Human-readable rationale or source-language summary for the rule."
+        }
+      },
+      "anyOf": [
+        { "required": ["logo_id"] },
+        { "required": ["logo_url"] },
+        { "required": ["logo_variant"] },
+        { "required": ["logo_tags"] },
+        { "required": ["slots"] }
+      ],
+      "additionalProperties": true
+    },
+    "mark_lockup": {
+      "type": "object",
+      "description": "Machine-readable layout constraints for co-brand, partner, sponsor, program, or secondary-mark lockups.",
+      "properties": {
+        "lockup_type": {
+          "type": "string",
+          "enum": ["co_brand", "secondary_mark", "partner", "sponsor", "program", "talent", "custom"],
+          "description": "Type of mark relationship governed by this lockup rule."
+        },
+        "ordering": {
+          "type": "string",
+          "enum": ["brand_first", "partner_first", "equal", "contextual"],
+          "description": "Required visual ordering of the brand mark relative to partner or secondary marks."
+        },
+        "contexts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Creative contexts where this lockup rule applies."
+        },
+        "brand_logo_id": {
+          "$ref": "#/definitions/logo_id",
+          "description": "Stable `logos[].id` for the brand logo this lockup rule is anchored on."
+        },
+        "secondary_logo_ids": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/logo_id" },
+          "uniqueItems": true,
+          "description": "Stable `logos[].id` values for secondary, program, sponsor, or partner marks governed by this lockup rule when those marks are represented in this brand.json."
+        },
+        "separator": {
+          "type": "object",
+          "description": "Separator between marks, when required.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["none", "keyline", "space", "divider"],
+              "description": "Separator style."
+            },
+            "color": { "$ref": "#/definitions/color_ref" },
+            "width": { "type": "string", "description": "Separator width, such as 1px." }
+          },
+          "required": ["type"],
+          "additionalProperties": true
+        },
+        "min_gap": {
+          "type": "string",
+          "description": "Minimum gap between marks, expressed in brand terms or units."
+        },
+        "brand_min_optical_weight_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Minimum optical weight of the brand mark relative to partner marks. 1 means at least equal."
+        },
+        "partner_max_optical_weight_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Maximum optical weight of partner marks relative to the brand mark. 1 means no larger than the brand mark. Enforcement is at layout time, not parse time — this value signals to renderers and creative agents how much space to provision for each mark."
+        },
+        "severity": { "$ref": "#/definitions/guideline_severity" },
+        "description": {
+          "type": "string",
+          "description": "Human-readable rationale or source-language summary for the lockup rule."
+        }
+      },
+      "required": ["lockup_type"],
+      "additionalProperties": true
+    },
     "type_scale_entry": {
       "type": "object",
       "description": "A single entry in the type scale",
@@ -1316,6 +1569,21 @@
           "type": "array",
           "items": { "$ref": "#/definitions/colorway" },
           "description": "Named color pairings for consistent foreground/background combinations"
+        },
+        "color_constraints": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/color_constraint" },
+          "description": "Machine-readable constraints for color usage and pairings, such as accent-only rules or forbidden foreground/background combinations."
+        },
+        "logo_usage_rules": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/logo_usage_rule" },
+          "description": "Machine-readable logo selection and placement constraints for minimum size, clear space, backgrounds, and contexts."
+        },
+        "mark_lockups": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/mark_lockup" },
+          "description": "Machine-readable co-brand, partner, sponsor, program, or secondary-mark lockup rules."
         },
         "type_scale": {
           "type": "object",

@@ -202,6 +202,14 @@ function validateRegistryConsistency() {
   if (missingSchemas.length > 0) {
     return `Registry references missing schemas: ${missingSchemas.join(', ')}`;
   }
+
+  const requiredDiscoverableSchemas = [
+    '/schemas/enums/logo-slot.json'
+  ];
+  const missingRegistryRefs = requiredDiscoverableSchemas.filter(ref => !registryRefs.has(ref));
+  if (missingRegistryRefs.length > 0) {
+    return `Required schemas missing from registry: ${missingRegistryRefs.join(', ')}`;
+  }
   
   return true;
 }

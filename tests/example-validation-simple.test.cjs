@@ -151,6 +151,23 @@ async function runTests() {
     await validateExample(example.data, example.schema, example.description);
   }
 
+  for (const fixture of [
+    {
+      path: 'static/examples/brand-json/riverton-kitchen-guidelines.json',
+      description: 'fictional Riverton Kitchen brand.json guideline mapping fixture'
+    },
+    {
+      path: 'static/examples/brand-json/kiran-learning-trust-guidelines.json',
+      description: 'fictional Kiran Learning Trust brand.json guideline mapping fixture'
+    }
+  ]) {
+    await validateExample(
+      JSON.parse(fs.readFileSync(path.join(__dirname, '..', fixture.path), 'utf8')),
+      '/schemas/brand.json',
+      fixture.description
+    );
+  }
+
   // Test request/response examples
   await validateExample(
     {
