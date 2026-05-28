@@ -24,8 +24,15 @@ Upload creative assets:
 ```javascript JavaScript
 import { testAgent } from "@adcp/sdk/testing";
 import { SyncCreativesResponseSchema } from "@adcp/sdk";
+import { randomUUID } from "node:crypto";
 
 const result = await testAgent.syncCreatives({
+  account: {
+    brand: { domain: "acmecorp.com" },
+    operator: "acmecorp.com",
+    sandbox: true,
+  },
+  idempotency_key: randomUUID(),
   creatives: [
     {
       creative_id: "creative_video_001",
@@ -36,6 +43,7 @@ const result = await testAgent.syncCreatives({
       },
       assets: {
         video: {
+          asset_type: "video",
           url: "https://cdn.example.com/summer-sale-30s.mp4",
           width: 1920,
           height: 1080,
@@ -75,9 +83,16 @@ if ("status" in validated && validated.status === "submitted") {
 ```python Python
 import asyncio
 from adcp.testing import test_agent
+from uuid import uuid4
 
 async def main():
     result = await test_agent.simple.sync_creatives(
+        account={
+            'brand': {'domain': 'acmecorp.com'},
+            'operator': 'acmecorp.com',
+            'sandbox': True
+        },
+        idempotency_key=str(uuid4()),
         creatives=[{
             'creative_id': 'creative_video_001',
             'name': 'Summer Sale 30s',
@@ -87,6 +102,7 @@ async def main():
             },
             'assets': {
                 'video': {
+                    'asset_type': 'video',
                     'url': 'https://cdn.example.com/summer-sale-30s.mp4',
                     'width': 1920,
                     'height': 1080,
@@ -123,6 +139,7 @@ asyncio.run(main())
 | Parameter         | Type       | Required | Description                                                                                                                                                              |
 | ----------------- | ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `account`         | object     | Yes      | Account reference identifying the advertiser/workspace for this sync ([account-ref](/docs/accounts/overview)) |
+| `idempotency_key` | string     | Yes      | Client-generated key that makes retries safe. Use a fresh UUID or other unique value per request. |
 | `creatives`       | Creative[] | Yes      | Creative assets to upload/update (max 100)                                                                                                                               |
 | `creative_ids`    | string[]   | No       | Optional filter to limit sync scope to specific creative IDs. Only these creatives are affected, others remain untouched. Useful for partial updates and error recovery. |
 | `assignments`     | array      | No       | Array of `{creative_id, package_id}` objects for bulk assignment. Optional `weight` and `placement_ids` per assignment.                                                  |
@@ -219,8 +236,15 @@ Upload multiple creatives in one call:
 ```javascript JavaScript
 import { testAgent } from "@adcp/sdk/testing";
 import { SyncCreativesResponseSchema } from "@adcp/sdk";
+import { randomUUID } from "node:crypto";
 
 const result = await testAgent.syncCreatives({
+  account: {
+    brand: { domain: "acmecorp.com" },
+    operator: "acmecorp.com",
+    sandbox: true,
+  },
+  idempotency_key: randomUUID(),
   creatives: [
     {
       creative_id: "creative_display_001",
@@ -231,6 +255,7 @@ const result = await testAgent.syncCreatives({
       },
       assets: {
         image: {
+          asset_type: "image",
           url: "https://cdn.example.com/banner-300x250.jpg",
           width: 300,
           height: 250,
@@ -246,6 +271,7 @@ const result = await testAgent.syncCreatives({
       },
       assets: {
         video: {
+          asset_type: "video",
           url: "https://cdn.example.com/demo-15s.mp4",
           width: 1920,
           height: 1080,
@@ -262,6 +288,7 @@ const result = await testAgent.syncCreatives({
       },
       assets: {
         image: {
+          asset_type: "image",
           url: "https://cdn.example.com/banner-728x90.jpg",
           width: 728,
           height: 90,
@@ -284,7 +311,7 @@ if ("errors" in validated && validated.errors) {
 if ("creatives" in validated) {
   console.log(`Successfully synced ${validated.creatives.length} creatives`);
   validated.creatives.forEach((creative) => {
-    console.log(`  ${creative.name}: ${creative.platform_id}`);
+    console.log(`  ${creative.creative_id}: ${creative.action}`);
   });
 }
 ```
@@ -292,9 +319,16 @@ if ("creatives" in validated) {
 ```python Python
 import asyncio
 from adcp.testing import test_agent
+from uuid import uuid4
 
 async def main():
     result = await test_agent.simple.sync_creatives(
+        account={
+            'brand': {'domain': 'acmecorp.com'},
+            'operator': 'acmecorp.com',
+            'sandbox': True
+        },
+        idempotency_key=str(uuid4()),
         creatives=[
             {
                 'creative_id': 'creative_display_001',
@@ -305,6 +339,7 @@ async def main():
                 },
                 'assets': {
                     'image': {
+                        'asset_type': 'image',
                         'url': 'https://cdn.example.com/banner-300x250.jpg',
                         'width': 300,
                         'height': 250
@@ -320,6 +355,7 @@ async def main():
                 },
                 'assets': {
                     'video': {
+                        'asset_type': 'video',
                         'url': 'https://cdn.example.com/demo-15s.mp4',
                         'width': 1920,
                         'height': 1080,
@@ -336,6 +372,7 @@ async def main():
                 },
                 'assets': {
                     'image': {
+                        'asset_type': 'image',
                         'url': 'https://cdn.example.com/banner-728x90.jpg',
                         'width': 728,
                         'height': 90
@@ -351,7 +388,7 @@ async def main():
 
     print(f"Successfully synced {len(result.creatives)} creatives")
     for creative in result.creatives:
-        print(f"  {creative.name}: {creative.platform_id}")
+        print(f"  {creative.creative_id}: {creative.action}")
 
 asyncio.run(main())
 ```
@@ -367,8 +404,15 @@ Use the creative agent to generate creatives from brand identity data. See the [
 ```javascript JavaScript
 import { testAgent } from "@adcp/sdk/testing";
 import { SyncCreativesResponseSchema } from "@adcp/sdk";
+import { randomUUID } from "node:crypto";
 
 const result = await testAgent.syncCreatives({
+  account: {
+    brand: { domain: "acmecorp.com" },
+    operator: "acmecorp.com",
+    sandbox: true,
+  },
+  idempotency_key: randomUUID(),
   creatives: [
     {
       creative_id: "creative_gen_001",
@@ -378,8 +422,9 @@ const result = await testAgent.syncCreatives({
         id: "display_300x250",
       },
       assets: {
-        manifest: {
-          url: "https://cdn.example.com/brand.json",
+        prompt: {
+          asset_type: "text",
+          content: "Create a summer banner for outdoor enthusiasts. Headline: Summer gear built for every trail. CTA: Shop the collection.",
         },
       },
     },
@@ -407,9 +452,16 @@ if ("creatives" in validated) {
 ```python Python
 import asyncio
 from adcp.testing import test_agent
+from uuid import uuid4
 
 async def main():
     result = await test_agent.simple.sync_creatives(
+        account={
+            'brand': {'domain': 'acmecorp.com'},
+            'operator': 'acmecorp.com',
+            'sandbox': True
+        },
+        idempotency_key=str(uuid4()),
         creatives=[{
             'creative_id': 'creative_gen_001',
             'name': 'AI-Generated Summer Banner',
@@ -418,8 +470,9 @@ async def main():
                 'id': 'display_300x250'
             },
             'assets': {
-                'manifest': {
-                    'url': 'https://cdn.example.com/brand.json'
+                'prompt': {
+                    'asset_type': 'text',
+                    'content': 'Create a summer banner for outdoor enthusiasts. Headline: Summer gear built for every trail. CTA: Shop the collection.'
                 }
             }
         }]
@@ -445,8 +498,15 @@ Validate creative configuration without uploading:
 ```javascript JavaScript
 import { testAgent } from "@adcp/sdk/testing";
 import { SyncCreativesResponseSchema } from "@adcp/sdk";
+import { randomUUID } from "node:crypto";
 
 const result = await testAgent.syncCreatives({
+  account: {
+    brand: { domain: "acmecorp.com" },
+    operator: "acmecorp.com",
+    sandbox: true,
+  },
+  idempotency_key: randomUUID(),
   dry_run: true,
   creatives: [
     {
@@ -458,6 +518,7 @@ const result = await testAgent.syncCreatives({
       },
       assets: {
         video: {
+          asset_type: "video",
           url: "https://cdn.example.com/test-video.mp4",
           width: 1920,
           height: 1080,
@@ -485,9 +546,16 @@ if ("errors" in validated && validated.errors && validated.errors.length > 0) {
 ```python Python
 import asyncio
 from adcp.testing import test_agent
+from uuid import uuid4
 
 async def main():
     result = await test_agent.simple.sync_creatives(
+        account={
+            'brand': {'domain': 'acmecorp.com'},
+            'operator': 'acmecorp.com',
+            'sandbox': True
+        },
+        idempotency_key=str(uuid4()),
         dry_run=True,
         creatives=[{
             'creative_id': 'creative_test_001',
@@ -498,6 +566,7 @@ async def main():
             },
             'assets': {
                 'video': {
+                    'asset_type': 'video',
                     'url': 'https://cdn.example.com/test-video.mp4',
                     'width': 1920,
                     'height': 1080,
@@ -527,9 +596,16 @@ Update only specific creatives from a large library without affecting others:
 ```javascript JavaScript
 import { testAgent } from "@adcp/sdk/testing";
 import { SyncCreativesResponseSchema } from "@adcp/sdk";
+import { randomUUID } from "node:crypto";
 
 // Update just 2 creatives out of 100+ in the library
 const result = await testAgent.syncCreatives({
+  account: {
+    brand: { domain: "acmecorp.com" },
+    operator: "acmecorp.com",
+    sandbox: true,
+  },
+  idempotency_key: randomUUID(),
   creative_ids: ["creative_video_001", "creative_display_001"],
   creatives: [
     {
@@ -541,6 +617,7 @@ const result = await testAgent.syncCreatives({
       },
       assets: {
         video: {
+          asset_type: "video",
           url: "https://cdn.example.com/updated-video.mp4",
           width: 1920,
           height: 1080,
@@ -557,6 +634,7 @@ const result = await testAgent.syncCreatives({
       },
       assets: {
         image: {
+          asset_type: "image",
           url: "https://cdn.example.com/updated-banner.jpg",
           width: 300,
           height: 250,
@@ -586,10 +664,17 @@ if ("creatives" in validated) {
 ```python Python
 import asyncio
 from adcp.testing import test_agent
+from uuid import uuid4
 
 async def main():
     # Update just 2 creatives out of 100+ in the library
     result = await test_agent.simple.sync_creatives(
+        account={
+            'brand': {'domain': 'acmecorp.com'},
+            'operator': 'acmecorp.com',
+            'sandbox': True
+        },
+        idempotency_key=str(uuid4()),
         creative_ids=['creative_video_001', 'creative_display_001'],
         creatives=[
             {
@@ -601,6 +686,7 @@ async def main():
                 },
                 'assets': {
                     'video': {
+                        'asset_type': 'video',
                         'url': 'https://cdn.example.com/updated-video.mp4',
                         'width': 1920,
                         'height': 1080,
@@ -617,6 +703,7 @@ async def main():
                 },
                 'assets': {
                     'image': {
+                        'asset_type': 'image',
                         'url': 'https://cdn.example.com/updated-banner.jpg',
                         'width': 300,
                         'height': 250

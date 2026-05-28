@@ -54,6 +54,15 @@ testable: true
 ```javascript test=false
 // This code will NOT be tested
 ```
+
+```bash requires-env=ADCP_AUTH_TOKEN
+# Skipped unless ADCP_AUTH_TOKEN is set
+uvx adcp https://test-agent.adcontextprotocol.org/sales/mcp get_products '{}' --auth $ADCP_AUTH_TOKEN
+```
+
+```javascript integration=true
+// Skipped by default; run with --integration or SNIPPET_INTEGRATION=true.
+```
 ````
 
 **Supported languages:**
@@ -166,6 +175,7 @@ const result = await agent.someMethod();
 - `--file` flag - always tests the specified file
 - `--all` flag - tests everything but doesn't clear cache
 - `--clear-cache` flag - deletes cache then tests everything
+- `--integration` flag - includes snippets marked `integration=true`
 
 ### Manual cache management
 ```bash

@@ -54,6 +54,22 @@ console.log(`Found ${products.products.length} products`);
 ```
 ````
 
+### Snippet Metadata
+
+Use snippet metadata for examples that need local preconditions:
+
+````markdown
+```bash requires-env=ADCP_AUTH_TOKEN
+uvx adcp https://test-agent.adcontextprotocol.org/sales/mcp get_products '{}' --auth $ADCP_AUTH_TOKEN
+```
+
+```javascript integration=true
+// Runs only when snippet integration tests are enabled.
+```
+````
+
+`requires-env=NAME` skips the snippet when the named environment variable is not set. `integration=true` skips the snippet in the default local run; execute those examples with `node tests/snippet-validation.test.cjs --integration` or `SNIPPET_INTEGRATION=true`.
+
 ### Using Test Helpers
 
 For simpler examples, use the built-in test helpers from client libraries:
@@ -254,7 +270,7 @@ npm test
 Or specifically run the snippet tests:
 
 ```bash
-node tests/snippet-validation.test.js
+node tests/snippet-validation.test.cjs
 ```
 
 This will:
@@ -263,6 +279,8 @@ This will:
 3. Extract ALL code blocks from those pages
 4. Execute each snippet and report results
 5. Exit with error if any tests fail
+
+Integration-only snippets are skipped unless `--integration` is passed or `SNIPPET_INTEGRATION=true` is set.
 
 ### In CI/CD
 
