@@ -213,6 +213,8 @@ When the underlying resource returns to a serviceable state (audience re-syncs, 
 
 When a buy's `health` transitions or an impairment is added/removed, the seller fires an `impairment` notification against the buy's `push_notification_config`. The payload reuses the `impairment` object shape plus the buy's updated `health`. See the [persistent webhook contract](/docs/building/by-layer/L3/webhooks#persistent-channel-contract) for delivery semantics (at-least-once, no-ordering, coalescence, replay via snapshot).
 
+Impairment webhooks identify affected packages with `package_ids[]` by design. Buyers that need package-level correlation context, such as `context.buyer_ref`, should call `get_media_buys` after receiving an impairment fire and read the package snapshot.
+
 ### Materiality coverage
 
 The MUST-strength materiality rule applies to resource types where the resource → buy join is cheap and 1:N — audience, event_source, property. For creative and catalog_item, materiality is SHOULD-strength: a creative in a large pool may not degrade serving when removed, and the join is more expensive for sellers to compute. Implementers SHOULD report conservatively when uncertain and MUST NOT report when serving is provably unaffected.
