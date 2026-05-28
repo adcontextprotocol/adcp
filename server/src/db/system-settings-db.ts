@@ -59,6 +59,11 @@ export interface AnnouncementChannelSetting {
   channel_name: string | null;
 }
 
+export interface S2CanonicalFormatsDeltaReleaseSetting {
+  adcp_3_1_ga_at: string | null;
+  criteria_deployed_at: string | null;
+}
+
 // ============== Setting Keys ==============
 
 export const SETTING_KEYS = {
@@ -70,6 +75,7 @@ export const SETTING_KEYS = {
   ERROR_SLACK_CHANNEL: 'error_slack_channel',
   EDITORIAL_SLACK_CHANNEL: 'editorial_slack_channel',
   ANNOUNCEMENT_SLACK_CHANNEL: 'announcement_slack_channel',
+  CERTIFICATION_S2_CANONICAL_FORMATS_DELTA_RELEASE: 'certification_s2_canonical_formats_delta_release',
 } as const;
 
 // ============== Generic Operations ==============
@@ -342,5 +348,25 @@ export async function setAnnouncementChannel(
     SETTING_KEYS.ANNOUNCEMENT_SLACK_CHANNEL,
     { channel_id: channelId, channel_name: channelName },
     updatedBy
+  );
+}
+
+// ============== Certification Protocol-Update Gates ==============
+
+export async function getS2CanonicalFormatsDeltaRelease(): Promise<S2CanonicalFormatsDeltaReleaseSetting> {
+  const result = await getSetting<S2CanonicalFormatsDeltaReleaseSetting>(
+    SETTING_KEYS.CERTIFICATION_S2_CANONICAL_FORMATS_DELTA_RELEASE,
+  );
+  return result ?? { adcp_3_1_ga_at: null, criteria_deployed_at: null };
+}
+
+export async function setS2CanonicalFormatsDeltaRelease(
+  value: S2CanonicalFormatsDeltaReleaseSetting,
+  updatedBy?: string
+): Promise<void> {
+  await setSetting<S2CanonicalFormatsDeltaReleaseSetting>(
+    SETTING_KEYS.CERTIFICATION_S2_CANONICAL_FORMATS_DELTA_RELEASE,
+    value,
+    updatedBy,
   );
 }
