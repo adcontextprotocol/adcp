@@ -104,7 +104,9 @@
     "lint:schema-links": "node scripts/lint-schema-links.mjs --check",
     "fix:schema-links": "node scripts/lint-schema-links.mjs",
     "test:schema-links": "node scripts/remark-schema-links/test.mjs",
-    "dev:docs": "node scripts/dev-docs.mjs"
+    "dev:docs": "node scripts/dev-docs.mjs",
+    "docs:example-coverage": "node scripts/docs-example-coverage.cjs",
+    "docs:json-field-audit": "node scripts/docs-json-field-audit.cjs"
   },
   "dependencies": {
     "@adcp/sdk": "^8.1.0-beta.14",
