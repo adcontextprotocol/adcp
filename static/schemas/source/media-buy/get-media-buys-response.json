@@ -213,7 +213,7 @@
                 },
                 "product_id": {
                   "type": "string",
-                  "description": "Product identifier this package is purchased from. For packages created from an explicit create_media_buy package request, every response package object that represents that requested package MUST echo the request package's product_id.",
+                  "description": "Product identifier this package is purchased from. For packages created from an explicit create_media_buy package request, 3.1+ sellers MUST echo the request package's product_id on every response package object that represents that requested package.",
                   "x-entity": "product"
                 },
                 "budget": {
