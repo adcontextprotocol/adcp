@@ -277,10 +277,10 @@
         "clear_space": "1x full mark height",
         "allowed_backgrounds": [
           {
-            "role": "warm_gray"
+            "name": "warm_gray"
           },
           {
-            "role": "white"
+            "name": "white"
           }
         ],
         "forbidden_contexts": [
@@ -304,7 +304,7 @@
         "separator": {
           "type": "keyline",
           "color": {
-            "role": "charcoal"
+            "name": "charcoal"
           },
           "width": "1px"
         },

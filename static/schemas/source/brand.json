@@ -168,15 +168,15 @@
     },
     "color_ref": {
       "type": "object",
-      "description": "Reference to a brand color or usage surface for machine-readable guideline constraints. Use role for keys in colors, value for a literal hex color, and surface for layout surfaces such as background or text.",
+      "description": "Reference to a brand color or usage surface for machine-readable guideline constraints. Use name for palette lookup keys in colors, value for a literal hex color, and surface for layout surfaces such as background or text.",
       "properties": {
-        "role": {
+        "name": {
           "type": "string",
-          "description": "Key from the colors object, such as primary, secondary, text, or a custom palette role."
+          "description": "Key from the colors object, such as market_yellow, river_green, or any custom palette key. Unambiguous lookup into colors{}."
         },
         "value": {
           "$ref": "#/definitions/hex_color",
-          "description": "Literal hex color when no palette role exists."
+          "description": "Literal hex color when no palette key exists."
         },
         "surface": {
           "type": "string",
@@ -185,7 +185,7 @@
         }
       },
       "oneOf": [
-        { "required": ["role"] },
+        { "required": ["name"] },
         { "required": ["value"] },
         { "required": ["surface"] }
       ],
@@ -1341,7 +1341,7 @@
         "partner_max_optical_weight_ratio": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "description": "Maximum optical weight of partner marks relative to the brand mark. 1 means no larger than the brand mark."
+          "description": "Maximum optical weight of partner marks relative to the brand mark. 1 means no larger than the brand mark. Enforcement is at layout time, not parse time — this value signals to renderers and creative agents how much space to provision for each mark."
         },
         "severity": { "$ref": "#/definitions/guideline_severity" },
         "description": {

@@ -47,7 +47,7 @@ Add definitions to `static/schemas/source/brand.json` and expose them on `visual
   "visual_guidelines": {
     "color_constraints": [
       {
-        "color": { "role": "market_yellow" },
+        "color": { "name": "market_yellow" },
         "applies_to": ["accent"],
         "forbidden_on": [{ "surface": "background" }],
         "severity": "must",
@@ -69,7 +69,7 @@ Add definitions to `static/schemas/source/brand.json` and expose them on `visual
       {
         "lockup_type": "co_brand",
         "ordering": "brand_first",
-        "separator": { "type": "keyline", "color": { "role": "text" }, "width": "1px" },
+        "separator": { "type": "keyline", "color": { "name": "text" }, "width": "1px" },
         "min_gap": "1x clear space",
         "partner_max_optical_weight_ratio": 1,
         "description": "Separate partner marks with a keyline and keep partner marks optically no larger than the brand mark."
@@ -85,11 +85,11 @@ Use for rules that filter color selection:
 
 ```jsonc
 {
-  "color": { "role": "market_yellow" },
+  "color": { "name": "market_yellow" },
   "applies_to": ["accent"],
   "allowed_on": [{ "surface": "accent" }],
   "forbidden_on": [{ "surface": "background" }, { "surface": "text" }],
-  "never_pair_with": [{ "role": "lettuce_green" }],
+  "never_pair_with": [{ "name": "lettuce_green" }],
   "contexts": ["digital", "print", "ctv_end_card"],
   "severity": "must",
   "description": "Market yellow is accent only."
@@ -98,7 +98,7 @@ Use for rules that filter color selection:
 
 `color` and list entries use a `color_ref` shape:
 
-- `{ "role": "primary" }` references a key in `colors`.
+- `{ "name": "primary" }` references a key in `colors`.
 - `{ "value": "#FFD449" }` references a literal color.
 - `{ "surface": "background" }` references a usage surface rather than a palette value.
 
@@ -115,8 +115,8 @@ Use for constraints that agents can check when selecting or placing a logo:
   "contexts": ["display", "ctv_end_card"],
   "minimum_size": { "height": "18px" },
   "clear_space": "1x cap height",
-  "allowed_backgrounds": [{ "role": "white" }, { "role": "linen" }],
-  "forbidden_backgrounds": [{ "role": "market_yellow" }],
+  "allowed_backgrounds": [{ "name": "white" }, { "name": "linen" }],
+  "forbidden_backgrounds": [{ "name": "market_yellow" }],
   "forbidden_contexts": ["photography_without_knockout"],
   "severity": "must"
 }
@@ -206,7 +206,7 @@ Use for co-brand, partner, sponsor, program, or secondary-mark lockups:
   "contexts": ["partner_campaign", "sponsored_content"],
   "separator": {
     "type": "keyline",
-    "color": { "role": "text" },
+    "color": { "name": "text" },
     "width": "1px"
   },
   "min_gap": "1x clear space",

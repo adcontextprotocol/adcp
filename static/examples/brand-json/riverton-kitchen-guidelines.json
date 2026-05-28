@@ -224,7 +224,7 @@
     "color_constraints": [
       {
         "color": {
-          "role": "market_yellow"
+          "name": "market_yellow"
         },
         "applies_to": [
           "accent"
@@ -250,11 +250,11 @@
       },
       {
         "color": {
-          "role": "market_yellow"
+          "name": "market_yellow"
         },
         "never_pair_with": [
           {
-            "role": "linen"
+            "name": "linen"
           }
         ],
         "severity": "should",
@@ -276,15 +276,15 @@
         "clear_space": "1x cap height",
         "allowed_backgrounds": [
           {
-            "role": "white"
+            "name": "white"
           },
           {
-            "role": "linen"
+            "name": "linen"
           }
         ],
         "forbidden_backgrounds": [
           {
-            "role": "market_yellow"
+            "name": "market_yellow"
           }
         ],
         "forbidden_contexts": [
