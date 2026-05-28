@@ -528,6 +528,20 @@ describe('tenant routing smoke', () => {
     }
   }, 15000);
 
+  it('advertises creative billing discriminator on the current creative tenant', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/creative/mcp`;
+      await initializeTenant(url);
+      const capabilitiesBody = await callTenantTool(url, 2, 'get_adcp_capabilities', {}) as {
+        result?: { structuredContent?: { creative?: Record<string, unknown> } };
+      };
+      expect(capabilitiesBody.result?.structuredContent?.creative?.bills_through_adcp).toBe(false);
+    } finally {
+      await close();
+    }
+  }, 15000);
+
   it('enforces idempotency on tenant report_usage custom tools', async () => {
     const { baseUrl, close } = await bootServer();
     try {

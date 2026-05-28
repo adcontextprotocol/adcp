@@ -38,6 +38,7 @@ interface McpResultEnvelope {
   result?: {
     structuredContent?: {
       accounts?: Array<{
+        account_id?: string;
         action?: string;
         status?: string;
         billing?: string;
@@ -155,6 +156,7 @@ describe('v6 /sales/mcp sync_accounts billing gates', () => {
     }, 2);
     const acct = env.result?.structuredContent?.accounts?.[0];
     expect(acct?.status).toBe('active');
+    expect(acct?.account_id).toEqual(expect.any(String));
     expect(acct?.billing).toBe('operator');
     expect(acct?.errors).toBeUndefined();
   });
@@ -171,6 +173,7 @@ describe('v6 /sales/mcp sync_accounts billing gates', () => {
     }, 3);
     const acct = env.result?.structuredContent?.accounts?.[0];
     expect(acct?.status).toBe('active');
+    expect(acct?.account_id).toEqual(expect.any(String));
     expect(acct?.billing).toBe('agent');
   });
 
@@ -214,9 +217,10 @@ describe('v6 /sales/mcp sync_accounts billing gates', () => {
       idempotency_key: freshKey('v6-gate-unrecognized'),
     }, 4);
     const acct = env.result?.structuredContent?.accounts?.[0];
-    // No principal → no per-agent gate. Capability gate accepts agent
-    // (training-agent advertises all three values), so account provisions.
+    // No explicit commercial relationship → neutral sandbox agent. The
+    // seller-wide capability gate accepts agent billing, so account provisions.
     expect(acct?.status).toBe('active');
+    expect(acct?.account_id).toEqual(expect.any(String));
     expect(acct?.billing).toBe('agent');
   });
 
