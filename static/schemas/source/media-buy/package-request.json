@@ -15,7 +15,7 @@
   "properties": {
     "product_id": {
       "type": "string",
-      "description": "Product ID for this package. Every response package object that represents this requested package MUST echo this value, allowing buyers to correlate seller-assigned package_id values back to requested products without relying on deprecated top-level buyer_ref fields.",
+      "description": "Product ID for this package. 3.1+ sellers MUST echo this value on every response package object that represents this requested package, allowing buyers to correlate seller-assigned package_id values back to requested products without relying on deprecated top-level buyer_ref fields.",
       "x-entity": "product"
     },
     "format_ids": {
