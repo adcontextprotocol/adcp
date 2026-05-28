@@ -95,9 +95,9 @@ Three endpoints answer different questions about who is in the registry. They sp
 
 | Endpoint | Auth surface | What it returns |
 |----------|--------------|-----------------|
-| `GET /api/registry/agents` | Public catalog; authenticated AAO API-tier members also see `members_only` agents. | The AAO-attested member-enrolled agent catalog, with optional filters and enrichment for health, capabilities, properties, compliance, measurement metrics, and verification state. |
-| `GET /api/registry/operator?domain=X` | Auth-aware: anonymous callers see `public`; AAO API-tier members also see `members_only`; profile owners can also see `private`. | The agents operated by the queried entity plus the publishers that trust those agents. |
-| `GET /api/registry/publisher?domain=X` | Public and unauthenticated; AAO membership does not change the response shape. | The inventory the queried entity publishes (`properties[]`) and the agents it authorizes (`authorized_agents[]` from `adagents.json`). |
+| `GET /api/registry/agents` | Public catalog; authenticated AgenticAdvertising.org API-tier members also see `members_only` agents. | The AgenticAdvertising.org-attested member-enrolled agent catalog, with optional filters and enrichment for health, capabilities, properties, compliance, measurement metrics, and verification state. |
+| `GET /api/registry/operator?domain=X` | Auth-aware: anonymous callers see `public`; AgenticAdvertising.org API-tier members also see `members_only`; profile owners can also see `private`. | The agents operated by the queried entity plus the publishers that trust those agents. |
+| `GET /api/registry/publisher?domain=X` | Public and unauthenticated; AgenticAdvertising.org membership does not change the response shape. | The inventory the queried entity publishes (`properties[]`) and the agents it authorizes (`authorized_agents[]` from `adagents.json`). |
 
 **`GET /api/registry/agents`** — use this when you want to browse or filter the public agent population. See [Registering an agent](/docs/registry/registering-an-agent) for how agents end up in this catalog. Reference: [List agents endpoint](#agent-discovery) under Agent Discovery.
 
