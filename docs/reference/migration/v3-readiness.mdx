@@ -143,6 +143,52 @@ If your agent used `buyer_ref` for internal tracking or correlation (e.g. mappin
 }
 ```
 
+For package-level line-item correlation, keep the buy-level context separate from each package's fallback correlation handle:
+
+```json test=false
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655440001",
+  "context": {
+    "internal_campaign_id": "camp-2024-q3"
+  },
+  "brand": {
+    "domain": "example-brand.test"
+  },
+  "packages": [
+    {
+      "product_id": "prod_weekday_display",
+      "pricing_option_id": "cpm_usd_auction",
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250_image"
+        }
+      ],
+      "budget": 12000,
+      "context": {
+        "buyer_ref": "line-001"
+      }
+    },
+    {
+      "product_id": "prod_weekend_video",
+      "pricing_option_id": "cpm_usd_auction",
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "video_standard_30s"
+        }
+      ],
+      "budget": 18000,
+      "context": {
+        "buyer_ref": "line-002"
+      }
+    }
+  ],
+  "start_time": "2026-07-01T00:00:00Z",
+  "end_time": "2026-07-31T23:59:59Z"
+}
+```
+
 ---
 
 ## 8. Implement `sync_accounts`
