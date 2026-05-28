@@ -392,8 +392,9 @@ function getCriterionIds(mod: certDb.CertificationModule | null): string[] {
 function checkDemonstrations(
   mod: certDb.CertificationModule | null,
   checkpoint: certDb.TeachingCheckpoint,
+  requiredIds?: readonly string[],
 ): string | null {
-  const allIds = getCriterionIds(mod);
+  const allIds = requiredIds ? [...requiredIds] : getCriterionIds(mod);
   if (allIds.length === 0) return null;
 
   const verified = new Set(checkpoint.demonstrations_verified ?? []);
@@ -412,6 +413,15 @@ function checkDemonstrations(
 
   const details = unverified.map(id => `${id}: ${idToText.get(id) || id}`);
   return `Required demonstrations not yet verified:\n- ${details.join('\n- ')}\n\nVerify each through conversation, then save a checkpoint with demonstrations_verified (using criterion IDs) before completing.`;
+}
+
+function checkCriterionEvidence(
+  requiredIds: readonly string[],
+  evidenceByCriterionId: Record<string, string>,
+): string | null {
+  const missingEvidence = requiredIds.filter(id => !evidenceByCriterionId[id]?.trim());
+  if (missingEvidence.length === 0) return null;
+  return `Required demonstration evidence is missing for:\n- ${missingEvidence.join('\n- ')}\n\nSave a checkpoint with demonstration_evidence for each criterion ID before completing.`;
 }
 
 /**
@@ -543,6 +553,16 @@ function buildShareLinks(
 
   lines.push('- [View all credentials](/certification.html)');
   return lines;
+}
+
+function formatUtcDate(value: string | null): string {
+  if (!value) return 'the published deadline';
+  return new Date(value).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
 }
 
 /**
@@ -1963,12 +1983,13 @@ export function createCertificationToolHandlers(
     if (!userId) return 'You need to be logged in to see your certification progress.';
 
     try {
-      const [progress, trackProgress, credentials, userCredentials, tracks] = await Promise.all([
+      const [progress, trackProgress, credentials, userCredentials, tracks, s2DeltaStatus] = await Promise.all([
         certDb.getProgress(userId),
         certDb.getTrackProgress(userId),
         certDb.getCredentials(),
         certDb.getUserCredentials(userId),
         certDb.getTracks(),
+        certDb.getS2CanonicalFormatsDeltaStatus(userId),
       ]);
 
       const lines: string[] = ['# Your certification progress\n'];
@@ -1983,6 +2004,21 @@ export function createCertificationToolHandlers(
         for (const cred of earnedCreds) {
           const uc = userCredentials.find(u => u.credential_id === cred.id);
           lines.push(`- **${cred.name}** (Level ${cred.tier}) — earned ${uc ? new Date(uc.awarded_at).toLocaleDateString() : ''}`);
+        }
+        lines.push('');
+      }
+
+      if (s2DeltaStatus.active && s2DeltaStatus.status !== 'not_required') {
+        lines.push('## Protocol updates');
+        if (s2DeltaStatus.status === 'delta_available') {
+          lines.push(`- **S2 Creative canonical formats update** — complete the S2 canonical formats delta by ${formatUtcDate(s2DeltaStatus.delta_window_closes_at)} to keep the S2 credential current without retaking the full module.`);
+          lines.push(`  Remaining criteria: ${s2DeltaStatus.missing_criterion_ids.join(', ')}`);
+          lines.push('  If you believe you were targeted in error, email certification@agenticadvertising.org for review.');
+          lines.push('  To begin, say "start capstone S2".');
+        } else if (s2DeltaStatus.status === 'delta_completed') {
+          lines.push('- **S2 Creative canonical formats update** — completed.');
+        } else if (s2DeltaStatus.status === 'full_recertification_required') {
+          lines.push('- **S2 Creative canonical formats update** — the delta path is no longer available. The current S2 module is required for renewal.');
         }
         lines.push('');
       }
@@ -2168,6 +2204,74 @@ export function createCertificationToolHandlers(
       // Prevent restarting completed modules
       const existingMod = await certDb.getModuleProgress(userId, moduleId);
       if (existingMod && (existingMod.status === 'completed' || existingMod.status === 'tested_out')) {
+        if (moduleId === certDb.S2_CANONICAL_FORMATS_MODULE_ID) {
+          const s2DeltaStatus = await certDb.getS2CanonicalFormatsDeltaStatus(userId);
+          if (
+            s2DeltaStatus.active
+            && (s2DeltaStatus.status === 'delta_available' || s2DeltaStatus.status === 'delta_completed')
+          ) {
+            const expired = await certDb.expireStaleAttempts(userId, moduleId);
+            if (expired > 0) {
+              logger.info({ userId, moduleId, expired }, 'Auto-expired stale S2 delta attempts');
+            }
+            const active = await certDb.getActiveAttemptForModule(userId, moduleId);
+            if (active) {
+              return `You already have an active S2 canonical formats delta attempt (started ${new Date(active.started_at).toLocaleDateString()}). Continue the delta assessment.\n\nAttempt ID: ${active.id}`;
+            }
+          }
+          if (s2DeltaStatus.active && s2DeltaStatus.status === 'full_recertification_required') {
+            const active = await certDb.getActiveAttemptForModule(userId, moduleId);
+            if (active) {
+              await certDb.cancelAttempt(active.id, 'S2 canonical formats delta window closed');
+            }
+            return `S2 is complete, but the AdCP 3.1 canonical-formats delta window is no longer available. The current S2 module is required for renewal. Contact certification@agenticadvertising.org to reset this module for full recertification.`;
+          }
+          if (s2DeltaStatus.active && s2DeltaStatus.status === 'delta_completed') {
+            return `The S2 canonical formats delta is already complete. Deadline: ${formatUtcDate(s2DeltaStatus.delta_window_closes_at)}.`;
+          }
+          if (s2DeltaStatus.active && s2DeltaStatus.status === 'delta_available') {
+
+            const attempt = await certDb.createAttempt(userId, mod.track_id, options?.threadId, moduleId);
+            const exercises = mod.exercise_definitions as certDb.ExerciseDefinition[] | null;
+            const criteria = mod.assessment_criteria as certDb.AssessmentCriteria | null;
+            const required = new Set(s2DeltaStatus.missing_criterion_ids);
+            const lines = [
+              `# S2 Creative canonical formats delta`,
+              '',
+              `Attempt ID: ${attempt.id}`,
+              `Deadline: ${formatUtcDate(s2DeltaStatus.delta_window_closes_at)}`,
+              '',
+              'This is a targeted AdCP 3.1 protocol update for an existing S2 Creative specialist holder. Assess only the canonical-format criteria listed here; do not retake the full S2 module unless the learner asks for a full review.',
+              '',
+              '## Required delta demonstrations',
+            ];
+
+            for (const ex of exercises ?? []) {
+              const matching = ex.success_criteria.filter(sc => required.has(sc.id));
+              if (matching.length === 0) continue;
+              lines.push(`### ${ex.title}`);
+              lines.push(ex.description);
+              lines.push('**Steps**:');
+              ex.sandbox_actions.forEach(a => lines.push(`- Use \`${a.tool}\`: ${a.guidance}`));
+              lines.push('**Success criteria**:');
+              matching.forEach(sc => lines.push(`- **${sc.id}**: ${sc.text}`));
+              lines.push('');
+            }
+
+            lines.push('## Assessment instructions');
+            lines.push('Conduct a short lab and oral assessment focused on these missing canonical-format criteria. Before completion, call checkpoint_teaching_progress for S2 with demonstrations_verified and demonstration_evidence for every listed criterion ID. Then call complete_certification_exam with the attempt ID above and internal scores. Do not share scores with the learner.');
+
+            if (criteria?.dimensions?.length) {
+              lines.push('');
+              lines.push('**Internal scoring rubric** (do not share with learner):');
+              for (const d of criteria.dimensions) {
+                lines.push(`- **${d.name}** (weight: ${d.weight}%): ${d.description}`);
+              }
+            }
+
+            return lines.join('\n');
+          }
+        }
         return `Module ${moduleId} is already ${existingMod.status.replace('_', ' ')}. You can proceed to the next module or use get_learner_progress to check your overall progress.`;
       }
 
@@ -2336,6 +2440,17 @@ export function createCertificationToolHandlers(
       const examAc = capstoneMod.assessment_criteria as certDb.AssessmentCriteria | undefined;
 
       const capstoneId = capstoneMod.id;
+      const s2DeltaStatus = capstoneId === certDb.S2_CANONICAL_FORMATS_MODULE_ID
+        ? await certDb.getS2CanonicalFormatsDeltaStatus(userId)
+        : null;
+      const isS2CanonicalFormatsDelta = !!(
+        s2DeltaStatus?.active
+        && s2DeltaStatus.status === 'delta_available'
+      );
+      if (capstoneId === certDb.S2_CANONICAL_FORMATS_MODULE_ID && s2DeltaStatus?.status === 'full_recertification_required') {
+        await certDb.cancelAttempt(attempt.id, 'S2 canonical formats delta window closed');
+        return notCompleted(capstoneId, 'state', 'The S2 canonical-formats delta window has closed. This delta attempt cannot be completed; the learner needs the current full S2 module for renewal.');
+      }
 
       // Validate scores against assessment criteria (range, dimensions, floor, threshold)
       const scoreResult = await validateCompletionScores(scores, examAc);
@@ -2375,14 +2490,40 @@ export function createCertificationToolHandlers(
       }
 
       // Verify all required demonstrations from exercise success_criteria
-      const demoError = checkDemonstrations(capstoneMod, examCheckpoint);
-      if (demoError) return notCompleted(capstoneId, 'evidence', demoError);
+      let s2DeltaEvidence: certDb.S2CanonicalFormatsDeltaEvidence | null = null;
+      if (isS2CanonicalFormatsDelta) {
+        s2DeltaEvidence = await certDb.getS2CanonicalFormatsDeltaEvidence(userId);
+        const missingCumulative = certDb.S2_CANONICAL_FORMATS_CRITERION_IDS.filter(
+          id => !s2DeltaEvidence!.verifiedCriterionIds.includes(id),
+        );
+        if (missingCumulative.length > 0) {
+          return notCompleted(capstoneId, 'evidence', `Required demonstrations not yet verified:\n- ${missingCumulative.join('\n- ')}\n\nVerify each through conversation, then save a checkpoint with demonstrations_verified and demonstration_evidence before completing.`);
+        }
+        const evidenceError = checkCriterionEvidence(
+          certDb.S2_CANONICAL_FORMATS_CRITERION_IDS,
+          s2DeltaEvidence.evidenceByCriterionId,
+        );
+        if (evidenceError) return notCompleted(capstoneId, 'evidence', evidenceError);
+      } else {
+        const demoError = checkDemonstrations(capstoneMod, examCheckpoint);
+        if (demoError) return notCompleted(capstoneId, 'evidence', demoError);
+      }
 
       const overallScore = Math.round(scoreResult.weightedAvg);
       const allAboveThreshold = Object.values(scores).every(s => s >= 70);
       const passing = allAboveThreshold && overallScore >= 70;
 
-      await certDb.completeAttempt(attempt.id, scores, overallScore, passing);
+      if (isS2CanonicalFormatsDelta && passing) {
+        await certDb.completeS2CanonicalFormatsDeltaAttempt(
+          attempt.id,
+          userId,
+          scores,
+          overallScore,
+          s2DeltaEvidence!.evidenceByCriterionId,
+        );
+      } else {
+        await certDb.completeAttempt(attempt.id, scores, overallScore, passing);
+      }
 
       // --- From this point the attempt is recorded. Failures below must not ---
       // --- surface as "Failed to record capstone results" to the learner.   ---
@@ -2390,6 +2531,15 @@ export function createCertificationToolHandlers(
       const lines: string[] = [];
 
       if (passing) {
+        if (isS2CanonicalFormatsDelta) {
+          lines.push('# S2 Creative canonical formats delta completed!');
+          lines.push('');
+          lines.push('The learner has demonstrated the AdCP 3.1 canonical-format update criteria. Congratulate them warmly. Do NOT share any scores or percentages.');
+          lines.push('');
+          lines.push('Their existing S2 Creative specialist credential remains current for the AdCP 3.1 canonical-format update.');
+          return lines.join('\n');
+        }
+
         // SUCCESS LINE — pinned by `addie/rules/constraints.md` and by
         // `cert-not-completed-sentinel.test.ts`. If you change the
         // "# Congratulations! The learner passed the capstone!" prefix,
@@ -2469,7 +2619,20 @@ export function createCertificationToolHandlers(
       const progress = await certDb.getProgress(userId);
       const modProgress = progress.find(p => p.module_id === moduleId);
       if (!modProgress || modProgress.status !== 'in_progress') {
-        return `Module ${moduleId} is not in progress. Start the module first with start_certification_module before saving checkpoints.`;
+        const s2DeltaStatus = moduleId === certDb.S2_CANONICAL_FORMATS_MODULE_ID
+          ? await certDb.getS2CanonicalFormatsDeltaStatus(userId)
+          : null;
+        const hasActiveS2DeltaAttempt = moduleId === certDb.S2_CANONICAL_FORMATS_MODULE_ID
+          ? await certDb.getActiveAttemptForModule(userId, moduleId)
+          : null;
+        const canCheckpointS2Delta = !!(
+          hasActiveS2DeltaAttempt
+          && s2DeltaStatus?.active
+          && (s2DeltaStatus.status === 'delta_available' || s2DeltaStatus.status === 'delta_completed')
+        );
+        if (!canCheckpointS2Delta) {
+          return `Module ${moduleId} is not in progress. Start the module first with start_certification_module before saving checkpoints.`;
+        }
       }
 
       // Validate demonstration IDs and evidence keys are real criteria for this module
