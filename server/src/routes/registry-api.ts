@@ -126,6 +126,13 @@ const complianceDb = new ComplianceDatabase();
 const agentSnapshotDb = new AgentSnapshotDatabase();
 const agentContextDb = new AgentContextDatabase();
 
+function isUndefinedTableError(err: unknown): boolean {
+  return typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "42P01";
+}
+
 /** Strip protocol, path, query, and fragment from a URL to extract the domain. */
 function extractDomain(raw: string): string {
   let d = raw.replace(/^https?:\/\//, "");
@@ -4445,8 +4452,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       if (!validateAgentUrlParam(agentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
-      const status = await complianceDb.getComplianceStatus(agentUrl);
       const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+      let statusWithCounts: Awaited<ReturnType<typeof complianceDb.getComplianceStatusWithStoryboardCounts>> = null;
+      try {
+        statusWithCounts = await complianceDb.getComplianceStatusWithStoryboardCounts(agentUrl);
+      } catch (err) {
+        if (!isUndefinedTableError(err)) throw err;
+        logger.warn({ err, agentUrl }, "Storyboard status query skipped because table is missing");
+        const fallbackStatus = await complianceDb.getComplianceStatus(agentUrl);
+        statusWithCounts = fallbackStatus
+          ? { status: fallbackStatus, storyboardCounts: { passing: 0, total: 0 } }
+          : null;
+      }
+      const status = statusWithCounts?.status ?? null;
 
       // If opted out, return minimal response (no ownership check needed —
       // the opt-out preference is enforced uniformly for public endpoints)
@@ -4474,14 +4492,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         });
       }
 
-      // Storyboard counts are supplementary — don't fail the whole response
-      // if the table hasn't been migrated yet
-      let sbCounts = { passing: 0, total: 0 };
-      try {
-        sbCounts = await complianceDb.getStoryboardStatusCounts(agentUrl, { requireRowsForRunId: status.last_run_id });
-      } catch (err) {
-        logger.warn({ err, agentUrl }, "Storyboard status query failed");
-      }
+      const sbCounts = statusWithCounts?.storyboardCounts ?? { passing: 0, total: 0 };
 
       // Verification badges — supplementary, don't fail the response
       let badges: Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>> = [];
@@ -4520,7 +4531,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       let specialismStatus: Record<string, string> = {};
       if (declaredSpecialisms.length > 0) {
         try {
-          const sbStatuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForRunId: status.last_run_id });
+          const sbStatuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForLatestRun: true });
           specialismStatus = computeSpecialismStatus(
             declaredSpecialisms,
             sbStatuses.map(s => ({
@@ -4533,7 +4544,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             })),
           );
         } catch (err) {
-          logger.warn({ err, agentUrl }, "Per-specialism status query failed");
+          if (!isUndefinedTableError(err)) throw err;
+          logger.warn({ err, agentUrl }, "Per-specialism status query skipped because table is missing");
         }
       }
 
@@ -4974,12 +4986,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.json({ agent_url: agentUrl, status: "opted_out", storyboards: [] });
         }
 
-        const complianceStatus = await complianceDb.getComplianceStatus(agentUrl);
         let statuses: Awaited<ReturnType<typeof complianceDb.getStoryboardStatuses>> = [];
         try {
-          statuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForRunId: complianceStatus?.last_run_id });
+          statuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForLatestRun: true });
         } catch (err) {
-          logger.warn({ err, agentUrl }, "Storyboard status query failed (table may not exist)");
+          if (!isUndefinedTableError(err)) throw err;
+          logger.warn({ err, agentUrl }, "Storyboard status query skipped because table is missing");
         }
 
         const enriched = statuses.map(s => {
@@ -5048,7 +5060,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         try {
           statusMap = await complianceDb.bulkGetStoryboardStatuses(nonOptedOut);
         } catch (err) {
-          logger.warn({ err }, "Bulk storyboard status query failed (table may not exist)");
+          if (!isUndefinedTableError(err)) throw err;
+          logger.warn({ err }, "Bulk storyboard status query skipped because table is missing");
         }
 
         const results: Record<string, any> = {};
@@ -5477,9 +5490,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             // Fan out badge issuance so verification badges reflect the new
             // verdict immediately. Matches the per-storyboard owner-test path.
             const declaredSpecialisms = complyResult.agent_profile?.specialisms ?? [];
-              if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0) {
-                try {
-                  await runBadgeFanOut({
+            if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0) {
+              try {
+                await runBadgeFanOut({
                   complianceDb,
                   agentUrl,
                   declaredSpecialisms,

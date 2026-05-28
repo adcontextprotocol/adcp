@@ -37,6 +37,7 @@ const ALL_OWNED_URLS = [
   ownedAgentUrl('paused'),
   ownedAgentUrl('rate-limit'),
   ownedAgentUrl('saved-bearer'),
+  ownedAgentUrl('badge-fanout'),
 ];
 
 // Toggle which user the auth middleware stamps onto the request. Tests
@@ -112,7 +113,9 @@ vi.mock('../../src/addie/services/compliance-testing.js', async () => {
   };
 });
 
-function makeComplianceResult() {
+function makeComplianceResult(options: { specialisms?: string[]; storyboardId?: string } = {}) {
+  const specialisms = options.specialisms ?? [];
+  const storyboardId = options.storyboardId ?? 'media_buy_seller';
   return {
     overall_status: 'passing',
     total_duration_ms: 42,
@@ -128,13 +131,13 @@ function makeComplianceResult() {
       status: 'pass',
       duration_ms: 42,
       scenarios: [{
-        scenario: 'media_buy_seller/capability_discovery',
+        scenario: `${storyboardId}/capability_discovery`,
         overall_passed: true,
         steps: [{ step_id: 'get_adcp_capabilities', passed: true }],
       }],
     }],
     observations: [],
-    agent_profile: { specialisms: [] },
+    agent_profile: { specialisms },
   };
 }
 
@@ -150,9 +153,14 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     await runMigrations();
 
     await pool.query(
-      `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
-       VALUES ($1, 'Test Refresh Org', NOW(), NOW())
-       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      `INSERT INTO organizations (
+         workos_organization_id, name, membership_tier, subscription_status, created_at, updated_at
+       )
+       VALUES ($1, 'Test Refresh Org', 'company_standard', 'active', NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE
+         SET membership_tier = EXCLUDED.membership_tier,
+             subscription_status = EXCLUDED.subscription_status,
+             updated_at = NOW()`,
       [TEST_ORG_ID],
     );
     await pool.query(
@@ -179,6 +187,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
 
   afterAll(async () => {
     const allUrls = [...ALL_OWNED_URLS, OTHER_AGENT_URL];
+    await pool.query('DELETE FROM agent_verification_badges WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_compliance_step_diagnostics WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_storyboard_status WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_compliance_status WHERE agent_url = ANY($1)', [allUrls]);
@@ -336,5 +345,38 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     );
 
     await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
+  });
+
+  it('fans out badge issuance for an owner refresh with a passing specialism', async () => {
+    const agentUrl = ownedAgentUrl('badge-fanout');
+    complyMock.mockResolvedValueOnce(makeComplianceResult({
+      specialisms: ['sales-broadcast-tv'],
+      storyboardId: 'sales_broadcast_tv',
+    }));
+
+    const res = await request(app).post(url(agentUrl)).send();
+
+    expect(res.status).toBe(200);
+    expect(res.body.compliance).toMatchObject({
+      ran: true,
+      storyboards_passing: 1,
+      storyboards_total: 1,
+    });
+
+    const badges = await pool.query(
+      `SELECT role, status, verified_specialisms, membership_org_id
+       FROM agent_verification_badges
+       WHERE agent_url = $1
+       ORDER BY role`,
+      [agentUrl],
+    );
+    expect(badges.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'media-buy',
+        status: 'active',
+        verified_specialisms: ['sales-broadcast-tv'],
+        membership_org_id: TEST_ORG_ID,
+      }),
+    ]));
   });
 });
