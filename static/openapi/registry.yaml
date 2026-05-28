@@ -579,6 +579,16 @@ components:
             - degraded
             - failing
             - unknown
+        requested_compliance_target:
+          type:
+            - string
+            - "null"
+          description: Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta.
+        adcp_version:
+          type:
+            - string
+            - "null"
+          description: Concrete AdCP compliance bundle version used for the latest run, e.g. 3.0.12.
         lifecycle_stage:
           type: string
           enum:
@@ -1396,6 +1406,16 @@ components:
       properties:
         agent_url:
           type: string
+        requested_compliance_target:
+          type:
+            - string
+            - "null"
+          description: Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Null for legacy rows before target recording.
+        adcp_version:
+          type:
+            - string
+            - "null"
+          description: Concrete AdCP compliance bundle version used for the latest run, e.g. 3.0.12. Null for legacy rows before version recording.
         status:
           type: string
           enum:
@@ -1591,6 +1611,16 @@ components:
       properties:
         storyboard_id:
           type: string
+        requested_compliance_target:
+          type:
+            - string
+            - "null"
+          description: Requested compliance target from the run that produced this storyboard verdict, e.g. 3.0 or 3.1-beta.
+        adcp_version:
+          type:
+            - string
+            - "null"
+          description: Concrete AdCP compliance bundle version from the run that produced this storyboard verdict.
         title:
           type: string
         category:
@@ -1635,6 +1665,14 @@ components:
       properties:
         id:
           type: string
+        requested_compliance_target:
+          type:
+            - string
+            - "null"
+        adcp_version:
+          type:
+            - string
+            - "null"
         overall_status:
           type: string
         headline:
@@ -6852,6 +6890,12 @@ paths:
                       ran:
                         type: boolean
                         description: True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed.
+                      requested_compliance_target:
+                        type: string
+                        description: Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Present when `ran` is true.
+                      adcp_version:
+                        type: string
+                        description: Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12. Present when `ran` is true.
                       overall_status:
                         type: string
                         description: Aggregate verdict from the run (passing / failing / partial / unknown). Only present when `ran` is true.
@@ -7281,6 +7325,10 @@ paths:
                 properties:
                   agent_url:
                     type: string
+                  requested_compliance_target:
+                    type: string
+                  adcp_version:
+                    type: string
                   agent_name:
                     type: string
                   supported_protocols:
@@ -7333,6 +7381,8 @@ paths:
                     type: integer
                 required:
                   - agent_url
+                  - requested_compliance_target
+                  - adcp_version
                   - agent_name
                   - supported_protocols
                   - specialisms
@@ -7430,6 +7480,10 @@ paths:
               schema:
                 type: object
                 properties:
+                  adcp_version:
+                    type: string
+                  requested_compliance_target:
+                    type: string
                   storyboards:
                     type: array
                     items:
@@ -7437,6 +7491,8 @@ paths:
                   count:
                     type: integer
                 required:
+                  - adcp_version
+                  - requested_compliance_target
                   - storyboards
                   - count
         "500":
@@ -7468,10 +7524,16 @@ paths:
               schema:
                 type: object
                 properties:
+                  adcp_version:
+                    type: string
+                  requested_compliance_target:
+                    type: string
                   storyboard:
                     $ref: "#/components/schemas/StoryboardDetail"
                   test_kit: {}
                 required:
+                  - adcp_version
+                  - requested_compliance_target
                   - storyboard
         "404":
           description: Storyboard not found
@@ -7859,7 +7921,17 @@ paths:
           description: Step execution result
           content:
             application/json:
-              schema: {}
+              schema:
+                type: object
+                properties:
+                  adcp_version:
+                    type: string
+                  requested_compliance_target:
+                    type: string
+                required:
+                  - adcp_version
+                  - requested_compliance_target
+                additionalProperties: {}
         "400":
           description: Invalid parameters
           content:
@@ -7911,6 +7983,10 @@ paths:
               schema:
                 type: object
                 properties:
+                  adcp_version:
+                    type: string
+                  requested_compliance_target:
+                    type: string
                   storyboard:
                     type: object
                     properties:
@@ -7923,6 +7999,8 @@ paths:
                       - title
                   step: {}
                 required:
+                  - adcp_version
+                  - requested_compliance_target
                   - storyboard
         "404":
           description: Storyboard not found or has no steps
@@ -7990,6 +8068,10 @@ paths:
                       profile: {}
                     required:
                       - url
+                  adcp_version:
+                    type: string
+                  requested_compliance_target:
+                    type: string
                   phases: {}
                   summary: {}
                   observations: {}
@@ -7999,6 +8081,8 @@ paths:
                 required:
                   - storyboard
                   - agent
+                  - adcp_version
+                  - requested_compliance_target
                   - total_duration_ms
         "400":
           description: Invalid agent URL
@@ -8095,6 +8179,10 @@ paths:
                     required:
                       - url
                       - name
+                  adcp_version:
+                    type: string
+                  requested_compliance_target:
+                    type: string
                   phases: {}
                   total_duration_ms:
                     type: number
@@ -8102,6 +8190,8 @@ paths:
                   - storyboard
                   - user_agent
                   - reference_agent
+                  - adcp_version
+                  - requested_compliance_target
                   - total_duration_ms
         "400":
           description: Invalid agent URL

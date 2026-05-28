@@ -5245,6 +5245,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     ...(!isThreeZeroStoryboardCompat(ctx) ? ['query_provenance_audit_observations'] : []),
   ];
   return {
+    adcp_version: DEFAULT_ADCP_VERSION,
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
       supported_versions: [...SUPPORTED_RELEASE_VERSIONS],
@@ -6897,7 +6898,8 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // fields — scoping to this tool keeps the signal without tripping
         // strict per-task response schemas on other tools (several SDK
         // schemas are not passthrough and reject the extra key).
-        const inner = result as Record<string, unknown>;
+        const inner = { ...(result as Record<string, unknown>) };
+        if (inner.adcp_version === undefined) inner.adcp_version = servedAdcpVersion;
         cachableResponse = inner;
         // Envelope `status` is required per protocol-envelope.json (#4876) and
         // now folded into every per-task response schema (#4896). Default to

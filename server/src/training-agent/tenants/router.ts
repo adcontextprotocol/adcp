@@ -9,14 +9,13 @@
  * mounted at the parent training-agent router level, not here.
  */
 
+import { createHash } from 'node:crypto';
 import { Router, type Request, type Response, type RequestHandler } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
 import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type RegistryHolder } from './registry.js';
 import { buildSignedRevocationList } from '../governance-revocations.js';
-import { getTenantResponseSigningMaterial } from './signing.js';
-import { wrapResponseForSigning } from '../response-signing.js';
 import { salesCapabilityProjection } from '../v6-sales-platform.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
 import { adcpError, resolveServedAdcpVersion } from '../task-handlers.js';
@@ -50,6 +49,35 @@ const SALES_CURRENT_SCENARIOS = [
 
 const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5'] as const;
 const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
+
+function bearerToken(req: Request): string | undefined {
+  const auth = req.headers.authorization;
+  if (typeof auth === 'string') {
+    const scheme = 'bearer';
+    if (
+      auth.length > scheme.length
+      && auth.slice(0, scheme.length).toLowerCase() === scheme
+      && (auth[scheme.length] === ' ' || auth[scheme.length] === '\t')
+    ) {
+      const token = auth.slice(scheme.length + 1).trim();
+      if (token.length > 0) return token;
+    }
+  }
+  const legacy = req.headers['x-adcp-auth'];
+  return typeof legacy === 'string' && legacy.length > 0 ? legacy : undefined;
+}
+
+function apiKeyCredential(req: Request, principal: string): { kind: 'api_key'; key_id: string } {
+  // Mirror @adcp/sdk's verifyApiKey key_id shape: SHA-256(token), truncated
+  // to 32 hex chars. The tenant router uses custom Express middleware, so it
+  // must bridge the credential field that serve().attachAuthInfo would have
+  // stamped for the SDK's buyer-agent registry.
+  const token = bearerToken(req) ?? principal;
+  return {
+    kind: 'api_key',
+    key_id: createHash('sha256').update(token).digest('hex').slice(0, 32),
+  };
+}
 
 function salesComplyScenarios(storyboardCompat?: TrainingContext['storyboardCompat']): string[] {
   return storyboardCompat?.version === '3.0'
@@ -133,13 +161,6 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
   return async (req: Request, res: Response): Promise<void> => {
     setCORSHeaders(res);
 
-    // Wrap res with the response-signing middleware. Buffers writes from
-    // the MCP transport, signs the buffered body with the tenant's
-    // response-signing key, and writes back with RFC 9421 Signature /
-    // Signature-Input / Content-Digest headers. Non-2xx and non-JSON
-    // responses pass through unsigned.
-    const responseSigner = getTenantResponseSigningMaterial(tenantId);
-    wrapResponseForSigning(req, res, responseSigner.signerKey, tenantId);
     wrapTenantToolDiscoveryProjection(req, res, storyboardCompat);
     wrapSalesCapabilitiesProjection(req, res, tenantId, storyboardCompat);
 
@@ -162,10 +183,24 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
       // `token: ''` matches the framework's no-token path verbatim, so any
       // future shape-check that asserts field presence holds against this
       // bridged value the same as against the framework's own.
-      (req as { auth: { token: string; clientId: string; scopes: string[] } }).auth = {
+      const demoToken = principal.startsWith('static:demo:')
+        ? principal.slice('static:demo:'.length)
+        : undefined;
+      (req as {
+        auth: {
+          token: string;
+          clientId: string;
+          scopes: string[];
+          extra: Record<string, unknown>;
+        };
+      }).auth = {
         token: '',
         clientId: principal,
         scopes: [],
+        extra: {
+          ...(demoToken !== undefined && { demo_token: demoToken }),
+          credential: apiKeyCredential(req, principal),
+        },
       };
     }
 
@@ -367,6 +402,7 @@ function wrapSalesCapabilitiesProjection(
 
   const origEnd = res.end.bind(res);
   const chunks: Buffer[] = [];
+  stripContentLengthOnWriteHead(res);
 
   (res as unknown as { write: (...args: unknown[]) => boolean }).write = (chunk: unknown, ...rest: unknown[]) => {
     if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
@@ -379,7 +415,7 @@ function wrapSalesCapabilitiesProjection(
     if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
     const body = Buffer.concat(chunks);
     const patched = projectSalesCapabilities(body, tenantId, storyboardCompat);
-    if (patched !== body) {
+    if (patched !== body && !res.headersSent) {
       res.setHeader('content-length', String(patched.length));
     }
     return origEnd(patched, ...rest as []);
@@ -395,6 +431,7 @@ function wrapTenantToolDiscoveryProjection(
 
   const origEnd = res.end.bind(res);
   const chunks: Buffer[] = [];
+  stripContentLengthOnWriteHead(res);
 
   (res as unknown as { write: (...args: unknown[]) => boolean }).write = (chunk: unknown, ...rest: unknown[]) => {
     if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
@@ -407,7 +444,7 @@ function wrapTenantToolDiscoveryProjection(
     if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
     const body = Buffer.concat(chunks);
     const patched = projectTenantToolDiscovery(body, storyboardCompat);
-    if (patched !== body) {
+    if (patched !== body && !res.headersSent) {
       res.setHeader('content-length', String(patched.length));
     }
     return origEnd(patched, ...rest as []);
@@ -439,6 +476,32 @@ function toBuffer(chunk: unknown): Buffer {
   if (typeof chunk === 'string') return Buffer.from(chunk, 'utf8');
   if (chunk instanceof Uint8Array) return Buffer.from(chunk);
   return Buffer.from(String(chunk), 'utf8');
+}
+
+function stripContentLengthOnWriteHead(res: Response): void {
+  const original = res.writeHead.bind(res) as unknown as (...args: unknown[]) => Response;
+  (res as unknown as { writeHead: (...args: unknown[]) => Response }).writeHead = (...args: unknown[]) => {
+    if (!res.headersSent) {
+      res.removeHeader('content-length');
+    }
+    const next = [...args];
+    for (let i = 1; i < next.length; i += 1) {
+      const value = next[i];
+      if (Array.isArray(value)) {
+        next[i] = value.filter((entry, index, array) => {
+          if (index % 2 === 1) return String(array[index - 1]).toLowerCase() !== 'content-length';
+          return String(entry).toLowerCase() !== 'content-length';
+        });
+      } else if (value && typeof value === 'object') {
+        const headers = { ...(value as Record<string, unknown>) };
+        for (const key of Object.keys(headers)) {
+          if (key.toLowerCase() === 'content-length') delete headers[key];
+        }
+        next[i] = headers;
+      }
+    }
+    return original(...next);
+  };
 }
 
 function projectSalesCapabilities(
@@ -480,17 +543,7 @@ function projectSalesCapabilities(
         ? adcp.supported_versions
         : [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
     };
-    if (
-      tenantId === 'creative'
-      && storyboardCompat?.version !== '3.0'
-      && (
-        structured.creative
-        || (
-          Array.isArray(structured.supported_protocols)
-          && structured.supported_protocols.includes('creative')
-        )
-      )
-    ) {
+    if (tenantId === 'creative' && storyboardCompat?.version !== '3.0') {
       const creative = structured.creative && typeof structured.creative === 'object'
         ? structured.creative
         : {};

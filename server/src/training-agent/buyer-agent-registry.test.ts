@@ -53,34 +53,53 @@ describe('trainingBuyerAgentRegistry', () => {
     ]);
   });
 
-  it('unrecognized demo prefix → null (uniform-response rule)', async () => {
+  it('unrecognized demo prefix → neutral broad-capability agent (uniform-response rule)', async () => {
     // demo-* token that doesn't match any known commercial-relationship
-    // prefix family. Resolver returns null, framework leaves ctx.agent
-    // undefined, no per-agent gate fires.
+    // prefix family. Resolve to a neutral broad-capability agent so the
+    // framework dispatches to the seller-wide capability path instead of
+    // preempting sync_accounts with a framework-generated failed row.
     const agent = await trainingBuyerAgentRegistry.resolve(
       input('demo-unrecognized-v1'),
     );
-    expect(agent).toBeNull();
+    expect(agent).not.toBeNull();
+    expect([...(agent?.billing_capabilities ?? [])].sort()).toEqual([
+      'advertiser',
+      'agent',
+      'operator',
+    ]);
   });
 
-  it('missing extra.demo_token → null', async () => {
+  it('missing extra.demo_token → neutral broad-capability agent', async () => {
     // Static-key authenticators (TRAINING_AGENT_TOKEN /
-    // PUBLIC_TEST_AGENT_TOKEN) don't stamp demo_token; resolver returns
-    // null and falls through. No commercial relationship inferred for
-    // production-shaped principals — security posture matches
-    // commercial-relationships.ts.
+    // PUBLIC_TEST_AGENT_TOKEN) don't stamp demo_token. Beta 14's
+    // framework-level billing policy rejects billable sync_accounts rows
+    // when an agentRegistry is present but no agent resolves, so return a
+    // neutral broad-capability sandbox agent to preserve the legacy
+    // uniform-response behavior for authenticated public sandbox callers.
     const agent = await trainingBuyerAgentRegistry.resolve(input(undefined));
-    expect(agent).toBeNull();
+    expect(agent).not.toBeNull();
+    expect(agent?.agent_url).toContain('/authenticated/');
+    expect([...(agent?.billing_capabilities ?? [])].sort()).toEqual([
+      'advertiser',
+      'agent',
+      'operator',
+    ]);
   });
 
-  it('non-string extra.demo_token → null (defensive type-check)', async () => {
+  it('non-string extra.demo_token → neutral broad-capability agent', async () => {
     // Adopter-supplied extra is Record<string, unknown> — the resolver
-    // shape-checks before using.
+    // shape-checks before using and falls back to the authenticated
+    // sandbox caller behavior.
     const agent = await trainingBuyerAgentRegistry.resolve({
       credential: { kind: 'api_key', key_id: 'sha256:x' },
       extra: { demo_token: 12345 as unknown as string },
     });
-    expect(agent).toBeNull();
+    expect(agent).not.toBeNull();
+    expect([...(agent?.billing_capabilities ?? [])].sort()).toEqual([
+      'advertiser',
+      'agent',
+      'operator',
+    ]);
   });
 
   it('http_sig credential → null (bearerOnly factory rejects signed traffic)', async () => {

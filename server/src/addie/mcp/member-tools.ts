@@ -12,8 +12,6 @@
 
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '../../logger.js';
-
-const logger = createLogger('addie-member-tools');
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
 import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
@@ -40,6 +38,7 @@ import {
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
   complianceResultToDbInput,
+  loadComplianceIndex,
   type ComplyOptions,
   type ComplianceTrack,
 } from '../services/compliance-testing.js';
@@ -47,7 +46,6 @@ import {
   listAllComplianceStoryboards,
   getComplianceStoryboardById,
   resolveStoryboardsForCapabilities,
-  loadComplianceIndex,
   runStoryboard,
   runStoryboardStep,
   createTestClient,
@@ -59,6 +57,12 @@ import {
 } from '@adcp/sdk/testing';
 import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
+import {
+  hostedComplianceTarget,
+  hostedComplianceOptions,
+  withHostedStoryboardRunOptions,
+  withHostedTestOptions,
+} from '../../services/hosted-compliance-version.js';
 import { AgentContextDatabase, validateAuthTokenChars, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
 import { isOAuthRequiredErrorMessage } from '../../routes/helpers/oauth-error-detection.js';
@@ -114,6 +118,29 @@ import { getWorkos } from '../../auth/workos-client.js';
 import { resolveUserRole } from '../../utils/resolve-user-role.js';
 import { recordAgentTestRun } from '../../db/agent-test-db.js';
 import { canonicalizeAgentUrl } from '../../db/publisher-db.js';
+
+const logger = createLogger('addie-member-tools');
+const complianceTarget = hostedComplianceTarget();
+function targetFromInput(input: Record<string, unknown>): ReturnType<typeof hostedComplianceTarget> {
+  const requested = input.compliance_target;
+  try {
+    return typeof requested === 'string' && requested.trim()
+      ? hostedComplianceTarget(requested.trim())
+      : complianceTarget;
+  } catch {
+    throw new ToolError('Invalid compliance_target. Use 3.0, 3.1-beta, or an exact bundled version.');
+  }
+}
+
+function formatComplianceTarget(target = complianceTarget, resolvedVersion = target.version): string {
+  return target.requested === resolvedVersion
+    ? resolvedVersion
+    : `${target.requested} (resolved ${resolvedVersion})`;
+}
+
+function isDefaultComplianceTarget(target: ReturnType<typeof hostedComplianceTarget>): boolean {
+  return target.requested === complianceTarget.requested && target.version === complianceTarget.version;
+}
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
@@ -1104,6 +1131,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to evaluate' },
         tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable, driven by the agent\'s get_adcp_capabilities response)' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" for the latest checked-in stable 3.0.x cache or "3.1-beta" for the latest checked-in 3.1 beta cache. Defaults to 3.0.' },
       },
       required: ['agent_url'],
     },
@@ -1210,6 +1238,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to discover and recommend storyboards for' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
       },
       required: ['agent_url'],
     },
@@ -1223,6 +1252,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         storyboard_id: { type: 'string', description: 'Storyboard ID (from recommend_storyboards)' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
       },
       required: ['storyboard_id'],
     },
@@ -1238,6 +1268,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL to test' },
         storyboard_id: { type: 'string', description: 'Storyboard ID to run' },
         dry_run: { type: 'boolean', description: 'If true (default), use test data that won\'t affect production state', default: true },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
       },
       required: ['agent_url', 'storyboard_id'],
     },
@@ -1255,6 +1286,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         step_id: { type: 'string', description: 'Step ID to run (from storyboard detail or previous step\'s next.step_id)' },
         context: { type: 'object', description: 'Accumulated context from previous step (pass the context field from the previous run_storyboard_step result)', additionalProperties: true },
         dry_run: { type: 'boolean', description: 'If true (default), use test data', default: true },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
       },
       required: ['agent_url', 'storyboard_id', 'step_id'],
     },
@@ -3684,6 +3716,9 @@ export function createMemberToolHandlers(
   handlers.set('evaluate_agent_quality', async (input) => {
     const agentUrl = input.agent_url as string;
     const tracks = input.tracks as ComplianceTrack[] | undefined;
+    const runTarget = targetFromInput(input);
+    const writesCanonicalComplianceState = isDefaultComplianceTarget(runTarget);
+    let skippedCanonicalWriteForTarget = false;
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
@@ -3710,7 +3745,7 @@ export function createMemberToolHandlers(
     if (tracks) complyOptions.tracks = tracks;
 
     try {
-      const result = await comply(resolved.resolvedUrl, complyOptions);
+      const result = await comply(resolved.resolvedUrl, complyOptions, runTarget);
 
       // Surface OAuth-required short-circuit. comply() doesn't throw on auth
       // failures — it pushes a `category: 'auth'` observation and runs a
@@ -3766,7 +3801,7 @@ export function createMemberToolHandlers(
           );
         }
 
-        if (isAgentOwner) {
+        if (isAgentOwner && writesCanonicalComplianceState) {
           try {
             const metadata = await complianceDb.getRegistryMetadata(resolved.resolvedUrl);
             // Skip canonical write if the owner has opted out of compliance monitoring.
@@ -3814,6 +3849,8 @@ export function createMemberToolHandlers(
           } catch (error) {
             logger.warn({ error, agentUrl: resolved.resolvedUrl }, 'Could not write owner test result to canonical compliance state');
           }
+        } else if (isAgentOwner) {
+          skippedCanonicalWriteForTarget = true;
         }
 
         // Legacy write to agent_contexts + agent_test_history. Retained ONLY
@@ -3863,6 +3900,10 @@ export function createMemberToolHandlers(
       const safeName = sanitizeAgentField(result.agent_profile.name, 120);
       output += `## Quality Evaluation: ${safeName || resolved.resolvedUrl}\n\n`;
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
+      output += `**Compliance target:** ${formatComplianceTarget(runTarget, result.adcp_version ?? runTarget.version)}\n`;
+      if (skippedCanonicalWriteForTarget) {
+        output += `_Explicit non-default compliance targets are diagnostic only; public compliance status and badges were not updated._\n`;
+      }
       const safeTools = (result.agent_profile.tools || []).map(t => sanitizeAgentField(t, 80)).filter(Boolean);
       output += `**Tools:** ${safeTools.length} (${safeTools.join(', ')})\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
@@ -4002,6 +4043,8 @@ export function createMemberToolHandlers(
 
   handlers.set('recommend_storyboards', async (input) => {
     const agentUrl = input.agent_url as string;
+    const runTarget = targetFromInput(input);
+    const runOptions = hostedComplianceOptions(runTarget);
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
@@ -4015,9 +4058,9 @@ export function createMemberToolHandlers(
     const authOption = buildAuthOption(resolved);
     let profile: AgentProfile | undefined;
     try {
-      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, {
+      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, withHostedTestOptions({
         ...(authOption && { auth: authOption }),
-      });
+      }, runTarget));
       profile = caps.profile;
 
       // testCapabilityDiscovery catches its own throws and surfaces them as
@@ -4062,7 +4105,7 @@ export function createMemberToolHandlers(
     // real cache version instead of emitting a literal `{version}` placeholder.
     let index;
     try {
-      index = loadComplianceIndex();
+      index = loadComplianceIndex(runTarget);
     } catch (err) {
       logger.warn({ err }, 'recommend_storyboards: failed to load compliance index');
     }
@@ -4086,6 +4129,7 @@ export function createMemberToolHandlers(
     let output = '';
     if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
     else if (resolved.source === 'oauth') output += '_Using saved OAuth credentials._\n\n';
+    output += `_Compliance target: AdCP ${formatComplianceTarget(runTarget)}._\n\n`;
     output += `## Agent: ${safeAgentName || resolved.resolvedUrl}\n\n`;
 
     // No capabilities declared — disambiguate: auth failure vs. genuinely
@@ -4152,7 +4196,9 @@ export function createMemberToolHandlers(
       const res = resolveStoryboardsForCapabilities({
         supported_protocols: supportedProtocols,
         specialisms,
-      });
+        major_versions: profile?.adcp_major_versions,
+        supported_versions: profile?.adcp_supported_versions,
+      }, runOptions);
       resolvedBundles = res.bundles;
     } catch (error) {
       const capsError = classifyCapabilityResolutionError(error);
@@ -4265,10 +4311,12 @@ export function createMemberToolHandlers(
 
   handlers.set('get_storyboard_detail', async (input) => {
     const storyboardId = input.storyboard_id as string;
+    const runTarget = targetFromInput(input);
+    const runOptions = hostedComplianceOptions(runTarget);
 
-    const sb = getComplianceStoryboardById(storyboardId);
+    const sb = getComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) {
-      const all = listAllComplianceStoryboards();
+      const all = listAllComplianceStoryboards(runOptions);
       const ids = all.map(s => `\`${s.id}\``).join(', ');
       return `Storyboard "${storyboardId}" not found. Available: ${ids}`;
     }
@@ -4315,11 +4363,13 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const storyboardId = input.storyboard_id as string;
     const dryRun = input.dry_run !== false;
+    const runTarget = targetFromInput(input);
+    const runOptions = hostedComplianceOptions(runTarget);
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
-    const sb = getComplianceStoryboardById(storyboardId);
+    const sb = getComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) return `Storyboard "${storyboardId}" not found. Use \`recommend_storyboards\` to see applicable storyboards.`;
 
     const organizationId = memberContext?.organization?.workos_organization_id;
@@ -4327,9 +4377,9 @@ export function createMemberToolHandlers(
 
     try {
       const authOption = buildAuthOption(resolved);
-      const result = await runStoryboard(resolved.resolvedUrl, sb, {
+      const result = await runStoryboard(resolved.resolvedUrl, sb, withHostedStoryboardRunOptions({
         ...(authOption && { auth: authOption }),
-      });
+      }, runTarget));
 
       // runStoryboard catches its own throws and surfaces them as step
       // errors. Detect OAuth on the first failing step before rendering a
@@ -4392,6 +4442,7 @@ export function createMemberToolHandlers(
 
       output += `## ${result.storyboard_title}\n\n`;
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
+      output += `**Compliance target:** ${formatComplianceTarget(runTarget)}\n`;
       output += `**Result:** ${result.overall_passed ? 'PASSED' : 'FAILED'} — ${result.passed_count} passed, ${result.failed_count} failed, ${result.skipped_count} skipped\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
 
@@ -4471,11 +4522,13 @@ export function createMemberToolHandlers(
     const stepId = input.step_id as string;
     const context = (input.context as StoryboardContext) || {};
     const dryRun = input.dry_run !== false;
+    const runTarget = targetFromInput(input);
+    const runOptions = hostedComplianceOptions(runTarget);
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
-    const sb = getComplianceStoryboardById(storyboardId);
+    const sb = getComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) return `Storyboard "${storyboardId}" not found.`;
 
     // Resolve stepId: if caller passed a phase ID, remap to first step of that phase.
@@ -4511,10 +4564,10 @@ export function createMemberToolHandlers(
 
     try {
       const authOption = buildAuthOption(resolved);
-      const result: StoryboardStepResult = await runStoryboardStep(resolved.resolvedUrl, sb, resolvedStepId, {
+      const result: StoryboardStepResult = await runStoryboardStep(resolved.resolvedUrl, sb, resolvedStepId, withHostedStoryboardRunOptions({
         context,
         ...(authOption && { auth: authOption }),
-      });
+      }, runTarget));
 
       // runStoryboardStep catches its own throws and surfaces them as
       // result.error strings. Detect OAuth before rendering.
@@ -4547,6 +4600,7 @@ export function createMemberToolHandlers(
 
       const icon = result.skipped ? 'SKIP' : result.passed ? 'PASS' : 'FAIL';
       output += `## Step: ${result.title} [${icon}]\n\n`;
+      output += `**Compliance target:** ${formatComplianceTarget(runTarget)}\n`;
       output += `**Task:** \`${result.task}\`\n`;
       output += `**Duration:** ${(result.duration_ms / 1000).toFixed(1)}s\n`;
 

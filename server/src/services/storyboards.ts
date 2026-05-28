@@ -17,8 +17,11 @@ import {
 } from '@adcp/sdk/testing';
 import type { Storyboard } from '@adcp/sdk/testing';
 import { createLogger } from '../logger.js';
+import { hostedComplianceOptions, hostedComplianceTarget } from './hosted-compliance-version.js';
 
 const logger = createLogger('storyboards');
+const complianceTarget = hostedComplianceTarget();
+const complianceOptions = hostedComplianceOptions(complianceTarget);
 
 // ── Re-export types from @adcp/sdk ───────────────────────────
 
@@ -63,7 +66,7 @@ const testKits = new Map<string, TestKit>();
 
 function findTestKitsDir(): string | null {
   try {
-    const dir = join(getComplianceCacheDir(), 'test-kits');
+    const dir = join(getComplianceCacheDir(complianceOptions), 'test-kits');
     return existsSync(dir) ? dir : null;
   } catch (err) {
     logger.info({ err }, 'Compliance cache not resolvable; test-kit features disabled');
@@ -105,7 +108,7 @@ loadTestKits();
 // ── Public API ──────────────────────────────────────────────────
 
 export function listStoryboards(category?: string): StoryboardSummary[] {
-  const all = listAllComplianceStoryboards();
+  const all = listAllComplianceStoryboards(complianceOptions);
   const filtered = category ? all.filter((sb) => sb.category === category) : all;
 
   return filtered.map((sb) => ({
@@ -121,11 +124,11 @@ export function listStoryboards(category?: string): StoryboardSummary[] {
 }
 
 export function getStoryboard(id: string): Storyboard | undefined {
-  return getComplianceStoryboardById(id);
+  return getComplianceStoryboardById(id, complianceOptions);
 }
 
 export function getAllStoryboards(): Storyboard[] {
-  return listAllComplianceStoryboards();
+  return listAllComplianceStoryboards(complianceOptions);
 }
 
 /**
@@ -167,7 +170,7 @@ export function compareAdcpVersions(a: string, b: string): number {
  * that version.
  */
 export function getStoryboardsForVersion(adcpVersion: string): Storyboard[] {
-  return listAllComplianceStoryboards().filter((sb) => {
+  return listAllComplianceStoryboards(complianceOptions).filter((sb) => {
     if (!sb.introduced_in) return true;
     return compareAdcpVersions(sb.introduced_in, adcpVersion) <= 0;
   });
@@ -186,7 +189,7 @@ export function getTestKit(id: string): TestKit | undefined {
 }
 
 export function getTestKitForStoryboard(storyboardId: string): TestKit | undefined {
-  const sb = getComplianceStoryboardById(storyboardId);
+  const sb = getComplianceStoryboardById(storyboardId, complianceOptions);
   if (!sb?.prerequisites?.test_kit) return undefined;
 
   // test_kit is like "test-kits/acme-outdoor.yaml" — extract the id

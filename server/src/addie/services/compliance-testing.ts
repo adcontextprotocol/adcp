@@ -7,8 +7,8 @@
 
 import {
   setAgentTesterLogger,
-  comply,
-  loadComplianceIndex,
+  comply as sdkComply,
+  loadComplianceIndex as sdkLoadComplianceIndex,
   type ComplyOptions,
   type ComplianceResult,
   type ComplianceTrack,
@@ -18,6 +18,11 @@ import {
   SAMPLE_BRIEFS,
   getBriefsByVertical,
 } from '@adcp/sdk/testing';
+import {
+  hostedComplianceTarget,
+  withHostedComplianceRunOptions,
+  type HostedComplianceTarget,
+} from '../../services/hosted-compliance-version.js';
 
 import type {
   TrackSummaryEntry,
@@ -33,7 +38,7 @@ import type {
 // ── Re-exports ────────────────────────────────────────────────────
 
 export { setAgentTesterLogger };
-export { comply, SAMPLE_BRIEFS, getBriefsByVertical };
+export { SAMPLE_BRIEFS, getBriefsByVertical };
 export type {
   ComplyOptions,
   ComplianceResult,
@@ -42,6 +47,25 @@ export type {
   AdvisoryObservation,
   SampleBrief,
 };
+
+export async function comply(
+  agentUrl: string,
+  options: ComplyOptions,
+  target: HostedComplianceTarget,
+): Promise<ComplianceResult> {
+  const result = await sdkComply(agentUrl, withHostedComplianceRunOptions(options, target));
+  result.adcp_version ??= target.version;
+  (result as ComplianceResult & { requested_compliance_target?: string }).requested_compliance_target = target.requested;
+  return result;
+}
+
+export function loadComplianceIndex(target: HostedComplianceTarget, options: ComplyOptions = {}) {
+  return sdkLoadComplianceIndex(withHostedComplianceRunOptions(options, target));
+}
+
+export function defaultComplianceTarget(): HostedComplianceTarget {
+  return hostedComplianceTarget();
+}
 
 // ── Capability-resolution error classification ───────────────────
 //
@@ -105,7 +129,7 @@ function sanitizeClassifiedValue(value: string, maxLen = 120): string {
 
 function knownProtocolsFromIndex(): Set<string> {
   try {
-    const index = loadComplianceIndex();
+    const index = loadComplianceIndex(defaultComplianceTarget());
     return new Set(index.specialisms.map(s => s.protocol).filter(Boolean));
   } catch {
     // Cache unavailable — accept the extracted value without cross-check.
@@ -563,6 +587,9 @@ export function complianceResultToDbInput(
 
   return {
     agent_url: agentUrl,
+    requested_compliance_target: (result as ComplianceResult & { requested_compliance_target?: string })
+      .requested_compliance_target ?? null,
+    adcp_version: result.adcp_version ?? null,
     lifecycle_stage: lifecycleStage,
     overall_status,
     headline: result.summary.headline,

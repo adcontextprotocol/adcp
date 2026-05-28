@@ -1091,6 +1091,8 @@ export interface CommitteeDocumentActivity {
 
 export interface AgentCompliance {
   status: 'passing' | 'degraded' | 'failing' | 'unknown';
+  requested_compliance_target?: string | null;
+  adcp_version?: string | null;
   lifecycle_stage: 'development' | 'testing' | 'production' | 'deprecated';
   tracks: Record<string, string>;
   streak_days: number;
