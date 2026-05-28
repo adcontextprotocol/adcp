@@ -2304,7 +2304,7 @@ registry.registerPath({
   operationId: "refreshAgent",
   summary: "Refresh agent snapshot",
   description:
-    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent and the capability probe succeeds, the full storyboard suite runs (~30–90s) with a fresh test session and `agent_storyboard_status` is updated under `triggered_by: 'owner_test'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent or AAO admin.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
+    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite runs (~30–90s) with a fresh test session and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -5416,14 +5416,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // Dev-admin fallback is gated behind `isDevModeEnabled()` to match
       // `requireAdmin`'s pattern in middleware/auth.ts — in production
       // (no DEV_USER_EMAIL/DEV_USER_ID) this branch never fires.
+      const isStaticAdmin = isStaticAdminRequest(req);
       const [isOwner, isAaoAdmin] = await Promise.all([
         verifyAgentOwnership(req.user.id, agentUrl),
         isWebUserAAOAdmin(req.user.id),
       ]);
       const isDevAdmin = isDevModeEnabled() && getDevUser(req)?.isAdmin === true;
-      if (!isOwner && !isAaoAdmin && !isDevAdmin) {
+      if (!isOwner && !isAaoAdmin && !isDevAdmin && !isStaticAdmin) {
         return res.status(403).json({ error: "You do not have permission to refresh this agent" });
       }
+      const canRunCompliance = isOwner || isAaoAdmin || isDevAdmin || isStaticAdmin;
 
       const now = Date.now();
 
@@ -5494,10 +5496,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         error?: string;
       } = { ran: false };
 
-      if (ownerOrgId && !probeResult.error && !probeResult.oauth_required) {
+      if (canRunCompliance && !probeResult.error && !probeResult.oauth_required) {
         const complianceStart = Date.now();
         try {
           const testSessionId = `owner-refresh-${Date.now()}-${randomUUID()}`;
+          const triggeredBy = ownerOrgId ? 'owner_test' : 'manual';
           const complyResult = await comply(agentUrl, {
             test_session_id: testSessionId,
             timeout_ms: 90_000,
@@ -5519,7 +5522,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               complyResult,
               agentUrl,
               metadata?.lifecycle_stage || 'production',
-              'owner_test',
+              triggeredBy,
             );
             dbInput.dry_run = false;
             dbInput.triggered_org_id = ownerOrgId;
