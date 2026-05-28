@@ -283,6 +283,14 @@ Description of change.
 
 Types: `patch` (fixes), `minor` (new features), `major` (breaking), `--empty` (no protocol impact)
 
+#### PR title hygiene
+
+PR titles must be review- and release-ready:
+
+- Use conventional-commits format (`fix(scope): summary`, `docs: summary`, `feat(schema): summary`).
+- Do not prefix titles with the tool or model that authored the PR. In particular, never use `[codex]`, `[claude]`, `[agent]`, or similar ownership tags.
+- The authoring tool belongs in the PR body/session link or labels when useful, not in the title. PR titles flow into release/review surfaces, so tool prefixes create noise and can break title-based automation.
+
 **Use `--empty` (no package entry) for everything that isn't a protocol change:**
 - Addie (any server-side AI behavior, tools, routing, bolt app)
 - Website / admin UI / member pages
