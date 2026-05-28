@@ -134,15 +134,73 @@ When publishers return products, they include targeting information buyers need:
 
 ```json
 {
-  "product_id": "premium_millennial_mobile",
-  "name": "Premium Millennial Mobile Package",
-  "description": "Mobile display inventory targeting millennials (25-40) across lifestyle and entertainment apps in top 25 US markets",
-  "targeting_description": "Ages 25-40, household income $50K+, interests in lifestyle/entertainment, mobile apps only, top 25 US metro areas",
-  "audience_size": "~2.5M monthly unique users",
-  "pricing": {
-    "cpm": 8.50,
-    "targeting_included": true
-  }
+  "$schema": "/schemas/media-buy/get-products-response.json",
+  "status": "completed",
+  "cache_scope": "public",
+  "products": [
+    {
+      "product_id": "premium_millennial_mobile",
+      "name": "Premium Millennial Mobile Package",
+      "description": "Mobile display inventory reaching adults 25-40 across lifestyle and entertainment apps in the top 25 US metro areas.",
+      "publisher_properties": [
+        {
+          "publisher_domain": "pinnacle-media.example",
+          "selection_type": "by_tag",
+          "property_tags": ["lifestyle", "entertainment", "mobile_app"]
+        }
+      ],
+      "channels": ["display"],
+      "delivery_type": "guaranteed",
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250_image"
+        }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "premium_mobile_cpm",
+          "pricing_model": "cpm",
+          "currency": "USD",
+          "fixed_price": 8.50
+        }
+      ],
+      "forecast": {
+        "forecast_range_unit": "availability",
+        "method": "modeled",
+        "currency": "USD",
+        "reach_unit": "individuals",
+        "points": [
+          {
+            "metrics": {
+              "audience_size": { "mid": 2500000 },
+              "impressions": { "mid": 12000000 }
+            }
+          }
+        ]
+      },
+      "included_signals": [
+        {
+          "signal_ref": {
+            "scope": "product",
+            "signal_id": "lifestyle_entertainment_interest"
+          },
+          "name": "Lifestyle and entertainment interest",
+          "value_type": "binary",
+          "description": "Seller-modeled users with recent lifestyle or entertainment content engagement."
+        }
+      ],
+      "reporting_capabilities": {
+        "available_reporting_frequencies": ["daily"],
+        "expected_delay_minutes": 240,
+        "timezone": "America/New_York",
+        "supports_webhooks": false,
+        "available_metrics": ["impressions", "clicks", "spend", "ctr"],
+        "date_range_support": "date_range"
+      },
+      "brief_relevance": "Matches the requested millennial audience, mobile app environment, lifestyle/entertainment context, and major US metro coverage."
+    }
+  ]
 }
 ```
 

@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "updated_at": "2026-05-28T16:57:58.895Z",
+  "description": "Baseline for docs-json-field-audit. CI fails only on findings whose key count exceeds this baseline.",
+  "entries": [
+    {
+      "file": "docs/creative/channels/broadcast.mdx",
+      "path": "$",
+      "field": "type",
+      "schema": "/schemas/core/format.json",
+      "count": 1
+    },
+    {
+      "file": "docs/creative/channels/broadcast.mdx",
+      "path": "$.assets[1].requirements",
+      "field": "description",
+      "schema": "/schemas/core/format.json",
+      "count": 1
+    },
+    {
+      "file": "docs/creative/channels/ctv.mdx",
+      "path": "$",
+      "field": "type",
+      "schema": "/schemas/core/format.json",
+      "count": 2
+    },
+    {
+      "file": "docs/creative/formats.mdx",
+      "path": "$",
+      "field": "type",
+      "schema": "https://adcontextprotocol.org/schemas/v3/core/format.json",
+      "count": 3
+    },
+    {
+      "file": "docs/creative/formats.mdx",
+      "path": "$.formats[0]",
+      "field": "type",
+      "schema": "https://adcontextprotocol.org/schemas/v3/creative/list-creative-formats-response.json",
+      "count": 1
+    },
+    {
+      "file": "docs/governance/content-standards/tasks/validate_content_delivery.mdx",
+      "path": "$.results[0].features[0]",
+      "field": "value",
+      "schema": "/schemas/content-standards/validate-content-delivery-response.json",
+      "count": 1
+    },
+    {
+      "file": "docs/governance/content-standards/tasks/validate_content_delivery.mdx",
+      "path": "$.results[1].features[0]",
+      "field": "message",
+      "schema": "/schemas/content-standards/validate-content-delivery-response.json",
+      "count": 1
+    },
+    {
+      "file": "docs/governance/content-standards/tasks/validate_content_delivery.mdx",
+      "path": "$.results[1].features[0]",
+      "field": "value",
+      "schema": "/schemas/content-standards/validate-content-delivery-response.json",
+      "count": 1
+    },
+    {
+      "file": "docs/intro.mdx",
+      "path": "$.brands[0]",
+      "field": "identity_agent",
+      "schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+      "count": 1
+    },
+    {
+      "file": "docs/media-buy/capability-discovery/implementing-standard-formats.mdx",
+      "path": "$",
+      "field": "type",
+      "schema": "/schemas/core/format.json",
+      "count": 1
+    },
+    {
+      "file": "docs/media-buy/capability-discovery/implementing-standard-formats.mdx",
+      "path": "$.formats[0]",
+      "field": "type",
+      "schema": "/schemas/media-buy/list-creative-formats-response.json",
+      "count": 1
+    },
+    {
+      "file": "docs/media-buy/task-reference/provide_performance_feedback.mdx",
+      "path": "$",
+      "field": "vendor",
+      "schema": "/schemas/media-buy/provide-performance-feedback-request.json",
+      "count": 1
+    },
+    {
+      "file": "docs/protocol/get_adcp_capabilities.mdx",
+      "path": "$.governance",
+      "field": "content_standards",
+      "schema": "/schemas/protocol/get-adcp-capabilities-response.json",
+      "count": 1
+    },
+    {
+      "file": "docs/protocol/get_adcp_capabilities.mdx",
+      "path": "$.governance",
+      "field": "policy_registry",
+      "schema": "/schemas/protocol/get-adcp-capabilities-response.json",
+      "count": 1
+    }
+  ]
+}

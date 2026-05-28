@@ -30,7 +30,6 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
     "id": "video_15s"
   },
   "name": "Standard Video - 15 seconds",
-  "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
@@ -66,7 +65,6 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
     "id": "video_30s"
   },
   "name": "Standard Video - 30 seconds",
-  "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
@@ -102,7 +100,6 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
     "id": "video_6s"
   },
   "name": "6-Second Bumper",
-  "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
@@ -138,7 +135,6 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
     "id": "video_vertical_15s"
   },
   "name": "Vertical Video - 15 seconds",
-  "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
@@ -179,7 +175,6 @@ This format represents common CTV requirements across most platforms:
     "id": "video_30s_ctv"
   },
   "name": "CTV Video - 30 seconds",
-  "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
@@ -203,10 +198,6 @@ This format represents common CTV requirements across most platforms:
         "frame_rates": [23.976, 24, 25, 29.97, 30, 59.94, 60],
         "frame_rate_type": "constant",
         "scan_type": "progressive",
-        "color_space": "rec709",
-        "hdr_format": "sdr",
-        "chroma_subsampling": ["4:2:0"],
-        "video_bit_depth": [8],
         "min_gop_interval_seconds": 1,
         "max_gop_interval_seconds": 2,
         "gop_type": "closed",
@@ -215,11 +206,19 @@ This format represents common CTV requirements across most platforms:
         "audio_codecs": ["aac", "pcm"],
         "audio_sample_rates": [48000],
         "audio_channels": ["stereo"],
-        "audio_bit_depth": [16, 24],
-        "audio_bitrate_kbps_min": 192,
         "loudness_lufs": -24,
         "loudness_tolerance_db": 2,
-        "true_peak_dbfs": -2
+        "true_peak_dbfs": -2,
+        "ext": {
+          "ctv_profile": {
+            "color_space": "rec709",
+            "hdr_format": "sdr",
+            "chroma_subsampling": ["4:2:0"],
+            "video_bit_depth": [8],
+            "audio_bit_depth": [16, 24],
+            "audio_bitrate_kbps_min": 192
+          }
+        }
       }
     }
   ]
@@ -239,7 +238,6 @@ Different CTV platforms have varying requirements. Sales agents should define fo
     "id": "video_30s_roku"
   },
   "name": "Roku CTV - 30 seconds",
-  "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
@@ -262,10 +260,14 @@ Different CTV platforms have varying requirements. Sales agents should define fo
         "audio_codecs": ["pcm", "aac"],
         "audio_sample_rates": [48000],
         "audio_channels": ["stereo"],
-        "audio_bit_depth": [16, 24],
-        "audio_bitrate_kbps_min": 192,
         "loudness_lufs": -23,
-        "loudness_tolerance_db": 2
+        "loudness_tolerance_db": 2,
+        "ext": {
+          "roku_profile": {
+            "audio_bit_depth": [16, 24],
+            "audio_bitrate_kbps_min": 192
+          }
+        }
       }
     }
   ]
@@ -281,7 +283,6 @@ Different CTV platforms have varying requirements. Sales agents should define fo
     "id": "video_30s_hulu"
   },
   "name": "Hulu CTV - 30 seconds",
-  "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
@@ -303,15 +304,19 @@ Different CTV platforms have varying requirements. Sales agents should define fo
         "frame_rates": [23.976, 24, 25, 29.97, 30],
         "frame_rate_type": "constant",
         "scan_type": "progressive",
-        "chroma_subsampling": ["4:2:0", "4:2:2"],
         "audio_codecs": ["pcm", "aac"],
         "audio_sample_rates": [48000],
         "audio_channels": ["stereo"],
-        "audio_bit_depth": [16, 24],
-        "audio_bitrate_kbps_min": 192,
-        "audio_bitrate_kbps_max": 256,
         "loudness_lufs": -24,
-        "loudness_tolerance_db": 2
+        "loudness_tolerance_db": 2,
+        "ext": {
+          "hulu_profile": {
+            "chroma_subsampling": ["4:2:0", "4:2:2"],
+            "audio_bit_depth": [16, 24],
+            "audio_bitrate_kbps_min": 192,
+            "audio_bitrate_kbps_max": 256
+          }
+        }
       }
     }
   ]
@@ -327,7 +332,6 @@ Different CTV platforms have varying requirements. Sales agents should define fo
     "id": "video_30s_youtube_ctv"
   },
   "name": "YouTube CTV - 30 seconds",
-  "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
@@ -349,8 +353,12 @@ Different CTV platforms have varying requirements. Sales agents should define fo
         "audio_codecs": ["aac"],
         "audio_sample_rates": [48000],
         "audio_channels": ["stereo"],
-        "audio_bitrate_kbps_min": 128,
-        "loudness_lufs": -14
+        "loudness_lufs": -14,
+        "ext": {
+          "youtube_profile": {
+            "audio_bitrate_kbps_min": 128
+          }
+        }
       }
     }
   ]
@@ -369,7 +377,6 @@ For server-side ad insertion (SSAI) compatibility, GOP structure is critical:
     "id": "video_30s_ssai"
   },
   "name": "SSAI Video - 30 seconds",
-  "type": "video",
   "assets": [
     {
       "asset_id": "video_file",
@@ -415,7 +422,6 @@ For third-party ad servers:
     "id": "video_30s_vast"
   },
   "name": "VAST Tag - 30 seconds",
-  "type": "video",
   "assets": [
     {
       "asset_id": "vast_tag",
@@ -440,7 +446,6 @@ For third-party ad servers:
     "id": "video_30s_vpaid"
   },
   "name": "VPAID Interactive - 30 seconds",
-  "type": "video",
   "assets": [
     {
       "asset_id": "vpaid_tag",
@@ -448,9 +453,14 @@ For third-party ad servers:
       "item_type": "individual",
       "required": true,
       "requirements": {
-        "vpaid_version": ["2.0"],
-        "api_framework": "VPAID",
-        "vpaid_enabled": true
+        "vast_version": "4.2",
+        "ext": {
+          "vpaid": {
+            "vpaid_version": ["2.0"],
+            "api_framework": "VPAID",
+            "vpaid_enabled": true
+          }
+        }
       }
     }
   ]
@@ -765,9 +775,14 @@ VPAID (Video Player Ad-Serving Interface Definition) enables interactive video a
       "item_type": "individual",
       "required": true,
       "requirements": {
-        "vpaid_version": ["2.0"],
-        "api_framework": "VPAID",
-        "vpaid_enabled": true
+        "vast_version": "4.2",
+        "ext": {
+          "vpaid": {
+            "vpaid_version": ["2.0"],
+            "api_framework": "VPAID",
+            "vpaid_enabled": true
+          }
+        }
       }
     }
   ]
