@@ -21,21 +21,41 @@ AdCP sell-side integration has four parts:
 
 <Steps>
 
-### Make your agent discoverable
+### Publish publisher authorization
 
-Publish an `adagents.json` file at your domain root. This file declares your properties and the agents authorized to sell your inventory — similar to how `ads.txt` works for supply chain transparency.
+Publish an `adagents.json` file on each publisher domain. This file declares the publisher's properties and the agents authorized to sell or enrich that inventory — similar to how `ads.txt` works for supply chain transparency.
 
 ```json
 {
-  "version": "1.0",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
+  "contact": {
+    "name": "Example Publisher",
+    "email": "adops@publisher.example.com",
+    "domain": "publisher.example.com"
+  },
   "properties": [
     {
-      "domain": "publisher.example.com",
-      "agents": [
+      "property_id": "publisher_home",
+      "property_type": "website",
+      "name": "Example Publisher",
+      "publisher_domain": "publisher.example.com",
+      "identifiers": [{ "type": "domain", "value": "publisher.example.com" }]
+    }
+  ],
+  "authorized_agents": [
+    {
+      "authorization_type": "property_ids",
+      "url": "https://ads.publisher.example.com/mcp",
+      "authorized_for": "Example Publisher direct inventory",
+      "property_ids": ["publisher_home"],
+      "signing_keys": [
         {
-          "agent_url": "https://ads.publisher.example.com",
-          "relationship": "direct",
-          "supported_protocols": ["media_buy", "creative"]
+          "kid": "publisher-sales-prod-2026",
+          "kty": "OKP",
+          "alg": "EdDSA",
+          "crv": "Ed25519",
+          "x": "w8zcY1LZqV4n1oKbfyq3n2q3sL2uV3z7kEw1m9Qjv4A",
+          "use": "sig"
         }
       ]
     }
@@ -43,17 +63,15 @@ Publish an `adagents.json` file at your domain root. This file declares your pro
 }
 ```
 
-Buyer agents check `adagents.json` to find authorized sales agents, verify relationships, and discover which protocol domains you support.
+Buyer agents check `adagents.json` to verify publisher authorization and, for mutating seller authorizations, publisher-pinned signing keys. They discover the agent's protocol coverage from `get_adcp_capabilities`, not from `adagents.json`.
 
-<Note>
-This shows a simplified structure. The full adagents.json schema uses separate `properties` and `authorized_agents` arrays with a `delegation_type` field. See the [adagents.json tech spec](/docs/governance/property/adagents) for the complete schema.
-</Note>
+### Publish operator identity
 
-### Publish your brand identity
+Publish `brand.json` at `https://{your-domain}/.well-known/brand.json` for the organization operating the sales agent. `adagents.json` tells buyers which publisher authorizes a sales agent; `brand.json` tells buyers which operator is claiming the sales path, which properties it represents, and where to find signing keys.
 
-Publish `brand.json` at `https://{your-domain}/.well-known/brand.json` for the selling organization. `adagents.json` tells buyers which publisher authorizes a sales agent; `brand.json` tells buyers which operator is claiming the sales path, which properties it represents, and where to find signing keys.
+For publisher-owned sales teams, list owned or direct properties. For networks and SSPs, list represented properties with `relationship: "delegated"` or `relationship: "ad_network"` and make sure that value matches the publisher's `authorized_agents[].delegation_type` in `adagents.json`. The two files form the bilateral verification chain: the operator declares "I sell this property", and the publisher confirms "this operator is authorized to sell it". A publisher that delegates sales should still publish `adagents.json`; its own `brand.json` is recommended for publisher identity and portfolio context, but the delegated operator's `brand.json` is the required identity record for the agent buyers call.
 
-For publisher-owned sales teams, list owned or direct properties. For networks and SSPs, list represented properties with `relationship: "delegated"` or `relationship: "ad_network"` and make sure that value matches the publisher's `authorized_agents[].delegation_type` in `adagents.json`. The two files form the bilateral verification chain: the operator declares "I sell this property", and the publisher confirms "this operator is authorized to sell it".
+For the full sell-side setup pattern, including direct publisher and delegated network examples, see [seller setup](/docs/brand-protocol/seller-setup).
 
 ```json
 {
@@ -66,7 +84,7 @@ For publisher-owned sales teams, list owned or direct properties. For networks a
     {
       "type": "website",
       "identifier": "publisher.example.com",
-      "relationship": "direct"
+      "relationship": "owned"
     }
   ],
   "agents": [
@@ -80,7 +98,7 @@ For publisher-owned sales teams, list owned or direct properties. For networks a
 }
 ```
 
-The `agents[].jwks_uri` lets buyers resolve your public signing keys. Sellers that send AdCP webhooks should publish a webhook-signing JWK with `adcp_use: "webhook-signing"` in that JWKS so buyers can verify outbound webhook signatures. See [request signing](/docs/building/by-layer/L1/request-signing) for the key-publication and webhook-signing profile.
+The `agents[].jwks_uri` lets buyers resolve your public signing keys. The protocol requires verifiable signatures and discoverable public keys; it does not require a specific KMS vendor. Production agents should back private signing keys with KMS/HSM or a managed secret system. Sellers that send AdCP webhooks should publish a webhook-signing JWK with `adcp_use: "webhook-signing"` in that JWKS so buyers can verify outbound webhook signatures. See [request signing](/docs/building/by-layer/L1/request-signing) for the key-publication and webhook-signing profile.
 
 ### Expose your inventory
 

@@ -18,7 +18,7 @@ AdCP operates at multiple layers, providing a clean separation between business 
 
 Three protocol domains establish who the parties are before any transaction occurs.
 
-**Brand Protocol** defines buy-side identity through `brand.json` files hosted at `/.well-known/brand.json`. Brands declare their corporate hierarchy, sub-brands, properties, and authorized operators. Any domain can be resolved to a canonical brand identity. See [Brand Protocol](/docs/brand-protocol).
+**Brand Protocol** defines organization identity through `brand.json` files hosted at `/.well-known/brand.json`. Buyers use it for advertiser identity and authorized operators; sellers use it for operator identity, sales-agent discovery, signing-key discovery, and property relationship declarations. Any domain can be resolved to a canonical brand identity. See [Brand Protocol](/docs/brand-protocol).
 
 **Registry** provides a public REST API for entity resolution and agent discovery. Resolve a brand domain, find which agents are authorized to sell a publisher's inventory, or discover agents by capability. See [Registry API](/docs/registry).
 

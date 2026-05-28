@@ -72,7 +72,13 @@ Cryptographic signatures for supply chain verification. How platforms validate a
     Identity, authorization, and data enrichment for participants in AdCP.
   </Card>
   <Card title="AdAgents.json" icon="file-code" href="/docs/governance/property/adagents">
-    Agent discovery and declaration — verifiable identity for every agent.
+    Publisher authorization for which agents may sell or enrich inventory.
+  </Card>
+  <Card title="Seller setup" icon="store" href="/docs/brand-protocol/seller-setup">
+    How brand.json and adagents.json work together for seller identity and supply path verification.
+  </Card>
+  <Card title="Seller verification" icon="shield-halved" href="/docs/verification/overview">
+    Buyer-side walkthrough of signatures, seller brand.json, publisher adagents.json, and mutual assertion.
   </Card>
   <Card title="Authorized properties" icon="key" href="/docs/governance/property/authorized-properties">
     How publishers declare authorized sellers, and how buyers verify them.
@@ -99,8 +105,8 @@ Cryptographic signatures for supply chain verification. How platforms validate a
 
 ### Key concepts
 
-- **Agent identity verification** — domain ownership, cryptographic signatures, organizational registration
-- **Supply path transparency** — full visibility into which agents handled each transaction
+- **Agent identity verification** — seller `brand.json` declares the operator, sales endpoints, and signing-key discovery; publisher `adagents.json` declares which agents are authorized for which properties
+- **Supply path transparency** — buyer agents verify both sides of the relationship: the operator claims the sales path in `brand.json`, and the publisher confirms it in `adagents.json`
 - **ads.cert relationship** — extending cryptographic verification from RTB to agent-to-agent interactions
 - **Campaign governance architecture** — implement three-party validation: sync governance agents via `sync_governance`, call `check_governance` before executing, handle all statuses
 - **Policy registry integration** — resolve policies by ID, integrate natural language policy text and exemplars into governance agent evaluation
