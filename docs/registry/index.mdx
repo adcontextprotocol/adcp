@@ -91,19 +91,19 @@ Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded
 
 ## Lookups by entity
 
-Three endpoints answer different questions about who is in the registry. They span two tag groups in the API reference, so the table below is the entry point.
+Three endpoints answer different questions about who is in the registry. They span two tag groups in the API reference, so use this table to pick the right lookup surface before diving into endpoint-specific parameters.
 
-| Endpoint | Question it answers |
-|----------|---------------------|
-| `GET /api/registry/agents` | "Give me the catalog." |
-| `GET /api/registry/operator?domain=X` | "What does this entity operate?" |
-| `GET /api/registry/publisher?domain=X` | "What does this entity publish?" |
+| Endpoint | Auth surface | What it returns |
+|----------|--------------|-----------------|
+| `GET /api/registry/agents` | Public catalog; authenticated AgenticAdvertising.org API-tier members also see `members_only` agents. | The AgenticAdvertising.org-attested member-enrolled agent catalog, with optional filters and enrichment for health, capabilities, properties, compliance, measurement metrics, and verification state. |
+| `GET /api/registry/operator?domain=X` | Auth-aware: anonymous callers see `public`; AgenticAdvertising.org API-tier members also see `members_only`; profile owners can also see `private`. | The agents operated by the queried entity plus the publishers that trust those agents. |
+| `GET /api/registry/publisher?domain=X` | Public and unauthenticated; AgenticAdvertising.org membership does not change the response shape. | The inventory the queried entity publishes (`properties[]`) and the agents it authorizes (`authorized_agents[]` from `adagents.json`). |
 
-**`GET /api/registry/agents`** — the catalog of AAO-attested member-enrolled agents in the registry. Use this when you want to browse or filter the public agent population. See [Registering an agent](/docs/registry/registering-an-agent) for how agents end up in this catalog. Reference: [List agents endpoint](#agent-discovery) under Agent Discovery.
+**`GET /api/registry/agents`** — use this when you want to browse or filter the public agent population. See [Registering an agent](/docs/registry/registering-an-agent) for how agents end up in this catalog. Reference: [List agents endpoint](#agent-discovery) under Agent Discovery.
 
-**`GET /api/registry/operator?domain=X`** — given a domain, returns the agents that entity operates and the publishers that trust them. Use this when you have one entity in hand and want its agent footprint. Response shape is auth-aware: anonymous callers see only `public` agents, AAO API-tier callers also see `members_only`, and profile owners additionally see `private` (`server/src/routes/registry-api.ts:5486`). Reference handler: `server/src/routes/registry-api.ts:5486` (Operator lookup).
+**`GET /api/registry/operator?domain=X`** — use this when you have one entity in hand and want its agent footprint.
 
-**`GET /api/registry/publisher?domain=X`** — given a domain, returns the inventory that entity publishes (`properties[]`) and which agents it authorizes (`authorized_agents[]` from its `adagents.json`). Use this when you have one publisher in hand and want its inventory and delegations. The endpoint is unauthenticated and returns the same shape for every caller (`server/src/routes/registry-api.ts:5550`). Reference handler: `server/src/routes/registry-api.ts:5550` (Publisher lookup).
+**`GET /api/registry/publisher?domain=X`** — use this when you have one publisher in hand and want its inventory and delegations.
 
 ### Brand Resolution
 
