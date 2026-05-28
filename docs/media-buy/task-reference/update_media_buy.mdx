@@ -731,8 +731,8 @@ Common errors and resolutions:
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id |
-| `PACKAGE_NOT_FOUND` | Package doesn't exist | Verify package_id |
+| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify `media_buy_id`; for legacy correlation use `get_media_buys` + `context.internal_campaign_id` |
+| `PACKAGE_NOT_FOUND` | Package doesn't exist | Verify `package_id`; for legacy package correlation use `get_media_buys` + package `context.buyer_ref` |
 | `UPDATE_NOT_ALLOWED` | Field cannot be changed | See "What Can Be Updated" above |
 | `BUDGET_INSUFFICIENT` | New budget below minimum | Increase budget amount |
 | `POLICY_VIOLATION` | Update violates content policy | Review policy requirements |
