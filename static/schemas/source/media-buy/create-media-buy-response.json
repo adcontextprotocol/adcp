@@ -96,7 +96,8 @@
           "description": "When true, this response contains simulated data from sandbox mode."
         },
         "context": {
-          "$ref": "/schemas/core/context.json"
+          "$ref": "/schemas/core/context.json",
+          "description": "Opaque media-buy-level correlation data echoed unchanged from the create_media_buy request. Sellers MUST echo this object verbatim when the originating request carried context, including synchronous success, error, submitted, and webhook task-status payloads. Sellers MUST NOT parse this object for business logic."
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -172,7 +173,8 @@
           "minItems": 1
         },
         "context": {
-          "$ref": "/schemas/core/context.json"
+          "$ref": "/schemas/core/context.json",
+          "description": "Opaque media-buy-level correlation data echoed unchanged from the create_media_buy request. Sellers MUST echo this object verbatim when the originating request carried context, including synchronous success, error, submitted, and webhook task-status payloads. Sellers MUST NOT parse this object for business logic."
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -240,7 +242,8 @@
           }
         },
         "context": {
-          "$ref": "/schemas/core/context.json"
+          "$ref": "/schemas/core/context.json",
+          "description": "Opaque media-buy-level correlation data echoed unchanged from the create_media_buy request. Sellers MUST echo this object verbatim when the originating request carried context, including synchronous success, error, submitted, and webhook task-status payloads. Sellers MUST NOT parse this object for business logic."
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
