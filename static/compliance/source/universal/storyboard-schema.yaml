@@ -1606,6 +1606,14 @@
 #       - `payload_must_contain` arbitrary path assertions: NOT supported in
 #         digest mode. Each entry grades `not_applicable` per affected call,
 #         with a note explaining the mode constraint.
+#       - JCS non-finite numbers: when a digest-mode upstream_traffic response
+#         cannot be produced because the parsed JSON-like value tree contains
+#         a non-finite numeric value (`NaN`, `+Infinity`, or `-Infinity`), the
+#         controller MUST NOT coerce that value to `null`, a string, or any
+#         other placeholder for digest computation; it returns ControllerError
+#         with error code `JCS_NON_FINITE_NUMBER`; the runner grades the
+#         affected validation `not_applicable`, not failed, with a note citing
+#         the RFC 8785/JCS constraint.
 #       - `payload_length`: MUST equal the exact byte length covered by
 #         `payload_digest_sha256` — RFC 8785 (JCS) canonical bytes for
 #         JSON-shaped content after redaction, or post-redaction raw body bytes

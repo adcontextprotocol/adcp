@@ -40,6 +40,26 @@ interface V5Response {
   [key: string]: unknown;
 }
 
+const CONTROLLER_ERROR_CODES = [
+  'NOT_FOUND',
+  'INVALID_PARAMS',
+  'INVALID_TRANSITION',
+  'INVALID_STATE',
+  'FORBIDDEN',
+  'UNKNOWN_SCENARIO',
+  'JCS_NON_FINITE_NUMBER',
+  'INTERNAL_ERROR',
+] as const;
+
+type ControllerErrorCode = typeof CONTROLLER_ERROR_CODES[number];
+
+function normalizeControllerErrorCode(code: unknown): ControllerErrorCode {
+  if (typeof code === 'string' && (CONTROLLER_ERROR_CODES as readonly string[]).includes(code)) {
+    return code as ControllerErrorCode;
+  }
+  return 'INTERNAL_ERROR';
+}
+
 /**
  * Generic v5 → v6 comply-adapter shim. Builds the `ToolArgs` for the v5
  * handler, dispatches, throws `TestControllerError` on `success: false`.
@@ -59,10 +79,10 @@ async function dispatchV5(scenario: string, params: Record<string, unknown>, inp
 
 function throwOnFailure(result: V5Response): void {
   if (result.success) return;
-  const code = result.error ?? 'INVALID_REQUEST';
+  const code = normalizeControllerErrorCode(result.error);
   const message = result.error_detail ?? `Comply controller returned ${code}`;
   throw new TestControllerError(
-    code as 'NOT_FOUND' | 'INVALID_PARAMS' | 'INVALID_TRANSITION' | 'FORBIDDEN' | 'UNKNOWN_SCENARIO' | 'INTERNAL_ERROR',
+    code as ConstructorParameters<typeof TestControllerError>[0],
     message,
     typeof result.current_state === 'string' ? result.current_state : undefined,
   );
