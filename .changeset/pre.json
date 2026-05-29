@@ -1,6 +1,6 @@
 {
   "mode": "pre",
-  "tag": "rc",
+  "tag": "beta",
   "initialVersions": {
     "adcontextprotocol": "3.0.1"
   },

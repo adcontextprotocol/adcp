@@ -2,7 +2,7 @@ id: creative/canonical_supported_formats
 version: "1.0.0"
 title: "Creative canonical supported formats"
 category: creative
-summary: "Verifies the 3.1 creative-agent canonical path: supported_formats capability IDs, build_creative routing, and unsupported target rejection."
+summary: "Verifies the 3.1 creative-agent canonical path: targetable supported_formats capability IDs, build_creative routing, and unsupported target rejection."
 track: creative
 introduced_in: "3.1"
 required_tools:
@@ -11,9 +11,9 @@ required_tools:
 
 narrative: |
   Creative agents in 3.1 declare what they can produce via
-  `creative.supported_formats` on `get_adcp_capabilities`. Each supported
-  format carries an agent-local stable `capability_id` that selects the build
-  path on that creative agent. This is separate from media-buy
+  `creative.supported_formats` on `get_adcp_capabilities`. Targetable
+  supported-format entries carry an agent-local stable `capability_id` that
+  selects the build path on that creative agent. This is separate from media-buy
   `format_option_id`, which selects a product or publisher-catalog format
   option.
 

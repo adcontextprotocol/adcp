@@ -1,19 +1,19 @@
 ---
-title: Canonical Formats (preview)
-description: "Canonical formats live on AdCP; sellers' products narrow them inline. Phase 1 + Phase 2 preview against RFC #3305."
+title: Canonical Formats
+description: "Canonical formats live in AdCP 3.1; sellers' products narrow them inline, with experimental flags on immature canonicals and product declarations."
 "og:title": "AdCP — Canonical Formats"
 testable: true
 ---
 
-# Canonical Formats (preview)
+# Canonical Formats
 
 > **TL;DR for adopters reading cold:**
 > - **9 of 12 canonical formats ship non-experimental at 3.1 GA** (`image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `native_in_feed`). 3 canonicals stay experimental past GA (`sponsored_placement`, `responsive_creative`, `agent_placement`), and the `custom` escape-hatch `format_kind` is inherently experimental until a shape is promoted.
 > - **v1 named formats stay first-class** through 4.x with a 5.0 sunset floor. Dual-emission is the migration mode; SDKs translate either direction. Realistic v2-only buyer-agent timing is 4.x at the earliest.
 > - **15 v1→v2 mapping registry entries at GA, 71+ of audited v1 formats are v1-only** out of the gate (need seller `canonical` field or registry PR to project to v2). v2-aware buyers see meaningfully thinner inventory than v1-aware ones through 3.x. Dual-read codepath realistic through 3.3.
-> - **Phase 4 (SDK codegen) is the gating dependency for adopter consumption.** Schemas are shippable today; the typed-tagged-union ergonomics this design earns land fully only with codegen. The runtime Ajv validator is the load-bearing gate — generated TS/Pydantic types lose `if/then` narrowing on `format_kind: "custom"` and `result_kind`.
+> - **SDK codegen is the gating dependency for ergonomic adopter consumption.** Schemas are shippable today; the typed-tagged-union ergonomics this design earns land fully only with codegen. The runtime Ajv validator is the load-bearing gate — generated TS/Pydantic types lose `if/then` narrowing on `format_kind: "custom"` and `result_kind`.
 
-> **Status:** Preview track. The canonical-formats surface is being designed in flight against [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) and the [#3307 implementation branch](https://github.com/adcontextprotocol/adcp/pull/3307).
+> **Status:** Live in 3.1. The canonical-formats framework ships as a 3.1 surface; three canonicals plus `custom` remain marked `experimental` until adopter evidence supports promotion. Historical design context lives in [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) and [#3307](https://github.com/adcontextprotocol/adcp/pull/3307).
 >
 > *Naming note*: This work was originally drafted as "creative formats v2" — the v1↔v2 contrast describes the two format-authoring models (legacy named-format registry vs new canonical formats on products). To avoid collision with AdCP-the-protocol's own version numbering (currently 3.x), file paths, identifiers, and the body of this doc use **canonical formats** terminology. The v1↔v2 contrast is reserved as schema-description shorthand where it disambiguates the two authoring paths on `Product.format_ids` vs `Product.format_options`.
 
