@@ -96,6 +96,8 @@ Signal agents SHOULD treat `get_signals` as a discovery and availability surface
 
 When a response includes `taxonomy.etag` or another provider-supplied validator, orchestrators SHOULD cache the dereferenced definition or taxonomy under that validator and refresh it only when the validator changes. Agents MAY include inline excerpts for review, ranking, or lookup-by-reference flows, but SHOULD avoid duplicating full external resources across every item in a large `get_signals` response.
 
+Orchestrators that need richer metadata inline MAY set `fields` on `get_signals`, using the same response-projection pattern as `get_products.fields`, to request specific listing or definition fields such as `taxonomy`, `data_sources`, `methodology`, `modeling`, `countries`, `consent_basis`, or `data_subject_rights`. Agents SHOULD honor requested fields for exact lookup, refinement, and small custom-signal result sets when available. For broad discovery and wholesale pages, agents MAY still return compact pointers instead of inlining large definition resources.
+
 ### Definition enrichment fields
 
 Signal definitions MAY carry additional fields for transparency, governance, and review:

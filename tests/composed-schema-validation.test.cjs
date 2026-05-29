@@ -912,6 +912,28 @@ async function runTests() {
     },
     'Wholesale signal event accepts deprecated signal_id and relaxed data_provider/pricing_options'
   );
+  await testSchemaValidation(
+    '/schemas/signals/get-signals-request.json',
+    {
+      signal_refs: [
+        {
+          scope: 'data_provider',
+          data_provider_domain: 'signals.example.com',
+          signal_id: 'likely_ev_buyers'
+        }
+      ],
+      fields: ['taxonomy', 'modeling', 'data_subject_rights']
+    },
+    'get_signals request accepts requested inline signal fields'
+  );
+  await testSchemaRejection(
+    '/schemas/signals/get-signals-request.json',
+    {
+      signal_spec: 'EV intenders',
+      fields: ['everything']
+    },
+    'get_signals request rejects unknown signal fields'
+  );
   log('');
 
   // Product `publisher_properties` rejects `publisher_domains[]` compact form (#4508):
