@@ -1,5 +1,83 @@
 # Changelog
 
+## 3.1.0-rc.1
+
+### Minor Changes
+
+- 4af7213: Add creative-agent canonical `supported_formats` storyboard coverage for 3.1.
+
+  The training agent now advertises implemented canonical creative build
+  capabilities with agent-local `capability_id` values, accepts those IDs as
+  `build_creative` targets for implemented canonical outputs, rejects unsupported
+  targets with `FORMAT_NOT_SUPPORTED`, and keeps 3.0 compatibility mode from
+  accepting 3.1-only capability selectors.
+
+- 47001d6: spec(brand): add machine-readable brand guideline constraints
+
+  Adds optional `logos[].id`, `logos[].slots[]`, canonical format `logo_slots[]` and `required_logo_slots[]` hints, plus `visual_guidelines.color_constraints[]`, `logo_usage_rules[]`, and `mark_lockups[]` to make guideline rules enforceable: color pairing matrices, deterministic logo slot selection, logo usage contexts, and co-brand/secondary-mark lockups. Includes two schema-valid fictional fixtures that exercise the new surface without adding real-brand public examples.
+
+- 4d632f7: Add optional `ext` fields to discovery filters for vendor-namespaced,
+  seller-specific criteria.
+
+  This closes the schema gap surfaced by adcp-go#277 and tracked for follow-up
+  in adcp-go#279: `product-filters.json` already allowed extension keys via
+  `additionalProperties: true`, but did not expose the protocol-standard `ext`
+  slot. The same request-side filter pattern applied to creative and signal
+  discovery filters. Existing wire payloads remain compatible, while generated
+  SDKs can now surface discoverable extension objects.
+
+- 6d9646e: Activate public AAO Verified badge issuance for AdCP 3.1 while keeping AdCP 3.0 compatibility badges active.
+
+  The badge-eligible default compliance target is now the 3.1 line, with explicit non-default targets such as `3.0`, exact 3.1 beta targets, or future exact 3.1 RC targets remaining diagnostic-only for public compliance state. Registry and Addie outputs now surface whether a compliance run can update public badges and which badge versions it can issue.
+
+  Closes #5108.
+
+- a1067d0: Add optional `scopes`, `valid_from`, and `valid_until` fields to `brand.json` `authorized_operators[]` so houses can time-box and activity-scope agency-of-record or delegated-operator relationships. Existing entries remain valid when these fields are omitted.
+- 8dc46bc: Add `FORMAT_NOT_SUPPORTED` to the canonical error-code enum for creative-agent canonical build routing.
+
+  The 3.1 `creative.supported_formats` storyboard and `build_creative` docs already require creative agents to fail closed with this code when `target_format_id.id` is not an advertised canonical capability or supported legacy named format. Publishing the enum entry, including the `supported_capability_ids` details hint, keeps schema validation, docs, and conformance aligned.
+
+- da42f43: test(compliance): add canonical format satisfaction create-time coverage.
+
+  Defines the direct `PackageRequest.format_kind`/`params` canonical selector used by the negative under-specification case and publishes the runner-output contract for `canonical_format_satisfaction`.
+
+  Read surfaces now echo supplied format selectors losslessly, and update payloads treat all format selector fields as immutable.
+
+- 72c9be4: feat(media-buy): clarify package correlation across mixed seller versions.
+
+  Sellers now have explicit normative guidance to echo `product_id` on package responses created from explicit `create_media_buy` package requests. Buyers targeting mixed seller populations should use package-level `context`, commonly `context.buyer_ref`, as the legacy-safe fallback for sellers that do not echo `product_id`; read surfaces now document persisted media-buy and package context so that fallback is recoverable, and deprecated top-level `buyer_ref` is removed from not-found recovery guidance.
+
+- e5d2bbc: Extend `core/signal-definition.json` with definition-side signal enrichment for taxonomy metadata, DTS-aligned source/methodology disclosures, modeling metadata, jurisdiction applicability, consent basis, and per-signal data-subject-rights routing.
+
+  Taxonomy is modeled as signal-definition metadata rather than a new `signal-value-type`, so package targeting continues to use the existing binary, categorical, and numeric expression grammar. Categorical signals can map `allowed_values[]` strings to stable taxonomy nodes with `taxonomy.value_mappings`. Parent taxonomy node expansion is declared as seller behavior through `taxonomy.parent_match_behavior` instead of being implied by the schema.
+
+  Adds a signal-specific `core/signal-modeling-disclosure.json` instead of reusing creative `provenance.disclosure`, because data-signal modeling disclosure has different semantics from content provenance and render guidance. Modeled signals now require non-empty training-data jurisdictions, and required modeling disclosures must name the jurisdictions where the disclosure applies.
+
+- 2f88e59: Document the normative attestation-mode selection rule for upstream_traffic compliance checks.
+
+  Conforming runners now have one explicit raw-vs-digest decision order for query_upstream_traffic that preserves assertion coverage, including the non-JSON identifier_paths case where raw mode is required to avoid grading an otherwise evaluable assertion as not_applicable. Storyboard authors should rely on that rule instead of non-schema attestation-mode hints.
+
+  Closes #5080.
+
+- 4ad0e82: Add `video_placement_types` declarations to products and placements, plus a matching `get_products.filters.video_placement_types` discovery filter, using IAB Tech Lab/OpenRTB 2.6 video placement definitions with AdCP-native field names.
+
+### Patch Changes
+
+- a9a306c: Membership dashboard now treats org-level agreement state as the pre-payment source of truth. Standalone agreement acceptance immediately updates the card, checkout skips the redundant agreement modal when the current version is already accepted, and invoice requests hide the agreement checkbox when the current version is already on file. Stale stored agreement versions are rejected server-side so prospects are asked to accept the current agreement before invoicing.
+- e6569b5: test(compliance): add a media-buy compatibility storyboard for legacy package correlation without `product_id`.
+
+  The new non-required `media_buy_seller/package_correlation_legacy_fallback` scenario seeds a legacy-shaped media buy whose package omits `product_id` and verifies buyers can recover package correlation through persisted package `context.buyer_ref`.
+
+- a20bd60: Switch the 3.1 prerelease train from beta mode to RC mode.
+
+  This is a release-process-only baseline: package and schema metadata move to
+  `3.1.0-rc.0` so the GitHub Changesets release workflow can generate the signed
+  `3.1.0-rc.1` Version Packages PR.
+
+- a9936ec: docs(media-buy): clarify context echo on webhook payload schemas.
+
+  Refs #5131. This adds schema descriptions and example/docs clarification for existing context echo behavior without changing field shapes.
+
 ## 3.1.0-beta.7
 
 ### Minor Changes
