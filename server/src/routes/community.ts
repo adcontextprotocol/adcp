@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
+import multer from "multer";
+import sharp from "sharp";
 import { createLogger } from "../logger.js";
 import { isUuid } from "../utils/uuid.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -13,6 +15,35 @@ import { VALID_MEMBER_OFFERINGS, type MemberOffering } from "../types.js";
 import { notifyUser } from "../notifications/notification-service.js";
 
 const logger = createLogger("community-routes");
+const AVATAR_MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: AVATAR_MAX_FILE_SIZE },
+  fileFilter: (_req: Request, file: { mimetype: string }, cb: (error: Error | null, acceptFile?: boolean) => void) => {
+    if (file.mimetype === "image/jpeg" || file.mimetype === "image/png") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only JPEG and PNG files are accepted"));
+    }
+  },
+});
+const avatarUploadSingle = avatarUpload.single('photo');
+
+function handleAvatarUpload(req: Request, res: Response, next: NextFunction) {
+  avatarUploadSingle(req, res, (error: unknown) => {
+    if (!error) {
+      next();
+      return;
+    }
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      res.status(413).json({ error: 'Photo must be under 5MB' });
+      return;
+    }
+    const message = error instanceof Error ? error.message : 'Invalid profile photo';
+    res.status(400).json({ error: message });
+  });
+}
 
 export interface CommunityRoutesConfig {
   communityDb: CommunityDatabase;
@@ -34,6 +65,35 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
   // =====================================================
   // PUBLIC ROUTES (/api/community/*)
   // =====================================================
+
+  // GET /api/community/avatars/:id.png -- serve uploaded profile avatar
+  publicRouter.get('/avatars/:id.png', async (req, res) => {
+    try {
+      if (!isUuid(req.params.id)) {
+        return res.status(404).send('Avatar not found');
+      }
+
+      const result = await query<{ image_data: Buffer; content_type: string }>(
+        `SELECT image_data, content_type
+         FROM user_avatar_uploads
+         WHERE id = $1`,
+        [req.params.id]
+      );
+      const avatar = result.rows[0];
+      if (!avatar) {
+        return res.status(404).send('Avatar not found');
+      }
+
+      res.set({
+        'Content-Type': avatar.content_type || 'image/png',
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      });
+      return res.send(avatar.image_data);
+    } catch (error) {
+      logger.error({ error, id: req.params.id }, 'Failed to serve avatar');
+      return res.status(500).send('Internal error');
+    }
+  });
 
   // GET /api/community/expertise -- distinct expertise tags for filter dropdown
   publicRouter.get('/expertise', requireAuth, async (_req, res) => {
@@ -179,6 +239,72 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
   // =====================================================
   // USER ROUTES (/api/me/*)
   // =====================================================
+
+  // POST /api/me/community-avatar -- upload a direct profile photo
+  userRouter.post('/community-avatar', requireAuth, handleAvatarUpload, async (req, res) => {
+    try {
+      const user = req.user!;
+      if (!req.file) {
+        return res.status(400).json({ error: 'Photo is required' });
+      }
+
+      const imageBuffer = await sharp(req.file.buffer, { failOn: 'error', limitInputPixels: 24_000_000 })
+        .rotate()
+        .resize(512, 512, { fit: 'cover' })
+        .png({ compressionLevel: 9 })
+        .toBuffer();
+
+      const inserted = await query<{ id: string }>(
+        `INSERT INTO user_avatar_uploads (workos_user_id, image_data, content_type)
+         VALUES ($1, $2, $3)
+         RETURNING id`,
+        [user.id, imageBuffer, 'image/png']
+      );
+      const avatarId = inserted.rows[0]?.id;
+      if (!avatarId) {
+        throw new Error('Avatar insert returned no id');
+      }
+
+      const avatarUrl = `/api/community/avatars/${avatarId}.png`;
+      const updated = await query<CommunityProfile>(
+        `UPDATE users
+         SET avatar_url = $1, portrait_id = NULL, updated_at = NOW()
+         WHERE workos_user_id = $2
+         RETURNING workos_user_id, slug, headline, bio, avatar_url, expertise, interests,
+                   linkedin_url, twitter_url, github_username, is_public, open_to_coffee_chat, open_to_intros, city`,
+        [avatarUrl, user.id]
+      );
+      const profile = updated.rows[0];
+      if (!profile) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (memberDb && orgDb) {
+        const orgId = await resolvePrimaryOrganization(user.id);
+        if (orgId) {
+          const org = await orgDb.getOrganization(orgId);
+          if (org?.is_personal) {
+            await query(
+              `UPDATE member_profiles
+               SET logo_url = $1, portrait_id = NULL, updated_at = NOW()
+               WHERE workos_organization_id = $2`,
+              [avatarUrl, orgId]
+            );
+          }
+        }
+      }
+
+      communityDb.checkAndAwardBadges(user.id, 'profile').catch(
+        err => logger.error({ err }, 'Badge check failed')
+      );
+
+      invalidateMemberContextCache?.();
+      return res.json({ avatar_url: avatarUrl, profile });
+    } catch (error) {
+      logger.error({ error }, 'Failed to upload community avatar');
+      return res.status(500).json({ error: 'Failed to upload profile photo' });
+    }
+  });
 
   // PUT /api/me/community-profile -- update community profile fields
   userRouter.put('/community-profile', requireAuth, async (req, res) => {

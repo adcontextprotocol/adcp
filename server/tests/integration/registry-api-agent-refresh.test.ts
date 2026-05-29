@@ -132,6 +132,13 @@ function makeComplianceResult(options: { specialisms?: string[]; storyboardId?: 
       tracks_failed: 0,
       tracks_skipped: 0,
       tracks_partial: 0,
+      notices: [
+        {
+          severity: 'info',
+          code: 'fixture_notice',
+          message: 'Fixture notice',
+        },
+      ],
     },
     tracks: [{
       track: 'media-buy',
@@ -143,7 +150,13 @@ function makeComplianceResult(options: { specialisms?: string[]; storyboardId?: 
         steps: [{ step_id: 'get_adcp_capabilities', passed: true }],
       }],
     }],
-    observations: [],
+    observations: [
+      {
+        category: 'best_practice',
+        severity: 'suggestion',
+        message: 'Fixture observation',
+      },
+    ],
     agent_profile: { specialisms },
   };
 }
@@ -238,9 +251,13 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       type_promoted: true,
       compliance: {
         ran: true,
+        run_id: expect.any(String),
+        test_session_id: expect.stringMatching(/^owner-refresh-\d+-[0-9a-f-]{36}$/),
         overall_status: 'passing',
         storyboards_passing: 1,
         storyboards_total: 1,
+        observations_count: 1,
+        notices_count: 1,
       },
     });
     expect(refreshSingleAgentMock).toHaveBeenCalledWith(agentUrl, expect.any(Object));

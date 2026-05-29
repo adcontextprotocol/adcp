@@ -54,7 +54,7 @@
     "creative_format": "A format spec identified by the composite of `agent_url` + `id` (see core/format-id.json).",
     "audience": "A buyer-managed audience (CRM, lookalike seed, suppression). `audience_id` in media-buy/sync-audiences-request.",
     "signal": "A data signal. New discovery, activation, product targeting, and buy-time surfaces use `signal_ref`; legacy `signal_id` objects are deprecated. Opaque activation ids use `signal_activation_id` instead.",
-    "signal_activation_id": "Opaque identifier used to select or activate a signal from a signals agent or seller-offered signal catalog. `signal_agent_segment_id` in signals/* schemas and product signal targeting option declarations. Scoped to the agent that issued it; not interchangeable with `signal`.",
+    "signal_activation_id": "Opaque identifier used to select or activate a signal from a signals agent or seller-offered signal feed. `signal_agent_segment_id` in signals/* schemas and product signal targeting option declarations. Scoped to the agent that issued it; not interchangeable with `signal`.",
     "event_source": "A conversion pixel or event feed. `event_source_id` in media-buy/sync-event-sources-request, media-buy/log-event-request, and core/event.json.",
     "impairment": "An open dependency-impact entry on a media buy — `impairment_id` in core/impairment.json. Stable for the lifetime of the open impairment; doubles as `notification_id` on the impairment webhook so receivers dedupe across at-least-once delivery.",
     "collection_list": "A buyer-managed collection list. `list_id` on collection/* schemas.",

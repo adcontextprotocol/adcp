@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/signal-ref.json",
   "title": "Signal Ref",
-  "description": "Reference to a named signal definition. Uses scope as discriminator: 'data_provider' for a signal resolved through a published adagents.json signal catalog, 'signal_source' for a source-native signal resolved through the issuing signal source, or 'product' for a product-local signal option. Scope is the resolution path, not provenance; authoritative enrichment lives on the seller, signal source, or data-provider signal definition, not on this reference.",
+  "description": "Reference to a named signal definition. Uses scope as discriminator: 'data_provider' for a signal resolved through published adagents.json signals[], 'signal_source' for a source-native signal resolved through the issuing signal source, or 'product' for a product-local signal option. Scope is the resolution path, not provenance; authoritative enrichment lives on the seller, signal source, or data-provider signal definition, not on this reference.",
   "x-entity": "signal",
   "discriminator": {
     "propertyName": "scope"
@@ -37,21 +37,21 @@
     },
     {
       "type": "object",
-      "description": "Data-provider-scoped signal. The signal_id resolves through the data provider's published adagents.json signal catalog and can be authorization-verified against that catalog.",
+      "description": "Data-provider-scoped signal. The signal_id resolves through the data provider's published adagents.json signals[] and can be authorization-verified there.",
       "properties": {
         "scope": {
           "type": "string",
           "const": "data_provider",
-          "description": "Discriminator indicating the signal resolves through a data provider's published adagents.json signal catalog."
+          "description": "Discriminator indicating the signal resolves through a data provider's published adagents.json signals[]."
         },
         "data_provider_domain": {
           "type": "string",
-          "description": "Domain that publishes the signal definition in its adagents.json signal catalog.",
+          "description": "Domain that publishes the signal definition in its adagents.json signals[].",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
         },
         "signal_id": {
           "type": "string",
-          "description": "Signal identifier within the data provider's published signal catalog.",
+          "description": "Signal identifier within the data provider's published adagents.json signals[].",
           "pattern": "^[a-zA-Z0-9_-]+$"
         }
       },
@@ -68,7 +68,7 @@
     },
     {
       "type": "object",
-      "description": "Signal-source-scoped signal. Use this for source-native signals that are not published in an upstream adagents.json signal catalog. The buyer trusts the issuing signal source for this identity; use scope 'data_provider' instead when the signal is catalog-published, even if the catalog publisher is also the seller or signal source.",
+      "description": "Signal-source-scoped signal. Use this for source-native signals that are not published in upstream adagents.json signals[]. The buyer trusts the issuing signal source for this identity; use scope 'data_provider' instead when the signal is published in adagents.json signals[], even if the publisher is also the seller or signal source.",
       "properties": {
         "scope": {
           "type": "string",

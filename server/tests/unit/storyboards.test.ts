@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { createRequire } from 'node:module';
 import {
   listStoryboards,
   getStoryboard,
@@ -16,10 +17,19 @@ import {
   DEFAULT_HOSTED_COMPLIANCE_VERSION,
   hostedComplianceOptions,
   hostedComplianceTarget,
+  hostedCapabilitiesForCompliance,
+  hostedSupportedVersionsForCompliance,
   isDefaultHostedComplianceTarget,
+  withHostedComplianceCompatibility,
   withHostedComplianceOptions,
 } from '../../src/services/hosted-compliance-version.js';
-import { loadComplianceIndex } from '@adcp/sdk/testing';
+import {
+  isComplianceVersionSupported,
+  loadComplianceIndex,
+  resolveStoryboardsForCapabilities,
+} from '@adcp/sdk/testing';
+
+const require = createRequire(import.meta.url);
 
 /**
  * These tests cover the wrapper in services/storyboards.ts. Catalog content
@@ -184,6 +194,54 @@ describe('wrapper contract', () => {
     const options = withHostedComplianceOptions({ version: '3.0' }, target);
     expect(options.version).toBe(target.version);
     expect(options.complianceDir).toContain(target.version);
+  });
+
+  it('lets only the default hosted prerelease cache run for sellers advertising the stable line', () => {
+    const defaultTarget = hostedComplianceTarget('3.1');
+    const betaTarget = hostedComplianceTarget('3.1-beta');
+    const defaultIsPrerelease = /-/.test(defaultTarget.version);
+
+    expect(hostedSupportedVersionsForCompliance(['3.1'], defaultTarget)).toEqual(
+      defaultIsPrerelease ? [defaultTarget.version, '3.1'] : ['3.1'],
+    );
+    expect(hostedSupportedVersionsForCompliance(['3.1'], betaTarget)).toEqual(['3.1']);
+    expect(isComplianceVersionSupported(defaultTarget.version, ['3.1'])).toBe(!defaultIsPrerelease);
+
+    const rawTarget = hostedComplianceTarget('3.1');
+    const rawResolve = () => resolveStoryboardsForCapabilities({
+      supported_versions: ['3.1'],
+    }, hostedComplianceOptions(rawTarget));
+    if (defaultIsPrerelease) {
+      expect(rawResolve).toThrow(/not supported by this seller/);
+    } else {
+      expect(rawResolve).not.toThrow();
+    }
+
+    const target = hostedComplianceTarget('3.1');
+    const caps = hostedCapabilitiesForCompliance({
+      supported_versions: ['3.1'],
+    }, target);
+    const resolved = resolveStoryboardsForCapabilities({
+      supported_versions: caps.supported_versions,
+    }, hostedComplianceOptions(target));
+    expect(resolved.storyboards.length).toBeGreaterThan(0);
+
+    const sdkPackageRoot = require.resolve('@adcp/sdk/package.json').replace(/\/package\.json$/, '');
+    const sdkCompliance = require(`${sdkPackageRoot}/dist/lib/testing/storyboard/compliance.js`) as {
+      resolveStoryboardsForCapabilities: typeof resolveStoryboardsForCapabilities;
+    };
+
+    expect(() => withHostedComplianceCompatibility(target, () => sdkCompliance.resolveStoryboardsForCapabilities({
+      supported_versions: ['3.1'],
+    }, hostedComplianceOptions(target)))).not.toThrow();
+    const betaResolveWithStableOnly = () => withHostedComplianceCompatibility(betaTarget, () => sdkCompliance.resolveStoryboardsForCapabilities({
+      supported_versions: ['3.1'],
+    }, hostedComplianceOptions(betaTarget)));
+    if (/-/.test(betaTarget.version)) {
+      expect(betaResolveWithStableOnly).toThrow(/not supported by this seller/);
+    } else {
+      expect(betaResolveWithStableOnly).not.toThrow();
+    }
   });
 });
 

@@ -234,7 +234,7 @@
           },
           "min_audience_size": {
             "type": "integer",
-            "description": "Minimum audience segment size. Prevents micro-targeting by ensuring segments meet a k-anonymity threshold. Applies to the estimated combined (intersection) audience when multiple criteria are used, not just individual criterion sizes. The governance agent validates this by querying signal catalog metadata or seller-reported segment sizes. When segment size data is unavailable, the governance agent SHOULD produce a finding with reduced confidence rather than silently passing.",
+            "description": "Minimum audience segment size. Prevents micro-targeting by ensuring segments meet a k-anonymity threshold. Applies to the estimated combined (intersection) audience when multiple criteria are used, not just individual criterion sizes. The governance agent validates this by querying published signal metadata or seller-reported segment sizes. When segment size data is unavailable, the governance agent SHOULD produce a finding with reduced confidence rather than silently passing.",
             "minimum": 1
           },
           "human_review_required": {

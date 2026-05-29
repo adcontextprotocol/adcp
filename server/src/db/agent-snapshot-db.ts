@@ -12,6 +12,44 @@ import type {
 
 const logger = createLogger('agent-snapshot-db');
 
+export const UNKNOWN_PROBE_MAX_ATTEMPTS = 10;
+export const UNKNOWN_PROBE_MAX_BACKOFF_DAYS = 7;
+
+export type UnknownProbeTerminalState = 'unreachable' | 'unclassifiable';
+
+export interface UnknownProbeState {
+  attemptCount: number;
+  lastAttemptAt: Date;
+  nextProbeAfter: Date | null;
+  terminalState: UnknownProbeTerminalState | null;
+}
+
+export function unknownProbeBackoffDays(attemptCount: number): number {
+  if (attemptCount <= 1) return 1;
+  return Math.min(UNKNOWN_PROBE_MAX_BACKOFF_DAYS, 2 ** (attemptCount - 1));
+}
+
+export function buildUnknownProbeState(
+  previousAttemptCount: number | null | undefined,
+  terminalStateOnExhaustion: UnknownProbeTerminalState,
+  now: Date = new Date(),
+): UnknownProbeState {
+  const attemptCount = Math.max(0, previousAttemptCount ?? 0) + 1;
+  const terminalState = attemptCount >= UNKNOWN_PROBE_MAX_ATTEMPTS
+    ? terminalStateOnExhaustion
+    : null;
+  const nextProbeAfter = terminalState
+    ? null
+    : new Date(now.getTime() + unknownProbeBackoffDays(attemptCount) * 24 * 60 * 60 * 1000);
+
+  return {
+    attemptCount,
+    lastAttemptAt: now,
+    nextProbeAfter,
+    terminalState,
+  };
+}
+
 export interface AgentHealthSnapshotRow {
   agent_url: string;
   online: boolean;
@@ -37,6 +75,10 @@ export interface AgentCapabilitiesSnapshotRow {
   oauth_required: boolean;
   last_discovered: Date;
   updated_at: Date;
+  unknown_probe_attempt_count: number;
+  last_probe_attempt_at: Date | null;
+  next_probe_after: Date | null;
+  probe_terminal_state: UnknownProbeTerminalState | null;
 }
 
 export class AgentSnapshotDatabase {
@@ -98,15 +140,26 @@ export class AgentSnapshotDatabase {
   async upsertCapabilities(
     profile: AgentCapabilityProfile,
     inferredType: string | null,
+    options: { trackUnknownProbe?: boolean } = {},
   ): Promise<void> {
     try {
+      const trackUnknownProbe = options.trackUnknownProbe ?? true;
+      const unknownState = inferredType === null && trackUnknownProbe
+        ? await this.nextUnknownProbeState(
+            profile.agent_url,
+            profile.discovery_error ? 'unreachable' : 'unclassifiable',
+          )
+        : null;
+
       await query(
         `INSERT INTO agent_capabilities_snapshot
            (agent_url, protocol, discovered_tools_json, standard_operations_json,
             creative_capabilities_json, signals_capabilities_json,
             measurement_capabilities_json, inferred_type,
-            discovery_error, oauth_required, last_discovered, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+            discovery_error, oauth_required, last_discovered,
+            unknown_probe_attempt_count, last_probe_attempt_at, next_probe_after,
+            probe_terminal_state, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
          ON CONFLICT (agent_url) DO UPDATE SET
            protocol = EXCLUDED.protocol,
            discovered_tools_json = EXCLUDED.discovered_tools_json,
@@ -114,10 +167,38 @@ export class AgentSnapshotDatabase {
            creative_capabilities_json = EXCLUDED.creative_capabilities_json,
            signals_capabilities_json = EXCLUDED.signals_capabilities_json,
            measurement_capabilities_json = EXCLUDED.measurement_capabilities_json,
-           inferred_type = EXCLUDED.inferred_type,
+           inferred_type = CASE
+             WHEN EXCLUDED.inferred_type IS NULL AND agent_capabilities_snapshot.inferred_type IS NOT NULL
+               THEN agent_capabilities_snapshot.inferred_type
+             ELSE EXCLUDED.inferred_type
+           END,
            discovery_error = EXCLUDED.discovery_error,
            oauth_required = EXCLUDED.oauth_required,
            last_discovered = EXCLUDED.last_discovered,
+           unknown_probe_attempt_count = CASE
+             WHEN EXCLUDED.inferred_type IS NOT NULL THEN 0
+             WHEN agent_capabilities_snapshot.inferred_type IS NULL
+               THEN EXCLUDED.unknown_probe_attempt_count
+             ELSE agent_capabilities_snapshot.unknown_probe_attempt_count
+           END,
+           last_probe_attempt_at = CASE
+             WHEN EXCLUDED.inferred_type IS NOT NULL THEN NULL
+             WHEN agent_capabilities_snapshot.inferred_type IS NULL
+               THEN EXCLUDED.last_probe_attempt_at
+             ELSE agent_capabilities_snapshot.last_probe_attempt_at
+           END,
+           next_probe_after = CASE
+             WHEN EXCLUDED.inferred_type IS NOT NULL THEN NULL
+             WHEN agent_capabilities_snapshot.inferred_type IS NULL
+               THEN EXCLUDED.next_probe_after
+             ELSE agent_capabilities_snapshot.next_probe_after
+           END,
+           probe_terminal_state = CASE
+             WHEN EXCLUDED.inferred_type IS NOT NULL THEN NULL
+             WHEN agent_capabilities_snapshot.inferred_type IS NULL
+               THEN EXCLUDED.probe_terminal_state
+             ELSE agent_capabilities_snapshot.probe_terminal_state
+           END,
            updated_at = NOW()`,
         [
           profile.agent_url,
@@ -131,11 +212,69 @@ export class AgentSnapshotDatabase {
           profile.discovery_error ?? null,
           profile.oauth_required ?? false,
           profile.last_discovered,
+          unknownState?.attemptCount ?? 0,
+          unknownState?.lastAttemptAt ?? null,
+          unknownState?.nextProbeAfter ?? null,
+          unknownState?.terminalState ?? null,
         ],
       );
     } catch (err) {
       logger.warn({ agentUrl: profile.agent_url, err }, 'Failed to upsert agent capabilities snapshot');
     }
+  }
+
+  async recordUnknownProbeFailure(
+    agentUrl: string,
+    protocol: 'mcp' | 'a2a',
+    error: string,
+  ): Promise<void> {
+    try {
+      const unknownState = await this.nextUnknownProbeState(agentUrl, 'unreachable');
+      await query(
+        `INSERT INTO agent_capabilities_snapshot
+           (agent_url, protocol, discovered_tools_json, inferred_type,
+            discovery_error, oauth_required, last_discovered,
+            unknown_probe_attempt_count, last_probe_attempt_at, next_probe_after,
+            probe_terminal_state, updated_at)
+         VALUES ($1, $2, '[]'::jsonb, NULL, $3, FALSE, NOW(), $4, $5, $6, $7, NOW())
+         ON CONFLICT (agent_url) DO UPDATE SET
+           discovery_error = EXCLUDED.discovery_error,
+           last_discovered = EXCLUDED.last_discovered,
+           unknown_probe_attempt_count = EXCLUDED.unknown_probe_attempt_count,
+           last_probe_attempt_at = EXCLUDED.last_probe_attempt_at,
+           next_probe_after = EXCLUDED.next_probe_after,
+           probe_terminal_state = EXCLUDED.probe_terminal_state,
+           updated_at = NOW()
+         WHERE agent_capabilities_snapshot.inferred_type IS NULL`,
+        [
+          agentUrl,
+          protocol,
+          error,
+          unknownState.attemptCount,
+          unknownState.lastAttemptAt,
+          unknownState.nextProbeAfter,
+          unknownState.terminalState,
+        ],
+      );
+    } catch (err) {
+      logger.warn({ agentUrl, err }, 'Failed to record unknown-agent probe failure');
+    }
+  }
+
+  private async nextUnknownProbeState(
+    agentUrl: string,
+    terminalStateOnExhaustion: UnknownProbeTerminalState,
+  ): Promise<UnknownProbeState> {
+    const result = await query<{ unknown_probe_attempt_count: number }>(
+      `SELECT unknown_probe_attempt_count
+         FROM agent_capabilities_snapshot
+        WHERE agent_url = $1`,
+      [agentUrl],
+    );
+    return buildUnknownProbeState(
+      result.rows[0]?.unknown_probe_attempt_count,
+      terminalStateOnExhaustion,
+    );
   }
 
   /**

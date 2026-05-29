@@ -100,7 +100,9 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          CHANGED="$(gh pr diff "$PR_NUMBER" --repo "$REPO" --name-only)"
+          # `gh pr diff --name-only` uses GitHub's diff endpoint, which 406s
+          # for generated release PRs over 300 files. The files API paginates.
+          CHANGED="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" --jq '.[].filename')"
           MODIFIED=""
           while IFS= read -r f; do
             case "$f" in

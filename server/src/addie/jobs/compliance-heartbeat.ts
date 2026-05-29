@@ -128,7 +128,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       // notification, since owner-driven runs already have a chat response.
       const declaredSpecialisms = complianceResult.agent_profile?.specialisms ?? [];
 
-      if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0) {
+      if (declaredSpecialisms.length > 0) {
         try {
           const badgeResult = await runBadgeFanOut({
             complianceDb,
@@ -217,7 +217,35 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           observations_json: [{ category: observationCategory, severity: observationSeverity, message: observationMessage }],
           triggered_by: 'heartbeat',
           dry_run: false,
+          replace_storyboard_statuses: true,
         });
+
+        const existingBadges = await complianceDb.getBadgesForAgent(agent.agent_url);
+        const revoked = [];
+        for (const badge of existingBadges) {
+          await complianceDb.revokeBadge(
+            agent.agent_url,
+            badge.role,
+            badge.adcp_version,
+            'Authoritative compliance run failed before storyboard verification',
+          );
+          revoked.push({
+            role: badge.role,
+            reason: 'Authoritative compliance run failed',
+            adcp_version: badge.adcp_version,
+          });
+        }
+        if (revoked.length > 0) {
+          try {
+            await notifyVerificationChange({
+              agentUrl: agent.agent_url,
+              issued: [],
+              revoked,
+            });
+          } catch (notifyError) {
+            logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification revocation notification');
+          }
+        }
       } catch (recordError) {
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
       }

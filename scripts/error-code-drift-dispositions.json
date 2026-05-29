@@ -146,6 +146,11 @@
       "target_version": "3.1",
       "note": "Canonical-formats format-option resolution advisory (#3307; #4620). Non-fatal; surfaces when a placement's `format_options[].format_option_id` references a format option not declared in the file's top-level `formats[]`. Same-file scope only (cross-file lookup not supported by design). Wire change — held for 3.1."
     },
+    "FORMAT_NOT_SUPPORTED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Creative-agent canonical build routing rejection (#4591). Returned by build_creative when target_format_id.id is not an advertised creative.supported_formats[].capability_id or supported legacy named format. Wire change — held for 3.1."
+    },
     "PRIVATE_FIELD_IN_PUBLIC_PLACEMENT": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",

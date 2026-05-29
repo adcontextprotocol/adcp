@@ -26,6 +26,7 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 | `destinations` | Destination[] | No | Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. See Destination Object below. |
 | `countries` | string[] | No | Countries where signals will be used (ISO 3166-1 alpha-2 codes) |
 | `filters` | Filters | No | Filters to refine results (see Filters Object below). In wholesale mode, filters constrain the enumerated signals feed (e.g., `filters.data_providers: ["acme-data"]` returns only that provider's signals). |
+| `fields` | string[] | No | Specific signal fields to include in the response, aligned with `get_products.fields`. Required identity and activation fields are always included when required by the response schema. Use for progressive disclosure of rich definition metadata such as `taxonomy`, `data_sources`, `methodology`, `segmentation_criteria`, `criteria_url`, `onboarder`, `modeling`, `countries`, `consent_basis`, `restricted_attributes`, `policy_categories`, and `data_subject_rights`. Agents SHOULD honor requested fields for exact lookup, refinement, and small custom-signal result sets when available; broad discovery and wholesale pages MAY still return compact pointers to provider-published definitions or disclosure URLs. |
 | `if_wholesale_feed_version` | string | No | Opaque `wholesale_feed_version` token from a prior `get_signals` response. When provided, the agent compares against its current wholesale signals feed version for the caller's `cache_scope` and MAY return `unchanged: true` (with `signals` omitted) if nothing has changed. See [Wholesale feed versioning](#wholesale-feed-versioning) and [Cache layering](#cache-layering). |
 | `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_wholesale_feed_version`. Evaluation order: `if_wholesale_feed_version` mismatch → full payload; `if_wholesale_feed_version` matches but `if_pricing_version` mismatches → full payload (so the caller sees updated `pricing_options`); both match → agent MAY return `unchanged: true`. Agents that don't track pricing separately ignore this. |
 | `max_results` | number | No | **Deprecated.** Use `pagination.max_results` instead. When both are present, `pagination.max_results` takes precedence. Will be removed in AdCP 4.0. |
@@ -61,6 +62,10 @@ Each deployment target uses a `type` field to discriminate between platform-base
 | `data_providers` | string[] | No | Filter by specific data providers |
 | `max_cpm` | number | No | Maximum CPM price filter. Excludes signals where all CPM-based pricing options exceed this value. Signals without CPM-based pricing options are not affected by this filter. |
 | `min_coverage_percentage` | number | No | Minimum coverage requirement |
+
+<Note>
+`catalog_types`, the deprecated `catalog_signals` capability flag, and the deprecated `signal_id.source: "catalog"` value are legacy wire terms. In new prose, read them as provider-published signal definitions in adagents.json `signals[]`. Existing 3.x agents may continue to accept or emit them for compatibility, but new callers SHOULD use `signal_ref` and MUST NOT require `signals.features.catalog_signals` before using the Signals protocol.
+</Note>
 
 ## Response Structure
 
@@ -165,10 +170,43 @@ The response structure is identical across protocols, with only the transport wr
 }
 ```
 
+<Note>
+`get_signals` is a discovery and availability surface, not a requirement to
+inline every field from the authoritative signal definition. For broad search
+results and wholesale feed pages, signal agents SHOULD keep each listing
+compact and use stable references plus cacheable disclosure pointers for large
+definition resources. Buyers can dereference provider-published definitions
+from `signal_ref`, `taxonomy.ref`, `criteria_url`, and
+`modeling.disclosure.jurisdictions[].disclosure_url`, using `taxonomy.etag` or
+the provider's own HTTP validators to avoid repeated downloads.
+</Note>
+
+### Definition field inclusion
+
+Buyers that need richer review context in the same call can set `fields`. This
+uses the same response-projection pattern as `get_products.fields`, rather than
+introducing a separate lookup task.
+
+Required identity and activation fields are always included when required by the
+response schema. Additional values request optional listing fields or rich
+definition metadata inline, including `taxonomy`, `data_sources`, `methodology`,
+`segmentation_criteria`, `criteria_url`, `refresh_cadence`, `lookback_window`,
+`onboarder`, `modeling`, `audience_expansion`, `device_expansion`, `countries`,
+`consent_basis`, `restricted_attributes`, `policy_categories`, `art9_basis`, and
+`data_subject_rights`.
+
+Agents SHOULD honor requested fields for exact lookup, refinement, and small
+custom-signal result sets when the fields are available. For broad discovery and
+wholesale pages, agents MAY still return compact listings with pointers to
+provider-published definitions, taxonomy documents, criteria pages, and
+disclosure URLs when inlining the requested fields would make the page too
+large. This keeps static signals cacheable through `adagents.json` while letting
+custom or brief-specific signals return deeper inline context when useful.
+
 ### Field Descriptions
 
 - **signals**: Array of matching signals
-  - **signal_ref**: Canonical signal reference. Use `scope: "data_provider"` for signals resolved through an adagents.json signal catalog, `scope: "signal_source"` for source-native signals that are not catalog-published, and `scope: "product"` only in product-contextual responses. New responses SHOULD include this field.
+  - **signal_ref**: Canonical signal reference. Use `scope: "data_provider"` for signals resolved through adagents.json `signals[]`, `scope: "signal_source"` for source-native signals that are not published in adagents.json `signals[]`, and `scope: "product"` only in product-contextual responses. New responses SHOULD include this field.
   - **signal_id**: Deprecated legacy SignalId object. New clients should read `signal_ref`; during the migration window, older responses may include only `signal_id`.
   - **signal_agent_segment_id**: Opaque signal handle issued by this signal source. Use it verbatim for `activate_signal`; do not treat it as a globally portable signal ID. For package-level `signal_targeting_groups`, `signal_ref` is the buy-time identity and this handle is echoed only when the selected product option exposes it as a separate execution handle.
   - **name**: Human-readable signal name
@@ -749,15 +787,15 @@ Use `coverage_forecast` as the authoritative field for signal-first discovery: "
 
 ## Seller-offered signals on media products
 
-A sales agent that owns or is authorized to apply targeting signals exposes buy-time product eligibility through `get_products`. It can also expose a broader cross-product signal catalog through `get_signals` when buyers need discovery or activation before package selection:
+A sales agent that owns or is authorized to apply targeting signals exposes buy-time product eligibility through `get_products`. It can also expose a broader cross-product signal feed through `get_signals` when buyers need discovery or activation before package selection:
 
 - `get_products` declares whether a product has package-level signal targeting. `products[].included_signals` describes non-selectable signals already bundled into or planned into a product. Inline `products[].signal_targeting_options` can carry a product-specific menu, price, activation handle, default, grouping hint, or brief/refine-selected subset; wholesale products can omit inline options and use `get_signals` as the selectable signal feed.
 - `get_signals` optionally returns cross-product signal metadata, including `signal_ref`, `signal_agent_segment_id`, value metadata, and any default or account-scoped `pricing_options`.
 - `create_media_buy` selects the signal for a package in `packages[].targeting_overlay.signal_targeting_groups`, carrying the selected signal `pricing_option_id`, `signal_ref`, and any separate seller execution handle when required.
 
-This gives buyers a product-first buy-time eligibility path without forcing products to duplicate a large wholesale signal feed: use the selected product's `signal_targeting_allowed`, optional inline `signal_targeting_options`, `signal_targeting_rules`, and `get_signals` feed to determine what may be applied on that package. When both surfaces include pricing, the product-scoped `signal_targeting_options[].pricing_options` price is authoritative for that product. For product-local signals exposed on both surfaces, `signal_ref.signal_id` in the product option MUST match the seller's `get_signals.signals[].signal_ref.signal_id` for the same signal. `included_signals` is descriptive only and does not make a signal selectable.
+This gives buyers a product-first buy-time eligibility path without forcing products to duplicate a large wholesale signal feed: use the selected product's inline `signal_targeting_options` when present and `signal_targeting_rules` to determine what may be applied on that package. When a product omits inline options but allows signal targeting, use `get_signals` for candidate discovery and activation metadata, then use `get_products.filters.signal_targeting` or a product-specific `get_products` query to confirm the candidate set is selectable and jointly composable for the intended product before calling `create_media_buy`. When both surfaces include pricing, the product-scoped `signal_targeting_options[].pricing_options` price is authoritative for that product. For product-local signals exposed on both surfaces, `signal_ref.signal_id` in the product option MUST match the seller's `get_signals.signals[].signal_ref.signal_id` for the same signal. `included_signals` is descriptive only and does not make a signal selectable.
 
-For media-buy product targeting, product options and package groups use the same `signal_ref` identity: `scope: "product"` for product-local signal options, `scope: "data_provider"` with `data_provider_domain` for signals defined by a published adagents.json signal catalog, or `scope: "signal_source"` for source-native custom signals that are not catalog-published. When a data-provider catalog signal is selected, buyers can verify the seller's authorization by checking the provider's `adagents.json` `authorized_agents` rules for the signal id or tags. The older Signals Protocol `signal_id.source` shape is deprecated and retained only for backwards compatibility.
+For media-buy product targeting, product options and package groups use the same `signal_ref` identity: `scope: "product"` for product-local signal options, `scope: "data_provider"` with `data_provider_domain` for signals defined in published adagents.json `signals[]`, or `scope: "signal_source"` for source-native custom signals that are not published in adagents.json `signals[]`. When a provider-published signal is selected, buyers can verify the seller's authorization by checking the provider's `adagents.json` `authorized_agents` rules for the signal id or tags. The older Signals Protocol `signal_id.source` shape is deprecated and retained only for backwards compatibility.
 
 ## Wholesale signals feed
 

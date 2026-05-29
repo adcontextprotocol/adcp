@@ -11,12 +11,12 @@
   "oneOf": [
     {
       "type": "object",
-      "description": "Catalog signal - references a signal from a data provider's published catalog. Buyers can verify authorization by checking the data provider's adagents.json.",
+      "description": "Data-provider signal - references a signal from a data provider's published adagents.json signals[]. Buyers can verify authorization by checking the data provider's adagents.json.",
       "properties": {
         "source": {
           "type": "string",
           "const": "catalog",
-          "description": "Discriminator indicating this signal is from a data provider's published catalog"
+          "description": "Discriminator indicating this signal is from a data provider's published adagents.json signals[]"
         },
         "data_provider_domain": {
           "type": "string",
@@ -39,7 +39,7 @@
         "source": {
           "type": "string",
           "const": "agent",
-          "description": "Discriminator indicating this signal is native to the signal source identified by agent_url, not from a data provider catalog."
+          "description": "Discriminator indicating this signal is native to the signal source identified by agent_url, not from a data provider's published signal definitions."
         },
         "agent_url": {
           "type": "string",

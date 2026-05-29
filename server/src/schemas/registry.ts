@@ -353,6 +353,12 @@ export const AgentComplianceDetailSchema = z
     check_interval_hours: z.number().int().optional().openapi({ description: "How often the heartbeat re-tests this agent, in hours" }),
     declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared in get_adcp_capabilities, from the latest run" }),
     specialism_status: z.record(z.string(), z.enum(['passing', 'failing', 'untested', 'unknown'])).optional().openapi({ description: "Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status" }),
+    notices: z.array(z.any()).optional().openapi({ description: "Run-summary notices from the latest non-dry-run compliance run. Unknown codes/severities are preserved verbatim." }),
+    observations: z.array(z.object({
+      category: z.string(),
+      severity: z.string(),
+      message: z.string(),
+    })).optional().openapi({ description: "Public-safe advisory observations from the latest non-dry-run compliance run. Raw evidence is intentionally omitted; this array is not merged across runs, so cleared advisories disappear on the next fresh run." }),
     membership_tier: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's membership tier. Populated only when the authenticated viewer owns the agent; null otherwise. Field is always present so response shape doesn't reveal ownership." }),
     membership_tier_label: z.string().nullable().optional().openapi({ description: "Owner-scoped: human-readable label for membership_tier (e.g. 'Builder'). Null for non-owners." }),
     subscription_status: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's subscription status (active, past_due, trialing, etc.). Null for non-owners." }),

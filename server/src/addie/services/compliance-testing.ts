@@ -21,6 +21,7 @@ import {
 } from '@adcp/sdk/testing';
 import {
   hostedComplianceTarget,
+  withHostedComplianceCompatibility,
   withHostedComplianceRunOptions,
   type HostedComplianceTarget,
 } from '../../services/hosted-compliance-version.js';
@@ -54,7 +55,10 @@ export async function comply(
   options: ComplyOptions,
   target: HostedComplianceTarget,
 ): Promise<ComplianceResult> {
-  const result = await sdkComply(agentUrl, withHostedComplianceRunOptions(options, target));
+  const result = await withHostedComplianceCompatibility(
+    target,
+    () => sdkComply(agentUrl, withHostedComplianceRunOptions(options, target)),
+  );
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { requested_compliance_target?: string }).requested_compliance_target = target.requested;
   return result;
@@ -657,6 +661,7 @@ export function complianceResultToDbInput(
     observations_json: result.observations,
     triggered_by: triggeredBy,
     storyboard_statuses: deriveStoryboardStatuses(result, storyboardIds),
+    replace_storyboard_statuses: !storyboardIds?.length,
     step_diagnostics: extractFailingStepDiagnostics(result),
     // Forward-compat: notices are an optional field in the runner output
     // contract (run_summary.notices). Unknown codes/severities are stored
