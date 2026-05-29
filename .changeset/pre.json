@@ -1,8 +1,8 @@
 {
   "mode": "pre",
-  "tag": "beta",
+  "tag": "rc",
   "initialVersions": {
-    "adcontextprotocol": "3.0.1"
+    "adcontextprotocol": "3.1.0-rc.0"
   },
   "changesets": [
     "2260-creative-retention-outlasts-campaigns",
