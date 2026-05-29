@@ -31,7 +31,7 @@ The `adagents.json` file provides a standardized way for publishers to declare t
 }
 ```
 
-This combined model is common for publishers with first-party data — the same domain authorizes sales agents (via `properties`) and declares signal catalogs (via `signals`). The two namespaces are independent: authorization for property sales does not grant signal access, and signal registration does not imply property authorization.
+This combined model is common for publishers with first-party data — the same domain authorizes sales agents (via `properties`) and declares published signal definitions (via `signals`). The two namespaces are independent: authorization for property sales does not grant signal access, and signal registration does not imply property authorization.
 
 See [Signal data providers](/docs/signals/data-providers) for the signals-side documentation.
 
@@ -172,7 +172,7 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 
 The `placements[]` array is the publisher's public placement catalog. It defines stable, semantic placement IDs that products and authorization rules can reference. A buyer should not have to interpret a raw ad-server ad unit path, delivery placement ID, video-ad-server zone, or other seller-internal delivery identifier to understand what a product offers.
 
-Publishers that expose placement, format, collection, property, or signal catalogs should publish `catalog_etag` and update it whenever those catalog entries change. This lets buyer SDKs cache catalog lookups without silently resolving the same `{publisher_domain, placement_id}` or `{publisher_domain, format_option_id}` to different metadata after a publisher deployment.
+Publishers that expose placement, format, collection, or property catalogs, or published `signals[]` definitions, should publish `catalog_etag` and update it whenever those entries change. This lets buyer SDKs cache catalog lookups without silently resolving the same `{publisher_domain, placement_id}` or `{publisher_domain, format_option_id}` to different metadata after a publisher deployment.
 
 At minimum, a public placement should describe:
 

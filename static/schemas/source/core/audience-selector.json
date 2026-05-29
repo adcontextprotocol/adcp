@@ -6,7 +6,7 @@
   "oneOf": [
     {
       "type": "object",
-      "description": "Signal-based selector for binary signals — user either matches or doesn't. The governance agent can resolve catalog signals to their full definition for structural validation.",
+      "description": "Signal-based selector for binary signals — user either matches or doesn't. The governance agent can resolve published signal definitions for structural validation.",
       "properties": {
         "type": {
           "type": "string",
