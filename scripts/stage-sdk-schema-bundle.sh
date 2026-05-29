@@ -79,8 +79,8 @@ mkdir -p "$DST"
 (cd "$SRC" && tar -cf - .) | (cd "$DST" && tar -xf -)
 
 # SDK 8.1.0-beta.12's loader deliberately skips response-tool files during
-# core pre-registration so response root relaxation can happen lazily. Older
-# 3.0.x schema bundles have core/async-response-data.json $ref directly to
+# core pre-registration so response root relaxation can happen lazily. Some
+# published schema bundles have core/async-response-data.json $ref directly to
 # tool async response schemas, so those refs must still be registered before
 # core schemas compile. Duplicating them under core/ keeps the original bundle
 # intact while placing a copy in a directory the loader treats as fragments.

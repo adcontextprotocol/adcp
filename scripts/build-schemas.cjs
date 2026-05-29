@@ -1018,6 +1018,45 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
   }
 }
 
+function copyAsyncResponseRefsToCore(targetDir) {
+  const asyncRefDir = path.join(targetDir, 'core', 'async-response-refs');
+
+  if (fs.existsSync(asyncRefDir)) {
+    fs.rmSync(asyncRefDir, { recursive: true, force: true });
+  }
+  ensureDir(asyncRefDir);
+
+  let count = 0;
+
+  function walk(dir) {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      const rel = path.relative(targetDir, fullPath);
+
+      if (entry.isDirectory()) {
+        if (rel === 'bundled' || rel.startsWith(`bundled${path.sep}`)) continue;
+        if (rel === path.join('core', 'async-response-refs') || rel.startsWith(`${path.join('core', 'async-response-refs')}${path.sep}`)) continue;
+        walk(fullPath);
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+      if (!entry.name.endsWith('.json')) continue;
+      if (!/-async-response-(submitted|working|input-required)\.json$/.test(entry.name)) continue;
+      if (rel.startsWith(`core${path.sep}`)) continue;
+
+      const targetPath = path.join(asyncRefDir, rel);
+      ensureDir(path.dirname(targetPath));
+      fs.copyFileSync(fullPath, targetPath);
+      count++;
+    }
+  }
+
+  walk(targetDir);
+  return count;
+}
+
 function updateSourceRegistry(version) {
   const registryPath = path.join(SOURCE_DIR, 'index.json');
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
@@ -1879,6 +1918,8 @@ async function main() {
     console.log(`📋 Creating release: dist/schemas/${version}/`);
     ensureDir(versionDir);
     copyAndTransformSchemas(SOURCE_DIR, versionDir, version);
+    const asyncRefCount = copyAsyncResponseRefsToCore(versionDir);
+    console.log(`   ✓ Copied ${asyncRefCount} async response schemas to core/async-response-refs/`);
 
     // Build extensions (auto-discovered, filtered by version)
     console.log(`🔌 Building extensions for ${version}`);
@@ -1910,6 +1951,7 @@ async function main() {
     console.log(`📋 Updating latest/ to match release`);
     ensureDir(latestDir);
     copyAndTransformSchemas(SOURCE_DIR, latestDir, 'latest');
+    copyAsyncResponseRefsToCore(latestDir);
 
     // Build extensions for latest (using full version for filtering)
     buildExtensions(SOURCE_DIR, latestDir, version);
@@ -1963,6 +2005,8 @@ async function main() {
     console.log(`📋 Building schemas to dist/schemas/latest/`);
     ensureDir(latestDir);
     copyAndTransformSchemas(SOURCE_DIR, latestDir, 'latest');
+    const asyncRefCount = copyAsyncResponseRefsToCore(latestDir);
+    console.log(`   ✓ Copied ${asyncRefCount} async response schemas to core/async-response-refs/`);
 
     // Build extensions (auto-discovered, filtered by current version)
     console.log(`🔌 Building extensions for ${version}`);
@@ -2016,7 +2060,7 @@ async function main() {
   console.log('📖 See docs/reference/versioning.mdx for guidance on which to use.');
 }
 
-module.exports = { hoistDuplicateInlineEnums, hoistMarkedSchemas, resolveRefs, versionInlineSchemaIds, dedupBundledSchemaIds, stripIdsFromSubtreesWithLocalRefs };
+module.exports = { hoistDuplicateInlineEnums, hoistMarkedSchemas, resolveRefs, versionInlineSchemaIds, dedupBundledSchemaIds, stripIdsFromSubtreesWithLocalRefs, copyAsyncResponseRefsToCore };
 
 if (require.main === module) {
   main().catch(err => {
