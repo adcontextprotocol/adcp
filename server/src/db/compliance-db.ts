@@ -265,6 +265,16 @@ export interface RecordComplianceRunInput {
   triggered_org_id?: string | null;
   dry_run?: boolean;
   storyboard_statuses?: StoryboardStatusEntry[];
+  /**
+   * When true, this run is authoritative for the agent's full storyboard
+   * surface. Existing materialized storyboard verdict rows for the agent are
+   * deleted before this run's rows are inserted, so removed/skipped storyboards
+   * from older runs cannot keep contributing stale pass/fail state.
+   *
+   * Leave false for partial owner-triggered storyboard reruns; those
+   * intentionally overlay one storyboard without discarding the rest.
+   */
+  replace_storyboard_statuses?: boolean;
   step_diagnostics?: StepDiagnosticEntry[];
   /**
    * Advisory notices emitted by the runner at run-summary level. Stored as
@@ -447,68 +457,91 @@ export class ComplianceDatabase {
         ],
       );
 
-      // 5. Batch upsert per-storyboard statuses (single query, not N+1)
+      // 5. Batch upsert per-storyboard statuses (single query, not N+1).
+      // Full-suite runs replace the agent's materialized storyboard rows before
+      // inserting fresh results. That invalidates stale verdicts from older
+      // compliance targets/cache versions while preserving partial overlay
+      // semantics for single-storyboard owner retests.
       // Uses a SAVEPOINT so a missing table (pre-migration) doesn't roll back
       // the entire compliance run — the run and status update still commit.
-      if (input.storyboard_statuses?.length) {
+      if (input.replace_storyboard_statuses || input.storyboard_statuses?.length) {
         // Validate status values before sending to Postgres to surface typos
         // as clear errors instead of cryptic constraint violations inside unnest
-        for (const sb of input.storyboard_statuses) {
+        for (const sb of input.storyboard_statuses ?? []) {
           if (!VALID_STORYBOARD_STATUSES.has(sb.status)) {
             throw new Error(`Invalid storyboard status "${sb.status}" for ${sb.storyboard_id}`);
           }
         }
 
-        const sbIds = input.storyboard_statuses.map(s => s.storyboard_id);
-        const sbStatuses = input.storyboard_statuses.map(s => s.status);
-        const sbStepsPassed = input.storyboard_statuses.map(s => s.steps_passed);
-        const sbStepsTotal = input.storyboard_statuses.map(s => s.steps_total);
-
         await client.query('SAVEPOINT storyboard_upsert');
         try {
-          await client.query(
-            `INSERT INTO agent_storyboard_status (
-              agent_url, storyboard_id, status, last_tested_at,
-              last_passed_at, last_failed_at, run_id,
-              steps_passed, steps_total, triggered_by, requested_compliance_target, adcp_version, updated_at
-            )
-            SELECT
-              $1, sb_id, sb_status, NOW(),
-              CASE WHEN sb_status = 'passing' THEN NOW() ELSE NULL END,
-              CASE WHEN sb_status IN ('failing', 'partial') THEN NOW() ELSE NULL END,
-              $4, sb_passed, sb_total, $7, $8, $9, NOW()
-            FROM unnest($2::text[], $3::text[], $5::int[], $6::int[])
-              AS t(sb_id, sb_status, sb_passed, sb_total)
-            ON CONFLICT (agent_url, storyboard_id) DO UPDATE SET
-              status = EXCLUDED.status,
-              last_tested_at = NOW(),
-              last_passed_at = CASE
-                WHEN EXCLUDED.status = 'passing' THEN NOW()
-                ELSE agent_storyboard_status.last_passed_at
-              END,
-              last_failed_at = CASE
-                WHEN EXCLUDED.status IN ('failing', 'partial') THEN NOW()
-                ELSE agent_storyboard_status.last_failed_at
-              END,
-              run_id = EXCLUDED.run_id,
-              steps_passed = EXCLUDED.steps_passed,
-              steps_total = EXCLUDED.steps_total,
-              triggered_by = EXCLUDED.triggered_by,
-              requested_compliance_target = EXCLUDED.requested_compliance_target,
-              adcp_version = EXCLUDED.adcp_version,
-              updated_at = NOW()`,
-            [
-              input.agent_url,
-              sbIds,
-              sbStatuses,
-              run.id,
-              sbStepsPassed,
-              sbStepsTotal,
-              input.triggered_by ?? 'heartbeat',
-              input.requested_compliance_target ?? null,
-              input.adcp_version ?? null,
-            ],
-          );
+          if (input.replace_storyboard_statuses) {
+            if (input.storyboard_statuses?.length) {
+              const freshIds = input.storyboard_statuses.map(s => s.storyboard_id);
+              await client.query(
+                `DELETE FROM agent_storyboard_status
+                 WHERE agent_url = $1
+                   AND NOT (storyboard_id = ANY($2::text[]))`,
+                [input.agent_url, freshIds],
+              );
+            } else {
+              await client.query(
+                `DELETE FROM agent_storyboard_status WHERE agent_url = $1`,
+                [input.agent_url],
+              );
+            }
+          }
+
+          if (input.storyboard_statuses?.length) {
+            const sbIds = input.storyboard_statuses.map(s => s.storyboard_id);
+            const sbStatuses = input.storyboard_statuses.map(s => s.status);
+            const sbStepsPassed = input.storyboard_statuses.map(s => s.steps_passed);
+            const sbStepsTotal = input.storyboard_statuses.map(s => s.steps_total);
+
+            await client.query(
+              `INSERT INTO agent_storyboard_status (
+                agent_url, storyboard_id, status, last_tested_at,
+                last_passed_at, last_failed_at, run_id,
+                steps_passed, steps_total, triggered_by, requested_compliance_target, adcp_version, updated_at
+              )
+              SELECT
+                $1, sb_id, sb_status, NOW(),
+                CASE WHEN sb_status = 'passing' THEN NOW() ELSE NULL END,
+                CASE WHEN sb_status IN ('failing', 'partial') THEN NOW() ELSE NULL END,
+                $4, sb_passed, sb_total, $7, $8, $9, NOW()
+              FROM unnest($2::text[], $3::text[], $5::int[], $6::int[])
+                AS t(sb_id, sb_status, sb_passed, sb_total)
+              ON CONFLICT (agent_url, storyboard_id) DO UPDATE SET
+                status = EXCLUDED.status,
+                last_tested_at = NOW(),
+                last_passed_at = CASE
+                  WHEN EXCLUDED.status = 'passing' THEN NOW()
+                  ELSE agent_storyboard_status.last_passed_at
+                END,
+                last_failed_at = CASE
+                  WHEN EXCLUDED.status IN ('failing', 'partial') THEN NOW()
+                  ELSE agent_storyboard_status.last_failed_at
+                END,
+                run_id = EXCLUDED.run_id,
+                steps_passed = EXCLUDED.steps_passed,
+                steps_total = EXCLUDED.steps_total,
+                triggered_by = EXCLUDED.triggered_by,
+                requested_compliance_target = EXCLUDED.requested_compliance_target,
+                adcp_version = EXCLUDED.adcp_version,
+                updated_at = NOW()`,
+              [
+                input.agent_url,
+                sbIds,
+                sbStatuses,
+                run.id,
+                sbStepsPassed,
+                sbStepsTotal,
+                input.triggered_by ?? 'heartbeat',
+                input.requested_compliance_target ?? null,
+                input.adcp_version ?? null,
+              ],
+            );
+          }
           await client.query('RELEASE SAVEPOINT storyboard_upsert');
         } catch (sbErr) {
           await client.query('ROLLBACK TO SAVEPOINT storyboard_upsert');
@@ -716,13 +749,18 @@ export class ComplianceDatabase {
     return map;
   }
 
-  async getComplianceHistory(agentUrl: string, limit: number = 30): Promise<ComplianceRun[]> {
+  async getComplianceHistory(
+    agentUrl: string,
+    limit: number = 30,
+    opts: { includeDryRuns?: boolean } = {},
+  ): Promise<ComplianceRun[]> {
     const result = await query(
       `SELECT * FROM agent_compliance_runs
        WHERE agent_url = $1
+         AND ($3::boolean OR dry_run = FALSE)
        ORDER BY tested_at DESC
        LIMIT $2`,
-      [agentUrl, limit],
+      [agentUrl, limit, opts.includeDryRuns ?? false],
     );
     return result.rows;
   }
@@ -823,6 +861,25 @@ export class ComplianceDatabase {
     const raw = result.rows[0]?.notices_json;
     if (!Array.isArray(raw)) return [];
     return raw as NoticeEntry[];
+  }
+
+  /**
+   * Return advisory observations from the most recent non-dry-run compliance
+   * run. These are fresh per-run observations from the runner (for example
+   * best-practice advisories); consumers must not merge them with older runs.
+   */
+  async getLatestObservations(agentUrl: string): Promise<unknown[]> {
+    const result = await query(
+      `SELECT observations_json
+       FROM agent_compliance_runs
+       WHERE agent_url = $1 AND dry_run = FALSE
+       ORDER BY tested_at DESC
+       LIMIT 1`,
+      [agentUrl],
+    );
+    const raw = result.rows[0]?.observations_json;
+    if (!Array.isArray(raw)) return [];
+    return raw;
   }
 
   // ----- Due-for-Check Query -----

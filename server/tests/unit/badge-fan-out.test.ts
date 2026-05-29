@@ -77,6 +77,25 @@ describe('runBadgeFanOut', () => {
     expect(queryMock).not.toHaveBeenCalled();
   });
 
+  it('full-suite runId path still processes badges when the authoritative run wrote zero storyboard rows', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
+
+    const db = makeDb({
+      existingBadges: [badge('media-buy')],
+      latestStatuses: [],
+    });
+
+    const result = await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      runId: 'run-zero-storyboards',
+    });
+
+    expect(db.getStoryboardStatuses).toHaveBeenCalledWith('https://example.com/mcp', { runId: 'run-zero-storyboards' });
+    expect(result.degraded.map(d => d.role)).toContain('media-buy');
+  });
+
   it('reads ALL latest storyboard statuses from the canonical table — not just what one partial run touched', async () => {
     // Agent declared two specialisms across two roles. The OTHER storyboard
     // is still passing on disk; this run only retested the broadcast-tv

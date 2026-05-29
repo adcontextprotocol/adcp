@@ -147,6 +147,29 @@ function isUndefinedTableError(err: unknown): boolean {
     (err as { code?: unknown }).code === "42P01";
 }
 
+interface PublicComplianceObservation {
+  category: string;
+  severity: string;
+  message: string;
+}
+
+function toPublicComplianceObservation(obs: unknown): PublicComplianceObservation | null {
+  if (!obs || typeof obs !== "object") return null;
+  const record = obs as Record<string, unknown>;
+  if (
+    typeof record.category !== "string" ||
+    typeof record.severity !== "string" ||
+    typeof record.message !== "string"
+  ) {
+    return null;
+  }
+  return {
+    category: record.category,
+    severity: record.severity,
+    message: record.message,
+  };
+}
+
 /** Strip protocol, path, query, and fragment from a URL to extract the domain. */
 function extractDomain(raw: string): string {
   let d = raw.replace(/^https?:\/\//, "");
@@ -2334,6 +2357,8 @@ registry.registerPath({
             error: z.string().optional(),
             compliance: z.object({
               ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed." }),
+              run_id: z.string().optional().openapi({ description: "Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence." }),
+              test_session_id: z.string().optional().openapi({ description: "Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh." }),
               requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.1, 3.0, or 3.1-beta. Present when `ran` is true." }),
               adcp_version: z.string().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12 or 3.1.0-beta.7. Present when `ran` is true." }),
               badge_eligible: z.boolean().optional().openapi({ description: "True when this run can update public badge state." }),
@@ -2341,6 +2366,8 @@ registry.registerPath({
               overall_status: z.string().optional().openapi({ description: "Aggregate verdict from the run (passing / failing / partial / unknown). Only present when `ran` is true." }),
               storyboards_passing: z.number().int().optional().openapi({ description: "Number of storyboards passing on this run." }),
               storyboards_total: z.number().int().optional().openapi({ description: "Number of storyboards evaluated on this run." }),
+              observations_count: z.number().int().optional().openapi({ description: "Number of advisory observations emitted by this run." }),
+              notices_count: z.number().int().optional().openapi({ description: "Number of run-summary notices emitted by this run." }),
               error: z.string().optional().openapi({ description: "Reason compliance didn't run when `ran` is false." }),
             }).openapi({ description: "Compliance re-run summary. The capability/health portion of the response is independent of this block — a failed compliance run still returns the rest of the snapshot." }),
           }),
@@ -4577,6 +4604,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         logger.warn({ err, agentUrl }, "Notices query failed (column may not exist yet)");
       }
 
+      // Advisory observations from the latest run — these are per-run runner
+      // observations (best-practice warnings, suggestions, etc.). Do not merge
+      // observations across runs; a fixed field on the wire must clear the
+      // advisory as soon as the latest run stops emitting it.
+      let observations: PublicComplianceObservation[] = [];
+      try {
+        observations = (await complianceDb.getLatestObservations(agentUrl))
+          .map(toPublicComplianceObservation)
+          .filter((obs): obs is PublicComplianceObservation => obs !== null);
+      } catch (err) {
+        logger.warn({ err, agentUrl }, "Latest observations query failed");
+      }
+
       // Per-specialism status — the dashboard renders pass/fail/untested
       // dots so the developer can see which declared specialism is the
       // cause of an overall `failing` status without cross-referencing
@@ -4658,6 +4698,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // Advisory notices from the latest run. Forward-compat: unknown codes
         // and severities are passed through verbatim (runner-output-contract.yaml).
         notices,
+        observations,
         // Owner-scoped: content is null/false for anonymous and cross-org
         // viewers, populated only when the authenticated viewer owns the
         // agent. Keys are always present so non-owners can't detect
@@ -4721,7 +4762,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
 
       const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
-      const history = await complianceDb.getComplianceHistory(agentUrl, limit);
+      const history = await complianceDb.getComplianceHistory(agentUrl, limit, { includeDryRuns: false });
 
       res.json({
         agent_url: agentUrl,
@@ -5514,6 +5555,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         overall_status?: string;
         storyboards_passing?: number;
         storyboards_total?: number;
+        run_id?: string;
+        test_session_id?: string;
+        observations_count?: number;
+        notices_count?: number;
         error?: string;
       } = { ran: false };
 
@@ -5551,12 +5596,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             const passing = storyboardStatuses.filter(s => s.status === 'passing').length;
             complianceSummary = {
               ran: true,
+              run_id: run.id,
+              test_session_id: testSessionId,
               requested_compliance_target: complianceTarget.requested,
               adcp_version: complyResult.adcp_version,
               ...badgeEligibilityMetadata(badgeEligibleAdcpVersions.length > 0),
               overall_status: dbInput.overall_status,
               storyboards_passing: passing,
               storyboards_total: storyboardStatuses.length,
+              observations_count: Array.isArray(dbInput.observations_json) ? dbInput.observations_json.length : 0,
+              notices_count: Array.isArray(dbInput.notices_json) ? dbInput.notices_json.length : 0,
             };
 
             // Fan out badge issuance so verification badges reflect the new
