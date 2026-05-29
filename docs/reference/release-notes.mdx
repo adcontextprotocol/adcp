@@ -27,7 +27,7 @@ Additive over 3.0 — every existing brand.json publisher continues to validate 
 
 | If you are… | What you need to do |
 |---|---|
-| A 3.0-conformant production agent | Nothing. Stable schemas remain wire-compatible with 3.0.0. |
+| A 3.0-conformant production agent | Nothing. Stable schemas remain wire-compatible with 3.0.0. During beta/RC validation, pin exact advertised values; at GA, move your SDK pin to `"3.1"` when you are ready to consume the new fields. |
 | A brand on the existing inline `brands[]` shape | Nothing. Pull-based migration — you move out of `brands[]` only when you decide to self-publish. |
 | A sub-brand team that wants self-publish authority | Stand up `/.well-known/brand.json` at your own domain as a Brand Canonical Document. Declare `house_domain: "<parent-house>"`. Ask the parent house team to add `{ domain, brand_id, effective_at }` to their `brand_refs[]`. Mutual assertion completes on the next crawl. |
 | A house running the AAO crawler today (or any consumer that walks brand hierarchy) | Read [`brand.json` § Mutual-assertion trust model](/docs/brand-protocol/brand-json#mutual-assertion-trust-model). The 3-tier read — identity-trusted vs relationship-trusted vs unverified — replaces the binary "is this in my portfolio" check for `brand_refs[]` pointer children. The 180-day TTL is already AAO's reference behavior. |

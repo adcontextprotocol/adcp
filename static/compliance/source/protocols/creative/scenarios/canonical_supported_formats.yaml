@@ -60,7 +60,7 @@ phases:
         stateful: false
         expected: |
           Return a creative capability block with implemented `supported_formats[]`.
-          Each entry has:
+          The targetable entry used for build routing has:
           - `capability_id` at the supported-format entry level
           - `format.format_kind` and `format.params.slots[]`
           - no product-level `format_option_id` on the creative-agent
