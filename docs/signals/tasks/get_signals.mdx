@@ -119,6 +119,17 @@ The response structure is identical across protocols, with only the transport wr
 }
 ```
 
+<Note>
+`get_signals` is a discovery and availability surface, not a requirement to
+inline every field from the authoritative signal definition. For broad search
+results and wholesale feed pages, signal agents SHOULD keep each listing
+compact and use stable references plus cacheable disclosure pointers for large
+definition resources. Buyers can dereference provider-published definitions
+from `signal_ref`, `taxonomy.ref`, `criteria_url`, and
+`modeling.disclosure.jurisdictions[].disclosure_url`, using `taxonomy.etag` or
+the provider's own HTTP validators to avoid repeated downloads.
+</Note>
+
 ### Field Descriptions
 
 - **signals**: Array of matching signals

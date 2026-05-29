@@ -23,7 +23,7 @@
           },
           "region": {
             "type": "string",
-            "description": "Sub-national region code or name when the obligation is regional."
+            "description": "Provider-defined sub-national region code or name when the obligation is regional. No global canonical format is implied."
           },
           "regulation": {
             "type": "string",

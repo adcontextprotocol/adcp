@@ -72,7 +72,8 @@
           "description": "Unit of measurement (e.g., 'score', 'dollars', 'years')"
         }
       },
-      "required": ["min", "max"]
+      "required": ["min", "max"],
+      "additionalProperties": false
     },
     "taxonomy": {
       "type": "object",
@@ -105,6 +106,7 @@
             "properties": {
               "id": {
                 "type": "string",
+                "minLength": 1,
                 "description": "Taxonomy node identifier."
               },
               "path": {
@@ -125,7 +127,7 @@
         },
         "value_mappings": {
           "type": "array",
-          "description": "For categorical signals, maps package-targeting allowed_values[] strings to stable taxonomy node identifiers. The allowed_values[] strings remain the wire values buyers submit; this mapping explains how those strings resolve into the published taxonomy.",
+          "description": "For categorical signals, maps package-targeting allowed_values[] strings to stable taxonomy node identifiers. The allowed_values[] strings remain the wire values buyers submit; this mapping explains how those strings resolve into the published taxonomy. Each value_mappings[].value SHOULD match one of the signal's allowed_values[] entries; JSON Schema draft-07 cannot enforce this cross-array constraint.",
           "minItems": 1,
           "items": {
             "type": "object",
@@ -161,8 +163,7 @@
             "exact_only",
             "descendants_supported",
             "unknown"
-          ],
-          "default": "unknown"
+          ]
         }
       },
       "required": ["ref", "values"],
@@ -216,7 +217,7 @@
     },
     "device_expansion": {
       "type": "boolean",
-      "description": "Whether the signal was expanded across devices of the same user, household, or business."
+      "description": "Whether the signal was expanded deterministically across devices of the same user, household, or business. Probabilistic cross-device expansion is modeling and should use methodology 'modeled' or the modeling block."
     },
     "refresh_cadence": {
       "type": "string",
@@ -298,7 +299,7 @@
       "items": {
         "$ref": "/schemas/enums/consent-basis.json"
       },
-      "description": "Declared lawful basis or consent basis under which this signal's data is processed."
+      "description": "Declared GDPR Article 6 lawful basis or consent basis under which this signal's data is processed. For non-GDPR regimes, use countries, policy_categories, and disclosure fields to describe jurisdiction-specific obligations unless a future enum value applies."
     },
     "art9_basis": {
       "type": "string",
@@ -357,6 +358,7 @@
         "upstream_source_domain": {
           "type": "string",
           "format": "hostname",
+          "maxLength": 253,
           "description": "Domain of the upstream data source whose rights process these channels reach, when different from the publishing domain."
         },
         "channels": {
@@ -455,10 +457,6 @@
   ],
   "allOf": [
     {
-      "if": { "properties": { "value_type": { "const": "categorical" } }, "required": ["value_type"] },
-      "then": { "required": ["allowed_values"] }
-    },
-    {
       "if": {
         "properties": { "value_type": { "const": "categorical" } },
         "required": ["value_type", "taxonomy"]
@@ -470,10 +468,6 @@
           }
         }
       }
-    },
-    {
-      "if": { "properties": { "value_type": { "const": "numeric" } }, "required": ["value_type"] },
-      "then": { "required": ["range"] }
     },
     {
       "if": { "properties": { "audience_scope": { "const": "single_domain" } }, "required": ["audience_scope"] },

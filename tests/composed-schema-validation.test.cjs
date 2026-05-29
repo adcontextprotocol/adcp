@@ -1075,6 +1075,24 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/signal-definition.json',
     {
+      id: 'legacy_categorical_without_values',
+      name: 'Legacy categorical without values',
+      value_type: 'categorical'
+    },
+    'Categorical signal can omit allowed_values for backwards-compatible minor release'
+  );
+  await testSchemaValidation(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'legacy_numeric_without_range',
+      name: 'Legacy numeric without range',
+      value_type: 'numeric'
+    },
+    'Numeric signal can omit range for backwards-compatible minor release'
+  );
+  await testSchemaValidation(
+    '/schemas/core/signal-definition.json',
+    {
       id: 'vehicle_ownership',
       name: 'Current vehicle ownership',
       value_type: 'categorical',
@@ -1190,6 +1208,23 @@ async function runTests() {
     },
     'Rejects offline/public-record data source without onboarder disclosure'
   );
+  await testSchemaValidation(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'dsr_email_access_channel',
+      name: 'DSR email access channel',
+      value_type: 'binary',
+      data_subject_rights: {
+        channels: [
+          {
+            rights: ['access'],
+            email: 'privacy@example.com'
+          }
+        ]
+      }
+    },
+    'Accepts DSR routing with an email-only access channel'
+  );
   await testSchemaRejection(
     '/schemas/core/signal-definition.json',
     {
@@ -1206,24 +1241,6 @@ async function runTests() {
       }
     },
     'Rejects DSR routing that declares no access, erasure, or objection channel'
-  );
-  await testSchemaRejection(
-    '/schemas/core/signal-definition.json',
-    {
-      id: 'categorical_missing_values',
-      name: 'Categorical missing values',
-      value_type: 'categorical'
-    },
-    'Rejects categorical signal definition without allowed_values'
-  );
-  await testSchemaRejection(
-    '/schemas/core/signal-definition.json',
-    {
-      id: 'numeric_missing_range',
-      name: 'Numeric missing range',
-      value_type: 'numeric'
-    },
-    'Rejects numeric signal definition without range'
   );
   log('');
 
