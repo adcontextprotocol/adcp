@@ -13,7 +13,7 @@ Transform, generate, or retrieve a creative manifest for a specific format. To r
 
 For generation and transformation, `build_creative` takes a creative manifest as input and produces a creative manifest as output. For library retrieval, provide a `creative_id` (from [`list_creatives`](/docs/creative/task-reference/list_creatives)) and the agent resolves it from its library.
 
-For information about format IDs and how to reference formats, see [Creative Formats - Referencing Formats](/docs/creative/formats#referencing-formats).
+For information about legacy format IDs and how to reference formats, see [Creative Formats - Referencing Formats](/docs/creative/formats#referencing-formats). On the 3.1 canonical path, creative agents advertise buildable outputs through `get_adcp_capabilities.creative.supported_formats[]`; targetable entries SHOULD include a stable `capability_id`, and buyers pass that value as `target_format_id.id` (or `target_format_ids[N].id`) when calling `build_creative`.
 
 ## Request parameters
 
@@ -25,8 +25,8 @@ For information about format IDs and how to reference formats, see [Creative For
 | `concept_id` | string | No | Creative concept containing the creative. Used to disambiguate when the same `creative_id` exists in multiple concepts. |
 | `media_buy_id` | string | No | Buyer's media buy reference for tag generation context. When the creative agent is also the ad server (e.g., CM360), this provides the trafficking context needed to generate placement-specific tags. Omit when the platform generates tags at the creative level (Flashtalking, Celtra). This is the buyer's reference — the seller-assigned identifier from `create_media_buy`. |
 | `package_id` | string | No | Buyer's package or line item reference within the media buy. Used with `media_buy_id` when the creative agent needs line-item-level context. Omit to get a tag not scoped to a specific package — the ad server may return the same tag regardless. |
-| `target_format_id` | object | Conditional | Single format ID to generate. Object with `agent_url` and `id` fields. Mutually exclusive with `target_format_ids` — provide exactly one. |
-| `target_format_ids` | array | Conditional | Array of format IDs to generate in a single call. Each element is an object with `agent_url` and `id` fields. Mutually exclusive with `target_format_id` — provide exactly one. Returns one manifest per format. |
+| `target_format_id` | object | Conditional | Single format ID to generate. Object with `agent_url` and `id` fields. For 3.1 canonical creative-agent routing, `id` is the advertised `creative.supported_formats[].capability_id`; legacy named-format IDs remain accepted during the migration window. Mutually exclusive with `target_format_ids` — provide exactly one. |
+| `target_format_ids` | array | Conditional | Array of format IDs to generate in a single call. Each element is an object with `agent_url` and `id` fields. For 3.1 canonical creative-agent routing, each `id` is an advertised `creative.supported_formats[].capability_id`; legacy named-format IDs remain accepted during the migration window. Mutually exclusive with `target_format_id` — provide exactly one. Returns one manifest per format. |
 | `brand` | object | No | Brand reference with `domain` field. Resolves brand identity via `/.well-known/brand.json`. Provides brand-level context (colors, logos, tone). |
 | `quality` | string | No | Quality tier: `"draft"` (fast, lower-fidelity for iteration) or `"production"` (full quality for final delivery). If omitted, the creative agent uses its own default. |
 | `item_limit` | integer | No | Maximum number of catalog items to use when generating. Caps generation cost for catalog-driven formats. |
@@ -1274,7 +1274,7 @@ To refine, pass the previous response's `creative_manifest` back as input with a
 
 | Code | Description |
 |------|-------------|
-| `FORMAT_NOT_SUPPORTED` | The `target_format_id` is not supported by this creative agent |
+| `FORMAT_NOT_SUPPORTED` | The `target_format_id` (or `target_format_ids[N]` in a multi-format request) is not supported by this creative agent. For canonical creative-agent routing, retry with an advertised `creative.supported_formats[].capability_id`; legacy named-format IDs remain valid when the agent still advertises them. |
 | `INVALID_MANIFEST` | The `creative_manifest` is malformed or missing required assets for the target format |
 | `CREATIVE_NOT_FOUND` | The `creative_id` does not exist in the agent's library (or in the specified `concept_id`) |
 | `COMPLIANCE_UNSATISFIED` | A required disclosure from the brief cannot be rendered in the target format (e.g., format does not support the required disclosure position) |
