@@ -46,12 +46,13 @@ through this lens: **is this worth the tokens it will cost to complete?**
 
 - **In triage:** default-defer low-value issues. Use the `P0 Bugs`
   milestone for immediate user/revenue/security/reliability bugs that
-  should be worked before the general backlog, and use `Evergreen` only
-  for non-versioned work that still matters later. Closing issues is a
-  human call; triage should route, clarify, defer, or leave an
-  implementation brief. Don't punt for the sake of punting — spec
-  quality and pain-prevention are strong "keep" signals even without an
-  active PR.
+  should be worked before the general backlog. Use `Spec Backlog` for
+  protocol/spec/schema/normative-doc work that is not yet committed to a
+  numbered release. Use `Evergreen` only for non-spec, non-versioned
+  work that still matters later. Closing issues is a human call; triage
+  should route, clarify, defer, or leave an implementation brief. Don't
+  punt for the sake of punting — spec quality and pain-prevention are
+  strong "keep" signals even without an active PR.
 - **In implementation:** if a task touches three files when you scoped
   it to one, stop. Either re-scope or defer.
 - **In scope decisions:** prefer the smallest change that closes the

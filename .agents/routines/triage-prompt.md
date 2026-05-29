@@ -387,7 +387,8 @@ Common buckets (verify every time):
   the surface panel adds context.
 - **spec / protocol** — AdCP schemas, task definitions, spec docs.
   Non-breaking schema changes (see definition) are Ready/Execute
-  eligible.
+  eligible. If the issue is not urgent and is not tied to a numbered
+  release, route it to `Spec Backlog`, not `Evergreen`.
 - **web / site / docs** — public site (`docs/`, `static/`). Typo
   fixes and broken links may Execute if the PR authorization gate
   passes; new doc sections and semantic clarifications usually become
@@ -402,10 +403,10 @@ Common buckets (verify every time):
   training-agent tests, certification modules that need to track
   current protocol behavior. Use this as an overlay with the surface
   bucket (`compliance suite`, `training / certification`, etc.). These
-  issues route to the `Evergreen` milestone only when they teach or
-  test already-released behavior and are not tied to a specific
-  numbered release. If the work is needed to validate, teach, certify,
-  or document behavior shipping in a numbered release, keep it on that
+  issues route to `Spec Backlog` when they teach, test, certify, or
+  score protocol behavior but are not tied to a specific numbered
+  release. If the work is needed to validate, teach, certify, or
+  document behavior shipping in a numbered release, keep it on that
   version milestone even when the implementation work itself is
   non-normative. If resolving the issue requires a normative
   schema/task/doc semantics change, tightens or reinterprets what
@@ -700,9 +701,36 @@ bug is also a release blocker, prefer the version milestone and keep the
 mention `Milestone: P0 Bugs missing` in the run summary and continue
 with the normal milestone decision.
 
+Apply `Spec Backlog` to the **issue** when all are true:
+
+- The issue is classified as Spec question, or is bucketed `spec /
+  protocol`, or has the `spec-adjacent enablement` overlay.
+- The issue is not urgent enough for `P0 Bugs`.
+- The issue is not a blocker for a numbered release milestone.
+- The issue directly touches protocol semantics, schemas, task
+  definitions, normative docs, adopter interoperability, compliance
+  scoring, conformance testing, training-agent behavior, or
+  certification behavior.
+- The open milestone list contains exact title `Spec Backlog`.
+- The issue has no existing milestone, or the existing milestone is
+  clearly wrong for spec/protocol work.
+
+```bash
+gh issue edit <N> --repo <owner>/<repo> --milestone "Spec Backlog"
+```
+
+`Spec Backlog` is a spec-owner execution queue, not a release
+commitment. PR base branch and PR release milestone still follow the PR
+release routing below. If `Spec Backlog` is missing, mention
+`Milestone: Spec Backlog missing` in the run summary and continue with
+the normal milestone decision.
+
 Apply `Evergreen` to the **issue** when all are true:
 
-- The issue is clearly bucketed `evergreen`, or has the
+- The issue is clearly bucketed `evergreen`, or is non-spec docs,
+  examples, product, or operational backlog that should remain
+  findable.
+- It is not bucketed `spec / protocol` and does not have the
   `spec-adjacent enablement` overlay.
 - It is not proposing a normative schema/task/doc semantics change
   that should ship in a numbered protocol release.
@@ -732,19 +760,26 @@ that numbered milestone even when the work itself is non-normative
 3.1 behavior). Numbered milestones should reflect real ship blockers,
 not only schema diffs.
 
-Use `Evergreen` only when the change teaches, tests, or documents
-already-released behavior. If it tightens or reinterprets what
-conformant implementations must do, route it to the relevant version
-milestone even if no schema field changes.
+Use `Spec Backlog` for unscheduled work that teaches, tests, scores,
+or documents protocol behavior. Use `Evergreen` only for work that is
+not directly related to the spec. If an issue tightens or reinterprets
+what conformant implementations must do, route it to the relevant
+version milestone even if no schema field changes.
 
 Use this split to keep spec planning clean:
 
 - **Version milestones (`3.1.0`, `3.2.0`, `4.0`, etc.)** — normative
   protocol/schema/task behavior, release-contract changes, or docs
   that materially change implementer obligations.
-- **Evergreen** — testing, compliance tooling, training-agent,
-  certification, examples, and general docs that support or explain
-  current behavior without changing the release contract.
+- **Spec Backlog** — protocol/schema/task semantics, normative docs,
+  adopter interoperability, compliance/scoring, conformance testing,
+  training-agent, or certification issues directly tied to protocol
+  behavior, when not urgent and not yet scheduled for a numbered
+  release.
+- **Evergreen** — non-spec examples, product cleanup, operational
+  follow-ups, and general docs that are useful later but do not change
+  implementer obligations, adopter interoperability, or protocol
+  behavior.
 
 #### PR release routing
 
