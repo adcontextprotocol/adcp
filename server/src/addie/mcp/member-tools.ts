@@ -3811,7 +3811,7 @@ export function createMemberToolHandlers(
           );
         }
 
-        if (isAgentOwner && writesCanonicalComplianceState) {
+        if (isAgentOwner && writesCanonicalComplianceState && !tracks) {
           try {
             const metadata = await complianceDb.getRegistryMetadata(resolved.resolvedUrl);
             // Skip canonical write if the owner has opted out of compliance monitoring.
@@ -3823,6 +3823,9 @@ export function createMemberToolHandlers(
                   metadata?.lifecycle_stage ?? 'production',
                   'owner_test',
                 ),
+                // Track-filtered evaluations are diagnostic slices, not an
+                // authoritative replacement for every storyboard row.
+                replace_storyboard_statuses: !tracks,
                 // Owner test runs are not dry runs — they update the live public record.
                 // (complianceResultToDbInput hard-codes dry_run: true; override here.)
                 dry_run: false,
@@ -3859,6 +3862,8 @@ export function createMemberToolHandlers(
           } catch (error) {
             logger.warn({ error, agentUrl: resolved.resolvedUrl }, 'Could not write owner test result to canonical compliance state');
           }
+        } else if (isAgentOwner && writesCanonicalComplianceState && tracks) {
+          skippedCanonicalWriteForTarget = true;
         } else if (isAgentOwner) {
           skippedCanonicalWriteForTarget = true;
         }

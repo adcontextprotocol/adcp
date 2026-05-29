@@ -657,6 +657,7 @@ export function complianceResultToDbInput(
     observations_json: result.observations,
     triggered_by: triggeredBy,
     storyboard_statuses: deriveStoryboardStatuses(result, storyboardIds),
+    replace_storyboard_statuses: !storyboardIds?.length,
     step_diagnostics: extractFailingStepDiagnostics(result),
     // Forward-compat: notices are an optional field in the runner output
     // contract (run_summary.notices). Unknown codes/severities are stored
