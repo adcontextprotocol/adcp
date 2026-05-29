@@ -21,6 +21,7 @@ import {
 } from '@adcp/sdk/testing';
 import {
   hostedComplianceTarget,
+  withHostedComplianceCompatibility,
   withHostedComplianceRunOptions,
   type HostedComplianceTarget,
 } from '../../services/hosted-compliance-version.js';
@@ -54,7 +55,10 @@ export async function comply(
   options: ComplyOptions,
   target: HostedComplianceTarget,
 ): Promise<ComplianceResult> {
-  const result = await sdkComply(agentUrl, withHostedComplianceRunOptions(options, target));
+  const result = await withHostedComplianceCompatibility(
+    target,
+    () => sdkComply(agentUrl, withHostedComplianceRunOptions(options, target)),
+  );
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { requested_compliance_target?: string }).requested_compliance_target = target.requested;
   return result;
