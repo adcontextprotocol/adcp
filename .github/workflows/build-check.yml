@@ -62,6 +62,9 @@ jobs:
       - name: Validate schemas
         run: npm run test:schemas && npm run test:json-schema && npm run test:extension-schemas && npm run test:composed
 
+      - name: Canonical reference resolver fixtures
+        run: npm run test:canonical-reference-resolver
+
       - name: OpenAPI freshness (static/openapi/registry.yaml regenerated from Zod source)
         # generate-openapi.ts transitively imports auth middleware which
         # constructs WorkOS at module load. CI doesn't ship those secrets
