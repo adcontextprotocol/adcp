@@ -32,15 +32,15 @@ export function isVerificationMode(value: unknown): value is VerificationMode {
  * runs update only the public badge version selected by their compliance
  * target; they do not fan one run out across every entry here.
  *
- * Adding a version is a deliberate decision — adding `'3.1'` here allows
- * compliance targets on that line to issue Verified Media Buy 3.1 (Spec).
- * Update this in lockstep with the `introduced_in:` fields on new
+ * Adding a version is a deliberate decision — adding `'3.1'` here turns on
+ * Verified Media Buy 3.1 (Spec) issuance for public compliance targets on
+ * that line. Update this in lockstep with the `introduced_in:` fields on new
  * storyboards under static/compliance/source/specialisms/.
  *
  * Order matters for display and filtering where callers show all badge
  * versions: newest first.
  */
-export const SUPPORTED_BADGE_VERSIONS = ['3.1', '3.0'] as const;
+export const SUPPORTED_BADGE_VERSIONS = ['3.0'] as const;
 export type SupportedBadgeVersion = typeof SUPPORTED_BADGE_VERSIONS[number];
 
 export function isSupportedBadgeVersion(value: unknown): value is SupportedBadgeVersion {

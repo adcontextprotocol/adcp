@@ -312,4 +312,8 @@ describe('getStoryboardsForVersion', () => {
   it('getStoryboardIdsForVersion returns the same length as getStoryboardsForVersion', () => {
     expect(getStoryboardIdsForVersion('3.0').length).toBe(getStoryboardsForVersion('3.0').length);
   });
+
+  it('does not reuse the 3.0 cache for unavailable future stable badge lines', () => {
+    expect(getStoryboardsForVersion('3.1')).toEqual([]);
+  });
 });

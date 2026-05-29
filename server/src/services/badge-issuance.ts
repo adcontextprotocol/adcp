@@ -6,7 +6,7 @@
 import { ComplianceDatabase, DEFAULT_BADGE_ADCP_VERSION, type BadgeRole, type StoryboardStatus, type StoryboardStatusEntry } from '../db/compliance-db.js';
 import { deriveVerificationStatus } from '../addie/services/compliance-testing.js';
 import { signVerificationToken, isTokenSigningEnabled } from './verification-token.js';
-import { isVerificationMode, type VerificationMode } from './adcp-taxonomy.js';
+import { isVerificationMode, SUPPORTED_BADGE_VERSIONS, type VerificationMode } from './adcp-taxonomy.js';
 import { getStoryboardIdsForVersion } from './storyboards.js';
 import { API_ACCESS_TIERS, ACTIVE_SUBSCRIPTION_STATUSES } from './membership-tiers.js';
 import { query } from '../db/client.js';
@@ -234,6 +234,19 @@ export async function runBadgeFanOut(params: {
       overallPassing,
       undefined,
       adcpVersions[0] ?? DEFAULT_BADGE_ADCP_VERSION,
+    );
+  }
+
+  const supportedBadgeVersions = new Set<string>(SUPPORTED_BADGE_VERSIONS);
+  const existingBadges = await complianceDb.getBadgesForAgent(agentUrl);
+  for (const badge of existingBadges) {
+    if (supportedBadgeVersions.has(badge.adcp_version)) continue;
+    const reason = `AdCP ${badge.adcp_version} public badge issuance is not currently enabled`;
+    await complianceDb.revokeBadge(agentUrl, badge.role, badge.adcp_version, reason);
+    aggregate.revoked.push({ role: badge.role, reason, adcp_version: badge.adcp_version });
+    logger.info(
+      { agentUrl, role: badge.role, adcpVersion: badge.adcp_version },
+      'Badge revoked — version no longer publicly badge-eligible',
     );
   }
 

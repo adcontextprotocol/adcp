@@ -23,6 +23,18 @@ const logger = createLogger('storyboards');
 const complianceTarget = hostedComplianceTarget();
 const complianceOptions = hostedComplianceOptions(complianceTarget);
 
+function complianceOptionsForVersion(adcpVersion: string): ReturnType<typeof hostedComplianceOptions> | null {
+  try {
+    return hostedComplianceOptions(hostedComplianceTarget(adcpVersion));
+  } catch (err) {
+    logger.debug(
+      { err, adcpVersion },
+      'No stable hosted compliance cache for AdCP badge version; treating storyboard set as empty',
+    );
+    return null;
+  }
+}
+
 // ── Re-export types from @adcp/sdk ───────────────────────────
 
 export type {
@@ -168,7 +180,10 @@ export function compareAdcpVersions(a: string, b: string): number {
  * badge version that the compliance run actually targeted.
  */
 export function getStoryboardsForVersion(adcpVersion: string): Storyboard[] {
-  return listAllComplianceStoryboards(complianceOptions).filter((sb) => {
+  const options = complianceOptionsForVersion(adcpVersion);
+  if (!options) return [];
+
+  return listAllComplianceStoryboards(options).filter((sb) => {
     if (!sb.introduced_in) return true;
     return compareAdcpVersions(sb.introduced_in, adcpVersion) <= 0;
   });

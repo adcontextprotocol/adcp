@@ -172,6 +172,36 @@ describe('runBadgeFanOut', () => {
     expect(result.revoked[0].reason).toBe('Membership lapsed');
   });
 
+  it('revokes previously issued badges for versions no longer publicly badge-eligible', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
+
+    const db = makeDb({
+      existingBadges: [badge('media-buy', 'active', '3.1')],
+      latestStatuses: [status('sales_broadcast_tv', 'passing')],
+    });
+
+    const result = await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      adcpVersions: ['3.0'],
+    });
+
+    expect(result.revoked).toEqual([
+      {
+        role: 'media-buy',
+        reason: 'AdCP 3.1 public badge issuance is not currently enabled',
+        adcp_version: '3.1',
+      },
+    ]);
+    expect(db.revokeBadge).toHaveBeenCalledWith(
+      'https://example.com/mcp',
+      'media-buy',
+      '3.1',
+      'AdCP 3.1 public badge issuance is not currently enabled',
+    );
+  });
+
   it('aggregates results across supported AdCP versions', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
 
