@@ -51,18 +51,27 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Legacy named-format IDs active for this package. Echoed from the create_media_buy request; omitted means all formats for the product are active unless `format_option_refs` narrows the 3.1+ format-option set.",
+      "description": "Legacy named-format IDs supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including dual-emission cases where `format_option_refs` was the winning selector, so read surfaces preserve the original wire contract. Omitted means the request did not carry legacy format_ids unless the seller cannot reconstruct legacy requests created before this field was persisted.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }
     },
     "format_option_refs": {
       "type": "array",
-      "description": "Structured 3.1+ format option references active for this package, echoed from the create_media_buy request. Publisher-catalog-backed options are identified by `{ scope: \"publisher\", publisher_domain, format_option_id }`; product-local options are identified by `{ scope: \"product\", format_option_id }` and resolve only against this package's target product. Omitted means all 3.1+ format options for the product are active unless `format_ids` narrows the set.",
+      "description": "Structured 3.1+ format option references supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it. Publisher-catalog-backed options are identified by `{ scope: \"publisher\", publisher_domain, format_option_id }`; product-local options are identified by `{ scope: \"product\", format_option_id }` and resolve only against this package's target product. Omitted means the request did not carry format_option_refs unless the seller cannot reconstruct legacy requests created before this field was persisted.",
       "items": {
         "$ref": "/schemas/core/format-option-ref.json"
       },
       "minItems": 1
+    },
+    "format_kind": {
+      "$ref": "/schemas/core/canonical-format-kind.json",
+      "description": "Direct canonical selector supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including informational-echo cases where `format_ids` was the winning selector, so read surfaces preserve the original wire contract."
+    },
+    "params": {
+      "type": "object",
+      "description": "Parameters for the direct canonical selector in `format_kind`, echoed from the create_media_buy request whenever the request included it. Requires `format_kind`; omitted only when the request did not carry direct canonical params or when the seller cannot reconstruct legacy requests created before this field was persisted.",
+      "additionalProperties": true
     },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
@@ -263,5 +272,8 @@
   "required": [
     "package_id"
   ],
+  "dependencies": {
+    "params": ["format_kind"]
+  },
   "additionalProperties": true
 }

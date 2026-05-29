@@ -1075,7 +1075,10 @@
 #                step's response against a value captured by a prior step — see
 #                "Cross-step comparison" section below),
 #                "upstream_traffic" (asserts side-effects via comply_test_controller's
-#                query_upstream_traffic scenario — see "upstream_traffic" section below))
+#                query_upstream_traffic scenario — see "upstream_traffic" section below),
+#                "canonical_format_satisfaction" (asserts create_media_buy package
+#                selectors against prior get_products format_options[] context — see
+#                "Canonical format satisfaction" section below))
 # severity: string (optional, default "required"): "required" | "advisory".
 #                A "required" validation failure fails the step and contributes
 #                to steps_failed; this is the default. An "advisory" failure
@@ -1227,6 +1230,33 @@
 #   MUST NOT assert on them (that couples the conformance suite to a specific
 #   vendor's taxonomy). When a test needs to accept multiple possible codes,
 #   use `allowed_values: [...]` rather than a single-code `value:` assertion.
+#
+# Canonical format satisfaction — use `check: canonical_format_satisfaction`:
+#   Applies only to create_media_buy steps. The runner compares each package's
+#   format selector against the target product captured from prior get_products
+#   context. When multiple get_products responses exist, the runner MUST use
+#   the most recent prior get_products response containing the package's
+#   product_id; if no such response exists, the check fails as an authoring or
+#   setup error. `value: true` means the request should be accepted; `value:
+#   false` means the request should be rejected for a format-selector cause.
+#
+#   The check normalizes legacy `format_ids[]` through `v1_format_ref[]` and the
+#   v1-to-canonical registry, resolves `format_option_refs[]`, and applies
+#   directional product gating for fixed dimensions, duration declarations,
+#   canonical params, and range containment. Negative cases only pass when the
+#   observed rejection is attributable to formats, so unrelated auth or tenant
+#   failures do not mask selector bugs.
+#
+#   Fields:
+#     check: canonical_format_satisfaction
+#     value: boolean                # true = expected accepted; false = expected rejected.
+#     path: string                  # optional; selects one package object or package array.
+#                                   # default is the request payload's packages[] array.
+#
+#   Example:
+#     - check: canonical_format_satisfaction
+#       value: false
+#       description: "Bare image selector lacks the dimensions required by the fixed product"
 #
 # Cross-step integrity — use `check: refs_resolve`:
 #   `refs_resolve` asserts every ref in a source set resolves to a member of a

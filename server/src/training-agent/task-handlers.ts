@@ -252,6 +252,9 @@ interface PackageInput {
   start_time?: string;
   end_time?: string;
   format_ids?: FormatID[];
+  format_option_refs?: unknown[];
+  format_kind?: string;
+  params?: Record<string, unknown>;
   targeting?: PackageTargeting;
   targeting_overlay?: PackageTargeting;
 }
@@ -260,6 +263,66 @@ interface CreativeAssignmentInput {
   creative_id: string;
   package_id: string;
   media_buy_id: string;
+}
+
+function validateDirectCanonicalPackageSelector(pkg: PackageInput, product: Product, index: number): TaskError | undefined {
+  if (typeof pkg.format_kind !== 'string') return undefined;
+  if (Array.isArray(pkg.format_option_refs) && pkg.format_option_refs.length > 0) return undefined;
+  if (Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0) return undefined;
+
+  const declarations = Array.isArray(product.format_options)
+    ? product.format_options.filter(isRecord)
+    : [];
+  if (declarations.length === 0) {
+    return {
+      code: 'UNSUPPORTED_FEATURE',
+      message: `Package ${index}: format selector format_kind "${pkg.format_kind}" cannot be resolved because product ${pkg.product_id} has no format_options[] declarations`,
+      field: `packages[${index}].format_kind`,
+      recovery: 'correctable',
+    };
+  }
+
+  const candidates = declarations.filter(decl => decl.format_kind === pkg.format_kind);
+  if (candidates.length === 0) {
+    return {
+      code: 'UNSUPPORTED_FEATURE',
+      message: `Package ${index}: format selector format_kind "${pkg.format_kind}" is not supported by product ${pkg.product_id}`,
+      field: `packages[${index}].format_kind`,
+      details: { supported_format_kinds: declarations.map(decl => decl.format_kind).filter(Boolean) },
+      recovery: 'correctable',
+    };
+  }
+
+  const requestParams = isRecord(pkg.params) ? pkg.params : {};
+  const satisfied = candidates.some(candidate => {
+    const productParams = isRecord(candidate.params) ? candidate.params : {};
+    return Object.entries(productParams).every(([key, value]) => {
+      if (value === undefined) return true;
+      if (!(key in requestParams)) return false;
+      return JSON.stringify(requestParams[key]) === JSON.stringify(value);
+    });
+  });
+  if (satisfied) return undefined;
+
+  const requiredParams = candidates
+    .map(candidate => isRecord(candidate.params) ? Object.keys(candidate.params) : [])
+    .find(keys => keys.length > 0) ?? [];
+  const missingParams = requiredParams.filter(key => !(key in requestParams));
+  return {
+    code: 'UNSUPPORTED_FEATURE',
+    message: missingParams.length > 0
+      ? `Package ${index}: format selector "${pkg.format_kind}" omits product-required params: ${missingParams.join(', ')}`
+      : `Package ${index}: format selector "${pkg.format_kind}" params do not satisfy product ${pkg.product_id}`,
+    field: missingParams.length > 0
+      ? `packages[${index}].params`
+      : `packages[${index}].format_kind`,
+    details: {
+      format_kind: pkg.format_kind,
+      required_params: candidates.map(candidate => isRecord(candidate.params) ? candidate.params : {}),
+      received_params: requestParams,
+    },
+    recovery: 'correctable',
+  };
 }
 
 const MAX_URL_LEN = 2048;
@@ -2156,6 +2219,9 @@ const TOOLS = [
               start_time: { type: 'string' },
               end_time: { type: 'string' },
               format_ids: { type: 'array' },
+              format_option_refs: { type: 'array' },
+              format_kind: { type: 'string' },
+              params: { type: 'object' },
             },
             required: ['product_id', 'pricing_option_id', 'budget'],
           },
@@ -3982,6 +4048,12 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       continue;
     }
 
+    const directFormatError = validateDirectCanonicalPackageSelector(pkg, product, i);
+    if (directFormatError) {
+      errors.push(directFormatError);
+      continue;
+    }
+
     // Reject unworkable measurement_terms (TERMS_REJECTED). Checked BEFORE
     // bid_price / other field validation so buyers see the terms-level
     // rejection first — correcting a one-sided measurement proposal is
@@ -4082,6 +4154,9 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       startTime: resolvedStart,
       endTime,
       formatIds: pkg.format_ids,
+      formatOptionRefs: pkg.format_option_refs,
+      formatKind: pkg.format_kind,
+      params: pkg.params,
       creativeAssignments: [],
       targeting: targetingResult.targeting,
       ...(optimizationGoals && optimizationGoals.length > 0 && { optimizationGoals }),
@@ -4155,6 +4230,9 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       start_time: pkg.startTime,
       end_time: pkg.endTime,
       ...(pkg.formatIds && { format_ids: pkg.formatIds }),
+      ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
+      ...(pkg.formatKind && { format_kind: pkg.formatKind }),
+      ...(pkg.params && { params: pkg.params }),
       ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
       creative_assignments: [],
     })),
@@ -4275,6 +4353,10 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             paused: pkg.paused,
             start_time: pkg.startTime,
             end_time: pkg.endTime,
+            ...(pkg.formatIds && { format_ids: pkg.formatIds }),
+            ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
+            ...(pkg.formatKind && { format_kind: pkg.formatKind }),
+            ...(pkg.params && { params: pkg.params }),
             creative_approvals: pkg.creativeAssignments.map(cid => ({
               creative_id: cid,
               approval_status: 'approved' as const,

@@ -2442,6 +2442,127 @@ describe('create_media_buy handler', () => {
     expect(typeof pkg.end_time).toBe('string');
   });
 
+  it('rejects under-specified direct canonical format selectors for fixed-size products', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'canonical-direct.example' }, operator: 'canonical-direct.example' };
+    const productId = 'canonical_direct_mrec';
+    const pricingOptionId = 'canonical_direct_mrec_cpm';
+
+    const seededProduct = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'canonical-direct.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          name: 'Canonical direct MREC',
+          description: 'Fixed 300x250 image product',
+          delivery_type: 'guaranteed',
+          channels: ['display'],
+          format_options: [{
+            format_kind: 'image',
+            params: { width: 300, height: 250 },
+            v1_format_ref: [{ agent_url: TEST_AGENT_URL, id: 'display_300x250_image' }],
+          }],
+          format_ids: [{ agent_url: TEST_AGENT_URL, id: 'display_300x250_image' }],
+        },
+      },
+    });
+    expect(seededProduct.result.success).toBe(true);
+
+    const seededPricing = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'canonical-direct.example' },
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 12 },
+      },
+    });
+    expect(seededPricing.result.success).toBe(true);
+
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'canonical-direct.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+        format_kind: 'image',
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('UNSUPPORTED_FEATURE');
+    expect(result.field).toBe('packages[0].params');
+    expect(result.message).toContain('format selector');
+    expect(result.message).toContain('width');
+  });
+
+  it('echoes satisfied direct canonical format selectors on create and read surfaces', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'canonical-direct-echo.example' }, operator: 'canonical-direct-echo.example' };
+    const productId = 'canonical_direct_echo_mrec';
+    const pricingOptionId = 'canonical_direct_echo_mrec_cpm';
+
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'canonical-direct-echo.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          name: 'Canonical direct echo MREC',
+          description: 'Fixed 300x250 image product',
+          delivery_type: 'guaranteed',
+          channels: ['display'],
+          format_options: [{ format_kind: 'image', params: { width: 300, height: 250 } }],
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'canonical-direct-echo.example' },
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 12 },
+      },
+    });
+
+    const { result: created, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'canonical-direct-echo.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+        format_kind: 'image',
+        params: { width: 300, height: 250 },
+      }],
+    });
+
+    expect(isError).not.toBe(true);
+    const createdPackage = (created.packages as Array<Record<string, unknown>>)[0];
+    expect(createdPackage.format_kind).toBe('image');
+    expect(createdPackage.params).toEqual({ width: 300, height: 250 });
+
+    const { result: read } = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      media_buy_ids: [created.media_buy_id],
+    });
+    const readBuy = (read.media_buys as Array<Record<string, unknown>>)[0];
+    const readPackage = (readBuy.packages as Array<Record<string, unknown>>)[0];
+    expect(readPackage.format_kind).toBe('image');
+    expect(readPackage.params).toEqual({ width: 300, height: 250 });
+  });
+
   it('returns error for empty packages', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'create_media_buy', {

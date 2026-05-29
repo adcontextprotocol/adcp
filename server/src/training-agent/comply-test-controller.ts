@@ -41,6 +41,10 @@ import { emitAccountNotificationWebhook } from './webhooks.js';
 import { buildCatalog } from './product-factory.js';
 import { getAllSignals } from './signal-providers.js';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 // ── State machine transition tables ───────────────────────────────
 
 const CREATIVE_TRANSITIONS: Record<string, string[]> = {
@@ -154,6 +158,9 @@ function normalizeSeedPackage(pkg: Record<string, unknown>, mbStart: string, mbE
     startTime: typeof pkg.startTime === 'string' ? pkg.startTime : typeof pkg.start_time === 'string' ? pkg.start_time : mbStart,
     endTime: typeof pkg.endTime === 'string' ? pkg.endTime : typeof pkg.end_time === 'string' ? pkg.end_time : mbEnd,
     formatIds: Array.isArray(pkg.formatIds) ? pkg.formatIds as PackageState['formatIds'] : Array.isArray(pkg.format_ids) ? pkg.format_ids as PackageState['formatIds'] : undefined,
+    formatOptionRefs: Array.isArray(pkg.formatOptionRefs) ? pkg.formatOptionRefs : Array.isArray(pkg.format_option_refs) ? pkg.format_option_refs : undefined,
+    formatKind: typeof pkg.formatKind === 'string' ? pkg.formatKind : typeof pkg.format_kind === 'string' ? pkg.format_kind : undefined,
+    params: isRecord(pkg.params) ? pkg.params : undefined,
     creativeAssignments: Array.isArray(creativeAssignments) ? creativeAssignments.map(String) : [],
     targeting: (pkg.targeting ?? pkg.targeting_overlay) as PackageState['targeting'],
     optimizationGoals: Array.isArray(pkg.optimizationGoals) ? pkg.optimizationGoals as PackageState['optimizationGoals'] : Array.isArray(pkg.optimization_goals) ? pkg.optimization_goals as PackageState['optimizationGoals'] : undefined,
