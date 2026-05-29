@@ -11,7 +11,7 @@ import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { HealthChecker } from "./health.js";
-import { AgentSnapshotDatabase } from "./db/agent-snapshot-db.js";
+import { AgentSnapshotDatabase, type AgentCapabilitiesSnapshotRow } from "./db/agent-snapshot-db.js";
 import { AgentContextDatabase } from "./db/agent-context-db.js";
 import { AAO_HOST } from "./config/aao.js";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
@@ -24,6 +24,17 @@ import { resolveUserAgentAuth } from "./routes/helpers/resolve-user-agent-auth.j
 import { adaptAuthForSdk, type SdkAuth } from "./services/sdk-auth-adapter.js";
 
 const log = createLogger('crawler');
+
+function unknownClassificationProbeDue(
+  snapshot: AgentCapabilitiesSnapshotRow | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!snapshot) return true;
+  if (snapshot.inferred_type !== null) return true;
+  if (snapshot.probe_terminal_state) return false;
+  if (!snapshot.next_probe_after) return true;
+  return new Date(snapshot.next_probe_after).getTime() <= now.getTime();
+}
 
 /**
  * Compare a freshly-fetched adagents.json against the previously-cached
@@ -785,14 +796,46 @@ export class CrawlerService {
       return;
     }
 
+    const existingSnapshots = await this.snapshotDb.bulkGetCapabilities(toProbe.map(a => a.url));
+    const now = new Date();
+    const dueToProbe: Agent[] = [];
+    let skippedBackoff = 0;
+    let skippedTerminal = 0;
+
+    for (const agent of toProbe) {
+      const knownType = knownTypes.get(agent.url);
+      if (knownType && knownType !== 'unknown') {
+        dueToProbe.push(agent);
+        continue;
+      }
+
+      const snapshot = existingSnapshots.get(agent.url);
+      if (unknownClassificationProbeDue(snapshot, now)) {
+        dueToProbe.push(agent);
+      } else if (snapshot?.probe_terminal_state) {
+        skippedTerminal++;
+      } else {
+        skippedBackoff++;
+      }
+    }
+
+    if (dueToProbe.length === 0) {
+      log.info(
+        { skippedBackoff, skippedTerminal, probed: 0, candidates: toProbe.length },
+        'No agents due for snapshot refresh',
+      );
+      return;
+    }
+
     const CONCURRENCY = 5;
     const PROBE_TIMEOUT_MS = 10000;
     let typesUpdated = 0;
     let snapshotsWritten = 0;
     let failed = 0;
+    let unknownFailuresRecorded = 0;
 
-    for (let i = 0; i < toProbe.length; i += CONCURRENCY) {
-      const batch = toProbe.slice(i, i + CONCURRENCY);
+    for (let i = 0; i < dueToProbe.length; i += CONCURRENCY) {
+      const batch = dueToProbe.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(
         batch.map(async (agent) => {
           // Use saved owner credentials when the agent has any — keeps the
@@ -812,6 +855,8 @@ export class CrawlerService {
           const inferredType = this.capabilityDiscovery.inferTypeFromProfile(profile);
           const effectiveType = knownTypes.get(agent.url) || inferredType;
           const agentForHealth: Agent = { ...agent, type: effectiveType as Agent['type'], protocol: profile.protocol };
+          const knownType = knownTypes.get(agent.url);
+          const trackUnknownProbe = !knownType || knownType === 'unknown';
 
           const [health, stats] = await Promise.all([
             Promise.race([
@@ -833,7 +878,11 @@ export class CrawlerService {
           ]);
 
           await Promise.all([
-            this.snapshotDb.upsertCapabilities(profile, inferredType === 'unknown' ? null : inferredType),
+            this.snapshotDb.upsertCapabilities(
+              profile,
+              inferredType === 'unknown' ? null : inferredType,
+              { trackUnknownProbe },
+            ),
             this.snapshotDb.upsertHealth(agent.url, health, stats),
           ]);
 
@@ -843,7 +892,6 @@ export class CrawlerService {
           //     Operator runs the backfill script to flip explicitly. Single
           //     probes can be wrong; auto-flipping would corrupt good rows on
           //     a transient bad probe. See #3538.
-          const knownType = knownTypes.get(agent.url);
           const canPromote = inferredType !== 'unknown' && (!knownType || knownType === 'unknown');
           const isDisagreement =
             !!knownType && knownType !== 'unknown' && inferredType !== 'unknown' && knownType !== inferredType;
@@ -876,18 +924,39 @@ export class CrawlerService {
         })
       );
 
-      for (const result of results) {
+      for (let j = 0; j < results.length; j++) {
+        const result = results[j];
         if (result.status === 'fulfilled') {
           snapshotsWritten++;
           if (result.value === 'type_updated') typesUpdated++;
         } else {
           failed++;
+          const agent = batch[j];
+          const knownType = agent ? knownTypes.get(agent.url) : undefined;
+          if (agent && (!knownType || knownType === 'unknown')) {
+            const error = result.reason instanceof Error ? result.reason.message : String(result.reason);
+            await this.snapshotDb.recordUnknownProbeFailure(
+              agent.url,
+              (agent.protocol as 'mcp' | 'a2a') || 'mcp',
+              error,
+            );
+            unknownFailuresRecorded++;
+          }
         }
       }
     }
 
     log.info(
-      { snapshotsWritten, typesUpdated, unreachable: failed, probed: toProbe.length },
+      {
+        snapshotsWritten,
+        typesUpdated,
+        unreachable: failed,
+        unknownFailuresRecorded,
+        skippedBackoff,
+        skippedTerminal,
+        probed: dueToProbe.length,
+        candidates: toProbe.length,
+      },
       'Agent snapshots refreshed',
     );
   }
@@ -982,7 +1051,11 @@ export class CrawlerService {
     ]);
 
     await Promise.all([
-      this.snapshotDb.upsertCapabilities(profile, inferredType === 'unknown' ? null : inferredType),
+      this.snapshotDb.upsertCapabilities(
+        profile,
+        inferredType === 'unknown' ? null : inferredType,
+        { trackUnknownProbe: !knownType },
+      ),
       this.snapshotDb.upsertHealth(agentUrl, health, stats),
     ]);
 
