@@ -223,6 +223,16 @@ const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
     { asset_group_id: 'landing_page_url', asset_type: 'url' },
   ],
 };
+const BUILD_CREATIVE_FORMAT_ALIASES: Record<string, string> = {
+  display_300x250_generative: 'display_300x250',
+  display_728x90_generative: 'display_728x90',
+  display_320x50_generative: 'display_320x50',
+  audio_30s: 'audio_spot',
+  vast_30s: 'video_preroll',
+};
+const SUPPORTED_CANONICAL_BUILD_CAPABILITIES = [
+  { capabilityId: 'training_image_generation', formatKind: 'image' },
+] as const;
 const MAX_VALIDATE_INPUT_TARGETS = 50;
 const VALID_CANONICAL_FORMAT_KINDS = new Set([...Object.keys(CANONICAL_FORMAT_SLOTS), 'custom']);
 const NONDETERMINISTIC_INCOMPATIBLE_SOURCES = new Set(['buyer_uploaded', 'publisher_host_recorded']);
@@ -2082,14 +2092,23 @@ function wholesaleCapabilityProfile(ctx: TrainingContext): {
 }
 
 function supportedCanonicalFormatsCapability(): Array<Record<string, unknown>> {
-  return Object.entries(CANONICAL_FORMAT_SLOTS).map(([formatKind, slots]) => ({
+  return SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(({ capabilityId, formatKind }) => ({
+    capability_id: capabilityId,
     format: {
       format_kind: formatKind,
       params: {
-        slots: slots.map(slot => ({ ...slot })),
+        slots: CANONICAL_FORMAT_SLOTS[formatKind].map(slot => ({ ...slot })),
       },
     },
   }));
+}
+
+function supportedCanonicalBuildCapability(formatId: string): { formatKind: string; slots: CanonicalSlot[] } | undefined {
+  const capability = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.find(item => item.capabilityId === formatId);
+  if (!capability) return undefined;
+  const { formatKind } = capability;
+  const slots = CANONICAL_FORMAT_SLOTS[formatKind];
+  return slots ? { formatKind, slots } : undefined;
 }
 
 function signalMatchesRef(
@@ -6005,6 +6024,12 @@ interface BuildCreativeArgs {
   message?: string;
 }
 
+type ResolvedBuildTarget = {
+  requested: FormatID;
+  format?: { renders: Array<Record<string, unknown>> };
+  formatKind?: NonNullable<AdcpCreativeManifest['format_kind']>;
+};
+
 function getDimensions(format: { renders: Array<Record<string, unknown>> } | undefined): { w: number; h: number } {
   const dims = format?.renders?.[0]?.dimensions as { width?: number; height?: number } | undefined;
   return { w: dims?.width || 300, h: dims?.height || 250 };
@@ -6021,6 +6046,26 @@ function buildCreativeCompleted<T extends object>(payload: T): T & { status: 'co
   return { status: 'completed', ...payload };
 }
 
+function buildCanonicalImageAssets(formatId: string, dimensions: { w: number; h: number }): AdcpCreativeManifest['assets'] {
+  return {
+    image_main: {
+      asset_type: 'image',
+      url: 'https://test-assets.adcontextprotocol.org/acme-outdoor/banner_300x250.jpg',
+      width: dimensions.w,
+      height: dimensions.h,
+      alt_text: `Generated image creative for ${formatId}`,
+    },
+    headline: {
+      asset_type: 'text',
+      content: 'Trail-ready gear for every summit',
+    },
+    landing_page_url: {
+      asset_type: 'url',
+      url: 'https://acmeoutdoor.example/trail-pro',
+    },
+  };
+}
+
 export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
   const req = args as unknown as BuildCreativeArgs;
   const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
@@ -6029,6 +6074,60 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
+  const canonicalBuildsEnabled = includeThreeOneFields(ctx);
+  const acceptedTargetIds = new Set([
+    ...validFormatIds.keys(),
+    ...Object.keys(BUILD_CREATIVE_FORMAT_ALIASES),
+    ...(canonicalBuildsEnabled ? SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(item => item.capabilityId) : []),
+  ]);
+
+  const unsupportedFormatError = (formatId: FormatID, field: string) => ({
+    code: 'FORMAT_NOT_SUPPORTED',
+    message: `Format "${formatId.id}" is not supported by this creative agent.`,
+    field,
+    recovery: 'correctable' as const,
+    details: {
+      format_id: formatId.id,
+      accepted_values: [...acceptedTargetIds].sort(),
+    },
+  });
+
+  const resolveTarget = (formatId: FormatID, field: string): { target?: ResolvedBuildTarget; error?: ReturnType<typeof unsupportedFormatError> } => {
+    const aliasId = BUILD_CREATIVE_FORMAT_ALIASES[formatId.id] ?? formatId.id;
+    const format = validFormatIds.get(aliasId);
+    if (format) {
+      return { target: { requested: formatId, format } };
+    }
+
+    if (canonicalBuildsEnabled) {
+      const capability = supportedCanonicalBuildCapability(formatId.id);
+      if (capability) {
+        return { target: { requested: formatId, formatKind: capability.formatKind as NonNullable<AdcpCreativeManifest['format_kind']> } };
+      }
+    }
+
+    return { error: unsupportedFormatError(formatId, field) };
+  };
+
+  const buildManifest = (target: ResolvedBuildTarget, label: string): AdcpCreativeManifest => {
+    const { w, h } = getDimensions(target.format);
+    if (target.formatKind === 'image') {
+      return {
+        format_kind: target.formatKind,
+        assets: buildCanonicalImageAssets(target.requested.id, { w, h }),
+      } as AdcpCreativeManifest;
+    }
+    if (target.formatKind) {
+      return {
+        format_kind: target.formatKind,
+        assets: buildHtmlAssets(label),
+      } as AdcpCreativeManifest;
+    }
+    return {
+      format_id: { agent_url: agentUrl, id: target.requested.id },
+      assets: buildHtmlAssets(label),
+    } as AdcpCreativeManifest;
+  };
 
   // Determine target formats (cap at 50 to prevent response amplification)
   const MAX_TARGET_FORMATS = 50;
@@ -6048,14 +6147,14 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     }
 
     const formatId = targetIds[0] || creative.formatId;
-    const format = validFormatIds.get(formatId.id);
-    const { w, h } = getDimensions(format);
+    const resolved = resolveTarget(formatId, 'target_format_id');
+    if (resolved.error) {
+      return buildCreativeCompleted({ errors: [resolved.error] });
+    }
+    const { w, h } = getDimensions(resolved.target!.format);
 
     const base = {
-      creative_manifest: {
-        format_id: { agent_url: agentUrl, id: formatId.id },
-        assets: buildHtmlAssets(`<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
-      },
+      creative_manifest: buildManifest(resolved.target!, `<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
     };
 
     // Return pricing when account is provided (paid creative agent mode)
@@ -6088,14 +6187,16 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
 
     // Generate output for each target format
     if (targetIds.length > 1) {
+      const resolvedTargets = targetIds.map((fmtId, index) => resolveTarget(fmtId, `target_format_ids[${index}]`));
+      const errors = resolvedTargets.flatMap(result => result.error ? [result.error] : []);
+      if (errors.length > 0) {
+        return buildCreativeCompleted({ errors, ...(governanceContext && { governance_context: governanceContext }) });
+      }
       // Multi-format response
-      const creative_manifests = targetIds.map(fmtId => {
-        const format = validFormatIds.get(fmtId.id);
-        const { w, h } = getDimensions(format);
-        return {
-          format_id: { agent_url: agentUrl, id: fmtId.id },
-          assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
-        };
+      const creative_manifests = resolvedTargets.map(result => {
+        const target = result.target!;
+        const { w, h } = getDimensions(target.format);
+        return buildManifest(target, `<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(target.requested.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(target.requested.id)} (${w}x${h})</div>`);
       });
 
       return buildCreativeCompleted({ creative_manifests, ...(governanceContext && { governance_context: governanceContext }) });
@@ -6103,14 +6204,14 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
 
     // Single format response
     const fmtId = targetIds[0] || { agent_url: agentUrl, id: 'display_300x250' };
-    const format = validFormatIds.get(fmtId.id);
-    const { w, h } = getDimensions(format);
+    const resolved = resolveTarget(fmtId, 'target_format_id');
+    if (resolved.error) {
+      return buildCreativeCompleted({ errors: [resolved.error], ...(governanceContext && { governance_context: governanceContext }) });
+    }
+    const { w, h } = getDimensions(resolved.target!.format);
 
     return buildCreativeCompleted({
-      creative_manifest: {
-        format_id: { agent_url: agentUrl, id: fmtId.id },
-        assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssetCount}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
-      },
+      creative_manifest: buildManifest(resolved.target!, `<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssetCount}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       ...(governanceContext && { governance_context: governanceContext }),
     });
   }
@@ -6118,26 +6219,28 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
   // Mode 3: Generative build (target_format_id + message, no manifest or library creative)
   if (targetIds.length > 0) {
     if (targetIds.length > 1) {
-      const creative_manifests = targetIds.map(fmtId => {
-        const format = validFormatIds.get(fmtId.id);
-        const { w, h } = getDimensions(format);
-        return {
-          format_id: { agent_url: agentUrl, id: fmtId.id },
-          assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
-        };
+      const resolvedTargets = targetIds.map((fmtId, index) => resolveTarget(fmtId, `target_format_ids[${index}]`));
+      const errors = resolvedTargets.flatMap(result => result.error ? [result.error] : []);
+      if (errors.length > 0) {
+        return buildCreativeCompleted({ errors, ...(governanceContext && { governance_context: governanceContext }) });
+      }
+      const creative_manifests = resolvedTargets.map(result => {
+        const target = result.target!;
+        const { w, h } = getDimensions(target.format);
+        return buildManifest(target, `<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(target.requested.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(target.requested.id)} (${w}x${h})</div>`);
       });
       return buildCreativeCompleted({ creative_manifests, ...(governanceContext && { governance_context: governanceContext }) });
     }
 
     const fmtId = targetIds[0];
-    const format = validFormatIds.get(fmtId.id);
-    const { w, h } = getDimensions(format);
+    const resolved = resolveTarget(fmtId, 'target_format_id');
+    if (resolved.error) {
+      return buildCreativeCompleted({ errors: [resolved.error], ...(governanceContext && { governance_context: governanceContext }) });
+    }
+    const { w, h } = getDimensions(resolved.target!.format);
 
     return buildCreativeCompleted({
-      creative_manifest: {
-        format_id: { agent_url: agentUrl, id: fmtId.id },
-        assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
-      },
+      creative_manifest: buildManifest(resolved.target!, `<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
       ...(governanceContext && { governance_context: governanceContext }),
     });
   }

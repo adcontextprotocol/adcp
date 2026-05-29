@@ -4444,6 +4444,83 @@ describe('build_creative pricing', () => {
   });
 });
 
+describe('canonical creative build capabilities', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('advertises stable capability_id values on creative.supported_formats', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+
+    const supportedFormats = (result.creative as any).supported_formats as Array<Record<string, any>>;
+    const imageCapability = supportedFormats.find(format => format.capability_id === 'training_image_generation');
+    expect(imageCapability?.format.format_kind).toBe('image');
+    expect(imageCapability?.format.format_option_id).toBeUndefined();
+    expect(supportedFormats.some(format => format.capability_id === 'build_html5')).toBe(false);
+  });
+
+  it('builds canonical manifests from supported capability_id targets', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'build_creative', {
+      account: { brand: { domain: 'build-canonical.example' }, operator: 'build-canonical.example' },
+      brand: { domain: 'build-canonical.example' },
+      message: 'Create an image creative for the summer trail sale.',
+      target_format_id: { agent_url: TEST_AGENT_URL, id: 'training_image_generation' },
+    });
+
+    const manifest = result.creative_manifest as Record<string, any>;
+    expect(manifest.format_kind).toBe('image');
+    expect(manifest.format_id).toBeUndefined();
+    expect(manifest.assets.image_main.asset_type).toBe('image');
+  });
+
+  it('rejects unsupported build targets with FORMAT_NOT_SUPPORTED', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'build_creative', {
+      account: { brand: { domain: 'build-canonical.example' }, operator: 'build-canonical.example' },
+      brand: { domain: 'build-canonical.example' },
+      message: 'Create an unknown format.',
+      target_format_id: { agent_url: TEST_AGENT_URL, id: 'unknown_takeover_generation' },
+    });
+
+    expect(result.code).toBe('FORMAT_NOT_SUPPORTED');
+    expect(result.field).toBe('target_format_id');
+    expect(result.recovery).toBe('correctable');
+  });
+
+  it('rejects unimplemented canonical capabilities instead of emitting invalid manifests', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'build_creative', {
+      account: { brand: { domain: 'build-canonical.example' }, operator: 'build-canonical.example' },
+      brand: { domain: 'build-canonical.example' },
+      message: 'Create an HTML5 creative.',
+      target_format_id: { agent_url: TEST_AGENT_URL, id: 'training_html5_generation' },
+    });
+
+    expect(result.code).toBe('FORMAT_NOT_SUPPORTED');
+    expect(result.field).toBe('target_format_id');
+  });
+
+  it('does not accept 3.1 build capability selectors in 3.0 compat mode', async () => {
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, storyboardCompat: { version: '3.0' } });
+    const { result } = await simulateCallTool(server, 'build_creative', {
+      account: { brand: { domain: 'build-canonical.example' }, operator: 'build-canonical.example' },
+      brand: { domain: 'build-canonical.example' },
+      message: 'Create an image creative.',
+      target_format_id: { agent_url: TEST_AGENT_URL, id: 'training_image_generation' },
+    });
+
+    expect(result.code).toBe('FORMAT_NOT_SUPPORTED');
+    expect(result.field).toBe('target_format_id');
+  });
+});
+
 // ── report_usage handler ──────────────────────────────────────────
 
 describe('report_usage handler', () => {
