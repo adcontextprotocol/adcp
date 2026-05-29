@@ -1,4 +1,4 @@
--- Migration 500: durable backoff state for agents whose type remains unknown.
+-- Migration 501: durable backoff state for agents whose type remains unknown.
 --
 -- The crawler probes registered/discovered agents for capability metadata, but
 -- agents that cannot be classified should not be re-probed every crawl tick
