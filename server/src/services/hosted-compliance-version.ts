@@ -1,7 +1,16 @@
 import { existsSync, readdirSync } from 'node:fs';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { registerExternalSchemaRoot } from '@adcp/sdk/testing';
-import type { ComplyOptions, ResolveOptions, StoryboardRunOptions, TestOptions } from '@adcp/sdk/testing';
+import type {
+  AgentCapabilities,
+  ComplyOptions,
+  ResolveOptions,
+  ResolvedStoryboards,
+  StoryboardRunOptions,
+  TestOptions,
+} from '@adcp/sdk/testing';
 import { SUPPORTED_BADGE_VERSIONS } from './adcp-taxonomy.js';
 
 export const DEFAULT_HOSTED_COMPLIANCE_LINE = SUPPORTED_BADGE_VERSIONS[0];
@@ -16,6 +25,15 @@ export interface HostedComplianceTarget {
 type HostedResolveOptions = ResolveOptions & { schemaRoot: string };
 
 const registeredSchemaRoots = new Set<string>();
+const SDK_STORYBOARD_RESOLVER_PATCHED = Symbol.for('adcp.hostedStoryboardResolverPatched');
+const hostedComplianceContext = new AsyncLocalStorage<HostedComplianceTarget>();
+
+type SdkStoryboardResolverFn = ((
+  caps: AgentCapabilities,
+  options?: ResolveOptions,
+) => ResolvedStoryboards) & {
+  [SDK_STORYBOARD_RESOLVER_PATCHED]?: true;
+};
 
 function repoPath(...parts: string[]): string {
   return resolve(process.cwd(), ...parts);
@@ -51,6 +69,78 @@ function compareVersions(a: string, b: string): number {
     if (diff !== 0) return diff;
   }
   return 0;
+}
+
+function prereleaseComplianceLine(version: string): string | undefined {
+  const fullSemver = version.match(/^([1-9][0-9]*)\.([0-9]+)\.[0-9]+-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*(?:\+[0-9A-Za-z.-]+)?$/);
+  if (fullSemver) return `${fullSemver[1]}.${fullSemver[2]}`;
+
+  const wirePrecision = version.match(/^([1-9][0-9]*)\.([0-9]+)-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*(?:\+[0-9A-Za-z.-]+)?$/);
+  return wirePrecision ? `${wirePrecision[1]}.${wirePrecision[2]}` : undefined;
+}
+
+function stableLineForHostedPrereleaseTarget(target: HostedComplianceTarget): string | undefined {
+  if (!isDefaultHostedComplianceTarget(target)) return undefined;
+
+  const line = prereleaseComplianceLine(target.version);
+  return line === target.requested ? line : undefined;
+}
+
+export function hostedSupportedVersionsForCompliance(
+  supportedVersions: readonly string[] | undefined,
+  target: HostedComplianceTarget,
+): string[] | undefined {
+  if (!supportedVersions || supportedVersions.length === 0) return supportedVersions ? [] : undefined;
+
+  const line = stableLineForHostedPrereleaseTarget(target);
+  if (!line || !supportedVersions.includes(line) || supportedVersions.includes(target.version)) {
+    return [...supportedVersions];
+  }
+
+  return [target.version, ...supportedVersions];
+}
+
+export function hostedCapabilitiesForCompliance(
+  caps: AgentCapabilities,
+  target: HostedComplianceTarget,
+): AgentCapabilities {
+  const supported_versions = hostedSupportedVersionsForCompliance(caps.supported_versions, target);
+  return supported_versions === caps.supported_versions ? caps : { ...caps, supported_versions };
+}
+
+export function withHostedComplianceCompatibility<T>(
+  target: HostedComplianceTarget,
+  fn: () => T,
+): T {
+  return hostedComplianceContext.run(target, fn);
+}
+
+function installHostedStoryboardResolverPatch(): void {
+  // The hosted badge line can resolve to a checked-in prerelease bundle before
+  // GA (for example public target `3.1` backed by cache `3.1.0-beta.7`).
+  // Keep the compatibility shim scoped to storyboard compliance resolution;
+  // normal AdCP wire-version negotiation still requires exact prerelease pins.
+  let complianceModule: { resolveStoryboardsForCapabilities?: SdkStoryboardResolverFn };
+  try {
+    const require = createRequire(import.meta.url);
+    const packageRoot = resolve(require.resolve('@adcp/sdk/package.json'), '..');
+    complianceModule = require(join(packageRoot, 'dist', 'lib', 'testing', 'storyboard', 'compliance.js')) as {
+      resolveStoryboardsForCapabilities?: SdkStoryboardResolverFn;
+    };
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to install hosted storyboard resolver patch: ${detail}`);
+  }
+
+  const original = complianceModule.resolveStoryboardsForCapabilities;
+  if (!original || original[SDK_STORYBOARD_RESOLVER_PATCHED]) return;
+
+  const patched: SdkStoryboardResolverFn = (caps, options) => {
+    const target = hostedComplianceContext.getStore();
+    return original(target ? hostedCapabilitiesForCompliance(caps, target) : caps, options);
+  };
+  patched[SDK_STORYBOARD_RESOLVER_PATCHED] = true;
+  complianceModule.resolveStoryboardsForCapabilities = patched;
 }
 
 function complianceVersions(): string[] {
@@ -251,3 +341,5 @@ export function withHostedTestOptions<T extends Partial<TestOptions> | undefined
     schemaRoot: input.schemaRoot ?? hostedSchemaRootForVersion(version, target),
   } as T extends undefined ? TestOptions : NonNullable<T> & TestOptions;
 }
+
+installHostedStoryboardResolverPatch();
