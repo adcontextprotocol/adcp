@@ -20,6 +20,7 @@ const { stopSessionCleanup } = await import('../../src/training-agent/state.js')
 
 const COMPAT_CTX = { mode: 'open' as const, storyboardCompat: { version: '3.0' as const } };
 const AUTH = 'Bearer compat-tools-token';
+const CURRENT_ADCP_VERSION = '3.1-beta.7';
 
 async function simulateListTools(server: ReturnType<typeof createTrainingAgentServer>): Promise<string[]> {
   const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
@@ -177,7 +178,7 @@ describe('training-agent 3.0 compat tool visibility', () => {
         manifest: validImageManifest,
         targets: [{ kind: 'canonical', id: 'image' }],
       });
-      expect(unpinned.adcp_version).toBe('3.1-beta.5');
+      expect(unpinned.adcp_version).toBe(CURRENT_ADCP_VERSION);
       expect(unpinned.results).toEqual([
         { target: { kind: 'canonical', id: 'image' }, result_kind: 'validated_pass' },
       ]);

@@ -515,9 +515,9 @@ import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { selectSigningCapability } from './request-signing.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5'] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7'] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
-const CURRENT_ADCP_VERSION = '3.1-beta.5';
+const CURRENT_ADCP_VERSION = '3.1-beta.7';
 const MAX_PACKAGES_PER_BUY = 50;
 
 interface ParsedAdcpReleaseVersion {

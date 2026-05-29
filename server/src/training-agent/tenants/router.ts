@@ -47,7 +47,7 @@ const SALES_CURRENT_SCENARIOS = [
   'query_provenance_audit_observations',
 ] as const;
 
-const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5'] as const;
+const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7'] as const;
 const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
 
 function bearerToken(req: Request): string | undefined {

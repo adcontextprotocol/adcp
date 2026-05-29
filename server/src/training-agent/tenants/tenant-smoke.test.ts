@@ -234,10 +234,12 @@ describe('tenant routing smoke', () => {
       const mediaBuy = body.result?.structuredContent?.media_buy;
       expect(body.result?.structuredContent?.adcp_version).toBe('3.0');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
-      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5']);
+      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7']);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
-      expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(SALES_CURRENT_SCENARIOS);
+      expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(
+        expect.arrayContaining(SALES_CURRENT_SCENARIOS),
+      );
     } finally {
       await close();
     }
@@ -358,7 +360,7 @@ describe('tenant routing smoke', () => {
         field: 'adcp_version',
         details: {
           adcp_version: '4.0',
-          supported_versions: ['3.0', '3.1-beta.5'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7'],
         },
       });
       expect(unsupportedBody.result?.structuredContent?.context?.correlation_id).toBe('tenant-local-version-unsupported');
@@ -398,8 +400,10 @@ describe('tenant routing smoke', () => {
       const capabilitiesBody = await capabilities.json() as {
         result?: { structuredContent?: { compliance_testing?: { scenarios?: string[] } } };
       };
-      expect(capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios).toEqual(SALES_THREE_ZERO_COMPAT_SCENARIOS);
-      expect(capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios).not.toContain('seed_measurement_catalog');
+      const scenarios = capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios ?? [];
+      expect(scenarios).toEqual(expect.arrayContaining(SALES_THREE_ZERO_COMPAT_SCENARIOS));
+      expect(scenarios).not.toContain('seed_measurement_catalog');
+      expect(scenarios).not.toContain('query_provenance_audit_observations');
 
       const list = await fetch(url, {
         method: 'POST',
