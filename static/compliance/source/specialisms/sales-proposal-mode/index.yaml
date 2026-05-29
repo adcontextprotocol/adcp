@@ -298,7 +298,7 @@ phases:
   - id: finalize_proposal
     title: "Finalize the proposal"
     narrative: |
-      Before accepting, the buyer requests finalization. This transitions the proposal from
+      Before executing, the buyer requests finalization. This transitions the proposal from
       draft (indicative pricing) to committed (firm pricing with inventory hold). For
       guaranteed inventory, finalization also produces an insertion order the buyer
       countersigns when calling create_media_buy.
@@ -321,7 +321,7 @@ phases:
           - proposals[0].proposal_status: committed
           - proposals[0].expires_at: timestamp for the inventory hold window
           - For guaranteed inventory, proposals[0].insertion_order with io_id
-          - The proposal is ready to accept via create_media_buy
+          - The proposal is ready to execute via create_media_buy
 
         sample_request:
           buying_mode: "refine"

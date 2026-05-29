@@ -337,13 +337,14 @@ Publishers may return proposals alongside products - structured media plans with
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `proposal_id` | string | Unique identifier for executing this proposal via `create_media_buy` |
+| `proposal_id` | string | Unique identifier for finalizing this proposal and, once committed, executing it via `create_media_buy` |
+| `proposal_status` | string | Lifecycle state. `draft` means the proposal must be finalized via `get_products` refine action `finalize` before create. `committed` means the proposal can be executed via `create_media_buy` before `expires_at`. When absent, treat the proposal as ready to buy for backward compatibility. |
 | `name` | string | Human-readable name for the media plan |
 | `allocations` | ProductAllocation[] | Budget allocations across products (percentages must sum to 100). Each allocation may include optional `start_time` and `end_time` for per-flight scheduling. |
 | `forecast` | DeliveryForecast | Aggregate delivery forecast for the proposal. Contains forecast points with metric ranges. See [Delivery Forecasts](/docs/media-buy/product-discovery/media-products#delivery-forecasts) |
 | `total_budget_guidance` | object | Optional min/recommended/max budget guidance |
 | `brief_alignment` | string | How this proposal addresses the campaign brief |
-| `expires_at` | string | ISO 8601 timestamp when this proposal expires |
+| `expires_at` | string | ISO 8601 timestamp when this proposal expires. For committed proposals, this is the inventory-hold deadline for `create_media_buy`. |
 
 Each `ForecastPoint` is one forecast row. Composite slices are encoded by multiple `dimensions[]` items on the same point, such as placement x country. Sibling points are parallel rows, not nested children. Dimension order has no meaning; buyers normalize row identity from `(forecast_range_unit, budget if present, product_id if present, dimensions sorted by kind)`. Buyers may compare rows at the same grain, but MUST NOT sum them unless the seller documents that the returned rows form a complete, non-overlapping partition. Standard delivery reporting verifies one-dimensional marginals, not exact cross-dimensional intersections.
 
@@ -1129,6 +1130,7 @@ Key rules to know before sending:
 
 - **`refine` is only valid in `refine` mode.** Requests that include this field in `brief` or `wholesale` mode are rejected with `INVALID_REQUEST`.
 - **Filters are absolute**, not deltas. Always send the full filter set you want applied.
+- **Proposals are actionable through status.** `proposal_status: "draft"` requires finalization before create; `proposal_status: "committed"` can be executed with `create_media_buy(proposal_id)` before `expires_at`; absent status is legacy ready-to-buy.
 - **Proposals are ephemeral.** Proposals typically include an `expires_at` timestamp. After expiration, the seller returns `PROPOSAL_EXPIRED`.
 - **Product IDs are stable catalog identifiers.** Custom products (`is_custom: true`) may have an `expires_at` timestamp, after which refinement returns `PRODUCT_NOT_FOUND`.
 

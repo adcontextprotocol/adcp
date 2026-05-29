@@ -14,7 +14,7 @@ requires_capability:
 
 narrative: |
   Mirrors the proposal_finalize scenario but passes start_time: "asap" (the spec-defined
-  string literal from start-timing.json) when accepting the committed proposal. This arm
+  string literal from start-timing.json) when executing the committed proposal. This arm
   catches implementations that accept ISO 8601 dates but reject the "asap" string form
   at the wrapper/validation layer before the handler's date-carry-forward logic runs.
 
@@ -176,7 +176,7 @@ phases:
           - proposals[0].proposal_status: committed
           - proposals[0].expires_at: timestamp for the inventory hold window
           - Firm pricing (not indicative)
-          - The proposal is ready to accept via create_media_buy
+          - The proposal is ready to execute via create_media_buy
 
         sample_request:
           buying_mode: "refine"
@@ -201,9 +201,9 @@ phases:
             description: "Response contains the finalized proposal"
 
   - id: accept_proposal
-    title: "Accept the committed proposal with start_time: asap"
+    title: "Execute the committed proposal with start_time: asap"
     narrative: |
-      The buyer accepts the committed proposal via create_media_buy, supplying
+      The buyer accepts/executes the committed proposal via create_media_buy, supplying
       start_time as the string literal "asap" (the spec-defined form from
       start-timing.json). This verifies the seller's input-validation layer
       accepts this form without rejecting it before the handler runs.
@@ -234,7 +234,7 @@ phases:
           - status: active
           - confirmed_at: timestamp
           - packages: line items derived from the proposal's budget allocations
-          - proposal_id: echoed back to confirm which proposal was accepted
+          - proposal_id: echoed back to confirm which proposal was executed
 
           The seller MUST accept start_time: "asap" (string literal) without
           rejecting it at the wrapper/input-validation layer.

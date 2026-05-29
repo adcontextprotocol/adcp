@@ -50,13 +50,14 @@ narrative: |
 
   Proposal-driven workflows are part of guaranteed selling: most guaranteed deals start with
   an RFP/brief, generate a proposal with curated bundles and rationale, refine, finalize to
-  committed status with firm pricing and an inventory hold, and then the buyer accepts via
+  committed status with firm pricing and an inventory hold, and then the buyer executes via
   create_media_buy. The `media_buy_seller/proposal_finalize` scenario covers that flow and is
-  capability-gated on `media_buy.supports_proposals` — sellers that declare `false` (or omit
-  the field, since the schema default is false) skip it with skip_result.reason: not_applicable;
-  sellers that explicitly declare `true` are graded against it. Direct-buy guaranteed sellers
-  (auction PG, retail SKU, quoted-rate) declare `supports_proposals: false`; full-service
-  guaranteed sellers declare `true`.
+  capability-gated on `media_buy.supports_proposals` — a conformance declaration, not the
+  buyer's per-proposal executable-state signal. Sellers that declare `false` (or omit the
+  field, since the schema default is false) skip it with skip_result.reason: not_applicable;
+  sellers that explicitly declare `true` are graded against it. Buyers decide whether a
+  returned proposal can be created from its `proposal_status`: `draft` requires finalize,
+  `committed` can be executed before `expires_at`.
 
   The requires_io_approval capability is scoped to creates that reference products with
   delivery_type: guaranteed (those in this storyboard's primary fixtures). Four of the

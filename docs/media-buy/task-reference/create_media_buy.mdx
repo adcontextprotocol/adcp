@@ -158,7 +158,7 @@ npx @adcp/sdk@latest \
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
-| `proposal_id` | string | No* | ID of a proposal from `get_products` to execute. Alternative to providing packages. |
+| `proposal_id` | string | No* | ID of a committed proposal from `get_products` to execute. Alternative to providing packages. Draft proposals must be finalized first; sellers reject draft proposal execution with `PROPOSAL_NOT_COMMITTED`. |
 | `total_budget` | TotalBudget | No* | Total budget when executing a proposal. Publisher applies allocation percentages. |
 | `packages` | Package[] | No* | Array of package configurations (see below). Required when not using proposal_id. |
 | `brand` | BrandRef | Yes | Brand reference — resolved to full identity at execution time. See [brand.json](/docs/brand-protocol/brand-json) |
@@ -171,6 +171,8 @@ npx @adcp/sdk@latest \
 | `reporting_webhook` | ReportingWebhook | No | Automated reporting delivery configuration |
 
 \* Either `packages` OR (`proposal_id` + `total_budget`) must be provided.
+
+When executing a proposal, `proposal_status` on the returned proposal determines whether `create_media_buy` is valid. `committed` proposals can be executed before `expires_at`; `draft` proposals require a prior `get_products` refine call with `action: "finalize"`. Finalization is seller commitment to firm terms, not buyer acceptance. This `create_media_buy` call is the acceptance/execution step.
 
 ### TotalBudget Object
 
@@ -264,6 +266,8 @@ When `confirmed_at` is `null`, sellers MUST omit `packages[].committed_metrics`.
 ### Submitted Response
 
 Returned when the buy cannot be confirmed synchronously — e.g., guaranteed buys awaiting IO signing, governance review queued, or batched processing. The completion artifact (delivered via `tasks/get` or push-notification webhook) carries `media_buy_id` and `packages`.
+
+There is no proposal-specific acceptance webhook. Proposal execution that needs human approval, IO signing, or asynchronous processing uses this same submitted task envelope and the standard task/webhook completion path.
 
 | Field | Description |
 |-------|-------------|

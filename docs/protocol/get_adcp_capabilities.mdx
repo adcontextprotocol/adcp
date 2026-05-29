@@ -464,7 +464,7 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 
 ### measurement
 
-Measurement protocol capabilities. Only present if `measurement` is in `supported_protocols`. The `measurement` protocol is in development — currently scoped to `get_adcp_capabilities` for catalog discovery (this block); additional measurement tasks (reporting, attribution, panel queries) and a baseline compliance storyboard land in subsequent minors. The capability block is shipping now so measurement vendors can publish their per-metric catalogs and AAO can crawl them, before the broader task surface is settled.
+Experimental measurement protocol capabilities. Only present if `measurement` is in `supported_protocols`; agents implementing it must also list `measurement.core` in `experimental_features`. The `measurement` protocol is currently scoped to `get_adcp_capabilities` for catalog discovery (this block); additional measurement tasks (reporting, attribution, panel queries) and a baseline compliance storyboard land in subsequent minors. The capability block is shipping now so measurement vendors can publish their per-metric catalogs and AAO can crawl them, before the broader task surface is settled.
 
 **Scope.** An agent claiming `measurement` computes one or more quantitative metrics about ad delivery, exposure, or effect (impression verification, viewability, IVT, attention, brand lift, incrementality, outcomes, emissions — vendors define the surface in `metrics[]`). Returns metric definitions (this block), not pricing or coverage (negotiated per buy via `measurement_terms`) and not live values (returned per buy via `vendor_metric_values`). Same mechanical model as `compliance_testing` and `webhook_signing`: presence asserts the capability; the block carries the structured payload.
 
@@ -586,14 +586,14 @@ Array of experimental AdCP surfaces this agent implements. A surface is experime
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "trusted_match.core", "sponsored_intelligence.core"]`) |
+| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "measurement.core", "trusted_match.core", "sponsored_intelligence.core"]`) |
 
 Buyers should inspect `experimental_features` before relying on an experimental surface. A seller that does not list a surface is asserting it does not implement it — there is no "silently experimental" mode.
 
 **Example:**
 ```json
 {
-  "experimental_features": ["brand.rights_lifecycle", "trusted_match.core"]
+  "experimental_features": ["brand.rights_lifecycle", "measurement.core", "trusted_match.core"]
 }
 ```
 

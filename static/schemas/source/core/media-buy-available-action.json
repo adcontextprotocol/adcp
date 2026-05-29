@@ -11,7 +11,7 @@
     },
     "mode": {
       "$ref": "/schemas/enums/media-buy-action-mode.json",
-      "description": "The single mode that applies right now on this buy for this action. Singular because the buy has a concrete state, exactly one mode applies. Buyer SDKs branch on this to decide whether to expect a synchronous response, a proposal task, or an asynchronous approval callback."
+      "description": "The single mode that applies right now on this buy for this action. Singular because the buy has a concrete state, exactly one mode applies. Buyer SDKs branch on this to decide whether to expect a synchronous response, conditional handling, or an asynchronous approval callback."
     },
     "sla": {
       "$ref": "/schemas/core/sla-window.json",
