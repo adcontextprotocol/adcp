@@ -1,0 +1,660 @@
+---
+title: Asset Types
+description: "AdCP asset types define standardized properties for images, video, text, audio, tags, and tracking URLs used in creative formats."
+"og:title": "AdCP — Asset Types"
+---
+
+> **Canonical-formats readers**: this page describes asset types and their payload shapes — the same in v1 and the canonical-formats path. For how assets map to canonical-format slots via `asset_group_id`, see [canonical-formats](/dist/docs/3.1.0-rc.2/creative/canonical-formats) and the [migration guide](/dist/docs/3.1.0-rc.2/creative/canonical-formats-migration). v1 uses `asset_id` + `asset_role`; canonical formats use `asset_group_id` referencing the canonical vocabulary registry. Both paths use the same asset payload schemas — only the slot-key vocabulary differs.
+
+Creative formats in AdCP use standardized asset types with well-defined properties. Assets are the discrete, typed building blocks used by formats to define requirements and by manifests to supply concrete values.
+
+Standardizing asset types ensures consistency across formats and makes requirements easier for buyers and systems to understand.
+
+## Asset types in v2
+
+The full set of asset types valid in a v2 format `slots` declaration's `asset_type` field:
+
+| asset_type | What it carries | Where defined |
+|---|---|---|
+| `image` | Image file (jpg/png/gif/webp/svg) | `/schemas/core/assets/image-asset.json` |
+| `video` | Video file (mp4/webm/mov) | `/schemas/core/assets/video-asset.json` |
+| `audio` | Audio file (mp3/aac/wav) | `/schemas/core/assets/audio-asset.json` |
+| `text` | Plain text (headline, body, script) | `/schemas/core/assets/text-asset.json` |
+| `markdown` | Markdown text | `/schemas/core/assets/markdown-asset.json` |
+| `url` | URL with `url_type` discriminator (clickthrough, tracker_pixel, third-party tag) | `/schemas/core/assets/url-asset.json` |
+| `html` | Inline HTML | `/schemas/core/assets/html-asset.json` |
+| `css` | CSS rules | `/schemas/core/assets/css-asset.json` |
+| `javascript` | JavaScript | `/schemas/core/assets/javascript-asset.json` |
+| `vast` | VAST tag (URL or inline XML), VAST 2.x-4.x | `/schemas/core/assets/vast-asset.json` |
+| `daast` | DAAST tag (URL or inline XML), 1.0-1.1 | `/schemas/core/assets/daast-asset.json` |
+| `webhook` | Webhook URL for async creative production | `/schemas/core/assets/webhook-asset.json` |
+| `brief` | Free-text creative brief (input to generative production) | `/schemas/core/assets/brief-asset.json` |
+| `catalog` | Reference to a synced catalog (sponsored_placement) | `/schemas/core/assets/catalog-asset.json` |
+| `zip` | Zip archive (HTML5 banner bundle) | `/schemas/core/assets/zip-asset.json` |
+| `vast_tracker` | Single VAST `Tracking` event URL (decomposed) | `/schemas/core/assets/vast-tracker-asset.json` |
+| `daast_tracker` | Single DAAST `Tracking` event URL (decomposed) | `/schemas/core/assets/daast-tracker-asset.json` |
+| `pixel_tracker` | Renderer-fired HTTP tracker (image pixel or JS include) for any web-rendered canonical. `event` (impression / viewable_mrc_* / viewable_video_50 / audible_video_complete / click / custom) × `method` (img / js). Maps to IAB OpenRTB Native 1.2 `imptrackers[]` / `jstracker` / `eventtrackers[]` / `link.clicktrackers[]` event-type registry (types 1, 2, 3, 4, 500) | `/schemas/core/assets/pixel-tracker-asset.json` |
+| `object` | Structured object (image_carousel `cards`, `video_brief` for generative video) — sub-shape declared by the canonical | (no standalone schema; per-canonical sub-shape) |
+
+In a v2 manifest's `assets` map, the **slot key** is the canonical's `asset_group_id` (e.g., `image_main`, `video_main`, `script`, `cards`, `landing_page_url`) and the **value** carries the matching asset payload with its `asset_type` discriminator. The format declaration's `slots[].asset_type` tells the validator which payload schema applies.
+
+## Important: Payload vs Requirements
+
+For payload schemas (the structure of the actual asset data supplied in creative manifests), see:
+- [Asset Type Registry](https://adcontextprotocol.org/schemas/3.1.0-rc.2/creative/asset-types/index.json) - Links to all payload schemas
+- Core Asset Schemas at `/schemas/3.1.0-rc.2/core/assets/` - Individual asset payload definitions
+
+**Key distinction:**
+
+**Format requirements** (this document) define constraints such as:
+- Whether an asset is required or optional
+- Acceptable file or container formats
+- Duration, dimension, or aspect ratio limits
+- File size and bitrate limits
+- Allowed or restricted features (for tag-based assets)
+
+**Payload schemas** (core schemas) define the supplied values, such as:
+- `url`
+- `content` (for inline text or inline tag markup)
+- `width` / `height` (when declared)
+- `duration_ms` (when applicable)
+- `format` (declared container type)
+
+## Asset Type Schema
+
+The official JSON schema for asset types is available at:
+- **Production**: https://adcontextprotocol.org/schemas/asset-types-v1.json
+- **GitHub**: https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/asset-types-v1.json
+
+## Core Asset Types
+
+### Video Asset
+
+Video assets represent video files with specific technical requirements.
+
+```json
+{
+  "asset_type": "video",
+  "required": true,
+  "duration_seconds": 15,
+  "acceptable_formats": ["mp4"],
+  "acceptable_codecs": ["h264"],
+  "acceptable_resolutions": ["1920x1080", "1280x720"],
+  "aspect_ratio": "16:9",
+  "max_file_size_mb": 30,
+  "min_bitrate_mbps": 8,
+  "max_bitrate_mbps": 10
+}
+```
+
+**Properties:**
+- `duration_seconds`: Expected video duration
+- `min_duration_seconds` / `max_duration_seconds`: Duration range (if flexible)
+- `acceptable_formats`: Container formats (mp4, webm, mov)
+- `acceptable_codecs`: Video codecs (h264, h265, vp8, vp9, av1)
+- `acceptable_resolutions`: List of width x height strings
+- `aspect_ratio`: Required aspect ratio (16:9, 9:16, 1:1, etc.)
+- `max_file_size_mb`: Maximum file size in megabytes
+- `min_bitrate_mbps` / `max_bitrate_mbps`: Bitrate range in Mbps
+- `features`: Additional requirements (e.g., ["non-skippable", "sound on"])
+
+### Image Asset
+
+Static image assets for banners, logos, and visual content.
+
+```json
+{
+  "asset_type": "image",
+  "required": true,
+  "width": 300,
+  "height": 250,
+  "acceptable_formats": ["jpg", "png", "gif"],
+  "max_file_size_kb": 200,
+  "animation_allowed": true
+}
+```
+
+**Properties:**
+- `width` / `height`: Dimensions in pixels
+- `min_width` / `min_height`: Minimum dimensions (px; typically used by responsive/sizeless formats)
+- `aspect_ratio`: Required aspect ratio
+- `acceptable_formats`: Image formats (jpg, png, gif, webp, svg)
+- `max_file_size_kb`: Maximum file size in kilobytes
+- `transparency`: Whether transparency is required/supported
+- `animation_allowed`: Whether animated GIFs are accepted
+- `notes`: Additional requirements (e.g., "Must be free of text")
+
+**Use Cases:**
+- Fixed layout: provide `width` and `height`. Do not include `min_width`, `min_height`, or `aspect_ratio`.
+- Responsive (fixed image aspect ratio): provide `min_width`, `min_height` and `aspect_ratio`. Do not include `width` or `height`.
+- Responsive (any image aspect ratio): provide `min_width` and `min_height` only. Do not include `width`, `height`, or `aspect_ratio`.
+
+**Note**: In fixed layouts, the image slot is an exact pixel box, so specify `width` and `height`. In responsive layouts, the renderer will resize the image; use `min_width`/`min_height` to ensure there are enough pixels for a sharp result after scaling. Use `aspect_ratio` only when the image asset itself must be a specific shape (e.g., 16:9); omit it if any image aspect ratio is acceptable
+
+### Text Asset
+
+Text content for headlines, descriptions, CTAs, etc.
+
+```json
+{
+  "asset_type": "text",
+  "required": true,
+  "text_type": "headline",
+  "max_length": 90,
+  "min_length": 10
+}
+```
+
+**Properties:**
+- `text_type`: Specific type (title, headline, description, body, cta, advertiser_name, disclaimer)
+- `max_length`: Maximum character count
+- `min_length`: Minimum character count
+- `default`: Default value if not provided
+- `allowed_characters`: Regex pattern for validation
+- `format`: Expected format (plain, currency, percentage)
+
+### URL Asset
+
+Links for clickthroughs, tracking, and landing pages. Two related but distinct fields describe a URL asset:
+
+- **`url_type`** (on the manifest asset) — the **mechanism** the receiver uses to invoke this URL.
+- **`url-asset-requirements.role`** (on the format) — the **purpose** this URL slot serves in the creative.
+
+A slot can be `click_tracker` (purpose) and accept a `tracker_pixel` (mechanism) URL — those describe different things.
+
+#### Manifest-side: `url_type` (mechanism)
+
+Senders **SHOULD** include `url_type` on every URL asset. The valid values are:
+
+| Value | Mechanism |
+|---|---|
+| `clickthrough` | User-click destination (landing page or ad-tech redirector) |
+| `tracker_pixel` | Fires HTTP GET, expects 1×1 pixel or 204 response (impression / event / 3P trackers) |
+| `tracker_script` | Loads as a `<script>` tag — measurement SDKs (OMID verification, native event trackers using `method: 2`) |
+
+```json
+{
+  "asset_type": "url",
+  "url_type": "tracker_pixel",
+  "url": "https://track.brand.com/imp?cb={CACHEBUSTER}"
+}
+```
+
+{/* Fallback table mirrors static/schemas/source/core/assets/url-asset.json top-level description. The schema description is the normative source for conformance tools — keep this table in sync if you edit either side. */}
+
+If `url_type` is **absent**, receivers SHOULD fall back to the format's `url-asset-requirements.role`:
+
+| `role` (format) | Fallback `url_type` (mechanism) |
+|---|---|
+| `clickthrough`, `landing_page` | `clickthrough` |
+| `impression_tracker`, `click_tracker` | `tracker_pixel` |
+| `viewability_tracker` | `tracker_script` — OMID and equivalent verification SDKs **require** a `<script>` tag; firing them as a pixel produces no measurement |
+| `third_party_tracker` | **No safe fallback.** Mechanism is integration-specific (DV/IAS ship both pixel and script forms). Receivers MAY reject or warn. |
+
+If neither `url_type` nor a format-side `role` is available, receivers MUST NOT silently pick a mechanism — firing a clickthrough URL as a pixel (or vice versa) silently corrupts measurement and breaks the user flow. Receivers SHOULD reject the manifest.
+
+> **VAST/DAAST URLs are not URL assets.** A URL pointing to ad-server XML markup is parsed, not GET-fired. Use `asset_type: "vast"` with `delivery_type: "url"` for VAST tags, and the dedicated tracker types (`vast_tracker` / `daast_tracker`) once those land per [RFC #2915](https://github.com/adcontextprotocol/adcp/issues/2915). A VAST tag declared as `asset_type: "url"` with `url_type: "tracker_pixel"` is non-conformant under these mechanism semantics.
+
+> **Migration cue for sellers.** If your tooling previously emitted only `{asset_type: "url", url: ...}` (per the older docs), you can keep doing so through 3.x — but plan to add `url_type` before 4.0, when this field becomes required.
+
+#### Format-side: `role` (purpose)
+
+In format requirements, `role` declares what the URL slot is for:
+
+```json
+{
+  "asset_type": "url",
+  "asset_id": "impression_tracker",
+  "required": true,
+  "requirements": {
+    "role": "impression_tracker",
+    "protocols": ["https"]
+  }
+}
+```
+
+`role` enum: `clickthrough`, `landing_page`, `impression_tracker`, `click_tracker`, `viewability_tracker`, `third_party_tracker`.
+
+> **For canonical-formats v2: prefer `pixel_tracker` over `url` + `url_type: tracker_pixel`** for renderer-fired measurement trackers on any web-rendered canonical (image, html5, image_carousel, responsive_creative, sponsored_placement, native, video_hosted non-VAST events, audio_hosted non-DAAST events). The legacy `url` shape remains valid for VAST/DAAST `<Impression>` URLs and for backward compatibility; new authoring SHOULD use the typed `pixel_tracker` form because it carries the event + method semantics that bare URLs lose. See the dedicated section below.
+
+#### Other URL-asset-requirements properties
+
+- `protocols`: Allowed schemes (`https`, `http`)
+- `allowed_domains`: List of allowed hostnames
+- `max_length`: Maximum URL length
+- `macro_support`: Whether macro substitution is permitted
+
+### Audio Asset
+
+Audio files for audio ads and podcasts.
+
+```json
+{
+  "asset_type": "audio",
+  "required": true,
+  "duration_seconds": 30,
+  "acceptable_formats": ["mp3", "m4a"],
+  "min_bitrate_kbps": 128,
+  "max_file_size_mb": 5
+}
+```
+
+**Properties:**
+- `duration_seconds`: Expected duration
+- `acceptable_formats`: Audio formats (mp3, m4a, aac, ogg)
+- `min_bitrate_kbps`: Minimum bitrate in kilobits per second
+- `max_file_size_mb`: Maximum file size in megabytes
+- `stereo_required`: Whether stereo audio is required
+
+### HTML Asset
+
+HTML5 creative assets for rich media formats and third-party display tags.
+
+```json
+{
+  "asset_type": "html",
+  "required": true,
+  "format": "html5",
+  "max_initial_load_kb": 200,
+  "max_total_size_kb": 500,
+  "restricted_features": ["document.write", "eval"]
+}
+```
+
+**Properties:**
+- `content`: Inline HTML content
+- `url`: URL to externally hosted HTML file (alternative to inline content)
+- `format`: HTML format type (html5, amphtml)
+- `max_initial_load_kb`: Maximum initial load size
+- `max_total_size_kb`: Maximum total size including all assets
+- `allowed_features`: Allowed HTML5 features
+- `restricted_features`: Features that must not be used
+
+### VAST Asset
+
+VAST (Video Ad Serving Template) tags for third-party video ad serving.
+
+**URL Delivery:**
+```json
+{
+  "asset_type": "vast",
+  "required": true,
+  "delivery_type": "url",
+  "url": "https://vast.example.com/video/123",
+  "vast_version": "4.1",
+  "vpaid_enabled": false
+}
+```
+
+**Inline Delivery:**
+```json
+{
+  "asset_type": "vast",
+  "required": true,
+  "delivery_type": "inline",
+  "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<VAST version=\"4.2\">...</VAST>",
+  "vast_version": "4.2",
+  "vpaid_enabled": false
+}
+```
+
+**Properties:**
+- `delivery_type`: "url" or "inline" (required discriminator)
+- `url`: URL endpoint that returns VAST XML (required when delivery_type is "url")
+- `content`: Inline VAST XML content (required when delivery_type is "inline")
+- `vast_version`: VAST specification version (2.0, 3.0, 4.0, 4.1, 4.2)
+- `vpaid_enabled`: Whether VPAID (Video Player-Ad Interface Definition) is supported
+- `max_wrapper_depth`: Maximum allowed wrapper/redirect depth
+- `duration_ms`: Expected video duration in milliseconds (if known)
+- `tracking_events`: Array of supported tracking events. Valid values are defined by the [VAST Tracking Event](https://adcontextprotocol.org/schemas/3.1.0-rc.2/enums/vast-tracking-event.json) enum. Aligned to the IAB VAST 4.2 XSD `TrackingEvents_type/Tracking/@event` enumeration (vast_4.2.xsd lines 112–136), plus AdCP-flattened representations of `Impression`, `Error`, `VideoClicks`, and `ViewableImpression` elements:
+  - **Playback**: `impression` (billing event), `creativeView`, `loaded`, `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`
+  - **Interaction**: `mute`, `unmute`, `pause`, `resume`, `rewind`, `skip`, `playerExpand`, `playerCollapse`, `fullscreen` (VAST 2.x/3.x compat), `exitFullscreen` (VAST 2.x/3.x compat), `otherAdInteraction`, `interactiveStart` (SIMID)
+  - **Non-linear / companion**: `acceptInvitation`, `adExpand`, `adCollapse`, `minimize`, `overlayViewDuration`
+  - **Progress**: `progress` (for custom progress points via VAST `offset` attribute)
+  - **Click & close**: `clickTracking`, `customClick`, `close`, `closeLinear`
+  - **Verification**: `viewable`, `notViewable`, `viewUndetermined`, `measurableImpression` (AdCP extension), `viewableImpression`
+  - **Errors**: `error`
+
+**Use Cases:**
+- Third-party video ad servers
+- Programmatic video buying
+- Video ad networks
+- VPAID interactive video ads
+
+### VAST Tracker Asset
+
+A single URL bound to a VAST `TrackingEvents` event. Use this when the creative agent emits decomposed per-event URLs and the sales agent is responsible for assembling the VAST `TrackingEvents` block at serve time — as an alternative to shipping a complete VAST tag.
+
+**Example:**
+```json
+{
+  "asset_type": "vast_tracker",
+  "vast_event": "start",
+  "url": "https://tracker.example.com/start?cid={CREATIVE_ID}&mb={MEDIA_BUY_ID}"
+}
+```
+
+**Progress with offset:**
+```json
+{
+  "asset_type": "vast_tracker",
+  "vast_event": "progress",
+  "offset": "00:00:15.000",
+  "url": "https://tracker.example.com/15s"
+}
+```
+
+**Properties:**
+- `vast_event`: The event this URL fires on. Any VAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, `error`, or any of `viewable` / `notViewable` / `viewUndetermined` / `measurableImpression` / `viewableImpression` — those live in dedicated VAST elements (`Impression`, `VideoClicks`, `Error`, `ViewableImpression`), not under `TrackingEvents` (see Tracker routing normative rule below). Common values: `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `pause`, `resume`, `mute`, `unmute`, `skip`, `progress`.
+- `url`: Tracker URL. Supports [AdCP universal macros](/dist/docs/3.1.0-rc.2/creative/universal-macros).
+- `offset`: Required for `vast_event: "progress"`. VAST 4.2 offset format (`Tracking@offset`): `HH:MM:SS` or `HH:MM:SS.mmm` (two-digit hours, minutes 00–59, seconds 00–59, exactly 3 fractional digits when present) for absolute time, or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted — the VAST 4.2 XSD pattern does not allow a leading minus.
+- `target`: Which VAST creative element scopes this tracker — `linear` (default), `non_linear`, or `companion`. VAST 4.2 places `<TrackingEvents>` under three different parents (`<Linear>`, `<NonLinearAds>`, `<CompanionAds>/<Companion>`) with different valid event sets — e.g., `acceptInvitation` is meaningful on `non_linear`/`companion`, `closeLinear` only on `linear`. Sales agents read this to place the tracker correctly during VAST assembly.
+
+**Target with non-linear event:**
+```json
+{
+  "asset_type": "vast_tracker",
+  "vast_event": "acceptInvitation",
+  "target": "non_linear",
+  "url": "https://tracker.example.com/accept"
+}
+```
+
+### DAAST Asset
+
+DAAST (Digital Audio Ad Serving Template) tags for third-party audio ad serving.
+
+**URL Delivery:**
+```json
+{
+  "asset_type": "daast",
+  "required": true,
+  "delivery_type": "url",
+  "url": "https://daast.example.com/audio/456",
+  "daast_version": "1.0"
+}
+```
+
+**Inline Delivery:**
+```json
+{
+  "asset_type": "daast",
+  "required": true,
+  "delivery_type": "inline",
+  "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<DAAST version=\"1.0\">...</DAAST>",
+  "daast_version": "1.0"
+}
+```
+
+**Properties:**
+- `delivery_type`: "url" or "inline" (required discriminator)
+- `url`: URL endpoint that returns DAAST XML (required when delivery_type is "url")
+- `content`: Inline DAAST XML content (required when delivery_type is "inline")
+- `daast_version`: DAAST specification version (1.0, 1.1)
+- `duration_ms`: Expected audio duration in milliseconds (if known)
+- `tracking_events`: Array of supported tracking events. Valid values are defined by the [DAAST Tracking Event](https://adcontextprotocol.org/schemas/3.1.0-rc.2/enums/daast-tracking-event.json) enum. Aligned to DAAST 1.1 §3.2.1.7 `<Tracking event="…">` values (the audio-applicable subset of VAST), plus `close` (DAAST 1.1 §3.2.4.2) and AdCP-flattened representations of `Impression`, `Error`, and the click children of `<AdInteractions>`:
+  - **Playback**: `impression` (billing event), `creativeView` (also used for companion display per DAAST 1.1 §3.2.2.7), `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`
+  - **Interaction**: `mute`, `unmute`, `pause`, `resume`, `rewind`, `skip`
+  - **Progress**: `progress` (with `offset` attribute, DAAST 1.1 §3.2.4.3)
+  - **Click & close**: `clickTracking`, `customClick`, `close`
+  - **Verification (AdCP extensions, OM-SDK Audio)**: `viewable`, `notViewable`, `viewUndetermined`, `measurableImpression`, `viewableImpression`
+  - **Errors**: `error`
+
+Video-only VAST events (`loaded`, `playerExpand`/`playerCollapse`, `fullscreen`/`exitFullscreen`, `acceptInvitation`, `adExpand`/`adCollapse`, `minimize`, `overlayViewDuration`, `interactiveStart`) are deliberately excluded — they have no defined audio semantics in DAAST 1.1.
+- `companion_ads`: Whether companion display ads are included
+
+**Use Cases:**
+- Third-party audio ad servers
+- Podcast advertising networks
+- Streaming audio platforms
+- Radio-style digital audio ads
+
+### DAAST Tracker Asset
+
+Audio-side analogue of `vast_tracker`: a single URL bound to a DAAST `TrackingEvents` event.
+
+**Example:**
+```json
+{
+  "asset_type": "daast_tracker",
+  "daast_event": "complete",
+  "url": "https://tracker.example.com/complete?cid={CREATIVE_ID}"
+}
+```
+
+**Properties:**
+- `daast_event`: Any DAAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, `error`, or any of `viewable` / `notViewable` / `viewUndetermined` / `measurableImpression` / `viewableImpression` (same element-routing rule as `vast_tracker` — those values belong in `Impression` / `<AdInteractions>` / `Error` / AdCP-extension verification slots, not `TrackingEvents`). Common values: `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `pause`, `resume`, `mute`, `unmute`, `rewind`, `skip`, `progress`.
+- `url`: Tracker URL. Supports AdCP universal macros.
+- `offset`: Required for `daast_event: "progress"` (DAAST 1.1 §3.2.4.3). Same format as VAST 4.2 `Tracking@offset`. Negative offsets are NOT permitted.
+- `target`: Which DAAST creative element scopes this tracker — `linear` (default, DAAST 1.1 §3.2.1.7) or `companion` (DAAST 1.1 §3.2.2.7, where the only valid event is `creativeView`). DAAST has no `<NonLinearAds>` element — audio is linear or accompanied by a visual companion.
+
+### Pixel Tracker Asset
+
+Renderer-fired HTTP tracker — image pixel or JavaScript include — bound to a measurement event. Applies to any **web-rendered** canonical format (image, html5, image_carousel, responsive_creative, sponsored_placement, native_*, plus non-VAST/DAAST events on video_hosted / audio_hosted). Format-specific tracker primitives (`vast_tracker`, `daast_tracker`) remain the right shape for VAST/DAAST event semantics; `display_tag` is opaque (third-party served).
+
+**Example:**
+```json
+{
+  "asset_type": "pixel_tracker",
+  "event": "impression",
+  "method": "img",
+  "url": "https://measurement.example.com/imp?cb={CACHEBUSTER}&cid={CREATIVE_ID}"
+}
+```
+
+**Properties:**
+- `event`: `impression` | `viewable_mrc_50` | `viewable_mrc_100` | `viewable_video_50` | `audible_video_complete` | `click` | `custom`. Event enum mirrors IAB OpenRTB Native 1.2 event-type registry (types 1, 2, 3, 4, 500). `audible_video_complete` is distinct from `viewable_video_50` — the former is full-completion with audio on; the latter is 50% pixels for ≥2 seconds with audio on. Meaningful on non-VAST video formats (Meta Reels, YouTube Shorts, TikTok Spark); VAST formats use `vast_tracker` with `vast_event: complete` instead.
+- `method`: `img` (fired as `<img>` pixel) or `js` (fired as `<script>` include). Matches IAB Native 1.2 method enum (1=img, 2=js). Default `img`. Sellers without JS-tracker support MUST reject `method: js` declarations at sync_creatives time.
+- `url`: Tracker URL fired when `event` occurs. May carry AdCP universal macros.
+- `custom_event_name`: REQUIRED when `event: custom`, forbidden otherwise (if/then enforced at the schema layer). Adopter-defined event name; sellers without registered handling MUST silently no-op rather than reject.
+
+**Maps to IAB OpenRTB Native 1.2:**
+- `imptrackers[]` → `pixel_tracker` with `event: impression`, `method: img`
+- `jstracker` → `pixel_tracker` with `event: impression`, `method: js`
+- `eventtrackers[]` → `pixel_tracker` per entry; `event` mapped from the IAB enum
+- `link.clicktrackers[]` → `pixel_tracker` with `event: click`, `method: img` (click destinations remain on `landing_page_url`)
+
+**Scope boundary (normative).** `pixel_tracker` covers RENDERER-FIRED trackers only — measurement events the ad's serving template invokes when the user sees, views, or clicks the creative. Conversion pixels that fire on the advertiser's site after the click (Meta Pixel, GA4 server-side, custom postbacks) MUST be modeled via `sync_event_sources` / `event_log` — they are campaign-scoped, not creative-asset-scoped.
+
+**Multi-tracker pattern.** Real measurement plans routinely attach 2-4 trackers per creative (one impression img + one impression js for vendor redundancy, one MRC viewable, sometimes a click pixel). Catalog entries that want to expose all of these declare separate slots (`impression_tracker`, `viewability_tracker`, `click_tracker`) — see `asset-group-vocabulary.json`. Buyers populate only the slots they have trackers for; absent slots are skipped.
+
+## Creative / Sales Agent Boundary (VAST Assembly)
+
+AdCP separates **creative agents** (produce the assets a creative is made of) from **sales agents** (assemble those assets into the serving format the ad server expects). For VAST and DAAST, the boundary is normative:
+
+### Complete tag vs decomposed trackers
+
+A creative manifest MAY emit VAST trackers in **one** of two shapes. The creative agent chooses; the sales agent handles either.
+
+**Complete tag** — the creative agent hands off a hosted or inline VAST tag and the sales agent wraps it:
+
+```json
+{
+  "asset_type": "vast",
+  "delivery_type": "url",
+  "url": "https://adserver.example.com/vast.xml",
+  "vast_version": "4.2"
+}
+```
+
+**Decomposed trackers** — the creative agent emits per-event URLs; the sales agent assembles the `TrackingEvents` block:
+
+```json
+[
+  { "asset_type": "vast_tracker", "vast_event": "start",         "url": "..." },
+  { "asset_type": "vast_tracker", "vast_event": "firstQuartile", "url": "..." },
+  { "asset_type": "vast_tracker", "vast_event": "midpoint",      "url": "..." },
+  { "asset_type": "vast_tracker", "vast_event": "thirdQuartile", "url": "..." },
+  { "asset_type": "vast_tracker", "vast_event": "complete",      "url": "..." }
+]
+```
+
+### Normative rules
+
+1. **Wrapper is a sales-agent concern.** The creative agent MUST NOT emit a VAST `Wrapper` element. `Wrapper` is a multi-hop chaining construct — if the served VAST needs to be wrapped (for macro signing, SSAI-compatible envelope, or ad-server redirection), the **sales agent** constructs the wrapper at serve time around the creative agent's output. Emitting an inline VAST document with `Ad > InLine > Creatives` content (the pattern shown in [Universal Macros](/dist/docs/3.1.0-rc.2/creative/universal-macros)) is permitted and unchanged.
+2. **Assembly responsibilities.** The sales agent is responsible for constructing VAST envelope elements that assemble resources from the creative agent: `TrackingEvents` (from `vast_tracker` assets), `AdVerifications` (from OMID verification resources), and `Wrapper` / `VASTAdTagURI` (if chaining). The creative agent supplies the resources; the sales agent places them in the correct element. A dedicated `omid_verification` asset type for decomposing OMID resources is a planned follow-up.
+3. **Tracker routing by element.** VAST's tracker URLs live in three different elements and AdCP models them with three different asset shapes — don't cross the streams:
+   - `Impression` URL → `url` asset with `url_type: "tracker_pixel"` (not a `vast_tracker`).
+   - `TrackingEvents` events (start, quartiles, complete, pause, etc.) → `vast_tracker` asset with `vast_event`.
+   - `VideoClicks` URLs (`ClickThrough`, `ClickTracking`, `CustomClick`) → `url` asset (`url_type: "clickthrough"` for `ClickThrough`; click-tracker URLs use `url_type: "tracker_pixel"`).
+
+   The `vast_tracker` schema enforces this split: `vast_event` MUST NOT be `impression`, `clickTracking`, `customClick`, or `error`. The same rule applies to DAAST.
+4. **Mixing allowed.** A creative manifest MAY mix a complete `vast` tag with additional `vast_tracker` and `url` (impression / click) assets — the sales agent merges them into one VAST document at serve time.
+
+### SSAI caveat
+
+In server-side ad insertion (SSAI) environments — Yospace, AWS Elemental, MediaTailor — the stream-stitcher rewrites and re-signs the VAST XML before it reaches the player. Trackers that must survive SSAI need to be in the VAST document **before** stitching. AdCP does not today specify an SSAI-specific manifest shape; this is a known gap and a follow-on RFC topic.
+
+## Common Properties
+
+All asset types share these common fields:
+
+- `asset_id`: Unique identifier within the format
+- `asset_type`: The asset's type (image, video, text, url, etc.)
+- `asset_role`: Semantic purpose (hero_video, logo, cta_button)
+- `required`: Whether the asset is mandatory
+
+### Asset ID vs Asset Role
+
+**`asset_id`**: A stable identifier used by manifests to supply values.
+
+**`asset_role`**: A semantic label describing the asset's purpose.
+
+**Example**:
+```json
+{
+  "asset_id": "main_video",
+  "asset_type": "video",
+  "asset_role": "hero_video",
+  "required": true
+}
+```
+
+Asset roles enable consistent rendering, validation, and AI-assisted generation without hard-coding layout assumptions.
+
+**Common asset roles**:
+- `hero_image` / `hero_video` - Primary visual content
+- `logo` - Brand logo
+- `headline` - Main headline text
+- `description` - Body copy or description text
+- `cta_button` - Call-to-action button
+- `background_image` - Background visual
+- `thumbnail` - Preview image
+- `companion_banner` - Secondary display ad
+
+### Asset ID Usage
+
+The `asset_id` field is crucial for orchestrators and creative management systems. It provides a stable identifier for mapping uploaded assets to their correct positions in the creative format.
+
+#### Example: Uploading Assets
+
+When submitting creative assets, the orchestrator uses `asset_id` to map files:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "foundational_immersive_canvas"
+  },
+  "assets": {
+    "hero_image": "https://cdn.example.com/campaign123/hero.jpg",
+    "brand_logo": "https://cdn.example.com/brand/logo.png",
+    "headline": "Discover Our New Collection",
+    "description": "Experience premium quality with our latest products",
+    "video_content": "https://cdn.example.com/campaign123/video.mp4"
+  }
+}
+```
+
+The keys in the assets object correspond to the `asset_id` values defined in the format.
+
+## Usage in Creative Formats
+
+Creative formats specify their assets using the `assets` array. Each asset has a `required` boolean:
+- **`required: true`** - Asset MUST be provided for a valid creative
+- **`required: false`** - Asset is optional, enhances the creative (e.g., companion banners, third-party tracking pixels)
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_15s_hosted"
+  },
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "required": true,
+      "requirements": {
+        "duration_seconds": 15,
+        "acceptable_formats": ["mp4"],
+        "acceptable_codecs": ["h264"],
+        "acceptable_resolutions": ["1920x1080", "1280x720"],
+        "max_file_size_mb": 30
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "impression_tracker",
+      "asset_type": "url",
+      "required": false,
+      "requirements": {
+        "format": ["url"],
+        "description": "Third-party impression tracking pixel URL"
+      }
+    }
+  ],
+
+  // DEPRECATED: Use "assets" above instead. Kept for backward compatibility.
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "requirements": {
+        "duration_seconds": 15,
+        "acceptable_formats": ["mp4"],
+        "acceptable_codecs": ["h264"],
+        "acceptable_resolutions": ["1920x1080", "1280x720"],
+        "max_file_size_mb": 30
+      }
+    }
+  ]
+}
+```
+
+## Repeatable Asset Groups
+
+For formats with asset sequences (like carousels, slideshows, stories), see the [Carousel & Multi-Asset Formats guide](/dist/docs/3.1.0-rc.2/creative/channels/carousels) for complete documentation on repeatable asset group patterns.
+
+## Validation
+
+Implementations should validate assets against these schemas to ensure compatibility. The JSON schema can be used for automated validation:
+
+```javascript
+// Example validation (pseudocode)
+const assetSchema = await fetch('https://adcontextprotocol.org/schemas/asset-types-v1.json');
+const validator = new JsonSchemaValidator(assetSchema);
+
+const videoAsset = {
+  asset_type: "video",
+  required: true,
+  duration_seconds: 15,
+  // ... other properties
+};
+
+const isValid = validator.validate(videoAsset, 'video');
+```
+
+## Best Practices
+
+1. **Be specific where possible**
+2. **Declare all constraints explicitly**
+3. **Use standard units:**
+   - File size: MB (video/audio), KB (images)
+   - Duration: seconds
+   - Bitrate: Mbps (video), Kbps (audio)
+   - Dimensions: pixels
+4. **Balance quality with performance**
+5. **Document edge cases using notes**
