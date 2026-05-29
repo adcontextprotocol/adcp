@@ -2360,10 +2360,10 @@ registry.registerPath({
               ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed." }),
               run_id: z.string().optional().openapi({ description: "Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence." }),
               test_session_id: z.string().optional().openapi({ description: "Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh." }),
-              requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.1, 3.0, or 3.1-beta. Present when `ran` is true." }),
+              requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Present when `ran` is true." }),
               adcp_version: z.string().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12 or 3.1.0-beta.7. Present when `ran` is true." }),
               badge_eligible: z.boolean().optional().openapi({ description: "True when this run can update public badge state." }),
-              badge_eligible_adcp_versions: z.array(z.string()).optional().openapi({ description: "Public badge versions this run can issue, e.g. ['3.1', '3.0']." }),
+              badge_eligible_adcp_versions: z.array(z.string()).optional().openapi({ description: "Public badge versions this run can issue, e.g. ['3.0']." }),
               overall_status: z.string().optional().openapi({ description: "Aggregate verdict from the run (passing / failing / partial / unknown). Only present when `ran` is true." }),
               storyboards_passing: z.number().int().optional().openapi({ description: "Number of storyboards passing on this run." }),
               storyboards_total: z.number().int().optional().openapi({ description: "Number of storyboards evaluated on this run." }),
@@ -5619,6 +5619,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
                   agentUrl,
                   declaredSpecialisms,
                   runId: run.id,
+                  adcpVersions: badgeEligibleAdcpVersions,
                 });
               } catch (badgeError) {
                 logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after manual refresh');
@@ -6392,6 +6393,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               complianceDb,
               agentUrl,
               declaredSpecialisms,
+              adcpVersions: badgeEligibleAdcpVersions,
             });
           } catch (badgeError) {
             logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after storyboard-run');

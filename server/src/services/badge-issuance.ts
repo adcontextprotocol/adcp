@@ -172,11 +172,15 @@ export async function runBadgeFanOut(params: {
   declaredSpecialisms: string[];
   /** Full-suite runs pass their run id so stale prior storyboard rows cannot issue/degrade badges. */
   runId?: string | null;
+  /** Public AdCP badge versions this compliance run is authoritative for. */
+  adcpVersions?: readonly string[];
 }): Promise<BadgeIssuanceResult> {
   const { complianceDb, agentUrl, declaredSpecialisms, runId } = params;
+  const adcpVersions = (params.adcpVersions === undefined ? [DEFAULT_BADGE_ADCP_VERSION] : params.adcpVersions)
+    .filter((version): version is string => typeof version === 'string' && version.length > 0);
   const aggregate: BadgeIssuanceResult = { issued: [], revoked: [], degraded: [], unchanged: [] };
 
-  if (declaredSpecialisms.length === 0) {
+  if (declaredSpecialisms.length === 0 || adcpVersions.length === 0) {
     return aggregate;
   }
 
@@ -229,11 +233,24 @@ export async function runBadgeFanOut(params: {
       storyboardStatuses,
       overallPassing,
       undefined,
-      SUPPORTED_BADGE_VERSIONS[0],
+      adcpVersions[0] ?? DEFAULT_BADGE_ADCP_VERSION,
     );
   }
 
-  for (const adcpVersion of SUPPORTED_BADGE_VERSIONS) {
+  const supportedBadgeVersions = new Set<string>(SUPPORTED_BADGE_VERSIONS);
+  const existingBadges = await complianceDb.getBadgesForAgent(agentUrl);
+  for (const badge of existingBadges) {
+    if (supportedBadgeVersions.has(badge.adcp_version)) continue;
+    const reason = `AdCP ${badge.adcp_version} public badge issuance is not currently enabled`;
+    await complianceDb.revokeBadge(agentUrl, badge.role, badge.adcp_version, reason);
+    aggregate.revoked.push({ role: badge.role, reason, adcp_version: badge.adcp_version });
+    logger.info(
+      { agentUrl, role: badge.role, adcpVersion: badge.adcp_version },
+      'Badge revoked — version no longer publicly badge-eligible',
+    );
+  }
+
+  for (const adcpVersion of adcpVersions) {
     // Per-version try/catch matches the heartbeat behavior: a failure
     // at one version must not poison another version's issuance, and a
     // persistent failure must surface via the system-error channel

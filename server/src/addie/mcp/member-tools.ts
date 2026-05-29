@@ -131,7 +131,7 @@ function targetFromInput(input: Record<string, unknown>): ReturnType<typeof host
       ? hostedComplianceTarget(requested.trim())
       : complianceTarget;
   } catch {
-    throw new ToolError('Invalid compliance_target. Use 3.1, 3.0, 3.1-beta, or an exact bundled version.');
+    throw new ToolError('Invalid compliance_target. Use 3.0, 3.1-beta, or an exact bundled version.');
   }
 }
 
@@ -1142,7 +1142,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to evaluate' },
         tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable, driven by the agent\'s get_adcp_capabilities response)' },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1" for the badge-eligible default line, "3.0" for a diagnostic 3.0 run, or "3.1-beta" for an explicit beta diagnostic run. Defaults to 3.1.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" for the badge-eligible default line or "3.1-beta" for an explicit beta diagnostic run. Defaults to 3.0.' },
       },
       required: ['agent_url'],
     },
@@ -1249,7 +1249,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to discover and recommend storyboards for' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.1", "3.0", or "3.1-beta". Defaults to 3.1.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
       },
       required: ['agent_url'],
     },
@@ -1263,7 +1263,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         storyboard_id: { type: 'string', description: 'Storyboard ID (from recommend_storyboards)' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.1", "3.0", or "3.1-beta". Defaults to 3.1.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
       },
       required: ['storyboard_id'],
     },
@@ -1279,7 +1279,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL to test' },
         storyboard_id: { type: 'string', description: 'Storyboard ID to run' },
         dry_run: { type: 'boolean', description: 'If true (default), use test data that won\'t affect production state', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1", "3.0", or "3.1-beta". Defaults to 3.1. Explicit non-default targets are diagnostic-only.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" or "3.1-beta". Defaults to 3.0. Explicit non-default targets are diagnostic-only.' },
       },
       required: ['agent_url', 'storyboard_id'],
     },
@@ -1297,7 +1297,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         step_id: { type: 'string', description: 'Step ID to run (from storyboard detail or previous step\'s next.step_id)' },
         context: { type: 'object', description: 'Accumulated context from previous step (pass the context field from the previous run_storyboard_step result)', additionalProperties: true },
         dry_run: { type: 'boolean', description: 'If true (default), use test data', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1", "3.0", or "3.1-beta". Defaults to 3.1. Explicit non-default targets are diagnostic-only.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" or "3.1-beta". Defaults to 3.0. Explicit non-default targets are diagnostic-only.' },
       },
       required: ['agent_url', 'storyboard_id', 'step_id'],
     },
@@ -3854,6 +3854,7 @@ export function createMemberToolHandlers(
                     agentUrl: resolved.resolvedUrl,
                     declaredSpecialisms,
                     runId: tracks ? null : run.id,
+                    adcpVersions: badgeEligibleVersionsForHostedComplianceTarget(runTarget),
                   });
                 } catch (badgeError) {
                   logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Badge fan-out failed after owner_test run');
