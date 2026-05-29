@@ -6,7 +6,7 @@
 import { ComplianceDatabase, DEFAULT_BADGE_ADCP_VERSION, type BadgeRole, type StoryboardStatus, type StoryboardStatusEntry } from '../db/compliance-db.js';
 import { deriveVerificationStatus } from '../addie/services/compliance-testing.js';
 import { signVerificationToken, isTokenSigningEnabled } from './verification-token.js';
-import { isVerificationMode, SUPPORTED_BADGE_VERSIONS, type VerificationMode } from './adcp-taxonomy.js';
+import { isVerificationMode, type VerificationMode } from './adcp-taxonomy.js';
 import { getStoryboardIdsForVersion } from './storyboards.js';
 import { API_ACCESS_TIERS, ACTIVE_SUBSCRIPTION_STATUSES } from './membership-tiers.js';
 import { query } from '../db/client.js';
@@ -172,11 +172,15 @@ export async function runBadgeFanOut(params: {
   declaredSpecialisms: string[];
   /** Full-suite runs pass their run id so stale prior storyboard rows cannot issue/degrade badges. */
   runId?: string | null;
+  /** Public AdCP badge versions this compliance run is authoritative for. */
+  adcpVersions?: readonly string[];
 }): Promise<BadgeIssuanceResult> {
   const { complianceDb, agentUrl, declaredSpecialisms, runId } = params;
+  const adcpVersions = (params.adcpVersions === undefined ? [DEFAULT_BADGE_ADCP_VERSION] : params.adcpVersions)
+    .filter((version): version is string => typeof version === 'string' && version.length > 0);
   const aggregate: BadgeIssuanceResult = { issued: [], revoked: [], degraded: [], unchanged: [] };
 
-  if (declaredSpecialisms.length === 0) {
+  if (declaredSpecialisms.length === 0 || adcpVersions.length === 0) {
     return aggregate;
   }
 
@@ -229,11 +233,11 @@ export async function runBadgeFanOut(params: {
       storyboardStatuses,
       overallPassing,
       undefined,
-      SUPPORTED_BADGE_VERSIONS[0],
+      adcpVersions[0] ?? DEFAULT_BADGE_ADCP_VERSION,
     );
   }
 
-  for (const adcpVersion of SUPPORTED_BADGE_VERSIONS) {
+  for (const adcpVersion of adcpVersions) {
     // Per-version try/catch matches the heartbeat behavior: a failure
     // at one version must not poison another version's issuance, and a
     // persistent failure must surface via the system-error channel

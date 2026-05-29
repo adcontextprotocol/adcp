@@ -13,7 +13,7 @@ import type {
 } from '@adcp/sdk/testing';
 import { SUPPORTED_BADGE_VERSIONS } from './adcp-taxonomy.js';
 
-export const DEFAULT_HOSTED_COMPLIANCE_LINE = SUPPORTED_BADGE_VERSIONS[0];
+export const DEFAULT_HOSTED_COMPLIANCE_LINE = '3.0';
 
 export interface HostedComplianceTarget {
   requested: string;
@@ -77,6 +77,11 @@ function prereleaseComplianceLine(version: string): string | undefined {
 
   const wirePrecision = version.match(/^([1-9][0-9]*)\.([0-9]+)-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*(?:\+[0-9A-Za-z.-]+)?$/);
   return wirePrecision ? `${wirePrecision[1]}.${wirePrecision[2]}` : undefined;
+}
+
+function complianceReleaseLine(version: string): string | undefined {
+  const match = version.match(/^([1-9][0-9]*\.[0-9]+)(?:\.|$|-)/);
+  return match ? match[1] : undefined;
 }
 
 function stableLineForHostedPrereleaseTarget(target: HostedComplianceTarget): string | undefined {
@@ -191,10 +196,9 @@ function latestBadgeEligibleComplianceVersionForLine(line: string): string {
       throw stableError;
     }
 
-    // During the 3.1 readiness window, the badge-eligible line is 3.1
-    // while the checked-in compliance cache is still published as a beta
-    // bundle. Keep the public target at the stable line alias (`3.1`) and
-    // let explicit beta aliases remain non-default diagnostic runs.
+    // Only the default line may temporarily fall back to a prerelease cache
+    // while its stable compliance bundle is being staged. Other lines must be
+    // selected explicitly via their prerelease alias (for example 3.1-beta).
     return latestBetaComplianceVersionForLine(line);
   }
 }
@@ -248,7 +252,12 @@ export function isDefaultHostedComplianceTarget(target: HostedComplianceTarget):
 export function badgeEligibleVersionsForHostedComplianceTarget(
   target: HostedComplianceTarget,
 ): readonly string[] {
-  return isDefaultHostedComplianceTarget(target) ? SUPPORTED_BADGE_VERSIONS : [];
+  if (target.requested.endsWith('-beta') || target.version.includes('-beta.')) {
+    return [];
+  }
+
+  const line = complianceReleaseLine(target.requested) ?? complianceReleaseLine(target.version);
+  return line && (SUPPORTED_BADGE_VERSIONS as readonly string[]).includes(line) ? [line] : [];
 }
 
 function assertHostedArtifacts(version: string): void {

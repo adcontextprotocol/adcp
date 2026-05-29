@@ -164,10 +164,8 @@ export function compareAdcpVersions(a: string, b: string): number {
  * keeps only storyboards whose `introduced_in` is at or below the
  * target.
  *
- * Used by the compliance heartbeat to fan out per supported version:
- * for each entry in `SUPPORTED_BADGE_VERSIONS`, call `comply()` with
- * the IDs returned here as the storyboard scope, then issue badges at
- * that version.
+ * Used by badge issuance to scope storyboard results to the public AdCP
+ * badge version that the compliance run actually targeted.
  */
 export function getStoryboardsForVersion(adcpVersion: string): Storyboard[] {
   return listAllComplianceStoryboards(complianceOptions).filter((sb) => {

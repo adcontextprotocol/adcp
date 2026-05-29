@@ -15,6 +15,7 @@ import {
 import {
   DEFAULT_HOSTED_COMPLIANCE_LINE,
   DEFAULT_HOSTED_COMPLIANCE_VERSION,
+  badgeEligibleVersionsForHostedComplianceTarget,
   hostedComplianceOptions,
   hostedComplianceTarget,
   hostedCapabilitiesForCompliance,
@@ -162,10 +163,10 @@ describe('wrapper contract', () => {
     const target = hostedComplianceTarget();
     const index = loadComplianceIndex(hostedComplianceOptions(target));
     expect(index.adcp_version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
-    expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.1');
+    expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.0');
     expect(target.requested).toBe(DEFAULT_HOSTED_COMPLIANCE_LINE);
     expect(target.version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
-    expect(target.version).toMatch(/^3\.1\.(?:\d+|0-beta\.\d+)$/);
+    expect(target.version).toMatch(/^3\.0\.\d+$/);
     expect(isDefaultHostedComplianceTarget(target)).toBe(true);
   });
 
@@ -179,9 +180,11 @@ describe('wrapper contract', () => {
     expect(beta.version).toMatch(/^3\.1\.0-beta\.\d+$/);
   });
 
-  it('keeps explicit non-default targets diagnostic-only', () => {
-    expect(isDefaultHostedComplianceTarget(hostedComplianceTarget('3.0'))).toBe(false);
+  it('keeps explicit beta targets diagnostic-only', () => {
+    expect(isDefaultHostedComplianceTarget(hostedComplianceTarget('3.0'))).toBe(true);
     expect(isDefaultHostedComplianceTarget(hostedComplianceTarget('3.1-beta'))).toBe(false);
+    expect(badgeEligibleVersionsForHostedComplianceTarget(hostedComplianceTarget('3.0'))).toEqual(['3.0']);
+    expect(badgeEligibleVersionsForHostedComplianceTarget(hostedComplianceTarget('3.1-beta'))).toEqual([]);
   });
 
   it('rejects unsupported compliance targets before path resolution', () => {
@@ -196,30 +199,23 @@ describe('wrapper contract', () => {
     expect(options.complianceDir).toContain(target.version);
   });
 
-  it('lets only the default hosted prerelease cache run for sellers advertising the stable line', () => {
-    const defaultTarget = hostedComplianceTarget('3.1');
+  it('does not let explicit beta targets run for sellers advertising only the future stable line', () => {
+    const defaultTarget = hostedComplianceTarget('3.0');
     const betaTarget = hostedComplianceTarget('3.1-beta');
-    const defaultIsPrerelease = /-/.test(defaultTarget.version);
 
-    expect(hostedSupportedVersionsForCompliance(['3.1'], defaultTarget)).toEqual(
-      defaultIsPrerelease ? [defaultTarget.version, '3.1'] : ['3.1'],
-    );
+    expect(hostedSupportedVersionsForCompliance(['3.0'], defaultTarget)).toEqual(['3.0']);
     expect(hostedSupportedVersionsForCompliance(['3.1'], betaTarget)).toEqual(['3.1']);
-    expect(isComplianceVersionSupported(defaultTarget.version, ['3.1'])).toBe(!defaultIsPrerelease);
+    expect(isComplianceVersionSupported(defaultTarget.version, ['3.0'])).toBe(true);
 
-    const rawTarget = hostedComplianceTarget('3.1');
+    const rawTarget = hostedComplianceTarget('3.0');
     const rawResolve = () => resolveStoryboardsForCapabilities({
-      supported_versions: ['3.1'],
+      supported_versions: ['3.0'],
     }, hostedComplianceOptions(rawTarget));
-    if (defaultIsPrerelease) {
-      expect(rawResolve).toThrow(/not supported by this seller/);
-    } else {
-      expect(rawResolve).not.toThrow();
-    }
+    expect(rawResolve).not.toThrow();
 
-    const target = hostedComplianceTarget('3.1');
+    const target = hostedComplianceTarget('3.0');
     const caps = hostedCapabilitiesForCompliance({
-      supported_versions: ['3.1'],
+      supported_versions: ['3.0'],
     }, target);
     const resolved = resolveStoryboardsForCapabilities({
       supported_versions: caps.supported_versions,
@@ -232,7 +228,7 @@ describe('wrapper contract', () => {
     };
 
     expect(() => withHostedComplianceCompatibility(target, () => sdkCompliance.resolveStoryboardsForCapabilities({
-      supported_versions: ['3.1'],
+      supported_versions: ['3.0'],
     }, hostedComplianceOptions(target)))).not.toThrow();
     const betaResolveWithStableOnly = () => withHostedComplianceCompatibility(betaTarget, () => sdkCompliance.resolveStoryboardsForCapabilities({
       supported_versions: ['3.1'],
