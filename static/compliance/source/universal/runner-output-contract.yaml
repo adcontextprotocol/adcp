@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.3.0"
+version: "2.4.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -60,6 +60,7 @@ authored_check_kinds:
   - field_less_than
   - field_equals_context
   - upstream_traffic
+  - canonical_format_satisfaction
 
 # Cross-response check kinds — applied across the response set of a
 # step that dispatches multiple requests under a runner contract that
@@ -152,6 +153,7 @@ validation_result:
                               # resource_equals_agent_url | any_of | refs_resolve |
                               # a2a_submitted_artifact | field_less_than |
                               # field_equals_context | upstream_traffic |
+                              # canonical_format_satisfaction |
                               # cross_response_field_equal |
                               # cross_response_count_distinct (the last two are
                               # cross-response checks; see cross_response_check_kinds
@@ -235,6 +237,13 @@ validation_result:
                               #                          identifier_paths, purpose_filter,
                               #                          since, attestation_mode_required } —
                               #                          whichever fields the storyboard set.
+                              #   canonical_format_satisfaction
+                              #                       → object { accepted, local_satisfied }
+                              #                          where accepted is the boolean value
+                              #                          from the storyboard validation and
+                              #                          local_satisfied mirrors the expected
+                              #                          local package/product satisfaction
+                              #                          verdict.
                               #   cross_response_field_equal
                               #                       → object { path } — the JSON path
                               #                          asserted equal across every
@@ -291,6 +300,14 @@ validation_result:
                               #                          missing_identifier_values }.
                               #                          The full recorded_calls array
                               #                          lives in `response.payload`;
+                              #   canonical_format_satisfaction
+                              #                       → object { accepted, local_satisfied,
+                              #                          rejection? } where accepted is the
+                              #                          observed task success boolean,
+                              #                          local_satisfied is the runner's
+                              #                          package/product satisfaction verdict,
+                              #                          and rejection summarizes format-related
+                              #                          rejection evidence when the task failed.
                               #   cross_response_field_equal
                               #                       → object { observed_values: [...] } —
                               #                          the values observed at `path` on
@@ -307,12 +324,14 @@ validation_result:
     - schema_id               # $id of the response schema applied. Required
                               # when check == response_schema, null otherwise.
                               # MUST be null for capture_path_not_resolvable,
-                              # unresolved_substitution, and upstream_traffic.
+                              # unresolved_substitution, upstream_traffic, and
+                              # canonical_format_satisfaction.
     - schema_url              # Resolvable URL the implementor can fetch to
                               # validate locally. Required when
                               # check == response_schema, null otherwise.
                               # MUST be null for capture_path_not_resolvable,
-                              # unresolved_substitution, and upstream_traffic.
+                              # unresolved_substitution, upstream_traffic, and
+                              # canonical_format_satisfaction.
   notes:
     synthesized_checks: |
       capture_path_not_resolvable and unresolved_substitution are emitted by

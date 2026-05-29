@@ -7,6 +7,7 @@ track: products
 introduced_in: "3.1"
 required_tools:
   - get_products
+  - create_media_buy
   - comply_test_controller
 
 narrative: |
@@ -27,6 +28,12 @@ narrative: |
   track: agreeing dual emission, v1-only emission, v2-only emission, custom
   v2-only emission, experimental declarations, and divergent dual-emission
   advisories.
+
+  After discovery, the buyer creates media buys against the seeded fixed-size
+  product to validate create-time format satisfaction: a legacy fixed MREC
+  selector satisfies the canonical declaration after normalization, while a
+  bare canonical image selector without dimensions does not satisfy a fixed
+  300x250 product.
 
 agent:
   interaction_model: media_buy_seller
@@ -709,3 +716,146 @@ phases:
             path: "errors[0].source"
             value: "producer"
             description: "Advisory is attributed to the producer declaration"
+
+  - id: canonical_create_satisfaction
+    title: "Canonical create-time format satisfaction"
+    narrative: |
+      The buyer rereads the fixed-size seeded product so the runner's product
+      context points at `canonical_formats_mrec_display`, then submits two
+      create_media_buy requests. The first uses the legacy
+      `display_300x250_image` selector and MUST be accepted after v1-to-canonical
+      normalization. The second uses a bare canonical `format_kind: image`
+      selector with no dimensions and MUST be rejected because it under-specifies
+      the product's 300x250 constraint.
+
+    steps:
+      - id: get_canonical_product_for_create_satisfaction
+        title: "Read the fixed-size canonical product before create"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: true
+        expected: |
+          Return the seeded canonical_formats_mrec_display product so create-time
+          validations can compare package format selectors against the product's
+          canonical format_options[] declaration.
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            delivery_type: "guaranteed"
+            required_vendor_metrics:
+              - vendor:
+                  domain: "prism.example"
+                metric_id: "canonical_format_storyboard_probe"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "canonical_formats--get_canonical_product_for_create_satisfaction"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "canonical_formats_mrec_display"
+            description: "The create-time satisfaction phase targets the fixed-size seeded product"
+          - check: field_value
+            path: "products[0].format_options[0].params.width"
+            value: 300
+            description: "Product fixes image width at 300"
+          - check: field_value
+            path: "products[0].format_options[0].params.height"
+            value: 250
+            description: "Product fixes image height at 250"
+
+      - id: create_media_buy_with_legacy_mrec_format
+        title: "Accept legacy fixed MREC selector after canonical normalization"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Accept the buy. The package uses the legacy display_300x250_image
+          format_id; canonical satisfaction validates that the legacy selector
+          normalizes to the product's image format_options[] declaration.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "canonical_formats_mrec_display"
+              budget: 1000
+              pricing_option_id: "canonical_formats_mrec_cpm"
+              format_ids:
+                - agent_url: "https://creative.adcontextprotocol.org/"
+                  id: "display_300x250_image"
+              context:
+                buyer_ref: "canonical_formats_legacy_mrec_positive"
+          context:
+            correlation_id: "canonical_formats--create_media_buy_with_legacy_mrec_format"
+          idempotency_key: "$generate:uuid_v4#canonical_formats_create_media_buy_with_legacy_mrec_format"
+
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Accepted create allocates a media_buy_id"
+          - check: canonical_format_satisfaction
+            value: true
+            description: "Legacy display_300x250_image selector satisfies the fixed canonical image declaration after normalization"
+
+      - id: reject_bare_image_selector_for_fixed_mrec
+        title: "Reject bare canonical image selector for fixed-size product"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with UNSUPPORTED_FEATURE. The bare canonical image selector
+          does not include width and height, so it does not satisfy the product's
+          fixed 300x250 declaration.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "canonical_formats_mrec_display"
+              budget: 1000
+              pricing_option_id: "canonical_formats_mrec_cpm"
+              format_kind: "image"
+              context:
+                buyer_ref: "canonical_formats_bare_image_negative"
+          context:
+            correlation_id: "canonical_formats--reject_bare_image_selector_for_fixed_mrec"
+          idempotency_key: "$generate:uuid_v4#canonical_formats_reject_bare_image_selector_for_fixed_mrec"
+
+        validations:
+          - check: error_code
+            allowed_values: ["UNSUPPORTED_FEATURE"]
+            description: "Seller rejects an under-specified format selector as unsupported for the product"
+          - check: canonical_format_satisfaction
+            value: false
+            description: "Bare canonical image selector lacks the dimensions required by the fixed canonical image declaration"

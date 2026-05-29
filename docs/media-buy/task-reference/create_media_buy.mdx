@@ -185,8 +185,10 @@ npx @adcp/sdk@latest \
 |-----------|------|----------|-------------|
 | `product_id` | string | Yes | Product ID from `get_products`. Sellers MUST echo this value on every response package object that represents this requested package. |
 | `pricing_option_id` | string | Yes | Pricing option ID from product's `pricing_options` array |
-| `format_ids` | FormatID[] | No | Legacy named-format selector. Format IDs that will be used — must be supported by product. When omitted (and no 3.1+ format-option selector is present), defaults to all formats supported by the product. Format-option-aware buyer SDKs targeting a heterogeneous seller population SHOULD dual-emit this alongside `format_option_refs` so legacy-format-only sellers receive an explicit format set rather than defaulting to all-formats. |
-| `format_option_refs` | FormatOptionRef[] | No | 3.1+ format-option selector. Structured references to entries in the package's target product `format_options[]`: `{scope: "publisher", publisher_domain, format_option_id}` for publisher-catalog-backed options, or `{scope: "product", format_option_id}` for product-local options (see [canonical formats](/docs/creative/canonical-formats)). When present, `format_option_refs` wins over `format_ids`. Sellers MUST reject with `UNSUPPORTED_FEATURE` (field path `packages[i].format_option_refs[j]`) when an entry doesn't match a `format_options[]` entry, when the product is legacy-format-only, or when the product's `format_options[]` entries don't publish selectable `format_option_id` values. |
+| `format_ids` | FormatID[] | No | Legacy named-format selector. Format IDs that will be used — must be supported by product. When omitted (and no 3.1+ format-option selector or direct canonical selector is present), defaults to all formats supported by the product. Format-option-aware buyer SDKs targeting a heterogeneous seller population SHOULD dual-emit this alongside `format_option_refs` so legacy-format-only sellers receive an explicit format set rather than defaulting to all-formats. |
+| `format_option_refs` | FormatOptionRef[] | No | 3.1+ format-option selector. Structured references to entries in the package's target product `format_options[]`: `{scope: "publisher", publisher_domain, format_option_id}` for publisher-catalog-backed options, or `{scope: "product", format_option_id}` for product-local options (see [canonical formats](/docs/creative/canonical-formats)). When present, `format_option_refs` wins over both `format_ids` and direct `format_kind`/`params`. Sellers MUST reject with `UNSUPPORTED_FEATURE` (field path `packages[i].format_option_refs[j]`) when an entry doesn't match a `format_options[]` entry, when the product is legacy-format-only, or when the product's `format_options[]` entries don't publish selectable `format_option_id` values. |
+| `format_kind` | CanonicalFormatKind | No | 3.1+ direct canonical selector. Names the canonical format shape this package targets when the buyer is authoring by canonical kind rather than by `format_option_refs[]` or `format_ids[]`. Pair with `params` when the product declaration requires dimensions, duration, sizes, codecs, or other canonical parameters. If `format_ids[]` is also present and `format_option_refs[]` is absent, sellers validate `format_ids[]`; `format_kind` is only an informational echo of the same normalized shape. |
+| `params` | object | No | Parameters for the direct canonical selector in `format_kind`. Follows the selected canonical's parameter vocabulary. Requires `format_kind`; `params` alone is schema-invalid. A broad selector such as `{format_kind: "image"}` does not satisfy a product whose `format_options[]` fixes `params.width` and `params.height`; sellers reject under-specified direct selectors with `UNSUPPORTED_FEATURE` or an equivalent format-selector error. |
 | `budget` | number | Yes | Budget in currency specified by pricing option |
 | `impressions` | number | No | Impression goal for this package |
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
@@ -213,7 +215,7 @@ npx @adcp/sdk@latest \
 | `confirmed_at` | ISO 8601 timestamp when the seller committed to the media buy. Stable after it is set. May be `null` in deferred/manual approval flows until seller commitment occurs. |
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
 | `revision` | Initial media-buy revision. Use this value as the `revision` token on the next `update_media_buy` call intended to change state. |
-| `packages` | Array of created packages with complete state. Packages may include per-package `creative_deadline` when different from the media buy deadline. |
+| `packages` | Array of created packages with complete state. Packages may include per-package `creative_deadline` when different from the media buy deadline, and SHOULD echo every format selector field supplied on create (`format_option_refs`, `format_ids`, and/or `format_kind`/`params`) so read surfaces are lossless even when one selector wins precedence. |
 
 `confirmed_at` is seller commitment time, not a delivery-status timestamp. Do not update it when a buy later pauses, resumes, starts delivery, completes, or reports performance. A committed synchronous create stamps it immediately. Use the `submitted` response branch when no `media_buy_id` is being returned to the buyer. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment. A provisional buy with `confirmed_at: null` MUST NOT be `active` and MUST NOT include `packages[].committed_metrics`.
 
@@ -1008,7 +1010,7 @@ Common errors and resolutions:
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
 | `PRODUCT_NOT_FOUND` | Invalid product_id | Verify product exists via `get_products` |
-| `UNSUPPORTED_FEATURE` | Format not supported by the product — covers both legacy named-format selectors (`format_ids[]` not in the product's accepted formats) and 3.1+ format-option selectors (`format_option_refs[]` entries that do not resolve against the product's `format_options[]`, legacy-format-only products with no `format_options[]`, or product `format_options[]` entries that do not publish selectable `format_option_id` values) | Check the product's `format_ids` and/or `format_options[]` from `get_products` — re-author against a supported format, or pick a `format_option_ref` from the product's published `format_options[]` |
+| `UNSUPPORTED_FEATURE` | Format not supported by the product — covers legacy named-format selectors (`format_ids[]` not in the product's accepted formats), 3.1+ format-option selectors (`format_option_refs[]` entries that do not resolve against the product's `format_options[]`, legacy-format-only products with no `format_options[]`, or product `format_options[]` entries that do not publish selectable `format_option_id` values), and direct canonical selectors (`format_kind`/`params` outside or under-specifying the product declaration) | Check the product's `format_ids` and/or `format_options[]` from `get_products` — re-author against a supported format, add the required canonical parameters, or pick a `format_option_ref` from the product's published `format_options[]` |
 | `BUDGET_TOO_LOW` | Budget below product minimum | Increase budget or choose different product |
 | `TARGETING_TOO_NARROW` | Targeting yields zero inventory | Broaden geographic or audience criteria |
 | `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
@@ -1032,14 +1034,14 @@ Example error response:
 
 ### Format Specification
 
-Each package SHOULD specify the formats it will use, via either `format_ids[]` (legacy named-format path — structured `{agent_url, id}` references) or `format_option_refs[]` (3.1+ format-option path — references into the product's `format_options[]`). Omitting all format selectors defaults to all formats supported by the product. Specifying lets the system:
+Each package SHOULD specify the formats it will use, via `format_ids[]` (legacy named-format path — structured `{agent_url, id}` references), `format_option_refs[]` (3.1+ format-option path — references into the product's `format_options[]`), or a direct canonical selector (`format_kind` plus optional `params`). Omitting all format selectors defaults to all formats supported by the product. Specifying lets the system:
 
 - Publish placeholder creatives in ad servers
 - Pin exactly what creative assets are needed
 - Validate that the product supports the requested formats
 - Track which assets are missing
 
-Use `format_option_refs[]` when the buyer's codebase reads `Product.format_options[]`; use `format_ids[]` when integrating with legacy-format-only sellers or libraries. Dual-emission is allowed and recommended for buyer SDKs targeting a mixed seller population — see the `format_ids` row above.
+Selector precedence is deterministic: `format_option_refs[]` wins when present; otherwise `format_ids[]` wins when present; otherwise direct `format_kind`/`params` is used; otherwise the package defaults to all product formats. Use `format_option_refs[]` when the buyer's codebase reads `Product.format_options[]` and the product publishes selectable `format_option_id` values; use `format_ids[]` when integrating with legacy-format-only sellers or libraries. Use direct `format_kind` only when the buyer has enough canonical parameters to satisfy the target product declaration without a product-local reference. Dual-emission of `format_option_refs[]` and `format_ids[]` is allowed and recommended for buyer SDKs targeting a mixed seller population — see the `format_ids` row above.
 
 3.1+ format-option example (buyer authoring against a publisher-scoped `Product.format_options[]` entry):
 
@@ -1117,8 +1119,10 @@ When creating a media buy, format specification enables:
 1. list_creative_formats → Get available format specifications
 2. get_products → Find products (returns format_ids[] and/or format_options[])
 3. Validate compatibility → Ensure products support desired formats
-4. create_media_buy → Specify formats via format_ids[] (v1) or
-                       format_option_refs[] (v2); omit for all-formats default
+4. create_media_buy → Specify formats via format_ids[] (v1),
+                       format_option_refs[] (v2 reference), or
+                       format_kind/params (direct canonical);
+                       omit for all-formats default
    └── Publisher creates placeholders
    └── Clear creative requirements established
 5. sync_creatives → Upload actual files matching formats

@@ -429,6 +429,9 @@ export interface PackageState {
   startTime: string;
   endTime: string;
   formatIds?: FormatID[];
+  formatOptionRefs?: unknown[];
+  formatKind?: string;
+  params?: Record<string, unknown>;
   creativeAssignments: string[];
   targeting?: PackageTargeting;
   /** Buyer-declared optimization goals carried through from create_media_buy.

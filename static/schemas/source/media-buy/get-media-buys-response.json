@@ -231,6 +231,31 @@
                   "description": "Current bid price for auction-based packages. Denominated in package.currency when present, otherwise media_buy.currency. Relevant for automated price optimization loops.",
                   "minimum": 0
                 },
+                "format_ids": {
+                  "type": "array",
+                  "description": "Legacy named-format IDs supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including dual-emission cases where another selector won precedence.",
+                  "items": {
+                    "$ref": "/schemas/core/format-id.json"
+                  },
+                  "minItems": 1
+                },
+                "format_option_refs": {
+                  "type": "array",
+                  "description": "Structured 3.1+ format option references supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it.",
+                  "items": {
+                    "$ref": "/schemas/core/format-option-ref.json"
+                  },
+                  "minItems": 1
+                },
+                "format_kind": {
+                  "$ref": "/schemas/core/canonical-format-kind.json",
+                  "description": "Direct canonical selector supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including informational-echo cases where another selector won precedence."
+                },
+                "params": {
+                  "type": "object",
+                  "description": "Parameters for the direct canonical selector in `format_kind`, echoed from the create_media_buy request whenever the request included it. Requires `format_kind`.",
+                  "additionalProperties": true
+                },
                 "impressions": {
                   "type": "number",
                   "description": "Goal impression count for impression-based packages",
@@ -400,6 +425,9 @@
               "required": [
                 "package_id"
               ],
+              "dependencies": {
+                "params": ["format_kind"]
+              },
               "additionalProperties": true
             }
           },
