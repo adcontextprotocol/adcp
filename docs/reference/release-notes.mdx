@@ -11,16 +11,16 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ## Version 3.1.0 (unreleased)
 
-**Status:** Accumulating — minor release. The published 3.0.x line remains the stable surface; 3.1 features land here as their changesets accumulate. SDKs pin to a specific 3.x and pick up minors at their own cadence.
+**Status:** Release-candidate preparation — minor release. The published 3.0.x line remains stable; 3.1 is feature-complete and pending release-candidate validation. SDKs pin to release precision (`"3.1-beta"` during beta, `"3.1-rc.N"` during RC, `"3.1"` at GA) and pick up minors at their own cadence.
 
 For adoption-oriented framing before the full change list, start with [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1).
 
-**Headline:** **Distributed `brand.json`.** A brand can now publish its **own** canonical document on its own domain while the corporate house declares ownership via a portfolio pointer. The hierarchy stays one level deep — only houses declare ownership — and trust between a leaf and a house resolves via mutual assertion (both sides reciprocate). Identity attributes (logos, colors, tone, tagline) trust on the leaf's TLS alone; relationship trust (governance propagation, billable inclusion) gates on the reciprocal entry.
+**Headline:** **Production-hardening for real agent operations.** 3.1 adds distributed `brand.json`, release-precision version negotiation, canonical creative formats, vendor-attested optimization, wholesale-feed mirroring, dependency-impact observability, and per-version verification badges. A brand can now publish its **own** canonical document on its own domain while the corporate house declares ownership via a portfolio pointer. The hierarchy stays one level deep — only houses declare ownership — and trust between a leaf and a house resolves via mutual assertion (both sides reciprocate). Identity attributes (logos, colors, tone, tagline) trust on the leaf's TLS alone; relationship trust (governance propagation, billable inclusion) gates on the reciprocal entry.
 
 Additive over 3.0 — every existing brand.json publisher continues to validate unchanged.
 
 <Info>
-**Upgrading from 3.0.x?** No code changes required. Schemas remain wire-compatible. SDK consumers bump `ADCP_VERSION` to `3.1.0` on release to pick up the new variant and field shapes. The one publisher-visible behavior change: free-text values for `trademarks[].status` or `trademarks[].countries` now validate against the typed enum / ISO 3166-1 alpha-2 — non-conforming values surface as schema errors.
+**Upgrading from 3.0.x?** No code changes required. Schemas remain wire-compatible. SDK consumers pin the AdCP release to `"3.1"` on GA to pick up the new variant and field shapes. The one publisher-visible behavior change: free-text values for `trademarks[].status` or `trademarks[].countries` now validate against the typed enum / ISO 3166-1 alpha-2 — non-conforming values surface as schema errors.
 </Info>
 
 ### Adopter action
@@ -76,6 +76,20 @@ Signal definitions in adagents.json `signals[]` can now carry definition-side en
 Modeled signals now have explicit validation hooks: `methodology: "modeled"` and `audience_expansion: true` require `modeling`; modeled training data jurisdictions must be non-empty; and a required modeling disclosure must name the jurisdictions where the disclosure applies.
 
 Product signal targeting also clarifies the broad-feed workflow. Products may set `signal_targeting_allowed: true` and omit inline `signal_targeting_options` instead of duplicating a wholesale signal feed inline. Buyers use `get_signals` for candidate discovery, then confirm product eligibility and composability with `get_products.filters.signal_targeting` or a product-specific `get_products` response before sending `packages[].targeting_overlay.signal_targeting_groups`.
+
+### Late release-candidate locks — canonical formats, badges, and discovery precision
+
+**Creative-agent canonical build capabilities.** Creative agents declare what they can produce via `creative.supported_formats[]` on `get_adcp_capabilities`. Each entry carries an agent-local stable `capability_id`; buyers use that ID as `target_format_id.id` in `build_creative`. This is intentionally separate from media-buy `format_option_id`, which selects a product-local or publisher-catalog format option. The training agent and storyboards verify advertised capability IDs, canonical `format_kind` manifests, unsupported target rejection, and 3.0 compatibility gating.
+
+**Canonical format satisfaction at create time.** Media-buy create/update/read surfaces now preserve package-level canonical selectors, including direct `format_kind`/`params` requests. The conformance suite tests that under-specified selectors fail closed instead of matching products by loose overlap.
+
+**Per-version verification badge issuance.** Public default verification runs can now issue 3.1 badges while 3.0 badges remain active. Badges are version-scoped; buyers pinned to a specific AdCP release should read versioned badge data instead of flattening to a single current badge.
+
+**Discovery precision additions.** Late schema additions are optional and additive: `video_placement_types` on products, placements, and `get_products` filters; `ext` on discovery filters for vendor- or seller-specific criteria; time/scoped authorized operators on `brand.json`; and machine-readable brand guideline constraints.
+
+**Package correlation across mixed seller versions.** 3.1 sellers echo request `packages[].product_id` on every response package that represents that requested package. Buyers that must interoperate with older sellers should also put opaque line-item correlation in `packages[].context` (for example `context.buyer_ref`) and treat it as a legacy-safe fallback when `product_id` is missing on create/read/webhook responses.
+
+**Upstream traffic attestation mode selection.** The upstream-traffic storyboards now lock the normative choice between raw and digest attestation modes so sellers cannot pass by emitting the wrong proof shape for the negotiated mode.
 
 ### Wire conformance — idempotency & envelope tolerance (#4399 / #4399b, #2911, #4227, #4371, #4418, #4107, #4196, #4043)
 
