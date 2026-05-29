@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { detectEmptyTurn } from '../../src/addie/claude-client.js';
+import { ADDIE_EMPTY_RESPONSE_FALLBACK, detectEmptyResponse, detectEmptyTurn } from '../../src/addie/claude-client.js';
 
 type ToolExecution = {
   tool_name: string;
@@ -46,5 +46,22 @@ describe('detectEmptyTurn (#3721)', () => {
     const reason = detectEmptyTurn('', [err('a'), err('b'), err('c')]);
     expect(reason).toContain('toolExecutions=3');
     expect(reason).toContain('errored=3');
+  });
+});
+
+describe('detectEmptyResponse (#4430)', () => {
+  test('flags blank final text even when a tool succeeded', () => {
+    const reason = detectEmptyResponse('', [ok('search_docs')]);
+    expect(reason).toContain('Empty response');
+    expect(reason).toContain('successful=1');
+  });
+
+  test('does not flag non-empty text', () => {
+    expect(detectEmptyResponse('here is your answer', [ok('search_docs')])).toBeNull();
+  });
+
+  test('fallback copy is user-visible and action-neutral', () => {
+    expect(ADDIE_EMPTY_RESPONSE_FALLBACK).toMatch(/rephrase|context/);
+    expect(ADDIE_EMPTY_RESPONSE_FALLBACK).not.toMatch(/completed|sent|created|updated/i);
   });
 });
