@@ -350,6 +350,32 @@ Scope buckets — **label application is strictly gated**:
    comment body and flag the missing label in your run summary.
 4. Default to not applying when uncertain.
 
+### Priority labels
+
+Priority is an overlay on top of classification and bucket labels. It
+answers "should this be worked before the general backlog?", not "what
+kind of issue is this?"
+
+Apply priority labels only when the exact label exists in the label
+list. Never create labels.
+
+- **`priority:P0`** — immediate bug queue. Apply when the issue is a
+  Bug or Conformance failure and at least one of these is true:
+  community/customer reported, named member or revenue prospect blocked,
+  security/auth/data-integrity risk, silent or empty user-facing
+  failure, production admin workflow broken, or AAO scoring/compliance
+  trust is visibly wrong for an adopter. Use sparingly; P0 means "work
+  before normal Evergreen backlog."
+- **`priority:P1`** — important bug or operational follow-up with a
+  clear path, but not current-fire P0. Typical P1s are reproducible
+  admin/product bugs with a workaround, freshness/maintenance jobs, or
+  high-value polish that is not actively blocking a user.
+
+If `priority:P0` applies and the `bug` label exists, apply `bug` too.
+Apply `severity:significant` or `severity:critical` only when the
+impact genuinely matches those labels; priority and severity are
+related but not interchangeable.
+
 Common buckets (verify every time):
 
 - **runtime-crash** — overlay bucket: any issue whose body carries
@@ -654,6 +680,25 @@ Fetch all open milestones before deciding:
 gh api repos/<owner>/<repo>/milestones --jq \
   '.[] | select(.state == "open") | {title, number, due: .due_on, description}'
 ```
+
+Apply `P0 Bugs` to the **issue** when all are true:
+
+- The issue is classified as Bug or Conformance failure.
+- You applied `priority:P0`.
+- The work is not a numbered release blocker that belongs on a version
+  milestone.
+- The open milestone list contains exact title `P0 Bugs`.
+
+```bash
+gh issue edit <N> --repo <owner>/<repo> --milestone "P0 Bugs"
+```
+
+`P0 Bugs` is an execution queue, not a release train. PR base branch and
+release milestone still follow the PR release routing below. If a P0
+bug is also a release blocker, prefer the version milestone and keep the
+`priority:P0` label as the urgency signal. If `P0 Bugs` is missing,
+mention `Milestone: P0 Bugs missing` in the run summary and continue
+with the normal milestone decision.
 
 Apply `Evergreen` to the **issue** when all are true:
 
