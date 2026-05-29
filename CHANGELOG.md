@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.1.0-rc.2
+
+### Patch Changes
+
+- cd71e45: Build schema bundles with `core/async-response-refs/` copies so SDK validators
+  can pre-register async response refs before compiling
+  `core/async-response-data.json` in the next release candidate.
+
+  Refs #5161.
+
 ## 3.1.0-rc.1
 
 ### Minor Changes
