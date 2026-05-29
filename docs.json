@@ -1461,7 +1461,8 @@
   "socials": {
     "linkedin": "https://www.linkedin.com/company/ad-context-protocol/",
     "youtube": "https://www.youtube.com/@AgenticAdvertising",
-    "github": "https://github.com/adcontextprotocol/adcp"
+    "github": "https://github.com/adcontextprotocol/adcp",
+    "slack": "https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA"
   },
   "api": {
     "maintainOrder": true
