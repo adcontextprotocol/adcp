@@ -185,11 +185,13 @@
       "minItems": 1,
       "items": {
         "$ref": "/schemas/enums/consent-basis.json"
-      }
+      },
+      "description": "Data provider's declared GDPR Article 6 lawful basis or consent basis for the underlying signal definition, projected into this get_signals response row when requested. Sellers and federating agents that pass through another provider's signal MUST NOT substitute their own processing basis for the provider-declared basis."
     },
     "art9_basis": {
       "type": "string",
-      "enum": ["explicit_consent", "manifestly_made_public", "substantial_public_interest", "vital_interests"]
+      "enum": ["explicit_consent", "manifestly_made_public", "substantial_public_interest", "vital_interests"],
+      "description": "Data provider's declared GDPR Article 9 basis for the underlying signal definition when special-category data is involved and Article 9 applies, projected into this get_signals response row when requested. Sellers and federating agents that pass through another provider's signal MUST NOT substitute their own Article 9 basis for the provider-declared basis."
     },
     "modeling": {
       "type": "object",
