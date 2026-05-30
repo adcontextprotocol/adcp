@@ -7504,7 +7504,6 @@ describe('get_adcp_capabilities handler', () => {
       expect(received).toHaveLength(1);
       expect(received[0].notification_type).toBe('product.priced');
       expect(received[0].subscriber_id).toBe('wholesale-feed-sync');
-      expect(received[0].operation_id).toMatch(/^acc_.*:wholesale-feed-sync:/);
       expect((received[0].event as Record<string, unknown>).event_type).toBe('product.priced');
       expect(((received[0].event as Record<string, unknown>).payload as Record<string, unknown>).product_id).toBe('prod_training_wholesale');
 

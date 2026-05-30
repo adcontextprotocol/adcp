@@ -216,13 +216,9 @@ export async function emitAccountNotificationWebhook(opts: {
   authentication?: WebhookAuthentication;
 }): Promise<WebhookEmitResult> {
   const emitter = getWebhookEmitter();
-  const payload = {
-    ...opts.payload,
-    operation_id: opts.operationId,
-  };
   return emitter.emit({
     url: opts.url,
-    payload,
+    payload: opts.payload,
     operation_id: opts.operationId,
     ...(opts.authentication !== undefined && { authentication: opts.authentication }),
   });

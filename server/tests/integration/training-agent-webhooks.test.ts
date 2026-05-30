@@ -299,7 +299,6 @@ describe('Training Agent webhook emission', () => {
       expect(body.notification_type).toBe('creative.status_changed');
       expect(body.creative_id).toBe('creative_lifecycle_webhook_test');
       expect(body.subscriber_id).toBe('buyer-primary');
-      expect(body.operation_id).toMatch(/^acc_.*:buyer-primary:cs_/);
       expect(body.idempotency_key).toMatch(/^[A-Za-z0-9_.:-]{16,255}$/);
       expect(body.notification_id).toBeTruthy();
       expect(body.transition).toMatchObject({ from: 'approved', to: 'rejected' });
