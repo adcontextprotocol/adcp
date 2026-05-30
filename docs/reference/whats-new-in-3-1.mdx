@@ -63,7 +63,7 @@ Plus a long tail of error-code clarity, auth tightening, idempotency rules, TMP 
 | **Async envelope** | Two-shape submitted envelope for create-style tasks | Three-shape envelope extended to `sync_audiences` |
 | **TMP IdentityMatch** | Basic request/response | `serve_window_sec` frequency-cap data flow; `seller_agent_url` required on request; optional `package_ids` |
 | **`adagents.json`** | Authoritative-only discovery | Managed-network scale (20 MB cap + `publisher_domains[]` compact form); ads.txt `managerdomain` fallback; tightened `revoked_publisher_domains[]` semantics |
-| **Schema housekeeping** | — | `x-adcp-hoist` opt-in marker; `allowed_values` on text-asset-requirements; `vast_tracker` + `daast_tracker` asset types; optional `currency`/`total_budget` on create/update responses |
+| **Schema housekeeping** | — | Named reusable schemas for SDK generators; `x-adcp-hoist` opt-in marker; `x-adcp-open-payload` marker for intentionally open JSON payload fields; open-string compliance scenarios; `allowed_values` on text-asset-requirements; `vast_tracker` + `daast_tracker` asset types; optional `currency`/`total_budget` on create/update responses |
 | **Compliance suite** | Per-tool scenarios | Capability-gated scenarios for `frequency_cap_enforcement`, `per_creative_attribution`, `metric_mode`, ROAS, `audience_buy_flow`, `event_dedup_flow`, `performance_buy_flow`, and `product_signal_targeting`; storyboard `requires` runtime gate; `comply_test_controller` sandbox gate; version-scoped badge evidence for 3.0 and 3.1 |
 
 ## Headline features
@@ -239,7 +239,13 @@ Ten normative tightenings landed as the spec settled into beta. Mostly low-risk 
 
 ### Misc schema additions
 
-**`media_buy.frequency_capping` capability declaration** (#4670) — seller declares which frequency-cap surfaces it honors. **`x-adcp-hoist` opt-in marker** (#4630) — canonically-shared object schemas declare themselves as hoistable into shared types. **`allowed_values` on text-asset-requirements** (#4333) — closed-set text assets (CTA, etc.) declare the allowed values so buyers can constrain generation. **`vast_tracker` + `daast_tracker` asset types** (#3051) — video and audio tracker assets. **Optional `currency` + `total_budget`** on `create_media_buy` / `update_media_buy` success responses (#4417). **Async envelope to `sync_audiences`** (#4571) — three-shape submitted envelope (Success / Error / Submitted) extended from create-style tasks.
+**`media_buy.frequency_capping` capability declaration** (#4670) — seller declares which frequency-cap surfaces it honors.
+
+**SDK generation ergonomics** (#5168) — common inline object and array item shapes now have stable core schema names so SDKs do not invent local wrapper names. `x-adcp-open-payload` marks intentionally open JSON payload fields for generators that need to preserve open maps rather than collapsing them into closed typed models.
+
+**Open compliance scenario strings** (#5168) — `comply_test_controller.scenario`, `list_scenarios.scenarios[]`, and `compliance_testing.scenarios[]` are `string` rather than a closed enum; SDKs SHOULD parse them as strings and MAY layer known-value helpers locally. SDKs that previously generated a literal union for these fields should widen to `string` and keep default handling for unknown scenario names.
+
+**`x-adcp-hoist` opt-in marker** (#4630) — canonically-shared object schemas declare themselves as hoistable into shared types. **`allowed_values` on text-asset-requirements** (#4333) — closed-set text assets (CTA, etc.) declare the allowed values so buyers can constrain generation. **`vast_tracker` + `daast_tracker` asset types** (#3051) — video and audio tracker assets. **Optional `currency` + `total_budget`** on `create_media_buy` / `update_media_buy` success responses (#4417). **Async envelope to `sync_audiences`** (#4571) — three-shape submitted envelope (Success / Error / Submitted) extended from create-style tasks.
 
 → See [Release Notes § Version 3.1.0](/docs/reference/release-notes#version-3-1-0-unreleased) for the per-PR detail.
 

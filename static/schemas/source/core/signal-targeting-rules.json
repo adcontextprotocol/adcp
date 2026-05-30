@@ -53,42 +53,7 @@
       "type": "array",
       "description": "Optional product-scoped overrides for specific ProductSignalTargetingOption.selection_group values. Use this when one product has mixed behavior, such as fixed seller-applied suppressions, a required pick-one include tier, optional buyer-selected exclusions, or heterogeneous targeting planes that must be represented as separate ANDed clauses. Rules apply only to options whose selection_group matches. When selection_group_rules are present, each packages[].targeting_overlay.signal_targeting_groups child group MUST contain signals from exactly one selection_group and one targeting_mode, and buyers MUST send at most one child group for each (selection_group, targeting_mode) pair. Sellers MUST reject duplicate, mixed, or collapsed groups that combine distinct selection_group_rules into the same child group.",
       "items": {
-        "type": "object",
-        "properties": {
-          "selection_group": {
-            "type": "string",
-            "description": "ProductSignalTargetingOption.selection_group value this rule applies to."
-          },
-          "targeting_mode": {
-            "type": "string",
-            "description": "How options in this selection_group are intended to be used in signal_targeting_groups. 'include' maps to child groups with operator 'any'. 'exclude' maps to child groups with operator 'none'. Omit when options in the group may be used according to each option's allowed_targeting_modes.",
-            "enum": [
-              "include",
-              "exclude"
-            ]
-          },
-          "selection_mode": {
-            "type": "string",
-            "description": "Selection behavior for this selection_group. 'required' means at least min_selected_signals, or 1 when omitted. 'fixed' means default_selected options in this group are seller-applied and read-only.",
-            "enum": [
-              "optional",
-              "required",
-              "fixed"
-            ]
-          },
-          "min_selected_signals": {
-            "type": "integer",
-            "description": "Minimum selected options from this selection_group. If selection_mode is 'required' and omitted, sellers MUST treat the minimum as 1.",
-            "minimum": 0
-          },
-          "max_selected_signals": {
-            "type": "integer",
-            "description": "Maximum selected options from this selection_group.",
-            "minimum": 1
-          }
-        },
-        "required": ["selection_group"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/signal-selection-group-rule.json"
       },
       "minItems": 1
     }

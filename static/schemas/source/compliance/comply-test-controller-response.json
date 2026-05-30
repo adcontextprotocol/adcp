@@ -25,28 +25,7 @@
         "scenarios": {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": [
-              "force_creative_status",
-              "force_account_status",
-              "force_media_buy_status",
-              "force_create_media_buy_arm",
-              "force_task_completion",
-              "force_creative_purge",
-              "force_session_status",
-              "simulate_delivery",
-              "simulate_budget_spend",
-              "seed_product",
-              "seed_pricing_option",
-              "seed_creative",
-              "seed_plan",
-              "seed_media_buy",
-              "seed_creative_format",
-              "seed_measurement_catalog",
-              "query_upstream_traffic",
-              "query_provenance_audit_observations",
-              "force_upstream_unavailable"
-            ]
+            "type": "string"
           },
           "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive releases. Adopters who advertise `force_creative_purge` opt in to deterministic creative purge coverage for account-level lifecycle webhooks. Adopters who advertise `seed_measurement_catalog` opt in to deterministic measurement-catalog fixtures used by vendor_metric precondition storyboards. Adopters who advertise `query_upstream_traffic` opt in to the upstream-traffic conformance contract; storyboards that declare `check: upstream_traffic` grade `not_applicable` against adopters who do not advertise it. Adopters who advertise `query_provenance_audit_observations` opt in to sandbox-only audit-observation assertions for accepted creatives. Adopters who advertise `force_upstream_unavailable` opt in to stale-cache conformance testing via the `stale_response_advisory` storyboard."
         },
@@ -522,7 +501,8 @@
                 "description": "Optional adopter-supplied semantic tag for the call's role. Values: `platform_primary` for the primary upstream platform the adapter is integrating with (e.g., a TikTok audience-upload call from a sales-social adapter); `measurement` for ancillary calls to measurement vendors (DV, IAS, Nielsen, MOAT); `attribution` for server-side conversion APIs (TTD Trans-API, Meta CAPI, AppsFlyer/Branch postbacks) that flow alongside primary platform calls in a buy-step; `creative_serving` for ad-server / CDN / tag-build calls (GAM tag generation, VAST/CDN fetches, creative trafficking); `identity` for ID-graph / hashing-service calls (LiveRamp, ID5, UID2); `other` for everything else (config fetches, internal telemetry, consent signal exchange). Lets storyboards scope `upstream_traffic` assertions via `purpose_filter` so a buyer-agent adapter that legitimately calls measurement vendors during a single buy step doesn't muddy the platform-primary assertion. Calls without a `purpose` field are treated as `purpose: other` for `purpose_filter` matching — adopters who haven't classified are matched only by storyboards filtering on `other` (or by storyboards with no `purpose_filter`). Self-reported, not adversarially trustworthy — same trust model as the rest of recorded_calls; misclassification by a façade is bounded by the runner's reporting of unclassified-call counts in `actual` when filters match zero."
               },
               "payload": {
-                "description": "Request body the agent sent. Required when `attestation_mode` is `raw` (or omitted); MUST be absent when `attestation_mode` is `digest`. Object when content_type is JSON-shaped and the controller decoded it; string otherwise. Adopters MUST apply the recursive secret-key redaction described in this branch's top-level description before emission — secrets at any depth (Authorization values inlined into JSON bodies, embedded JWTs, presigned-URL tokens, OAuth refresh tokens) MUST be replaced with the literal string `[redacted]`. Storyboards that assert `payload_must_contain` or `identifier_paths` are matching against THIS field — secrets MUST be redacted but storyboard-supplied identifiers (hashed PII, request correlation values) MUST NOT be redacted. Adopters SHOULD cap individual payload size at 64 KiB; payloads exceeding that SHOULD be truncated with a trailing `[…truncated]` marker — large payloads bloat compliance reports and the LLM-rendered context windows that consume them.",
+                "description": "Request body the agent sent. Required when `attestation_mode` is `raw` (or omitted); MUST be absent when `attestation_mode` is `digest`. Object when content_type is JSON-shaped and the controller decoded it; string otherwise. The `x-adcp-open-payload: true` annotation applies to the decoded JSON/object arm of this mixed field; non-JSON string payloads remain scalar values governed by the surrounding schema. Adopters MUST apply the recursive secret-key redaction described in this branch's top-level description before emission — secrets at any depth (Authorization values inlined into JSON bodies, embedded JWTs, presigned-URL tokens, OAuth refresh tokens) MUST be replaced with the literal string `[redacted]`. Storyboards that assert `payload_must_contain` or `identifier_paths` are matching against THIS field — secrets MUST be redacted but storyboard-supplied identifiers (hashed PII, request correlation values) MUST NOT be redacted. Adopters SHOULD cap individual payload size at 64 KiB; payloads exceeding that SHOULD be truncated with a trailing `[…truncated]` marker — large payloads bloat compliance reports and the LLM-rendered context windows that consume them.",
+                "x-adcp-open-payload": true,
                 "maxLength": 65536
               },
               "payload_digest_sha256": {
