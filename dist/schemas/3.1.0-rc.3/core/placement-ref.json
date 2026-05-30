@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.3/core/placement-ref.json",
+  "title": "Placement Reference",
+  "description": "Reference to a placement by publisher domain and placement ID. Placement IDs are publisher-scoped, matching the placement catalog in that publisher's adagents.json. When `publisher_domain` is omitted on legacy inputs, receivers MAY interpret the placement ID relative to the seller agent's own publisher domain; new senders SHOULD include `publisher_domain`.",
+  "type": "object",
+  "properties": {
+    "publisher_domain": {
+      "type": "string",
+      "description": "Domain where the adagents.json declaring this placement is hosted. Omitted only for legacy single-publisher seller contexts where the seller agent's own publisher domain is the namespace.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "placement_id": {
+      "type": "string",
+      "description": "Placement ID from the publisher's adagents.json placement catalog, or an inline seller-defined placement ID interpreted within the same publisher namespace.",
+      "x-entity": "placement"
+    }
+  },
+  "required": [
+    "placement_id"
+  ],
+  "additionalProperties": true
+}

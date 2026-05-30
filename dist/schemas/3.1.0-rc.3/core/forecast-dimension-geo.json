@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.3/core/forecast-dimension-geo.json",
+  "title": "Geo Forecast Dimension",
+  "description": "A geographic dimension for a ForecastPoint row. Variant of ForecastPoint dimensions; see forecast-point-dimensions.json for dispatch rules.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "geo",
+      "description": "Dimension family discriminator."
+    },
+    "geo_level": {
+      "$ref": "/schemas/3.1.0-rc.3/enums/geo-level.json",
+      "description": "Geographic level for this forecast point."
+    },
+    "system": {
+      "type": "string",
+      "description": "Classification system for metro or postal_area levels. Required when geo_level is 'metro' or 'postal_area'. Metro rows use metro-system enum values such as 'nielsen_dma'; postal rows use postal-system enum values such as 'us_zip'. Omit for country and region rows."
+    },
+    "geo_code": {
+      "type": "string",
+      "description": "Geographic code within the level and system. Country: ISO 3166-1 alpha-2 ('US'). Region: ISO 3166-2 with country prefix ('US-CA'). Metro/postal: system-specific code ('501', '10001')."
+    },
+    "geo_name": {
+      "type": "string",
+      "description": "Human-readable geographic name (e.g., 'United States', 'California', 'New York DMA')."
+    }
+  },
+  "required": ["kind", "geo_level", "geo_code"],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "geo_level": { "const": "country" } },
+        "required": ["geo_level"]
+      },
+      "then": {
+        "properties": {
+          "geo_code": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$",
+            "description": "ISO 3166-1 alpha-2 country code."
+          }
+        },
+        "not": { "required": ["system"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "geo_level": { "const": "region" } },
+        "required": ["geo_level"]
+      },
+      "then": {
+        "properties": {
+          "geo_code": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$",
+            "description": "ISO 3166-2 subdivision code."
+          }
+        },
+        "not": { "required": ["system"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "geo_level": { "const": "metro" } },
+        "required": ["geo_level"]
+      },
+      "then": {
+        "properties": {
+          "system": { "$ref": "/schemas/3.1.0-rc.3/enums/metro-system.json" }
+        },
+        "required": ["system"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "geo_level": { "const": "postal_area" } },
+        "required": ["geo_level"]
+      },
+      "then": {
+        "properties": {
+          "system": { "$ref": "/schemas/3.1.0-rc.3/enums/postal-system.json" }
+        },
+        "required": ["system"]
+      }
+    }
+  ],
+  "additionalProperties": false
+}
