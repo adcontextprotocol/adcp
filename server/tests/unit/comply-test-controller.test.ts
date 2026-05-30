@@ -486,7 +486,7 @@ describe('comply_test_controller', () => {
             end_time: '2026-07-31T23:59:59Z',
             available_actions: [{
               action: 'extend_flight',
-              mode: 'requires_proposal',
+              mode: 'requires_approval',
               sla: { response_max: 'PT4H', completion_max: 'P2D' },
             }],
             packages: [{
@@ -512,7 +512,7 @@ describe('comply_test_controller', () => {
       const buy = (buys as any).media_buys?.[0];
       expect(buy.available_actions).toEqual([{
         action: 'extend_flight',
-        mode: 'requires_proposal',
+        mode: 'requires_approval',
         sla: { response_max: 'PT4H', completion_max: 'P2D' },
       }]);
       expect(buy.packages[0].package_id).toBe('seeded_action_surface_pkg');
@@ -530,7 +530,7 @@ describe('comply_test_controller', () => {
         reason: 'mode_mismatch',
         currently_available_actions: [{
           action: 'extend_flight',
-          mode: 'requires_proposal',
+          mode: 'requires_approval',
           sla: { response_max: 'PT4H', completion_max: 'P2D' },
         }],
       });
@@ -744,7 +744,7 @@ describe('comply_test_controller', () => {
               },
               {
                 action: 'extend_flight',
-                modes: ['requires_proposal'],
+                modes: ['requires_approval'],
                 sla: { response_max: 'PT4H', completion_max: 'P2D' },
               },
               {
@@ -791,7 +791,7 @@ describe('comply_test_controller', () => {
         },
         {
           action: 'extend_flight',
-          mode: 'requires_proposal',
+          mode: 'requires_approval',
           sla: { response_max: 'PT4H', completion_max: 'P2D' },
         },
       ]);

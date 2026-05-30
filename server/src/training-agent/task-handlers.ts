@@ -1168,7 +1168,6 @@ function normalizeProductAllowedActions(product: Product | undefined): MediaBuyP
     const modes = src.modes.filter((mode): mode is MediaBuyAvailableActionState['mode'] =>
       mode === 'self_serve'
       || mode === 'conditional_self_serve'
-      || mode === 'requires_proposal'
       || mode === 'requires_approval',
     );
     if (modes.length === 0) continue;

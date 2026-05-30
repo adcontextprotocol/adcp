@@ -350,7 +350,7 @@ export interface MediaBuyHistoryEntry {
 
 export interface MediaBuyAvailableActionState {
   action: string;
-  mode: 'self_serve' | 'conditional_self_serve' | 'requires_proposal' | 'requires_approval';
+  mode: 'self_serve' | 'conditional_self_serve' | 'requires_approval';
   sla?: {
     response_max?: string;
     completion_max?: string;
