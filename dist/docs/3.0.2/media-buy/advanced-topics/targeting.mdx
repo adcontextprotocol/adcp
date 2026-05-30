@@ -230,7 +230,7 @@ Use for **legal compliance** requirements:
 
 ```json
 {
-  "$schema": "/schemas/3.0.2/core/targeting.json",
+  "$schema": "/schemas/3.0.2/3.0.2/core/targeting.json",
   "age_restriction": {
     "min": 21,
     "verification_required": true,
@@ -255,7 +255,7 @@ Use for **technical requirements**:
 
 ```json
 {
-  "$schema": "/schemas/3.0.2/core/targeting.json",
+  "$schema": "/schemas/3.0.2/3.0.2/core/targeting.json",
   "device_platform": ["ios", "android"]
 }
 ```
@@ -273,7 +273,7 @@ Use for **performance optimization** targeting by hardware category rather than 
 
 ```json
 {
-  "$schema": "/schemas/3.0.2/core/targeting.json",
+  "$schema": "/schemas/3.0.2/3.0.2/core/targeting.json",
   "device_type": ["mobile", "tablet"]
 }
 ```
@@ -282,7 +282,7 @@ Use for **performance optimization** targeting by hardware category rather than 
 
 ```json
 {
-  "$schema": "/schemas/3.0.2/core/targeting.json",
+  "$schema": "/schemas/3.0.2/3.0.2/core/targeting.json",
   "device_type_exclude": ["dooh"]
 }
 ```
@@ -299,7 +299,7 @@ Use for **localization requirements**:
 
 ```json
 {
-  "$schema": "/schemas/3.0.2/core/targeting.json",
+  "$schema": "/schemas/3.0.2/3.0.2/core/targeting.json",
   "language": ["es", "en"]
 }
 ```
@@ -312,7 +312,7 @@ Two frequency controls can be used independently or together:
 **Cooldown between exposures** — `suppress` prevents back-to-back delivery:
 ```json
 {
-  "$schema": "/schemas/3.0.2/core/targeting.json",
+  "$schema": "/schemas/3.0.2/3.0.2/core/targeting.json",
   "frequency_cap": {
     "suppress": { "interval": 60, "unit": "minutes" }
   }
@@ -322,7 +322,7 @@ Two frequency controls can be used independently or together:
 **Impression cap per entity per window** — `max_impressions` + `per` + `window` limits total exposure:
 ```json
 {
-  "$schema": "/schemas/3.0.2/core/targeting.json",
+  "$schema": "/schemas/3.0.2/3.0.2/core/targeting.json",
   "frequency_cap": {
     "max_impressions": 5,
     "per": "households",
@@ -572,7 +572,7 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 
 ```json
 {
-  "$schema": "/schemas/3.0.2/core/targeting.json",
+  "$schema": "/schemas/3.0.2/3.0.2/core/targeting.json",
   "keyword_targets": [
     { "keyword": "running shoes", "match_type": "broad", "bid_price": 0.45 },
     { "keyword": "trail running shoes womens", "match_type": "phrase", "bid_price": 0.85 },
@@ -589,7 +589,7 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 
 ```json
 {
-  "$schema": "/schemas/3.0.2/core/targeting.json",
+  "$schema": "/schemas/3.0.2/3.0.2/core/targeting.json",
   "negative_keywords": [
     { "keyword": "free", "match_type": "broad" },
     { "keyword": "used running shoes", "match_type": "phrase" }
@@ -691,7 +691,7 @@ Validated examples:
 
 ```json
 {
-  "$schema": "/schemas/3.0.2/core/targeting.json",
+  "$schema": "/schemas/3.0.2/3.0.2/core/targeting.json",
   "geo_proximity": [
     {
       "lat": 51.2277,
@@ -706,7 +706,7 @@ Validated examples:
 
 ```json
 {
-  "$schema": "/schemas/3.0.2/core/targeting.json",
+  "$schema": "/schemas/3.0.2/3.0.2/core/targeting.json",
   "geo_proximity": [
     {
       "lat": 51.4700,
@@ -720,7 +720,7 @@ Validated examples:
 
 ```json
 {
-  "$schema": "/schemas/3.0.2/core/targeting.json",
+  "$schema": "/schemas/3.0.2/3.0.2/core/targeting.json",
   "geo_proximity": [
     {
       "label": "2hr drive from Düsseldorf",

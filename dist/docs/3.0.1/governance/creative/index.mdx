@@ -209,4 +209,4 @@ Governance agents that charge MUST implement the [Accounts Protocol](/dist/docs/
 
 ## Async evaluation
 
-If evaluation takes time (e.g., sandboxed execution for malware scanning), the agent returns `status: "working"` and delivers results via the standard webhook mechanism. No custom status values or webhook events needed — the existing [async task pattern](/dist/docs/3.0.1/building/implementation/async-operations) handles this.
+If evaluation takes time (e.g., sandboxed execution for malware scanning), the agent returns `status: "working"` and delivers results via the standard webhook mechanism. No custom status values or webhook events needed — the existing [async task pattern](/dist/docs/3.0.1/building/by-layer/L3/async-operations) handles this.

@@ -9,7 +9,7 @@ This document defines the **canonical structure** for AdCP responses transmitted
 
 ## A2A Wire Format
 
-Examples below use **A2A 1.0** wire format: Parts carry no `kind` discriminator (content type is implied by which field is set — `text`, `data`, `url`, or `raw`), roles are `ROLE_USER` / `ROLE_AGENT`, and task states are `TASK_STATE_*` (ProtoJSON canonical). See the [A2A Guide](/dist/docs/3.0.2/building/integration/a2a-guide#a2a-protocol-versions) for a side-by-side with v0.3.
+Examples below use **A2A 1.0** wire format: Parts carry no `kind` discriminator (content type is implied by which field is set — `text`, `data`, `url`, or `raw`), roles are `ROLE_USER` / `ROLE_AGENT`, and task states are `TASK_STATE_*` (ProtoJSON canonical). See the [A2A Guide](/dist/docs/3.0.2/building/by-layer/L0/a2a-guide#a2a-protocol-versions) for a side-by-side with v0.3.
 
 AdCP's top-level unified `status` field (returned by `@adcp/client`) continues to use the lowercase shorthand (`"completed"`, `"failed"`, `"working"`, `"input-required"`, `"submitted"`). That is an AdCP abstraction over `status.state` — not an A2A wire value.
 
@@ -84,7 +84,7 @@ Interim status updates are delivered as `TaskStatusUpdateEvent`, with optional p
 }
 ```
 
-When delivered over SSE or as a push notification, this event is wrapped in the A2A 1.0 `StreamResponse` oneof: `{ "statusUpdate": { … } }`. Non-streaming responses (e.g. `tasks/get`) deliver the bare object. Clients unwrap before reading `status.state` — see [A2A Response Extraction](/dist/docs/3.0.2/building/implementation/a2a-response-extraction#extraction-algorithm).
+When delivered over SSE or as a push notification, this event is wrapped in the A2A 1.0 `StreamResponse` oneof: `{ "statusUpdate": { … } }`. Non-streaming responses (e.g. `tasks/get`) deliver the bare object. Clients unwrap before reading `status.state` — see [A2A Response Extraction](/dist/docs/3.0.2/building/by-layer/L0/a2a-response-extraction#extraction-algorithm).
 
 **Interim response characteristics:**
 - **TextPart** is recommended for human-readable status
@@ -149,7 +149,7 @@ This section defines EXACTLY how clients MUST extract AdCP responses from A2A pr
 
 ### Rule 1: Status-Based Handling
 
-Clients MUST branch on the normalized status to determine the correct data extraction location. The `status` referenced here is AdCP's unified lowercase value (e.g. `"completed"`); the raw A2A wire value at `status.state` is `TASK_STATE_COMPLETED` in 1.0 or `completed` in v0.3. Normalize before comparing — see [A2A Response Extraction](/dist/docs/3.0.2/building/implementation/a2a-response-extraction#extraction-algorithm).
+Clients MUST branch on the normalized status to determine the correct data extraction location. The `status` referenced here is AdCP's unified lowercase value (e.g. `"completed"`); the raw A2A wire value at `status.state` is `TASK_STATE_COMPLETED` in 1.0 or `completed` in v0.3. Normalize before comparing — see [A2A Response Extraction](/dist/docs/3.0.2/building/by-layer/L0/a2a-response-extraction#extraction-algorithm).
 
 ```javascript
 const INTERIM = ['working', 'submitted', 'input-required', 'auth-required'];
@@ -574,7 +574,7 @@ POST /webhook-endpoint
 }
 ```
 
-Extract AdCP data using the same last-DataPart pattern. **For webhook authentication, retry patterns, and security**, see [Webhooks](/dist/docs/3.0.2/building/implementation/webhooks).
+Extract AdCP data using the same last-DataPart pattern. **For webhook authentication, retry patterns, and security**, see [Webhooks](/dist/docs/3.0.2/building/by-layer/L3/webhooks).
 
 ## File Parts in Responses
 
@@ -816,7 +816,7 @@ When implementing A2A responses for AdCP:
 
 ## See Also
 
-- [A2A Guide](/dist/docs/3.0.2/building/integration/a2a-guide) - Complete A2A integration guide
-- [Task Lifecycle](/dist/docs/3.0.2/building/implementation/task-lifecycle) - Status handling patterns
-- [Error Handling](/dist/docs/3.0.2/building/implementation/error-handling) - Fatal vs non-fatal errors
-- [Protocol Comparison](/dist/docs/3.0.2/building/understanding/protocol-comparison) - MCP vs A2A differences
+- [A2A Guide](/dist/docs/3.0.2/building/by-layer/L0/a2a-guide) - Complete A2A integration guide
+- [Task Lifecycle](/dist/docs/3.0.2/building/by-layer/L3/task-lifecycle) - Status handling patterns
+- [Error Handling](/dist/docs/3.0.2/building/by-layer/L3/error-handling) - Fatal vs non-fatal errors
+- [Protocol Comparison](/dist/docs/3.0.2/building/concepts/protocol-comparison) - MCP vs A2A differences

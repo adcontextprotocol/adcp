@@ -5,11 +5,11 @@ description: "AdCP MCP integration guide: tool call patterns, context_id managem
 ---
 
 
-Transport-specific guide for integrating AdCP using the Model Context Protocol. For task handling, status management, and workflow patterns, see [Task Lifecycle](/dist/docs/3.0.2/building/implementation/task-lifecycle).
+Transport-specific guide for integrating AdCP using the Model Context Protocol. For task handling, status management, and workflow patterns, see [Task Lifecycle](/dist/docs/3.0.2/building/by-layer/L3/task-lifecycle).
 
 ## Testing AdCP via MCP
 
-You can test AdCP tasks using the [CLI tools](/dist/docs/3.0.2/building/schemas-and-sdks#cli-tools) or by chatting with [Addie](https://agenticadvertising.org), the AgenticAdvertising.org assistant.
+You can test AdCP tasks using the [CLI tools](/dist/docs/3.0.2/building/by-layer/L0/schemas#cli-tools) or by chatting with [Addie](https://agenticadvertising.org), the AgenticAdvertising.org assistant.
 
 ## Tool Call Patterns
 
@@ -83,7 +83,7 @@ MCP responses use a **flat structure** where task-specific fields are at the top
 - **status**: Same values as A2A protocol for consistency
 - Task-specific fields (e.g., `products`, `media_buy_id`, `creatives`) are at the top level, not wrapped in a `data` object
 
-**Status Handling**: See [Task Lifecycle](/dist/docs/3.0.2/building/implementation/task-lifecycle) for complete status handling patterns.
+**Status Handling**: See [Task Lifecycle](/dist/docs/3.0.2/building/by-layer/L3/task-lifecycle) for complete status handling patterns.
 
 ## Available Tools
 
@@ -118,7 +118,7 @@ await mcp.call('activate_signal', {...});  // Deploy signals to platforms
 AdCP uses [MCP Tasks](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks) for long-running operations over MCP. This removes the LLM from the polling path — the client handles task lifecycle at the protocol level, and the model only sees the final result.
 
 :::warning Client support is limited
-Most chat-based MCP clients (Claude Desktop, Cursor) do not yet support MCP Tasks. If your client doesn't support task-augmented tool calls, use **webhooks** or **polling via `tasks/get`** instead — these work with any MCP client. See [Async Operations](/dist/docs/3.0.2/building/implementation/async-operations) and [Push Notifications](/dist/docs/3.0.2/building/implementation/webhooks) for transport-independent patterns.
+Most chat-based MCP clients (Claude Desktop, Cursor) do not yet support MCP Tasks. If your client doesn't support task-augmented tool calls, use **webhooks** or **polling via `tasks/get`** instead — these work with any MCP client. See [Async Operations](/dist/docs/3.0.2/building/by-layer/L3/async-operations) and [Push Notifications](/dist/docs/3.0.2/building/by-layer/L3/webhooks) for transport-independent patterns.
 
 MCP Tasks are the right choice when you control the MCP client (e.g., building your own orchestrator with `@modelcontextprotocol/sdk`) or when client support matures.
 :::
@@ -318,7 +318,7 @@ MCP Tasks handles polling within the MCP session, but some AdCP operations outli
 }
 ```
 
-The MCP Task tracks status within the session. If the session ends before the task completes, the webhook delivers the result independently. See [Push Notifications](/dist/docs/3.0.2/building/implementation/webhooks) for webhook payload formats and authentication.
+The MCP Task tracks status within the session. If the session ends before the task completes, the webhook delivers the result independently. See [Push Notifications](/dist/docs/3.0.2/building/by-layer/L3/webhooks) for webhook payload formats and authentication.
 
 ## Context Management (MCP-Specific)
 
@@ -639,7 +639,7 @@ const response = await session.call('create_media_buy',
 // No polling needed — just handle the webhook when it arrives
 ```
 
-See [Push Notifications](/dist/docs/3.0.2/building/implementation/webhooks) for payload formats and authentication.
+See [Push Notifications](/dist/docs/3.0.2/building/by-layer/L3/webhooks) for payload formats and authentication.
 
 ### Option 2: Polling (backup)
 
@@ -804,7 +804,7 @@ if (adcpMeta) {
 **Benefits:**
 - Clients can discover AdCP capabilities without making test calls
 - Declare which protocol domains you implement (media_buy, creative, signals)
-- Declare which typed extensions you support (see [Context & Sessions](/dist/docs/3.0.2/building/integration/context-sessions#extension-fields-ext))
+- Declare which typed extensions you support (see [Context & Sessions](/dist/docs/3.0.2/building/by-layer/L2/context-sessions#extension-fields-ext))
 - Enable compatibility checks based on version
 
 :::note
@@ -822,7 +822,7 @@ const toolSchema = await mcp.getToolSchema('get_products');
 
 ### Error Handling
 
-AdCP errors are returned as tool-level responses with `isError: true` and the error in `structuredContent.adcp_error`. For the full extraction logic and JSON-RPC transport codes, see [Transport Error Mapping](/dist/docs/3.0.2/building/implementation/transport-errors).
+AdCP errors are returned as tool-level responses with `isError: true` and the error in `structuredContent.adcp_error`. For the full extraction logic and JSON-RPC transport codes, see [Transport Error Mapping](/dist/docs/3.0.2/building/operating/transport-errors).
 
 ```javascript
 try {
@@ -858,9 +858,9 @@ try {
 
 ## Next Steps
 
-- **Core Concepts**: Read [Task Lifecycle](/dist/docs/3.0.2/building/implementation/task-lifecycle) for status handling and workflows
+- **Core Concepts**: Read [Task Lifecycle](/dist/docs/3.0.2/building/by-layer/L3/task-lifecycle) for status handling and workflows
 - **Task Reference**: See [Media Buy Tasks](/dist/docs/3.0.2/media-buy) and [Signals](/dist/docs/3.0.2/signals/overview)
-- **Protocol Comparison**: Compare with [A2A integration](/dist/docs/3.0.2/building/integration/a2a-guide)
+- **Protocol Comparison**: Compare with [A2A integration](/dist/docs/3.0.2/building/by-layer/L0/a2a-guide)
 - **Examples**: Find complete workflow examples in Core Concepts
 
-**For status handling, async operations, and clarification patterns, see [Task Lifecycle](/dist/docs/3.0.2/building/implementation/task-lifecycle) - this guide focuses on MCP transport specifics only.**
+**For status handling, async operations, and clarification patterns, see [Task Lifecycle](/dist/docs/3.0.2/building/by-layer/L3/task-lifecycle) - this guide focuses on MCP transport specifics only.**

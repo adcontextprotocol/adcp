@@ -26,7 +26,7 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | `v3-envelope-integrity` | v3 protocol envelopes MUST NOT carry the v2 legacy `task_status` or `response_status` fields — `status` is the single canonical lifecycle field in v3. |
 | `error-compliance` | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
 | `idempotency` | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
-| `security` | **Authentication baseline — unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding.** See [Authentication](/dist/docs/3.0.1/building/integration/authentication). |
+| `security` | **Authentication baseline — unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding.** See [Authentication](/dist/docs/3.0.1/building/by-layer/L2/authentication). |
 | `webhook-emission` | Outbound webhook conformance — stable `idempotency_key` across retries; RFC 9421 webhook signing (or HMAC fallback if the buyer opted in). Runs for any agent that accepts `push_notification_config` on any operation. |
 | `pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_creatives` response from a continuation page through to terminal. |
 | `get-signals-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `get_signals` response under a broad query — page 1 must be non-terminal against any non-trivial catalog, page 2 follows the cursor. |
@@ -44,7 +44,7 @@ Capability-gated rows (`deterministic-testing`, `signed-requests`) are skipped o
 
 ## Protocols
 
-Top-level agent capability claims. An agent claims a protocol by listing it in `supported_protocols` and must pass the protocol's baseline storyboard plus every [universal](/dist/docs/3.0.1/building/validate-your-agent#storyboard-taxonomy) storyboard.
+Top-level agent capability claims. An agent claims a protocol by listing it in `supported_protocols` and must pass the protocol's baseline storyboard plus every [universal](/dist/docs/3.0.1/building/verification/validate-your-agent#storyboard-taxonomy) storyboard.
 
 `supported_protocols` uses snake_case; compliance paths and specialism IDs use kebab-case. See [Naming conventions](#naming-conventions) below for the full mapping.
 
@@ -58,7 +58,7 @@ Top-level agent capability claims. An agent claims a protocol by listing it in `
 | `sponsored_intelligence` | `protocols/sponsored-intelligence/` | AI-mediated commerce and conversational sponsored experiences |
 
 <Note>
-Support for the [compliance test controller](/dist/docs/3.0.1/building/implementation/comply-test-controller) is declared via the `capabilities.compliance_testing` block on `get_adcp_capabilities`, not via `supported_protocols`. Compliance testing is an RPC surface for the test harness, not a functional protocol.
+Support for the [compliance test controller](/dist/docs/3.0.1/building/by-layer/L3/comply-test-controller) is declared via the `capabilities.compliance_testing` block on `get_adcp_capabilities`, not via `supported_protocols`. Compliance testing is an RPC surface for the test harness, not a functional protocol.
 </Note>
 
 <Tip>
@@ -161,7 +161,7 @@ The storyboard runner:
 **Implement the tools AND claim the specialism.** An agent that wires all of a specialism's required tools but omits the kebab-case ID from `capabilities.specialisms[]` will be graded **"No applicable tracks found"** by the runner — `tracks_passed = 0, tracks_failed = 0, tracks_skipped = 1`. This is a silent pass at the step level and a silent fail at the track level. The fix is to add the specialism ID (e.g., `"creative-generative"`) to your `get_adcp_capabilities` response.
 </Warning>
 
-If any `stable` storyboard fails, your agent is not compliant for that claim. See [Validate Your Agent](/dist/docs/3.0.1/building/validate-your-agent) for how to run the suite locally.
+If any `stable` storyboard fails, your agent is not compliant for that claim. See [Validate Your Agent](/dist/docs/3.0.1/building/verification/validate-your-agent) for how to run the suite locally.
 
 ## Naming conventions
 

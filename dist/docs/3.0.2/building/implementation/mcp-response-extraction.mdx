@@ -4,14 +4,14 @@ description: "How to extract AdCP success response data from MCP tool results: s
 "og:title": "AdCP — MCP Response Extraction"
 ---
 
-This page defines the normative algorithm for extracting AdCP success response data from MCP tool results. For error extraction, see [Transport Error Mapping](/dist/docs/3.0.2/building/implementation/transport-errors).
+This page defines the normative algorithm for extracting AdCP success response data from MCP tool results. For error extraction, see [Transport Error Mapping](/dist/docs/3.0.2/building/operating/transport-errors).
 
 ## Layer Separation
 
 | Path | When | Data Source |
 |---|---|---|
 | Success extraction (this page) | `isError` absent or `false` | `structuredContent` or `content[].text` |
-| Error extraction ([transport-errors](/dist/docs/3.0.2/building/implementation/transport-errors)) | `isError: true` | `structuredContent.adcp_error` or text fallback |
+| Error extraction ([transport-errors](/dist/docs/3.0.2/building/operating/transport-errors)) | `isError: true` | `structuredContent.adcp_error` or text fallback |
 
 Clients MUST check `isError` before deciding which extraction path to use. A response with `isError: true` MUST NOT be processed as a success response, even if it contains `structuredContent` with non-error data.
 
@@ -123,7 +123,7 @@ function handleMcpResponse(response) {
 
 ### Seller-Controlled Data
 
-All data in `structuredContent` and `content[].text` is seller-controlled. The same prompt injection and data boundary requirements from [Transport Error Mapping](/dist/docs/3.0.2/building/implementation/transport-errors#security-considerations) apply.
+All data in `structuredContent` and `content[].text` is seller-controlled. The same prompt injection and data boundary requirements from [Transport Error Mapping](/dist/docs/3.0.2/building/operating/transport-errors#security-considerations) apply.
 
 ### Size Limits
 
@@ -158,6 +158,6 @@ Client libraries SHOULD validate their extraction logic against these vectors.
 
 ## See Also
 
-- [Transport Error Mapping](/dist/docs/3.0.2/building/implementation/transport-errors) — error extraction from MCP and A2A
-- [A2A Response Extraction](/dist/docs/3.0.2/building/implementation/a2a-response-extraction) — equivalent spec for A2A
-- [MCP Guide](/dist/docs/3.0.2/building/integration/mcp-guide) — MCP transport integration
+- [Transport Error Mapping](/dist/docs/3.0.2/building/operating/transport-errors) — error extraction from MCP and A2A
+- [A2A Response Extraction](/dist/docs/3.0.2/building/by-layer/L0/a2a-response-extraction) — equivalent spec for A2A
+- [MCP Guide](/dist/docs/3.0.2/building/by-layer/L0/mcp-guide) — MCP transport integration

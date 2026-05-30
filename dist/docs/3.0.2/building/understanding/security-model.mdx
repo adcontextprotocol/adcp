@@ -5,7 +5,7 @@ description: "Why agentic advertising raises the stakes for security, the threat
 "og:title": "AdCP — Security Model"
 ---
 
-For CISOs, security architects, and third-party risk reviewers evaluating an AdCP deployment — on either side of the transaction (brands, agencies, publishers, platforms, data providers). The [implementation reference](/dist/docs/3.0.2/building/implementation/security) has the normative rules; this page explains the model behind them.
+For CISOs, security architects, and third-party risk reviewers evaluating an AdCP deployment — on either side of the transaction (brands, agencies, publishers, platforms, data providers). The [implementation reference](/dist/docs/3.0.2/building/by-layer/L1/security) has the normative rules; this page explains the model behind them.
 
 ## Why security is foundational, not an add-on
 
@@ -42,8 +42,8 @@ None of this is novel cryptography. What's new is the combination — well-under
 
 Three attack classes don't appear in a traditional API threat model but belong in this one:
 
-- **Credential reuse across accounts under one agent.** An agency agent typically holds credentials that work across every brand in its authorized-account set. A stolen agent token is therefore a multi-brand breach, not a single-brand one. AdCP's per-`(agent, account)` cache scoping (see [Agent and Account Isolation](/dist/docs/3.0.2/building/implementation/security#agent-and-account-isolation)) and signed governance tokens (bound to a specific plan and seller) limit *what* can be done with a stolen credential, but don't prevent the theft. Credential hygiene in agentic systems is proportionally more critical than in single-tenant APIs.
-- **Shared-governance-agent supply chain.** A governance agent often signs for many brands from a single origin. Its compromise is a multi-tenant breach. The JWKS / revocation-list requirements in the [governance profile](/dist/docs/3.0.2/building/implementation/security#signed-governance-context) limit the blast radius and make rotation observable, but the buyer's due-diligence posture toward its governance agent is a real-world security dependency — treat the governance agent as a processor with multi-customer blast radius and assess it accordingly.
+- **Credential reuse across accounts under one agent.** An agency agent typically holds credentials that work across every brand in its authorized-account set. A stolen agent token is therefore a multi-brand breach, not a single-brand one. AdCP's per-`(agent, account)` cache scoping (see [Agent and Account Isolation](/dist/docs/3.0.2/building/by-layer/L1/security#agent-and-account-isolation)) and signed governance tokens (bound to a specific plan and seller) limit *what* can be done with a stolen credential, but don't prevent the theft. Credential hygiene in agentic systems is proportionally more critical than in single-tenant APIs.
+- **Shared-governance-agent supply chain.** A governance agent often signs for many brands from a single origin. Its compromise is a multi-tenant breach. The JWKS / revocation-list requirements in the [governance profile](/dist/docs/3.0.2/building/by-layer/L1/security#signed-governance-context) limit the blast radius and make rotation observable, but the buyer's due-diligence posture toward its governance agent is a real-world security dependency — treat the governance agent as a processor with multi-customer blast radius and assess it accordingly.
 - **Cross-principal key reuse on multi-tenant operators.** Any operator hosting agents on behalf of more than one principal — a governance agent serving multiple brands, a buyer agent serving multiple advertisers, a sales agent serving multiple publishers — MUST scope signing keys per principal rather than reuse one key across the fleet. Concretely, each `keyid` MUST bind to a single principal so that a single compromised key reduces to a single-principal breach and revocation is granular. A convention such as `{operator}:{principal}:{key_version}` is a useful operator-side bookkeeping aid, but the `kid` value itself is opaque to verifiers per RFC 7517 — verifiers MUST NOT parse `kid` structure to derive principal identity or make authorization decisions, and MUST resolve the owning principal via the authenticated signature → JWKS → agent entry chain, using the `kid` only as an index into the JWKS. Operators that invent a structured convention thus create an internal bookkeeping tool, not an on-wire authorization input. Operators SHOULD advertise the isolation property in their capability surface as `identity.per_principal_key_isolation: true` so counterparties can verify the property without reading out the JWKS by hand.
 - **Prompt injection exfiltrating agent-side credentials.** Planners, creative-review agents, brief-interpretation pipelines all process untrusted text (briefs, creative metadata, product descriptions, campaign names) while holding credentials. A successful injection can cause the agent to issue unauthorized tool calls or leak tokens into logs, external URLs, or downstream agent messages. AdCP cannot prevent this at the protocol layer, but every operator running an LLM-powered agent needs input sandboxing, egress controls on tool calls (which URLs / which tools can the agent reach from within a given prompt context), and monitoring for anomalous credential use. This is the most likely near-term breach vector in the space and is not solved by protocol compliance alone.
 - **Cross-principal tool-call confusion.** A buyer agent typically holds active credentials for *multiple* principals at once — several sellers (one set of credentials per seller) and several brand accounts (inside a single agency agent's authority set). LLM-driven agents often expose every one of those tool surfaces to the same planning loop. A prompt injected via text returned from seller X (a product description, a campaign name, a rejection reason) can cause the agent to call a tool on seller Y's endpoint, or to call `create_media_buy` for brand A using a budget authorized for brand B. This is the classical [confused deputy](https://en.wikipedia.org/wiki/Confused_deputy_problem) problem at LLM-tool-call granularity. The protocol-layer defense is in Layer 2 (account scoping on every tool call, refusing any cross-account action the caller does not hold authority for); the operator-layer defense is to tag each inbound string with its principal of origin, refuse tool calls whose target principal differs from the principal that supplied the string unless a human approves, and forbid a single LLM context from holding credentials for principals whose interests can conflict. This threat is distinct from ordinary prompt injection: the attacker does not need to escape the sandbox to use the *victim principal's* credentials — the victim's own agent does it for them.
@@ -87,7 +87,7 @@ Before any other check, the seller must establish *which authenticated agent* is
 - **mTLS** — the buyer presents a client certificate resolving to a registered domain. *Permitted for any operation in 3.0 and 3.1+.*
 - **Bearer tokens** (pre-provisioned API key or JWT) — issued by the seller at onboarding, mapped to the buyer. *Permitted in 3.0 as the effective baseline; **PROHIBITED for mutating / financial operations in 3.1+**, read-only thereafter.*
 
-The normative matrix and verifier rules live in [Authentication](/dist/docs/3.0.2/building/integration/authentication#authentication-method); the 3.0 → 3.1 sunset for bearer on mutating operations is logged under [known limitations](/dist/docs/3.0.2/reference/known-limitations#authentication-and-identity).
+The normative matrix and verifier rules live in [Authentication](/dist/docs/3.0.2/building/by-layer/L2/authentication#authentication-method); the 3.0 → 3.1 sunset for bearer on mutating operations is logged under [known limitations](/dist/docs/3.0.2/reference/known-limitations#authentication-and-identity).
 
 **What this defends against.** An attacker cannot claim to be Acme by setting an `iss` field or a `caller` header. Identity is bound to something the attacker cannot forge (a private key, a certificate, or a pre-shared secret). Every subsequent layer uses the authenticated agent as its scope — get this wrong and the rest of the stack is decorative.
 
@@ -107,7 +107,7 @@ This is the control that makes retries safe. Without it, a network timeout on `c
 
 **What this defends against.** Double-booking from retries. Replay attacks from a stolen-then-reused request. Duplicate webhooks from agent side effects ("Campaign created!" notifications, downstream tool calls, LLM memory writes). `replayed: true` lets every downstream system know whether a response represents a new event or a cached one.
 
-The full normative rules, including payload canonicalization and the oracle-resistance properties of the error taxonomy, are in [Request Safety](/dist/docs/3.0.2/building/implementation/security#idempotency).
+The full normative rules, including payload canonicalization and the oracle-resistance properties of the error taxonomy, are in [Request Safety](/dist/docs/3.0.2/building/by-layer/L1/security#idempotency).
 
 ### Layer 4: Signed governance — cryptographic proof of approval
 
@@ -121,7 +121,7 @@ When a plan is approved for spend, the governance agent issues a signed JWS toke
 
 The seller fetches the governance agent's public keys via JWKS, verifies the signature, runs the 15-step verification checklist, and only then treats the request as approved. Auditors and regulators can verify the same token years later using the same public keys — neither buyer nor seller can retroactively forge an approval.
 
-**What this defends against.** Unauthorized spend. A compromised buyer credential alone cannot create a media buy — the attacker also needs a valid, unrevoked governance token signed by the buyer's governance agent, bound to this specific seller, for this specific plan, for this specific operation, within its validity window (±60s clock-skew tolerance on `iat`/`nbf`/`exp`; see the [implementation reference](/dist/docs/3.0.2/building/implementation/security#signed-governance-context) for exact bounds), whose `jti` has not been seen before.
+**What this defends against.** Unauthorized spend. A compromised buyer credential alone cannot create a media buy — the attacker also needs a valid, unrevoked governance token signed by the buyer's governance agent, bound to this specific seller, for this specific plan, for this specific operation, within its validity window (±60s clock-skew tolerance on `iat`/`nbf`/`exp`; see the [implementation reference](/dist/docs/3.0.2/building/by-layer/L1/security#signed-governance-context) for exact bounds), whose `jti` has not been seen before.
 
 ### Layer 5: Auditability — the trail survives the transaction
 
@@ -141,7 +141,7 @@ If you are approving an AdCP deployment — as a brand CISO, a security architec
 
 ### Identity
 
-- [ ] How is the calling agent authenticated? (RFC 9421 signed requests, mTLS, or Bearer/API key — not a header field, not `iss`. For mutating / financial operations, plan the migration off Bearer before the 3.1 sunset — see [Authentication](/dist/docs/3.0.2/building/integration/authentication#authentication-method).)
+- [ ] How is the calling agent authenticated? (RFC 9421 signed requests, mTLS, or Bearer/API key — not a header field, not `iss`. For mutating / financial operations, plan the migration off Bearer before the 3.1 sunset — see [Authentication](/dist/docs/3.0.2/building/by-layer/L2/authentication#authentication-method).)
 - [ ] Where are tokens stored? (KMS / secret manager — not files, not env vars at rest)
 - [ ] Is the rotation cadence right-sized to blast radius and documented? (≤24h is a reasonable default for write-capable tokens; tighter windows are appropriate for tokens that commit spend at scale or cross organizational boundaries.)
 - [ ] What is the revocation path, and who can execute it in under an hour?
@@ -162,7 +162,7 @@ If you are approving an AdCP deployment — as a brand CISO, a security architec
 ### SSRF discipline
 
 - [ ] Does every outbound fetch to a counterparty URL (webhooks, JWKS, adagents.json, reporting buckets) run the full 6-point check: HTTPS-only, reserved-IP deny list, IP pinning, no redirects, size and timeout caps, suppressed error detail?
-- [ ] Is the reserved-IP deny list enumerated from an authoritative source (IANA, cloud-provider documentation) and reviewed each time you add a new cloud provider or region? See the [implementation reference](/dist/docs/3.0.2/building/implementation/security#webhook-url-validation-ssrf) for the current enumeration.
+- [ ] Is the reserved-IP deny list enumerated from an authoritative source (IANA, cloud-provider documentation) and reviewed each time you add a new cloud provider or region? See the [implementation reference](/dist/docs/3.0.2/building/by-layer/L1/security#webhook-url-validation-ssrf) for the current enumeration.
 
 ### Governance verification
 
@@ -266,10 +266,10 @@ Think of AdCP as specifying the locks on the doors. You still own the building.
 
 ## Further reading
 
-- **[Security (implementation reference)](/dist/docs/3.0.2/building/implementation/security)** — Normative rules for HMAC, idempotency, SSRF, agent/account isolation, and governance verification
+- **[Security (implementation reference)](/dist/docs/3.0.2/building/by-layer/L1/security)** — Normative rules for HMAC, idempotency, SSRF, agent/account isolation, and governance verification
 - **[Embedded Human Judgment](/dist/docs/3.0.2/governance/embedded-human-judgment)** — The five principles that keep humans in the loop on decisions with real consequences
 - **[Trusted Match Protocol](/dist/docs/3.0.2/trusted-match)** — The two-call decomposition (Context Match / Identity Match) that delivers structural privacy separation at serve time
-- **[Webhooks](/dist/docs/3.0.2/building/implementation/webhooks)** — Signature format, replay windows, rotation
-- **[Signed Governance Context](/dist/docs/3.0.2/building/implementation/security#signed-governance-context)** — The 15-step verification checklist
-- **[Operating an Agent](/dist/docs/3.0.2/building/operating-an-agent)** — Credential management, monitoring, and incident response as operating concerns
-- **[How Agents Communicate](/dist/docs/3.0.2/building/understanding/how-agents-communicate)** — `adagents.json`, `brand.json`, and the discovery trust chain
+- **[Webhooks](/dist/docs/3.0.2/building/by-layer/L3/webhooks)** — Signature format, replay windows, rotation
+- **[Signed Governance Context](/dist/docs/3.0.2/building/by-layer/L1/security#signed-governance-context)** — The 15-step verification checklist
+- **[Operating an Agent](/dist/docs/3.0.2/building/operating/operating-an-agent)** — Credential management, monitoring, and incident response as operating concerns
+- **[How Agents Communicate](/dist/docs/3.0.2/building/concepts/how-agents-communicate)** — `adagents.json`, `brand.json`, and the discovery trust chain

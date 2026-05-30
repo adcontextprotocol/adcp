@@ -14,7 +14,7 @@ Sellers can adopt error handling incrementally. Each level builds on the previou
 |-------|-------------------|-------------------|
 | **Level 1** | Return `code` + `message` on every error | Agents match on error code to classify failures |
 | **Level 2** | Add `recovery`, `retry_after`, `field`, and `suggestion` | Agents auto-retry transient errors and self-correct correctable ones |
-| **Level 3** | Use [transport bindings](/dist/docs/3.0.2/building/implementation/transport-errors) to put errors in `structuredContent` (MCP) or artifact `DataPart` (A2A) | Programmatic clients get typed errors without parsing text |
+| **Level 3** | Use [transport bindings](/dist/docs/3.0.2/building/operating/transport-errors) to put errors in `structuredContent` (MCP) or artifact `DataPart` (A2A) | Programmatic clients get typed errors without parsing text |
 
 **Level 1** is the minimum for a conformant implementation. **Level 2** is where agent-driven recovery becomes possible — without `recovery`, agents must guess from the error code. **Level 3** is where client libraries like `@adcp/client` can provide fully typed error objects.
 
@@ -121,9 +121,9 @@ AdCP exposes errors in two distinct places, and implementers need to populate th
 
 **Storyboard validators.** Prefer `check: error_code` over `check: field_present, path: "errors"` when asserting on a failed task's error code. `error_code` is shape-agnostic — the runner resolves it from either `adcp_error.code` (transport) or `errors[0].code` (payload). Direct `path: "errors"` checks pin the assertion to the payload shape and fail against agents that surface errors only via the transport envelope, even when the agent is conformant. See [Storyboard authoring — Asserting on errors](/dist/docs/3.0.2/contributing/storyboard-authoring#asserting-on-errors).
 
-**Discriminated rejection arms.** When the task response defines a structured rejection arm (e.g., `AcquireRightsRejected`, `CreativeRejected` — see the wire-placement guidance on [`GOVERNANCE_DENIED`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json) for the rule), the spec-correct denial response carries no error code on the wire — the rejection arm enforces `not: { required: [errors] }` at the schema layer. Asserting `check: error_code` will fail against a conformant agent. Assert on the discriminator instead: `check: field_value, path: "status", value: "rejected"`. This is the pattern for governance denial on `acquire_rights` and policy denial on `creative_approval`; assertions that mix the two paths (`error_code` for tasks with rejection arms, `field_value` for tasks without) bake non-spec opinions into the storyboard.
+**Discriminated rejection arms.** When the task response defines a structured rejection arm (e.g., `AcquireRightsRejected`, `CreativeRejected` — see the wire-placement guidance on [`GOVERNANCE_DENIED`](https://adcontextprotocol.org/schemas/3.0.2/enums/error-code.json) for the rule), the spec-correct denial response carries no error code on the wire — the rejection arm enforces `not: { required: [errors] }` at the schema layer. Asserting `check: error_code` will fail against a conformant agent. Assert on the discriminator instead: `check: field_value, path: "status", value: "rejected"`. This is the pattern for governance denial on `acquire_rights` and policy denial on `creative_approval`; assertions that mix the two paths (`error_code` for tasks with rejection arms, `field_value` for tasks without) bake non-spec opinions into the storyboard.
 
-**Discriminated rejection arms.** When the task response defines a structured rejection arm (e.g., `AcquireRightsRejected`, `CreativeRejected` — see the wire-placement guidance on [`GOVERNANCE_DENIED`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json) for the rule), the spec-correct denial response carries no error code on the wire — the rejection arm enforces `not: { required: [errors] }` at the schema layer. Asserting `check: error_code` will fail against a conformant agent. Assert on the discriminator instead: `check: field_value, path: "status", value: "rejected"`. This is the pattern for governance denial on `acquire_rights` and policy denial on `creative_approval`; assertions that mix the two paths (`error_code` for tasks with rejection arms, `field_value` for tasks without) bake non-spec opinions into the storyboard.
+**Discriminated rejection arms.** When the task response defines a structured rejection arm (e.g., `AcquireRightsRejected`, `CreativeRejected` — see the wire-placement guidance on [`GOVERNANCE_DENIED`](https://adcontextprotocol.org/schemas/3.0.2/enums/error-code.json) for the rule), the spec-correct denial response carries no error code on the wire — the rejection arm enforces `not: { required: [errors] }` at the schema layer. Asserting `check: error_code` will fail against a conformant agent. Assert on the discriminator instead: `check: field_value, path: "status", value: "rejected"`. This is the pattern for governance denial on `acquire_rights` and policy denial on `creative_approval`; assertions that mix the two paths (`error_code` for tasks with rejection arms, `field_value` for tasks without) bake non-spec opinions into the storyboard.
 
 ### Error Object Fields
 
@@ -166,7 +166,7 @@ Non-normative implementation note: a single-query pattern like `SELECT ... WHERE
 
 **Cache warmth** is a distinct oracle: a warm cache on tenant B's id indicates someone accessed it recently. Sellers MUST NOT gate cache population on authorization — true-miss ids MUST be cached-as-miss with the same TTL as resolve-then-deny, or cache reads MUST be bypassed for not-found responses.
 
-**Verifying this yourself.** The paired-probe `adcp fuzz` invariant checks uniform-response compliance by comparing two responses per tool. See [Validate Your Agent — Preparing to test uniform error responses](/dist/docs/3.0.2/building/validate-your-agent#preparing-to-test-uniform-error-responses) for tenant-setup requirements and CLI invocation. Full-strength testing requires two isolated tenants; single-tenant runs cover only the "does not exist" leg.
+**Verifying this yourself.** The paired-probe `adcp fuzz` invariant checks uniform-response compliance by comparing two responses per tool. See [Validate Your Agent — Preparing to test uniform error responses](/dist/docs/3.0.2/building/verification/validate-your-agent#preparing-to-test-uniform-error-responses) for tenant-setup requirements and CLI invocation. Full-strength testing requires two isolated tenants; single-tenant runs cover only the "does not exist" leg.
 
 ### Authentication and Access
 
@@ -551,7 +551,7 @@ function handlePartialSuccess(response) {
 | `conditions` | Approved with constraints | Apply conditions, re-check |
 | `denied` | Plan violates governance | Block the operation |
 
-If the governance agent needs human review internally (e.g., the action exceeds the agent's authority), `check_governance` behaves like any async task — it returns `submitted`/`working` status and eventually resolves to `approved` or `denied`. Handle this with the standard [async task lifecycle](/dist/docs/3.0.2/building/implementation/task-lifecycle), not special-case logic.
+If the governance agent needs human review internally (e.g., the action exceeds the agent's authority), `check_governance` behaves like any async task — it returns `submitted`/`working` status and eventually resolves to `approved` or `denied`. Handle this with the standard [async task lifecycle](/dist/docs/3.0.2/building/by-layer/L3/task-lifecycle), not special-case logic.
 
 Governance errors from the protocol layer (as opposed to governance decisions) use the standard error format. The most common:
 
@@ -574,7 +574,7 @@ Governance errors from the protocol layer (as opposed to governance decisions) u
 
 ## Next Steps
 
-- **Transport Bindings**: See [Transport Errors](/dist/docs/3.0.2/building/implementation/transport-errors) for how errors travel over MCP and A2A
-- **Task Lifecycle**: See [Task Lifecycle](/dist/docs/3.0.2/building/implementation/task-lifecycle) for status handling
-- **Webhooks**: See [Webhooks](/dist/docs/3.0.2/building/implementation/webhooks) for webhook error handling
-- **Security**: See [Security](/dist/docs/3.0.2/building/implementation/security) for authentication errors
+- **Transport Bindings**: See [Transport Errors](/dist/docs/3.0.2/building/operating/transport-errors) for how errors travel over MCP and A2A
+- **Task Lifecycle**: See [Task Lifecycle](/dist/docs/3.0.2/building/by-layer/L3/task-lifecycle) for status handling
+- **Webhooks**: See [Webhooks](/dist/docs/3.0.2/building/by-layer/L3/webhooks) for webhook error handling
+- **Security**: See [Security](/dist/docs/3.0.2/building/by-layer/L1/security) for authentication errors

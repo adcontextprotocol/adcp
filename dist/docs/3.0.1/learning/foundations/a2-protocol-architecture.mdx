@@ -25,7 +25,7 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
   <Card title="Protocol architecture" icon="sitemap" href="/dist/docs/3.0.1/protocol/architecture">
     The complete architecture: domain map, identity layer, transaction domains, governance, and ecosystem layers.
   </Card>
-  <Card title="MCP integration guide" icon="plug" href="/dist/docs/3.0.1/building/integration/mcp-guide">
+  <Card title="MCP integration guide" icon="plug" href="/dist/docs/3.0.1/building/by-layer/L0/mcp-guide">
     How MCP works in practice: tool calls, response format, context management, async operations.
   </Card>
   <Card title="Capability discovery" icon="magnifying-glass" href="/dist/docs/3.0.1/protocol/get_adcp_capabilities">
@@ -34,10 +34,10 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
   <Card title="AdAgents.json" icon="file-code" href="/dist/docs/3.0.1/governance/property/adagents">
     The agent discovery mechanism — like robots.txt for advertising agents.
   </Card>
-  <Card title="A2A guide" icon="arrows-left-right" href="/dist/docs/3.0.1/building/integration/a2a-guide">
+  <Card title="A2A guide" icon="arrows-left-right" href="/dist/docs/3.0.1/building/by-layer/L0/a2a-guide">
     The Agent-to-Agent protocol — how specialized agents collaborate on complex campaigns.
   </Card>
-  <Card title="Task lifecycle" icon="circle-nodes" href="/dist/docs/3.0.1/building/implementation/task-lifecycle">
+  <Card title="Task lifecycle" icon="circle-nodes" href="/dist/docs/3.0.1/building/by-layer/L3/task-lifecycle">
     How tasks move through states: from request to completion, including async operations.
   </Card>
 </CardGroup>
@@ -56,7 +56,7 @@ description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands
 | **Request signing** | A cryptographic signature on the request that lets the seller verify who sent it and that it wasn't tampered with in transit |
 | **Idempotency key** | A unique tag on each mutating request that lets a buyer safely retry without creating a duplicate |
 | **Domain** | A broad protocol area an agent supports — `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`. Declared via `supported_protocols`. |
-| **Specialism** | A narrow capability claim within a domain — e.g. `sales-guaranteed`, `creative-generative`, `signal-marketplace`. Declared via `specialisms`. See the [Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog). |
+| **Specialism** | A narrow capability claim within a domain — e.g. `sales-guaranteed`, `creative-generative`, `signal-marketplace`. Declared via `specialisms`. See the [Compliance Catalog](/dist/docs/3.0.1/building/verification/compliance-catalog). |
 | **Storyboard** | A scripted compliance scenario shipped by the protocol at `/compliance/{version}/` — agents don't write them, they're run against agents. An agent demonstrates its domain and specialism claims by passing the matching storyboards. |
 
 ## Protocol versioning

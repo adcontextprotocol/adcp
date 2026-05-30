@@ -35,7 +35,7 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
   <Card title="create_media_buy task" icon="receipt" href="/dist/docs/3.0.2/media-buy/task-reference/create_media_buy">
     Campaign creation: manual mode, proposal mode, validation, and approval lifecycle.
   </Card>
-  <Card title="Orchestrator design" icon="diagram-project" href="/dist/docs/3.0.2/building/implementation/orchestrator-design">
+  <Card title="Orchestrator design" icon="diagram-project" href="/dist/docs/3.0.2/building/operating/orchestrator-design">
     Architecture patterns for agents that coordinate across multiple sellers.
   </Card>
   <Card title="Pricing models" icon="tag" href="/dist/docs/3.0.2/media-buy/advanced-topics/pricing-models">
@@ -50,7 +50,7 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
   <Card title="Version negotiation" icon="code-branch" href="/dist/docs/3.0.2/reference/versioning#version-negotiation">
     Declare `adcp_major_version` on requests; sellers respond with `VERSION_UNSUPPORTED` when incompatible.
   </Card>
-  <Card title="Error handling" icon="triangle-exclamation" href="/dist/docs/3.0.2/building/implementation/error-handling">
+  <Card title="Error handling" icon="triangle-exclamation" href="/dist/docs/3.0.2/building/by-layer/L3/error-handling">
     Error taxonomy: transient, correctable, terminal. Includes `GOVERNANCE_DENIED`, `TERMS_REJECTED`, `VERSION_UNSUPPORTED`.
   </Card>
   <Card title="Trusted Match Protocol" icon="microchip" href="/dist/docs/3.0.2/trusted-match">
@@ -206,7 +206,7 @@ How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sy
 
 **~45 min** | Prerequisite: C3
 
-Create a working buyer agent that discovers products and executes media buys. Use any AI coding assistant (Claude Code, Cursor, Copilot) with the [`@adcp/client`](/dist/docs/3.0.2/building/schemas-and-sdks) SDK. The skill tested is orchestrating a buying workflow correctly.
+Create a working buyer agent that discovers products and executes media buys. Use any AI coding assistant (Claude Code, Cursor, Copilot) with the [`@adcp/client`](/dist/docs/3.0.2/building/by-layer/L0/schemas) SDK. The skill tested is orchestrating a buying workflow correctly.
 
 ### What you'll build
 
@@ -224,13 +224,13 @@ Your buyer agent runs against the public test agent (`test-mcp`). Use `npx @adcp
 npx @adcp/client@latest test-mcp get_products '{"brief":"your campaign brief"}'
 ```
 
-See [Validate Your Agent](/dist/docs/3.0.2/building/validate-your-agent) for CLI setup and the full testing workflow.
+See [Validate Your Agent](/dist/docs/3.0.2/building/verification/validate-your-agent) for CLI setup and the full testing workflow.
 
 ### Validating across sellers
 
 Buyer agents don't claim specialisms — specialisms describe what sellers offer. But your buyer agent should handle every specialism it expects to transact against. The storyboards a seller passes (declared via `supported_protocols` and `specialisms` in their `get_adcp_capabilities`) tell you what behaviors to expect.
 
-Review the [Compliance Catalog](/dist/docs/3.0.2/building/compliance-catalog) and note which specialisms your target sellers claim — that's your test matrix.
+Review the [Compliance Catalog](/dist/docs/3.0.2/building/verification/compliance-catalog) and note which specialisms your target sellers claim — that's your test matrix.
 
 ### Assessment rubric
 

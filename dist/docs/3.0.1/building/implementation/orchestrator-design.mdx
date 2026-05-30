@@ -415,7 +415,7 @@ check_governance(tool + payload) → create_media_buy → check_governance(media
 | Delivery check | Seller | [`check_governance`](/dist/docs/3.0.1/governance/campaign/tasks/check_governance) (`phase: delivery` + `delivery_metrics`) | Drift detected — pacing, geo, or channel distribution deviates from plan |
 | Plan outcome | Orchestrator | [`report_plan_outcome`](/dist/docs/3.0.1/governance/campaign/tasks/report_plan_outcome) | No feedback loop — governance agent cannot improve future recommendations |
 
-See the [media buy governance workflow](/dist/docs/3.0.1/media-buy/index#governance) for the complete sequence with code examples, and the [seller integration guide](/dist/docs/3.0.1/building/implementation/seller-integration#execution-checks) for the seller's execution check obligations.
+See the [media buy governance workflow](/dist/docs/3.0.1/media-buy/index#governance) for the complete sequence with code examples, and the [seller integration guide](/dist/docs/3.0.1/building/operating/seller-integration#execution-checks) for the seller's execution check obligations.
 
 ## Best Practices
 
@@ -522,6 +522,6 @@ Remember: Pending states are not errors - they're a normal part of the advertisi
 
 ## Next Steps
 
-- **Task Lifecycle**: See [Task Lifecycle](/dist/docs/3.0.1/building/implementation/task-lifecycle) for status handling
-- **Webhooks**: See [Webhooks](/dist/docs/3.0.1/building/implementation/webhooks) for push notifications
-- **Security**: See [Security](/dist/docs/3.0.1/building/implementation/security) for multi-tenant security
+- **Task Lifecycle**: See [Task Lifecycle](/dist/docs/3.0.1/building/by-layer/L3/task-lifecycle) for status handling
+- **Webhooks**: See [Webhooks](/dist/docs/3.0.1/building/by-layer/L3/webhooks) for push notifications
+- **Security**: See [Security](/dist/docs/3.0.1/building/by-layer/L1/security) for multi-tenant security

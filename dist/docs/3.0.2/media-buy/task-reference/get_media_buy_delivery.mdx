@@ -21,7 +21,7 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | [account-ref](/dist/docs/3.0.2/building/integration/accounts-and-agents#account-references) | No | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Only returns media buys belonging to this account. When omitted, returns data across all accessible accounts. |
+| `account` | [account-ref](/dist/docs/3.0.2/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Only returns media buys belonging to this account. When omitted, returns data across all accessible accounts. |
 | `media_buy_ids` | string[] | No* | Array of media buy IDs to retrieve |
 | `status_filter` | string \| string[] | No | Status filter: `"pending_creatives"`, `"pending_start"`, `"active"`, `"paused"`, `"completed"`. Defaults to `["active"]` when omitted. |
 | `start_date` | string | No | Report start date (YYYY-MM-DD), inclusive. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
@@ -786,5 +786,5 @@ After retrieving delivery data:
 ## Learn More
 
 - [Media Buy Lifecycle](/dist/docs/3.0.2/media-buy/media-buys/) - Complete campaign workflow
-- [Async Operations](/dist/docs/3.0.2/building/implementation/async-operations) - Async patterns and status handling
+- [Async Operations](/dist/docs/3.0.2/building/by-layer/L3/async-operations) - Async patterns and status handling
 - [Performance Optimization](/dist/docs/3.0.2/media-buy/media-buys/optimization-reporting) - Using delivery data for optimization

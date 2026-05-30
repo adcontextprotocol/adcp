@@ -15,13 +15,13 @@ The runner drives your agent through the same public tools a buyer would call, p
 |---------|--------------------------|----------------|
 | [`get_adcp_capabilities`](/dist/docs/3.0.1/protocol/get_adcp_capabilities) | Which protocols and specialisms you claim, and that you support sandbox | Your agent's capability response |
 | [`sync_accounts`](/dist/docs/3.0.1/media-buy/advanced-topics/sandbox) (or `list_accounts`) | How to obtain a sandbox account to run tests against | Your agent's account tool |
-| [`comply_test_controller`](/dist/docs/3.0.1/building/implementation/comply-test-controller) | How to seed fixtures and force seller-side transitions deterministically | Your agent, sandbox-only |
+| [`comply_test_controller`](/dist/docs/3.0.1/building/by-layer/L3/comply-test-controller) | How to seed fixtures and force seller-side transitions deterministically | Your agent, sandbox-only |
 
 You ship these three surfaces. The runner owns storyboard selection, fixture ordering, and response comparison.
 
 ## Step 1 — Declare capabilities honestly
 
-`get_adcp_capabilities` is how the runner picks which storyboards apply to you. It is also the [conformance](/dist/docs/3.0.1/building/conformance) contract: you are promising to pass every storyboard that matches what you declare.
+`get_adcp_capabilities` is how the runner picks which storyboards apply to you. It is also the [conformance](/dist/docs/3.0.1/building/verification/conformance) contract: you are promising to pass every storyboard that matches what you declare.
 
 The example below is for a guaranteed + proposal seller. A broadcast-TV seller would claim `sales-broadcast-tv`; a creative-only agent would claim the `creative` protocol with `creative-hosting` or `creative-generative` specialisms; a signals provider would claim `signals`. The pattern is the same: declare only what you actually implement.
 
@@ -37,12 +37,12 @@ The example below is for a guaranteed + proposal seller. A broadcast-TV seller w
 ```
 
 - **`supported_protocols`** — Pulls in the matching protocol storyboards from `/compliance/{version}/protocols/`.
-- **`specialisms`** — Pulls in opt-in specialism storyboards (see the [Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog) for the full enumeration).
+- **`specialisms`** — Pulls in opt-in specialism storyboards (see the [Compliance Catalog](/dist/docs/3.0.1/building/verification/compliance-catalog) for the full enumeration).
 - **`account.sandbox: true`** — Signals that you honor sandbox semantics (no real spend, no production side effects).
 - **`account.require_operator_auth`** — Determines your sandbox bootstrap path (step 2).
 
 <Warning>
-Claiming `sales-guaranteed` when you only run RTB ships you into storyboards you will fail on record. Conformance status is part of the [Verified](/dist/docs/3.0.1/building/conformance) badge buyer agents use to filter sellers — overclaim once, lose inclusion everywhere.
+Claiming `sales-guaranteed` when you only run RTB ships you into storyboards you will fail on record. Conformance status is part of the [Verified](/dist/docs/3.0.1/building/verification/conformance) badge buyer agents use to filter sellers — overclaim once, lose inclusion everywhere.
 </Warning>
 
 ## Step 2 — Pick your sandbox bootstrap path
@@ -57,7 +57,7 @@ Full details and examples: [Sandbox mode](/dist/docs/3.0.1/media-buy/advanced-to
 
 ## Step 3 — Implement the compliance test controller
 
-Without a compliance test controller, the runner tests only buyer-initiated flows (**observational mode**) — schema conformance, auth rejection, happy-path buyer calls. That is enough for a first pass and for capability discovery, but [conformance](/dist/docs/3.0.1/building/conformance) treats **deterministic mode** — full lifecycle walks enabled by the controller — as the bar for specialism coverage.
+Without a compliance test controller, the runner tests only buyer-initiated flows (**observational mode**) — schema conformance, auth rejection, happy-path buyer calls. That is enough for a first pass and for capability discovery, but [conformance](/dist/docs/3.0.1/building/verification/conformance) treats **deterministic mode** — full lifecycle walks enabled by the controller — as the bar for specialism coverage.
 
 `comply_test_controller` is a single sandbox-only tool with a `scenario` parameter covering three families:
 
@@ -67,7 +67,7 @@ Without a compliance test controller, the runner tests only buyer-initiated flow
 | `force_*` | Drive entities through state transitions that are normally seller-initiated | Any storyboard that tests a state machine (creative approval, account suspension, etc.) |
 | `simulate_*` | Inject delivery data or budget spend | Reporting and budgeting storyboards |
 
-See the [Compliance test controller reference](/dist/docs/3.0.1/building/implementation/comply-test-controller) for scenario-by-scenario parameters and response shapes, and the [Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog) for which scenarios each specialism requires.
+See the [Compliance test controller reference](/dist/docs/3.0.1/building/by-layer/L3/comply-test-controller) for scenario-by-scenario parameters and response shapes, and the [Compliance Catalog](/dist/docs/3.0.1/building/verification/compliance-catalog) for which scenarios each specialism requires.
 
 ### Wiring the SDK scaffold
 
@@ -78,7 +78,7 @@ npm install @adcp/client@^5.8.0
 ```
 
 <Note>
-The scaffold is TypeScript/JavaScript. Python, Go, and Java sellers implement the tool directly against the [schema](https://adcontextprotocol.org/schemas/3.0.1/compliance/comply-test-controller-request.json) — the contract below (adapters, error codes, idempotency semantics) applies the same way. SDKs for other languages are tracked in [Schemas and SDKs](/dist/docs/3.0.1/building/schemas-and-sdks).
+The scaffold is TypeScript/JavaScript. Python, Go, and Java sellers implement the tool directly against the [schema](https://adcontextprotocol.org/schemas/3.0.1/compliance/comply-test-controller-request.json) — the contract below (adapters, error codes, idempotency semantics) applies the same way. SDKs for other languages are tracked in [Schemas and SDKs](/dist/docs/3.0.1/building/by-layer/L0/schemas).
 </Note>
 
 ```ts
@@ -163,7 +163,7 @@ npx @adcp/client@latest --save-auth my-agent http://localhost:3001/mcp
 npx @adcp/client@latest storyboard run my-agent
 ```
 
-The runner discovers your capabilities, obtains a sandbox account, seeds fixtures via the controller, and walks each matching storyboard. See [Validate Your Agent](/dist/docs/3.0.1/building/validate-your-agent) for the full CLI, debug flags, and Addie workflows.
+The runner discovers your capabilities, obtains a sandbox account, seeds fixtures via the controller, and walks each matching storyboard. See [Validate Your Agent](/dist/docs/3.0.1/building/verification/validate-your-agent) for the full CLI, debug flags, and Addie workflows.
 
 ## Avoiding the teach-to-test trap
 
@@ -193,7 +193,7 @@ Before your first full storyboard sweep:
 
 ## What's next
 
-- **[Validate Your Agent](/dist/docs/3.0.1/building/validate-your-agent)** — CLI, Addie workflows, and multi-instance verification
-- **[Compliance test controller reference](/dist/docs/3.0.1/building/implementation/comply-test-controller)** — Full scenario-by-scenario spec
+- **[Validate Your Agent](/dist/docs/3.0.1/building/verification/validate-your-agent)** — CLI, Addie workflows, and multi-instance verification
+- **[Compliance test controller reference](/dist/docs/3.0.1/building/by-layer/L3/comply-test-controller)** — Full scenario-by-scenario spec
 - **[Sandbox mode](/dist/docs/3.0.1/media-buy/advanced-topics/sandbox)** — The two account model paths in depth
-- **[Conformance](/dist/docs/3.0.1/building/conformance)** — What "conformant" and "verified" mean once your runs pass
+- **[Conformance](/dist/docs/3.0.1/building/verification/conformance)** — What "conformant" and "verified" mean once your runs pass

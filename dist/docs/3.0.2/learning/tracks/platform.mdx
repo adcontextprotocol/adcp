@@ -29,19 +29,19 @@ Technical deep dive on building an AdCP-compliant MCP server. Transport options 
   <Card title="Building with AdCP" icon="wrench" href="/dist/docs/3.0.2/building/index">
     Overview of what it takes to build an AdCP integration.
   </Card>
-  <Card title="MCP integration guide" icon="plug" href="/dist/docs/3.0.2/building/integration/mcp-guide">
+  <Card title="MCP integration guide" icon="plug" href="/dist/docs/3.0.2/building/by-layer/L0/mcp-guide">
     The definitive guide: tool calls, response format, available tools, context management.
   </Card>
-  <Card title="Authentication" icon="lock" href="/dist/docs/3.0.2/building/integration/authentication">
+  <Card title="Authentication" icon="lock" href="/dist/docs/3.0.2/building/by-layer/L2/authentication">
     OAuth 2.0 for agent authentication, token management, and operator credentials.
   </Card>
-  <Card title="Accounts and agents" icon="people-arrows" href="/dist/docs/3.0.2/building/integration/accounts-and-agents">
+  <Card title="Accounts and agents" icon="people-arrows" href="/dist/docs/3.0.2/building/by-layer/L2/accounts-and-agents">
     How brands, operators, agents, and accounts relate to each other.
   </Card>
-  <Card title="Context sessions" icon="timeline" href="/dist/docs/3.0.2/building/integration/context-sessions">
+  <Card title="Context sessions" icon="timeline" href="/dist/docs/3.0.2/building/by-layer/L2/context-sessions">
     Managing context across multi-turn agent interactions.
   </Card>
-  <Card title="Schemas and SDKs" icon="box" href="/dist/docs/3.0.2/building/schemas-and-sdks">
+  <Card title="Schemas and SDKs" icon="box" href="/dist/docs/3.0.2/building/by-layer/L0/schemas">
     JSON Schemas, TypeScript types, and client SDKs for building faster.
   </Card>
 </CardGroup>
@@ -77,7 +77,7 @@ Cryptographic signatures for supply chain verification. How platforms validate a
   <Card title="Authorized properties" icon="key" href="/dist/docs/3.0.2/governance/property/authorized-properties">
     How publishers declare authorized sellers, and how buyers verify them.
   </Card>
-  <Card title="Security" icon="shield" href="/dist/docs/3.0.2/building/implementation/security">
+  <Card title="Security" icon="shield" href="/dist/docs/3.0.2/building/by-layer/L1/security">
     Security implementation patterns for AdCP servers.
   </Card>
   <Card title="Accounts and security" icon="user-shield" href="/dist/docs/3.0.2/media-buy/advanced-topics/accounts-and-security">
@@ -123,16 +123,16 @@ How AdCP coexists with existing programmatic infrastructure. Migration strategie
   <Card title="Trusted Match Protocol" icon="microchip" href="/dist/docs/3.0.2/trusted-match">
     The real-time execution layer: context match, identity match, and cross-publisher activation.
   </Card>
-  <Card title="AdCP and OpenRTB" icon="arrows-left-right" href="/dist/docs/3.0.2/building/understanding/adcp-vs-openrtb">
+  <Card title="AdCP and OpenRTB" icon="arrows-left-right" href="/dist/docs/3.0.2/building/concepts/adcp-vs-openrtb">
     The clearest view of how AdCP campaign workflows connect to impression-time execution.
   </Card>
-  <Card title="Async operations" icon="hourglass-half" href="/dist/docs/3.0.2/building/implementation/async-operations">
+  <Card title="Async operations" icon="hourglass-half" href="/dist/docs/3.0.2/building/by-layer/L3/async-operations">
     Handling long-running operations — essential for bridging real-time and agentic systems.
   </Card>
-  <Card title="Webhooks" icon="bell" href="/dist/docs/3.0.2/building/implementation/webhooks">
+  <Card title="Webhooks" icon="bell" href="/dist/docs/3.0.2/building/by-layer/L3/webhooks">
     Event-driven updates for delivery, status changes, and campaign modifications.
   </Card>
-  <Card title="Error handling" icon="triangle-exclamation" href="/dist/docs/3.0.2/building/implementation/error-handling">
+  <Card title="Error handling" icon="triangle-exclamation" href="/dist/docs/3.0.2/building/by-layer/L3/error-handling">
     Error patterns, retry strategies, and graceful degradation.
   </Card>
   <Card title="Sandbox" icon="flask" href="/dist/docs/3.0.2/media-buy/advanced-topics/sandbox">
@@ -167,7 +167,7 @@ How AdCP coexists with existing programmatic infrastructure. Migration strategie
 
 **~45 min** | Prerequisite: D3
 
-Build working AdCP infrastructure using any AI coding assistant (Claude Code, Cursor, Copilot) with the [`@adcp/client`](/dist/docs/3.0.2/building/schemas-and-sdks) SDK. Point your coding assistant at a [skill file](/dist/docs/3.0.2/building/build-an-agent) — choose `build-seller-agent` or `build-signals-agent` depending on what you want to build. This is the most ambitious build project.
+Build working AdCP infrastructure using any AI coding assistant (Claude Code, Cursor, Copilot) with the [`@adcp/client`](/dist/docs/3.0.2/building/by-layer/L0/schemas) SDK. Point your coding assistant at a [skill file](/dist/docs/3.0.2/building/by-layer/L4/build-an-agent) — choose `build-seller-agent` or `build-signals-agent` depending on what you want to build. This is the most ambitious build project.
 
 ### What you'll build
 
@@ -185,7 +185,7 @@ Run the matching storyboard against your running agent:
 npx @adcp/client@latest storyboard run my-agent media_buy_seller
 ```
 
-The storyboard validates protocol compliance across the complete workflow. See [Validate Your Agent](/dist/docs/3.0.2/building/validate-your-agent) for setup, debugging, and the full CLI reference.
+The storyboard validates protocol compliance across the complete workflow. See [Validate Your Agent](/dist/docs/3.0.2/building/verification/validate-your-agent) for setup, debugging, and the full CLI reference.
 
 ### Specialisms you can claim
 
@@ -195,7 +195,7 @@ Platform agents often span multiple domains. Declare each protocol you implement
 - Signal platform: `supported_protocols: ["signals"]`, `specialisms: ["signal-marketplace"]` or `["signal-owned"]`
 - Governance platform: `supported_protocols: ["governance"]`, `specialisms: ["content-standards", "property-lists", "collection-lists"]`
 
-See the [Compliance Catalog](/dist/docs/3.0.2/building/compliance-catalog) for every specialism and the storyboards that verify each claim.
+See the [Compliance Catalog](/dist/docs/3.0.2/building/verification/compliance-catalog) for every specialism and the storyboards that verify each claim.
 
 ### Assessment rubric
 

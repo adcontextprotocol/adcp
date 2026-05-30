@@ -28,7 +28,7 @@ Each record requires `account`, `vendor_cost`, and `currency`. Additional fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `account` | [AccountRef](/dist/docs/3.0.1/building/integration/accounts-and-agents#account-references) | Yes | Account for this record — by `account_id` or `{ brand, operator }`. |
+| `account` | [AccountRef](/dist/docs/3.0.1/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account for this record — by `account_id` or `{ brand, operator }`. |
 | `vendor_cost` | number | Yes | Amount owed to the vendor for this record, in `currency` |
 | `currency` | string | Yes | ISO 4217 currency code |
 | `pricing_option_id` | string | Vendor: Yes | Pricing option from the vendor's discovery response (`get_signals`, `list_creatives`, `list_content_standards`, `list_property_lists`) or execution response (`build_creative`). The vendor uses this to verify the correct rate was applied. |
@@ -186,4 +186,4 @@ Report upon campaign completion to close out the final period.
 
 - [sync_accounts](/dist/docs/3.0.1/accounts/tasks/sync_accounts) — Sync advertiser accounts with a seller before reporting
 - [Accounts Protocol](/dist/docs/3.0.1/accounts/overview) — How account establishment and settlement fit together
-- [Accounts and agents](/dist/docs/3.0.1/building/integration/accounts-and-agents) — Billing hierarchy and operator model
+- [Accounts and agents](/dist/docs/3.0.1/building/by-layer/L2/accounts-and-agents) — Billing hierarchy and operator model

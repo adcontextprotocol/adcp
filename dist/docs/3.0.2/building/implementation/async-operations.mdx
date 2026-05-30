@@ -22,11 +22,11 @@ Any AdCP task can return one of these statuses. The server chooses based on what
 **`submitted` is async.** The operation is blocked on something outside the server's control — publisher approval, human review, third-party processing. The caller should configure a webhook and move on.
 
 :::tip Webhooks for `submitted` operations
-**Webhooks** are the recommended approach for `submitted` operations — they work with any transport (MCP, A2A, REST) and handle operations that outlive a single session. See [Push Notifications](/dist/docs/3.0.2/building/implementation/webhooks).
+**Webhooks** are the recommended approach for `submitted` operations — they work with any transport (MCP, A2A, REST) and handle operations that outlive a single session. See [Push Notifications](/dist/docs/3.0.2/building/by-layer/L3/webhooks).
 
 **Polling** via `tasks/get` works as a simpler alternative or backup. See the [polling pattern](#polling-for-submitted-operations) below.
 
-**MCP Tasks** handle async at the protocol level, but client support is still limited — most chat-based MCP clients (Claude Desktop, Cursor) don't yet support task-augmented tool calls. If you're building your own MCP client or using the JS SDK directly, MCP Tasks work well. See [MCP Guide](/dist/docs/3.0.2/building/integration/mcp-guide#async-operations-via-mcp-tasks).
+**MCP Tasks** handle async at the protocol level, but client support is still limited — most chat-based MCP clients (Claude Desktop, Cursor) don't yet support task-augmented tool calls. If you're building your own MCP client or using the JS SDK directly, MCP Tasks work well. See [MCP Guide](/dist/docs/3.0.2/building/by-layer/L0/mcp-guide#async-operations-via-mcp-tasks).
 :::
 
 ## Operation examples
@@ -342,6 +342,6 @@ async function onStartup() {
 
 ## Next Steps
 
-- **Webhooks**: See [Webhooks](/dist/docs/3.0.2/building/implementation/webhooks) for push notifications instead of polling
-- **Task Lifecycle**: See [Task Lifecycle](/dist/docs/3.0.2/building/implementation/task-lifecycle) for status handling details
-- **Orchestrator Design**: See [Orchestrator Design](/dist/docs/3.0.2/building/implementation/orchestrator-design) for production patterns
+- **Webhooks**: See [Webhooks](/dist/docs/3.0.2/building/by-layer/L3/webhooks) for push notifications instead of polling
+- **Task Lifecycle**: See [Task Lifecycle](/dist/docs/3.0.2/building/by-layer/L3/task-lifecycle) for status handling details
+- **Orchestrator Design**: See [Orchestrator Design](/dist/docs/3.0.2/building/operating/orchestrator-design) for production patterns

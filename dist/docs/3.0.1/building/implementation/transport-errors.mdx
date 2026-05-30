@@ -6,7 +6,7 @@ description: "How AdCP structured errors travel over MCP and A2A transports: ext
 
 AdCP errors are **application-layer** errors. They belong in the tool/task response, not in the transport error channel. This page defines how the [`error.json`](https://adcontextprotocol.org/schemas/3.0.1/core/error.json) schema maps to MCP and A2A response envelopes.
 
-For the error schema itself, standard codes, and recovery strategies, see [Error Handling](/dist/docs/3.0.1/building/implementation/error-handling).
+For the error schema itself, standard codes, and recovery strategies, see [Error Handling](/dist/docs/3.0.1/building/by-layer/L3/error-handling).
 
 ## Layer Separation
 
@@ -179,7 +179,7 @@ Use `status: "failed"` with the AdCP error in an artifact `DataPart`, plus a `Te
 }
 ```
 
-This follows the [A2A Response Format](/dist/docs/3.0.1/building/integration/a2a-response-format) conventions: final states use `.artifacts` for data.
+This follows the [A2A Response Format](/dist/docs/3.0.1/building/by-layer/L0/a2a-response-format) conventions: final states use `.artifacts` for data.
 
 **Relationship to the "no wrappers" rule.** The `adcp_error` key is an intentional exception for failed tasks. Unlike success responses where `DataPart` contains task-specific data (e.g., `products`), a failed task's `DataPart` contains only the error. The key acts as a type discriminator so clients can distinguish error from success payloads without relying solely on status.
 
@@ -199,7 +199,7 @@ Clients MUST NOT require the MIME type. The `adcp_error` key is the authoritativ
 
 ## Envelope vs. payload errors
 
-AdCP exposes errors in two distinct places. This page covers the **transport envelope** (`adcp_error`); the **payload errors array** (`errors[]`) is covered in [Error Handling — Envelope vs. payload errors](/dist/docs/3.0.1/building/implementation/error-handling#envelope-vs-payload-errors-the-two-layer-model).
+AdCP exposes errors in two distinct places. This page covers the **transport envelope** (`adcp_error`); the **payload errors array** (`errors[]`) is covered in [Error Handling — Envelope vs. payload errors](/dist/docs/3.0.1/building/by-layer/L3/error-handling#envelope-vs-payload-errors-the-two-layer-model).
 
 | Layer | Key | When to populate | Readers |
 |---|---|---|---|
@@ -320,7 +320,7 @@ Once extracted, apply recovery based on the `recovery` field:
 
 **Retry ceiling:** Buyer agents SHOULD enforce a maximum retry count (e.g., 3 attempts) and a maximum cumulative retry duration (e.g., 300 seconds) per operation. Transient errors that persist beyond the retry budget SHOULD be escalated as terminal. Without a ceiling, a malicious or misconfigured seller returning `retry_after: 3600` on every request can stall an agent indefinitely.
 
-**When `recovery` is absent:** Fall back to code-based classification using the standard error code table. This allows [Level 1](/dist/docs/3.0.1/building/implementation/error-handling#compliance-levels) servers (which return `code` + `message` only) to still get correct recovery behavior from capable clients. If the code is also unknown, treat as `terminal`.
+**When `recovery` is absent:** Fall back to code-based classification using the standard error code table. This allows [Level 1](/dist/docs/3.0.1/building/by-layer/L3/error-handling#compliance-levels) servers (which return `code` + `message` only) to still get correct recovery behavior from capable clients. If the code is also unknown, treat as `terminal`.
 
 For unknown `recovery` values (forward compatibility), treat as `terminal`.
 
@@ -690,7 +690,7 @@ Buyer agents MUST:
 
 ## See Also
 
-- [Error Handling](/dist/docs/3.0.1/building/implementation/error-handling) — error schema, standard codes, recovery strategies
-- [MCP Guide](/dist/docs/3.0.1/building/integration/mcp-guide) — MCP transport integration
-- [A2A Guide](/dist/docs/3.0.1/building/integration/a2a-guide) — A2A transport integration
-- [A2A Response Format](/dist/docs/3.0.1/building/integration/a2a-response-format) — canonical A2A response structure
+- [Error Handling](/dist/docs/3.0.1/building/by-layer/L3/error-handling) — error schema, standard codes, recovery strategies
+- [MCP Guide](/dist/docs/3.0.1/building/by-layer/L0/mcp-guide) — MCP transport integration
+- [A2A Guide](/dist/docs/3.0.1/building/by-layer/L0/a2a-guide) — A2A transport integration
+- [A2A Response Format](/dist/docs/3.0.1/building/by-layer/L0/a2a-response-format) — canonical A2A response structure

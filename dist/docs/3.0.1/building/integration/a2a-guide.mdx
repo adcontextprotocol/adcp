@@ -5,7 +5,7 @@ description: "AdCP A2A integration guide: client setup, agent card verification,
 ---
 
 
-Transport-specific guide for integrating AdCP using the Agent-to-Agent Protocol. For task handling, status management, and workflow patterns, see [Task Lifecycle](/dist/docs/3.0.1/building/implementation/task-lifecycle).
+Transport-specific guide for integrating AdCP using the Agent-to-Agent Protocol. For task handling, status management, and workflow patterns, see [Task Lifecycle](/dist/docs/3.0.1/building/by-layer/L3/task-lifecycle).
 
 ## A2A Protocol Versions
 
@@ -32,7 +32,7 @@ Clients that speak 1.0 can talk to a v0.3 server when the SDK provides downward 
 
 ### Examples in This Guide
 
-Examples below use **1.0 wire format** (no `kind` field, ProtoJSON enums). For a v0.3 server, the same Part becomes `{ kind: "text", text: "…" }` and states become lowercase. AdCP extraction clients (see [A2A Response Extraction](/dist/docs/3.0.1/building/implementation/a2a-response-extraction)) accept both shapes during the compatibility period.
+Examples below use **1.0 wire format** (no `kind` field, ProtoJSON enums). For a v0.3 server, the same Part becomes `{ kind: "text", text: "…" }` and states become lowercase. AdCP extraction clients (see [A2A Response Extraction](/dist/docs/3.0.1/building/by-layer/L0/a2a-response-extraction)) accept both shapes during the compatibility period.
 
 ## A2A Client Setup
 
@@ -169,7 +169,7 @@ const task = await a2a.send({
 });
 ```
 
-**Status Handling**: See [Task Lifecycle](/dist/docs/3.0.1/building/implementation/task-lifecycle) for complete status handling patterns.
+**Status Handling**: See [Task Lifecycle](/dist/docs/3.0.1/building/by-layer/L3/task-lifecycle) for complete status handling patterns.
 
 ## A2A Response Format
 
@@ -204,13 +204,13 @@ AdCP responses over A2A **MUST** include at least one DataPart (a Part carrying 
 
 The A2A 1.0 wire format carries no `kind` discriminator — the Part's content type is implied by which field is set (`text`, `data`, `url`, or `raw`). For v0.3 servers/clients, the equivalent Part includes `"kind": "text"` / `"kind": "data"` / `"kind": "file"`.
 
-**For complete canonical format specification, see [A2A Response Format](/dist/docs/3.0.1/building/integration/a2a-response-format).**
+**For complete canonical format specification, see [A2A Response Format](/dist/docs/3.0.1/building/by-layer/L0/a2a-response-format).**
 
 ### A2A-Specific Fields
 - **taskId**: A2A task identifier for streaming updates
 - **contextId**: Automatically managed by A2A protocol
 - **artifacts**: Multi-part deliverables with text and data parts
-- **status**: AdCP's unified lowercase shorthand, mapped from A2A's `status.state` (see [A2A Response Extraction](/dist/docs/3.0.1/building/implementation/a2a-response-extraction#wire-format-compatibility))
+- **status**: AdCP's unified lowercase shorthand, mapped from A2A's `status.state` (see [A2A Response Extraction](/dist/docs/3.0.1/building/by-layer/L0/a2a-response-extraction#wire-format-compatibility))
 
 ### Processing Artifacts
 
@@ -239,7 +239,7 @@ if (artifact) {
 return { status: response.status };
 ```
 
-**For complete response structure requirements, error handling, and implementation patterns, see [A2A Response Format](/dist/docs/3.0.1/building/integration/a2a-response-format).**
+**For complete response structure requirements, error handling, and implementation patterns, see [A2A Response Format](/dist/docs/3.0.1/building/by-layer/L0/a2a-response-format).**
 
 ## Push Notifications (A2A-Specific)
 
@@ -296,7 +296,7 @@ await a2a.send({
 });
 ```
 
-For webhook payload formats, protocol comparison, and detailed handling examples, see [Webhooks](/dist/docs/3.0.1/building/implementation/webhooks).
+For webhook payload formats, protocol comparison, and detailed handling examples, see [Webhooks](/dist/docs/3.0.1/building/by-layer/L3/webhooks).
 
 ## SSE Streaming (A2A-Specific)
 
@@ -745,7 +745,7 @@ await a2a.send({
 
 All AdCP tasks are available as A2A skills. Use explicit invocation for deterministic execution:
 
-**Task Management**: For comprehensive guidance on tracking async operations across all domains, polling patterns, and webhook integration, see [Webhooks](/dist/docs/3.0.1/building/implementation/webhooks).
+**Task Management**: For comprehensive guidance on tracking async operations across all domains, polling patterns, and webhook integration, see [Webhooks](/dist/docs/3.0.1/building/by-layer/L3/webhooks).
 
 ### Skill Structure
 ```javascript
@@ -964,7 +964,7 @@ const finalResult = await handleA2aResponse(result);
 
 ### Error Handling
 
-Failed tasks carry structured AdCP errors in artifact `DataPart` under the `adcp_error` key. For the full extraction logic and recovery behavior, see [Transport Error Mapping](/dist/docs/3.0.1/building/implementation/transport-errors).
+Failed tasks carry structured AdCP errors in artifact `DataPart` under the `adcp_error` key. For the full extraction logic and recovery behavior, see [Transport Error Mapping](/dist/docs/3.0.1/building/operating/transport-errors).
 
 ```javascript
 try {
@@ -1011,9 +1011,9 @@ The `@adcp/client` library handles A2A artifact extraction automatically, so you
 
 ## Next Steps
 
-- **Core Concepts**: Read [Task Lifecycle](/dist/docs/3.0.1/building/implementation/task-lifecycle) for status handling and workflows  
+- **Core Concepts**: Read [Task Lifecycle](/dist/docs/3.0.1/building/by-layer/L3/task-lifecycle) for status handling and workflows  
 - **Task Reference**: See [Media Buy Tasks](/dist/docs/3.0.1/media-buy) and [Signals](/dist/docs/3.0.1/signals/overview)
-- **Protocol Comparison**: Compare with [MCP integration](/dist/docs/3.0.1/building/integration/mcp-guide)
+- **Protocol Comparison**: Compare with [MCP integration](/dist/docs/3.0.1/building/by-layer/L0/mcp-guide)
 - **Examples**: Find complete workflow examples in Core Concepts
 
-**For status handling, async operations, and clarification patterns, see [Task Lifecycle](/dist/docs/3.0.1/building/implementation/task-lifecycle) - this guide focuses on A2A transport specifics only.**
+**For status handling, async operations, and clarification patterns, see [Task Lifecycle](/dist/docs/3.0.1/building/by-layer/L3/task-lifecycle) - this guide focuses on A2A transport specifics only.**

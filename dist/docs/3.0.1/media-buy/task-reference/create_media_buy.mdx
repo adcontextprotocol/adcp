@@ -157,14 +157,14 @@ npx @adcp/client@latest \
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | [account-ref](/dist/docs/3.0.1/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
+| `account` | [account-ref](/dist/docs/3.0.1/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
 | `proposal_id` | string | No* | ID of a proposal from `get_products` to execute. Alternative to providing packages. |
 | `total_budget` | TotalBudget | No* | Total budget when executing a proposal. Publisher applies allocation percentages. |
 | `packages` | Package[] | No* | Array of package configurations (see below). Required when not using proposal_id. |
 | `brand` | BrandRef | Yes | Brand reference — resolved to full identity at execution time. See [brand.json](/dist/docs/3.0.1/brand-protocol/brand-json) |
 | `start_time` | string | Yes | `"asap"` or ISO 8601 date-time |
 | `end_time` | string | Yes | ISO 8601 date-time (UTC unless timezone specified) |
-| `invoice_recipient` | [BusinessEntity](/dist/docs/3.0.1/building/integration/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override the account's default billing entity for this buy. The seller MUST validate the recipient is authorized and include it in `check_governance` when governance agents are configured. |
+| `invoice_recipient` | [BusinessEntity](/dist/docs/3.0.1/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override the account's default billing entity for this buy. The seller MUST validate the recipient is authorized and include it in `check_governance` when governance agents are configured. |
 | `po_number` | string | No | Purchase order number |
 | `idempotency_key` | string | No | Unique key for safe retries. If a request with the same key and account has already been processed, the seller returns the existing media buy. MUST be unique per (seller, request) pair. Min 16 chars. |
 | `context` | object | No | Opaque correlation data echoed unchanged in the response. Use for internal tracking, trace IDs, or other caller-specific identifiers. |
@@ -1006,7 +1006,7 @@ This task can complete instantly or take days depending on complexity and approv
 | `input-required` | Needs your input | Read message, respond with info |
 | `failed` | Error occurred | Handle the error |
 
-**Note:** For the complete status list see [Task Lifecycle](/dist/docs/3.0.1/building/implementation/task-lifecycle).
+**Note:** For the complete status list see [Task Lifecycle](/dist/docs/3.0.1/building/by-layer/L3/task-lifecycle).
 
 <Tabs>
   <Tab title="MCP">
@@ -1340,7 +1340,7 @@ await a2a.send({
   </Tab>
 </Tabs>
 
-For complete async handling patterns, see [Async Operations](/dist/docs/3.0.1/building/implementation/async-operations).
+For complete async handling patterns, see [Async Operations](/dist/docs/3.0.1/building/by-layer/L3/async-operations).
 
 ## Usage Notes
 

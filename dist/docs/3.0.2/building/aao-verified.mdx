@@ -33,7 +33,7 @@ The two axes are related but answer different questions, and the badge surfaces 
 |---|---|
 | **Tested against** | Your test-mode / sandbox endpoint |
 | **What it proves** | AdCP wire format, task shape, error semantics, state-machine transitions, declared specialisms map to working tools, schema conformance, filter behavior, idempotency semantics |
-| **How** | Storyboards from the [Compliance Catalog](/dist/docs/3.0.2/building/compliance-catalog) run against the agent on AAO's compliance heartbeat |
+| **How** | Storyboards from the [Compliance Catalog](/dist/docs/3.0.2/building/verification/compliance-catalog) run against the agent on AAO's compliance heartbeat |
 | **Cadence** | ~12-24h heartbeat |
 | **Eligibility** | Any agent that passes the storyboards for its declared specialisms + holds an active AAO membership with API-access tier |
 | **Status** | **Available now** |
@@ -200,7 +200,7 @@ Real impressions on real inventory over real time are not teachable:
 - Data was not generated for the test — it is real delivery that continues whether the engine is watching or not.
 - Variation across the rolling window exposes any branch that depends on stable test fixtures.
 
-See [Anti-teach-to-test conformance](/dist/docs/3.0.2/building/conformance#anti-teach-to-test) for the broader posture; (Live) is the most direct instance.
+See [Anti-teach-to-test conformance](/dist/docs/3.0.2/building/verification/conformance#anti-teach-to-test) for the broader posture; (Live) is the most direct instance.
 
 ## Maintenance windows
 
@@ -329,8 +329,8 @@ A fourth supporting issue tracks 4.0:
 
 ## Relationship to other surfaces
 
-- [Conformance Specification](/dist/docs/3.0.2/building/conformance) — defines what *conformant* means via the storyboards. The (Spec) axis verifies your agent matches that specification.
-- [Compliance Catalog](/dist/docs/3.0.2/building/compliance-catalog) — indexes the protocols and specialisms an agent can claim. Each declared specialism is what the verification engine tests, on whichever axes are eligible.
+- [Conformance Specification](/dist/docs/3.0.2/building/verification/conformance) — defines what *conformant* means via the storyboards. The (Spec) axis verifies your agent matches that specification.
+- [Compliance Catalog](/dist/docs/3.0.2/building/verification/compliance-catalog) — indexes the protocols and specialisms an agent can claim. Each declared specialism is what the verification engine tests, on whichever axes are eligible.
 - [`get_adcp_capabilities`](/dist/docs/3.0.2/protocol/get_adcp_capabilities) — where the agent declares its `supported_protocols` and `specialisms`. The declarations are the input to verification.
 - [`attestation_verifier` scope](/dist/docs/3.0.2/accounts/overview#standard-named-scope-attestation_verifier) — the narrow scope the seller grants to the compliance engine for (Live) observation.
 - AAO membership — required for badge issuance. Membership lapse revokes the badge.

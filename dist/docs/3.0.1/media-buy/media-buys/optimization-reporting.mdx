@@ -108,7 +108,7 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 - **Bearer tokens**: Simple, good for development (Authorization header)
 - **HMAC-SHA256**: Production-recommended, prevents replay attacks (signature headers)
 - Credentials exchanged out-of-band during publisher onboarding
-- See [Security](/dist/docs/3.0.1/building/implementation/security) for implementation details
+- See [Security](/dist/docs/3.0.1/building/by-layer/L1/security) for implementation details
 
 #### Supported Frequencies
 
@@ -540,7 +540,7 @@ Publishers MUST scrub personally identifiable information (PII) from all webhook
 
 #### Webhook Health Monitoring
 
-Webhook delivery status is tracked through **AdCP's global task management system** (see [Task Lifecycle](/dist/docs/3.0.1/building/implementation/task-lifecycle)).
+Webhook delivery status is tracked through **AdCP's global task management system** (see [Task Lifecycle](/dist/docs/3.0.1/building/by-layer/L3/task-lifecycle)).
 
 When a media buy is created with `reporting_webhook` configured, the publisher creates an ongoing task for webhook delivery. Buyers can monitor webhook health using standard task queries.
 
@@ -795,7 +795,7 @@ Each file contains one media buy delivery per line (JSONL), row (CSV/Parquet/ORC
 
 ### Security considerations for offline delivery
 
-Offline files sit at rest for `file_retention_days`, so a misconfigured IAM policy leaks historical reporting across tenants. The [general security controls](/dist/docs/3.0.1/building/implementation/security) apply; the offline-specific requirements:
+Offline files sit at rest for `file_retention_days`, so a misconfigured IAM policy leaks historical reporting across tenants. The [general security controls](/dist/docs/3.0.1/building/by-layer/L1/security) apply; the offline-specific requirements:
 
 - **Scope access at the IAM layer, not by obscurity.** Buyer read access MUST be scoped to `{bucket}/{prefix}/*` (S3 bucket policy condition, GCS conditional IAM binding on `resource.name.startsWith(...)`, or Azure SAS scoped to the prefix). A bucket-wide read grant is non-compliant even when the seller only writes under one prefix per account.
 - **Scope listing as well as reads.** Prefix scoping MUST cover both object-level operations (`s3:GetObject`) and listing (`s3:ListBucket` with an `s3:prefix` condition). A policy that scopes `GetObject` to the prefix but leaves `ListBucket` unscoped lets a buyer enumerate other tenants' prefix names — a cross-tenant isolation failure even without read access to their objects. The same applies to GCS `storage.objects.list` and Azure `list` SAS permissions.
@@ -803,7 +803,7 @@ Offline files sit at rest for `file_retention_days`, so a misconfigured IAM poli
 
 PII scrubbing requirements (see [above](#pii-scrubbing-for-gdpr-ccpa)) apply to offline files identically — scrub at the collection layer, not at delivery, because the files accumulate at rest.
 
-`setup_instructions` is a seller-provided URL. It is operator-facing documentation, not agent-consumable content. Buyer agents MUST NOT auto-fetch the URL; they SHOULD surface it to a human operator. If an implementation chooses to fetch it (for example, to preview the target before showing it to the operator), apply [webhook URL SSRF validation](/dist/docs/3.0.1/building/implementation/security#webhook-url-validation-ssrf), and the fetched content MUST NOT be passed into an LLM context without indirect-prompt-injection guarding — seller-controlled text in this field can contain instructions to rotate credentials, change billing, or alter downstream agent behavior.
+`setup_instructions` is a seller-provided URL. It is operator-facing documentation, not agent-consumable content. Buyer agents MUST NOT auto-fetch the URL; they SHOULD surface it to a human operator. If an implementation chooses to fetch it (for example, to preview the target before showing it to the operator), apply [webhook URL SSRF validation](/dist/docs/3.0.1/building/by-layer/L1/security#webhook-url-validation-ssrf), and the fetched content MUST NOT be passed into an LLM context without indirect-prompt-injection guarding — seller-controlled text in this field can contain instructions to rotate credentials, change billing, or alter downstream agent behavior.
 
 ## Data Reconciliation
 
@@ -959,7 +959,7 @@ Reporting webhooks follow AdCP's standard webhook reliability patterns:
 - **Best-effort ordering**: Notifications may arrive out of order
 - **Timeout and retry**: Limited retry attempts on delivery failure
 
-See [Webhooks](/dist/docs/3.0.1/building/implementation/webhooks) for detailed implementation guidance.
+See [Webhooks](/dist/docs/3.0.1/building/by-layer/L3/webhooks) for detailed implementation guidance.
 
 ## Optimization Strategies
 

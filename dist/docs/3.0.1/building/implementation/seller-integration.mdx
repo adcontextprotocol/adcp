@@ -166,7 +166,7 @@ The account model depends on your platform:
 - **Walled gardens** (social platforms, AI platforms, retail media networks) typically use explicit accounts — set `require_operator_auth: true` in [`get_adcp_capabilities`](/dist/docs/3.0.1/protocol/get_adcp_capabilities) so each operator authenticates independently.
 - **Open platforms** (publishers, SSPs) can use implicit accounts — the agent is trusted and declares accounts via `sync_accounts`.
 
-See [Accounts and Agents](/dist/docs/3.0.1/building/integration/accounts-and-agents) for full workflows.
+See [Accounts and Agents](/dist/docs/3.0.1/building/by-layer/L2/accounts-and-agents) for full workflows.
 
 **Sandbox support is strongly recommended.** Declare `account.sandbox: true` in your capabilities so buyers can provision test accounts and validate the full integration — product discovery, media buy creation, delivery reporting — before committing real spend. Without sandbox, buyers must test against live inventory, which slows adoption and increases onboarding friction. See [Sandbox mode](/dist/docs/3.0.1/media-buy/advanced-topics/sandbox) for implementation details.
 
@@ -312,7 +312,7 @@ AdCP sits alongside your existing APIs and dashboards. It doesn't replace your s
   <Card title="Building with AdCP" icon="rocket" href="/dist/docs/3.0.1/building">
     Implementation guides, SDKs, and integration patterns.
   </Card>
-  <Card title="Operating an agent" icon="gears" href="/dist/docs/3.0.1/building/operating-an-agent">
+  <Card title="Operating an agent" icon="gears" href="/dist/docs/3.0.1/building/operating/operating-an-agent">
     What sits behind protocol compliance — activation, storage, hosting, and build-vs-buy.
   </Card>
   <Card title="Ask Addie" icon="message-bot" href="https://adcontextprotocol.org/chat">

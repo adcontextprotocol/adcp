@@ -5,7 +5,7 @@ description: "What sits behind a protocol-compliant agent — products, activati
 "og:title": "AdCP — Operating an Agent"
 ---
 
-The 2–8 minute [Build an Agent](/dist/docs/3.0.2/building/build-an-agent) path gets you a protocol-compliant agent. This page is what comes after — the business infrastructure behind each tool call, and how to decide who runs it.
+The 2–8 minute [Build an Agent](/dist/docs/3.0.2/building/by-layer/L4/build-an-agent) path gets you a protocol-compliant agent. This page is what comes after — the business infrastructure behind each tool call, and how to decide who runs it.
 
 The worked example here is a **sales agent**, since that's the most infrastructure-heavy case. Short callouts mark where the operational concerns diverge for signals, creative, and retail-media agents.
 
@@ -43,7 +43,7 @@ The SDKs and storyboards cover protocol compliance across all three paths. Every
 | **Delivery reporting & performance** | Powers `get_media_buy_delivery` and `provide_performance_feedback` with real numbers. The protocol tools exist; the log ingest, aggregation, and attribution pipeline behind them is yours to build. | Ad server reporting API pulls, log-level ingest into a warehouse, or a managed analytics tool feeding the agent. |
 | **Order management** | Tracks buy status, approval workflows, creative deadlines, and pacing beyond what the protocol's task lifecycle covers. | Status fields in your database to start; a dashboard as volume grows. |
 | **Hosting** | Keeps your agent live at the URL you declare in `adagents.json`. Downtime or URL drift breaks buyer discovery. | Cloud VM, container service (Cloud Run, ECS, Fly.io), or a managed hosting platform. |
-| **Discovery registration** | Tells buyer agents your agent exists and which protocols it supports. Handled via `adagents.json` on your domain — not through a central registry. | Publish `adagents.json` at your domain root. See [How Agents Communicate](/dist/docs/3.0.2/building/understanding/how-agents-communicate) and [Authorized Properties](/dist/docs/3.0.2/governance/property/authorized-properties). |
+| **Discovery registration** | Tells buyer agents your agent exists and which protocols it supports. Handled via `adagents.json` on your domain — not through a central registry. | Publish `adagents.json` at your domain root. See [How Agents Communicate](/dist/docs/3.0.2/building/concepts/how-agents-communicate) and [Authorized Properties](/dist/docs/3.0.2/governance/property/authorized-properties). |
 
 ## Where the protocol ends and your business begins
 
@@ -89,7 +89,7 @@ This is the monitoring a sales agent needs regardless of who wrote the code. A p
 
 ### Security monitoring — what compliance covers vs. what stays with you
 
-**Most AdCP security mechanics are enforced by the [compliance suite](/dist/docs/3.0.2/building/validate-your-agent) — you don't need to hand-verify them.** The storyboard runner verifies authentication, idempotency, schema conformance, error handling, and governance behavior against your agent. If the suite passes, the wire-level behavior is correct. You don't need to learn agent/account scoping internals, JWS verification steps, or canonical JSON — the tests do.
+**Most AdCP security mechanics are enforced by the [compliance suite](/dist/docs/3.0.2/building/verification/validate-your-agent) — you don't need to hand-verify them.** The storyboard runner verifies authentication, idempotency, schema conformance, error handling, and governance behavior against your agent. If the suite passes, the wire-level behavior is correct. You don't need to learn agent/account scoping internals, JWS verification steps, or canonical JSON — the tests do.
 
 What the compliance suite checks (so you don't have to teach it):
 
@@ -116,13 +116,13 @@ What the compliance suite checks (so you don't have to teach it):
 If you're **partnering**, ask the vendor: "Do you pass the AdCP compliance suite on every release? Which version? Can I see the latest run?" That single question covers most of the code-controls surface. Also ask whether they hold SOC 2 Type II, ISO 27001, or the equivalent attestation for your industry — and what their breach-notification commitment is. If you're **self-hosting a prebuilt agent**, run the compliance suite yourself against your deployment. If you're **self-building**, the compliance suite is your regression harness.
 
 <Note>
-**For security and IT leaders:** The [Security Model](/dist/docs/3.0.2/building/understanding/security-model) page is written for you — CISOs, security architects, and third-party risk reviewers at brands, agencies, publishers, and platforms alike. It explains the threat landscape and what AdCP defends against by design, and includes a checklist of questions to ask your engineering team (or your vendor) before going live.
+**For security and IT leaders:** The [Security Model](/dist/docs/3.0.2/building/concepts/security-model) page is written for you — CISOs, security architects, and third-party risk reviewers at brands, agencies, publishers, and platforms alike. It explains the threat landscape and what AdCP defends against by design, and includes a checklist of questions to ask your engineering team (or your vendor) before going live.
 </Note>
 
 ## What's next
 
-- **[Validate Your Agent](/dist/docs/3.0.2/building/validate-your-agent)** — The compliance suite referenced above
-- **[Security](/dist/docs/3.0.2/building/implementation/security)** — The normative reference for HMAC, idempotency, SSRF, and governance verification
-- **[How Agents Communicate](/dist/docs/3.0.2/building/understanding/how-agents-communicate)** — Discovery via `adagents.json` and `brand.json`
-- **[Seller Integration](/dist/docs/3.0.2/building/implementation/seller-integration)** — Patterns for connecting an agent to an ad server
+- **[Validate Your Agent](/dist/docs/3.0.2/building/verification/validate-your-agent)** — The compliance suite referenced above
+- **[Security](/dist/docs/3.0.2/building/by-layer/L1/security)** — The normative reference for HMAC, idempotency, SSRF, and governance verification
+- **[How Agents Communicate](/dist/docs/3.0.2/building/concepts/how-agents-communicate)** — Discovery via `adagents.json` and `brand.json`
+- **[Seller Integration](/dist/docs/3.0.2/building/operating/seller-integration)** — Patterns for connecting an agent to an ad server
 - **[Authorized Properties](/dist/docs/3.0.2/governance/property/authorized-properties)** — Who can sell what, and how that's declared

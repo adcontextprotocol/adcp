@@ -69,7 +69,7 @@ Other exempt categories: payload-array-keyed sync tasks (`sync_accounts`, `sync_
 
 The training agent's `sessionKeyFromArgs` routes by envelope identity. A storyboard that **drops** identity on an ID-scoped task lands in `open:default` and fails to find the plan/rights/standards — so storyboards carry envelope identity anyway, and the lint just won't enforce it.
 
-This is a sandbox routing convention, not a spec claim. Production sellers resolve tenant from the authenticated principal (bearer/OAuth/HMAC), not from envelope payload — see [Tenant resolution](/dist/docs/3.0.1/building/integration/authentication#tenant-resolution). They don't need envelope identity on ID-scoped tasks and wouldn't rely on it if present. Building a cross-session reverse index in the training agent just to move identity off the wire would be sandbox plumbing without spec meaning.
+This is a sandbox routing convention, not a spec claim. Production sellers resolve tenant from the authenticated principal (bearer/OAuth/HMAC), not from envelope payload — see [Tenant resolution](/dist/docs/3.0.1/building/by-layer/L2/authentication#tenant-resolution). They don't need envelope identity on ID-scoped tasks and wouldn't rely on it if present. Building a cross-session reverse index in the training agent just to move identity off the wire would be sandbox plumbing without spec meaning.
 
 ## Intentionally cross-tenant probes
 
@@ -135,7 +135,7 @@ phases:
 
 The runner injects a fixtures phase that calls `comply_test_controller` with `scenario: seed_product`, `scenario: seed_pricing_option`, and `scenario: seed_creative` (in foreign-key order) before running `place_buy`. An agent that implements the seed scenarios passes out of the box; an agent that returns `UNKNOWN_SCENARIO` on the seeds causes the storyboard to grade as `not_applicable`, not failed — implementers don't get penalized for missing sandbox-only surface.
 
-See the full list of seed scenarios and their params in [Compliance test controller — Scenarios](/dist/docs/3.0.1/building/implementation/comply-test-controller#scenarios).
+See the full list of seed scenarios and their params in [Compliance test controller — Scenarios](/dist/docs/3.0.1/building/by-layer/L3/comply-test-controller#scenarios).
 
 ### Pattern B — flow-derived captures via `context_outputs:` + `$context.<name>`
 
@@ -179,11 +179,11 @@ validations:
 
 The runner does NOT auto-inject `context:` on sample_requests that omit it. Storyboards whose validator expects `context.correlation_id` in the response but whose sample_request lacks `context:` are authoring bugs — the agent is allowed (and required) to omit context when the caller sent none.
 
-See [Context and sessions — Normative echo contract](/dist/docs/3.0.1/building/integration/context-sessions#normative-echo-contract) for the agent-side rules.
+See [Context and sessions — Normative echo contract](/dist/docs/3.0.1/building/by-layer/L2/context-sessions#normative-echo-contract) for the agent-side rules.
 
 ## Asserting on errors
 
-AdCP surfaces errors in two layers (see [Error handling — envelope vs. payload](/dist/docs/3.0.1/building/implementation/error-handling#envelope-vs-payload-errors-the-two-layer-model)). Storyboards MUST assert error shape in a way that works regardless of which layer a conformant agent surfaced the error on.
+AdCP surfaces errors in two layers (see [Error handling — envelope vs. payload](/dist/docs/3.0.1/building/by-layer/L3/error-handling#envelope-vs-payload-errors-the-two-layer-model)). Storyboards MUST assert error shape in a way that works regardless of which layer a conformant agent surfaced the error on.
 
 **Use `check: error_code` — not `check: field_present, path: "errors"`.**
 

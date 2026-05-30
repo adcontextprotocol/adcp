@@ -13,7 +13,7 @@ description: "What 'AdCP-conformant' means, defined by the storyboards that veri
 AdCP conformance has two load-bearing terms. A third (one you'll hear in the wild) is a trap.
 
 - **Conformant** — the agent meets the normative rules. Defined by the storyboards this document indexes.
-- **Verified** — AAO has tested the agent recently against those storyboards and issued a signed attestation ([AAO Verified badge](/dist/docs/3.0.1/building/compliance-catalog)). Gated on active membership and a live heartbeat.
+- **Verified** — AAO has tested the agent recently against those storyboards and issued a signed attestation ([AAO Verified badge](/dist/docs/3.0.1/building/verification/compliance-catalog)). Gated on active membership and a live heartbeat.
 - **"Compliant"** — self-attested, unverified, no external check. Don't claim it; don't design for it. This document uses *conformant* and *verified* exclusively.
 
 Put differently:
@@ -42,7 +42,7 @@ Every agent satisfies the universal layer. Each `supported_protocols` claim adds
 | **Protocol** | Agent claiming a `supported_protocols` value | [`/compliance/latest/protocols/{protocol}/`](https://adcontextprotocol.org/compliance/latest/protocols/) |
 | **Specialism** | Agent claiming a `specialisms` value | [`/compliance/latest/specialisms/{id}/`](https://adcontextprotocol.org/compliance/latest/specialisms/) |
 
-Agents MUST NOT declare a capability whose storyboards they do not pass. See the [Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog) for the full taxonomy and [Validate Your Agent](/dist/docs/3.0.1/building/validate-your-agent) for how to run the suite locally.
+Agents MUST NOT declare a capability whose storyboards they do not pass. See the [Compliance Catalog](/dist/docs/3.0.1/building/verification/compliance-catalog) for the full taxonomy and [Validate Your Agent](/dist/docs/3.0.1/building/verification/validate-your-agent) for how to run the suite locally.
 
 ## Universal conformance
 
@@ -71,9 +71,9 @@ Every agent MUST pass every storyboard below.
 | [`comply_controller_mode_gate`](https://adcontextprotocol.org/compliance/latest/universal/comply-controller-mode-gate) | `comply_test_controller` live-mode denial gate — verifies sellers return `FORBIDDEN` when a live-mode account calls the controller; skipped for agents that do not expose `comply_test_controller` |
 | [`signed_requests`](https://adcontextprotocol.org/compliance/latest/universal/signed-requests) | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
 
-Agents that declare `capabilities.compliance_testing.supported: true` MUST implement the full [test controller](/dist/docs/3.0.1/building/implementation/comply-test-controller); a partial controller is non-conformant, so declare `false` rather than ship one.
+Agents that declare `capabilities.compliance_testing.supported: true` MUST implement the full [test controller](/dist/docs/3.0.1/building/by-layer/L3/comply-test-controller); a partial controller is non-conformant, so declare `false` rather than ship one.
 
-Agents that declare `request_signing.supported: true` MUST implement the full RFC 9421 verifier per the [request-signing profile](/dist/docs/3.0.1/building/implementation/security#signed-requests-transport-layer); a partial verifier is non-conformant, so declare `false` rather than ship one.
+Agents that declare `request_signing.supported: true` MUST implement the full RFC 9421 verifier per the [request-signing profile](/dist/docs/3.0.1/building/by-layer/L1/security#signed-requests-transport-layer); a partial verifier is non-conformant, so declare `false` rather than ship one.
 
 ## Protocol conformance
 
@@ -90,7 +90,7 @@ A `supported_protocols` claim obligates the protocol's baseline storyboard.
 
 ## Specialism conformance
 
-A `specialisms` claim obligates the specialism's storyboard in addition to its parent protocol baseline. The catalog lives at [`/compliance/latest/index.json`](https://adcontextprotocol.org/compliance/latest/index.json); the human-readable index is the [Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog).
+A `specialisms` claim obligates the specialism's storyboard in addition to its parent protocol baseline. The catalog lives at [`/compliance/latest/index.json`](https://adcontextprotocol.org/compliance/latest/index.json); the human-readable index is the [Compliance Catalog](/dist/docs/3.0.1/building/verification/compliance-catalog).
 
 Specialisms carry a `status` — `stable` (verified pass/fail), `preview` (storyboard not yet defined; runner emits `passed: null`), `deprecated` (scheduled for removal). Agents MAY claim preview specialisms, but preview claims do not yield a pass/fail verdict.
 
@@ -106,7 +106,7 @@ Some requirements can't be verified by a storyboard because they're operator-lev
 - **Incident response** — AdCP emits the signals worth watching (`IDEMPOTENCY_CONFLICT` spikes, failed governance verifications, SSRF rejections); detection, alert routing, and response are operator concerns.
 - **Data residency configuration** — whether and how EU / UK data is kept in-region is typically declared in the agent's capabilities or contract; the wire records the declaration, not the underlying infrastructure.
 
-Full operator checklist: [Security Model § What to verify before going live](/dist/docs/3.0.1/building/understanding/security-model#what-to-verify-before-going-live).
+Full operator checklist: [Security Model § What to verify before going live](/dist/docs/3.0.1/building/concepts/security-model#what-to-verify-before-going-live).
 
 ## Conformance vs external assurance
 
@@ -137,7 +137,7 @@ Two practical consequences:
 
 Conformance is per-version; the suite is per-version. A 3.0-conformant agent is not thereby 3.1-conformant.
 
-**For third-party attestation**, run the heartbeat against AAO and earn an [AAO Verified badge](/dist/docs/3.0.1/building/compliance-catalog). The badge is a signed claim that AAO tested the agent recently and the pass still holds. Buyers filtering on *verified* get a smaller set than *conformant* — fewer agents, fresher attestation, a named party on the hook.
+**For third-party attestation**, run the heartbeat against AAO and earn an [AAO Verified badge](/dist/docs/3.0.1/building/verification/compliance-catalog). The badge is a signed claim that AAO tested the agent recently and the pass still holds. Buyers filtering on *verified* get a smaller set than *conformant* — fewer agents, fresher attestation, a named party on the hook.
 
 ## What this document does not do
 
@@ -147,14 +147,14 @@ Conformance is per-version; the suite is per-version. A 3.0-conformant agent is 
 
 ## When a storyboard fails
 
-- **[Storyboard troubleshooting](/dist/docs/3.0.1/building/implementation/storyboard-troubleshooting)** — Error pattern → root cause → fix for the most common storyboard failures
-- **[Known spec ambiguities](/dist/docs/3.0.1/building/implementation/known-ambiguities)** — Open spec gaps with workarounds and issue links; entries are removed as underlying issues close
+- **[Storyboard troubleshooting](/dist/docs/3.0.1/building/operating/storyboard-troubleshooting)** — Error pattern → root cause → fix for the most common storyboard failures
+- **[Known spec ambiguities](/dist/docs/3.0.1/building/cross-cutting/known-ambiguities)** — Open spec gaps with workarounds and issue links; entries are removed as underlying issues close
 
 ## Further reading
 
-- **[Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog)** — Full taxonomy of protocols and specialisms with storyboard IDs
-- **[Validate Your Agent](/dist/docs/3.0.1/building/validate-your-agent)** — How to run the suite
-- **[Security Model](/dist/docs/3.0.1/building/understanding/security-model)** — Strategic framing for the five defense layers that the security storyboards enforce
-- **[Security (implementation reference)](/dist/docs/3.0.1/building/implementation/security)** — Normative rules cited by the storyboards
+- **[Compliance Catalog](/dist/docs/3.0.1/building/verification/compliance-catalog)** — Full taxonomy of protocols and specialisms with storyboard IDs
+- **[Validate Your Agent](/dist/docs/3.0.1/building/verification/validate-your-agent)** — How to run the suite
+- **[Security Model](/dist/docs/3.0.1/building/concepts/security-model)** — Strategic framing for the five defense layers that the security storyboards enforce
+- **[Security (implementation reference)](/dist/docs/3.0.1/building/by-layer/L1/security)** — Normative rules cited by the storyboards
 - **[Versioning](/dist/docs/3.0.1/reference/versioning)** — Major-version support windows
 - **[Known Limitations](/dist/docs/3.0.1/reference/known-limitations)** — Visible edges of the specification

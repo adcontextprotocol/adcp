@@ -5,7 +5,7 @@ description: "sync_governance syncs governance agent endpoints to specific accou
 testable: false
 ---
 
-Sync governance agent endpoints to specific accounts. The seller persists these agents and calls them via `check_governance` during media buy lifecycle events. Each account entry pairs an [account reference](/dist/docs/3.0.2/building/integration/accounts-and-agents#account-references) with the governance agents for that account, supporting both explicit accounts (`account_id`) and implicit accounts (`brand` + `operator`).
+Sync governance agent endpoints to specific accounts. The seller persists these agents and calls them via `check_governance` during media buy lifecycle events. Each account entry pairs an [account reference](/dist/docs/3.0.2/building/by-layer/L2/accounts-and-agents#account-references) with the governance agents for that account, supporting both explicit accounts (`account_id`) and implicit accounts (`brand` + `operator`).
 
 This uses **replace semantics** — each call replaces any previously registered agents on the specified accounts. Accounts not included in the request keep their existing configuration.
 
@@ -108,7 +108,7 @@ asyncio.run(main())
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `account` | object | Yes | [Account reference](/dist/docs/3.0.2/building/integration/accounts-and-agents#account-references): `{account_id}` for explicit accounts or `{brand, operator}` for implicit accounts. |
+| `account` | object | Yes | [Account reference](/dist/docs/3.0.2/building/by-layer/L2/accounts-and-agents#account-references): `{account_id}` for explicit accounts or `{brand, operator}` for implicit accounts. |
 | `governance_agents` | array | Yes | Governance agent endpoints for this account (1–10 per account). |
 
 **Each governance agent:**
@@ -290,4 +290,4 @@ Call `sync_governance` again with updated `authentication`. Replace semantics me
 - [list_accounts](/dist/docs/3.0.2/accounts/tasks/list_accounts) — Discover accounts and their current governance agents
 - [sync_accounts](/dist/docs/3.0.2/accounts/tasks/sync_accounts) — Provision or link advertiser accounts
 - [check_governance](/dist/docs/3.0.2/governance/campaign/tasks/check_governance) — How sellers call governance agents during media buy events
-- [Accounts and agents](/dist/docs/3.0.2/building/integration/accounts-and-agents) — Account models, billing, and trust
+- [Accounts and agents](/dist/docs/3.0.2/building/by-layer/L2/accounts-and-agents) — Account models, billing, and trust
