@@ -31,8 +31,8 @@ const propertyCheckDb = new PropertyCheckDatabase();
 export const PROPERTY_TOOLS: AddieTool[] = [
   {
     name: 'validate_adagents',
-    description: 'Validate a domain\'s /.well-known/adagents.json file. Returns validation results including any errors or warnings.',
-    usage_hints: 'Use when asked to check if a publisher has set up adagents.json, or to validate a domain\'s agent authorizations.',
+    description: 'Validate a domain\'s /.well-known/adagents.json file with a live fetch. Returns validation results including any errors or warnings.',
+    usage_hints: 'Use when asked to check if a publisher has set up adagents.json, or to validate a domain\'s agent authorizations. If check_publisher_authorization disagrees after a recent file update, rerun that tool with force_refresh: true because it uses a short authorization cache.',
     input_schema: {
       type: 'object',
       properties: {

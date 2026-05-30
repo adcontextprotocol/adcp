@@ -564,6 +564,21 @@ function sanitizeInline(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+function sanitizeAuthorizationError(raw: string): string {
+  const withoutMarkdown = neutralizeAndTruncate(raw, 400)
+    .replace(/[\\`*_{}\[\]<>()#+\-.!|]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!withoutMarkdown) {
+    return 'Unknown error';
+  }
+
+  return withoutMarkdown.length > 200
+    ? withoutMarkdown.slice(0, 200)
+    : withoutMarkdown;
+}
+
 function normalizePricingModel(pm: string): string {
   const key = pm.toLowerCase().trim();
   return PRICING_ALIASES[key] ?? key;
@@ -1108,13 +1123,17 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'check_publisher_authorization',
     description:
-      'Check if a publisher domain has authorized a specific agent.',
-    usage_hints: 'use for authorization verification, "is my agent authorized?"',
+      'Check if a publisher domain has authorized a specific agent. Results are cached briefly; pass force_refresh: true after the publisher changes adagents.json to bypass the cache.',
+    usage_hints: 'use for authorization verification, "is my agent authorized?". If the result is negative and the user says they just updated adagents.json, proactively offer to rerun with force_refresh: true.',
     input_schema: {
       type: 'object',
       properties: {
         domain: { type: 'string', description: 'Publisher domain' },
         agent_url: { type: 'string', description: 'Agent URL' },
+        force_refresh: {
+          type: 'boolean',
+          description: 'Bypass the cached authorization result and fetch the publisher adagents.json live.',
+        },
       },
       required: ['domain', 'agent_url'],
     },
@@ -3679,10 +3698,11 @@ export function createMemberToolHandlers(
   handlers.set('check_publisher_authorization', async (input) => {
     const domain = input.domain as string;
     const agentUrl = input.agent_url as string;
+    const forceRefresh = input.force_refresh === true;
 
     let data;
     try {
-      data = await adagentsValidator.validate(domain, agentUrl);
+      data = await adagentsValidator.validate(domain, agentUrl, undefined, forceRefresh);
     } catch (err) {
       throw new ToolError(`Failed to check authorization: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -3700,12 +3720,13 @@ export function createMemberToolHandlers(
     } else {
       response += `❌ **Not Authorized.** This agent is NOT listed in ${data.domain}'s adagents.json.\n`;
       if (data.error) {
-        response += `\n**Reason:** ${data.error}\n`;
+        response += `\n**Reason:** ${sanitizeAuthorizationError(data.error)}\n`;
       }
       response += `\n### To Fix This\n`;
       response += `1. The publisher needs to add this agent to their adagents.json file\n`;
       response += `2. The file should be at: https://${data.domain}/.well-known/adagents.json\n`;
       response += `3. Use validate_adagents to check the publisher's current configuration\n`;
+      response += `4. If the publisher just updated the file, rerun this check with force_refresh: true\n`;
     }
 
     return response;

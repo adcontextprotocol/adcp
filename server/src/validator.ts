@@ -36,7 +36,7 @@ export class AgentValidator {
   private lastForceRefreshAt: Map<string, number> = new Map();
   private static readonly FORCE_REFRESH_COOLDOWN_MS = 30_000;
 
-  constructor(cacheTtlMinutes: number = 15) {
+  constructor(cacheTtlMinutes: number = 5) {
     this.cache = new Cache<AuthorizationResult>(cacheTtlMinutes);
   }
 
@@ -528,6 +528,23 @@ export class AgentValidator {
     if (normalizedDomain === "") return false;
     if (property.publisher_domain && canonicalizePublisherDomain(property.publisher_domain) === normalizedDomain) {
       return true;
+    }
+
+    if (property.property_id && canonicalizePublisherDomain(property.property_id) === normalizedDomain) {
+      return true;
+    }
+
+    const legacyUrl = (property as PropertyDefinition & { url?: unknown }).url;
+    if (typeof legacyUrl === "string") {
+      try {
+        if (this.normalizeDomain(new URL(legacyUrl).hostname) === normalizedDomain) {
+          return true;
+        }
+      } catch {
+        if (this.normalizeDomain(legacyUrl) === normalizedDomain) {
+          return true;
+        }
+      }
     }
 
     return (property.identifiers || []).some((identifier) => {

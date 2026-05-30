@@ -316,7 +316,7 @@ Publisher and agent setup, verification, and testing — validate adagents.json,
 
 ### `validate_adagents`
 
-Validate a domain's /.well-known/adagents.json file. Returns validation results including any errors or warnings.
+Validate a domain's /.well-known/adagents.json file with a live fetch. Returns validation results including any errors or warnings.
 
 *Source: `server/src/addie/mcp/property-tools.ts`*
 
@@ -334,7 +334,7 @@ Return the AAO registry's current status for an agent: health (online / last che
 
 ### `check_publisher_authorization`
 
-Check if a publisher domain has authorized a specific agent.
+Check if a publisher domain has authorized a specific agent. Results are cached briefly; pass force_refresh: true after the publisher changes adagents.json to bypass the cache.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
