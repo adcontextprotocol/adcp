@@ -32,8 +32,15 @@
 
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { type Dispatcher } from 'undici';
+import { fetch as undiciFetch, type Dispatcher } from 'undici';
 import { buildSsrfSafeDispatcher } from '../utils/url-security.js';
+
+type FetchInitWithDispatcher = Omit<RequestInit, 'dispatcher'> & { dispatcher?: Dispatcher };
+
+const fetchWithDispatcher = undiciFetch as unknown as (
+  input: Parameters<typeof fetch>[0],
+  init?: FetchInitWithDispatcher,
+) => Promise<Response>;
 
 export class SsrfRefusedError extends Error {
   readonly url: string;
@@ -132,8 +139,8 @@ export async function assertPublicTarget(url: URL): Promise<void> {
  * (`redirect: 'manual'`) hold in every environment — redirect-follow is
  * a security guard, not a routing affordance.
  *
- * The returned function always dereferences `globalThis.fetch` lazily
- * so tests that replace the global see their replacement. */
+ * The returned function uses userland `undici.fetch` so its dispatcher and
+ * request-handler contract stay aligned with the imported undici version. */
 export function createWebhookFetch(options: { allowPrivateIp: boolean }): typeof fetch {
   return async (input, init) => {
     const href = typeof input === 'string' || input instanceof URL
@@ -157,14 +164,10 @@ export function createWebhookFetch(options: { allowPrivateIp: boolean }): typeof
     // the Location header — the emitter's existing non-2xx handling then
     // treats the 3xx as a delivery failure.
     const dispatcher = options.allowPrivateIp ? undefined : buildSsrfSafeDispatcher();
-    // `dispatcher` is the standard escape hatch for undici-on-Node.fetch but is
-    // not typed on Node's `RequestInit` (the userland `undici` and Node's bundled
-    // `undici-types` are type-incompatible copies). Cast at the call site —
-    // same pattern as `safeFetch` in `utils/url-security.ts`.
-    return globalThis.fetch(input, {
+    return fetchWithDispatcher(input, {
       ...(init ?? {}),
       redirect: 'manual',
       dispatcher,
-    } as RequestInit & { dispatcher?: Dispatcher });
+    });
   };
 }

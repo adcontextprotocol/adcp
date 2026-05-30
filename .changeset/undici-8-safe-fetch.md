@@ -2,4 +2,4 @@
 "adcontextprotocol": patch
 ---
 
-Update undici to 8.3.0 and keep `safeFetch`'s SSRF-safe dispatcher on the same undici fetch implementation.
+Update undici to 8.3.0 and keep SSRF-safe dispatchers on the same undici fetch implementation in `safeFetch` and webhook delivery.
