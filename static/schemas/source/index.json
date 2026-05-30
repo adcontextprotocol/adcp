@@ -86,6 +86,26 @@
           "$ref": "/schemas/core/delivery-metric-aggregate.json",
           "description": "Cross-buy delivery aggregate partitioned by metric scope and qualifier"
         },
+        "missing-metric": {
+          "$ref": "/schemas/core/missing-metric.json",
+          "description": "Metric from the binding reporting contract that is absent from a delivery report"
+        },
+        "catalog-item-delivery-metrics": {
+          "$ref": "/schemas/core/catalog-item-delivery-metrics.json",
+          "description": "Delivery metrics row for one catalog item"
+        },
+        "creative-delivery-metrics": {
+          "$ref": "/schemas/core/creative-delivery-metrics.json",
+          "description": "Delivery metrics row for one creative"
+        },
+        "keyword-delivery-metrics": {
+          "$ref": "/schemas/core/keyword-delivery-metrics.json",
+          "description": "Delivery metrics row for one keyword and match type"
+        },
+        "geo-delivery-metrics": {
+          "$ref": "/schemas/core/geo-delivery-metrics.json",
+          "description": "Delivery metrics row for one geographic area"
+        },
         "creative-policy": {
           "$ref": "/schemas/core/creative-policy.json",
           "description": "Creative requirements and restrictions for a product"
