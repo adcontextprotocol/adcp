@@ -24,7 +24,7 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **agent_conformance** — issue_conformance_token, run_conformance_against_my_agent
 - **adcp_operations** — save_agent, list_saved_agents, remove_saved_agent, setup_test_agent
 - **content** — propose_news_source, add_committee_document, update_committee_document, delete_committee_document
-- **billing** *(admin only)* — find_membership_products, create_payment_link, send_invoice, send_payment_request, grant_discount, remove_discount, list_discounts, create_promotion_code, resend_invoice, update_billing_email, list_pending_invoices, get_account
+- **billing** *(admin only)* — find_membership_products, create_payment_link, send_invoice, send_payment_request, grant_discount, remove_discount, list_discounts, create_promotion_code, resend_invoice, update_billing_email, preview_org_stripe_customer_update, confirm_org_stripe_customer_update, list_pending_invoices, get_account
 - **events** — list_events, get_event_details, list_event_attendees, register_event_interest
 - **meetings** — schedule_meeting, list_upcoming_meetings, get_my_meetings, get_meeting_details, rsvp_to_meeting, cancel_meeting, cancel_meeting_series, update_meeting, add_meeting_attendee, update_topic_subscriptions, manage_committee_topics
 - **committee_leadership** — add_committee_co_leader, remove_committee_co_leader, list_committee_co_leaders, list_working_groups, create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event

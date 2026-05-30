@@ -257,6 +257,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "create_promotion_code",
       "resend_invoice",
       "update_billing_email",
+      "preview_org_stripe_customer_update",
+      "confirm_org_stripe_customer_update",
       "list_pending_invoices",
       "get_account",
     ],
