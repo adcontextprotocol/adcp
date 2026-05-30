@@ -1693,11 +1693,57 @@ describe('AdAgentsManager', () => {
       // This test validates that combined error reporting works when both A2A and MCP fail.
       const results = await manager.validateAgentCards(agents);
 
+      const postCall = mockedSafeFetch.mock.calls.find(([, opts]) => opts?.method === 'POST');
+      expect(postCall).toBeDefined();
+      expect(postCall?.[1]?.headers).toMatchObject({
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+      });
+      expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'AAO Registry Validator', version: '1.0.0' },
+        },
+        id: 1,
+      });
+
       // With the real @adcp/sdk unable to connect, MCP validation will fail
       // and the result captures errors from both protocols
       expect(results[0].valid).toBe(false);
       expect(results[0].errors.some((e) => e.includes('A2A') || e.includes('agent card'))).toBe(true);
       expect(results[0].errors.some((e) => e.includes('MCP'))).toBe(true);
+    });
+
+    it('marks MCP agents as auth-required when the preflight returns 401', async () => {
+      const agents: AuthorizedAgent[] = [
+        {
+          url: 'https://private-mcp.example.com/mcp',
+          authorized_for: 'Test',
+        },
+      ];
+
+      mockedSafeFetch.mockImplementation(async (_url, opts) => {
+        if (opts?.method === 'POST') {
+          return {
+            status: 401,
+            data: buf({ error: 'unauthorized' }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        return { status: 404, data: buf({}), headers: {} };
+      });
+
+      const results = await manager.validateAgentCards(agents);
+
+      expect(results[0].valid).toBe(true);
+      expect(results[0].oauth_required).toBe(true);
+      expect(results[0].card_data).toMatchObject({
+        protocol: 'mcp',
+        requires_auth: true,
+      });
     });
 
     it('returns combined errors when both A2A and MCP fail', async () => {

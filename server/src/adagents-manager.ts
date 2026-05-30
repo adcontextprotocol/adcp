@@ -3,6 +3,18 @@ import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 import { safeFetchAxiosLike, classifySafeFetchError } from './utils/url-security.js';
 import { canonicalizePublisherDomain } from './services/publisher-domain.js';
 
+const MCP_ACCEPT_HEADER = 'application/json, text/event-stream';
+const MCP_PREFLIGHT_INITIALIZE_BODY = {
+  jsonrpc: '2.0',
+  method: 'initialize',
+  params: {
+    protocolVersion: '2025-03-26',
+    capabilities: {},
+    clientInfo: { name: 'AAO Registry Validator', version: '1.0.0' },
+  },
+  id: 1,
+};
+
 function isManagerdomainFallbackEligibleResponse(status: number, data: unknown): boolean {
   if (status === 404) return true;
   if (status !== 403) return false;
@@ -1674,8 +1686,11 @@ export class AdAgentsManager {
       const preflightResponse = await safeFetchAxiosLike(agentUrl, {
         method: 'POST',
         timeoutMs: 3000,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', method: 'initialize', params: {}, id: 1 }),
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: MCP_ACCEPT_HEADER,
+        },
+        body: JSON.stringify(MCP_PREFLIGHT_INITIALIZE_BODY),
       });
 
       if (preflightResponse.status === 401) {
