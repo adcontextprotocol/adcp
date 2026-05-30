@@ -1,14 +1,16 @@
 /**
  * Unit tests for GET /brands/:domain/brand.json gate behavior.
  *
- * Pins the source_type gate from #3529 (no enriched data served under a
- * brand-attested URL) while confirming that community-attested manifests
- * with a flat shape — the shape our edit UI actually writes — are served.
+ * Pins the gate's source_type acceptance set and provenance signaling.
+ * The endpoint serves brand_json, community, and enriched rows; consumers
+ * tell them apart via the X-AAO-Source response header. The JSON body itself
+ * stays free of non-spec fields so it round-trips as a valid brand.json.
  *
- * The earlier structural-shape check (#3529) over-rotated and 404'd every
- * AAO-hosted brand whose manifest didn't wrap itself in house/brands/agents/
- * brand_agent/authoritative_location, which broke scope3.com and fandom.com
- * post-merge. This test pins that those flat community manifests are served.
+ * History: the original shape-based gate (#3529) was tightened to a source_type
+ * allowlist that excluded enriched, which then made the "Community brand.json"
+ * link in the viewer 404 for every Brandfetch-derived row (sbs.com.au, etc.).
+ * Enriched is now served with X-AAO-Source: enriched so agents can decide
+ * how much trust to place in it.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -25,7 +27,8 @@ function mountGate(brandDb: {
     const domain = req.params.domain.toLowerCase();
     const brand: any = await brandDb.getDiscoveredBrandByDomain(domain);
     if (!brand || brand.is_public === false) return res.status(404).json({ error: 'Brand not found' });
-    if (brand.source_type !== 'brand_json' && brand.source_type !== 'community') {
+    const ALLOWED_SOURCE_TYPES = new Set(['brand_json', 'community', 'enriched']);
+    if (!ALLOWED_SOURCE_TYPES.has(brand.source_type)) {
       return res.status(404).json({ error: 'Brand not found' });
     }
     const manifest = brand.brand_manifest as Record<string, unknown> | undefined;
@@ -38,6 +41,7 @@ function mountGate(brandDb: {
       typeof manifest.$schema === 'string' && manifest.$schema.startsWith('https://')
         ? { ...manifest }
         : { $schema: schemaUrl, ...manifest };
+    res.setHeader('X-AAO-Source', brand.source_type);
     return res.json(brandJson);
   });
   return app;
@@ -50,15 +54,29 @@ describe('GET /brands/:domain/brand.json gate', () => {
     expect(res.status).toBe(404);
   });
 
-  it('404s enriched (Brandfetch) rows so third-party data is not served as brand-attested', async () => {
+  it('serves enriched (Brandfetch) rows with X-AAO-Source: enriched so agents can tell unattested data apart from brand-attested', async () => {
     const app = mountGate({
       getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
         is_public: true,
         source_type: 'enriched',
-        brand_manifest: { name: 'Whatever', logos: [], colors: {} },
+        brand_manifest: { name: 'SBS Australia', url: 'https://sbs.com.au', logos: [], colors: { accent: '#FCB502' } },
       }),
     });
-    const res = await request(app).get('/brands/enriched.example/brand.json');
+    const res = await request(app).get('/brands/sbs.com.au/brand.json');
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('SBS Australia');
+    expect(res.headers['x-aao-source']).toBe('enriched');
+  });
+
+  it('404s unknown source_types (e.g. hosted) — only the explicit allowlist is served', async () => {
+    const app = mountGate({
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        is_public: true,
+        source_type: 'hosted',
+        brand_manifest: { name: 'Hosted' },
+      }),
+    });
+    const res = await request(app).get('/brands/hosted.example/brand.json');
     expect(res.status).toBe(404);
   });
 
@@ -82,6 +100,7 @@ describe('GET /brands/:domain/brand.json gate', () => {
     expect(res.body.name).toBe('Scope3');
     expect(res.body.colors.accent).toBe('#dcfc01');
     expect(res.body.$schema).toBe('https://adcontextprotocol.org/schemas/v3/brand.json');
+    expect(res.headers['x-aao-source']).toBe('community');
   });
 
   it('serves brand_json source rows untouched', async () => {
@@ -95,6 +114,7 @@ describe('GET /brands/:domain/brand.json gate', () => {
     const res = await request(app).get('/brands/acme.com/brand.json');
     expect(res.status).toBe(200);
     expect(res.body.house.domain).toBe('acme.com');
+    expect(res.headers['x-aao-source']).toBe('brand_json');
   });
 
   it('404s community brands still pending review', async () => {

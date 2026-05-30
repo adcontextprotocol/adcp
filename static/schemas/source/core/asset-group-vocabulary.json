@@ -3,8 +3,8 @@
   "$id": "/schemas/core/asset-group-vocabulary.json",
   "title": "AdCP Asset Group Vocabulary Registry",
   "description": "Canonical registry of asset_group_id values used in offering asset groups (OfferingAssetGroup) and in v2 product format declarations. Non-canonical IDs remain valid for platform-specific extensions; this registry codifies the recommended canonical set so that buyers and sellers share a vocabulary for the most common slot roles. Validators may emit soft warnings on non-canonical IDs to encourage convergence.\n\nThe registry covers everything the buyer ships in the manifest's `assets` map — both directly-rendered creative content (image, video, audio) AND content the seller consumes for production (script, creative_brief, video_brief). The seller dispatches per the format's slot declaration. There is no separate \"inputs\" map on the manifest; everything is an asset.\n\n**Two-tier boundary (normative).** This registry is the *canonical, portable* tier — IAB-aligned, platform-agnostic slot roles every adopter shares (`headline`, `body_text`, `main_image`, `cta`, `landing_page_url`, etc.). Platform-specific asset identifiers (e.g., YouTube video IDs, Pinterest pin IDs, TikTok video IDs, Snap attachment IDs, Meta Advantage+ creative IDs) MUST NOT be added here — they live on the canonical's `platform_extensions[]` (URI+digest reference to the platform's extension schema) so the canonical registry stays portable. Earlier drafts carried `youtube_video_id` and `pin_id` here; they were dropped in 3.1 GA precisely because adding them set precedent for every platform's identifier vocabulary to leak into the canonical tier, defeating the registry's portability purpose. Adopters needing to reference an existing platform-hosted asset attach a `platform_extensions[]` entry on the format declaration whose extension schema defines the platform-specific ID slot.",
-  "version": "1.1.0",
-  "lastUpdated": "2026-04-28",
+  "version": "1.2.0",
+  "lastUpdated": "2026-05-28",
   "vocabulary": {
     "headlines": {
       "description": "Pool of headline text variants for the surface to choose from.",
@@ -43,9 +43,22 @@
       "aliases": ["square_image", "feed_image"]
     },
     "logo": {
-      "description": "Brand logo asset (typically 1:1 or 2:1).",
+      "description": "Brand logo asset (typically 1:1 or 2:1). When the logo comes from brand.json, select from `logos[]` using the format slot's `logo_slots` hint, the asset's `logos[].slots[]`, and `visual_guidelines.logo_usage_rules[]`. `asset_group_id: \"logo\"` names the creative manifest slot; logo slots name the renderer-facing placements where a brand logo variant is appropriate.",
       "asset_type": "image",
       "typical_use": "Brand attribution overlay (Google PMax/RDA, Snap Story Ad, Amazon SB).",
+      "brand_json_bridge": {
+        "source": "brand.json logos[]",
+        "selection_fields": [
+          "format_options[].params.slots[].logo_slots",
+          "adagents.json formats[].params.slots[].logo_slots",
+          "logos[].slots[]",
+          "logos[].id",
+          "visual_guidelines.logo_usage_rules[]",
+          "logos[].background",
+          "logos[].orientation",
+          "logos[].variant"
+        ]
+      },
       "aliases": ["brand_logo", "logo_image"]
     },
     "video": {

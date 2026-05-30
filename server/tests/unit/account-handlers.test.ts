@@ -642,6 +642,133 @@ describe('sync_accounts', () => {
     expect(entity.address).toBe('123 Main St');
     expect(entity.bank).toBeUndefined();
   });
+
+  it('updates notification configs by explicit account ref', async () => {
+    const { result: created } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'operator',
+        sandbox: true,
+      }],
+    });
+    const accountId = ((created.accounts as Record<string, unknown>[])[0].account_id) as string;
+
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        account: { account_id: accountId },
+        notification_configs: [{
+          subscriber_id: 'buyer-primary',
+          url: 'https://buyer.example.com/webhooks/creative',
+          event_types: ['creative.status_changed'],
+        }],
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.action).toBe('updated');
+    expect(acct.account_id).toBe(accountId);
+    expect(acct.notification_configs).toEqual([{
+      subscriber_id: 'buyer-primary',
+      url: 'https://buyer.example.com/webhooks/creative',
+      event_types: ['creative.status_changed'],
+      active: true,
+    }]);
+  });
+
+  it('filters list_accounts exactly by account_id and natural key', async () => {
+    const { result: created } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [
+        {
+          brand: { domain: 'acme.com', brand_id: 'acme-main' },
+          operator: 'agency-one',
+          billing: 'operator',
+          sandbox: true,
+        },
+        {
+          brand: { domain: 'bravo.com' },
+          operator: 'agency-two',
+          billing: 'operator',
+          sandbox: true,
+        },
+      ],
+    });
+    const createdAccounts = created.accounts as Record<string, unknown>[];
+    const accountId = createdAccounts[0].account_id as string;
+
+    const { result: byId } = await simulateCallTool(server, 'list_accounts', {
+      account: { account_id: accountId },
+    });
+    expect(byId.accounts).toHaveLength(1);
+    expect((byId.accounts as Record<string, unknown>[])[0].account_id).toBe(accountId);
+
+    const { result: byNaturalKey } = await simulateCallTool(server, 'list_accounts', {
+      account: {
+        brand: { domain: 'acme.com', brand_id: 'acme-main' },
+        operator: 'agency-one',
+        sandbox: true,
+      },
+    });
+    expect(byNaturalKey.accounts).toHaveLength(1);
+    expect((byNaturalKey.accounts as Record<string, unknown>[])[0].account_id).toBe(accountId);
+  });
+
+  it('echoes notification auth schemes without write-only credentials', async () => {
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'operator',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: 'buyer-primary',
+          url: 'https://buyer.example.com/webhooks/creative',
+          event_types: ['creative.status_changed'],
+          authentication: {
+            schemes: ['Bearer'],
+            credentials: 'AbCdEf0123456789AbCdEf0123456789',
+          },
+          active: true,
+        }],
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.notification_configs).toEqual([{
+      subscriber_id: 'buyer-primary',
+      url: 'https://buyer.example.com/webhooks/creative',
+      event_types: ['creative.status_changed'],
+      authentication: { schemes: ['Bearer'] },
+      active: true,
+    }]);
+  });
+
+  it('updates accounts discovered from list_accounts by account_id', async () => {
+    const { result: listed } = await simulateCallTool(server, 'list_accounts', {});
+    const accountId = ((listed.accounts as Record<string, unknown>[])[0].account_id) as string;
+
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        account: { account_id: accountId },
+        notification_configs: [{
+          subscriber_id: 'buyer-primary',
+          url: 'https://buyer.example.com/webhooks/creative',
+          event_types: ['creative.status_changed'],
+          active: true,
+        }],
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.action).toBe('updated');
+    expect(acct.account_id).toBe(accountId);
+    expect(acct.notification_configs).toEqual([{
+      subscriber_id: 'buyer-primary',
+      url: 'https://buyer.example.com/webhooks/creative',
+      event_types: ['creative.status_changed'],
+      active: true,
+    }]);
+  });
 });
 
 // ── sync_governance ────────────────────────────────────────────────

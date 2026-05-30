@@ -1299,7 +1299,7 @@
               <span id="community-brand-domain" style="color: var(--color-text-muted); font-size: var(--text-sm);"></span>
             </div>
             <div style="display: flex; gap: var(--space-2); align-items: center;">
-              <span style="font-size: var(--text-xs); background: var(--color-purple-100); color: var(--color-purple-700); padding: 2px 8px; border-radius: var(--radius-full);">Community contributed</span>
+              <span id="community-brand-source-badge" style="font-size: var(--text-xs); background: var(--color-purple-100); color: var(--color-purple-700); padding: 2px 8px; border-radius: var(--radius-full);">Community contributed</span>
               <button id="edit-brand-btn" class="hidden" onclick="showEditForm()" style="padding: 4px 12px; font-size: var(--text-xs); font-weight: var(--font-semibold); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-all);">Edit</button>
               <button id="upload-logo-hero-btn" class="hidden" onclick="showUploadModal()" style="padding: 4px 12px; font-size: var(--text-xs); font-weight: var(--font-semibold); background: var(--color-bg-subtle); color: var(--color-text-secondary); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-all);">Upload logo</button>
             </div>
@@ -3357,6 +3357,22 @@
             document.getElementById('community-brand-name').textContent = brandInfo.brand_name || domain;
             document.getElementById('community-brand-domain').textContent = domain;
 
+            // Badge reflects actual provenance — "Community contributed" only when
+            // a human has curated the row; "Enriched" for Brandfetch-derived data
+            // that no one has edited yet.
+            const sourceBadge = document.getElementById('community-brand-source-badge');
+            if (sourceBadge) {
+              if (brandInfo.source_type === 'enriched') {
+                sourceBadge.textContent = 'Enriched';
+                sourceBadge.style.background = 'var(--color-bg-subtle)';
+                sourceBadge.style.color = 'var(--color-text-secondary)';
+              } else {
+                sourceBadge.textContent = 'Community contributed';
+                sourceBadge.style.background = 'var(--color-purple-100)';
+                sourceBadge.style.color = 'var(--color-purple-700)';
+              }
+            }
+
             // Update hero
             document.getElementById('hero-title').textContent = brandInfo.brand_name || domain;
 
@@ -3393,11 +3409,15 @@
                 <div class="community-info-value"><a href="https://${escapeAttr(domain)}" target="_blank" style="color: var(--color-brand); text-decoration: none;">${escapeHtml(domain)}</a></div>
               </div>`;
 
-            // Community-hosted brand.json URL
+            // AAO-hosted brand.json URL. The gate at /brands/:domain/brand.json serves
+            // community, enriched, and brand_json sources alike, with an X-AAO-Source
+            // header marking provenance. The label here reflects the actual source so
+            // we don't promise "community" data when the underlying row is enriched.
             const hostedBrandJsonUrl = `${window.location.origin}/brands/${encodeURIComponent(domain)}/brand.json`;
+            const linkLabel = brandInfo.source_type === 'enriched' ? 'Enriched brand.json' : 'Community brand.json';
             gridHtml += `
               <div class="community-info-item">
-                <div class="community-info-label">Community brand.json</div>
+                <div class="community-info-label">${escapeHtml(linkLabel)}</div>
                 <div class="community-info-value"><a href="${escapeAttr(hostedBrandJsonUrl)}" target="_blank" style="color: var(--color-brand); text-decoration: none; word-break: break-all;">${escapeHtml(hostedBrandJsonUrl)}</a></div>
               </div>`;
 

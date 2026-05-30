@@ -64,7 +64,7 @@ export function buildBrandTenantConfig(host: string, options: { storyboardCompat
       platform: new TrainingBrandPlatform(options.storyboardCompat) as any,
       serverOptions: {
         customTools: {
-          list_accounts: listAccountsTool(),
+          list_accounts: listAccountsTool(options.storyboardCompat),
           creative_approval: customToolFor(
             'creative_approval',
             'Submit a generated creative for brand approval against rights grant terms.',

@@ -52,15 +52,24 @@ Claiming `sales-guaranteed` when you only run RTB ships you into storyboards you
 
 The runner must obtain a sandbox account before it can do anything. Your `require_operator_auth` flag chooses the path:
 
-**Implicit accounts (`require_operator_auth: false`).** Your agent accepts `sync_accounts` from any authenticated buyer. The runner calls `sync_accounts` with `sandbox: true` to mint a test account on demand. Most new sales agents start here.
+**Buyer-declared accounts (`require_operator_auth: false`).** Your agent accepts `sync_accounts` from any authenticated buyer. The runner calls `sync_accounts` with `sandbox: true` to mint a test account on demand. Most new sales agents start here.
 
-**Explicit accounts (`require_operator_auth: true`).** Accounts must be pre-provisioned by a human on your side. The runner calls `list_accounts` with a sandbox filter to discover pre-existing test accounts. Publish a short note telling operators how to request one — include the contact, the expected turnaround, and what credentials they'll receive.
+**Account-id namespaces (`require_operator_auth: true`).** Accounts must be pre-provisioned by a human on your side or by an upstream platform. The runner calls `list_accounts` with a sandbox filter to discover pre-existing test accounts. If your credential is bound to exactly one sandbox account, return that singleton. Publish a short note telling operators how to request one — include the contact, the expected turnaround, and what credentials they'll receive.
 
 Full details and examples: [Sandbox mode](/docs/media-buy/advanced-topics/sandbox).
 
 ## Step 3 — Implement the compliance test controller
 
-Without a compliance test controller, the runner tests only buyer-initiated flows (**observational mode**) — schema conformance, auth rejection, happy-path buyer calls. That is enough for a first pass and for capability discovery, but [conformance](/docs/building/verification/conformance) treats **deterministic mode** — full lifecycle walks enabled by the controller — as the bar for specialism coverage.
+Without a compliance test controller, the runner tests only buyer-initiated flows (**observational mode**) — schema conformance, auth rejection, happy-path buyer calls. That is enough for early integration work and production-path sandbox smoke tests, but it produces **partial coverage** whenever controller-seeded or controller-forced scenarios are in scope. [Conformance](/docs/building/verification/conformance) treats **deterministic mode** — full lifecycle walks enabled by the controller — as the bar for complete specialism coverage.
+
+In practice, sellers usually run both:
+
+| Run | Endpoint | Expected result |
+|-----|----------|-----------------|
+| Observational sandbox run | Production endpoint with sandbox accounts, no controller exposed | `steps_failed = 0`; live-only probes appear as not selected, and selected controller-dependent scenarios may make the summary `partial` with `missing_test_controller` skips |
+| Deterministic run | Dev/staging or sandbox-only endpoint with `comply_test_controller` | `steps_failed = 0` and no controller-dependent coverage skips |
+
+The first run answers "does the production buyer-visible path tolerate sandbox traffic?" The second answers "can the runner prove every lifecycle path for the declared specialisms?" Do not collapse those into one signal. A zero-failure partial run is useful, but buyers need the skip list to know exactly which lifecycle assertions were not graded.
 
 `comply_test_controller` is a single sandbox-only tool with a `scenario` parameter covering three families:
 
@@ -131,7 +140,7 @@ What the scaffold handles for you:
 - **Dispatch and `UNKNOWN_SCENARIO`.** Scenarios you do not register return `UNKNOWN_SCENARIO` automatically — never a schema error.
 - **Param validation.** Invalid params produce `INVALID_PARAMS` with a readable `error_detail` without reaching your adapter.
 - **Seed idempotency.** Calling `seed_product` twice with the same `product_id` and an equivalent `fixture` returns `previous_state: "existing"`; a divergent `fixture` returns `INVALID_PARAMS`. Your adapter is only invoked on the first seed.
-- **Typed error envelopes.** Throw `TestControllerError(code, message, currentState?)` with `code` in `'INVALID_TRANSITION' | 'NOT_FOUND' | 'FORBIDDEN' | 'INVALID_PARAMS'` from any adapter.
+- **Typed error envelopes.** Throw `TestControllerError(code, message, currentState?)` with `code` from the controller error-code table. Common adapter codes are `'INVALID_TRANSITION' | 'NOT_FOUND' | 'FORBIDDEN' | 'INVALID_PARAMS'`; digest-mode `query_upstream_traffic` implementations may also return `JCS_NON_FINITE_NUMBER` when RFC 8785/JCS canonicalization encounters a non-finite numeric value.
 
 The scaffold does **not** own the state machine. Transition rules live in your adapters, so compliance testing and production share one source of truth — the mechanic the [anti-teach-to-test section](#avoiding-the-teach-to-test-trap) depends on.
 

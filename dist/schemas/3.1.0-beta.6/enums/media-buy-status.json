@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.6/enums/media-buy-status.json",
+  "title": "Media Buy Status",
+  "description": "Status of a media buy.",
+  "type": "string",
+  "enum": [
+    "pending_creatives",
+    "pending_start",
+    "active",
+    "paused",
+    "completed",
+    "rejected",
+    "canceled"
+  ],
+  "enumDescriptions": {
+    "pending_creatives": "**Buyer-side action required.** The media buy is approved by the seller and has no creatives assigned — the buyer must attach creatives via `sync_creatives` before the buy can serve. Not to be confused with a publisher-side or governance-side approval queue: the seller has already accepted the buy; only the buyer's creative submission is missing. Naming convention: `pending_X` names the lifecycle phase that is next required (here, `creatives`), not a state of waiting on seller/operator approval — consistent with `pending_start` (waiting for the flight date to begin).",
+    "pending_start": "Media buy is ready to serve and waiting for its flight date to begin.",
+    "active": "Media buy is currently running",
+    "paused": "Media buy is temporarily paused",
+    "completed": "Media buy has finished running",
+    "rejected": "Media buy was declined by the seller after creation",
+    "canceled": "Media buy was terminated before natural completion. Check cancellation.canceled_by to determine whether the buyer or seller initiated."
+  }
+}

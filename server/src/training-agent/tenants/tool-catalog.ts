@@ -24,9 +24,10 @@
 export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   // accounts — sync_accounts is auto-registered by the framework on every
   // tenant whose `accounts.upsert` is wired (see v6-account-helpers.ts).
-  // list_accounts rides a custom read-tool wrapper so it can keep the v5
-  // training-agent pagination shape while the v6 AccountStore.list path is
-  // still preview.
+  // list_accounts rides a custom read-tool wrapper so it preserves the v5
+  // training-agent pagination envelope. Do not also wire `accounts.list`;
+  // the SDK treats list_accounts as first-class and rejects duplicate
+  // customTools registration.
   sync_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand'],
   list_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand'],
 
@@ -40,6 +41,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   sync_audiences: ['sales'],
   sync_event_sources: ['sales'],
   log_event: ['sales'],
+  report_usage: ['sales', 'creative'],
   // list_creative_formats is framework-registered for any tenant claiming
   // creative (sales, creative, creative-builder) — the SDK auto-advertises
   // it. Catalog mirrors that advertisement so the drift test stays green.
@@ -50,6 +52,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   // operations. SDK 7.0's `CreativeBuilderPlatform` interface dropped them
   // (they live on `CreativeAdServerPlatform`); the /creative-builder tenant
   // no longer advertises them in tools/list.
+  validate_input: ['sales', 'creative', 'creative-builder'],
   list_creatives: ['sales', 'creative'],
   sync_creatives: ['sales', 'creative', 'creative-builder'],
   build_creative: ['creative', 'creative-builder'],
@@ -98,9 +101,19 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
 };
 
 /** Build the tool list a given tenant serves — inverse view of TOOL_CATALOG. */
-export function toolsForTenant(tenantId: string): string[] {
+export function toolsForTenant(
+  tenantId: string,
+  options: { storyboardCompat?: { version?: string }; adcpVersion?: string } = {},
+): string[] {
   return Object.entries(TOOL_CATALOG)
     .filter(([, tenants]) => tenants.includes(tenantId))
     .map(([tool]) => tool)
+    .filter(tool => !(
+      tool === 'validate_input'
+      && (
+        options.storyboardCompat?.version === '3.0'
+        || options.adcpVersion?.startsWith('3.0')
+      )
+    ))
     .sort();
 }

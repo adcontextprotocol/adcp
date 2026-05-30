@@ -28,7 +28,7 @@ name: AI PR Review (Argus)
 # Adapted from scope3data/agentic-api's Argus workflow.
 
 on:
-  pull_request:
+  pull_request_target:
     types:
       - opened
       - labeled
@@ -57,8 +57,14 @@ jobs:
     steps:
       # Third-party actions pinned to commit SHAs to close the "force-push
       # to a moving tag ships malicious code under the App token" vector.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      #
+      # This workflow uses pull_request_target so fork PRs can access the
+      # review App token and Anthropic secret. Never check out the PR head or
+      # execute PR-controlled code in this job. Keep the workspace pinned to the
+      # trusted base SHA and inspect the PR through GitHub APIs / gh pr diff.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
 
       # ─────────────────────────────────────────────────────────────────────
@@ -68,7 +74,7 @@ jobs:
       # ─────────────────────────────────────────────────────────────────────
       - name: Mint App token
         id: app-token
-        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -77,11 +83,10 @@ jobs:
       # Workflow-modification gate.
       #
       # If this PR modifies `.github/ai-review/**` or `.github/workflows/
-      # ai-review.yml` alongside other files, the workflow runs with the
-      # PR head's modified prompt/workflow. That's a same-repo-write-access
-      # prompt-injection vector: a contributor could ship a malicious
-      # prompt edit + a sacrificial source change in one PR and have Argus
-      # rubber-stamp itself. Bail with a --comment requiring human review.
+      # ai-review.yml`, Argus may be reviewing the review system itself. Even
+      # though pull_request_target keeps this run on the base-branch prompt and
+      # workflow, a human should own those changes. Bail with a --comment
+      # requiring human review.
       #
       # `paths-ignore` at the workflow level only fires when ALL changed
       # paths are ignored — this step handles the mixed case.
@@ -90,11 +95,14 @@ jobs:
         id: workflow-mod
         shell: bash
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          CHANGED="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+          # `gh pr diff --name-only` uses GitHub's diff endpoint, which 406s
+          # for generated release PRs over 300 files. The files API paginates.
+          CHANGED="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" --jq '.[].filename')"
           MODIFIED=""
           while IFS= read -r f; do
             case "$f" in
@@ -116,7 +124,7 @@ jobs:
 
       - name: Comment and skip when PR modifies review workflow
         if: steps.workflow-mod.outputs.modified == 'true'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           MODIFIED_FILES: ${{ steps.workflow-mod.outputs.modified_files }}
         with:
@@ -128,7 +136,7 @@ jobs:
               repo: context.repo.repo,
               pull_number: context.issue.number,
               event: 'COMMENT',
-              body: `Argus is **not auto-reviewing** this PR because it modifies the review workflow itself (${files}). Running with the PR head's modified prompt/workflow is a prompt-injection vector. A human reviewer should review and merge this PR; Argus will resume on subsequent PRs once these changes land on \`main\`.`
+              body: `Argus is **not auto-reviewing** this PR because it modifies the review workflow itself (${files}). A human reviewer should review and merge this PR; Argus will resume on subsequent PRs once these changes land on \`main\`.`
             });
 
       # ─────────────────────────────────────────────────────────────────────
@@ -158,18 +166,11 @@ jobs:
             echo "No prior Argus APPROVED review — running full review."
             exit 0
           fi
-          if ! git cat-file -e "$PRIOR_SHA" 2>/dev/null; then
-            git fetch --quiet origin "$PRIOR_SHA" 2>/dev/null || true
-          fi
-          if ! git cat-file -e "$PRIOR_SHA" 2>/dev/null; then
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "Prior review SHA $PRIOR_SHA unreachable (likely force-pushed) — running full review."
-            exit 0
-          fi
-          CHANGED="$(git diff --name-only "$PRIOR_SHA" "$HEAD_SHA")"
+          CHANGED="$(gh api "/repos/${REPO}/compare/${PRIOR_SHA}...${HEAD_SHA}" \
+            --jq '.files[]?.filename' 2>/dev/null || true)"
           if [ -z "$CHANGED" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "No file changes since prior approval at $PRIOR_SHA — skipping."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Could not compare $PRIOR_SHA...$HEAD_SHA (likely force-pushed or fork edge case) — running full review."
             exit 0
           fi
           # Trivial paths in AdCP — re-pushes touching only these skip re-review.
@@ -249,7 +250,7 @@ jobs:
         id: ai-review
         if: steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true'
         continue-on-error: true
-        uses: anthropics/claude-code-action@24492741e0ccfdef4c1d19da8e11e0f373d07494 # v1
+        uses: anthropics/claude-code-action@787c5a0ce96a9a6cfb050ea0c8f4c05f2447c251 # v1
         with:
           prompt: ${{ steps.build-prompt.outputs.ARGUS_PROMPT }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -296,7 +297,7 @@ jobs:
 
       - name: Comment on PR if Argus review failed
         if: steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true' && (steps.ai-review.outcome == 'failure' || steps.verify.outputs.review_posted != 'true')
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:

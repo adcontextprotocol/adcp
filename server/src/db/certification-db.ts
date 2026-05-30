@@ -1,5 +1,14 @@
 import { query, getClient } from './client.js';
 import { createLogger } from '../logger.js';
+import {
+  computeS2CanonicalFormatsDeltaStatus,
+  S2_CANONICAL_FORMATS_CREDENTIAL_ID,
+  S2_CANONICAL_FORMATS_CRITERION_IDS,
+  S2_CANONICAL_FORMATS_DELTA_UPDATE_ID,
+  S2_CANONICAL_FORMATS_MODULE_ID,
+  type S2CanonicalFormatsDeltaStatus,
+} from '../certification/s2-canonical-formats-delta.js';
+import { getS2CanonicalFormatsDeltaRelease } from './system-settings-db.js';
 
 const logger = createLogger('certification-db');
 
@@ -119,6 +128,14 @@ export interface UserCredential {
   certifier_public_id: string | null;
   certifier_badge_url: string | null;
 }
+
+export type { S2CanonicalFormatsDeltaStatus };
+export {
+  S2_CANONICAL_FORMATS_CREDENTIAL_ID,
+  S2_CANONICAL_FORMATS_CRITERION_IDS,
+  S2_CANONICAL_FORMATS_DELTA_UPDATE_ID,
+  S2_CANONICAL_FORMATS_MODULE_ID,
+};
 
 // =====================================================
 // TRACKS
@@ -580,6 +597,212 @@ export async function getUserCredentials(userId: string): Promise<UserCredential
     [userId]
   );
   return result.rows;
+}
+
+export interface S2CanonicalFormatsDeltaEvidence {
+  verifiedCriterionIds: string[];
+  evidenceByCriterionId: Record<string, string>;
+}
+
+export async function getS2CanonicalFormatsDeltaEvidence(
+  userId: string,
+): Promise<S2CanonicalFormatsDeltaEvidence> {
+  const result = await query<{ criterion_id: string; evidence: string | null }>(
+    `SELECT v.criterion_id,
+            NULLIF(BTRIM(tc.demonstration_evidence ->> v.criterion_id), '') AS evidence
+     FROM teaching_checkpoints tc
+     CROSS JOIN LATERAL unnest(tc.demonstrations_verified) AS v(criterion_id)
+     WHERE tc.workos_user_id = $1
+       AND tc.module_id = $2
+       AND v.criterion_id = ANY($3::text[])
+     ORDER BY tc.created_at DESC`,
+    [userId, S2_CANONICAL_FORMATS_MODULE_ID, [...S2_CANONICAL_FORMATS_CRITERION_IDS]]
+  );
+
+  const evidenceByCriterionId: Record<string, string> = {};
+  for (const row of result.rows) {
+    if (row.evidence && !evidenceByCriterionId[row.criterion_id]) {
+      evidenceByCriterionId[row.criterion_id] = row.evidence;
+    }
+  }
+
+  return {
+    verifiedCriterionIds: Object.keys(evidenceByCriterionId),
+    evidenceByCriterionId,
+  };
+}
+
+export async function getS2CanonicalFormatsDeltaCompletedAt(userId: string): Promise<string | null> {
+  const result = await query<{ completed_at: string }>(
+    `SELECT completed_at
+     FROM learner_protocol_updates
+     WHERE workos_user_id = $1 AND update_id = $2
+     LIMIT 1`,
+    [userId, S2_CANONICAL_FORMATS_DELTA_UPDATE_ID]
+  );
+  return result.rows[0]?.completed_at ?? null;
+}
+
+export async function recordS2CanonicalFormatsDeltaCompletion(
+  userId: string,
+  attemptId: string,
+  evidenceByCriterionId: Record<string, string>,
+): Promise<void> {
+  await query(
+    `INSERT INTO learner_protocol_updates
+       (workos_user_id, update_id, module_id, credential_id, attempt_id, criterion_ids, evidence)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+     ON CONFLICT (workos_user_id, update_id) DO UPDATE
+       SET attempt_id = EXCLUDED.attempt_id,
+           completed_at = NOW(),
+           criterion_ids = EXCLUDED.criterion_ids,
+           evidence = EXCLUDED.evidence`,
+    [
+      userId,
+      S2_CANONICAL_FORMATS_DELTA_UPDATE_ID,
+      S2_CANONICAL_FORMATS_MODULE_ID,
+      S2_CANONICAL_FORMATS_CREDENTIAL_ID,
+      attemptId,
+      [...S2_CANONICAL_FORMATS_CRITERION_IDS],
+      JSON.stringify(evidenceByCriterionId),
+    ]
+  );
+}
+
+async function hasS2CanonicalFormatsCriteriaPresent(): Promise<boolean> {
+  const mod = await getModule(S2_CANONICAL_FORMATS_MODULE_ID);
+  const exerciseDefs = mod?.exercise_definitions ?? [];
+  const ids = new Set(
+    exerciseDefs.flatMap(ex =>
+      ex.success_criteria.map(sc => typeof sc === 'string' ? sc : sc.id)
+    )
+  );
+  return S2_CANONICAL_FORMATS_CRITERION_IDS.every(id => ids.has(id));
+}
+
+async function hasPriorAuditableS2Record(
+  userId: string,
+  s2CompletedAt: string | null | undefined,
+): Promise<boolean> {
+  if (!s2CompletedAt) return false;
+
+  const mod = await getModule(S2_CANONICAL_FORMATS_MODULE_ID);
+  const priorCriterionIds = (mod?.exercise_definitions ?? [])
+    .flatMap(ex => ex.success_criteria.map(sc => typeof sc === 'string' ? sc : sc.id))
+    .filter(id => !S2_CANONICAL_FORMATS_CRITERION_IDS.includes(
+      id as (typeof S2_CANONICAL_FORMATS_CRITERION_IDS)[number],
+    ));
+  if (priorCriterionIds.length === 0) return false;
+
+  const result = await query<{ criterion_id: string }>(
+    `SELECT DISTINCT v.criterion_id
+     FROM teaching_checkpoints tc
+     CROSS JOIN LATERAL unnest(tc.demonstrations_verified) AS v(criterion_id)
+     WHERE tc.workos_user_id = $1
+       AND tc.module_id = $2
+       AND tc.created_at <= $3::timestamptz + INTERVAL '1 hour'
+       AND v.criterion_id = ANY($4::text[])
+       AND NULLIF(BTRIM(tc.demonstration_evidence ->> v.criterion_id), '') IS NOT NULL`,
+    [userId, S2_CANONICAL_FORMATS_MODULE_ID, s2CompletedAt, priorCriterionIds]
+  );
+  const evidenced = new Set(result.rows.map(row => row.criterion_id));
+  return priorCriterionIds.every(id => evidenced.has(id));
+}
+
+export async function completeS2CanonicalFormatsDeltaAttempt(
+  attemptId: string,
+  userId: string,
+  scores: Record<string, number>,
+  overallScore: number,
+  evidenceByCriterionId: Record<string, string>,
+): Promise<CertificationAttempt> {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const attemptResult = await client.query<CertificationAttempt>(
+      `UPDATE certification_attempts
+       SET status = 'passed',
+           completed_at = NOW(),
+           scores = $2,
+           overall_score = $3,
+           passing = true
+       WHERE id = $1
+         AND workos_user_id = $4
+         AND module_id = $5
+         AND status = 'in_progress'
+       RETURNING *`,
+      [
+        attemptId,
+        JSON.stringify(scores),
+        overallScore,
+        userId,
+        S2_CANONICAL_FORMATS_MODULE_ID,
+      ]
+    );
+    const attempt = attemptResult.rows[0];
+    if (!attempt) {
+      throw new Error(`Active S2 canonical formats delta attempt ${attemptId} not found`);
+    }
+
+    await client.query(
+      `INSERT INTO learner_protocol_updates
+         (workos_user_id, update_id, module_id, credential_id, attempt_id, criterion_ids, evidence)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+       ON CONFLICT (workos_user_id, update_id) DO UPDATE
+         SET attempt_id = EXCLUDED.attempt_id,
+             completed_at = NOW(),
+             criterion_ids = EXCLUDED.criterion_ids,
+             evidence = EXCLUDED.evidence`,
+      [
+        userId,
+        S2_CANONICAL_FORMATS_DELTA_UPDATE_ID,
+        S2_CANONICAL_FORMATS_MODULE_ID,
+        S2_CANONICAL_FORMATS_CREDENTIAL_ID,
+        attemptId,
+        [...S2_CANONICAL_FORMATS_CRITERION_IDS],
+        JSON.stringify(evidenceByCriterionId),
+      ]
+    );
+
+    await client.query('COMMIT');
+    return attempt;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function getS2CanonicalFormatsDeltaStatus(
+  userId: string,
+  now: Date = new Date(),
+): Promise<S2CanonicalFormatsDeltaStatus> {
+  const [release, credentials, s2Progress, evidence, deltaCompletedAt, criteriaPresent] = await Promise.all([
+    getS2CanonicalFormatsDeltaRelease(),
+    getUserCredentials(userId),
+    getModuleProgress(userId, S2_CANONICAL_FORMATS_MODULE_ID),
+    getS2CanonicalFormatsDeltaEvidence(userId),
+    getS2CanonicalFormatsDeltaCompletedAt(userId),
+    hasS2CanonicalFormatsCriteriaPresent(),
+  ]);
+
+  const creativeCredential = credentials.find(
+    c => c.credential_id === S2_CANONICAL_FORMATS_CREDENTIAL_ID
+  );
+
+  return computeS2CanonicalFormatsDeltaStatus({
+    release,
+    hasCreativeSpecialistCredential: !!creativeCredential,
+    credentialAwardedAt: creativeCredential?.awarded_at ?? null,
+    s2CompletedAt: s2Progress?.completed_at ?? null,
+    deltaCompletedAt,
+    canonicalCriteriaPresent: criteriaPresent,
+    hasPriorAuditableS2Record: await hasPriorAuditableS2Record(userId, s2Progress?.completed_at),
+    verifiedCriterionIds: evidence.verifiedCriterionIds,
+    now,
+  });
 }
 
 /**

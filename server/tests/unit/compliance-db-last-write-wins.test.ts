@@ -36,6 +36,8 @@ function makeTransactionClient(queryResponses: Array<{ rows: any[] }>) {
 }
 
 const AGENT_URL = 'https://agent.example.com';
+const RUN_ID = '00000000-0000-4000-8000-000000000001';
+const EMPTY_RUN_ID = '00000000-0000-4000-8000-000000000002';
 
 function makeRunRow(triggeredBy: string) {
   return {
@@ -166,6 +168,99 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     expect(upsert).toBeDefined();
   });
 
+  it('full-suite compliance writes prune disappeared storyboard rows before upsert', async () => {
+    const statusRow = { rows: [{ status: 'passing', previous_status: 'passing' }] };
+    const client = makeTransactionClient([
+      EMPTY,                         // BEGIN
+      { rows: [makeRunRow('heartbeat')] },
+      statusRow,                     // UPSERT agent_compliance_status
+      EMPTY,                         // SAVEPOINT storyboard_upsert
+      EMPTY,                         // DELETE stale storyboard rows
+      EMPTY,                         // INSERT fresh storyboard rows
+      EMPTY,                         // RELEASE SAVEPOINT
+      EMPTY,                         // COMMIT
+    ]);
+    mockedGetClient.mockResolvedValueOnce(client as any);
+
+    await db.recordComplianceRun({
+      ...minimalInput('heartbeat'),
+      replace_storyboard_statuses: true,
+      storyboard_statuses: [
+        { storyboard_id: 'fresh_storyboard', status: 'passing', steps_passed: 3, steps_total: 3 },
+      ],
+    });
+
+    const deleteIndex = client.query.mock.calls.findIndex(
+      ([sql]: [string]) => typeof sql === 'string' && sql.includes('DELETE FROM agent_storyboard_status'),
+    );
+    const insertIndex = client.query.mock.calls.findIndex(
+      ([sql]: [string]) => typeof sql === 'string' && sql.includes('INSERT INTO agent_storyboard_status'),
+    );
+    expect(deleteIndex).toBeGreaterThan(-1);
+    expect(insertIndex).toBeGreaterThan(deleteIndex);
+    expect(client.query.mock.calls[deleteIndex][0]).toContain('NOT (storyboard_id = ANY($2::text[]))');
+    expect(client.query.mock.calls[deleteIndex][1]).toEqual([AGENT_URL, ['fresh_storyboard']]);
+  });
+
+  it('zero-row authoritative compliance writes clear all materialized storyboard rows', async () => {
+    const statusRow = { rows: [{ status: 'failing', previous_status: 'passing' }] };
+    const client = makeTransactionClient([
+      EMPTY,
+      { rows: [makeRunRow('heartbeat')] },
+      statusRow,
+      EMPTY,
+      EMPTY,
+      EMPTY,
+      EMPTY,
+    ]);
+    mockedGetClient.mockResolvedValueOnce(client as any);
+
+    await db.recordComplianceRun({
+      ...minimalInput('heartbeat'),
+      overall_status: 'failing',
+      tracks_json: [],
+      tracks_passed: 0,
+      tracks_failed: 0,
+      replace_storyboard_statuses: true,
+      storyboard_statuses: [],
+    });
+
+    const deleteCall = client.query.mock.calls.find(
+      ([sql]: [string]) => typeof sql === 'string' && sql.includes('DELETE FROM agent_storyboard_status'),
+    );
+    expect(deleteCall).toBeDefined();
+    expect(deleteCall![0]).toContain('WHERE agent_url = $1');
+    expect(deleteCall![0]).not.toContain('storyboard_id = ANY');
+    expect(deleteCall![1]).toEqual([AGENT_URL]);
+  });
+
+  it('partial storyboard writes overlay one row without clearing other storyboard rows', async () => {
+    const statusRow = { rows: [{ status: 'passing', previous_status: 'passing' }] };
+    const client = makeTransactionClient([
+      EMPTY,
+      { rows: [makeRunRow('owner_test')] },
+      statusRow,
+      EMPTY, // SAVEPOINT storyboard_upsert
+      EMPTY, // INSERT storyboard row
+      EMPTY, // RELEASE SAVEPOINT
+      EMPTY,
+    ]);
+    mockedGetClient.mockResolvedValueOnce(client as any);
+
+    await db.recordComplianceRun({
+      ...minimalInput('owner_test'),
+      replace_storyboard_statuses: false,
+      storyboard_statuses: [
+        { storyboard_id: 'single_storyboard', status: 'passing', steps_passed: 1, steps_total: 1 },
+      ],
+    });
+
+    const deleteCall = client.query.mock.calls.find(
+      ([sql]: [string]) => typeof sql === 'string' && sql.includes('DELETE FROM agent_storyboard_status'),
+    );
+    expect(deleteCall).toBeUndefined();
+  });
+
   it('getComplianceStatus LATERAL join returns last_triggered_by from most recent non-dry run', async () => {
     const now = new Date();
     mockedQuery.mockResolvedValueOnce({
@@ -183,6 +278,7 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
         previous_status: null,
         status_changed_at: null,
         updated_at: now,
+        last_run_id: RUN_ID,
         last_triggered_by: 'owner_test',
       }],
       rowCount: 1,
@@ -194,11 +290,233 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     const status = await db.getComplianceStatus(AGENT_URL);
 
     expect(status).not.toBeNull();
+    expect(status!.last_run_id).toBe(RUN_ID);
     expect(status!.last_triggered_by).toBe('owner_test');
 
     const [sql] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('r.id AS last_run_id');
     expect(sql).toContain('dry_run = false');
     expect(sql).toContain('ORDER BY tested_at DESC');
     expect(sql).toContain('LIMIT 1');
+  });
+
+  it('getComplianceStatusWithStoryboardCounts resolves status and stale-row suppression in one SQL statement', async () => {
+    const now = new Date();
+    mockedQuery.mockResolvedValueOnce({
+      rows: [{
+        agent_url: AGENT_URL,
+        status: 'passing',
+        lifecycle_stage: 'production',
+        last_checked_at: now,
+        last_passed_at: now,
+        last_failed_at: null,
+        streak_days: 1,
+        streak_started_at: now,
+        tracks_summary_json: { core: 'pass' },
+        headline: null,
+        previous_status: null,
+        status_changed_at: null,
+        updated_at: now,
+        last_run_id: RUN_ID,
+        last_triggered_by: 'owner_test',
+        storyboards_passing: 1,
+        storyboards_total: 2,
+      }],
+      rowCount: 1,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    const statusWithCounts = await db.getComplianceStatusWithStoryboardCounts(AGENT_URL);
+
+    expect(statusWithCounts?.status.last_run_id).toBe(RUN_ID);
+    expect(statusWithCounts?.storyboardCounts).toEqual({ passing: 1, total: 2 });
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('LEFT JOIN LATERAL');
+    expect(sql).toContain('agent_storyboard_status latest');
+    expect(sql).toContain('latest.run_id = r.id');
+    expect(params).toEqual([AGENT_URL]);
+  });
+
+  it('getStoryboardStatusCounts can scope counts to the latest compliance run id', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [{ passing: '0', total: '0' }],
+      rowCount: 1,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    const counts = await db.getStoryboardStatusCounts(AGENT_URL, { runId: EMPTY_RUN_ID });
+
+    expect(counts).toEqual({ passing: 0, total: 0 });
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('s.run_id = $2::uuid');
+    expect(params).toEqual([AGENT_URL, EMPTY_RUN_ID, null, false]);
+  });
+
+  it('getStoryboardStatuses can scope storyboard detail to a single compliance run id', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [],
+      rowCount: 0,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    const statuses = await db.getStoryboardStatuses(AGENT_URL, { runId: EMPTY_RUN_ID });
+
+    expect(statuses).toEqual([]);
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('s.run_id = $2::uuid');
+    expect(params).toEqual([AGENT_URL, EMPTY_RUN_ID, null, false]);
+  });
+
+  it('getStoryboardStatusCounts can suppress stale rows when the latest run wrote no storyboard rows', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [{ passing: '0', total: '0' }],
+      rowCount: 1,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    const counts = await db.getStoryboardStatusCounts(AGENT_URL, { requireRowsForRunId: EMPTY_RUN_ID });
+
+    expect(counts).toEqual({ passing: 0, total: 0 });
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('EXISTS');
+    expect(sql).toContain('latest.run_id = $3::uuid');
+    expect(params).toEqual([AGENT_URL, null, EMPTY_RUN_ID, false]);
+  });
+
+  it('getStoryboardStatuses can preserve merged rows only when the latest run wrote storyboard rows', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [],
+      rowCount: 0,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    const statuses = await db.getStoryboardStatuses(AGENT_URL, { requireRowsForRunId: EMPTY_RUN_ID });
+
+    expect(statuses).toEqual([]);
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('EXISTS');
+    expect(sql).toContain('latest.run_id = $3::uuid');
+    expect(params).toEqual([AGENT_URL, null, EMPTY_RUN_ID, false]);
+  });
+
+  it('getStoryboardStatuses can gate merged rows against the latest run inside the same SQL statement', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [],
+      rowCount: 0,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    const statuses = await db.getStoryboardStatuses(AGENT_URL, { requireRowsForLatestRun: true });
+
+    expect(statuses).toEqual([]);
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('WITH latest_run AS');
+    expect(sql).toContain('JOIN latest_run lr ON latest.run_id = lr.id');
+    expect(params).toEqual([AGENT_URL, null, null, true]);
+  });
+
+  it('getLatestObservations returns advisory observations only from the latest non-dry run', async () => {
+    const observations = [
+      {
+        category: 'best_practice',
+        severity: 'suggestion',
+        message: 'Agent does not return valid_actions in get_media_buys response',
+      },
+    ];
+    mockedQuery.mockResolvedValueOnce({
+      rows: [{ observations_json: observations }],
+      rowCount: 1,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    await expect(db.getLatestObservations(AGENT_URL)).resolves.toEqual(observations);
+
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('observations_json');
+    expect(sql).toContain('dry_run = FALSE');
+    expect(sql).toContain('ORDER BY tested_at DESC');
+    expect(params).toEqual([AGENT_URL]);
+  });
+
+  it('getComplianceHistory excludes dry-run diagnostic rows by default', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [],
+      rowCount: 0,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    await expect(db.getComplianceHistory(AGENT_URL, 10)).resolves.toEqual([]);
+
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('($3::boolean OR dry_run = FALSE)');
+    expect(params).toEqual([AGENT_URL, 10, false]);
+  });
+
+  it('getLatestObservations returns empty when the latest run has no observations array', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [{ observations_json: null }],
+      rowCount: 1,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    await expect(db.getLatestObservations(AGENT_URL)).resolves.toEqual([]);
+  });
+
+  it('getStoryboardStatusCounts can gate merged rows against the latest run inside the same SQL statement', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [{ passing: '0', total: '0' }],
+      rowCount: 1,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    const counts = await db.getStoryboardStatusCounts(AGENT_URL, { requireRowsForLatestRun: true });
+
+    expect(counts).toEqual({ passing: 0, total: 0 });
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('WITH latest_run AS');
+    expect(sql).toContain('JOIN latest_run lr ON latest.run_id = lr.id');
+    expect(params).toEqual([AGENT_URL, null, null, true]);
+  });
+
+  it('bulkGetStoryboardStatuses preserves merged rows unless the latest run explicitly wrote none', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [],
+      rowCount: 0,
+      command: '',
+      oid: 0,
+      fields: [],
+    });
+
+    const statuses = await db.bulkGetStoryboardStatuses([AGENT_URL]);
+
+    expect(statuses).toEqual(new Map());
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toContain('WITH latest_runs AS');
+    expect(sql).toMatch(/\)\s*,\s*latest_run_flags AS/);
+    expect(sql).toContain('AND dry_run = false');
+    expect(sql).toContain('latest_run_flags AS');
+    expect(sql).toContain('latest.run_id = lr.id');
+    expect(sql).toContain('COALESCE(lf.has_rows, true) = true');
+    expect(params).toEqual([[AGENT_URL]]);
   });
 });

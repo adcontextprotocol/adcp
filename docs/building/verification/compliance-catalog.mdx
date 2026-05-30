@@ -22,16 +22,28 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | Storyboard | Purpose |
 |-----------|---------|
 | `capability-discovery` | `get_adcp_capabilities` shape, protocol/specialism declarations, version advertising |
+| `comply-controller-mode-gate` | Sandbox/live isolation for sellers that expose `comply_test_controller` on a shared endpoint — live-mode principals must be refused before scenario dispatch |
 | `schema-validation` | Request and response schema conformance, ISO 8601 timestamps, temporal invariants |
 | `schema-validation-signals` | Response schema compliance for signals — required fields on every signal; gated on `get_signals` |
+| `version-negotiation` | Release-precision `adcp.supported_versions` advertisement and response-envelope `adcp_version` echo; advisory in 3.1, promoted in later cuts |
 | `v3-envelope-integrity` | v3 protocol envelopes MUST NOT carry the v2 legacy `task_status` or `response_status` fields — `status` is the single canonical lifecycle field in v3. |
 | `error-compliance` | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
 | `error-compliance-signals` | Error handling for signals protocol — nonexistent signal IDs, missing fields, VERSION_UNSUPPORTED, transport binding; gated on `get_signals` + `activate_signal` |
+| `stale-response-advisory` | `STALE_RESPONSE` wire placement — advisory rides in `errors[]` on a populated success response with transport success preserved; stale-cache forcing steps gated on `comply_test_controller` with `force_upstream_unavailable` |
 | `idempotency` | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
 | `read-tool-idempotency` | Read-only task wrappers accept the 3.1 every-request `idempotency_key` envelope without strict request-wrapper rejection; includes the 3.1 omitted-key grace probe. |
-| `security` | **Authentication baseline — unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding.** See [Authentication](/docs/building/by-layer/L2/authentication). |
+| `canonical-format-validate-input` | Canonical-format `validate_input` result semantics — structural pass/fail across required slots and `unvalidatable_nondeterministic` for seeded product declarations. Gated on agents that advertise `validate_input`; the seeded-product branch also requires `comply_test_controller` seeding support. |
+| `security` | **Authentication baseline — unauth rejection, static-credential enforcement (Bearer API key or HTTP Basic), OAuth discovery + RFC 9728 audience binding.** See [Authentication](/docs/building/by-layer/L2/authentication). |
 | `webhook-emission` | Outbound webhook conformance — stable `idempotency_key` across retries; RFC 9421 webhook signing (or HMAC fallback if the buyer opted in). Runs for any agent that accepts `push_notification_config` on any operation. |
+| `webhook-receiver-envelope` | Buyer receiver replay conformance: accepts full MCP webhook envelopes, rejects bare delivery-result payloads, verifies signatures over raw body bytes, and dedupes retries by `idempotency_key`. |
 | `notification-config-event-scope` | `sync_accounts.accounts[].notification_configs[]` semantic validation — account-level subscribers reject media-buy-anchored notification types (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) even though they are valid values in the shared notification-type enum. |
+| `notification-config-lifecycle` | Account-level `notification_configs[]` lifecycle on `sync_accounts`: paused registration, durable `list_accounts` echo, subscriber-keyed replacement, and clear-all semantics. |
+| `notification-config-rejections` | Semantic `notification_configs[]` request rejection path for duplicate `subscriber_id` values. |
+| `wholesale-feed-products` | Product wholesale feed versioning — bootstrap responses carry `wholesale_feed_version`/`cache_scope`, and matching `if_wholesale_feed_version` probes return `unchanged` without product rows. |
+| `wholesale-feed-signals` | Signals wholesale feed versioning — bootstrap responses carry `wholesale_feed_version`/`cache_scope`, and matching `if_wholesale_feed_version` probes return `unchanged` without signal rows. |
+| `wholesale-feed-product-webhooks` | Account-level `notification_configs[]` registration for agents that advertise product wholesale feed webhook events. |
+| `wholesale-feed-signal-webhooks` | Account-level `notification_configs[]` registration for agents that advertise signal wholesale feed webhook events. |
+| `wholesale-feed-bulk-webhooks` | Account-level `notification_configs[]` registration for agents that advertise `wholesale_feed.bulk_change`. |
 | `pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_creatives` response from a continuation page through to terminal. |
 | `get-signals-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `get_signals` response under a broad query — page 1 must be non-terminal against any non-trivial signal set, page 2 follows the cursor. |
 | `pagination-integrity-list-accounts` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_accounts` response — storyboard bootstraps three accounts via `sync_accounts`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
@@ -44,7 +56,7 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | `signed-requests` | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
 | `billing-gate-dispatch` | `sync_accounts.billing` rejection dispatch — `BILLING_NOT_SUPPORTED` (capability gate, with `error.details.scope`) vs `BILLING_NOT_PERMITTED_FOR_AGENT` (per-buyer-agent commercial-relationship gate, with the clamped `rejected_billing` + `suggested_billing` shape). Capability phase skipped when the seller supports all three `billing` values; per-agent phases skipped when the test kit does not declare `commercial_relationship: passthrough_only`. |
 
-Capability-gated rows (`deterministic-testing`, `signed-requests`) are skipped only when the agent advertises the capability as `false`; they cannot be claimed and partially implemented. Declaring `supported: true` and failing the storyboard is non-conformant — declare `false` rather than ship a partial implementation. The `billing-gate-dispatch` rows are precondition-gated rather than capability-gated: each phase grades `not_applicable` when its precondition is not met (the seller supports all three billing values; or the test kit does not declare a passthrough-only caller). Sellers wanting full coverage of the per-agent gate SHOULD ship a test kit with `commercial_relationship: passthrough_only` declared so the per-agent phases run.
+Capability-gated rows (`deterministic-testing`, `signed-requests`) are skipped only when the agent advertises the capability as `false`; they cannot be claimed and partially implemented. Declaring `supported: true` and failing the storyboard is non-conformant — declare `false` rather than ship a partial implementation. The `billing-gate-dispatch` and `comply-controller-mode-gate` rows are precondition-gated rather than ordinary capability-gated rows: each phase grades `not_applicable` when its precondition is not met. Sellers wanting full coverage of the per-agent billing gate SHOULD ship a test kit with `commercial_relationship: passthrough_only` declared so the per-agent phases run.
 
 ## Protocols
 
@@ -97,7 +109,7 @@ Specialisms are grouped below by parent protocol.
 | `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
 | `sales-broadcast-tv` | stable | Broadcast linear TV with guaranteed inventory and FCC cancellation rules |
 | `sales-social` | stable | Social media advertising platform with self-service flows |
-| `governance-aware-seller` | stable | Seller composes with the buyer's campaign-governance agent — accepts `sync_governance`, calls `check_governance`, and propagates approvals, conditions, and denials unchanged. Optional claim; sellers that don't claim it skip the governance scenarios as not_applicable. |
+| `governance-aware-seller` | stable | Seller composes with the buyer's campaign-governance agent after baseline registration — calls `check_governance` and propagates approvals, conditions, and denials unchanged. Optional claim for the full governance-check loop. |
 | `audience-sync` | stable | Syncs buyer-provided audience segments into a platform for activation (uses `sync_audiences`, `list_accounts`) |
 
 <Note>
@@ -332,7 +344,7 @@ The `signal_type` enum in signal responses has three values:
 
 - `marketplace` — the signal agent is reselling segments published by a third-party data provider (Experian, Peer39, etc.). Buyers can verify authorization via the provider's `/.well-known/adagents.json`.
 - `owned` — the signal agent exposes its own first-party segments derived from directly owned data (retailer purchase data, publisher behavioral data, telco location data).
-- `custom` — the signal agent builds the segment on demand from models, composites, or buyer-supplied inputs. Use this when no `adagents.json` authorization chain applies — the segment is agent-native, not attributable to a standing upstream provider.
+- `custom` — the signal source builds the segment on demand from models, composites, or buyer-supplied inputs. Use this when no `adagents.json` authorization chain applies — the segment is source-native, not attributable to a standing upstream provider.
 
 ## Source of truth
 

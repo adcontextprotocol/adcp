@@ -120,6 +120,9 @@
               "pacing": "even",
               "pricing_option_id": "cpm-fixed-sports",
               "paused": false,
+              "context": {
+                "buyer_ref": "line-001"
+              },
               "creative_assignments": [],
               "format_ids_to_provide": [
                 {

@@ -92,7 +92,7 @@ Declares whether this seller honors `idempotency_key` replay protection. From 3.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `supported` | boolean | **Required.** Whether the seller deduplicates replays. When `false`, sending an `idempotency_key` is a no-op — the seller will NOT return `IDEMPOTENCY_CONFLICT` or `IDEMPOTENCY_EXPIRED`, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., `get_media_buys` by `buyer_ref`) before retrying spend-committing operations. |
+| `supported` | boolean | **Required.** Whether the seller deduplicates replays. When `false`, sending an `idempotency_key` is a no-op — the seller will NOT return `IDEMPOTENCY_CONFLICT` or `IDEMPOTENCY_EXPIRED`, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., `get_media_buys` plus request context such as `context.internal_campaign_id` or package context such as `context.buyer_ref`) before retrying spend-committing operations. |
 | `replay_ttl_seconds` | integer | Required when `supported: true`. How long the seller retains a canonical response for a key. Minimum `3600` (1h); recommended `86400` (24h); maximum `604800` (7d). |
 
 ```json
@@ -129,7 +129,7 @@ AdCP protocols this agent supports. This is the single capability axis — each 
 
 Valid values: `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`.
 
-See the [Compliance Catalog](/docs/building/compliance-catalog) for every protocol's scope. Support for the [compliance test controller](/docs/building/implementation/comply-test-controller) is declared via the separate `compliance_testing` capability block (below), not as a protocol value.
+See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for every protocol's scope. Support for the [compliance test controller](/docs/building/by-layer/L3/comply-test-controller) is declared via the separate `compliance_testing` capability block (below), not as a protocol value.
 
 ### specialisms
 
@@ -150,19 +150,19 @@ Account and authentication capabilities. All sellers should declare this section
 | Field | Type | Description |
 |-------|------|-------------|
 | `supported_billing` | string[] | **Required.** Billing models this seller supports: `operator`, `agent`. The buyer must pass one of these values as `billing` in every `sync_accounts` entry. |
-| `require_operator_auth` | boolean | Default: `false`. Determines the account model. When `true` (explicit accounts): each operator authenticates independently, buyer discovers accounts via `list_accounts`, passes `account_id`. When `false` (implicit accounts): agent is trusted, buyer declares accounts via `sync_accounts`, passes natural key (`brand` + `operator`). For sandbox, the path follows the account model: explicit accounts discover pre-existing test accounts via `list_accounts`; implicit accounts declare sandbox via `sync_accounts` with `sandbox: true`. |
+| `require_operator_auth` | boolean | Default: `false`. Declares who must authenticate; it does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported. When `true`, each operator authenticates independently and account-scoped calls use seller-assigned `account_id` values because the seller or upstream platform owns the canonical account namespace. If a credential may access more than one account, the seller MUST expose `list_accounts` and buyers MUST resolve an explicit `account_id` before the first account-scoped request. If a credential is bound to exactly one account, the seller SHOULD expose `list_accounts` returning that singleton; a seller MAY omit `list_accounts` only when it provides the same explicit `account_id` through another declared path or out-of-band onboarding. When `false`, the agent is trusted, buyer declares accounts via `sync_accounts`, and subsequent calls pass the natural key (`brand` + `operator`). For sandbox, account-id namespaces use pre-existing test accounts from `list_accounts` or out-of-band setup; buyer-declared accounts use `sync_accounts` with `sandbox: true`. |
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
 | `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling `get_products`. When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. |
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
-| `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. For sandbox, the path follows the account model: explicit accounts discover pre-existing test accounts via `list_accounts`; implicit accounts declare sandbox via `sync_accounts` with `sandbox: true` — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
+| `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. For sandbox, account-id namespaces discover pre-existing test accounts through `list_accounts` or out-of-band setup; buyer-declared accounts declare sandbox via `sync_accounts` with `sandbox: true` — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
 
 #### Auth models
 
-**Implicit accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, then calls `sync_accounts` to declare which brands and operators it represents. The seller provisions accounts based on the agent's claims, optionally verifying operators against `brand.json`. All subsequent calls use the agent's single credential and pass natural keys (`brand` + `operator`).
+**Buyer-declared accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, then calls `sync_accounts` to declare which brands and operators it represents. The seller provisions accounts based on the agent's claims, optionally verifying operators against `brand.json`. All subsequent calls use the agent's single credential and pass natural keys (`brand` + `operator`).
 
-**Explicit accounts** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and discovers accounts via `list_accounts`. The buyer passes seller-assigned `account_id` values on all subsequent requests.
+**Account-id namespaces** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and passes seller-assigned `account_id` values on subsequent requests. OAuth is credential acquisition, not an account taxonomy axis. Two namespace patterns use the same wire reference: upstream-managed sellers expose `list_accounts`, making explicit account resolution mandatory before account-scoped calls; seller-defined namespaces without `list_accounts` provide account IDs out-of-band. SDKs SHOULD lazily call `list_accounts` when first needed, auto-select a singleton, cache it per credential/session, and still send explicit `AccountRef` values on required-account calls.
 
-For sandbox, the path follows the account model: explicit accounts (`require_operator_auth: true`) discover pre-existing test accounts via `list_accounts`; implicit accounts declare sandbox via `sync_accounts` with `sandbox: true`.
+For sandbox, the path follows the account namespace: account-id namespaces discover pre-existing test accounts via `list_accounts` or out-of-band setup; buyer-declared accounts declare sandbox via `sync_accounts` with `sandbox: true`.
 
 See [Accounts and Agents](/docs/building/integration/accounts-and-agents#what-sellers-declare) for full workflows and [seller patterns](/docs/building/integration/accounts-and-agents#seller-patterns) for common combinations of auth model and billing support.
 
@@ -196,6 +196,17 @@ When absent, only polling is available. Cadence and metrics are declared per pro
 When `offline` is declared, also include `offline_delivery_protocols` to declare which cloud storage protocols are supported (`s3`, `gcs`, `azure_blob`). Buyers express a protocol preference via `preferred_reporting_protocol` in `sync_accounts`; the seller provisions the account's `reporting_bucket` using a supported protocol.
 
 For offline delivery, the seller provisions a per-account bucket and grants the buyer read access out-of-band. The bucket location (including `file_retention_days`) appears on the account object returned by `sync_accounts` as `reporting_bucket`. See [Offline File Delivery](/docs/media-buy/media-buys/optimization-reporting#offline-file-delivery-based-reporting) for details.
+
+#### creative_approval_mode
+
+Declares the seller's tenant-wide creative approval posture after creatives are assigned and automated validation passes. This is not a notification surface or a new approval workflow; it tells buyers and compliance runners whether human review can still block serving eligibility. Compliance runners use this declaration mainly to decide whether auto-approval-dependent storyboards such as `media_buy_seller/pending_creatives_to_start` apply.
+
+| Value | Description |
+|-------|-------------|
+| `auto_approve` | Human review does not block serving eligibility after creatives are assigned and automated validation passes. Auto-approval-dependent storyboards can run. |
+| `require_human` | One or more products/accounts may require manual review before creatives become eligible to serve. Treat this as a tenant-wide worst-case ceiling until a product-level override exists. |
+
+Sellers with mixed approval policies SHOULD declare `require_human` unless every product/account that can be reached by the advertised agent supports automatic eligibility after automated validation. When the field is absent, approval behavior is legacy-unspecified; runners SHOULD NOT treat omission as an affirmative `auto_approve` claim. `ai_assisted` is intentionally not a value until the protocol defines what assistance changes in observable behavior.
 
 #### features
 
@@ -357,9 +368,13 @@ Signals protocol capabilities. Only present if `signals` is in `supported_protoc
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `data_provider_domains` | string[] | Data provider domains this signals agent is authorized to resell. Buyers should fetch each provider's `adagents.json` for signal catalog definitions and to verify authorization. |
-| `discovery_modes` | string[] | Discovery modes the agent supports on `get_signals`. `"brief"` (semantic discovery via `signal_spec` / `signal_ids`) is implicit and always supported. Declare `"wholesale"` to advertise that callers can omit `signal_spec` / `signal_ids` and enumerate the full priced signals feed. Agents not declaring `"wholesale"` MAY return `INVALID_REQUEST` for wholesale calls. Absent declaration is treated as `["brief"]`. |
-| `features.catalog_signals` | boolean | Supports signals from data provider catalogs with structured `signal_id` references. |
+| `data_provider_domains` | string[] | Data provider domains this signals agent is authorized to resell. Buyers should fetch each provider's `adagents.json` for signal definitions and to verify authorization. |
+| `discovery_modes` | string[] | Discovery modes the agent supports on `get_signals`. `"brief"` (semantic discovery via `signal_spec` / `signal_refs`, with deprecated `signal_ids` accepted for older clients) is implicit and always supported. Declare `"wholesale"` to advertise that callers can omit `signal_spec` / `signal_refs` / `signal_ids` and enumerate the full priced signals feed. Agents not declaring `"wholesale"` MAY return `INVALID_REQUEST` for wholesale calls. Absent declaration is treated as `["brief"]`. |
+| `features.catalog_signals` | boolean | **Deprecated.** Legacy wire flag for structured `signal_ref` references to provider-published signal definitions in adagents.json `signals[]`. |
+
+<Note>
+`catalog_signals` is deprecated. Existing 3.x agents may continue to emit it for compatibility, but new agents SHOULD omit it and callers MUST NOT require it before using `signal_ref`. Treat `supported_protocols: ["signals"]`, `signals.data_provider_domains`, `signals.discovery_modes`, and the actual `get_signals` response as the capability surface.
+</Note>
 
 ### creative
 
@@ -501,20 +516,20 @@ Array of metrics this measurement agent computes.
 
 ### compliance_testing
 
-Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via [`comply_test_controller`](/docs/building/implementation/comply-test-controller). Omit the block if the agent does not support compliance testing.
+Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller). Omit the block if the agent does not support compliance testing.
 
-**Production deployments MUST NOT include this block.** `comply_test_controller` is sandbox-only at the deployment level; advertising the capability on a production endpoint is non-conformant even if dispatch is gated. See [Compliance test controller § Sandbox gating](/docs/building/implementation/comply-test-controller#sandbox-gating).
+**Production deployments MUST NOT include this block.** `comply_test_controller` is sandbox-only at the deployment level; advertising the capability on a production endpoint is non-conformant even if dispatch is gated. See [Compliance test controller § Sandbox gating](/docs/building/by-layer/L3/comply-test-controller#sandbox-gating).
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `scenarios` | string[] | Compliance testing scenarios this agent supports. Possible values: `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`. Runners MUST accept unknown scenario strings — new scenarios may be added in additive minor bumps. |
+| `scenarios` | string[] | Compliance testing scenarios this agent supports. Values SHOULD include every canonical controller scenario the agent implements, excluding `list_scenarios` because that value is a discovery operation rather than a test capability. Current canonical values include `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_create_media_buy_arm`, `force_task_completion`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`, `seed_creative_format`, `seed_measurement_catalog`, `query_upstream_traffic`, `query_provenance_audit_observations`, and `force_upstream_unavailable`. Values MAY also include implementation-specific scenarios. Runners MUST treat scenario names as open strings — new scenarios may be added in additive releases. |
 
 Storyboard runners check for the `compliance_testing` block before running deterministic testing steps. If the agent does not include the block, controller-dependent storyboard steps cannot be validated.
 
-Agents that implement `comply_test_controller` SHOULD include the `compliance_testing` capability block and list supported scenarios. Agents that only support a subset of scenarios (e.g., media buy status but not SI sessions) declare only those scenarios — the runner skips unsupported ones.
+Agents that implement `comply_test_controller` SHOULD include the `compliance_testing` capability block and list supported scenarios. Agents that only support a subset of scenarios (e.g., media buy status but not SI sessions) declare only those scenarios — the runner reports unsupported scenario coverage as skipped or partial rather than as a hidden pass.
 
 :::note
-Compliance testing is sandbox-only at the deployment level — production deployments MUST NOT advertise this block or expose `comply_test_controller` on any surface. `FORBIDDEN` is returned only when an in-sandbox caller passes `params` that reference a non-sandbox account; live-mode probes for the tool by name receive the transport's standard unknown-tool error. See [Sandbox gating](/docs/building/implementation/comply-test-controller#sandbox-gating).
+Compliance testing is sandbox-only at the deployment level — production deployments MUST NOT advertise this block or expose `comply_test_controller` on any surface. `FORBIDDEN` is returned only when an in-sandbox caller passes `params` that reference a non-sandbox account; live-mode probes for the tool by name receive the transport's standard unknown-tool error. See [Sandbox gating](/docs/building/by-layer/L3/comply-test-controller#sandbox-gating).
 :::
 
 ### webhook_signing
@@ -885,6 +900,7 @@ const buy = await client.createMediaBuy({
     "supported_billing": ["operator", "agent"]
   },
   "media_buy": {
+    "creative_approval_mode": "auto_approve",
     "features": {
       "inline_creative_management": true,
       "property_list_filtering": true
@@ -979,6 +995,7 @@ An agent can implement multiple protocols from a single endpoint. This is common
     "supported_billing": ["operator"]
   },
   "media_buy": {
+    "creative_approval_mode": "require_human",
     "features": {
       "inline_creative_management": true
     },

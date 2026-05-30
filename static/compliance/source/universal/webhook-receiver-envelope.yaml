@@ -1,0 +1,129 @@
+id: webhook_receiver_envelope
+version: "1.0.0"
+title: "Webhook receiver envelope: inbound POST conformance"
+category: core
+summary: "Buyer webhook receivers MUST accept full MCP webhook envelopes, reject bare delivery-result payloads, preserve raw-body signature verification, and dedupe retries by a stable idempotency_key."
+track: core
+
+narrative: |
+  Buyer and orchestrator webhook receivers are the inverse side of outbound
+  webhook conformance. Sellers must emit compliant webhook envelopes; receivers
+  must reject payloads that skip that envelope even when the inner task result is
+  otherwise schema-valid.
+
+  This storyboard is a direct POST replay contract. The runner sends canonical
+  webhook payloads from `/test-vectors/webhook-receiver-envelope.json` to a
+  buyer-provided receiver URL and records the HTTP result. It validates the
+  transport shape separately from the task-specific result content:
+
+  - Full MCP webhook envelopes validate against `core/mcp-webhook-payload.json`.
+  - Delivery-report notifications live under `result`.
+  - A top-level `notification_type` body is a bare result, not a webhook.
+  - Retries of the same event preserve `idempotency_key`.
+  - Signatures are verified over the exact raw request body.
+
+  The storyboard grades `not_applicable` when the runner was not configured with
+  a buyer receiver URL. It is for buyer/orchestrator receiver testing, not for
+  seller endpoint grading.
+
+agent:
+  interaction_model: webhook_receiver
+  capabilities:
+    - receives_webhooks
+  examples:
+    - "Buyer agent receiving seller delivery webhooks"
+    - "Agency orchestrator that verifies seller callbacks"
+
+caller:
+  role: compliance_runner
+  example: "AdCP receiver replay harness"
+
+prerequisites:
+  description: |
+    The runner MUST be configured with a buyer webhook receiver URL and a
+    test webhook-signing key whose public JWK the receiver can resolve. Runners
+    without a receiver URL grade this storyboard as not_applicable.
+  vectors: "static/test-vectors/webhook-receiver-envelope.json"
+
+phases:
+  - id: positive_envelope_replay
+    title: "Accept canonical webhook envelopes"
+    narrative: |
+      The runner POSTs a canonical MCP webhook envelope whose `result` contains
+      a `media_buy_delivery` notification. The receiver verifies the signature
+      over the exact raw body, validates the envelope, dispatches the nested
+      result, and returns 2xx.
+
+    steps:
+      - id: post_delivery_report_envelope
+        title: "POST delivery report inside MCP webhook envelope"
+        task: replay_webhook_vector
+        vector_ref: "static/test-vectors/webhook-receiver-envelope.json#positive/mcp-delivery-report-envelope"
+        webhook_payload_schema_ref: "core/mcp-webhook-payload.json"
+        expected: |
+          Receiver returns 2xx after verifying the signature over the exact raw
+          request body and accepting the full MCP webhook envelope. The nested
+          `result.notification_type` value routes delivery-report handling; it
+          is not treated as the top-level webhook type.
+
+      - id: post_same_event_retry
+        title: "POST retry with same idempotency_key"
+        task: replay_webhook_vector
+        vector_ref: "static/test-vectors/webhook-receiver-envelope.json#positive/mcp-delivery-report-retry-same-idempotency-key"
+        same_event_as: post_delivery_report_envelope
+        webhook_payload_schema_ref: "core/mcp-webhook-payload.json"
+        expected: |
+          Receiver returns 2xx and suppresses duplicate side effects by
+          deduping on the same `idempotency_key` scoped to the authenticated
+          sender identity. Returning 409 is non-conformant because at-least-once
+          senders retry non-2xx responses.
+
+  - id: negative_envelope_rejections
+    title: "Reject payloads that are not webhook envelopes"
+    narrative: |
+      The runner sends well-formed JSON bodies that are not dispatchable webhook
+      envelopes. The key case is a bare delivery-report result with a top-level
+      `notification_type`: that object may be valid task result content, but it
+      is not a valid webhook POST body.
+
+    steps:
+      - id: reject_bare_delivery_result
+        title: "Reject top-level notification_type result"
+        task: replay_webhook_vector
+        vector_ref: "static/test-vectors/webhook-receiver-envelope.json#negative/bare-delivery-result"
+        expect_error: true
+        expected: |
+          Receiver rejects before task dispatch with an actionable envelope
+          error naming the missing webhook fields (`idempotency_key`,
+          `operation_id`, `task_id`, `task_type`, `status`, and `timestamp`).
+
+      - id: reject_missing_idempotency_key
+        title: "Reject envelope without idempotency_key"
+        task: replay_webhook_vector
+        vector_ref: "static/test-vectors/webhook-receiver-envelope.json#negative/missing-idempotency-key"
+        expect_error: true
+        expected: |
+          Receiver rejects before dispatch because it cannot safely dedupe the
+          event. The error should identify `idempotency_key` as the missing
+          envelope field.
+
+      - id: reject_unsupported_status
+        title: "Reject media buy status used as webhook status"
+        task: replay_webhook_vector
+        vector_ref: "static/test-vectors/webhook-receiver-envelope.json#negative/unsupported-top-level-status"
+        expect_error: true
+        expected: |
+          Receiver rejects because top-level `status` must be a task-status enum
+          value. Media buy lifecycle state belongs under
+          `result.media_buy_deliveries[].status`.
+
+grading:
+  pass_criteria: |
+    Positive envelope vectors return 2xx and dispatch exactly once for one
+    logical event. Negative vectors return a non-2xx rejection before task
+    dispatch. Signature checks run before JSON dispatch and use the raw request
+    body bytes.
+  report_format: |
+    Per-vector accepted/rejected result with the HTTP status code, whether the
+    signature verified, whether dispatch occurred, and the receiver's structured
+    envelope error code when rejected.

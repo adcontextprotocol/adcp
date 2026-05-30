@@ -93,13 +93,15 @@ For buyers bridging from OpenRTB-shaped pipelines, the TMP Identity Match `ident
 | AdCP TMP `identities[].uid_type` | OpenRTB 2.6 `User.eids[].source` | Notes |
 |---|---|---|
 | `rampid` / `rampid_derived` | `liveramp.com` | `atype: 3` (person-based, per [IAB AdCOM Agent Types](https://github.com/InteractiveAdvertisingBureau/AdCOM/blob/main/AdCOM%20v1.0%20FINAL.md#list_agenttypes)) |
-| `id5` | `id5-sync.com` | |
+| `id5` | `id5-sync.com` | `atype: 3` |
 | `uid2` | `uidapi.com` | `atype: 3` |
-| `euid` | `euid.eu` | |
-| `pairid` | `iabtechlab.com/pair` | |
+| `euid` | `euid.eu` | `atype: 3` |
+| `pairid` | `iabtechlab.com/pair` | `atype: 3` |
 | `maid` | `adid` (Android) / `idfa` (iOS) | Atypically carried on `Device.ifa` rather than `User.eids` in OpenRTB |
 | `hashed_email` | `liveintent.com` or buyer-specific | `atype: 3` |
-| `publisher_first_party` | publisher-defined `source` URL | |
-| `other` | buyer-defined `source` URL | |
+| `publisher_first_party` | publisher-defined `source` URL | Context-dependent; bridge implementations may omit `atype` or default to `atype: 3` only when the token represents a person-based identifier |
+| `other` | buyer-defined `source` URL | Context-dependent; bridge implementations may omit `atype` or default to `atype: 3` only when the token represents a person-based identifier |
 
-The TMP `user_token` field corresponds to `User.eids[].uids[].id`. AdCP carries up to 3 identities per Identity Match request (HPKE size budget — see [TMPX size budget](/docs/trusted-match/specification#size-budget)); OpenRTB has no such limit, so a buyer bridging from OpenRTB into TMP must apply a buyer-configured priority order to truncate (typically: deterministic graphs first — UID2, RampID — then probabilistic or publisher-scoped IDs).
+The TMP `user_token` field corresponds to `User.eids[].uids[].id`. OpenRTB's `User.eids[].uids[].atype` is derived from AdCP's higher-fidelity `uid_type`; it is not a separate AdCP field. Bridge code should compute `atype` from the table above and should not add an independent user-supplied `atype` value that could disagree with `uid_type`.
+
+AdCP carries up to 3 identities per Identity Match request (HPKE size budget — see [TMPX size budget](/docs/trusted-match/specification#size-budget)); OpenRTB has no such limit, so a buyer bridging from OpenRTB into TMP must apply a buyer-configured priority order to truncate (typically: deterministic graphs first — UID2, RampID — then probabilistic or publisher-scoped IDs).

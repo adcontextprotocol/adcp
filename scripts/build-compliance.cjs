@@ -613,6 +613,18 @@ function main() {
     process.exit(1);
   }
 
+  // Upstream-traffic path lint: identifier_paths use a small portable
+  // request-payload-relative grammar so runners don't diverge on JSONPath
+  // variants, numeric indexes, or explicit roots. adcontextprotocol/adcp#5073.
+  try {
+    execSync('node scripts/lint-storyboard-upstream-traffic-paths.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Advisory-expiry lint (warnings only): surface storyboards declaring
   // severity: advisory without expires_after_version (or permanent_advisory),
   // so authors can confirm at PR review whether the drift is on purpose.

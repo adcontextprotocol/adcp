@@ -61,7 +61,7 @@ These operations are publicly accessible:
 
 ## Webhook Security
 
-AdCP 3.0 unifies webhook signing on the [AdCP RFC 9421 profile](#webhook-callbacks) — the seller signs outbound webhooks with its adagents.json-published key, and the buyer verifies against the seller's published JWKS. Nothing secret crosses the wire; identity is cryptographically established the same way it is for inbound requests.
+AdCP 3.0 unifies webhook signing on the [AdCP RFC 9421 profile](#webhook-callbacks) — the seller signs outbound webhooks with a key published through its operator `brand.json` `agents[].jwks_uri`, and the buyer verifies against that JWKS. When the publisher's `adagents.json` pins `signing_keys[]` for that seller, the pin is authoritative. Nothing secret crosses the wire; identity is cryptographically established the same way it is for inbound requests.
 
 **9421 webhook signing is baseline-required in 3.0.** Any seller that emits webhooks MUST sign them per the [Webhook callbacks](#webhook-callbacks) profile unless the buyer explicitly opts into the legacy scheme below by populating `push_notification_config.authentication` or `accounts[].notification_configs[].authentication`.
 
@@ -182,7 +182,7 @@ See [Accounts & Security — Data Isolation](/docs/media-buy/advanced-topics/acc
 
 ### The two-step pattern
 
-Every request carries an explicit `account` (via `account_id` for explicit-account models, or the `{brand, operator}` natural key for implicit models). Correct isolation is two checks, performed in order:
+Every account-scoped request whose schema requires `account` carries an explicit `AccountRef` (via `account_id` for account-id namespaces, or the `{brand, operator}` natural key for buyer-declared accounts). A seller MUST NOT silently replace a missing required `account` with a credential-implied default. For tasks where `account` is optional, omission semantics are task-local and must be documented by that task. Correct isolation is two checks, performed in order:
 
 1. **Auth precheck** — the request's `account` MUST be in the authenticated agent's authorized set. Fail closed with a 403 or a generic "not found" (never "you are not authorized for that account" — that's an existence leak).
 2. **Resource query** — filter by the request's `account_id` as the primary key constraint. Not by the whole authorized set — only by the specific account this request is acting on.
@@ -489,7 +489,7 @@ When in doubt, ask whether the buyer's intent is **"give me the same answer as b
 
 **SI session scope.** For `si_send_message` the key is scoped `(authenticated_agent, account_id, session_id, idempotency_key)`. `session_id` is therefore part of the oracle surface: if session IDs are guessable, an attacker who steals one key can probe it against many sessions. SI sellers MUST generate `session_id` server-side using a CSPRNG with ≥122 bits of entropy (UUID v4 or equivalent) and MUST NOT derive it from anything observable to another agent (request sequence number, user handle, timestamps). The same idempotency_key sent with a different `session_id` is a different scope tuple — always a new request, never a conflict.
 
-**`account_id` entropy for cache-scope safety.** `account_id` is part of every idempotency scope tuple, so it is also part of the oracle surface: an attacker authenticated as agent A with a stolen idempotency key could probe it against candidate account IDs to enumerate accounts in A's authorized set or learn which accounts A has ever operated on. When account IDs are short sequential or semantic values (`acct_123`, `nike-us`), this is a real enumeration channel. Sellers that issue server-assigned account IDs MUST use unguessable values (UUID v4 / ULID, ≥122 bits of entropy) for any account ID that participates in an idempotency cache scope. Sellers operating under the implicit-accounts model (natural-key `{brand, operator}`) MUST hash the natural key with a seller-local salt before using it as a cache-scope component — the natural key is public by design and cannot be used directly as an oracle defense.
+**`account_id` entropy for cache-scope safety.** `account_id` is part of every idempotency scope tuple, so it is also part of the oracle surface: an attacker authenticated as agent A with a stolen idempotency key could probe it against candidate account IDs to enumerate accounts in A's authorized set or learn which accounts A has ever operated on. When account IDs are short sequential or semantic values (`acct_123`, `nike-us`), this is a real enumeration channel. Sellers that issue server-assigned account IDs MUST use unguessable values (UUID v4 / ULID, ≥122 bits of entropy) for any account ID that participates in an idempotency cache scope. Sellers operating under the buyer-declared account model (natural-key `{brand, operator}`) MUST hash the natural key with a seller-local salt before using it as a cache-scope component — the natural key is public by design and cannot be used directly as an oracle defense.
 
 ```javascript
 import { canonicalize } from "@truestamp/canonify"; // RFC 8785 JCS
@@ -867,7 +867,7 @@ AdCP 3.0 defines this profile as **optional and capability-advertised** via `req
 **Roles:**
 - **Agents** sign requests with a key published at their own `jwks_uri` in their operator's brand.json `agents[]` entry. The operator (the domain hosting brand.json) may be a house buying direct or an authorized third party — this profile does not distinguish. The signer is always an agent.
 - **Sellers** verify the signature against the signing agent's published key, establishing agent identity. Sellers then perform the separate brand-operator authorization check (outside this profile's scope).
-- **Sellers calling agent-side AdCP endpoints** (e.g., buyer-hosted mutation callbacks that are themselves AdCP protocol calls) sign their outgoing requests symmetrically; the receiving agent verifies against the seller's keys published under the seller's `adagents.json` agent entries. Push-notification webhook callbacks (`push_notification_config.url` and similar asynchronous one-way notifications) are covered by the symmetric [Webhook callbacks](#webhook-callbacks) variant of this profile — the seller signs outbound with an `adcp_use: "webhook-signing"` key and the buyer verifies.
+- **Sellers calling agent-side AdCP endpoints** (e.g., buyer-hosted mutation callbacks that are themselves AdCP protocol calls) sign their outgoing requests symmetrically; the receiving agent verifies against the seller's keys published under the seller operator's brand.json `agents[]` entry. Push-notification webhook callbacks (`push_notification_config.url` and similar asynchronous one-way notifications) are covered by the symmetric [Webhook callbacks](#webhook-callbacks) variant of this profile — the seller signs outbound with an `adcp_use: "webhook-signing"` key and the buyer verifies.
 
 **Dependencies:**
 - Shares JWKS discovery, SSRF rules, alg allowlist, revocation semantics, and key rotation with the [AdCP JWS profile](#adcp-jws-profile) above. Cross-purpose key reuse is forbidden: a request-signing JWK MUST declare `"adcp_use": "request-signing"`, `"use": "sig"`, `"key_ops": ["verify"]`, and a `kid` that does not appear on any other JWKS entry with a different `adcp_use`. Verifiers enforce all four; see [Agent key publication](#agent-key-publication).
@@ -1050,7 +1050,7 @@ Buyers reading capability blocks in 3.x MUST NOT assume protocol-method coverage
 
 #### Agent key publication
 
-Request-signing keys live at the signing agent's own `jwks_uri` in its operator's brand.json `agents[]` entry (or the `adagents.json` equivalent for seller-side agents publishing keys for webhook callbacks). Every agent that signs — of any `type` — uses the same publication pattern.
+Request-signing and webhook-signing keys live at the signing agent's own `jwks_uri` in its operator's brand.json `agents[]` entry. Every agent that signs — of any `type` — uses the same publication pattern. Publisher `adagents.json` may additionally pin allowed seller keys through `authorized_agents[].signing_keys[]`; when present, that pin is authoritative for the scoped sell-side authorization.
 
 **Publisher pin precedence.** When a publisher's `adagents.json` entry for an authorized agent carries a `signing_keys` pin (see [`adagents.json` §`signing_keys`](/docs/governance/property/adagents#signing_keys)), that pin is authoritative: verifiers MUST reject any signature whose `keyid` is not in the pinned set, regardless of `jwks_uri` contents. The agent-hosted JWKS is advisory whenever a publisher pin exists. This closes the agent-domain-compromise window — an attacker who takes over the agent's domain cannot silently swap both the endpoint and its advertised keys because the publisher's pin still governs acceptance. Publishers are required to pin for any agent whose delegated scopes include mutating operations; see the adagents.json rule for rotation and cache semantics.
 
@@ -1059,8 +1059,8 @@ Each request-signing JWK entry MUST declare:
 | Member | Value | Notes |
 |---|---|---|
 | `use` | `"sig"` | Standard JWK signing use. |
-| `key_ops` | `["verify"]` | Verifier-visible JWKS declares verify-only. Publishers hold the corresponding private key locally with `["sign"]` per JWK spec. |
-| `adcp_use` | `"request-signing"` | AdCP-specific purpose discriminator. Distinguishes from `"governance-signing"` (JWS profile), `"webhook-signing"` (seller→buyer webhook callbacks), and any future AdCP signing purpose. Verifiers MUST reject any JWK with absent or different `adcp_use` when verifying a request signature. Sellers that also sign webhooks publish a separate `"webhook-signing"` key under their `adagents.json` entry — see [Webhook callbacks](#webhook-callbacks). |
+| `key_ops` | `["verify"]` | Verifier-visible JWKS declares verify-only. The signing operator holds the corresponding private key locally with `["sign"]` per JWK spec. |
+| `adcp_use` | `"request-signing"` | AdCP-specific purpose discriminator. Distinguishes from `"governance-signing"` (JWS profile), `"webhook-signing"` (seller→buyer webhook callbacks), and any future AdCP signing purpose. Verifiers MUST reject any JWK with absent or different `adcp_use` when verifying a request signature. Sellers that also sign webhooks publish a separate `"webhook-signing"` key in their operator JWKS — see [Webhook callbacks](#webhook-callbacks). |
 | `kid` | distinct | Unique within the JWKS. MUST NOT collide with any other entry's `kid` regardless of `adcp_use`. |
 | `alg` | `"EdDSA"` or `"ES256"` | Must match the signature's `alg` parameter (JWK `alg` uses JWS names; `alg` in `Signature-Input` uses RFC 9421 names). |
 

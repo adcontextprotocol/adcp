@@ -87,7 +87,7 @@ The largest domain. Sub-namespaces are where most media-buying flags belong.
 Authorization scope and feature flags for the signals domain.
 
 - **`data_provider_domains`** — array of domains this signals agent is authorized to resell. Buyers fetch each provider's `adagents.json` to verify.
-- **`features`** — boolean feature flags. Currently `catalog_signals` (structured signal_id references). **Additional signals capability flags belong here**, not in a new top-level key. (E.g., a `signal_enforcement_on_guaranteed` flag for direct-sold targeting belongs at `signals.features`, not under `media_buy.execution.trusted_match`.)
+- **`features`** — boolean feature flags. `catalog_signals` is deprecated; structured `signal_ref` support is part of the Signals protocol and should not require a feature flag. **Additional signals capability flags belong here**, not in a new top-level key. (E.g., a `signal_enforcement_on_guaranteed` flag for direct-sold targeting belongs at `signals.features`, not under `media_buy.execution.trusted_match`.)
 
 [Propose a flag for `signals.features`](https://github.com/adcontextprotocol/adcp/issues/new?title=Add+signals+feature:+%3Cflag%3E&body=Schema+location:+%60.signals.features%60%0A%0A%23%23+Proposal%0A%0A...%0A%0A%23%23+Conformance+probe%0A%0A...&labels=rfc,capabilities,signals)
 

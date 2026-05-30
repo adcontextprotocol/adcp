@@ -26,8 +26,10 @@
  *
  * Slug forms differ across the two docs by design (existing convention,
  * not changed here):
- *   - docs/building/conformance.mdx           uses snake_case YAML `id` values in markdown links
- *   - docs/building/compliance-catalog.mdx    uses kebab-case filename slugs in plain backticks
+ *   - docs/building/verification/conformance.mdx
+ *                                                uses snake_case YAML `id` values in markdown links
+ *   - docs/building/verification/compliance-catalog.mdx
+ *                                                uses kebab-case filename slugs in plain backticks
  */
 
 'use strict';
@@ -41,13 +43,13 @@ const DEFAULT_SOURCE_DIR = path.join(REPO_ROOT, 'static/compliance/source');
 
 const DOC_CHECKS = [
   {
-    relpath: 'docs/building/conformance.mdx',
+    relpath: 'docs/building/verification/conformance.mdx',
     heading: '## Universal conformance',
     tokenForItem: item => item.id,
     tokenLabel: 'YAML `id`',
   },
   {
-    relpath: 'docs/building/compliance-catalog.mdx',
+    relpath: 'docs/building/verification/compliance-catalog.mdx',
     heading: '## Universal storyboards',
     tokenForItem: item => item.slug,
     tokenLabel: 'filename slug',

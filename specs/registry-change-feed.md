@@ -51,10 +51,14 @@ Append-only within a 90-day retention window.
 | `property.reactivated` | Stale property resolved again | Available inventory again |
 | `agent.discovered` | New agent found via crawl or registration | New seller/creative/signals partner |
 | `agent.removed` | Agent no longer in any adagents.json | Authorization may be revoked |
+| `agent.verification_earned` | Agent earns an AAO Verified badge | Buyer routing decisions may expand |
+| `agent.verification_lost` | Agent loses an AAO Verified badge | Buyer routing decisions may need tightening |
+| `publisher.adagents_discovered` | Crawl finds a publisher adagents.json for the first time | Properties, agents, and authorizations may be available |
 | `publisher.adagents_changed` | Crawl detects adagents.json diff | Properties, authorizations may have changed |
 | `agent.profile_updated` | Inventory profile changed (new markets, channels, etc.) | Search results may change |
 | `authorization.granted` | Agent authorized for publisher in adagents.json | New selling relationship; TMP routers must update |
 | `authorization.revoked` | Agent removed from publisher's adagents.json | Selling relationship ended; TMP routers must update |
+| `authorization.modified` | Visible authorization metadata changed | TMP routers must update cached authorization metadata |
 | `agent.compliance_changed` | Compliance status transition (heartbeat or manual) | Buyer routing decisions may need updating |
 
 ### Event Payload Examples
@@ -99,11 +103,11 @@ Append-only within a 90-day retention window.
   "authorization_type": "property_ids",
   "property_ids": ["primetime_ctv", "news_live"],
   "placement_ids": ["pre_roll_30s", "mid_roll_15s"],
-  "collections": [{ "publisher_domain": "streamer.example.com", "collection_id": "primetime_drama" }],
+  "collections": [{ "publisher_domain": "streamer.example.com", "collection_ids": ["primetime_drama"] }],
   "countries": ["US", "CA"],
   "delegation_type": "direct",
   "exclusive": false,
-  "signing_keys": [{ "algorithm": "ed25519", "public_key": "base64..." }],
+  "signing_keys": [{ "kid": "pub-2026-04", "kty": "OKP", "alg": "EdDSA", "crv": "Ed25519", "x": "abc123" }],
   "effective_from": "2026-04-01T00:00:00Z",
   "effective_until": "2027-03-31T23:59:59Z"
 }
@@ -146,13 +150,17 @@ Poll the change feed.
 
 **Authentication:** Required. Member-only endpoint.
 
+**Schema:** Response payloads validate against
+`static/schemas/source/core/registry-feed-response.json`; each item in
+`events[]` validates against `static/schemas/source/core/registry-event.json`.
+
 **Parameters:**
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `cursor` | UUID | (none) | Last event_id processed. Omit for start of retention window. |
 | `types` | string | all | Comma-separated event types. Supports glob: `property.*` |
-| `limit` | integer | 1000 | Max events per response. Max 10000. |
+| `limit` | integer | 100 | Max events per response. Max 10000. |
 
 **Response:**
 ```json
@@ -164,15 +172,16 @@ Poll the change feed.
       "entity_type": "property",
       "entity_id": "019539a0-b1c2-...",
       "payload": { "..." : "..." },
+      "actor": "crawler",
       "created_at": "2026-03-31T10:00:00Z"
     }
   ],
-  "next_cursor": "019539a1-...",
+  "cursor": "019539a1-...",
   "has_more": true
 }
 ```
 
-Consumers save `next_cursor` and pass it as `cursor` on the next poll. When `has_more` is false, the consumer is caught up.
+Consumers save `cursor` and pass it as `cursor` on the next poll. When `has_more` is false, the consumer is caught up.
 
 ### `POST /api/registry/crawl-request`
 
@@ -221,10 +230,14 @@ Register a webhook subscription for change notifications.
 ```json
 {
   "url": "https://buyer.example.com/hooks/registry",
-  "events": ["property.*", "agent.discovered"],
-  "secret": "subscriber-provided-hmac-secret"
+  "events": ["property.*", "agent.discovered"]
 }
 ```
+
+Default subscriptions do not require a shared webhook secret. The registry signs
+outbound deliveries with its `adcp_use: "webhook-signing"` key using the AdCP
+RFC 9421 webhook profile. This surface does not define a registry-specific
+`secret`, `X-Registry-Signature`, or versioned-HMAC signing mode.
 
 **Response:**
 ```json
@@ -244,16 +257,41 @@ Webhooks are notifications, not event delivery. The payload says "something chan
 
 ```
 POST https://buyer.example.com/hooks/registry
-X-Registry-Signature: sha256={hmac}
-X-Registry-Event: property.created
+Signature-Input: sig1=("@method" "@target-uri" "@authority" "content-type" "content-digest");
+                 created=1770044400;expires=1770044700;nonce="...";
+                 keyid="registry-webhook-2026";alg="ed25519";tag="adcp/webhook-signing/v1"
+Signature: sig1=:<base64url-unpadded>:
+Content-Digest: sha-256=:<base64url-unpadded>:
+Content-Type: application/json
 
 {
   "event_count": 3,
   "latest_event_id": "019...",
-  "event_types": ["property.created", "property.updated"],
-  "feed_url": "https://agenticadvertising.org/api/registry/feed?cursor=019..."
+  "event_types": ["property.created", "property.updated"]
 }
 ```
+
+**Signature verification and anti-replay:** Receivers MUST verify registry
+webhooks with the AdCP RFC 9421 webhook profile defined in
+`docs/building/by-layer/L1/security.mdx` §Webhook callbacks. The signed
+`content-digest` binds the body bytes; `created` / `expires` bound the validity
+window; and the receiver's `(keyid, nonce)` replay cache rejects captured
+deliveries replayed inside that window. A registry-specific HMAC signature
+scheme MUST NOT be introduced.
+
+**Receiver dedup:** The webhook is still only a notification. After signature
+verification, receivers poll `GET /api/registry/feed` from their last saved
+cursor and treat the feed as authoritative. The sender MUST NOT provide a
+cursor-bearing feed URL that overrides receiver state; using
+`latest_event_id` as the next request cursor would skip the events the
+notification is announcing. Receivers MAY suppress redundant polls by
+remembering the largest `latest_event_id` observed per subscription, but they
+MUST NOT treat a repeated notification as event replay or recovery.
+
+Implementations that need a simple dispatch header MAY include
+`X-Registry-Event`, but receivers MUST route from the JSON payload's
+`event_types` and the authoritative feed response. The dispatch header is not a
+trust anchor unless it is explicitly covered by a future webhook-signing profile.
 
 **Coalescing:** Events are batched per subscriber per 30-second window. A seed operation that creates 1000 properties produces one webhook notification, not 1000.
 
@@ -274,13 +312,14 @@ Events are written at the point of change, not reconstructed later:
 | Crawler diff (agent no longer in any adagents.json) | `agent.removed` |
 | Crawler diff (adagents.json content changed) | `publisher.adagents_changed` |
 | Crawler diff (authorization added/removed) | `authorization.granted`, `authorization.revoked` |
+| Authorization row body update | `authorization.modified` |
 | Crawler diff (agent inventory profile changed) | `agent.profile_updated` |
 | Catalog governance (dispute resolved, classification changed) | `property.updated` |
 | Staleness cron (90-day inactivity) | `property.stale` |
 | Resolve reactivation (stale property resolved) | `property.reactivated` |
 | Compliance heartbeat status transition | `agent.compliance_changed` |
 
-**Seed operations** do not write individual events. A single `catalog.seed_complete` summary event is written. Consumers who need full state after a seed should use `/catalog/sync`.
+**Seed operations** do not write individual registry feed events. Consumers who need full state after a seed should use `/catalog/sync`.
 
 ---
 

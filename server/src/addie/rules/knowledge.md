@@ -237,7 +237,7 @@ Routine upgrade-proration questions — *"if I upgrade Explorer → Professional
 AdCP operates at multiple layers. Use search_docs for the authoritative current structure — the protocol evolves and the docs are the source of truth.
 
 **Identity layer** (establishes who the parties are):
-- **Brand Protocol** — buy-side identity via `brand.json` at `/.well-known/brand.json`
+- **Brand Protocol** — organization identity via `brand.json` at `/.well-known/brand.json` for buyers, publishers, selling platforms, and other operators
 - **Registry** — public REST API for entity resolution and agent discovery
 - **Accounts** — commercial relationships between buyers and sellers (billing, operator authorization)
 
@@ -259,20 +259,26 @@ Use search_docs to look up details rather than answering from memory, especially
 
 AdCP uses bilateral verification for supply chain transparency — like ads.txt + sellers.json in programmatic, but integrated into brand.json and adagents.json.
 
+`brand.json` is not buyer-only. On the sell side it is the public company record for the organization operating an AdCP sales path: name, logo, domains, sales agents, signing-key discovery, and property relationship declarations. Any organization operating an AdCP agent should be declared in `brand.json` and expose public signing keys via `agents[].jwks_uri` or the default `/.well-known/jwks.json`. The protocol requirement is verifiable signatures and discoverable public keys; production agents should protect private signing keys with KMS/HSM or a managed secret system, but AdCP does not mandate a specific vendor.
+
+`adagents.json` remains the publisher-domain authorization record. A publisher delegating sales must publish `adagents.json` authorizing the external sales agent; the publisher's own `brand.json` is recommended for publisher identity and portfolio context, but the delegated operator's `brand.json` is the required identity record for the agent buyers call.
+
+When asked "where in the spec does it say publishers or sellers need brand.json?", answer directly from these canonical sources. The best primary citation is `docs/brand-protocol/seller-setup.mdx`: "`brand.json` is not only for advertisers. On the sell side, it is the public company record for the organization operating an AdCP sales path." The field-level citation is `docs/brand-protocol/brand-json.mdx` under "Property definition" and "Property relationships": `properties[]` plus `relationship` are the sell-side analogue to sellers.json. Do not keep searching after retrieving either of those docs; explain the requirement boundary: operating an agent requires operator identity and signing-key discovery in `brand.json`, while publisher authorization lives in `adagents.json`.
+
 **Publisher side (adagents.json):** Publishers declare properties and authorized agents. Each agent authorization includes a `delegation_type`:
 - `direct` — the publisher treats this as their direct sales path
 - `delegated` — the agent manages monetization on the publisher's behalf
 - `ad_network` — inventory sold through a network/package
 
-**Operator side (brand.json):** Networks and SSPs declare properties in their brand.json with a `relationship` field using the same values plus `owned`:
+**Operator side (brand.json):** Publishers, networks, and SSPs declare identity and, where applicable, properties in their brand.json with a `relationship` field using the same values plus `owned`:
 - `owned` — the brand owns this property (default)
 - `direct` / `delegated` / `ad_network` — same meanings as delegation_type
 
 Both sides must agree. The network declares the relationship in brand.json, and each publisher confirms by authorizing the network's agents with matching delegation_type in their adagents.json.
 
 Examples:
-- Mediavine lists foodblogger.com with `relationship: "delegated"` in their brand.json. foodblogger.com sets `delegation_type: "delegated"` for Mediavine's agent in their adagents.json.
-- PubMatic lists nytimes.com with `relationship: "ad_network"`. nytimes.com sets `delegation_type: "ad_network"` for PubMatic's agent.
+- Northwind Media lists streamhaus.example with `relationship: "delegated"` in its brand.json. streamhaus.example sets `delegation_type: "delegated"` for Northwind's agent in its adagents.json.
+- Pinnacle Exchange lists citynews.example with `relationship: "ad_network"`. citynews.example sets `delegation_type: "ad_network"` for Pinnacle Exchange's agent.
 
 The network health dashboard at /admin/network-health monitors this bilateral verification across managed publisher networks.
 

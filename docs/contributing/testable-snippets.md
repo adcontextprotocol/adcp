@@ -54,6 +54,22 @@ console.log(`Found ${products.products.length} products`);
 ```
 ````
 
+### Snippet Metadata
+
+Use snippet metadata for examples that need local preconditions:
+
+````markdown
+```bash requires-env=ADCP_AUTH_TOKEN
+uvx adcp https://test-agent.adcontextprotocol.org/sales/mcp get_products '{}' --auth $ADCP_AUTH_TOKEN
+```
+
+```javascript integration=true
+// Runs only when snippet integration tests are enabled.
+```
+````
+
+`requires-env=NAME` skips the snippet when the named environment variable is not set. `integration=true` skips the snippet in the default local run; execute those examples with `node tests/snippet-validation.test.cjs --integration` or `SNIPPET_INTEGRATION=true`.
+
 ### Using Test Helpers
 
 For simpler examples, use the built-in test helpers from client libraries:
@@ -254,7 +270,7 @@ npm test
 Or specifically run the snippet tests:
 
 ```bash
-node tests/snippet-validation.test.js
+node tests/snippet-validation.test.cjs
 ```
 
 This will:
@@ -263,6 +279,58 @@ This will:
 3. Extract ALL code blocks from those pages
 4. Execute each snippet and report results
 5. Exit with error if any tests fail
+
+Integration-only snippets are skipped unless `--integration` is passed or `SNIPPET_INTEGRATION=true` is set.
+
+### Coverage Reporting
+
+Use the docs example coverage report to see where schema-backed JSON examples
+and runnable snippets are concentrated:
+
+```bash test=false
+npm run docs:example-coverage
+```
+
+The report scans `docs/` and shows:
+
+- JSON blocks that include `$schema` and are therefore covered by `npm run test:json-schema`
+- complete JSON blocks without `$schema`
+- runnable JavaScript, TypeScript, Python, and shell snippets that are covered by `npm run test:snippets`
+- top files with the largest unvalidated JSON or untested runnable-snippet gaps
+
+For CI dashboards or saved baselines, emit machine-readable output:
+
+```bash test=false
+npm run --silent docs:example-coverage -- --json
+```
+
+For GitHub job summaries, emit Markdown:
+
+```bash test=false
+npm run --silent docs:example-coverage -- --markdown
+```
+
+Schema validation accepts extension fields where the wire protocol is
+extensible. To audit schema-backed docs examples for unknown public-looking
+fields, run:
+
+```bash test=false
+npm run docs:json-field-audit
+```
+
+The field audit is advisory by default. Use `--check` only when intentionally
+ratcheting against `scripts/docs-json-field-audit-baseline.json`:
+
+```bash test=false
+npm run docs:json-field-audit -- --check
+```
+
+When you intentionally clean up findings, refresh the baseline in the same
+change:
+
+```bash test=false
+npm run docs:json-field-audit -- --update-baseline
+```
 
 ### In CI/CD
 

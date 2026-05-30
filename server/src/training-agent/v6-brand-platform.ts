@@ -112,18 +112,21 @@ export class TrainingBrandPlatform
 {
   constructor(private readonly storyboardCompat?: TrainingContext['storyboardCompat']) {}
 
-  capabilities = {
+  get capabilities() {
+    return {
     specialisms: ['brand-rights'] as const,
     creative_agents: [],
     channels: [] as const,
     pricingModels: ['cpm', 'cpa'] as const,
+    requireOperatorAuth: this.storyboardCompat?.version === '3.0' ? true : false,
     supportedBillings: ['agent', 'operator'] as const,
     // brand-rights claims require capabilities.brand block per
     // RequiredCapabilitiesFor<S>. Empty inner object opts in;
     // BrandRightsPlatform impl below auto-derives `brand.rights: true`.
     brand: {},
-    config: { strict: false },
-  };
+      config: { strict: false },
+    };
+  }
 
   statusMappers = {};
   accounts: AccountStore<TrainingBrandMeta> = trainingBrandAccounts;

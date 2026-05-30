@@ -133,7 +133,10 @@ const trainingGovernanceAccounts: AccountStore<TrainingGovernanceMeta> = {
 export class TrainingGovernancePlatform
   implements DecisioningPlatform<TrainingGovernanceConfig, TrainingGovernanceMeta>
 {
-  capabilities = {
+  constructor(private readonly storyboardCompat?: TrainingContext['storyboardCompat']) {}
+
+  get capabilities() {
+    return {
     specialisms: [
       'governance-spend-authority',
       'governance-delivery-monitor',
@@ -144,10 +147,12 @@ export class TrainingGovernancePlatform
     creative_agents: [],
     channels: [] as const,
     pricingModels: ['cpm', 'cpa'] as const,
+    requireOperatorAuth: this.storyboardCompat?.version === '3.0' ? true : false,
     supportedBillings: ['agent', 'operator'] as const,
     compliance_testing: {},
-    config: { strict: false },
-  };
+      config: { strict: false },
+    };
+  }
 
   statusMappers = {};
   accounts: AccountStore<TrainingGovernanceMeta> = trainingGovernanceAccounts;

@@ -21,6 +21,11 @@ import {
   type StoryboardStepResult,
 } from '@adcp/sdk/testing';
 import { PUBLIC_TEST_AGENT } from '../../src/config/test-agent.js';
+import {
+  hostedComplianceOptions,
+  hostedComplianceTarget,
+  withHostedStoryboardRunOptions,
+} from '../../src/services/hosted-compliance-version.js';
 
 const TEST_AGENT_URL = process.env.TEST_AGENT_URL || PUBLIC_TEST_AGENT.url;
 const TEST_AGENT_TOKEN = process.env.TEST_AGENT_TOKEN || PUBLIC_TEST_AGENT.token;
@@ -28,6 +33,8 @@ const TEST_AGENT_TOKEN = process.env.TEST_AGENT_TOKEN || PUBLIC_TEST_AGENT.token
 const args = process.argv.slice(2);
 const storyboardFilter = args.includes('--storyboard') ? args[args.indexOf('--storyboard') + 1] : undefined;
 const agentUrl = args.includes('--agent') ? args[args.indexOf('--agent') + 1] : TEST_AGENT_URL;
+const complianceTarget = hostedComplianceTarget();
+const complianceOptions = hostedComplianceOptions(complianceTarget);
 // Run-scoped brand. Storyboards that reference a test_kit are written to
 // target the brand defined in that kit (e.g. acmeoutdoor.example for the
 // media-buy state machine, sourced from test-kits/acme-outdoor.yaml). The
@@ -43,9 +50,11 @@ const brandDomain = args.includes('--brand') ? args[args.indexOf('--brand') + 1]
 async function main() {
   console.log(`\n=== Storyboard Smoke Test ===`);
   console.log(`Agent: ${agentUrl}`);
+  console.log(`Compliance target: ${complianceTarget.requested}`);
+  console.log(`Compliance version: ${complianceTarget.version}`);
   console.log(`Filter: ${storyboardFilter || '(all storyboards)'}\n`);
 
-  const allStoryboards = listAllComplianceStoryboards()
+  const allStoryboards = listAllComplianceStoryboards(complianceOptions)
     .filter(sb => !storyboardFilter || sb.id === storyboardFilter);
 
   if (allStoryboards.length === 0) {
@@ -60,12 +69,12 @@ async function main() {
     process.stdout.write(`  ${storyboard.id} (${stepCount} steps)... `);
 
     try {
-      const result = await runStoryboard(agentUrl, storyboard, {
+      const result = await runStoryboard(agentUrl, storyboard, withHostedStoryboardRunOptions({
         auth: { type: 'bearer', token: TEST_AGENT_TOKEN },
         ...(brandDomain && { brand: { domain: brandDomain } }),
         timeout_ms: 30_000,
         dry_run: false,
-      });
+      }, complianceTarget));
       results.push(result);
 
       if (result.overall_passed) {
@@ -88,7 +97,7 @@ async function main() {
         failed_count: stepCount,
         skipped_count: 0,
         tested_at: new Date().toISOString(),
-        dry_run: false,
+        notices: [],
       });
     }
   }

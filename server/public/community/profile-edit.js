@@ -260,14 +260,10 @@
     document.getElementById('field-headline').value = profile.headline || '';
     updateCharCount();
     document.getElementById('field-bio').value = profile.bio || '';
-    const avatarPreview = document.getElementById('avatar-preview');
-    const avatarInfo = document.getElementById('avatar-info');
     if (profile.avatar_url) {
-      avatarPreview.innerHTML = '<img src="' + escapeHtml(profile.avatar_url) + '" alt="Profile photo" style="width: 100%; height: 100%; object-fit: cover;">';
-      avatarInfo.textContent = '';
+      setAvatarPreview(profile.avatar_url);
     } else {
-      avatarPreview.innerHTML = '<span style="font-size: var(--text-xl); color: var(--color-text-muted);">?</span>';
-      avatarInfo.textContent = 'No profile photo yet.';
+      clearAvatarPreview();
     }
 
     expertiseTags = (profile.expertise || []).slice();
@@ -408,6 +404,61 @@
     reader.readAsDataURL(file);
   }
 
+  function setAvatarPreview(imageUrl) {
+    const avatarPreview = document.getElementById('avatar-preview');
+    const img = document.createElement('img');
+    img.src = imageUrl;
+    img.alt = 'Profile photo';
+    img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+    avatarPreview.textContent = '';
+    avatarPreview.appendChild(img);
+    document.getElementById('avatar-info').textContent = '';
+  }
+
+  function clearAvatarPreview() {
+    document.getElementById('avatar-preview').innerHTML =
+      '<span style="font-size: var(--text-xl); color: var(--color-text-muted);">?</span>';
+    document.getElementById('avatar-info').textContent = 'No profile photo yet.';
+  }
+
+  function clearSelectedPortraitPhoto() {
+    const fileInput = document.getElementById('portrait-photo-input');
+    if (fileInput) fileInput.value = '';
+
+    const label = document.getElementById('portrait-upload-label');
+    if (label) label.style.display = '';
+
+    const preview = document.getElementById('portrait-upload-preview');
+    if (preview) preview.style.display = 'none';
+  }
+
+  async function uploadSelectedAvatar() {
+    const fileInput = document.getElementById('portrait-photo-input');
+    if (!fileInput || !fileInput.files || !fileInput.files.length) {
+      return null;
+    }
+
+    const formData = new FormData();
+    formData.append('photo', fileInput.files[0]);
+
+    const resp = await fetch('/api/me/community-avatar', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(function() { return {}; });
+      throw new Error(err.error || 'Failed to upload profile photo');
+    }
+
+    const data = await resp.json();
+    if (data.avatar_url) {
+      setAvatarPreview(data.avatar_url);
+      clearSelectedPortraitPhoto();
+    }
+    return data;
+  }
+
   async function handleGenerate() {
     const btn = document.getElementById('portrait-generate-btn');
     btn.disabled = true;
@@ -481,14 +532,8 @@
       });
       if (!resp.ok) throw new Error('Failed to approve');
 
-      const avatarPreview = document.getElementById('avatar-preview');
-      const img = document.createElement('img');
-      img.src = '/api/portraits/' + encodeURIComponent(pendingPortraitId) + '.png';
-      img.alt = 'Profile photo';
-      img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
-      avatarPreview.textContent = '';
-      avatarPreview.appendChild(img);
-      document.getElementById('avatar-info').textContent = '';
+      setAvatarPreview('/api/portraits/' + encodeURIComponent(pendingPortraitId) + '.png');
+      clearSelectedPortraitPhoto();
 
       document.getElementById('portrait-pending').style.display = 'none';
       showGeneratePanel();
@@ -660,6 +705,7 @@
         throw new Error(errorData?.error || 'Failed to save profile');
       }
 
+      await uploadSelectedAvatar();
       showToast('Profile saved', 'success');
     } catch (error) {
       console.error('Save error:', error);

@@ -164,6 +164,38 @@ For audio formats with content context:
 | `{INSTALLMENT_ID}` | Podcast episode identifier | `ep_2025_01_15` |
 | `{AUDIO_DURATION}` | Content duration in seconds | `3600` |
 
+### Impression Identification
+
+| Macro | Description | Example Value |
+|-------|-------------|---------------|
+| `{IMPRESSION_ID}` | Upstream-minted unique identifier per impression (publisher or ad-decision layer) | `8c9e2f3a-7b1c-4d5e-9f6a-1a2b3c4d5e6f` (UUID), `01ARZ3NDEKTSV4RRFFQ69G5FAV` (ULID), or equivalent |
+
+The `{IMPRESSION_ID}` macro carries a unique identifier for one impression opportunity. It is a general-purpose impression key — buyers, measurement vendors, attribution providers, and verification services all use this kind of identifier to deduplicate impression events, reconcile pixel firings across vendors, join impressions to clicks, and detect retries. Whichever upstream layer mints the value (see hierarchy below) substitutes it into creative tracking URLs, and any downstream consumer that needs to identify the impression uses the same value.
+
+**Common use cases:**
+
+- **Per-impression deduplication.** A single impression often fires many pixels (impression, viewability, video quartiles, completion, third-party verification). All of them sharing one `{IMPRESSION_ID}` lets downstream consumers reconcile "is this the same impression?" without time- or URL-based heuristics.
+- **TMP cross-identity dedup.** When a TMP impression resolves to multiple user identities, the buyer's impression tracker writes the same `{IMPRESSION_ID}` to every identity's log so distinct-impression counts dedup correctly. See [Impression Tracker Implementation](/docs/trusted-match/impression-tracker-implementation).
+- **Cross-vendor reconciliation.** Advertisers comparing delivery between an ad server, a verification vendor, and a measurement vendor join on `{IMPRESSION_ID}` rather than building cross-walks.
+- **Pixel retry dedup.** A pixel firing twice (network retry, page refresh) carries the same `{IMPRESSION_ID}`, so a server-side dedup pass on the id catches retries without over-counting.
+
+**When to include it:**
+
+- **Recommended on every impression tracking URL** — the macro is small, cheap, and the use cases above all benefit when it is consistently present.
+- **Required for TMP context-only impressions** — when Identity Match returned no eligibility (or wasn't called) and no `{TMPX}` is present on the pixel, `{IMPRESSION_ID}` is the only available cross-identity dedup key for the buyer's impression tracker.
+
+**Format is implementation choice.** The protocol requires uniqueness with sufficient entropy to avoid cross-seller / cross-time collisions; it does not pin a wire format. UUID (any version), ULID, snowflake-style IDs, or any other collision-resistant identifier scheme are all acceptable. Buyers MUST treat the value as an opaque string for dedup purposes — no parsing, no format assumptions.
+
+**Three valid sources for the value, in priority order:**
+
+1. **Publisher-side mint** (highest priority): the publisher's own first-party code mints a fresh identifier per impression opportunity — e.g., server-side, before the ad request reaches the decision layer — and passes it forward so the decision layer can substitute it via `{IMPRESSION_ID}`. Works for both context-only and identity-bearing impressions.
+2. **Decision-layer mint** (used when the publisher hasn't minted): the ad-decision layer (Prebid TMP module, ad server, SSP, or equivalent client) mints the identifier at the context↔identity join and substitutes it via `{IMPRESSION_ID}`. Also works for both context-only and identity-bearing impressions.
+3. **Buyer-side mint at TMPX decode** (fallback, identity-bearing only): when neither layer above minted, the buyer's impression tracker mints the id locally at TMPX decode time per [`Impression Tracker Implementation`](/docs/trusted-match/impression-tracker-implementation). This works only when `{TMPX}` is present — it cannot cover context-only impressions.
+
+Each layer MUST defer to whatever value an upstream layer already produced — minting a fresh id at a lower layer when a higher layer already supplied one would split logs for the same impression across two ids. In practice this means: if the publisher minted, the decision layer passes it through; if either of those minted, the buyer uses the value from the pixel rather than minting at decode.
+
+**Relationship to `{CACHEBUSTER}`.** The two are not interchangeable. `{CACHEBUSTER}` is a low-entropy anti-cache value sufficient to defeat HTTP intermediaries; it is not a globally-unique impression key. Both can appear in the same tracking URL serving different purposes.
+
 ### TMP Exposure Tracking
 
 | Macro | Description | Example Value |

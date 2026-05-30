@@ -375,6 +375,8 @@ async function runTests() {
     const mediaBuy = {
       media_buy_id: 'mb_123',
       status: 'active',
+      confirmed_at: '2026-05-27T09:00:00Z',
+      revision: 1,
       total_budget: 10000,
       packages: [],
       ext: {
