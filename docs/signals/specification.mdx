@@ -92,11 +92,11 @@ See [Declaring governance metadata](/docs/signals/data-providers#declaring-gover
 
 Rich definition fields such as `taxonomy.values[]`, `taxonomy.value_mappings[]`, `segmentation_criteria`, `onboarder`, and `modeling.disclosure.jurisdictions[]` describe the authoritative signal definition. They are not required to be repeated in every discovery listing.
 
-Signal agents SHOULD treat `get_signals` as a discovery and availability surface. For broad search results and wholesale feed pages, agents SHOULD return compact listings with stable identity, display metadata, pricing, deployment status, and cache validators or disclosure pointers when available. Large taxonomies, long segmentation criteria, and jurisdiction-specific disclosure text SHOULD be fetched from the provider's authoritative `adagents.json` signal definition or from declared URLs such as `taxonomy.ref`, `criteria_url`, and `modeling.disclosure.jurisdictions[].disclosure_url`.
+Signal agents SHOULD treat `get_signals` as a discovery and availability surface. For broad search results and wholesale feed pages, agents SHOULD return compact listings with stable identity, display metadata, pricing, deployment status, and cache validators or disclosure pointers when available. For provider-published public signals, `signal_ref` is the definition pointer: orchestrators fetch the provider's `/.well-known/adagents.json` (following `authoritative_location` when present) and select the matching `signals[].id`. Large taxonomies, long segmentation criteria, and jurisdiction-specific disclosure text SHOULD be fetched from that authoritative signal definition or from declared URLs such as `taxonomy.ref`, `criteria_url`, and `modeling.disclosure.jurisdictions[].disclosure_url`.
 
-When a response includes `taxonomy.etag` or another provider-supplied validator, orchestrators SHOULD cache the dereferenced definition or taxonomy under that validator and refresh it only when the validator changes. Agents MAY include inline excerpts for review, ranking, or lookup-by-reference flows, but SHOULD avoid duplicating full external resources across every item in a large `get_signals` response.
+When the provider file includes the existing `adagents.json` `catalog_etag`, or the HTTP response includes `ETag` or `Last-Modified`, orchestrators SHOULD cache the fetched `adagents.json` document by resolved authoritative URL plus that validator, then resolve `signal_ref.signal_id` within the cached document. Clients MUST NOT key signal-definition caches by validator alone. Use `taxonomy.etag` for taxonomy documents that have their own freshness validator. Agents MAY include inline excerpts for review, ranking, or lookup-by-reference flows, but SHOULD avoid duplicating full external resources across every item in a large `get_signals` response.
 
-Orchestrators that need richer metadata inline MAY set `fields` on `get_signals`, using the same response-projection pattern as `get_products.fields`, to request specific listing or definition fields such as `taxonomy`, `data_sources`, `methodology`, `modeling`, `countries`, `consent_basis`, or `data_subject_rights`. Agents SHOULD honor requested fields for exact lookup, refinement, and small custom-signal result sets when available. For broad discovery and wholesale pages, agents MAY still return compact pointers instead of inlining large definition resources.
+Orchestrators that need richer metadata inline MAY set `fields` on `get_signals`, using the same response-projection pattern as `get_products.fields`, to request specific listing or definition fields such as `taxonomy`, `data_sources`, `methodology`, `modeling`, `countries`, `consent_basis`, or `data_subject_rights`. Agents SHOULD honor requested fields for exact lookup, refinement, small custom-signal result sets, and private/source-native signals that do not have a public `adagents.json` definition. `fields` is a projection request, not an entitlement grant; agents MAY redact requested definition fields unless the caller is authorized for the underlying lineage, methodology, and rights-routing metadata. For broad discovery and wholesale pages, agents MAY still return compact pointers instead of inlining large definition resources.
 
 ### Definition enrichment fields
 
@@ -105,8 +105,26 @@ Signal definitions MAY carry additional fields for transparency, governance, and
 - **Taxonomy metadata**: `taxonomy.ref`, `taxonomy.values[]`, `taxonomy.value_mappings[]`, and `taxonomy.parent_match_behavior` describe how the signal maps to an external or provider-owned taxonomy. These fields do not change package targeting grammar.
 - **Source and methodology disclosure**: `data_sources`, `methodology`, `segmentation_criteria`, `criteria_url`, `refresh_cadence`, `lookback_window`, and `onboarder` describe how the segment was compiled. Offline and public-record source categories require `onboarder`.
 - **Modeling disclosure**: `modeling` is required when `methodology` is `modeled` or `audience_expansion` is `true`. Required modeling disclosures must name the jurisdictions where the disclosure applies.
-- **Jurisdiction and privacy metadata**: `countries`, GDPR-scoped `consent_basis`, `restricted_attributes`, `policy_categories`, and `art9_basis` let governance agents evaluate use constraints structurally.
-- **Data-subject-rights routing**: `data_subject_rights.channels[]` declares where access, erasure, objection, portability, or rectification requests route for this signal. At least one channel must support access, erasure, or objection.
+- **Jurisdiction and privacy metadata**: `countries`, GDPR-scoped `consent_basis`, `restricted_attributes`, `policy_categories`, and `art9_basis` let governance agents evaluate use constraints structurally. Federating agents that surface a peer's signal MUST treat the peer's `countries[]` as an upper bound, re-check it against the buyer's intended deployment countries, and only apply narrower local policy.
+- **Data-subject-rights routing**: `data_subject_rights.channels[]` declares where access, erasure, objection, portability, or rectification requests route for this signal. At least one channel must support one or more of access, erasure, or objection. `response_sla_days` is signal-scoped because custom/private signals and upstream-specific routes may not share a public provider-wide policy surface. Global Privacy Control support is not declared on signal definitions, and consumers MUST NOT infer GPC handling from `data_subject_rights`.
+
+### Runtime validation notes
+
+The Signal Definition schema uses JSON Schema draft-07 `if`/`then` and `contains`
+for constraints that many SDK generators do not preserve. Consumers and SDKs
+SHOULD implement runtime guards for these cases:
+
+- `value_type: "categorical"` with `taxonomy` requires `taxonomy.value_mappings`.
+- `audience_scope: "single_domain"` requires `originating_domain`.
+- `methodology: "modeled"` or `audience_expansion: true` requires `modeling`.
+- Offline or public-record `data_sources[]` require `onboarder`.
+- `data_subject_rights.channels[]` must include at least one channel supporting one or more of access, erasure, or objection.
+
+`art9_basis` is policy-required rather than schema-required because Article 9
+applicability depends on jurisdiction and use. Governance agents SHOULD run a
+runtime check: when `restricted_attributes[]` is non-empty and the planned use
+touches Article 9 jurisdictions, require `art9_basis` or raise a review issue
+before activation.
 
 ## Tasks
 

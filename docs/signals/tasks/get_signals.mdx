@@ -26,7 +26,7 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 | `destinations` | Destination[] | No | Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. See Destination Object below. |
 | `countries` | string[] | No | Countries where signals will be used (ISO 3166-1 alpha-2 codes) |
 | `filters` | Filters | No | Filters to refine results (see Filters Object below). In wholesale mode, filters constrain the enumerated signals feed (e.g., `filters.data_providers: ["acme-data"]` returns only that provider's signals). |
-| `fields` | string[] | No | Specific signal fields to include in the response, aligned with `get_products.fields`. Required identity and activation fields are always included when required by the response schema. Use for progressive disclosure of rich definition metadata such as `taxonomy`, `data_sources`, `methodology`, `segmentation_criteria`, `criteria_url`, `onboarder`, `modeling`, `countries`, `consent_basis`, `restricted_attributes`, `policy_categories`, and `data_subject_rights`. Agents SHOULD honor requested fields for exact lookup, refinement, and small custom-signal result sets when available; broad discovery and wholesale pages MAY still return compact pointers to provider-published definitions or disclosure URLs. |
+| `fields` | string[] | No | Specific signal fields to include in the response, aligned with `get_products.fields`. Required identity and activation fields are always included when required by the response schema. Use for progressive disclosure of rich definition metadata such as `taxonomy`, `data_sources`, `methodology`, `segmentation_criteria`, `criteria_url`, `onboarder`, `modeling`, `countries`, `consent_basis`, `restricted_attributes`, `policy_categories`, and `data_subject_rights`. Agents SHOULD honor requested fields for exact lookup, refinement, small custom-signal result sets, and private/source-native signals when available. `fields` is a projection request, not an entitlement grant; agents MAY redact requested definition fields unless the caller is authorized for the underlying lineage, methodology, and rights-routing metadata. Broad discovery and wholesale pages MAY still return compact pointers to provider-published definitions or disclosure URLs. |
 | `if_wholesale_feed_version` | string | No | Opaque `wholesale_feed_version` token from a prior `get_signals` response. When provided, the agent compares against its current wholesale signals feed version for the caller's `cache_scope` and MAY return `unchanged: true` (with `signals` omitted) if nothing has changed. See [Wholesale feed versioning](#wholesale-feed-versioning) and [Cache layering](#cache-layering). |
 | `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_wholesale_feed_version`. Evaluation order: `if_wholesale_feed_version` mismatch → full payload; `if_wholesale_feed_version` matches but `if_pricing_version` mismatches → full payload (so the caller sees updated `pricing_options`); both match → agent MAY return `unchanged: true`. Agents that don't track pricing separately ignore this. |
 | `max_results` | number | No | **Deprecated.** Use `pagination.max_results` instead. When both are present, `pagination.max_results` takes precedence. Will be removed in AdCP 4.0. |
@@ -176,9 +176,15 @@ inline every field from the authoritative signal definition. For broad search
 results and wholesale feed pages, signal agents SHOULD keep each listing
 compact and use stable references plus cacheable disclosure pointers for large
 definition resources. Buyers can dereference provider-published definitions
-from `signal_ref`, `taxonomy.ref`, `criteria_url`, and
-`modeling.disclosure.jurisdictions[].disclosure_url`, using `taxonomy.etag` or
-the provider's own HTTP validators to avoid repeated downloads.
+from `signal_ref`: fetch the provider's `/.well-known/adagents.json` (following
+`authoritative_location` when present) and select the matching `signals[].id`.
+Cache the fetched `adagents.json` document by resolved authoritative URL plus
+`catalog_etag`, HTTP `ETag` / `Last-Modified`, or a bounded TTL, then resolve
+`signal_ref.signal_id` within that cached document. Use `taxonomy.etag` only for
+taxonomy documents that have their own freshness validator. These reuse existing
+provider-file and taxonomy validators; `get_signals` does not define a separate
+signal-definition validator, and clients must not key signal-definition caches by
+validator alone.
 </Note>
 
 ### Definition field inclusion

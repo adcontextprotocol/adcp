@@ -1197,6 +1197,48 @@ async function runTests() {
     },
     'get_signals request accepts requested inline signal fields'
   );
+  await testSchemaValidation(
+    '/schemas/signals/get-signals-response.json',
+    {
+      status: 'completed',
+      signals: [
+        {
+          signal_ref: {
+            scope: 'signal_source',
+            signal_source_url: 'https://signals.example.com/mcp',
+            signal_id: 'private-likely-ev-buyers'
+          },
+          signal_agent_segment_id: 'seg-private-ev-001',
+          name: 'Private likely EV buyers',
+          description: 'Private source-native modeled EV intent signal.',
+          signal_type: 'custom',
+          deployments: [
+            {
+              type: 'platform',
+              platform: 'dv360',
+              account: '123456',
+              is_live: true
+            }
+          ],
+          taxonomy: {
+            ref: 'https://taxonomy.example.com/audience/v1',
+            values: [{ id: 'auto.ev_intenders' }]
+          },
+          data_subject_rights: {
+            channels: [
+              {
+                rights: ['access'],
+                email: 'privacy@example.com'
+              }
+            ],
+            response_sla_days: 30
+          }
+        }
+      ],
+      cache_scope: 'account'
+    },
+    'get_signals response accepts typed inline enrichment fields for source-native signals'
+  );
   await testSchemaRejection(
     '/schemas/signals/get-signals-request.json',
     {
@@ -1345,7 +1387,6 @@ async function runTests() {
           }
         ],
         response_sla_days: 30,
-        gpc_honored: true,
         ccpa_opt_out_url: 'https://privacy.signals.example.com/opt-out'
       }
     },
@@ -1534,6 +1575,24 @@ async function runTests() {
       }
     },
     'Rejects DSR routing that declares no access, erasure, or objection channel'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'dsr_gpc_not_signal_level',
+      name: 'DSR with signal-level GPC rejected',
+      value_type: 'binary',
+      data_subject_rights: {
+        channels: [
+          {
+            rights: ['access'],
+            email: 'privacy@example.com'
+          }
+        ],
+        gpc_honored: true
+      }
+    },
+    'Rejects signal-level gpc_honored in DSR routing'
   );
   log('');
 

@@ -462,6 +462,10 @@
           "$ref": "/schemas/core/signal-definition.json",
           "description": "Signal definition published in a data provider's adagents.json signals[]"
         },
+        "signal-definition-enrichment": {
+          "$ref": "/schemas/core/signal-definition-enrichment.json",
+          "description": "Optional signal-definition enrichment fields projected inline on signal listings"
+        },
         "signal-modeling-disclosure": {
           "$ref": "/schemas/core/signal-modeling-disclosure.json",
           "description": "Signal-specific modeling and AI-use disclosure metadata for data signals"

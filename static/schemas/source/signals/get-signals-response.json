@@ -21,6 +21,9 @@
         "allOf": [
           {
             "$ref": "/schemas/core/signal-listing.json"
+          },
+          {
+            "$ref": "/schemas/core/signal-definition-enrichment.json"
           }
         ],
         "properties": {

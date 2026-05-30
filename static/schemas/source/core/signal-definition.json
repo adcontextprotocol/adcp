@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/signal-definition.json",
   "title": "Signal Definition",
-  "description": "Definition of a signal in published adagents.json signals[]. The publishing domain supplies the namespace, so this definition carries a local id rather than a signal_ref. Media-buy products reference this definition with signal_ref scope 'data_provider', data_provider_domain set to the publishing domain, and signal_id set to this id.",
+  "description": "Definition of a signal in published adagents.json signals[]. The publishing domain supplies the namespace, so this definition carries a local id rather than a signal_ref. Media-buy products reference this definition with signal_ref scope 'data_provider', data_provider_domain set to the publishing domain, and signal_id set to this id. Some constraints use JSON Schema draft-07 conditional keywords such as if/then and contains; SDK generators that drop those keywords need equivalent runtime guards.",
   "type": "object",
   "properties": {
     "id": {
@@ -291,7 +291,7 @@
         "type": "string",
         "pattern": "^[A-Z]{2}$"
       },
-      "description": "ISO 3166-1 alpha-2 country codes where the signal is applicable. Sellers must not expose a signal for media buys in countries outside this list unless their own policy allows a narrower operational override."
+      "description": "ISO 3166-1 alpha-2 country codes where the signal is applicable. Sellers must not expose a signal for media buys in countries outside this list. Federating agents that surface a peer's signal MUST treat the peer-published list as an upper bound, re-check it against the buyer's intended deployment countries, and may apply only narrower local policy."
     },
     "consent_basis": {
       "type": "array",
@@ -323,7 +323,7 @@
             },
             "provider_signed": {
               "type": "boolean",
-              "description": "Whether the seed source carries a signed attestation under one of the provider's published signing keys."
+              "description": "Whether the seed source carries a signed attestation under one of the provider's published signing keys. This is a forward-looking claim until the consumer can resolve and verify the provider's applicable signing keys through the AdCP signing profile; consumers MUST NOT treat this boolean alone as cryptographic proof."
             }
           },
           "required": ["type", "provider_signed"],
@@ -353,7 +353,7 @@
     },
     "data_subject_rights": {
       "type": "object",
-      "description": "Per-signal data-subject-rights routing. Inline on the signal because upstream source and rights routing can differ by segment even when the publishing domain is the same. This is a contact/routing reference, not a machine-callable AdCP API.",
+      "description": "Per-signal data-subject-rights routing. Inline on the signal because upstream source, rights routing, and response commitments can differ by segment or may be unavailable from a public provider document for custom/private signals. This is a contact/routing reference, not a machine-callable AdCP API.",
       "properties": {
         "upstream_source_domain": {
           "type": "string",
@@ -363,7 +363,7 @@
         },
         "channels": {
           "type": "array",
-          "description": "Rights request channels and the rights each channel supports.",
+          "description": "Rights request channels and the rights each channel supports. At least one declared channel MUST support one or more of access, erasure, or objection; schema validators enforce this with draft-07 contains, and consumers whose SDK drops contains need an equivalent runtime check.",
           "minItems": 1,
           "contains": {
             "type": "object",
@@ -429,11 +429,7 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 90,
-          "description": "Maximum response time in days for the declared rights channels."
-        },
-        "gpc_honored": {
-          "type": "boolean",
-          "description": "Whether Global Privacy Control signals are honored as objection or opt-out requests for this signal."
+          "description": "Maximum response time in days for rights requests handled through the declared rights channels. For provider-published signals, providers SHOULD avoid duplicating this field across every signal unless the value varies by signal or upstream source; consumers MAY also consult the provider's public privacy policy or registry disclosures when present."
         },
         "ccpa_opt_out_url": {
           "type": "string",
