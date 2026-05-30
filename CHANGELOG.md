@@ -1,5 +1,61 @@
 # Changelog
 
+## 3.1.0-rc.4
+
+### Minor Changes
+
+- 0988b54: Add `field_pattern` / `envelope_field_pattern` compliance check kinds and use the envelope-scoped form to validate `adcp_version` shape in the version-negotiation storyboard.
+
+  Tighten media-buy storyboards that reuse a discovered `pricing_option_id` so auction-priced flows send `bid_price` and fixed-price flows validate the captured option before downstream package creation.
+
+- 5134f45: Define the designated-task response payload JWS envelope for Brand Protocol verification responses.
+
+  `verify_brand_claim` and `verify_brand_claims` success schemas now require `signed_response`, binding the signed task body to the designated task, resolved brand tenant, responding agent URL, request hash, and `iat`/`exp` freshness window. The security and brand-agent docs specify ordinary JWS signing input over JCS-canonicalized payloads, response-signing JWK verification requirements, per-brand response-signing key separation, and bulk audit retention requirements.
+
+- 271f669: Add `filters.pricing_currencies` to `get_products` so buyers can restrict discovery to media products priced in currencies they can transact in.
+
+  The filter matches products with at least one product-level `pricing_options` entry in a requested ISO 4217 currency, requires mandatory product-scoped signal charges to be satisfiable in those currencies or have no incremental price, and requires sellers to prune returned product-level `pricing_options` to matching currencies.
+
+- 8da6974: Clarify proposal lifecycle semantics and mark measurement catalog discovery experimental for 3.1.
+
+  Proposal updates:
+
+  - `proposal_status` is the per-proposal source of truth for whether finalization is required before `create_media_buy`.
+  - `finalize` is seller commitment to firm pricing/terms/hold, not buyer acceptance.
+  - `create_media_buy(proposal_id)` is buyer acceptance/execution of a committed proposal.
+  - `supports_proposals` is a conformance grading declaration, not buyer routing logic for an individual returned proposal.
+  - `allowed_actions[]` / `available_actions[]` remain scoped to media-buy mutations; proposal lifecycle is not modeled as a proposal-level action list.
+  - `requires_proposal` is removed from media-buy action modes before 3.1 GA, replacing the rc-shipped enum with `REQUOTE_REQUIRED` recovery when an update exceeds the current quoted envelope. 3.1 does not define an amendment-quote artifact for `update_media_buy`.
+
+  Measurement updates:
+
+  - `measurement` capability block is marked `x-status: experimental`.
+  - Agents implementing the measurement catalog declare `measurement.core` in `experimental_features`.
+  - Docs describe measurement vendor catalog discovery as experimental while the task surface and compliance baseline remain unfrozen.
+
+- 1f158e8: Fix release validation for compliance bundle closure and align signals conformance with the owned-signal manifest fix tracked in #5186.
+
+  - Package webhook receiver envelope vectors under the versioned compliance tree and update storyboard references to bundle-relative paths.
+  - Fail compliance and protocol tarball builds when authored vector/test-kit references do not resolve inside the packaged compliance tree.
+  - Narrow baseline and `signal_owned` conformance back to discovery-only so SDK manifests do not require owned-signal agents to implement marketplace activation.
+  - Require `activate_signal` on the `signal_marketplace` specialism and update the Signals Protocol docs to state the two-tier obligation explicitly.
+
+### Patch Changes
+
+- c197b73: Clarify progressive disclosure for enriched signal definitions: provider-published signals resolve through `signal_ref` to `adagents.json` and cache with `catalog_etag` or HTTP validators, while rich fields can still be requested inline for exact lookup, custom, or private signals.
+
+  Clarify runtime validation requirements for enriched signal definitions, including draft-07 conditional constraints, data-subject-rights channel requirements, Article 9 checks, federation handling for `countries[]`, and the verification limits of `provider_signed`. Remove signal-level Global Privacy Control handling from the DSR surface; signal definitions do not declare GPC support, and consumers must not infer GPC handling from DSR routing metadata.
+
+- 9a6edeb: Update minor and patch npm dependencies for email domain lookup, analytics, email delivery, WebSocket handling, and docs tooling.
+- 122ee3b: Update the Python lockfile to idna 3.15, including the upstream fix for oversized IDNA input handling.
+- 9352ac9: Update Puppeteer development tooling to 25.0.4.
+- 7c0f1ae: Fix event administration for Singapore chapter leads and other eligible committee leaders.
+
+  Luma-synced events now update existing AAO event records, move generated slugs when canonical title/date fields change, and preserve old public URLs through slug redirects. Addie event management is scoped to AgenticAdvertising.org admins or leaders of linked eligible committees, and public old-slug lookups now keep draft and invite-only events hidden before redirecting.
+
+- 917c8f9: Update Node.js development type definitions to @types/node 24.
+- 90e90d3: Update undici to 8.3.0 and keep SSRF-safe dispatchers on the same undici fetch implementation in `safeFetch` and webhook delivery.
+
 ## 3.0.14
 
 ### Patch Changes
