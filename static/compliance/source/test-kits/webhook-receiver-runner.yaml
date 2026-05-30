@@ -2,16 +2,17 @@
 #
 # Applies to:
 #   - universal/webhook-emission.yaml (primary consumer — grades outbound
-#     webhook conformance: idempotency_key presence, stability across retries,
-#     and RFC 9421 signature validity when 9421 is in effect)
+#     webhook conformance: operation_id echo, idempotency_key presence,
+#     stability across retries, and RFC 9421 signature validity when 9421 is in
+#     effect)
 #   - universal/idempotency.yaml (replay-side-effect invariant — "no duplicate
 #     webhooks on replay" step is gated on this contract being in scope)
 #   - Any future storyboard that needs to observe outbound webhooks.
 #
 # The webhook-emission universal grades an agent's outbound-webhook
-# conformance: idempotency_key presence and stability across retries, and —
-# when the 9421 webhook profile is in effect — RFC 9421 signature validity per
-# docs/building/implementation/security.mdx#webhook-callbacks.
+# conformance: operation_id echo, idempotency_key presence and stability
+# across retries, and — when the 9421 webhook profile is in effect — RFC 9421
+# signature validity per docs/building/implementation/security.mdx#webhook-callbacks.
 #
 # Storyboards are unidirectional by default (runner → agent). Verifying what
 # the agent sends back requires the runner to host a webhook receiver during
@@ -35,8 +36,9 @@ description: |
   and a webhook-emitting agent under test. The runner mints per-step HTTPS
   endpoints, injects them into push_notification_config.url on the steps that
   trigger webhooks, observes incoming deliveries via @adcp/client AsyncHandler
-  hooks, and asserts on idempotency_key presence, idempotency_key stability
-  across retries, and (when advertised) 9421 signature validity.
+  hooks, and asserts on operation_id echo, idempotency_key presence,
+  idempotency_key stability across retries, and (when advertised) 9421
+  signature validity.
 
 endpoint_scope: sandbox
 # Storyboards that drive webhook emission typically call spend-committing
@@ -115,14 +117,20 @@ endpoint_modes:
 # "shared_receiver (deferred / out of scope v1)."
 
 receiver_urls:
-  per_step_url_template: "{{runner.webhook_base}}/step/<step_id>/<operation_id>"
-  operation_id_source: push_notification_config.url
-  # <operation_id> in the URL template is the ID the RUNNER (acting as caller)
-  # sets in the path segment of push_notification_config.url when it registers
-  # the webhook on the triggering step. This is NOT a server-generated ID — the
-  # agent under test MUST NOT mint its own operation_id. The agent's webhook
-  # payload MUST echo this operation_id back verbatim so the runner can match
-  # inbound deliveries to the step that triggered them.
+  per_step_url_template: "{{runner.webhook_base}}/step/<step_id>/<runner_capture_id>"
+  operation_id_source: push_notification_config.operation_id
+  # <runner_capture_id> in the URL template is a receiver-routing identifier
+  # minted by the runner so it can associate the inbound HTTP request with the
+  # storyboard step that registered the URL. It is an internal capture key, not
+  # the protocol operation_id. The runner MUST treat it as distinct from any
+  # explicit push_notification_config.operation_id when the storyboard provides
+  # one, so the conformance assertion can catch sellers that parse the URL
+  # instead of echoing the explicit payload field.
+  #
+  # push_notification_config.operation_id is the wire-level source of truth.
+  # The agent's webhook payload MUST echo that value verbatim. The URL path and
+  # query string are opaque to the agent under test and MUST NOT be parsed to
+  # recover operation_id.
 
 # --- Retry-replay assertion shape ---
 #

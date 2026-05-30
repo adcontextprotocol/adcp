@@ -121,7 +121,7 @@
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",
-      "description": "Optional webhook configuration for async task status notifications. Publisher will send webhooks when status changes (working, input-required, completed, failed). The client generates an operation_id and embeds it in the URL before sending — the publisher echoes it back in webhook payloads for correlation."
+      "description": "Optional webhook configuration for async task status notifications. Publisher will send webhooks when status changes (working, input-required, completed, failed, canceled). Buyers SHOULD supply `push_notification_config.operation_id` as the canonical correlation value; publishers echo that field back verbatim in webhook payloads and MUST NOT parse the URL to derive it."
     },
     "reporting_webhook": {
       "$ref": "/schemas/core/reporting-webhook.json",
