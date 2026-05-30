@@ -3,7 +3,7 @@ version: "1.0.0"
 title: "Owned signal agent"
 protocol: signals
 category: signal_owned
-summary: "Signal agent serving first-party or proprietary audience data without external catalog verification."
+summary: "Signal agent serving first-party or proprietary audience data for discovery without external catalog verification."
 track: signals
 required_tools:
   - get_signals
@@ -14,21 +14,23 @@ narrative: |
   from your own data, not from third-party catalogs.
 
   Buyers trust your agent directly. There's no external adagents.json to verify against —
-  provenance is the agent itself. This simplifies the flow: discovery and activation,
-  without the verification step that marketplace agents require.
+  provenance is the agent itself. This simplifies the flow to discovery without the
+  verification step that marketplace agents require.
 
   Owned signal agents often have richer signal types. A retailer might expose purchase
   frequency as a numeric signal (0-30 visits/month) or loyalty tier as categorical
   (platinum/gold/silver/bronze). A publisher might expose content category, subscriber
   tenure, or engagement scores.
 
-  This storyboard walks through discovery and both activation patterns.
+  This storyboard walks through capability discovery and owned-signal discovery only.
+  Marketplace-style activation is out of scope for the owned-signal specialism.
 
   Pricing is hard-required here for the same reason as signal marketplaces: signals
-  are rate-carded goods. Buyers cannot activate without a pricing_option_id to anchor
-  billing. Agents distributing first-party signals without commercial terms belong on
-  a different specialism, not this one — the v2 `list_authorized_properties`
-  task is retired; portfolio advertising now lives on `get_adcp_capabilities`.
+  are rate-carded goods. Buyers need pricing_options to evaluate whether to use a
+  signal, even when this specialism does not grade activation. Agents distributing
+  first-party signals without commercial terms belong on a different specialism,
+  not this one — the v2 `list_authorized_properties` task is retired; portfolio
+  advertising now lives on `get_adcp_capabilities`.
 
 agent:
   interaction_model: owned_signals
@@ -112,7 +114,7 @@ phases:
         stateful: false
         expected: |
           Return matching signals from your proprietary data. Each signal must include:
-          - signal_agent_segment_id for activation
+          - signal_agent_segment_id as the opaque handle for downstream use
           - signal_id with source: "agent_native"
           - name, description, and value_type
           - coverage_forecast when detailed availability is disclosed; deprecated coverage_percentage may be present as a legacy scalar fallback
@@ -191,127 +193,4 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "signal_owned--filter_by_criteria"
-            description: "Context correlation_id returned unchanged"
-  - id: platform_activation
-    title: "Activate on a DSP"
-    narrative: |
-      The buyer activates a signal directly on a DSP. Your agent pushes the segment
-      to the platform and returns a segment_id the buyer uses for campaign targeting.
-
-      Use platform destinations when the buyer manages DSP campaigns directly.
-
-    steps:
-      - id: activate_on_platform
-        title: "Activate owned signal on a DSP"
-        narrative: |
-          The buyer selects a signal and activates it on a DSP. For owned signals,
-          this means your platform pushes first-party segment data to the DSP. The
-          buyer gets back a segment_id for targeting.
-        task: activate_signal
-        schema_ref: "signals/activate-signal-request.json"
-        response_schema_ref: "signals/activate-signal-response.json"
-        doc_ref: "/signals/tasks/activate_signal"
-        comply_scenario: signals_flow
-        stateful: true
-        expected: |
-          Return a deployment with:
-          - type: "platform"
-          - is_live status (may be async)
-          - activation_key with type: "segment_id" when live
-          - estimated_activation_duration_minutes if not immediately live
-
-        sample_request:
-          account:
-            brand:
-              domain: "novamotors.example"
-            operator: "pinnacle-agency.example"
-          signal_agent_segment_id: "prism_high_ltv"
-          pricing_option_id: "po_prism_flat_monthly"
-          destinations:
-            - type: "platform"
-              platform: "the-trade-desk"
-              account: "agency-123-ttd"
-          idempotency_key: "$generate:uuid_v4#signal_owned_activate_platform"
-          context:
-            correlation_id: "signal_owned--activate_on_platform"
-          ext:
-            test_platform:
-              test_run: true
-        validations:
-          - check: response_schema
-            description: "Response matches activate-signal-response.json schema"
-          - check: field_present
-            path: "deployments[0].type"
-            description: "Deployment includes type"
-
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "signal_owned--activate_on_platform"
-            description: "Context correlation_id returned unchanged"
-  - id: agent_activation
-    title: "Activate on a sales agent"
-    narrative: |
-      The buyer activates a signal on a sales agent. The SA records the activation
-      and handles downstream DSP coordination — the buyer doesn't need to know which
-      platform the SA uses.
-
-      This is the right pattern when buying media through a sales agent.
-
-    steps:
-      - id: activate_on_agent
-        title: "Activate owned signal on a sales agent"
-        narrative: |
-          The buyer activates a signal with the SA's URL as the destination. The
-          activation is typically synchronous. The SA records it internally and
-          applies the targeting when the buyer later calls create_media_buy.
-        task: activate_signal
-        schema_ref: "signals/activate-signal-request.json"
-        response_schema_ref: "signals/activate-signal-response.json"
-        doc_ref: "/signals/tasks/activate_signal"
-        comply_scenario: signals_flow
-        stateful: true
-        expected: |
-          Return a deployment with:
-          - type: "agent"
-          - agent_url matching the SA
-          - is_live: true (sync activation)
-          - activation_key with type: "key_value"
-          - deployed_at timestamp
-
-        sample_request:
-          account:
-            brand:
-              domain: "novamotors.example"
-            operator: "pinnacle-agency.example"
-          signal_agent_segment_id: "prism_cart_abandoner"
-          pricing_option_id: "po_prism_abandoner_cpm"
-          destinations:
-            - type: "agent"
-              agent_url: "https://wonderstruck.salesagents.example"
-          idempotency_key: "$generate:uuid_v4#signal_owned_activate_agent"
-          context:
-            correlation_id: "signal_owned--activate_on_agent"
-          ext:
-            test_platform:
-              test_run: true
-        validations:
-          - check: response_schema
-            description: "Response matches activate-signal-response.json schema"
-          - check: field_present
-            path: "deployments[0].activation_key"
-            description: "Deployment includes activation key"
-          - check: field_value
-            path: "deployments[0].type"
-            value: "agent"
-            description: "Deployment type is 'agent'"
-
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "signal_owned--activate_on_agent"
             description: "Context correlation_id returned unchanged"

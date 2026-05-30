@@ -6,7 +6,16 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '..', 'static', 'schemas', 'source');
-const vectorsPath = path.join(__dirname, '..', 'static', 'test-vectors', 'webhook-receiver-envelope.json');
+const legacyVectorsPath = path.join(__dirname, '..', 'static', 'test-vectors', 'webhook-receiver-envelope.json');
+const vectorsPath = path.join(
+  __dirname,
+  '..',
+  'static',
+  'compliance',
+  'source',
+  'test-vectors',
+  'webhook-receiver-envelope.json',
+);
 const vectors = JSON.parse(fs.readFileSync(vectorsPath, 'utf8'));
 
 async function loadExternalSchema(uri) {
@@ -39,6 +48,11 @@ describe('webhook receiver envelope vectors', async () => {
     assert.ok(Array.isArray(vectors.negative));
     assert.ok(vectors.positive.length >= 1);
     assert.ok(vectors.negative.length >= 3);
+  });
+
+  it('keeps the legacy unversioned vector copy in sync', () => {
+    const legacyVectors = JSON.parse(fs.readFileSync(legacyVectorsPath, 'utf8'));
+    assert.deepEqual(legacyVectors, vectors);
   });
 
   for (const vector of vectors.positive) {

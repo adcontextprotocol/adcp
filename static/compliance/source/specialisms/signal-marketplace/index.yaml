@@ -7,6 +7,7 @@ summary: "Signal agent that resells third-party data provider signals with verif
 track: signals
 required_tools:
   - get_signals
+  - activate_signal
 requires_scenarios:
   - signal_marketplace/governance_denied
 

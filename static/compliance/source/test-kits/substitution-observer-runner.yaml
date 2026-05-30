@@ -238,15 +238,15 @@ hex_case_policy:
 
 # --- Attacker-shaped catalog values ---
 #
-# The canonical vectors live in the unit-test fixture at
-# static/test-vectors/catalog-macro-substitution.json. The fixture is the
+# The canonical vectors live in the versioned compliance fixture at
+# test-vectors/catalog-macro-substitution.json. The fixture is the
 # SINGLE SOURCE OF TRUTH for `raw_value` and `expected_encoded` — the
 # runner MUST load the fixture at run time and look up each vector by name.
 # This contract NAMES the vectors a consuming storyboard can reference;
 # it does NOT duplicate the encoded values (they would drift).
 
 attacker_value_catalog:
-  source_fixture: static/test-vectors/catalog-macro-substitution.json
+  source_fixture: test-vectors/catalog-macro-substitution.json
   canonical_vector_names:
     - reserved-character-breakout
     - nested-expansion-preserved-as-literal
@@ -405,7 +405,7 @@ step_task:
 #     Nested macro expansion is prohibited.
 #
 #     This phase exercises the rule with attacker-shaped catalog values drawn
-#     from the fixture at `static/test-vectors/catalog-macro-substitution.json`.
+#     from the fixture at `test-vectors/catalog-macro-substitution.json`.
 #     The phase is gated on the `substitution_observer_runner` test-kit
 #     contract — runners that do not advertise it grade the expect step as
 #     `not_applicable` while the earlier sync and build steps still run.
@@ -683,6 +683,6 @@ references:
   upstream_rule_pr: "#2620"
   contract_rfc: "#2638"
   consumer_coverage_rfc: "#2640"
-  unit_test_fixture: static/test-vectors/catalog-macro-substitution.json
+  unit_test_fixture: test-vectors/catalog-macro-substitution.json
   sibling_contract_webhook: static/compliance/source/test-kits/webhook-receiver-runner.yaml
   sibling_contract_signed_requests: static/compliance/source/test-kits/signed-requests-runner.yaml

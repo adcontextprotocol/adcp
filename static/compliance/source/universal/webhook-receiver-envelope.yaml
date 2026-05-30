@@ -12,7 +12,7 @@ narrative: |
   otherwise schema-valid.
 
   This storyboard is a direct POST replay contract. The runner sends canonical
-  webhook payloads from `/test-vectors/webhook-receiver-envelope.json` to a
+  webhook payloads from `/compliance/{version}/test-vectors/webhook-receiver-envelope.json` to a
   buyer-provided receiver URL and records the HTTP result. It validates the
   transport shape separately from the task-specific result content:
 
@@ -43,7 +43,7 @@ prerequisites:
     The runner MUST be configured with a buyer webhook receiver URL and a
     test webhook-signing key whose public JWK the receiver can resolve. Runners
     without a receiver URL grade this storyboard as not_applicable.
-  vectors: "static/test-vectors/webhook-receiver-envelope.json"
+  vectors: "test-vectors/webhook-receiver-envelope.json"
 
 phases:
   - id: positive_envelope_replay
@@ -58,7 +58,7 @@ phases:
       - id: post_delivery_report_envelope
         title: "POST delivery report inside MCP webhook envelope"
         task: replay_webhook_vector
-        vector_ref: "static/test-vectors/webhook-receiver-envelope.json#positive/mcp-delivery-report-envelope"
+        vector_ref: "test-vectors/webhook-receiver-envelope.json#positive/mcp-delivery-report-envelope"
         webhook_payload_schema_ref: "core/mcp-webhook-payload.json"
         expected: |
           Receiver returns 2xx after verifying the signature over the exact raw
@@ -69,7 +69,7 @@ phases:
       - id: post_same_event_retry
         title: "POST retry with same idempotency_key"
         task: replay_webhook_vector
-        vector_ref: "static/test-vectors/webhook-receiver-envelope.json#positive/mcp-delivery-report-retry-same-idempotency-key"
+        vector_ref: "test-vectors/webhook-receiver-envelope.json#positive/mcp-delivery-report-retry-same-idempotency-key"
         same_event_as: post_delivery_report_envelope
         webhook_payload_schema_ref: "core/mcp-webhook-payload.json"
         expected: |
@@ -90,7 +90,7 @@ phases:
       - id: reject_bare_delivery_result
         title: "Reject top-level notification_type result"
         task: replay_webhook_vector
-        vector_ref: "static/test-vectors/webhook-receiver-envelope.json#negative/bare-delivery-result"
+        vector_ref: "test-vectors/webhook-receiver-envelope.json#negative/bare-delivery-result"
         expect_error: true
         expected: |
           Receiver rejects before task dispatch with an actionable envelope
@@ -100,7 +100,7 @@ phases:
       - id: reject_missing_idempotency_key
         title: "Reject envelope without idempotency_key"
         task: replay_webhook_vector
-        vector_ref: "static/test-vectors/webhook-receiver-envelope.json#negative/missing-idempotency-key"
+        vector_ref: "test-vectors/webhook-receiver-envelope.json#negative/missing-idempotency-key"
         expect_error: true
         expected: |
           Receiver rejects before dispatch because it cannot safely dedupe the
@@ -110,7 +110,7 @@ phases:
       - id: reject_unsupported_status
         title: "Reject media buy status used as webhook status"
         task: replay_webhook_vector
-        vector_ref: "static/test-vectors/webhook-receiver-envelope.json#negative/unsupported-top-level-status"
+        vector_ref: "test-vectors/webhook-receiver-envelope.json#negative/unsupported-top-level-status"
         expect_error: true
         expected: |
           Receiver rejects because top-level `status` must be a task-status enum

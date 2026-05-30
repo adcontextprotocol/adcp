@@ -570,7 +570,7 @@ phases:
 
       This phase exercises the rule with five canonical attacker-shaped
       catalog values drawn from the fixture at
-      `static/test-vectors/catalog-macro-substitution.json`:
+      `test-vectors/catalog-macro-substitution.json`:
       reserved-char breakout, nested-expansion preservation, non-ASCII UTF-8,
       CRLF injection, and bidi-override neutralization. Generative pipelines
       have a higher risk profile on bidi-override than template pipelines

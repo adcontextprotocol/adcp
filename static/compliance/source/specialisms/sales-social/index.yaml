@@ -521,7 +521,7 @@ phases:
       its tracker URLs, then call `preview_creative` to render the bound
       preview. The substitution-observer runner inspects `preview_html` from
       the response and asserts each substituted `{SKU}` value is encoded per
-      the fixture at `static/test-vectors/catalog-macro-substitution.json`.
+      the fixture at `test-vectors/catalog-macro-substitution.json`.
 
       Scope note: this phase validates substitution on the PREVIEW surface
       only. Social platforms with divergent preview vs impression-time
