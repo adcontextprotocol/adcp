@@ -80,6 +80,98 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       # ─────────────────────────────────────────────────────────────────────
+      # Route PR classes Argus should not try to review.
+      #
+      # Generated Changesets release PRs are opened by the same App that posts
+      # reviews. The Claude action rejects bot-initiated runs unless explicitly
+      # allowlisted, and even if allowed the generated release diff is the wrong
+      # shape for an LLM review. Make the human-review handoff explicit instead
+      # of burning runs and posting generic "could not complete" comments.
+      #
+      # Backport branches can also run this default-branch workflow even when
+      # the PR base does not contain the Argus prompt. Because the prompt is
+      # intentionally loaded from the trusted base SHA, those PRs must be
+      # handed to a human rather than falling back to default-branch prompt
+      # text.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Classify PR for Argus routing
+        id: review-route
+        shell: bash
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          skip=false
+          reason=""
+
+          if [[ "$PR_AUTHOR_TYPE" == "Bot" ]] \
+            && [[ "$PR_AUTHOR" == "aao-release-bot[bot]" ]] \
+            && [[ "$PR_HEAD_REPO" == "$PR_BASE_REPO" ]] \
+            && [[ "$PR_HEAD_REF" == changeset-release/* ]] \
+            && [[ "$PR_TITLE" == Version\ Packages* ]]; then
+            skip=true
+            reason="generated-release"
+          elif ! git cat-file -e "${BASE_SHA}:.github/ai-review/expert-adcp-reviewer.md" 2>/dev/null; then
+            skip=true
+            reason="prompt-missing-on-base"
+          fi
+
+          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
+          echo "reason=${reason}" >> "$GITHUB_OUTPUT"
+
+      - name: Comment and skip routed human-review PRs
+        if: steps.review-route.outputs.skip == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SKIP_REASON: ${{ steps.review-route.outputs.reason }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const reason = process.env.SKIP_REASON;
+            const botLogin = process.env.ARGUS_BOT_LOGIN;
+            const marker = `<!-- argus-skip:${reason} -->`;
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100
+            });
+            if (reviews.some((review) => review.user?.login === botLogin && review.body?.includes(marker))) {
+              return;
+            }
+
+            const bodyByReason = {
+              'generated-release': [
+                'Argus is **not auto-reviewing** this PR because it is a generated Changesets release PR.',
+                '',
+                'A human release reviewer should verify CI, package/version/changelog changes, and generated `dist/**` artifacts. Argus will resume on source PRs before the next release PR is generated.',
+                '',
+                marker
+              ].join('\n'),
+              'prompt-missing-on-base': [
+                'Argus is **not auto-reviewing** this PR because the target base SHA does not contain `.github/ai-review/expert-adcp-reviewer.md`.',
+                '',
+                'A human reviewer should review this branch. Argus will resume on branches whose base includes the review prompt.',
+                '',
+                marker
+              ].join('\n')
+            };
+
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              event: 'COMMENT',
+              body: bodyByReason[reason] || `Argus is **not auto-reviewing** this PR.\n\n${marker}`
+            });
+
+      # ─────────────────────────────────────────────────────────────────────
       # Workflow-modification gate.
       #
       # If this PR modifies `.github/ai-review/**` or `.github/workflows/
@@ -93,6 +185,7 @@ jobs:
       # ─────────────────────────────────────────────────────────────────────
       - name: Check for review-workflow modifications
         id: workflow-mod
+        if: steps.review-route.outputs.skip != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -123,7 +216,7 @@ jobs:
           fi
 
       - name: Comment and skip when PR modifies review workflow
-        if: steps.workflow-mod.outputs.modified == 'true'
+        if: steps.review-route.outputs.skip != 'true' && steps.workflow-mod.outputs.modified == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           MODIFIED_FILES: ${{ steps.workflow-mod.outputs.modified_files }}
@@ -148,7 +241,7 @@ jobs:
       # ─────────────────────────────────────────────────────────────────────
       - name: Check for skippable re-run
         id: skip-check
-        if: github.event.action == 'synchronize' && steps.workflow-mod.outputs.modified != 'true'
+        if: steps.review-route.outputs.skip != 'true' && github.event.action == 'synchronize' && steps.workflow-mod.outputs.modified != 'true'
         continue-on-error: true
         shell: bash
         env:
@@ -208,7 +301,7 @@ jobs:
           fi
 
       - name: Build Argus review prompt
-        if: steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true'
+        if: steps.review-route.outputs.skip != 'true' && steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true'
         id: build-prompt
         shell: bash
         env:
@@ -248,7 +341,7 @@ jobs:
 
       - name: Run Argus PR Review
         id: ai-review
-        if: steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true'
+        if: steps.review-route.outputs.skip != 'true' && steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true'
         continue-on-error: true
         uses: anthropics/claude-code-action@787c5a0ce96a9a6cfb050ea0c8f4c05f2447c251 # v1
         with:
@@ -264,7 +357,7 @@ jobs:
 
       - name: Verify Argus posted a review
         id: verify
-        if: always() && steps.app-token.outcome == 'success' && steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true'
+        if: always() && steps.app-token.outcome == 'success' && steps.review-route.outputs.skip != 'true' && steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -274,8 +367,15 @@ jobs:
           set -euo pipefail
           # Pin on the exact bot login so changesets-release[bot] or any
           # other bot's review in the last 10 minutes doesn't false-positive.
+          # Exclude this workflow's own human-handoff/failure review comments;
+          # only an Argus-authored review should satisfy the verifier.
           LATEST="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
-            --jq "[.[] | select(.user.login == \"${ARGUS_BOT_LOGIN}\")] | sort_by(.submitted_at) | last // {}")"
+            --jq "[.[] | select(
+              .user.login == \"${ARGUS_BOT_LOGIN}\"
+              and (((.body // \"\") | contains(\"<!-- argus-skip:\")) | not)
+              and (((.body // \"\") | contains(\"Argus is **not auto-reviewing**\")) | not)
+              and (((.body // \"\") | contains(\"Argus review could not complete\")) | not)
+            )] | sort_by(.submitted_at) | last // {}")"
           STATE="$(echo "$LATEST" | jq -r '.state // ""')"
           SUBMITTED="$(echo "$LATEST" | jq -r '.submitted_at // ""')"
           echo "Latest ${ARGUS_BOT_LOGIN} review — state: $STATE, submitted: $SUBMITTED"
@@ -296,7 +396,7 @@ jobs:
           echo "review_state=$STATE" >> "$GITHUB_OUTPUT"
 
       - name: Comment on PR if Argus review failed
-        if: steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true' && (steps.ai-review.outcome == 'failure' || steps.verify.outputs.review_posted != 'true')
+        if: steps.review-route.outputs.skip != 'true' && steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true' && (steps.ai-review.outcome == 'failure' || steps.verify.outputs.review_posted != 'true')
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
