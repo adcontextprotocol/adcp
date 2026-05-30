@@ -90,7 +90,6 @@ describe('Training Agent webhook emission', () => {
     const deliveries: CapturedDelivery[] = [];
     let srv: http.Server | undefined;
     try {
-      const operationId = `buyer-op-${randomUUID()}`;
       const done = new Promise<void>(resolve => {
         startReceiver((d, res) => {
           deliveries.push(d);
@@ -127,7 +126,7 @@ describe('Training Agent webhook emission', () => {
                     start_time: '2027-06-01T00:00:00Z',
                     end_time: '2027-07-01T00:00:00Z',
                   }],
-                  push_notification_config: { url: webhookUrl, operation_id: operationId },
+                  push_notification_config: { url: webhookUrl, operation_id: 'op_completion_webhook' },
                 },
               },
             });
@@ -143,7 +142,7 @@ describe('Training Agent webhook emission', () => {
       const delivery = deliveries[0];
       const body = JSON.parse(delivery.body) as Record<string, unknown>;
       expect(body.task_id).toBeDefined();
-      expect(body.operation_id).toBe(operationId);
+      expect(body.operation_id).toBe('op_completion_webhook');
       expect(body.task_type).toBe('create_media_buy');
       expect(body.status).toBe('completed');
       expect(body.idempotency_key).toMatch(/^[A-Za-z0-9_.:-]{16,255}$/);

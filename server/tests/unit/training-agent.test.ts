@@ -10081,7 +10081,7 @@ describe('AdCP protocol compliance', () => {
       brief: 'test',
     });
     expect(isError).toBeFalsy();
-    expect(result.adcp_version).toBe('3.1-rc.4');
+    expect(result.adcp_version).toBe(CURRENT_ADCP_VERSION);
     expect(Array.isArray(result.products)).toBe(true);
   });
 
