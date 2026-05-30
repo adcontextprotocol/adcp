@@ -16,6 +16,8 @@
 import { createLogger } from "../../logger.js";
 import { ToolError } from "../tool-error.js";
 import type { AddieTool } from "../types.js";
+import { randomUUID } from "node:crypto";
+import type Stripe from "stripe";
 import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from "../../types.js";
 import type { MemberContext } from "../member-context.js";
 import { FREE_EMAIL_PROVIDER_DOMAINS } from "../../services/identifier-normalization.js";
@@ -27,6 +29,8 @@ import { FREE_EMAIL_PROVIDER_DOMAINS } from "../../services/identifier-normaliza
 import {
   OrganizationDatabase,
   resolveMembershipTier,
+  TIER_PRESERVING_STATUSES,
+  buildSubscriptionUpdate,
 } from "../../db/organization-db.js";
 import type { MembershipTier } from "../../db/organization-db.js";
 import { SlackDatabase } from "../../db/slack-db.js";
@@ -48,9 +52,12 @@ import {
   createPromotionCode,
   resendInvoice,
   updateCustomerEmail,
+  stripe,
   type PendingInvoice,
   type OpenInvoiceWithCustomer,
 } from "../../billing/stripe-client.js";
+import { invalidateMembershipCache } from "../../db/org-filters.js";
+import { pickMembershipSub } from "../../billing/membership-prices.js";
 import { enrichOrganization, enrichDomain } from "../../services/enrichment.js";
 import { researchDomain } from "../../services/brand-enrichment.js";
 import {
@@ -411,6 +418,52 @@ Returns a list of organizations with open or draft invoices.`,
         },
       },
       required: ["email"],
+    },
+  },
+  {
+    name: "preview_org_stripe_customer_update",
+    description: `Preview relinking an organization to a different Stripe customer. This validates the org and Stripe customer, shows the current and proposed customer IDs, and returns a preview_token. It does not write any changes. Always show the preview to the admin before confirming.`,
+    usage_hints:
+      "Use get_account first to identify org_id. After the admin explicitly approves the preview, call confirm_org_stripe_customer_update with the preview_token, confirm: true, and an audit reason.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        org_id: {
+          type: "string",
+          description: "WorkOS organization ID (org_...) to relink",
+        },
+        new_customer_id: {
+          type: "string",
+          description: "Proposed Stripe customer ID (cus_...) to validate",
+        },
+      },
+      required: ["org_id", "new_customer_id"],
+    },
+  },
+  {
+    name: "confirm_org_stripe_customer_update",
+    description: `Confirm a previously previewed organization Stripe customer relink. This tool does not accept a raw Stripe customer ID; it only commits the validated preview_token after explicit admin approval.`,
+    usage_hints:
+      "Only call after preview_org_stripe_customer_update has shown the current vs proposed customer diff and the admin has explicitly approved it.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        preview_token: {
+          type: "string",
+          description:
+            "Opaque token returned by preview_org_stripe_customer_update",
+        },
+        confirm: {
+          type: "boolean",
+          description: "Must be true to commit the relink",
+        },
+        reason: {
+          type: "string",
+          description:
+            "Audit reason for relinking this organization to the validated Stripe customer",
+        },
+      },
+      required: ["preview_token", "confirm", "reason"],
     },
   },
 
@@ -2447,6 +2500,489 @@ function sanitizeForMarkdown(value: string | null | undefined): string {
     .trim();
 }
 
+const STRIPE_CUSTOMER_UPDATE_PREVIEW_TTL_MS = 10 * 60 * 1000;
+
+interface PendingStripeCustomerUpdate {
+  token: string;
+  orgId: string;
+  newCustomerId: string;
+  currentCustomerId: string | null;
+  actorWorkosUserId: string | null;
+  actorEmail: string | null;
+  expiresAt: number;
+}
+
+type OrganizationRecord = NonNullable<
+  Awaited<ReturnType<OrganizationDatabase["getOrganization"]>>
+>;
+
+interface StripeCustomerUpdatePreview {
+  org: OrganizationRecord;
+  customer: Stripe.Customer;
+  subscriptions: Stripe.Subscription[];
+  membershipSubscription: Stripe.Subscription | null;
+}
+
+const pendingStripeCustomerUpdates = new Map<
+  string,
+  PendingStripeCustomerUpdate
+>();
+
+function pruneExpiredStripeCustomerUpdatePreviews(): void {
+  const now = Date.now();
+  for (const [token, pending] of pendingStripeCustomerUpdates.entries()) {
+    if (pending.expiresAt <= now) {
+      pendingStripeCustomerUpdates.delete(token);
+    }
+  }
+}
+
+function normalizeStripeCustomerId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.startsWith("cus_") ? trimmed : null;
+}
+
+function formatStripeCustomerForTool(customer: Stripe.Customer): Record<string, unknown> {
+  return {
+    id: customer.id,
+    name: customer.name ?? null,
+    email: customer.email ?? null,
+    metadata_org_id: customer.metadata?.workos_organization_id || null,
+  };
+}
+
+function formatStripeSubscriptionForTool(
+  subscription: Stripe.Subscription | null,
+): Record<string, unknown> | null {
+  if (!subscription) return null;
+  const item = subscription.items?.data?.[0];
+  const price = item?.price;
+  return {
+    id: subscription.id,
+    status: subscription.status,
+    product_name:
+      typeof price?.product === "object" && price.product && "name" in price.product
+        ? price.product.name
+        : null,
+    lookup_key: price?.lookup_key ?? null,
+    amount: price?.unit_amount ?? null,
+    currency: price?.currency ?? null,
+    interval: price?.recurring?.interval ?? null,
+  };
+}
+
+async function loadStripeCustomerUpdatePreview(
+  orgId: string,
+  customerId: string,
+): Promise<StripeCustomerUpdatePreview> {
+  if (!stripe) {
+    throw new ToolError("Stripe is not configured; cannot validate the customer before relinking.");
+  }
+
+  const org = await orgDb.getOrganization(orgId);
+  if (!org) {
+    throw new ToolError(`Organization ${orgId} not found.`);
+  }
+
+  if (org.stripe_customer_id === customerId) {
+    throw new ToolError(`Organization "${org.name}" is already linked to ${customerId}.`);
+  }
+
+  const pool = getPool();
+  const existingLink = await pool.query(
+    "SELECT workos_organization_id, name FROM organizations WHERE stripe_customer_id = $1",
+    [customerId],
+  );
+  if (
+    existingLink.rows.length > 0 &&
+    existingLink.rows[0].workos_organization_id !== orgId
+  ) {
+    throw new ToolError(
+      `Stripe customer ${customerId} is already linked to "${existingLink.rows[0].name}".`,
+    );
+  }
+
+  let customer: Stripe.Customer | Stripe.DeletedCustomer;
+  try {
+    customer = await stripe.customers.retrieve(customerId);
+  } catch (err) {
+    const stripeError = err as { code?: string; statusCode?: number; message?: string };
+    const notFound =
+      stripeError.code === "resource_missing" || stripeError.statusCode === 404;
+    throw new ToolError(
+      notFound
+        ? `Stripe customer ${customerId} was not found.`
+        : `Could not validate Stripe customer ${customerId}: ${stripeError.message ?? "unknown error"}`,
+    );
+  }
+
+  if ("deleted" in customer && customer.deleted) {
+    throw new ToolError(`Stripe customer ${customerId} is deleted and cannot be linked.`);
+  }
+
+  let subscriptions: Stripe.Subscription[];
+  try {
+    const subscriptionsResp = await stripe.subscriptions.list({
+      customer: customerId,
+      status: "all",
+      limit: 100,
+    });
+    subscriptions = subscriptionsResp.data;
+  } catch (err) {
+    const stripeError = err as { message?: string };
+    throw new ToolError(
+      `Could not validate Stripe subscriptions for ${customerId}: ${stripeError.message ?? "unknown error"}`,
+    );
+  }
+
+  const liveSubscriptions = subscriptions.filter((sub) =>
+    (TIER_PRESERVING_STATUSES as readonly string[]).includes(sub.status),
+  );
+  const conflictingStripeOrgIds = new Set(
+    liveSubscriptions
+      .map((sub) => sub.metadata?.workos_organization_id)
+      .filter((stripeOrgId): stripeOrgId is string =>
+        Boolean(stripeOrgId && stripeOrgId !== orgId),
+      ),
+  );
+  if (conflictingStripeOrgIds.size > 0) {
+    throw new ToolError(
+      `Stripe customer ${customerId} has a live subscription associated with another organization: ${[
+        ...conflictingStripeOrgIds,
+      ].join(", ")}.`,
+    );
+  }
+
+  return {
+    org,
+    customer,
+    subscriptions,
+    membershipSubscription: pickMembershipSub(subscriptions),
+  };
+}
+
+async function syncInvoicesForRelinkedCustomer(
+  customerId: string,
+  workosOrgId: string,
+): Promise<number> {
+  if (!stripe) return 0;
+
+  const pool = getPool();
+  let syncedCount = 0;
+  try {
+    const invoices = await stripe.invoices.list({ customer: customerId, limit: 100 });
+    for (const invoice of invoices.data) {
+      await pool.query(
+        `INSERT INTO org_invoices (
+          stripe_invoice_id, stripe_customer_id, workos_organization_id, status,
+          amount_due, amount_paid, currency, invoice_number, hosted_invoice_url,
+          invoice_pdf, customer_email, created_at, due_date, paid_at, voided_at,
+          stripe_updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
+        ON CONFLICT (stripe_invoice_id) DO UPDATE SET
+          workos_organization_id = EXCLUDED.workos_organization_id,
+          status = EXCLUDED.status,
+          amount_due = EXCLUDED.amount_due,
+          amount_paid = EXCLUDED.amount_paid,
+          invoice_number = EXCLUDED.invoice_number,
+          hosted_invoice_url = EXCLUDED.hosted_invoice_url,
+          invoice_pdf = EXCLUDED.invoice_pdf,
+          customer_email = EXCLUDED.customer_email,
+          paid_at = EXCLUDED.paid_at,
+          voided_at = EXCLUDED.voided_at,
+          stripe_updated_at = NOW()`,
+        [
+          invoice.id,
+          customerId,
+          workosOrgId,
+          invoice.status,
+          invoice.amount_due,
+          invoice.amount_paid,
+          invoice.currency,
+          invoice.number || null,
+          invoice.hosted_invoice_url || null,
+          invoice.invoice_pdf || null,
+          typeof invoice.customer_email === "string" ? invoice.customer_email : null,
+          new Date(invoice.created * 1000),
+          invoice.due_date ? new Date(invoice.due_date * 1000) : null,
+          invoice.status === "paid" && invoice.status_transitions?.paid_at
+            ? new Date(invoice.status_transitions.paid_at * 1000)
+            : null,
+          invoice.status === "void" ? new Date() : null,
+        ],
+      );
+      syncedCount++;
+    }
+  } catch (err) {
+    logger.warn({ err, customerId, workosOrgId }, "Addie: Failed to sync invoices after customer relink");
+  }
+  return syncedCount;
+}
+
+async function commitStripeCustomerUpdatePreview(
+  pending: PendingStripeCustomerUpdate,
+  reason: string,
+): Promise<Record<string, unknown>> {
+  const preview = await loadStripeCustomerUpdatePreview(
+    pending.orgId,
+    pending.newCustomerId,
+  );
+  const { org, subscriptions, membershipSubscription } = preview;
+  if (!org) {
+    throw new ToolError(`Organization ${pending.orgId} not found.`);
+  }
+  if (org.stripe_customer_id !== pending.currentCustomerId) {
+    throw new ToolError(
+      `Organization "${org.name}" changed after the preview. Run preview_org_stripe_customer_update again before relinking.`,
+    );
+  }
+
+  const previousCustomerId = org.stripe_customer_id;
+  const subUpdate = membershipSubscription
+    ? buildSubscriptionUpdate(membershipSubscription as any, org.is_personal ?? false)
+    : null;
+
+  const beforeState = {
+    stripe_customer_id: org.stripe_customer_id,
+    subscription_status: org.subscription_status,
+    stripe_subscription_id: org.stripe_subscription_id,
+    subscription_amount: org.subscription_amount,
+    subscription_currency: org.subscription_currency,
+    subscription_interval: org.subscription_interval,
+    subscription_current_period_end: org.subscription_current_period_end,
+    subscription_canceled_at: org.subscription_canceled_at,
+    subscription_product_id: org.subscription_product_id,
+    subscription_product_name: org.subscription_product_name,
+    subscription_price_id: org.subscription_price_id,
+    subscription_price_lookup_key: org.subscription_price_lookup_key,
+    membership_tier: org.membership_tier,
+  };
+  const afterState = subUpdate
+    ? { stripe_customer_id: pending.newCustomerId, ...subUpdate }
+    : previousCustomerId
+      ? {
+          stripe_customer_id: pending.newCustomerId,
+          subscription_status: null,
+          stripe_subscription_id: null,
+          subscription_amount: null,
+          subscription_currency: null,
+          subscription_interval: null,
+          subscription_current_period_end: null,
+          subscription_canceled_at: null,
+          subscription_product_id: null,
+          subscription_product_name: null,
+          subscription_price_id: null,
+          subscription_price_lookup_key: null,
+          membership_tier: null,
+        }
+      : { ...beforeState, stripe_customer_id: pending.newCustomerId };
+
+  const actorPersonId = pending.actorWorkosUserId
+    ? await relationshipDb.resolvePersonId({
+        workos_user_id: pending.actorWorkosUserId,
+        email: pending.actorEmail ?? undefined,
+      })
+    : null;
+
+  const pool = getPool();
+  const txClient = await pool.connect();
+  let subscriptionSynced = false;
+  try {
+    await txClient.query("BEGIN");
+    await txClient.query(
+      "UPDATE organizations SET stripe_customer_id = $1, updated_at = NOW() WHERE workos_organization_id = $2",
+      [pending.newCustomerId, pending.orgId],
+    );
+
+    if (subUpdate) {
+      await txClient.query(
+        `UPDATE organizations
+         SET subscription_status = $1,
+             subscription_amount = $2,
+             subscription_interval = $3,
+             subscription_currency = $4,
+             subscription_current_period_end = $5,
+             subscription_canceled_at = $6,
+             stripe_subscription_id = $7,
+             subscription_product_id = $8,
+             subscription_product_name = COALESCE($9, subscription_product_name),
+             subscription_price_id = $10,
+             subscription_price_lookup_key = $11,
+             membership_tier = $12,
+             updated_at = NOW()
+         WHERE workos_organization_id = $13`,
+        [
+          subUpdate.subscription_status,
+          subUpdate.subscription_amount,
+          subUpdate.subscription_interval,
+          subUpdate.subscription_currency,
+          subUpdate.subscription_current_period_end,
+          subUpdate.subscription_canceled_at,
+          subUpdate.stripe_subscription_id,
+          subUpdate.subscription_product_id,
+          subUpdate.subscription_product_name,
+          subUpdate.subscription_price_id,
+          subUpdate.subscription_price_lookup_key,
+          subUpdate.membership_tier,
+          pending.orgId,
+        ],
+      );
+      subscriptionSynced = true;
+    } else if (previousCustomerId) {
+      await txClient.query(
+        `UPDATE organizations SET
+            stripe_subscription_id = NULL,
+            subscription_status = NULL,
+            subscription_amount = NULL,
+            subscription_currency = NULL,
+            subscription_interval = NULL,
+            subscription_current_period_end = NULL,
+            subscription_canceled_at = NULL,
+            subscription_product_id = NULL,
+            subscription_product_name = NULL,
+            subscription_price_id = NULL,
+            subscription_price_lookup_key = NULL,
+            membership_tier = NULL,
+            updated_at = NOW()
+         WHERE workos_organization_id = $1`,
+        [pending.orgId],
+      );
+    }
+
+    await txClient.query(
+      `INSERT INTO registry_audit_log
+       (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        pending.orgId,
+        pending.actorWorkosUserId ?? "addie_admin_tool",
+        previousCustomerId ? "admin_stripe_link_replace" : "admin_stripe_link",
+        "subscription",
+        pending.newCustomerId,
+        JSON.stringify({
+          stripe_customer_id: pending.newCustomerId,
+          ...(previousCustomerId && { previous_customer_id: previousCustomerId }),
+          subscription_synced: subscriptionSynced,
+          admin_email: pending.actorEmail,
+          reason,
+          source: "addie",
+          before_state: beforeState,
+          after_state: afterState,
+        }),
+      ],
+    );
+
+    if (actorPersonId) {
+      await txClient.query(
+        `INSERT INTO person_events (person_id, event_type, channel, data, occurred_at)
+         VALUES ($1, $2, $3, $4, NOW())`,
+        [
+          actorPersonId,
+          "billing_customer_relinked",
+          "addie",
+          JSON.stringify({
+            org_id: pending.orgId,
+            org_name: org.name,
+            old_customer_id: previousCustomerId,
+            new_customer_id: pending.newCustomerId,
+            actor_user_id: pending.actorWorkosUserId,
+            actor_email: pending.actorEmail,
+            reason,
+            subscription_synced: subscriptionSynced,
+          }),
+        ],
+      );
+    }
+
+    await txClient.query("COMMIT");
+  } catch (txErr) {
+    try {
+      await txClient.query("ROLLBACK");
+    } catch {
+      // ignore rollback errors
+    }
+    throw txErr;
+  } finally {
+    txClient.release();
+  }
+
+  if (subscriptionSynced || previousCustomerId) {
+    invalidateMembershipCache(pending.orgId);
+  }
+
+  try {
+    await stripe?.customers.update(pending.newCustomerId, {
+      metadata: { workos_organization_id: pending.orgId },
+    });
+  } catch (err) {
+    logger.warn(
+      { err, customerId: pending.newCustomerId, orgId: pending.orgId },
+      "Addie: Failed to stamp metadata on new Stripe customer",
+    );
+  }
+
+  if (previousCustomerId) {
+    try {
+      await stripe?.customers.update(previousCustomerId, {
+        metadata: { workos_organization_id: "" },
+      });
+    } catch (err) {
+      logger.warn(
+        { err, previousCustomerId },
+        "Addie: Failed to clear metadata on old Stripe customer",
+      );
+    }
+
+    try {
+      const oldSubs = await stripe?.subscriptions.list({
+        customer: previousCustomerId,
+        status: "all",
+        limit: 100,
+      });
+      for (const sub of oldSubs?.data ?? []) {
+        if (sub.metadata?.workos_organization_id) {
+          try {
+            await stripe?.subscriptions.update(sub.id, {
+              metadata: { workos_organization_id: "" },
+            });
+          } catch (subErr) {
+            logger.warn(
+              { err: subErr, previousCustomerId, subscriptionId: sub.id },
+              "Addie: Failed to clear old Stripe subscription metadata",
+            );
+          }
+        }
+      }
+    } catch (listErr) {
+      logger.warn(
+        { err: listErr, previousCustomerId },
+        "Addie: Failed to list old Stripe subscriptions for metadata cleanup",
+      );
+    }
+  }
+
+  const invoicesSynced = await syncInvoicesForRelinkedCustomer(
+    pending.newCustomerId,
+    pending.orgId,
+  );
+
+  return {
+    success: true,
+    message: previousCustomerId
+      ? `Replaced Stripe customer link for "${org.name}": ${previousCustomerId} -> ${pending.newCustomerId}`
+      : `Linked Stripe customer ${pending.newCustomerId} to "${org.name}"`,
+    org_id: pending.orgId,
+    org_name: org.name,
+    previous_customer_id: previousCustomerId,
+    new_customer_id: pending.newCustomerId,
+    subscription_synced: subscriptionSynced,
+    invoices_synced: invoicesSynced,
+    subscription: formatStripeSubscriptionForTool(membershipSubscription),
+    validated_subscription_count: subscriptions.length,
+  };
+}
+
 /**
  * Admin tool handler implementations.
  * Callers must gate access via isSlackUserAAOAdmin/isWebUserAAOAdmin before registering these handlers.
@@ -2716,6 +3252,150 @@ export function createAdminToolHandlers(
     }
 
     return `✅ Billing email for customer ${customerId} updated to ${email}. Future invoices will be sent to this address.`;
+  });
+
+  handlers.set("preview_org_stripe_customer_update", async (input) => {
+    const orgId = typeof input.org_id === "string" ? input.org_id.trim() : "";
+    const newCustomerId = normalizeStripeCustomerId(input.new_customer_id);
+
+    if (!orgId) {
+      return JSON.stringify({ success: false, error: "org_id is required." });
+    }
+    if (!newCustomerId) {
+      return JSON.stringify({
+        success: false,
+        error: "A valid Stripe customer ID starting with cus_ is required.",
+      });
+    }
+
+    try {
+      pruneExpiredStripeCustomerUpdatePreviews();
+      const preview = await loadStripeCustomerUpdatePreview(orgId, newCustomerId);
+      const token = randomUUID();
+      const actorWorkosUserId =
+        memberContext?.workos_user?.workos_user_id ?? null;
+      const actorEmail = memberContext?.workos_user?.email ?? null;
+      pendingStripeCustomerUpdates.set(token, {
+        token,
+        orgId,
+        newCustomerId,
+        currentCustomerId: preview.org.stripe_customer_id,
+        actorWorkosUserId,
+        actorEmail,
+        expiresAt: Date.now() + STRIPE_CUSTOMER_UPDATE_PREVIEW_TTL_MS,
+      });
+
+      return JSON.stringify({
+        success: true,
+        preview_token: token,
+        expires_in_minutes: STRIPE_CUSTOMER_UPDATE_PREVIEW_TTL_MS / 60_000,
+        org: {
+          id: preview.org.workos_organization_id,
+          name: preview.org.name,
+        },
+        current_customer_id: preview.org.stripe_customer_id,
+        new_customer: formatStripeCustomerForTool(preview.customer),
+        will_replace_existing_customer: Boolean(preview.org.stripe_customer_id),
+        validated_subscription_count: preview.subscriptions.length,
+        membership_subscription: formatStripeSubscriptionForTool(
+          preview.membershipSubscription,
+        ),
+        next_step:
+          "Show this diff to the admin. If they explicitly approve, call confirm_org_stripe_customer_update with preview_token, confirm: true, and a reason of at least 10 characters.",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to preview relink.";
+      logger.warn(
+        { error, orgId, newCustomerId },
+        "Addie: Failed to preview org Stripe customer update",
+      );
+      return JSON.stringify({ success: false, error: message });
+    }
+  });
+
+  handlers.set("confirm_org_stripe_customer_update", async (input) => {
+    const previewToken =
+      typeof input.preview_token === "string" ? input.preview_token.trim() : "";
+    const confirm = input.confirm === true;
+    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+
+    if (!previewToken) {
+      return JSON.stringify({ success: false, error: "preview_token is required." });
+    }
+    if (!confirm) {
+      return JSON.stringify({
+        success: false,
+        error: "confirm must be true after the admin explicitly approves the preview.",
+      });
+    }
+    if (reason.length < 10) {
+      return JSON.stringify({
+        success: false,
+        error: "reason must be at least 10 characters for the audit trail.",
+      });
+    }
+
+    try {
+      pruneExpiredStripeCustomerUpdatePreviews();
+      const pending = pendingStripeCustomerUpdates.get(previewToken);
+      if (!pending) {
+        return JSON.stringify({
+          success: false,
+          error:
+            "Preview token was not found or has expired. Run preview_org_stripe_customer_update again.",
+        });
+      }
+
+      const actorWorkosUserId =
+        memberContext?.workos_user?.workos_user_id ?? null;
+      if (!actorWorkosUserId) {
+        return JSON.stringify({
+          success: false,
+          error:
+            "Cannot relink a Stripe customer without a signed-in admin identity for the audit trail.",
+        });
+      }
+      if (
+        pending.actorWorkosUserId &&
+        pending.actorWorkosUserId !== actorWorkosUserId
+      ) {
+        return JSON.stringify({
+          success: false,
+          error: "Preview token was created by a different admin.",
+        });
+      }
+
+      logger.info(
+        {
+          orgId: pending.orgId,
+          oldCustomerId: pending.currentCustomerId,
+          newCustomerId: pending.newCustomerId,
+          actorWorkosUserId,
+        },
+        "Addie: Admin confirming org Stripe customer update",
+      );
+
+      const result = await commitStripeCustomerUpdatePreview(
+        {
+          ...pending,
+          actorWorkosUserId: pending.actorWorkosUserId ?? actorWorkosUserId,
+          actorEmail:
+            pending.actorEmail ?? memberContext?.workos_user?.email ?? null,
+        },
+        reason,
+      );
+      pendingStripeCustomerUpdates.delete(previewToken);
+      return JSON.stringify(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to relink Stripe customer.";
+      logger.error(
+        { error, previewToken },
+        "Addie: Failed to confirm org Stripe customer update",
+      );
+      return JSON.stringify({ success: false, error: message });
+    }
   });
 
   // Shared handler for get_account and get_organization_details

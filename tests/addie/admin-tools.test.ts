@@ -12,20 +12,50 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 // ── hoist mock refs before any import ─────────────────────────────────────────
 const {
   mockPoolQuery,
+  mockPoolConnect,
   mockGetPool,
   mockEscapeLikePattern,
   mockProcessInteraction,
+  mockGetOrganization,
+  mockCustomersRetrieve,
+  mockCustomersUpdate,
+  mockSubscriptionsList,
+  mockSubscriptionsUpdate,
+  mockInvoicesList,
+  mockInvalidateMembershipCache,
+  mockPickMembershipSub,
+  mockBuildSubscriptionUpdate,
 } = vi.hoisted(() => {
   const mockPoolQuery = vi.fn();
-  const mockPool = { query: mockPoolQuery };
+  const mockPoolConnect = vi.fn();
+  const mockPool = { query: mockPoolQuery, connect: mockPoolConnect };
   const mockGetPool = vi.fn().mockReturnValue(mockPool);
   const mockEscapeLikePattern = vi.fn((s: string) => s);
   const mockProcessInteraction = vi.fn().mockResolvedValue({ analyzed: false });
+  const mockGetOrganization = vi.fn();
+  const mockCustomersRetrieve = vi.fn();
+  const mockCustomersUpdate = vi.fn();
+  const mockSubscriptionsList = vi.fn();
+  const mockSubscriptionsUpdate = vi.fn();
+  const mockInvoicesList = vi.fn();
+  const mockInvalidateMembershipCache = vi.fn();
+  const mockPickMembershipSub = vi.fn();
+  const mockBuildSubscriptionUpdate = vi.fn();
   return {
     mockPoolQuery,
+    mockPoolConnect,
     mockGetPool,
     mockEscapeLikePattern,
     mockProcessInteraction,
+    mockGetOrganization,
+    mockCustomersRetrieve,
+    mockCustomersUpdate,
+    mockSubscriptionsList,
+    mockSubscriptionsUpdate,
+    mockInvoicesList,
+    mockInvalidateMembershipCache,
+    mockPickMembershipSub,
+    mockBuildSubscriptionUpdate,
   };
 });
 
@@ -45,6 +75,7 @@ vi.mock("../../server/src/addie/services/interaction-analyzer.js", () => ({
 // ── organization db ───────────────────────────────────────────────────────────
 vi.mock("../../server/src/db/organization-db.js", () => ({
   OrganizationDatabase: class {
+    getOrganization = mockGetOrganization;
     getEngagementSignals = vi.fn().mockResolvedValue({
       interest_level: null,
       interest_level_set_by: null,
@@ -53,6 +84,8 @@ vi.mock("../../server/src/db/organization-db.js", () => ({
     searchOrganizations = vi.fn().mockResolvedValue([]);
   },
   resolveMembershipTier: vi.fn().mockReturnValue(null),
+  TIER_PRESERVING_STATUSES: ["active", "trialing", "past_due"],
+  buildSubscriptionUpdate: mockBuildSubscriptionUpdate,
 }));
 
 // ── slack db ──────────────────────────────────────────────────────────────────
@@ -95,6 +128,19 @@ vi.mock("../../server/src/db/brand-logo-db.js", () => ({
 
 // ── billing / stripe ──────────────────────────────────────────────────────────
 vi.mock("../../server/src/billing/stripe-client.js", () => ({
+  stripe: {
+    customers: {
+      retrieve: mockCustomersRetrieve,
+      update: mockCustomersUpdate,
+    },
+    subscriptions: {
+      list: mockSubscriptionsList,
+      update: mockSubscriptionsUpdate,
+    },
+    invoices: {
+      list: mockInvoicesList,
+    },
+  },
   getPendingInvoices: vi.fn().mockResolvedValue([]),
   getAllOpenInvoices: vi.fn().mockResolvedValue([]),
   createOrgDiscount: vi.fn(),
@@ -103,6 +149,14 @@ vi.mock("../../server/src/billing/stripe-client.js", () => ({
   resendInvoice: vi.fn(),
   updateCustomerEmail: vi.fn(),
   getProductsForCustomer: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("../../server/src/db/org-filters.js", () => ({
+  invalidateMembershipCache: mockInvalidateMembershipCache,
+}));
+
+vi.mock("../../server/src/billing/membership-prices.js", () => ({
+  pickMembershipSub: mockPickMembershipSub,
 }));
 
 // ── enrichment ────────────────────────────────────────────────────────────────
@@ -340,6 +394,51 @@ const adminMemberContext = {
   },
 } as unknown as MemberContext;
 
+function makeOrg(overrides: Record<string, unknown> = {}) {
+  return {
+    workos_organization_id: "org_test_123",
+    name: "Test Corp",
+    is_personal: false,
+    stripe_customer_id: null,
+    subscription_status: null,
+    stripe_subscription_id: null,
+    subscription_amount: null,
+    subscription_currency: null,
+    subscription_interval: null,
+    subscription_current_period_end: null,
+    subscription_canceled_at: null,
+    subscription_product_id: null,
+    subscription_product_name: null,
+    subscription_price_id: null,
+    subscription_price_lookup_key: null,
+    membership_tier: null,
+    ...overrides,
+  };
+}
+
+function makeStripeCustomer(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "cus_new_123",
+    deleted: false,
+    name: "Test Corp Billing",
+    email: "billing@example.com",
+    metadata: {},
+    ...overrides,
+  };
+}
+
+function makeTxClient() {
+  const calls: Array<{ sql: string; params?: unknown[] }> = [];
+  const client = {
+    query: vi.fn(async (sql: string, params?: unknown[]) => {
+      calls.push({ sql, params });
+      return { rows: [] };
+    }),
+    release: vi.fn(),
+  };
+  return { client, calls };
+}
+
 // ── ADMIN_TOOLS definition tests ──────────────────────────────────────────────
 describe("ADMIN_TOOLS definitions", () => {
   it("exports a non-empty array of tools", () => {
@@ -385,6 +484,150 @@ describe("ADMIN_TOOLS definitions", () => {
       expect(props).toHaveProperty("channel");
       expect(props).toHaveProperty("summary");
     });
+  });
+
+  describe("org Stripe customer update tools", () => {
+    it("exposes preview and confirm tools", () => {
+      expect(
+        ADMIN_TOOLS.find((t) => t.name === "preview_org_stripe_customer_update"),
+      ).toBeDefined();
+      expect(
+        ADMIN_TOOLS.find((t) => t.name === "confirm_org_stripe_customer_update"),
+      ).toBeDefined();
+    });
+
+    it("keeps raw Stripe customer IDs out of the confirm write schema", () => {
+      const tool = ADMIN_TOOLS.find(
+        (t) => t.name === "confirm_org_stripe_customer_update",
+      );
+      const props = tool?.input_schema.properties ?? {};
+      expect(props).toHaveProperty("preview_token");
+      expect(props).toHaveProperty("confirm");
+      expect(props).toHaveProperty("reason");
+      expect(props).not.toHaveProperty("customer_id");
+      expect(props).not.toHaveProperty("new_customer_id");
+      expect(tool?.input_schema.required).toEqual([
+        "preview_token",
+        "confirm",
+        "reason",
+      ]);
+    });
+  });
+});
+
+// ── org Stripe customer update handler tests ──────────────────────────────────
+describe("org Stripe customer update handlers", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetOrganization.mockResolvedValue(makeOrg());
+    mockPoolQuery.mockResolvedValue({ rows: [] });
+    mockCustomersRetrieve.mockResolvedValue(makeStripeCustomer());
+    mockCustomersUpdate.mockResolvedValue({});
+    mockSubscriptionsList.mockResolvedValue({ data: [] });
+    mockSubscriptionsUpdate.mockResolvedValue({});
+    mockInvoicesList.mockResolvedValue({ data: [] });
+    mockPickMembershipSub.mockReturnValue(null);
+    mockBuildSubscriptionUpdate.mockReturnValue(null);
+    mockResolvePersonId.mockResolvedValue("pr_admin_123");
+  });
+
+  it("previews and validates the new Stripe customer without opening a transaction", async () => {
+    const handlers = createAdminToolHandlers(adminMemberContext);
+    const result = JSON.parse(
+      await handlers.get("preview_org_stripe_customer_update")!({
+        org_id: "org_test_123",
+        new_customer_id: "cus_new_123",
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.preview_token).toEqual(expect.any(String));
+    expect(result.current_customer_id).toBeNull();
+    expect(result.new_customer.id).toBe("cus_new_123");
+    expect(mockGetOrganization).toHaveBeenCalledWith("org_test_123");
+    expect(mockCustomersRetrieve).toHaveBeenCalledWith("cus_new_123");
+    expect(mockSubscriptionsList).toHaveBeenCalledWith({
+      customer: "cus_new_123",
+      status: "all",
+      limit: 100,
+    });
+    expect(mockPoolConnect).not.toHaveBeenCalled();
+  });
+
+  it("confirms only a preview token and records registry plus person-event audit rows", async () => {
+    mockGetOrganization.mockResolvedValue(
+      makeOrg({ stripe_customer_id: "cus_old_123" }),
+    );
+    const tx = makeTxClient();
+    mockPoolConnect.mockResolvedValue(tx.client);
+
+    const handlers = createAdminToolHandlers(adminMemberContext);
+    const preview = JSON.parse(
+      await handlers.get("preview_org_stripe_customer_update")!({
+        org_id: "org_test_123",
+        new_customer_id: "cus_new_123",
+      }),
+    );
+    mockPoolConnect.mockResolvedValue(tx.client);
+
+    const confirm = JSON.parse(
+      await handlers.get("confirm_org_stripe_customer_update")!({
+        preview_token: preview.preview_token,
+        confirm: true,
+        reason: "Correct duplicate Stripe customer linkage",
+      }),
+    );
+
+    expect(confirm.success).toBe(true);
+    expect(confirm.previous_customer_id).toBe("cus_old_123");
+    expect(confirm.new_customer_id).toBe("cus_new_123");
+
+    const auditInsert = tx.calls.find((call) =>
+      call.sql.startsWith("INSERT INTO registry_audit_log"),
+    );
+    expect(auditInsert?.params?.slice(0, 5)).toEqual([
+      "org_test_123",
+      "user_admin_123",
+      "admin_stripe_link_replace",
+      "subscription",
+      "cus_new_123",
+    ]);
+    const auditDetails = JSON.parse(String(auditInsert?.params?.[5]));
+    expect(auditDetails.previous_customer_id).toBe("cus_old_123");
+    expect(auditDetails.source).toBe("addie");
+
+    const personEventInsert = tx.calls.find((call) =>
+      call.sql.startsWith("INSERT INTO person_events"),
+    );
+    expect(personEventInsert?.params?.[0]).toBe("pr_admin_123");
+    expect(personEventInsert?.params?.[1]).toBe("billing_customer_relinked");
+    const eventData = JSON.parse(String(personEventInsert?.params?.[3]));
+    expect(eventData.old_customer_id).toBe("cus_old_123");
+    expect(eventData.new_customer_id).toBe("cus_new_123");
+    expect(eventData.actor_user_id).toBe("user_admin_123");
+
+    expect(mockCustomersUpdate).toHaveBeenCalledWith("cus_new_123", {
+      metadata: { workos_organization_id: "org_test_123" },
+    });
+    expect(mockCustomersUpdate).toHaveBeenCalledWith("cus_old_123", {
+      metadata: { workos_organization_id: "" },
+    });
+    expect(mockInvalidateMembershipCache).toHaveBeenCalledWith("org_test_123");
+  });
+
+  it("rejects confirm calls without a valid preview token", async () => {
+    const handlers = createAdminToolHandlers(adminMemberContext);
+    const result = JSON.parse(
+      await handlers.get("confirm_org_stripe_customer_update")!({
+        preview_token: "missing",
+        confirm: true,
+        reason: "Correct duplicate Stripe customer linkage",
+      }),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/Preview token/);
+    expect(mockPoolConnect).not.toHaveBeenCalled();
   });
 });
 

@@ -905,6 +905,7 @@
             <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
               <button class="btn btn-sm btn-secondary" id="billingStripeLink" style="display: none;"
                 onclick="openStripeCustomer()">View in Stripe</button>
+              <button class="btn btn-sm btn-secondary" onclick="openBillingLinking()">Manage Stripe link</button>
               <button class="btn btn-sm btn-secondary" onclick="syncAccountBilling()" id="billingSyncBtn">
                 Sync from Stripe
               </button>
@@ -2875,6 +2876,13 @@
     function openStripeCustomer() {
       if (!accountData?.stripe_customer_id) return;
       window.open(`https://dashboard.stripe.com/test/customers/${accountData.stripe_customer_id}`, '_blank');
+    }
+
+    function openBillingLinking() {
+      const params = accountData?.workos_organization_id
+        ? `?org_id=${encodeURIComponent(accountData.workos_organization_id)}`
+        : '';
+      window.open(`/admin/billing${params}`, '_blank');
     }
 
     async function syncAccountBilling() {

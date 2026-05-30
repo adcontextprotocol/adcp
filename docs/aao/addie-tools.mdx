@@ -560,6 +560,18 @@ Update the billing email on a Stripe customer. Use this when invoices need to go
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
+### `preview_org_stripe_customer_update`
+
+Preview relinking an organization to a different Stripe customer. This validates the org and Stripe customer, shows the current and proposed customer IDs, and returns a preview_token. It does not write any changes. Always show the preview to the admin before confirming.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `confirm_org_stripe_customer_update`
+
+Confirm a previously previewed organization Stripe customer relink. This tool does not accept a raw Stripe customer ID; it only commits the validated preview_token after explicit admin approval.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
 ### `list_pending_invoices`
 
 List all organizations with pending (unpaid) invoices.
@@ -1118,6 +1130,18 @@ Resend an open invoice. Provide EITHER an invoice_id (if known) OR a company_nam
 ### `update_billing_email`
 
 Update the billing email on a Stripe customer. Use this when invoices need to go to a different email address (e.g., accounts payable). Can look up by org_id or direct customer_id.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `preview_org_stripe_customer_update`
+
+Preview relinking an organization to a different Stripe customer. This validates the org and Stripe customer, shows the current and proposed customer IDs, and returns a preview_token. It does not write any changes. Always show the preview to the admin before confirming.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `confirm_org_stripe_customer_update`
+
+Confirm a previously previewed organization Stripe customer relink. This tool does not accept a raw Stripe customer ID; it only commits the validated preview_token after explicit admin approval.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
