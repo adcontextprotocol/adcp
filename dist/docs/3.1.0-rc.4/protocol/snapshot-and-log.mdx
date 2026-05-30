@@ -1,0 +1,184 @@
+---
+title: Snapshot and log
+description: "The contract that ties every read API to its push channel — what a snapshot is, what a log is, how they share an id space, and why pulling the snapshot is the only replay primitive AdCP commits to."
+"og:title": "AdCP — Snapshot and log"
+---
+
+# Snapshot and log
+
+Every state surface AdCP exposes has two faces: a **snapshot** read from a `get_*` task and a **log** of push events fired against a registered webhook URL. The snapshot says *what is true now*. The log says *what fired, when, with what id*. This page is the contract that keeps them coherent.
+
+You don't need to read this page to call an AdCP task. You do need to read it to build a webhook receiver, to propose a new notification type, or to argue that a missing-event scenario is a spec gap rather than a buyer-side bug.
+
+## The two faces
+
+### Snapshot
+
+The current truth, exposed on a read API:
+
+- `get_media_buys` returns each buy's `status`, `health`, open `impairments[]`, and `webhook_activity[]`.
+- `list_creatives` returns each creative's `status`.
+- `sync_audiences` (without changes) returns each audience's current `status`.
+- `get_event_source_health` returns each source's current `assessment-status`.
+
+A snapshot is always re-readable. It carries no history — only what's true at the moment of the read.
+
+### Log
+
+A stream of push events fired to the buyer's registered webhook URL:
+
+- Delivery report fires (`notification_type: scheduled | final | delayed | adjusted`).
+- Dependency impairment fires (`notification_type: impairment`).
+- Future event types are added the same way: a new `notification-type` value, a defined payload, the same delivery contract.
+
+Each event carries a stable `notification_id` and corresponds to a change visible on the snapshot.
+
+## The five rules
+
+These rules apply across every snapshot/log pair in the protocol. If you're building a new notification type, your design must satisfy all five.
+
+### 1. Two distinct ids: per-fire and per-state
+
+**Dedupe transport retries by `idempotency_key`. Correlate fires to state by `notification_id`.** These are different ids on the same fire — receivers MUST track both.
+
+- **`idempotency_key`** — transport-layer, **per delivery attempt**. Issued by the seller for each fire. Receivers dedupe on this to suppress retries of the same logical fire. Defined in the [webhooks transport contract](/dist/docs/3.1.0-rc.4/building/by-layer/L3/webhooks).
+- **`notification_id`** — event-layer, **per state event**. Stable across re-emissions of the same logical event. For state-shaped events this equals the resource's stable id (e.g., `impairment_id` is the `notification_id` for impairment events). Typed at the envelope level on [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/3.1.0-rc.4/core/mcp-webhook-payload.json); per-type population is documented on [`notification-type.json`](https://adcontextprotocol.org/schemas/3.1.0-rc.4/enums/notification-type.json) enumDescriptions. Absent on point-in-time data events (e.g., delivery report fires) that have no persistent state id.
+
+The split is intentional. A receiver seeing the same `idempotency_key` twice is observing a transport retry — uninteresting, dedupe and move on. A receiver seeing the same `notification_id` twice under **different** `idempotency_key`s is observing a re-emission — signal. The seller is repeating itself, usually because the buyer's receiver was unreachable for long enough that the seller wants to make sure the state was delivered. That's a missed-events warning the receiver should not collapse.
+
+For state-shaped events (impairment, lifecycle), the per-state id is the resource id. For point-in-time data events (delivery report fires), there is no persistent state id — the per-fire `idempotency_key` is all there is. That asymmetry is honest about the limits of Rule 4 below.
+
+### 2. Every push event corresponds to a snapshot delta
+
+There is no webhook-only state. If a webhook fires with `notification_type: impairment`, the affected media buy's `impairments[]` will show the impairment on the next read. If a delivery report fires, the next `get_media_buy_delivery` reflects the same reporting window. Push channels do not carry information unavailable from the read API.
+
+This rule rules out push events that exist solely as ephemeral signals — "you might want to know X" without a corresponding readable state. If you want to surface a suggestion that doesn't change state, build a pull tool, not a webhook.
+
+### 3. Push is at-least-once; the snapshot is authoritative
+
+When push and snapshot disagree, the snapshot wins. A duplicate webhook fire (same `notification_id`) is the expected behavior under at-least-once delivery — buyer agents dedupe and continue. A stale webhook fire (the push reports a state that the snapshot no longer reflects, because the resource moved on) is also expected — buyer agents re-read the snapshot rather than acting on the push payload.
+
+This is why receivers MUST verify against the snapshot before taking irreversible action on a push.
+
+### 4. Either path is complete
+
+A buyer using webhooks reliably gets all the data. A buyer using only GET (no webhooks) gets the same data. The two paths are at parity in content and granularity; the buyer chooses based on latency, ergonomics, and receiver infrastructure.
+
+This rule has two halves:
+
+- **For state events** (impairment, lifecycle, status changes): GET returns current state. A buyer who missed a webhook calls `get_*` and reads the snapshot — recovery is lossless. ✅ Holds today.
+- **For data-bearing events** (delivery report fires, individual log events): GET MUST honor windowed pulls at every granularity the seller declares in `reporting_capabilities.windowed_pull_granularities`, with the same windowing the webhook delivers at that granularity. A seller that declares `["hourly", "daily"]` MUST honor hourly and daily windowed pulls on `get_media_buy_delivery` (via `time_granularity` + `include_window_breakdown: true`); the slice payload is shape-aligned with the webhook fire it could have replaced. Sellers MAY emit higher-frequency webhooks than they expose for pull — common in stream-tap architectures where the webhook is a Kafka tap and historical reads go through a warehouse with coarser granularity. In that case the buyer knows up front via the capability that pull-recovery is unavailable at the higher frequency and treats the webhook as primary for it.
+
+The two-paths-equal contract holds within each seller's **declared** parity set. Sellers MUST be honest about the set: declare every granularity at which the GET surface can in fact reproduce the webhook payload, no more, no less. A seller that declares a granularity but rejects pulls at that granularity is in breach of Rule 4; a seller that omits a granularity is opting out of two-paths-parity at that frequency and is fine. Pulls outside the declared set return `UNSUPPORTED_GRANULARITY` with `error.details.supported_granularities` echoing the capability.
+
+Without two-paths-equal, AdCP becomes pub/sub for some channels and REST for others — buyers building against the contract have to know which model applies where. With it, both paths are equivalent: a buyer chooses webhooks for latency or polling for simplicity, and gets the same data either way.
+
+### 5. Push events and log entries share an id space
+
+A webhook delivery surfaced via `webhook_activity[]` references the same `notification_id` that the buyer received in the push body. A buyer can correlate "I received fire X" with "the seller's log shows fire X" without bookkeeping across two namespaces. Likewise, an `impairment_id` referenced in `impairments[]` matches the `notification_id` of the push that announced it.
+
+## Webhook activity log pattern
+
+The transport half of Rule 5. Any AdCP resource that exposes a snapshot read API and has webhook fires associated with it MAY also surface a `webhook_activity[]` array on that read API — recent per-fire transport records, scoped to the calling principal, useful for buyer-side debugging when a fire didn't land or a retry trail looks suspect. This section is the contract any resource adopting that surface MUST follow.
+
+### Canonical record shape
+
+The record shape is fixed at [`/schemas/core/webhook-activity-record.json`](https://adcontextprotocol.org/schemas/3.1.0-rc.4/core/webhook-activity-record.json). Read schemas adopting this surface MUST `$ref` the canonical record rather than inline it — the shape is intentionally uniform across resources so a buyer's debug tooling can consume `webhook_activity[]` from any read API without resource-specific parsing.
+
+Each record carries `idempotency_key` (equals the payload's `idempotency_key` per Rule 5 — no parallel `delivery_id`), `subscriber_id` (reserved for #3009 multi-subscriber), `fired_at`, `completed_at`, `notification_type`, `sequence_number`, `attempt` (1-indexed; one record per attempt), `status` (`success` / `failed` / `timeout` / `connection_error` / `pending`), `url` (query string and fragment stripped, secret-shaped path segments redacted), `http_status_code`, `response_time_ms`, `payload_size_bytes`, and `error_message` (server-side classification only — never request/response bodies or headers).
+
+### Request-field convention
+
+Read schemas that surface `webhook_activity[]` MUST use the same two request-field names so callers can opt in uniformly across resources:
+
+- **`include_webhook_activity`** — boolean, default `false`. When true, the seller MAY return a `webhook_activity[]` array on each item (subject to the three-state presence semantics below).
+- **`webhook_activity_limit`** — integer, range 1–200, default 50. Per-item cap on returned records, most-recent first.
+
+### Scoping (normative)
+
+`webhook_activity[]` MUST be scoped to the **calling principal**. When multiple principals share visibility into the same resource via account-level access, each principal sees only fires targeting its own registered endpoint. This is the same scoping rule that applies to push delivery itself.
+
+### Retention (normative)
+
+Sellers that surface `webhook_activity[]` **MUST** retain records for at least 30 days from each record's `completed_at`. This applies uniformly to every terminal status — `success`, `failed`, `timeout`, and `connection_error` all populate `completed_at` (for `timeout` and `connection_error` it is the moment the seller declared the attempt terminal) and the 30-day clock runs from there. For records still in `pending` status (the attempt is in flight or queued for retry, `completed_at` is null), the clock runs from `fired_at` until the attempt terminates and then transitions to 30 days from `completed_at` — so a retry trail does not age out mid-flight just because the initial fire happened 29 days ago.
+
+The 30-day floor is a hard contract — sellers unable to honor it MUST omit the field entirely (see three-state presence below) rather than return a shorter window. This gives buyers a single retention guarantee they can build debug tooling against, and gives sellers with thin storage a clean opt-out via the three-state semantics rather than forcing the spec to negotiate per-seller retention floors.
+
+### Three-state presence semantics
+
+| State | Meaning |
+|-------|---------|
+| Field **omitted** | Seller does not surface webhook activity for this resource. Causes are resource-specific (see "Adoption checklist" below) but typically include: the seller does not persist fire history; the resource has no registered webhook endpoint for the calling principal; the seller's declared capability surface excludes the webhook channel for the relevant notification types. Buyers MUST NOT infer "no fires occurred" from omission. |
+| Empty array `[]` | Seller persists fire history but has fired nothing recent for this principal. |
+| Non-empty array | Actual fire records, most-recent first. |
+
+Sellers MUST NOT collapse these into a single state. Opting in via `include_webhook_activity: true` does not override the seller's intrinsic capability — a seller that cannot meet the retention floor returns omission regardless of the request.
+
+Buyers diagnosing an unexpected omission have two readily observable signals to discriminate the cause without needing operator help: (1) their own `push_notification_config` registration state for the resource (rules out "no registered endpoint") and (2) the seller's capability declaration (rules out "capability surface excludes the channel"). When both check out, "seller does not persist fire history" is the remaining cause and no further protocol-side fix is available — escalate.
+
+### Record cardinality
+
+One record per attempt. A successful first-attempt fire appears as a single record with `attempt: 1`. A 3-attempt retry trail (e.g., two failures then a success) appears as three records sharing `idempotency_key` — the trail is reconstructed by the buyer grouping records on that key.
+
+### Privacy
+
+- `url` MUST have query string and fragment stripped, and high-entropy / token-shaped path segments SHOULD be further redacted.
+- `error_message` is a server-side classification string only — never request headers, response bodies, or buyer-endpoint stack traces.
+- Request and response bodies are out of scope for the basic surface. A future `include_webhook_payloads` extension may add them under stricter access controls, and would use the [universal truncation sentinel](https://adcontextprotocol.org/schemas/3.1.0-rc.4/core/truncation-sentinel.json) at `/schemas/core/truncation-sentinel.json` when bodies exceed a configured cap.
+
+### Adoption checklist
+
+Resources adopting `webhook_activity[]` MUST satisfy all of the following. The list is intentionally explicit so the "MUST" hooks are unambiguous; everything not on this list is at adopter discretion (e.g., per-resource cardinality tuning within the 1–200 range).
+
+1. **Notification channel (prerequisite).** Adoption requires a registered notification channel for the relevant fire types. Media buys satisfy this today via per-buy `push_notification_config` (and the related `reporting_webhook`); resources that outlive any single buy — creatives, audiences, properties, account-level governance — wait on the **per-account subscription model defined in #4582 track 3** (forthcoming in 3.2.0). The two are different primitives that fulfill the same prerequisite: a buy-scoped config blob attached to the buy versus an account-scoped subscription resource. Without a channel there are no fires for `webhook_activity[]` to log; this item gates every other rule below. Adopters MUST cite the specific channel in their call-site documentation.
+2. **Record shape.** Item schema MUST `$ref` `/schemas/core/webhook-activity-record.json`. Resource-specific cross-references (e.g., a parent-resource id when records are nested inside an account-level read) go on the canonical record's `ext` envelope, not as top-level record fields.
+3. **Request fields.** The opt-in field names MUST be `include_webhook_activity` (boolean, default `false`) and `webhook_activity_limit` (integer, 1–200, default 50). The 200 ceiling is the canonical cap; adopters MAY narrow the maximum on a per-resource basis but MUST NOT exceed 200 or rename the fields.
+4. **Scoping.** MUST be calling-principal only, per § Scoping above.
+5. **Retention floor.** MUST honor the 30-day floor per § Retention above. The pivot (`completed_at`, with carve-out for `pending`) is the same across resources.
+6. **Three-state presence cardinality.** Omitted / `[]` / non-empty are the three states; adopters MUST NOT collapse them.
+7. **Capability gate.** Adopters MUST document which resource-specific capability declaration gates the field (for media buys this is `capabilities.media_buy.propagation_surfaces` including `webhook`). The specific *causes* of the "field omitted" state ARE resource-specific and adopters MUST enumerate them in their call-site documentation; the cardinality and the rule that omission is not "no fires occurred" are universal.
+8. **Notification type registry.** Adopters whose webhook fires carry notification types not in [`/schemas/enums/notification-type.json`](https://adcontextprotocol.org/schemas/3.1.0-rc.4/enums/notification-type.json) MUST add those types to that shared enum rather than minting a parallel enum on the canonical record. The enum is the cross-resource registry.
+
+### Consumers and the dependency chain
+
+#### Today (3.1)
+
+- `get_media_buys.media_buys[].webhook_activity[]` — the first and currently only consumer of this pattern. The notification channel is the existing per-buy `push_notification_config`, so item 1 of the checklist is satisfied without any new primitive. Capability gate: `capabilities.media_buy.propagation_surfaces` MUST include `webhook` for the field to be surfaced on a buy. See [get_media_buys § Webhook activity](/dist/docs/3.1.0-rc.4/media-buy/task-reference/get_media_buys#webhook-activity) for the call-site documentation and the [persistent webhook contract](/dist/docs/3.1.0-rc.4/building/by-layer/L3/webhooks#persistent-channel-contract) for the transport-side rules this surface debugs against.
+
+#### Account-level adopters (3.1)
+
+Resources that outlive a single media buy register their push channel on the account, not on any one buy. The account-level surface is `notification_configs[]` — an array of per-subscriber registrations carried on [`sync_accounts`](/dist/docs/3.1.0-rc.4/accounts/tasks/sync_accounts#account-level-webhook-subscriptions) and echoed on `list_accounts`. Each entry filters by `event_types[]` so a subscriber only receives the types its endpoint handles, and multiple entries with distinct `subscriber_id`s fan a single event out to multiple endpoints (multi-subscriber composition).
+
+- **[#2261](https://github.com/adcontextprotocol/adcp/issues/2261) creative-lifecycle webhooks** — `list_creatives.creatives[].webhook_activity[]` is the second consumer of this pattern. The notification channel is the account's `notification_configs[]` set, registered via `sync_accounts` in either provisioning or settings-update mode. Supported event types and per-type coalescence windows are declared via `get_adcp_capabilities`. The two creative-lifecycle event types — `creative.status_changed` and `creative.purged` — share the same record shape and retention rule as media-buy webhook activity; the parent creative is unambiguous so `ext.creative_id` MAY be omitted on the inner records. See [list_creatives § Webhook activity](/dist/docs/3.1.0-rc.4/creative/task-reference/list_creatives#webhook-activity) for the call-site documentation.
+- **Other resources that outlive a buy** — audiences, properties, account-level compliance under [#1711](https://github.com/adcontextprotocol/adcp/issues/1711) — follow the same chain: subscribe via `sync_accounts.accounts[].notification_configs[]`, adopt the `webhook_activity[]` read on the resource's `list_` task. These are open RFCs.
+
+**Rule 4 carve-out for hard purges.** `creative.purged` with `purge_kind: hard` (legal-erasure-only — GDPR Article 17, CCPA deletion, court order) is the one sanctioned exception to Rule 4: the webhook fire has no corresponding snapshot delta because the seller MUST NOT retain a tombstone. Buyers who miss a hard-purge fire have no read-side recovery; that's the legal regime's design constraint, not a protocol gap. Soft purges retain a tombstone on `list_creatives` (with `include_purged: true`) and remain Rule-4 compliant.
+
+Adopters follow this checklist verbatim regardless of whether the notification channel is per-buy or per-account.
+
+## What this rules out
+
+- **A push channel for suggestions that don't change state.** If "the seller wants you to know X" doesn't correspond to a readable field, it's not a snapshot/log event. Build a pull tool instead. (See the advisory epic.)
+- **A replay tool that re-fires past webhooks.** Snapshot reads are the replay. A replay tool is an operator-side debug feature; it's not part of the buyer-facing protocol contract.
+- **Per-event subscription filtering on per-buy push.** A buyer who registers `push_notification_config` on a media buy receives every event type fired against that buy. Filtering at the receiver is fine; filtering at the per-buy protocol surface is out of scope. Account-level subscriptions (`notification_configs[]`) are the exception — they filter by `event_types` at registration time, because the account-level surface is heterogeneous (creative events, future audience/property events) and an endpoint that handles only creative events would otherwise be force-fed signals it cannot interpret.
+- **A "did you receive my webhook?" confirmation step.** Receivers acknowledge via HTTP 2xx; senders retry on non-2xx per the [persistent webhook contract](/dist/docs/3.1.0-rc.4/building/by-layer/L3/webhooks#persistent-channel-contract). Sellers do not poll buyers for receipt.
+
+## Where the surface doesn't yet follow this
+
+- **Delivery reports** (`scheduled` / `final` / `delayed` / `adjusted`) predate this contract. Rule 4 closes for them in 3.1 via two surfaces:
+  - **Per-window data parity** — `get_media_buy_delivery` accepts `time_granularity` + `include_window_breakdown: true`, returning `media_buy_deliveries[].windows[]` slices shape-aligned with `reporting_webhook` payloads at the same granularity. Capability-scoped via `reporting_capabilities.windowed_pull_granularities`; pulls outside the declared set return `UNSUPPORTED_GRANULARITY`. Landed in #4590.
+  - **Per-fire transport log** — even with per-window parity, buyers debugging webhook delivery want to see which fires hit their endpoint and when. The `webhook_activity[]` surface on `get_media_buys` ([#4278](https://github.com/adcontextprotocol/adcp/issues/4278)) closes this for transport-layer observability. It is the first consumer of the [webhook activity log pattern](#webhook-activity-log-pattern) above; future resources adopting the pattern follow the same record shape, retention floor, and three-state presence semantics.
+- **Audience and property lifecycle webhooks** — creative-lifecycle webhooks now adopt this pattern via [#2261](https://github.com/adcontextprotocol/adcp/issues/2261) (account-level `notification_configs[]` + `list_creatives.webhook_activity[]`). Audience suspensions outside a buy's scope and property depublications remain open — until those land, the snapshot half (a fresh `sync_audiences` or property crawl) is the only reliable signal for changes to those resources when not currently referenced by an active buy.
+
+## When you'd be right to push back
+
+<Note>
+This section is non-normative. It describes when raising an exception is reasonable, not when one is sanctioned.
+</Note>
+
+When a use case genuinely needs an event with no snapshot half — a high-frequency signal where polling cost dominates and recovery isn't critical (e.g., a metrics stream). AdCP doesn't have one of these today. If you're proposing one, name it explicitly and argue why pull-via-snapshot doesn't fit; reviewers will weigh that against the contract this page commits to.
+
+## Related
+
+- [Push notifications](/dist/docs/3.1.0-rc.4/building/by-layer/L3/webhooks) — the transport contract that this page sits on top of.
+- [Media buy lifecycle](/dist/docs/3.1.0-rc.4/media-buy/media-buys/lifecycle) — applies snapshot/log to `status` + `health` + `impairments[]`.
