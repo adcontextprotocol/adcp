@@ -7,7 +7,7 @@ description: "Test your AdCP agent with storyboards — from the CLI or through 
 
 Once your agent is running, validate it before going live. Storyboards exercise a specific workflow end-to-end — media buy creation, creative sync, signals discovery. Each storyboard defines the exact tool call sequence a buyer agent makes and validates every response shape.
 
-Storyboards are available from the command line and interactively through [Addie](https://agenticadvertising.org). They are also published alongside schemas at `/compliance/{version}/` and bundled into the per-version protocol tarball at `/protocol/{version}.tgz` — see [Schemas and SDKs](/dist/docs/3.0.1/building/by-layer/L0/schemas#one-shot-protocol-bundle) for how to fetch them offline.
+Storyboards are available from the command line and interactively through [Addie](https://agenticadvertising.org). They are also published alongside schemas at `/compliance/{version}/` and bundled into the per-version protocol tarball at `/protocol/{version}.tgz` — see [Schemas and SDKs](/dist/docs/3.0.1/building/schemas-and-sdks#one-shot-protocol-bundle) for how to fetch them offline.
 
 ## Storyboard taxonomy
 
@@ -17,9 +17,9 @@ Storyboards are organized into three layers so agents declare only what they act
 |-------|------|------------------|
 | **Universal** | `/compliance/{version}/universal/` | Every AdCP agent (capability discovery, error handling, schema validation) |
 | **Protocol** | `/compliance/{version}/protocols/{protocol}/` | Any agent claiming a protocol (`media-buy`, `creative`, `signals`, `governance`, `brand`) |
-| **Specialism** | `/compliance/{version}/specialisms/{id}/` | Opt-in claims (e.g. `sales-guaranteed`, `sales-broadcast-tv`, `creative-generative`) — see the [Compliance Catalog](/dist/docs/3.0.1/building/verification/compliance-catalog) |
+| **Specialism** | `/compliance/{version}/specialisms/{id}/` | Opt-in claims (e.g. `sales-guaranteed`, `sales-broadcast-tv`, `creative-generative`) — see the [Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog) |
 
-Declare your `supported_protocols` and `specialisms` in `get_adcp_capabilities` — the runner picks the matching storyboards automatically. See the [Compliance Catalog](/dist/docs/3.0.1/building/verification/compliance-catalog) for the full taxonomy.
+Declare your `supported_protocols` and `specialisms` in `get_adcp_capabilities` — the runner picks the matching storyboards automatically. See the [Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog) for the full taxonomy.
 
 ## Setup
 
@@ -43,7 +43,7 @@ You can also pass a URL directly instead of an alias: `npx @adcp/client@latest s
 npx @adcp/client@latest storyboard list
 ```
 
-Each storyboard targets a specific agent type. The [Build an Agent](/dist/docs/3.0.1/building/by-layer/L4/build-an-agent) page maps skills to their matching storyboards.
+Each storyboard targets a specific agent type. The [Build an Agent](/dist/docs/3.0.1/building/build-an-agent) page maps skills to their matching storyboards.
 
 ### 2. Preview what a storyboard tests
 
@@ -102,7 +102,7 @@ npx @adcp/client@latest storyboard run my-agent
 
 Add `--json` for structured output.
 
-The storyboard runner operates in two modes depending on whether your agent implements the optional [compliance test controller](/dist/docs/3.0.1/building/by-layer/L3/comply-test-controller):
+The storyboard runner operates in two modes depending on whether your agent implements the optional [compliance test controller](/dist/docs/3.0.1/building/implementation/comply-test-controller):
 
 | Mode | When | What it tests |
 |------|------|---------------|
@@ -186,7 +186,7 @@ Insertion-order approval records, governance tokens, signal activations, and spo
 
 ## Preparing to test uniform error responses
 
-The [uniform-response MUST](/dist/docs/3.0.1/building/by-layer/L3/error-handling#standard-error-codes) requires byte-equivalent responses for "the id exists but the caller lacks access" and "the id does not exist" across every observable channel — error body, transport status, headers, side effects, and telemetry. Verifying this needs a paired-probe runner (`adcp fuzz`) that compares two responses per tool. The runner has two modes, and you need to plan tenant setup before you can exercise the strong one.
+The [uniform-response MUST](/dist/docs/3.0.1/building/implementation/error-handling#standard-error-codes) requires byte-equivalent responses for "the id exists but the caller lacks access" and "the id does not exist" across every observable channel — error body, transport status, headers, side effects, and telemetry. Verifying this needs a paired-probe runner (`adcp fuzz`) that compares two responses per tool. The runner has two modes, and you need to plan tenant setup before you can exercise the strong one.
 
 **Baseline mode — single tenant.** One auth token, two fresh UUIDs probed per tool. Catches id-echo in error bodies, header divergence outside the allowlist, MCP `isError` / A2A `task.status.state` divergence, and gross latency deltas. Cannot catch cross-tenant existence leaks, because neither probe resolves to a real resource.
 
@@ -225,7 +225,7 @@ If you haven't provisioned a second tenant yet, run baseline anyway — it still
 
 The typical development workflow:
 
-1. **Build** — Point a coding agent at a [skill file](/dist/docs/3.0.1/building/by-layer/L4/build-an-agent) to generate your agent
+1. **Build** — Point a coding agent at a [skill file](/dist/docs/3.0.1/building/build-an-agent) to generate your agent
 2. **Run** — Start the agent locally (`npx tsx agent.ts`)
 3. **Validate** — Run the matching storyboard (`npx @adcp/client@latest storyboard run my-agent media_buy_seller`)
 4. **Fix** — Address any failures (missing fields, wrong status values, invalid transitions)
@@ -252,11 +252,11 @@ All commands support `--json`, `--debug`, `--auth TOKEN`, and `--protocol mcp|a2
 
 ## When a storyboard fails
 
-- **[Storyboard troubleshooting](/dist/docs/3.0.1/building/operating/storyboard-troubleshooting)** — Error patterns mapped to root causes and fixes (missing fixtures, signature challenges, envelope drift, context echo, capability mismatches)
-- **[Known spec ambiguities](/dist/docs/3.0.1/building/cross-cutting/known-ambiguities)** — Open spec gaps that affect conformance, with workarounds and issue links
+- **[Storyboard troubleshooting](/dist/docs/3.0.1/building/implementation/storyboard-troubleshooting)** — Error patterns mapped to root causes and fixes (missing fixtures, signature challenges, envelope drift, context echo, capability mismatches)
+- **[Known spec ambiguities](/dist/docs/3.0.1/building/implementation/known-ambiguities)** — Open spec gaps that affect conformance, with workarounds and issue links
 
 ## What's next
 
-- **[Compliance test controller](/dist/docs/3.0.1/building/by-layer/L3/comply-test-controller)** — Implement deterministic testing for full lifecycle coverage
-- **[Task lifecycle](/dist/docs/3.0.1/building/by-layer/L3/task-lifecycle)** — Status values, transitions, and polling
-- **[Error handling](/dist/docs/3.0.1/building/by-layer/L3/error-handling)** — Error categories, codes, and recovery
+- **[Compliance test controller](/dist/docs/3.0.1/building/implementation/comply-test-controller)** — Implement deterministic testing for full lifecycle coverage
+- **[Task lifecycle](/dist/docs/3.0.1/building/implementation/task-lifecycle)** — Status values, transitions, and polling
+- **[Error handling](/dist/docs/3.0.1/building/implementation/error-handling)** — Error categories, codes, and recovery

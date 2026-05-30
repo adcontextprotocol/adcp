@@ -4,7 +4,7 @@ description: "How to extract AdCP response data from A2A Task objects: status-ba
 "og:title": "AdCP — A2A Response Extraction"
 ---
 
-This page defines the normative algorithm for extracting AdCP response data from A2A Task objects and TaskStatusUpdateEvents. For the canonical response structure that sellers must produce, see [A2A Response Format](/dist/docs/3.0.1/building/by-layer/L0/a2a-response-format). For error-specific extraction, see [Transport Error Mapping](/dist/docs/3.0.1/building/operating/transport-errors).
+This page defines the normative algorithm for extracting AdCP response data from A2A Task objects and TaskStatusUpdateEvents. For the canonical response structure that sellers must produce, see [A2A Response Format](/dist/docs/3.0.1/building/integration/a2a-response-format). For error-specific extraction, see [Transport Error Mapping](/dist/docs/3.0.1/building/implementation/transport-errors).
 
 ## AdCP Conventions on Top of A2A
 
@@ -187,7 +187,7 @@ Wrapper detection applies to **final states only** (artifacts). Interim status m
 
 ## Relationship to Error Extraction
 
-This algorithm extracts *any* AdCP data from A2A responses, including error payloads (`adcp_error`). Error-specific extraction ([Transport Error Mapping](/dist/docs/3.0.1/building/operating/transport-errors)) is a specialization that checks for the `adcp_error` key in the extracted data.
+This algorithm extracts *any* AdCP data from A2A responses, including error payloads (`adcp_error`). Error-specific extraction ([Transport Error Mapping](/dist/docs/3.0.1/building/implementation/transport-errors)) is a specialization that checks for the `adcp_error` key in the extracted data.
 
 The transport-errors spec provides its own `extractAdcpErrorFromA2A` function that scans all artifacts for `adcp_error`. That function is optimized for error detection (scanning all parts for the error key). This function is the general-purpose extractor (last DataPart from first artifact). For failed tasks with a single `adcp_error` DataPart, both produce equivalent results.
 
@@ -210,7 +210,7 @@ function handleA2aResponse(task) {
 
 ### Seller-Controlled Data
 
-All data in `.artifacts[].parts[].data` and `status.message.parts[].data` is seller-controlled. The prompt injection, data boundary, and size limit requirements from [Transport Error Mapping](/dist/docs/3.0.1/building/operating/transport-errors#security-considerations) apply.
+All data in `.artifacts[].parts[].data` and `status.message.parts[].data` is seller-controlled. The prompt injection, data boundary, and size limit requirements from [Transport Error Mapping](/dist/docs/3.0.1/building/implementation/transport-errors#security-considerations) apply.
 
 ### Prototype Pollution
 
@@ -271,7 +271,7 @@ Client libraries SHOULD validate their extraction logic against these vectors.
 
 ## See Also
 
-- [A2A Response Format](/dist/docs/3.0.1/building/by-layer/L0/a2a-response-format) — canonical response structure for sellers
-- [Transport Error Mapping](/dist/docs/3.0.1/building/operating/transport-errors) — error extraction from MCP and A2A
-- [MCP Response Extraction](/dist/docs/3.0.1/building/by-layer/L0/mcp-response-extraction) — equivalent spec for MCP
-- [A2A Guide](/dist/docs/3.0.1/building/by-layer/L0/a2a-guide) — A2A transport integration
+- [A2A Response Format](/dist/docs/3.0.1/building/integration/a2a-response-format) — canonical response structure for sellers
+- [Transport Error Mapping](/dist/docs/3.0.1/building/implementation/transport-errors) — error extraction from MCP and A2A
+- [MCP Response Extraction](/dist/docs/3.0.1/building/implementation/mcp-response-extraction) — equivalent spec for MCP
+- [A2A Guide](/dist/docs/3.0.1/building/integration/a2a-guide) — A2A transport integration

@@ -5,7 +5,7 @@ description: "AdCP CLI graders for RFC 9421 request-signing conformance, OAuth h
 "og:title": "AdCP — Auth Graders"
 ---
 
-`@adcp/client` 5.21+ ships CLI graders for authentication conformance. They are separate from the [compliance storyboards](/dist/docs/3.0.1/building/verification/validate-your-agent) — storyboards test protocol behavior end-to-end; these graders test the authentication and signing layer specifically, giving per-vector diagnostics and hypothesis-ranked failure analysis.
+`@adcp/client` 5.21+ ships CLI graders for authentication conformance. They are separate from the [compliance storyboards](/dist/docs/3.0.1/building/validate-your-agent) — storyboards test protocol behavior end-to-end; these graders test the authentication and signing layer specifically, giving per-vector diagnostics and hypothesis-ranked failure analysis.
 
 <Tip>
 All commands below use `npx @adcp/client@latest`. If you have `@adcp/client` installed globally (`npm install -g @adcp/client`) you can drop the `npx @adcp/client@latest` prefix and use `adcp` directly.
@@ -78,6 +78,6 @@ Reads a vector from stdin (JSON matching the test-vector schema at [`/compliance
 
 ## Related
 
-- [Validate Your Agent](/dist/docs/3.0.1/building/verification/validate-your-agent) — storyboard-based protocol compliance testing
-- [Authentication](/dist/docs/3.0.1/building/by-layer/L2/authentication) — auth model overview, bearer tokens, RFC 9421 introduction
-- [Security implementation reference](/dist/docs/3.0.1/building/by-layer/L1/security#signed-requests-transport-layer) — full RFC 9421 profile, verifier checklist, key publication rules
+- [Validate Your Agent](/dist/docs/3.0.1/building/validate-your-agent) — storyboard-based protocol compliance testing
+- [Authentication](/dist/docs/3.0.1/building/integration/authentication) — auth model overview, bearer tokens, RFC 9421 introduction
+- [Security implementation reference](/dist/docs/3.0.1/building/implementation/security#signed-requests-transport-layer) — full RFC 9421 profile, verifier checklist, key publication rules

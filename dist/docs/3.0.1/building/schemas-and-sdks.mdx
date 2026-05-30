@@ -91,7 +91,7 @@ Storyboards live alongside schemas at `/compliance/{version}/`. They define the 
 | `/compliance/{version}/specialisms/{id}/` | Optional specialization claims (e.g. `sales-guaranteed`, `sales-broadcast-tv`) |
 | `/compliance/{version}/index.json` | Enumerates available protocols, specialisms, and universal storyboards |
 
-Declare `supported_protocols` (for protocol baselines) and `specialisms` (for narrow capability claims) in `get_adcp_capabilities` — the compliance runner executes the matching bundles to verify. See the full [Compliance Catalog](/dist/docs/3.0.1/building/verification/compliance-catalog) for every protocol and specialism an agent can claim.
+Declare `supported_protocols` (for protocol baselines) and `specialisms` (for narrow capability claims) in `get_adcp_capabilities` — the compliance runner executes the matching bundles to verify. See the full [Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog) for every protocol and specialism an agent can claim.
 
 ### Common Schemas
 
@@ -114,7 +114,7 @@ AdCP provides official SDKs for JavaScript/TypeScript, Python, and Go. These wor
 
 ### AdCP 3.0 support
 
-All three official SDKs ship AdCP 3.0. Pin to (or above) the minimum listed below and validate with the [storyboard test suite](/dist/docs/3.0.1/building/verification/validate-your-agent).
+All three official SDKs ship AdCP 3.0. Pin to (or above) the minimum listed below and validate with the [storyboard test suite](/dist/docs/3.0.1/building/validate-your-agent).
 
 | SDK | 3.0-compatible from | Package |
 |---|---|---|
@@ -150,7 +150,7 @@ const products = await client.getProducts({
 
 **Package exports:**
 - `@adcp/client` — Main API
-- `@adcp/client/testing` — Buyer-side storyboard runner (`runStoryboard`, `comply`, `testAgent`) and seller-side controller scaffold (`createComplyController` — see [Get Test-Ready](/dist/docs/3.0.1/building/verification/get-test-ready))
+- `@adcp/client/testing` — Buyer-side storyboard runner (`runStoryboard`, `comply`, `testAgent`) and seller-side controller scaffold (`createComplyController` — see [Get Test-Ready](/dist/docs/3.0.1/building/get-test-ready))
 - `@adcp/client/server` — Low-level server helpers (MCP tool registration, state stores, `handleTestControllerRequest`)
 - `@adcp/client/advanced` — Advanced API features
 - `@adcp/client/types` — TypeScript type definitions

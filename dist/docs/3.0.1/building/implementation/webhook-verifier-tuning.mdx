@@ -6,7 +6,7 @@ description: "Non-normative tuning recipes for webhook verifier thresholds — s
 ---
 
 <Note>
-This document is non-normative. It provides **starting values** and a tuning methodology for the webhook verifier thresholds whose **structural shape** is specified in [Webhook Security](/dist/docs/3.0.1/building/by-layer/L1/security#webhook-security). The normative spec specifies only the category (short-window ratio, medium-window ratio, long-window ratio, proportional ceiling) and the requirement that thresholds be operator-configurable. This guide tells you where to start and how to tune.
+This document is non-normative. It provides **starting values** and a tuning methodology for the webhook verifier thresholds whose **structural shape** is specified in [Webhook Security](/dist/docs/3.0.1/building/implementation/security#webhook-security). The normative spec specifies only the category (short-window ratio, medium-window ratio, long-window ratio, proportional ceiling) and the requirement that thresholds be operator-configurable. This guide tells you where to start and how to tune.
 </Note>
 
 <Warning>
@@ -145,5 +145,5 @@ A mature verifier with 90 days of stable P95/P99 data fails over to a standby po
 
 ## Related
 
-- [Webhook Security → Webhook replay dedup sizing](/dist/docs/3.0.1/building/by-layer/L1/security#webhook-replay-dedup-sizing) — normative spec for the rule this guide tunes. Scroll to the §Webhook replay dedup sizing heading directly beneath the 15-check verifier flow; the "New-keyid admission pressure" bullet is the rule whose four categories the tuning guide populates with starting values.
-- [Webhook verifier checklist](/dist/docs/3.0.1/building/by-layer/L1/security#webhook-callbacks) — the full 15-check flow. Step 14b (logging discipline) is a sub-step under step 14 (body well-formedness); its sanitization rules (non-printable classification, 32-byte UTF-8 codepoint-safe truncation, count cap at 4) apply to the diagnostic information this guide assumes alarms carry.
+- [Webhook Security → Webhook replay dedup sizing](/dist/docs/3.0.1/building/implementation/security#webhook-replay-dedup-sizing) — normative spec for the rule this guide tunes. Scroll to the §Webhook replay dedup sizing heading directly beneath the 15-check verifier flow; the "New-keyid admission pressure" bullet is the rule whose four categories the tuning guide populates with starting values.
+- [Webhook verifier checklist](/dist/docs/3.0.1/building/implementation/security#webhook-callbacks) — the full 15-check flow. Step 14b (logging discipline) is a sub-step under step 14 (body well-formedness); its sanitization rules (non-printable classification, 32-byte UTF-8 codepoint-safe truncation, count cap at 4) apply to the diagnostic information this guide assumes alarms carry.

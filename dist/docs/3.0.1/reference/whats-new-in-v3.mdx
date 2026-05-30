@@ -59,7 +59,7 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 
 **RFC 9421 HTTP Message Signatures are optional in 3.0 and mandatory under AdCP Verified.** Agents sign mutating requests with Ed25519 over a canonicalized covered-component list (method, target URI, `content-digest`, protocol-level fields). The spec pins sf-binary encoding and URL canonicalization so independent implementations produce bit-identical canonical inputs. A 15-step verification checklist defines the seller's path: `alg` allowlist, `keyid` cap-before-crypto (defense against unbounded verification), JWKS resolution via SSRF-validated fetch, `jti` replay dedup, audience binding. Published test vectors at `static/compliance/source/test-vectors/request-signing/` let implementers validate correctness offline.
 
-**Webhooks are signed under the same RFC 9421 profile — baseline-required for sellers.** Webhook authentication unifies on the AdCP 9421 profile as a symmetric variant of request signing: the seller signs outbound webhook requests with a key published in its JWKS at `jwks_uri` (discoverable via `brand.json` `agents[]`). The JWK itself carries `adcp_use: "webhook-signing"` (distinct from `adcp_use: "request-signing"`); `kid` values MUST be unique across purposes within a JWKS. No shared secret crosses the wire. The buyer verifies the signature using the seller's JWKS. A 14-step webhook verifier checklist — documented in the [Security guide](/dist/docs/3.0.1/building/by-layer/L1/security) — covers trust-anchor scoping, downgrade-and-injection resistance, and per-keyid replay dedup (100K per keyid, 10M aggregate); verification failures return typed reason codes defined there. HMAC-SHA256 remains a legacy fallback through 3.x (opt-in via `push_notification_config.authentication.credentials`); the entire `authentication` object is removed in 4.0.
+**Webhooks are signed under the same RFC 9421 profile — baseline-required for sellers.** Webhook authentication unifies on the AdCP 9421 profile as a symmetric variant of request signing: the seller signs outbound webhook requests with a key published in its JWKS at `jwks_uri` (discoverable via `brand.json` `agents[]`). The JWK itself carries `adcp_use: "webhook-signing"` (distinct from `adcp_use: "request-signing"`); `kid` values MUST be unique across purposes within a JWKS. No shared secret crosses the wire. The buyer verifies the signature using the seller's JWKS. A 14-step webhook verifier checklist — documented in the [Security guide](/dist/docs/3.0.1/building/implementation/security) — covers trust-anchor scoping, downgrade-and-injection resistance, and per-keyid replay dedup (100K per keyid, 10M aggregate); verification failures return typed reason codes defined there. HMAC-SHA256 remains a legacy fallback through 3.x (opt-in via `push_notification_config.authentication.credentials`); the entire `authentication` object is removed in 4.0.
 
 **Every webhook payload carries a required `idempotency_key`.** Webhooks use at-least-once delivery, so receivers must dedupe. Every webhook payload — MCP, collection-list changes, property-list changes, content-standards artifacts, rights revocations — carries a sender-generated, cryptographically-random UUID v4 `idempotency_key` stable across retries of the same event. Same name and format as the request-side field. Predictable keys allow pre-seeding a receiver's dedup cache to suppress legitimate events, so sellers MUST generate keys from a cryptographic source.
 
@@ -69,9 +69,9 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 
 **Cross-instance state persistence is now a spec requirement.** Agent state — tasks, media buys, plans, signed artifacts, idempotency keys — MUST be persistent across horizontally-scaled instances. In-memory-only state is non-compliant for production.
 
-See the [Security implementation guide](/dist/docs/3.0.1/building/by-layer/L1/security) for the full threat model, principal roles (brand / operator / agent), and step-by-step verification paths.
+See the [Security implementation guide](/dist/docs/3.0.1/building/implementation/security) for the full threat model, principal roles (brand / operator / agent), and step-by-step verification paths.
 
-<Card title="Security implementation" icon="arrow-right" href="/dist/docs/3.0.1/building/by-layer/L1/security">
+<Card title="Security implementation" icon="arrow-right" href="/dist/docs/3.0.1/building/implementation/security">
   Threat model, signing profile, verification paths, and the universal security storyboard.
 </Card>
 
@@ -94,7 +94,7 @@ The compliance runner and the storyboards are themselves software shipping at 3.
 **Why self-attested and not audited at 3.0:** the reference implementations AAO operates — the training agent and the `@adcp/client` / Python / Go SDKs — aren't fully clean against the 3.0 storyboard suite yet. The training agent currently passes 32 of 55 applicable storyboards; SDK coverage is similar. We are working those pass rates to 100% over the 3.0 → 3.1 window on a 4–6 week cadence. When the reference implementations pass cleanly and the remaining spec ambiguities are resolved, **the formal AdCP Verified program launches with 3.1** — agents will be able to submit runner output for independent re-execution by AAO, with a public registry of verified agents. Self-attestation in 3.0 is the bridge, not the end state.
 </Note>
 
-<Card title="Compliance Catalog" icon="arrow-right" href="/dist/docs/3.0.1/building/verification/compliance-catalog">
+<Card title="Compliance Catalog" icon="arrow-right" href="/dist/docs/3.0.1/building/compliance-catalog">
   Full index of domains and specialisms with status flags and storyboard sources.
 </Card>
 
@@ -199,7 +199,7 @@ Publishers can return **proposals** alongside products — structured media plan
 ### Accounts
 
 <Tip>
-**Migrating from v2?** Accounts are entirely new in v3 — there is no v2 equivalent to migrate from. Start with [Accounts and Agents](/dist/docs/3.0.1/building/by-layer/L2/accounts-and-agents) for the setup guide.
+**Migrating from v2?** Accounts are entirely new in v3 — there is no v2 equivalent to migrate from. Start with [Accounts and Agents](/dist/docs/3.0.1/building/integration/accounts-and-agents) for the setup guide.
 </Tip>
 
 Formal billing relationships between buyers and sellers via `sync_accounts`.
@@ -209,7 +209,7 @@ Formal billing relationships between buyers and sellers via `sync_accounts`.
 | Entity | Question | How identified |
 |--------|----------|----------------|
 | **Brand** | Whose products are advertised? | House domain + brand_id via `brand.json` |
-| **Account** | Who gets billed? | [Account reference](/dist/docs/3.0.1/building/by-layer/L2/accounts-and-agents#account-references) — `account_id` from `list_accounts` or natural key |
+| **Account** | Who gets billed? | [Account reference](/dist/docs/3.0.1/building/integration/accounts-and-agents#account-references) — `account_id` from `list_accounts` or natural key |
 | **Operator** | Who operates on the brand's behalf? | Domain (e.g., `acmeagency.example.com`) |
 | **Agent** | What software places buys? | Authenticated session |
 
@@ -323,7 +323,7 @@ For the exhaustive rc.2 change list, see the [Release Notes](/dist/docs/3.0.1/re
 
 ### Specialisms and compliance catalog
 
-Storyboards move into the protocol at `/compliance/{version}/` with a new `specialisms` field on `get_adcp_capabilities`. 21 specialisms roll up to 6 domains; four 3.1 archetypes ship with `status: preview`. See the [Compliance Catalog](/dist/docs/3.0.1/building/verification/compliance-catalog). Renames: `broadcast-platform` → `sales-broadcast-tv`, `social-platform` → `sales-social`. Merge: `property-governance` + `collection-governance` → `inventory-lists`. Promotion: `sponsored_intelligence` specialism → full protocol.
+Storyboards move into the protocol at `/compliance/{version}/` with a new `specialisms` field on `get_adcp_capabilities`. 21 specialisms roll up to 6 domains; four 3.1 archetypes ship with `status: preview`. See the [Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog). Renames: `broadcast-platform` → `sales-broadcast-tv`, `social-platform` → `sales-social`. Merge: `property-governance` + `collection-governance` → `inventory-lists`. Promotion: `sponsored_intelligence` specialism → full protocol.
 
 ### Capabilities model simplification
 

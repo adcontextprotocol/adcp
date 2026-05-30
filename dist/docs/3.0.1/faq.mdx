@@ -143,7 +143,7 @@ As of April 2026:
 | **Maintainer** | IAB Tech Lab | AgenticAdvertising.org |
 | **Maturity** | Emerging framework across multiple sub-initiatives | 3.0 GA (released April 2026) |
 | **Scope** | Umbrella for multiple agentic initiatives | Single specification covering media buying, creative, signals, brand governance, and execution (TMP) |
-| **Governance verification** | Being defined | Signed governance context with 15-step verification (Layer 4 of the [security model](/dist/docs/3.0.1/building/concepts/security-model)) |
+| **Governance verification** | Being defined | Signed governance context with 15-step verification (Layer 4 of the [security model](/dist/docs/3.0.1/building/understanding/security-model)) |
 | **Public schemas** | Being defined | [Published](https://adcontextprotocol.org/schemas/3.0.1/), Apache 2.0 |
 
 We do not yet publish a formal technical comparison because AAMP is still defining its normative surface. Implementers interested in both should watch both specifications as they stabilize.
@@ -167,7 +167,7 @@ A platform implementing both sees AdCP for "surface the right offer and engage t
 <Accordion title="Why not just roll our own protocol?">
 You can, and for some deployments that is the right call — proprietary internal protocols are fine when the scope stays inside a single organization.
 
-A shared protocol earns its cost when two conditions hold: (1) agents need to interoperate across organizational boundaries, and (2) the guarantees an implementer needs — idempotency, signed governance, structural privacy separation, conformance — are nontrivial to build from scratch. AdCP already specifies the wire, publishes schemas, runs conformance tests, and carries a signed-governance profile with 15-step verification (see the [security model](/dist/docs/3.0.1/building/concepts/security-model)). Rebuilding that internally is a real cost, and if you want counterparties to trust your internal protocol, you have to socialize it anyway.
+A shared protocol earns its cost when two conditions hold: (1) agents need to interoperate across organizational boundaries, and (2) the guarantees an implementer needs — idempotency, signed governance, structural privacy separation, conformance — are nontrivial to build from scratch. AdCP already specifies the wire, publishes schemas, runs conformance tests, and carries a signed-governance profile with 15-step verification (see the [security model](/dist/docs/3.0.1/building/understanding/security-model)). Rebuilding that internally is a real cost, and if you want counterparties to trust your internal protocol, you have to socialize it anyway.
 
 If AdCP is missing something you need, the cheaper path is usually: extend via `ext.{vendor}`, or propose a change to the working group. See the [contributing guide](https://github.com/adcontextprotocol/adcp/blob/main/CONTRIBUTING.md).
 </Accordion>
@@ -177,7 +177,7 @@ MCP defines *how* an agent calls a tool. AdCP defines *what* the agent says when
 
 AdCP is what makes the tools interchangeable. If every publisher's MCP server speaks AdCP's `create_media_buy`, one buyer agent can integrate with all of them. Without AdCP, "connect to a new publisher" is a new development task every time.
 
-Put differently: MCP is the transport, AdCP is the protocol. You use MCP to *carry* AdCP tasks — the same way HTTP carries REST payloads. See [Industry landscape](/dist/docs/3.0.1/building/concepts/industry-landscape) for how AdCP, OpenRTB, MCP, and A2A relate.
+Put differently: MCP is the transport, AdCP is the protocol. You use MCP to *carry* AdCP tasks — the same way HTTP carries REST payloads. See [Industry landscape](/dist/docs/3.0.1/building/understanding/industry-landscape) for how AdCP, OpenRTB, MCP, and A2A relate.
 </Accordion>
 
 <Accordion title="Why isn't AdCP an auction protocol?">
@@ -225,7 +225,7 @@ See [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md)
 </Accordion>
 
 <Accordion title="What if my buyer agent is compromised?">
-AdCP today uses bearer-token authentication between agents — see [authentication](/dist/docs/3.0.1/building/by-layer/L2/authentication) for the shipped model.
+AdCP today uses bearer-token authentication between agents — see [authentication](/dist/docs/3.0.1/building/integration/authentication) for the shipped model.
 
 AdCP 3.1 will add request signing for mutating calls (`create_*`, `update_*`, `sync_*`, `activate_*`, `acquire_*`) via RFC 9421 HTTP Signatures or JWS-signed bodies as a normative requirement, with sellers verifying against the buyer's published signing keys. Bearer tokens alone will not be sufficient for mutating calls. Tracked in [#2307](https://github.com/adcontextprotocol/adcp/issues/2307).
 
@@ -244,7 +244,7 @@ AdCP uses [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) and [
 - **MCP and A2A** define how agents communicate (the transport)
 - **AdCP** defines what agents say about advertising (the domain)
 
-AdCP tasks are the same regardless of transport. A [`get_products`](/dist/docs/3.0.1/media-buy/task-reference/get_products) call has the same request schema and response schema whether it travels over MCP or A2A. See [protocol comparison](/dist/docs/3.0.1/building/concepts/protocol-comparison) for details on how the two transports differ.
+AdCP tasks are the same regardless of transport. A [`get_products`](/dist/docs/3.0.1/media-buy/task-reference/get_products) call has the same request schema and response schema whether it travels over MCP or A2A. See [protocol comparison](/dist/docs/3.0.1/building/understanding/protocol-comparison) for details on how the two transports differ.
 </Accordion>
 
 <Accordion title="Does AdCP compete with platform-specific APIs?">
@@ -311,7 +311,7 @@ Read the [introduction](/dist/docs/3.0.1/intro) for an overview, then explore th
 - **Sell-side platforms**: Start with [media buy](/dist/docs/3.0.1/media-buy) to expose your inventory
 - **Creative platforms**: Start with [creative](/dist/docs/3.0.1/creative) to offer format discovery and ad generation
 - **Data providers**: Start with [signals](/dist/docs/3.0.1/signals/overview) to make audiences addressable by agents
-- **Orchestrators and agencies**: Start with the [integration guide](/dist/docs/3.0.1/building/by-layer/L0) to connect to existing AdCP agents
+- **Orchestrators and agencies**: Start with the [integration guide](/dist/docs/3.0.1/building/integration) to connect to existing AdCP agents
 
 JSON schemas for all tasks are available at [adcontextprotocol.org/schemas](https://adcontextprotocol.org/schemas/3.0.1/).
 </Accordion>

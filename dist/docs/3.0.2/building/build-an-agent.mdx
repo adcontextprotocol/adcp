@@ -8,7 +8,7 @@ description: "Use AdCP SDK skill files to generate storyboard-compliant agents w
 The fastest way to build an AdCP agent is to point a coding agent (Claude Code, Codex, Cursor, Windsurf) at a skill file from an AdCP SDK. Each skill produces a protocol-compliant, storyboard-validated agent in 2–8 minutes.
 
 <Note>
-**Publisher without an engineering team?** Protocol compliance is one piece of going live — product management, activation into your ad server, and hosting are separate lifts. See **[Operating an Agent](/dist/docs/3.0.2/building/operating/operating-an-agent)** for the three paths: partner with a managed platform, self-host a prebuilt agent, or build your own.
+**Publisher without an engineering team?** Protocol compliance is one piece of going live — product management, activation into your ad server, and hosting are separate lifts. See **[Operating an Agent](/dist/docs/3.0.2/building/operating-an-agent)** for the three paths: partner with a managed platform, self-host a prebuilt agent, or build your own.
 </Note>
 
 ## Install the SDK
@@ -107,7 +107,7 @@ Each agent declares its `supported_protocols` (domains) and `specialisms` on `ge
 
 Building a **brand rights** agent (licensing talent, music, stock media)? There's no skill today — see the [Brand Protocol docs](/dist/docs/3.0.2/brand-protocol) and claim `brand-rights` under the `brand` domain.
 
-See the [Compliance Catalog](/dist/docs/3.0.2/building/verification/compliance-catalog) for every domain and specialism with its storyboard and status (stable, preview, deprecated).
+See the [Compliance Catalog](/dist/docs/3.0.2/building/compliance-catalog) for every domain and specialism with its storyboard and status (stable, preview, deprecated).
 
 ## Build the agent
 
@@ -179,14 +179,14 @@ media_buy_seller (9 steps)
 ```
 
 <Warning>
-**Protocol-compliant ≠ production-ready.** A passing run means your agent speaks AdCP correctly. Going live requires business infrastructure behind each tool call — products and pricing, activation into your ad server, order management, hosting, and discovery registration via `adagents.json`. See **[Operating an Agent](/dist/docs/3.0.2/building/operating/operating-an-agent)** for the full list and whether to partner, self-host, or build.
+**Protocol-compliant ≠ production-ready.** A passing run means your agent speaks AdCP correctly. Going live requires business infrastructure behind each tool call — products and pricing, activation into your ad server, order management, hosting, and discovery registration via `adagents.json`. See **[Operating an Agent](/dist/docs/3.0.2/building/operating-an-agent)** for the full list and whether to partner, self-host, or build.
 </Warning>
 
 <Tip>
 Each skill includes variant storyboards for different business models — non-guaranteed, guaranteed with approval, proposal mode, and more. Run `npx @adcp/client@latest storyboard list` to see all available storyboards.
 </Tip>
 
-See **[Validate Your Agent](/dist/docs/3.0.2/building/verification/validate-your-agent)** for the full testing workflow — debugging failing steps, running compliance checks, and validating interactively through Addie.
+See **[Validate Your Agent](/dist/docs/3.0.2/building/validate-your-agent)** for the full testing workflow — debugging failing steps, running compliance checks, and validating interactively through Addie.
 
 ## Additional resources
 
@@ -201,9 +201,9 @@ Python and Go equivalents are in each SDK's GitHub repository. See [adcp-client-
 
 ## What's next
 
-- **[Validate Your Agent](/dist/docs/3.0.2/building/verification/validate-your-agent)** — Storyboards, compliance checks, and the build-validate-fix loop
-- **[Operating an Agent](/dist/docs/3.0.2/building/operating/operating-an-agent)** — What sits behind the protocol layer, and whether to partner, self-host, or build
-- **[Schemas and SDKs](/dist/docs/3.0.2/building/by-layer/L0/schemas)** — Schema access, CLI tools, and SDK package exports
-- **[MCP integration guide](/dist/docs/3.0.2/building/by-layer/L0/mcp-guide)** — Transport, sessions, and auth details
-- **[Task lifecycle](/dist/docs/3.0.2/building/by-layer/L3/task-lifecycle)** — Status values, transitions, and polling
-- **[Error handling](/dist/docs/3.0.2/building/by-layer/L3/error-handling)** — Error categories, codes, and recovery
+- **[Validate Your Agent](/dist/docs/3.0.2/building/validate-your-agent)** — Storyboards, compliance checks, and the build-validate-fix loop
+- **[Operating an Agent](/dist/docs/3.0.2/building/operating-an-agent)** — What sits behind the protocol layer, and whether to partner, self-host, or build
+- **[Schemas and SDKs](/dist/docs/3.0.2/building/schemas-and-sdks)** — Schema access, CLI tools, and SDK package exports
+- **[MCP integration guide](/dist/docs/3.0.2/building/integration/mcp-guide)** — Transport, sessions, and auth details
+- **[Task lifecycle](/dist/docs/3.0.2/building/implementation/task-lifecycle)** — Status values, transitions, and polling
+- **[Error handling](/dist/docs/3.0.2/building/implementation/error-handling)** — Error categories, codes, and recovery

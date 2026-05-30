@@ -8,9 +8,9 @@ Every AdCP response includes a `status` field that tells you exactly what state 
 
 :::note Transport-specific task management
 The status values and lifecycle described here are transport-independent — they apply regardless of how you access AdCP. The *mechanism* for tracking async tasks varies by transport:
-- **MCP**: Use [MCP Tasks](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks) — the client polls via `tasks/get` and retrieves results via `tasks/result` at the protocol level. See [MCP Guide](/dist/docs/3.0.2/building/by-layer/L0/mcp-guide#async-operations-via-mcp-tasks).
-- **A2A**: Use native A2A task lifecycle with SSE streaming. See [A2A Guide](/dist/docs/3.0.2/building/by-layer/L0/a2a-guide).
-- **REST**: Use AdCP's `task_id` with polling or [push notifications](/dist/docs/3.0.2/building/by-layer/L3/webhooks).
+- **MCP**: Use [MCP Tasks](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks) — the client polls via `tasks/get` and retrieves results via `tasks/result` at the protocol level. See [MCP Guide](/dist/docs/3.0.2/building/integration/mcp-guide#async-operations-via-mcp-tasks).
+- **A2A**: Use native A2A task lifecycle with SSE streaming. See [A2A Guide](/dist/docs/3.0.2/building/integration/a2a-guide).
+- **REST**: Use AdCP's `task_id` with polling or [push notifications](/dist/docs/3.0.2/building/implementation/webhooks).
 :::
 
 ## Status Values
@@ -163,9 +163,9 @@ Operations that take longer than 30 seconds return either `working` or `submitte
 ```
 
 **Transport-specific handling for `submitted` operations:**
-- **MCP**: Use [MCP Tasks](/dist/docs/3.0.2/building/by-layer/L0/mcp-guide#async-operations-via-mcp-tasks) or poll via `tasks/get`
+- **MCP**: Use [MCP Tasks](/dist/docs/3.0.2/building/integration/mcp-guide#async-operations-via-mcp-tasks) or poll via `tasks/get`
 - **A2A**: Subscribe to SSE stream for real-time updates
-- **REST**: Use [push notifications](/dist/docs/3.0.2/building/by-layer/L3/webhooks) (recommended) or poll with `task_id`
+- **REST**: Use [push notifications](/dist/docs/3.0.2/building/implementation/webhooks) (recommended) or poll with `task_id`
 
 ## Status Progression
 
@@ -264,6 +264,6 @@ for (const task of missingTasks) {
 
 ## Next Steps
 
-- **Async Operations**: See [Async Operations](/dist/docs/3.0.2/building/by-layer/L3/async-operations) for handling different operation types
-- **Webhooks**: See [Webhooks](/dist/docs/3.0.2/building/by-layer/L3/webhooks) for push notification patterns
-- **Error Handling**: See [Error Handling](/dist/docs/3.0.2/building/by-layer/L3/error-handling) for error categories and recovery
+- **Async Operations**: See [Async Operations](/dist/docs/3.0.2/building/implementation/async-operations) for handling different operation types
+- **Webhooks**: See [Webhooks](/dist/docs/3.0.2/building/implementation/webhooks) for push notification patterns
+- **Error Handling**: See [Error Handling](/dist/docs/3.0.2/building/implementation/error-handling) for error categories and recovery

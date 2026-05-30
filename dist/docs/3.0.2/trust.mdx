@@ -57,7 +57,7 @@ First: **signed requests are normative in 3.1, not 3.0.** AdCP 3.0 allows bearer
 
 Second: **signing keys are not yet anchored in a key-transparency log.** In 3.x, RFC 9421 buyer keys, governance JWS keys, and agent signing keys are ultimately rooted in each counterparty's own infrastructure — an attacker controlling a counterparty's CDN, DNS, or `/.well-known` path can serve attacker-controlled keys. TLS does not close this gap. AdCP 3.x delivers trust-on-first-use with continuity (multi-source cross-check, publication-delay windows, out-of-band rotation signalling) — detectably raising the bar, but not cryptographically closing it. A key-transparency layer is a 4.0 deliverable. See [Known Limitations — Authentication and Identity](/dist/docs/3.0.2/reference/known-limitations#authentication-and-identity) for the full description.
 
-→ [Security Model](/dist/docs/3.0.2/building/concepts/security-model) · [Security implementation reference](/dist/docs/3.0.2/building/by-layer/L1/security)
+→ [Security Model](/dist/docs/3.0.2/building/understanding/security-model) · [Security implementation reference](/dist/docs/3.0.2/building/implementation/security)
 
 ---
 

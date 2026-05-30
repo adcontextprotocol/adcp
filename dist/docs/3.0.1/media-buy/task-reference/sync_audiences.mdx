@@ -108,7 +108,7 @@ asyncio.run(main())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | [account-ref](/dist/docs/3.0.1/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. |
+| `account` | [account-ref](/dist/docs/3.0.1/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. |
 | `audiences` | [Audience](#audience-object)[] | No | Audiences to sync. When omitted, the call is discovery-only and returns all existing audiences without modification. |
 | `delete_missing` | boolean | No | When true, buyer-managed audiences on the account not in this request are removed (default: false). Does not affect seller-managed audiences. Do not combine with an omitted `audiences` array or all buyer-managed audiences will be deleted. |
 

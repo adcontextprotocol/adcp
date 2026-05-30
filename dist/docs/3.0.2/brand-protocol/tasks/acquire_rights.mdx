@@ -189,7 +189,7 @@ Seconds to minutes for `acquired` or `rejected`. The `pending_approval` status m
 | `campaign.end_date` | date | No | Campaign end date |
 | `revocation_webhook` | push-notification-config | Yes | Webhook for revocation notifications. If the rights holder needs to revoke rights, they POST a [revocation-notification](https://adcontextprotocol.org/schemas/3.0.2/brand/revocation-notification.json) to this URL. |
 | `idempotency_key` | string | No | Client-generated key for safe retries. Resubmitting with the same key returns the original response. |
-| `push_notification_config` | push-notification-config | No | Webhook for async status updates if the acquisition requires approval. See [push notifications](/dist/docs/3.0.2/building/by-layer/L3/webhooks). |
+| `push_notification_config` | push-notification-config | No | Webhook for async status updates if the acquisition requires approval. See [push notifications](/dist/docs/3.0.2/building/implementation/webhooks). |
 
 ### Response statuses
 
@@ -217,7 +217,7 @@ Brand agents MAY also reject when `campaign.start_date` is more than the rights 
 
 ### CPM-priced rights under a governance plan
 
-When the buyer's request carries an intent-phase `governance_context` token on the [protocol envelope](/dist/docs/3.0.2/building/by-layer/L1/security) (the buyer's plan is governed — see [Buyer-side governance invocation](/dist/docs/3.0.2/governance/campaign/specification#buyer-side-governance-invocation)) and the selected pricing option has `model: "cpm"`, `campaign.estimated_impressions` is the input the brand agent uses to project commitment against remaining plan budget. To make that projection deterministic across implementations:
+When the buyer's request carries an intent-phase `governance_context` token on the [protocol envelope](/dist/docs/3.0.2/building/implementation/security) (the buyer's plan is governed — see [Buyer-side governance invocation](/dist/docs/3.0.2/governance/campaign/specification#buyer-side-governance-invocation)) and the selected pricing option has `model: "cpm"`, `campaign.estimated_impressions` is the input the brand agent uses to project commitment against remaining plan budget. To make that projection deterministic across implementations:
 
 - Brand agents MUST reject with `INVALID_REQUEST` and `field: "campaign.estimated_impressions"` when a `governance_context` is present, the selected `pricing_option.model` is `"cpm"`, and `campaign.estimated_impressions` is either omitted or `0`. Implementer-chosen defaults (e.g., assuming 1M impressions) are non-conformant — they hide a policy decision inside each implementation and produce different governance outcomes for identical requests.
 - When `estimated_impressions` is provided and non-zero, the projected commitment is `(pricing_option.price / 1000) × campaign.estimated_impressions`, evaluated in `pricing_option.currency`. If `pricing_option.currency` differs from the governance plan's budget currency (as carried on the plan), the brand agent MUST reject with `INVALID_REQUEST` and `field: "pricing_option_id"` — currency conversion is not specified for governance projection, so currency-mismatched offers cannot be cleared against a governed plan.
@@ -269,7 +269,7 @@ If `acquire_rights` returns `pending_approval` and you provided `push_notificati
 If the rights holder needs to revoke rights (talent controversy, contract violation, etc.), they POST a [`revocation-notification`](https://adcontextprotocol.org/schemas/3.0.2/brand/revocation-notification.json) to the buyer's `revocation_webhook`, authenticating with the credentials provided at acquisition time. The notification contains an `idempotency_key` (required, used for deduplication across retries), `rights_id`, `brand_id`, `reason`, and `effective_at` timestamp.
 
 The buyer is responsible for:
-- Deduplicating by `idempotency_key` — the same revocation may be delivered multiple times; see [Push Notifications — Reliability](/dist/docs/3.0.2/building/by-layer/L3/webhooks#reliability) for the canonical dedup contract
+- Deduplicating by `idempotency_key` — the same revocation may be delivered multiple times; see [Push Notifications — Reliability](/dist/docs/3.0.2/building/implementation/webhooks#reliability) for the canonical dedup contract
 - Stopping creative delivery by `effective_at`
 - Removing or replacing affected creatives from active campaigns
 - Ceasing use of generation credentials (providers may also invalidate credentials independently)
@@ -280,7 +280,7 @@ Partial revocation is supported — if `revoked_uses` is present, only those use
 
 Return HTTP `200` immediately upon receiving and validating a revocation notification. The rights holder retries on non-`2xx` responses using exponential backoff (1s, 5s, 30s, 5m, 30m). After 6 failed attempts, the rights holder may escalate through other channels.
 
-All webhook signing follows the AdCP [push notification signing profile](/dist/docs/3.0.2/building/by-layer/L3/webhooks#signature-verification) — RFC 9421 by default (rights agent signs with its `adcp_use: "webhook-signing"` key published at its brand.json `agents[]` entry), with the deprecated HMAC-SHA256 fallback available when the rights holder populates `authentication.credentials` on the webhook registration.
+All webhook signing follows the AdCP [push notification signing profile](/dist/docs/3.0.2/building/implementation/webhooks#signature-verification) — RFC 9421 by default (rights agent signs with its `adcp_use: "webhook-signing"` key published at its brand.json `agents[]` entry), with the deprecated HMAC-SHA256 fallback available when the rights holder populates `authentication.credentials` on the webhook registration.
 
 ## Impression caps and overage
 

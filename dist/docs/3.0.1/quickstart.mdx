@@ -10,7 +10,7 @@ Pick your path. Buyers call the public test agent in 5 minutes. Publishers and s
   <Card title="I'm calling an agent" icon="plug">
     Buyer side. The rest of this page walks through calling the public test agent — no signup, copy-pasteable curl.
   </Card>
-  <Card title="I'm building an agent" icon="server" href="/dist/docs/3.0.1/building/by-layer/L4/build-an-agent">
+  <Card title="I'm building an agent" icon="server" href="/dist/docs/3.0.1/building/build-an-agent">
     Publisher or seller side. Stand up an agent buyers can call.
   </Card>
 </CardGroup>
@@ -169,7 +169,7 @@ Replay the same request (same key, same payload) and the seller returns the orig
 { "idempotency": { "supported": true, "replay_ttl_seconds": 86400 } }
 ```
 
-See the [Security guide](/dist/docs/3.0.1/building/by-layer/L1/security) for the full retry model, including `IDEMPOTENCY_CONFLICT`, `IDEMPOTENCY_EXPIRED`, and UUID v4 guidance for AdCP Verified agents.
+See the [Security guide](/dist/docs/3.0.1/building/implementation/security) for the full retry model, including `IDEMPOTENCY_CONFLICT`, `IDEMPOTENCY_EXPIRED`, and UUID v4 guidance for AdCP Verified agents.
 
 **Response** (IDs will differ on each call):
 
@@ -262,7 +262,7 @@ app.post('/webhooks/adcp/*', async (req, res) => {
 });
 ```
 
-See the [Security guide](/dist/docs/3.0.1/building/by-layer/L1/security) and [Webhooks guide](/dist/docs/3.0.1/building/by-layer/L3/webhooks) for the full verification profile — required headers, covered components, nonce and date windows, and the negative-vector suite the compliance runner exercises.
+See the [Security guide](/dist/docs/3.0.1/building/implementation/security) and [Webhooks guide](/dist/docs/3.0.1/building/implementation/webhooks) for the full verification profile — required headers, covered components, nonce and date windows, and the negative-vector suite the compliance runner exercises.
 
 ## Using the client library
 
@@ -294,11 +294,11 @@ console.log(result.data.products);
 
 ## What's next
 
-- **[Build an Agent](/dist/docs/3.0.1/building/by-layer/L4/build-an-agent)** — use skill files to generate a storyboard-compliant agent with a coding agent
-- **[Validate Your Agent](/dist/docs/3.0.1/building/verification/validate-your-agent)** — test your agent with storyboards and compliance checks
-- **[Compliance Catalog](/dist/docs/3.0.1/building/verification/compliance-catalog)** — the domains and specialisms an agent can claim, and the storyboards that verify each claim
-- **[MCP integration guide](/dist/docs/3.0.1/building/by-layer/L0/mcp-guide)** — transport, sessions, auth details
-- **[A2A integration guide](/dist/docs/3.0.1/building/by-layer/L0/a2a-guide)** — streaming, artifacts, push notifications
+- **[Build an Agent](/dist/docs/3.0.1/building/build-an-agent)** — use skill files to generate a storyboard-compliant agent with a coding agent
+- **[Validate Your Agent](/dist/docs/3.0.1/building/validate-your-agent)** — test your agent with storyboards and compliance checks
+- **[Compliance Catalog](/dist/docs/3.0.1/building/compliance-catalog)** — the domains and specialisms an agent can claim, and the storyboards that verify each claim
+- **[MCP integration guide](/dist/docs/3.0.1/building/integration/mcp-guide)** — transport, sessions, auth details
+- **[A2A integration guide](/dist/docs/3.0.1/building/integration/a2a-guide)** — streaming, artifacts, push notifications
 - **[Task reference](/dist/docs/3.0.1/media-buy/task-reference)** — all available tasks with testable examples
-- **[Error handling](/dist/docs/3.0.1/building/operating/transport-errors)** — error codes, recovery strategies
-- **[Authentication](/dist/docs/3.0.1/building/by-layer/L2/authentication)** — production credential setup
+- **[Error handling](/dist/docs/3.0.1/building/implementation/transport-errors)** — error codes, recovery strategies
+- **[Authentication](/dist/docs/3.0.1/building/integration/authentication)** — production credential setup

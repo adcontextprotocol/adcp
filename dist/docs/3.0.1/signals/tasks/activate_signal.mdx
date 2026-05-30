@@ -21,11 +21,11 @@ The `activate_signal` task handles the entire activation lifecycle, including:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `idempotency_key` | string | Yes | Client-generated unique key for this request. Prevents duplicate activations on retries. MUST be unique per (seller, request) pair. Min 16 chars. See [Idempotency](/dist/docs/3.0.1/building/by-layer/L1/security#idempotency) for normative semantics. |
+| `idempotency_key` | string | Yes | Client-generated unique key for this request. Prevents duplicate activations on retries. MUST be unique per (seller, request) pair. Min 16 chars. See [Idempotency](/dist/docs/3.0.1/building/implementation/security#idempotency) for normative semantics. |
 | `signal_agent_segment_id` | string | Yes | The universal identifier for the signal to activate |
 | `action` | string | No | `"activate"` (default) or `"deactivate"`. Deactivating removes segments from downstream platforms for data governance compliance (GDPR, CCPA). |
 | `destinations` | Destination[] | Yes | Target destination(s) for activation (see Destination Object below) |
-| `account` | [AccountRef](/dist/docs/3.0.1/building/by-layer/L2/accounts-and-agents#account-references) | No | Account for this activation. Associates with a commercial relationship established via `sync_accounts`. |
+| `account` | [AccountRef](/dist/docs/3.0.1/building/integration/accounts-and-agents#account-references) | No | Account for this activation. Associates with a commercial relationship established via `sync_accounts`. |
 | `pricing_option_id` | string | Yes (if signal has pricing options) | The pricing option selected from `pricing_options` in the [`get_signals`](/dist/docs/3.0.1/signals/tasks/get_signals) response. Records the buyer's pricing commitment at activation time. Pass this same value in subsequent `report_usage` calls. |
 
 ### Destination Object
@@ -162,7 +162,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 Immediate response with activation key:
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.1/signals/activate-signal-response.json",
   "message": "Signal successfully activated on Wonderstruck sales agent",
   "context_id": "ctx-signals-123",
   "deployments": [{
@@ -199,7 +199,7 @@ Immediate response with activation key:
 Initial response:
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.1/signals/activate-signal-response.json",
   "message": "Initiating activation of 'Luxury Auto Intenders' on The Trade Desk",
   "context_id": "ctx-signals-123",
   "deployments": [{
@@ -215,7 +215,7 @@ Initial response:
 After polling for completion:
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.1/signals/activate-signal-response.json",
   "message": "Signal successfully activated on The Trade Desk",
   "context_id": "ctx-signals-123",
   "deployments": [{
@@ -353,7 +353,7 @@ Authorization: Bearer secret-token
 }
 ```
 
-See **[Webhooks](/dist/docs/3.0.1/building/by-layer/L3/webhooks)** for complete details on webhook configuration and reliability.
+See **[Webhooks](/dist/docs/3.0.1/building/implementation/webhooks)** for complete details on webhook configuration and reliability.
 
 ## Scenarios
 
@@ -363,7 +363,7 @@ See **[Webhooks](/dist/docs/3.0.1/building/by-layer/L3/webhooks)** for complete 
 **Complete Response**:
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.1/signals/activate-signal-response.json",
   "message": "I've initiated activation of 'Luxury Automotive Context' on PubMatic for account brand-456-pm. This typically takes about 60 minutes. I'll monitor the progress and notify you when it's ready to use.",
   "context_id": "ctx-signals-def456",
   "deployments": [{
@@ -382,7 +382,7 @@ See **[Webhooks](/dist/docs/3.0.1/building/by-layer/L3/webhooks)** for complete 
 **Complete Response**:
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.1/signals/activate-signal-response.json",
   "message": "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately with the activation key provided. The activation completed faster than expected - just 52 minutes.",
   "context_id": "ctx-signals-def456",
   "deployments": [{
@@ -405,7 +405,7 @@ See **[Webhooks](/dist/docs/3.0.1/building/by-layer/L3/webhooks)** for complete 
 **Complete Response**:
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.1/signals/activate-signal-response.json",
   "message": "Signal successfully activated on Wonderstruck sales agent. Use the key-value pair in your targeting configuration.",
   "context_id": "ctx-signals-ghi789",
   "deployments": [{
@@ -428,7 +428,7 @@ See **[Webhooks](/dist/docs/3.0.1/building/by-layer/L3/webhooks)** for complete 
 **Complete Response**:
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.1/signals/activate-signal-response.json",
   "message": "Successfully activated 'Luxury Automotive Context' on PubMatic, but noted some configuration issues. The signal is live and ready to use, though performance may be sub-optimal until the account settings are updated.",
   "context_id": "ctx-signals-def456",
   "deployments": [{
@@ -455,7 +455,7 @@ Warnings about suboptimal configuration are conveyed in the `message` field. The
 **Complete Response**:
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.1/signals/activate-signal-response.json",
   "message": "I couldn't activate the signal on PubMatic. Your account 'brand-456-pm' doesn't have permission to use Peer39 data. Please contact your PubMatic account manager to enable Peer39 access, then we can try again.",
   "context_id": "ctx-signals-def456",
   "errors": [

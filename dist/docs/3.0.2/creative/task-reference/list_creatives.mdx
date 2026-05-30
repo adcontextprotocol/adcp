@@ -45,7 +45,7 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 | `include_items` | boolean | No | Include items for multi-asset formats like carousels and native ads (default: false) |
 | `include_variables` | boolean | No | Include dynamic content variable definitions (default: false) |
 | `include_pricing` | boolean | No | Include `pricing_options` on each creative (default: false). Requires `account`. |
-| `account` | [AccountRef](/dist/docs/3.0.2/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference for pricing. When provided with `include_pricing`, the agent returns `pricing_options` from this account's rate card on each creative. |
+| `account` | [AccountRef](/dist/docs/3.0.2/building/integration/accounts-and-agents#account-references) | No | Account reference for pricing. When provided with `include_pricing`, the agent returns `pricing_options` from this account's rate card on each creative. |
 | `fields` | array | No | Specific fields to return (omit for all fields). Includes `"pricing_options"` for sparse selection. |
 
 ## Filtering options
