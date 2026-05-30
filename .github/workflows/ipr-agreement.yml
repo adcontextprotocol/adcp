@@ -40,7 +40,7 @@ jobs:
       # script's API calls. Same pattern as ipr-check-callable.yml.
       - name: Mint AAO IPR Bot installation token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@v3.2.0
         with:
           app-id: ${{ secrets.IPR_APP_ID }}
           private-key: ${{ secrets.IPR_APP_PRIVATE_KEY }}
@@ -48,7 +48,7 @@ jobs:
           repositories: adcp
 
       - name: Checkout default branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
         with:
           ref: main
           fetch-depth: 1

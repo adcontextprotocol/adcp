@@ -7,6 +7,7 @@
   "enum": [
     "create_media_buy",
     "update_media_buy",
+    "media_buy_delivery",
     "sync_creatives",
     "activate_signal",
     "get_signals",
@@ -30,6 +31,7 @@
   "enumDescriptions": {
     "create_media_buy": "Media-buy domain: Create a new advertising campaign with one or more packages",
     "update_media_buy": "Media-buy domain: Update campaign settings, package configuration, or delivery parameters",
+    "media_buy_delivery": "Media-buy domain: Persistent delivery-report webhook event emitted for a configured reporting_webhook. The inner result uses media-buy-delivery-webhook-result.json.",
     "sync_creatives": "Media-buy domain: Sync creative assets to publisher's library with upsert semantics",
     "activate_signal": "Signals domain: Activate an audience signal on a specific platform or account",
     "get_signals": "Signals domain: Discover available audience signals based on natural language description",

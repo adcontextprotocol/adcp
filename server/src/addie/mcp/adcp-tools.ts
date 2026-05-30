@@ -470,7 +470,8 @@ const askAboutAdcpTaskTool: AddieTool = {
 const callAdcpTaskTool: AddieTool = {
   name: 'call_adcp_task',
   description: [
-    'Execute any AdCP protocol task against an agent. For uncommon tasks or when unsure about parameters, call ask_about_adcp_task first.',
+    'Execute any registered AdCP protocol task against an agent. For uncommon tasks or when unsure about parameters, call ask_about_adcp_task first.',
+    'Does NOT include capability discovery — use the `get_adcp_capabilities` tool directly for that (it is not a task).',
     '',
     'Two rules a search round-trip cannot rescue you from after a mutating call:',
     '• idempotency_key: REQUIRED on every mutating task (UUID). Same key on retry replays the same response. Generating a fresh UUID after a failed attempt is how you double-book.',
@@ -520,7 +521,7 @@ const getAdcpCapabilitiesTool: AddieTool = {
   description:
     'Discover an agent\'s AdCP protocol support and capabilities. Returns supported tasks, domains, features, and configuration.',
   usage_hints:
-    'use when the user wants to discover what an agent can do, check supported features, or understand agent capabilities before using other tasks',
+    'use to discover an agent\'s supported tasks and features — call this tool directly, NOT via call_adcp_task',
   input_schema: {
     type: 'object',
     properties: {
@@ -810,6 +811,13 @@ export function createAdcpToolHandlers(
 
     if (!agentUrl) return '**Error:** agent_url is required.';
     if (!task) return '**Error:** task is required.';
+
+    // Defense-in-depth: fires if the MCP layer skips enum validation.
+    // In well-formed requests this branch is unreachable because 'get_adcp_capabilities'
+    // is not in TASK_NAMES and will be rejected by the input schema first.
+    if (task === 'get_adcp_capabilities') {
+      return '**Error:** `get_adcp_capabilities` is a protocol-layer handshake, not an AdCP task — use the dedicated `get_adcp_capabilities` tool directly (it takes only `agent_url`, no `task` parameter).';
+    }
 
     const meta = ADCP_TASK_REGISTRY[task];
     if (!meta) {

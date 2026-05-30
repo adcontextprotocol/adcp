@@ -123,6 +123,8 @@ export interface PointEntry {
   created_at: string;
 }
 
+export type AwardPointsResult = 'awarded' | 'duplicate' | 'missing_user';
+
 export interface ListPeopleOptions {
   search?: string;
   expertise?: string;
@@ -638,14 +640,24 @@ export class CommunityDatabase {
   // POINTS & BADGES
   // =====================================================
 
-  async awardPoints(userId: string, action: string, points: number, referenceId?: string, referenceType?: string): Promise<void> {
-    await query(
+  async awardPoints(userId: string, action: string, points: number, referenceId?: string, referenceType?: string): Promise<AwardPointsResult> {
+    const userResult = await query<{ exists: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM users WHERE workos_user_id = $1) AS exists`,
+      [userId],
+    );
+    if (!userResult.rows[0]?.exists) {
+      logger.warn({ userId, action, referenceId, referenceType }, 'Skipped community point award for missing user');
+      return 'missing_user';
+    }
+
+    const result = await query(
       `INSERT INTO community_points (workos_user_id, action, points, reference_id, reference_type)
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (workos_user_id, action, reference_id) WHERE reference_id IS NOT NULL
        DO NOTHING`,
       [userId, action, points, referenceId || null, referenceType || null]
     );
+    return (result.rowCount ?? 0) > 0 ? 'awarded' : 'duplicate';
   }
 
   async getUserPoints(userId: string): Promise<number> {
@@ -760,6 +772,15 @@ export class CommunityDatabase {
    * Uses a date-based dedup to prevent multiple awards on the same day.
    */
   async awardDailyVisit(userId: string): Promise<boolean> {
+    const userResult = await query<{ exists: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM users WHERE workos_user_id = $1) AS exists`,
+      [userId],
+    );
+    if (!userResult.rows[0]?.exists) {
+      logger.warn({ userId }, 'Skipped daily visit point award for missing user');
+      return false;
+    }
+
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
     const result = await query(
       `INSERT INTO community_points (workos_user_id, action, points, reference_id, reference_type)

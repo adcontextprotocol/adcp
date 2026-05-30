@@ -19,7 +19,7 @@ jobs:
     # headroom without masking real regressions.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -50,11 +50,20 @@ jobs:
       - name: Repo unit tests
         run: npm run test:unit
 
+      - name: Storyboard raw-mode-required lint tests
+        run: npm run test:storyboard-raw-mode-required
+
+      - name: Storyboard upstream-traffic path lint tests
+        run: npm run test:storyboard-upstream-traffic-paths
+
       - name: Schema link plugin tests
         run: npm run test:schema-links
 
       - name: Validate schemas
         run: npm run test:schemas && npm run test:json-schema && npm run test:extension-schemas && npm run test:composed
+
+      - name: Canonical reference resolver fixtures
+        run: npm run test:canonical-reference-resolver
 
       - name: OpenAPI freshness (static/openapi/registry.yaml regenerated from Zod source)
         # generate-openapi.ts transitively imports auth middleware which
@@ -112,7 +121,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://ci_runner:ci_runner_throwaway_no_secret_value@127.0.0.1:5432/adcp_test
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
-import { existsSync, readFileSync, rmSync } from 'fs';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { Buffer } from 'buffer';
 import sharp from 'sharp';
 import { Reader } from '@contentauth/c2pa-node';
@@ -9,7 +10,7 @@ import { finalizePortrait, compositeAIBadge } from '../../src/services/portrait-
 import { resetC2PASignerCache } from '../../src/services/c2pa.js';
 import * as errorNotifier from '../../src/addie/error-notifier.js';
 
-const FIXTURE_DIR = join(__dirname, '..', 'fixtures', 'c2pa');
+const FIXTURE_DIR = mkdtempSync(join(tmpdir(), 'adcp-c2pa-portrait-'));
 const CERT_PATH = join(FIXTURE_DIR, 'aao-c2pa.cert.pem');
 const KEY_PATH = join(FIXTURE_DIR, 'aao-c2pa.key.pem');
 
@@ -18,8 +19,6 @@ let CERT_B64: string;
 let KEY_B64: string;
 
 beforeAll(async () => {
-  if (existsSync(CERT_PATH)) rmSync(CERT_PATH);
-  if (existsSync(KEY_PATH)) rmSync(KEY_PATH);
   execFileSync('bash', [join(__dirname, '..', '..', '..', 'scripts', 'generate-c2pa-cert.sh'), FIXTURE_DIR], {
     stdio: 'pipe',
   });
@@ -33,6 +32,10 @@ beforeAll(async () => {
   })
     .png()
     .toBuffer();
+});
+
+afterAll(() => {
+  rmSync(FIXTURE_DIR, { recursive: true, force: true });
 });
 
 const originalEnv = {

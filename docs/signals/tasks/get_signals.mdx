@@ -1,6 +1,6 @@
 ---
 title: get_signals
-description: "get_signals is the AdCP task for discovering audience and contextual signals. Search by natural language or signal ID, filter by platform and CPM, and get real-time deployment status with activation keys."
+description: "get_signals is the AdCP task for discovering audience and contextual signals. Search by natural language or signal reference, filter by platform and CPM, and get real-time deployment status with activation keys."
 "og:title": "AdCP — get_signals"
 ---
 
@@ -18,13 +18,15 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `discovery_mode` | string | No (v3.1+ SHOULD include) | `"brief"` (default) or `"wholesale"`. `"brief"`: existing behavior — `signal_spec` or `signal_ids` is required, agent performs inference/RAG. `"wholesale"`: raw wholesale signals feed enumeration — `signal_spec` and `signal_ids` MUST NOT be provided; agent returns its full priced signals feed, paginated, scoped by `filters` / `account` / `destinations` / `countries` when present. **Timing semantics:** `"wholesale"` is a wholesale signals feed read — agents SHOULD respond synchronously and MUST NOT route through the async/Submitted arm; partial completion uses [`incomplete[]`](#incomplete-array). Agents receiving requests from pre-v3.1 clients without `discovery_mode` MUST default to `"brief"`. Probe support via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) (`signals.discovery_modes`). |
-| `signal_spec` | string | Conditional | Natural language description of the desired signals. Required when `discovery_mode` is `"brief"` (and `signal_ids` is absent). MUST NOT be provided when `discovery_mode` is `"wholesale"`. |
-| `signal_ids` | SignalID[] | Conditional | Specific signals to look up by data provider and ID. Required when `discovery_mode` is `"brief"` (and `signal_spec` is absent). MUST NOT be provided when `discovery_mode` is `"wholesale"`. |
+| `discovery_mode` | string | No (v3.1+ SHOULD include) | `"brief"` (default) or `"wholesale"`. `"brief"`: existing behavior — `signal_spec`, `signal_refs`, or deprecated `signal_ids` is required, agent performs inference/RAG. `"wholesale"`: raw wholesale signals feed enumeration — `signal_spec`, `signal_refs`, and `signal_ids` MUST NOT be provided; agent returns its full priced signals feed, paginated, scoped by `filters` / `account` / `destinations` / `countries` when present. **Timing semantics:** `"wholesale"` is a wholesale signals feed read — agents SHOULD respond synchronously and MUST NOT route through the async/Submitted arm; partial completion uses [`incomplete[]`](#incomplete-array). Agents receiving requests from pre-v3.1 clients without `discovery_mode` MUST default to `"brief"`. Probe support via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) (`signals.discovery_modes`). |
+| `signal_spec` | string | Conditional | Natural language description of the desired signals. Required when `discovery_mode` is `"brief"` and both `signal_refs` and legacy `signal_ids` are absent. MUST NOT be provided when `discovery_mode` is `"wholesale"`. |
+| `signal_refs` | SignalRef[] | Conditional | Specific signals to look up by reference. Required when `discovery_mode` is `"brief"` and `signal_spec` is absent. MUST NOT be provided when `discovery_mode` is `"wholesale"`. |
+| `signal_ids` | SignalID[] | Conditional | **Deprecated.** Use `signal_refs` instead. Legacy specific-signal lookup for older clients. MUST NOT be provided when `discovery_mode` is `"wholesale"`. |
 | `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account for this request. When provided, the signals agent returns per-account pricing options if configured. In wholesale mode, this is the rate-card scope; when omitted the agent returns default rate-card pricing or omits `pricing_options` entirely. |
 | `destinations` | Destination[] | No | Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. See Destination Object below. |
 | `countries` | string[] | No | Countries where signals will be used (ISO 3166-1 alpha-2 codes) |
 | `filters` | Filters | No | Filters to refine results (see Filters Object below). In wholesale mode, filters constrain the enumerated signals feed (e.g., `filters.data_providers: ["acme-data"]` returns only that provider's signals). |
+| `fields` | string[] | No | Specific signal fields to include in the response, aligned with `get_products.fields`. Required identity and activation fields are always included when required by the response schema. Use for progressive disclosure of rich definition metadata such as `taxonomy`, `data_sources`, `methodology`, `segmentation_criteria`, `criteria_url`, `onboarder`, `modeling`, `countries`, `consent_basis`, `restricted_attributes`, `policy_categories`, and `data_subject_rights`. Agents SHOULD honor requested fields for exact lookup, refinement, and small custom-signal result sets when available; broad discovery and wholesale pages MAY still return compact pointers to provider-published definitions or disclosure URLs. |
 | `if_wholesale_feed_version` | string | No | Opaque `wholesale_feed_version` token from a prior `get_signals` response. When provided, the agent compares against its current wholesale signals feed version for the caller's `cache_scope` and MAY return `unchanged: true` (with `signals` omitted) if nothing has changed. See [Wholesale feed versioning](#wholesale-feed-versioning) and [Cache layering](#cache-layering). |
 | `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_wholesale_feed_version`. Evaluation order: `if_wholesale_feed_version` mismatch → full payload; `if_wholesale_feed_version` matches but `if_pricing_version` mismatches → full payload (so the caller sees updated `pricing_options`); both match → agent MAY return `unchanged: true`. Agents that don't track pricing separately ignore this. |
 | `max_results` | number | No | **Deprecated.** Use `pagination.max_results` instead. When both are present, `pagination.max_results` takes precedence. Will be removed in AdCP 4.0. |
@@ -61,6 +63,10 @@ Each deployment target uses a `type` field to discriminate between platform-base
 | `max_cpm` | number | No | Maximum CPM price filter. Excludes signals where all CPM-based pricing options exceed this value. Signals without CPM-based pricing options are not affected by this filter. |
 | `min_coverage_percentage` | number | No | Minimum coverage requirement |
 
+<Note>
+`catalog_types`, the deprecated `catalog_signals` capability flag, and the deprecated `signal_id.source: "catalog"` value are legacy wire terms. In new prose, read them as provider-published signal definitions in adagents.json `signals[]`. Existing 3.x agents may continue to accept or emit them for compatibility, but new callers SHOULD use `signal_ref` and MUST NOT require `signals.features.catalog_signals` before using the Signals protocol.
+</Note>
+
 ## Response Structure
 
 All AdCP responses include:
@@ -78,12 +84,67 @@ The response structure is identical across protocols, with only the transport wr
 {
   "signals": [
     {
+      "signal_ref": {
+        "scope": "data_provider",
+        "data_provider_domain": "string",
+        "signal_id": "string"
+      },
       "signal_agent_segment_id": "string",
       "name": "string",
       "description": "string",
       "signal_type": "string",
       "data_provider": "string",
-      "coverage_percentage": "number",
+      "coverage_percentage": "number (optional, deprecated)",
+      "coverage_forecast": {
+        "method": "estimate",
+        "forecast_range_unit": "availability",
+        "scope": {
+          "kind": "inventory",
+          "label": "network price-priority inventory"
+        },
+        "bucket_semantics": "exclusive",
+        "bucket_completeness": "partial",
+        "points": [
+          {
+            "label": "not present",
+            "dimensions": [
+              {
+                "kind": "signal",
+                "signal_ref": {
+                  "scope": "data_provider",
+                  "data_provider_domain": "weather-data.example",
+                  "signal_id": "weather"
+                },
+                "signal_value": null,
+                "presence": "absent"
+              }
+            ],
+            "metrics": {
+              "impressions": { "mid": 280000 },
+              "coverage_rate": { "mid": 0.28 }
+            }
+          },
+          {
+            "label": "hot",
+            "dimensions": [
+              {
+                "kind": "signal",
+                "signal_ref": {
+                  "scope": "data_provider",
+                  "data_provider_domain": "weather-data.example",
+                  "signal_id": "weather"
+                },
+                "signal_value": "hot",
+                "presence": "present"
+              }
+            ],
+            "metrics": {
+              "impressions": { "mid": 180000 },
+              "coverage_rate": { "mid": 0.18 }
+            }
+          }
+        ]
+      },
       "deployments": [
         {
           "type": "agent",
@@ -109,25 +170,61 @@ The response structure is identical across protocols, with only the transport wr
 }
 ```
 
+<Note>
+`get_signals` is a discovery and availability surface, not a requirement to
+inline every field from the authoritative signal definition. For broad search
+results and wholesale feed pages, signal agents SHOULD keep each listing
+compact and use stable references plus cacheable disclosure pointers for large
+definition resources. Buyers can dereference provider-published definitions
+from `signal_ref`, `taxonomy.ref`, `criteria_url`, and
+`modeling.disclosure.jurisdictions[].disclosure_url`, using `taxonomy.etag` or
+the provider's own HTTP validators to avoid repeated downloads.
+</Note>
+
+### Definition field inclusion
+
+Buyers that need richer review context in the same call can set `fields`. This
+uses the same response-projection pattern as `get_products.fields`, rather than
+introducing a separate lookup task.
+
+Required identity and activation fields are always included when required by the
+response schema. Additional values request optional listing fields or rich
+definition metadata inline, including `taxonomy`, `data_sources`, `methodology`,
+`segmentation_criteria`, `criteria_url`, `refresh_cadence`, `lookback_window`,
+`onboarder`, `modeling`, `audience_expansion`, `device_expansion`, `countries`,
+`consent_basis`, `restricted_attributes`, `policy_categories`, `art9_basis`, and
+`data_subject_rights`.
+
+Agents SHOULD honor requested fields for exact lookup, refinement, and small
+custom-signal result sets when the fields are available. For broad discovery and
+wholesale pages, agents MAY still return compact listings with pointers to
+provider-published definitions, taxonomy documents, criteria pages, and
+disclosure URLs when inlining the requested fields would make the page too
+large. This keeps static signals cacheable through `adagents.json` while letting
+custom or brief-specific signals return deeper inline context when useful.
+
 ### Field Descriptions
 
 - **signals**: Array of matching signals
-  - **signal_agent_segment_id**: Unique identifier for the signal
+  - **signal_ref**: Canonical signal reference. Use `scope: "data_provider"` for signals resolved through adagents.json `signals[]`, `scope: "signal_source"` for source-native signals that are not published in adagents.json `signals[]`, and `scope: "product"` only in product-contextual responses. New responses SHOULD include this field.
+  - **signal_id**: Deprecated legacy SignalId object. New clients should read `signal_ref`; during the migration window, older responses may include only `signal_id`.
+  - **signal_agent_segment_id**: Opaque signal handle issued by this signal source. Use it verbatim for `activate_signal`; do not treat it as a globally portable signal ID. For package-level `signal_targeting_groups`, `signal_ref` is the buy-time identity and this handle is echoed only when the selected product option exposes it as a separate execution handle.
   - **name**: Human-readable signal name
   - **description**: Detailed signal description
   - **signal_type**: Type of signal. One of:
     - `marketplace` — resold third-party segment (provider authorization verifiable via the provider's `adagents.json`)
-    - `owned` — first-party segment derived from data the signal agent directly owns
-    - `custom` — agent-native segment built on demand from models, composites, or buyer inputs (not attributable to a standing upstream provider)
-  - **data_provider**: Name of the data provider
-  - **coverage_percentage**: Percentage of audience coverage
+    - `owned` — first-party segment derived from data the signal source directly owns
+    - `custom` — source-native segment built on demand from models, composites, or buyer inputs (not attributable to a standing upstream provider)
+  - **data_provider**: Human-readable source name when applicable. For `scope: "data_provider"` signals this is the data provider; for `scope: "signal_source"` signals it may identify the signal source or proprietary origin.
+  - **coverage_percentage**: Optional deprecated legacy scalar percentage of audience coverage. Use only as a fallback for clients that do not consume `coverage_forecast`. When **coverage_forecast** is present, `coverage_forecast` is authoritative for signal-level discovery and this scalar is fallback-only. If `coverage_forecast` includes an absent bucket over the same denominator, `coverage_percentage` should align with `100 * (1 - absent coverage_rate.mid)`.
+  - **coverage_forecast**: Optional forecast-shaped availability guidance for the signal. `scope` declares the denominator, `bucket_semantics` declares whether returned value buckets are `exclusive` or `overlapping`, and `bucket_completeness` declares whether the returned buckets are a full denominator partition or a partial histogram. Each point can use a `kind: "signal"` dimension with canonical `signal_ref`, `presence: "present"` for any present value, `presence: "present"` plus `signal_value` for a specific value bucket, or `presence: "absent"` plus `signal_value: null` for the not-present bucket. `metrics.coverage_rate` is a 0.0-1.0 fraction of the declared scope.
   - **deployments**: Array of destination deployments
     - **agent_url**: URL identifying the destination agent
     - **account**: Account identifier if applicable
     - **is_live**: Whether signal is currently active on this deployment
     - **activation_key**: The key to use for targeting (see Activation Key below). **Only present when `is_live=true` and the authenticated caller has access to this deployment.**
     - **estimated_activation_duration_minutes**: Time to activate if not live
-  - **pricing_options**: Array of pricing options for this signal. Pass the selected `pricing_option_id` in `report_usage` for billing verification.
+  - **pricing_options**: Array of pricing options for this signal when it has an incremental price. Pass the selected `pricing_option_id` in `report_usage` or package-level `signal_targeting_groups` for billing verification. Omitted when pricing is unavailable to the caller, bundled into the destination product, or has no incremental cost.
     - **pricing_option_id**: Unique identifier for this pricing option
     - **model**: Pricing model — `cpm`, `percent_of_media`, `flat_fee`, `per_unit`, or `custom`
     - `model: "cpm"` — `cpm` (number, cost per thousand impressions), `currency` (ISO 4217)
@@ -136,7 +233,7 @@ The response structure is identical across protocols, with only the transport wr
     - `model: "per_unit"` — `unit` (what is counted), `unit_price` (cost per one unit), `currency` (ISO 4217)
     - `model: "custom"` — `description` (human-readable), `metadata` (structured parameters), `currency` (optional). Escape hatch for performance kickers, tiered volume, hybrid formulas, or any construct the standard models cannot express. Buyers SHOULD route custom pricing through operator review before commitment.
 
-Select the pricing option that matches your billing model and pass its `pricing_option_id` in `report_usage` for billing verification. If a signal offers multiple models (e.g., CPM and flat fee), choose based on your expected delivery volume and campaign structure.
+Select the pricing option that matches your billing model. For direct signal activation, pass its `pricing_option_id` in `report_usage` for billing verification; for seller-offered signals selected on a media product, pass it in package-level `targeting_overlay.signal_targeting_groups.groups[].signals[].pricing_option_id`. If a signal offers multiple models (e.g., CPM and flat fee), choose based on your expected delivery volume and campaign structure.
 
 ### Response Metadata
 
@@ -215,17 +312,45 @@ Because the authenticated caller matches the deployment target, the response inc
   "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
   "signals": [
     {
-      "signal_id": {
-        "source": "catalog",
-        "data_provider_domain": "experian.com",
-        "id": "luxury_auto_intenders"
+      "signal_ref": {
+        "scope": "data_provider",
+        "data_provider_domain": "pinnacle-data.example",
+        "signal_id": "luxury_auto_intenders"
       },
       "signal_agent_segment_id": "luxury_auto_intenders",
       "name": "Luxury Automotive Intenders",
       "description": "High-income individuals researching luxury vehicles",
       "signal_type": "marketplace",
-      "data_provider": "Experian",
-      "coverage_percentage": 12,
+      "data_provider": "Pinnacle Data",
+      "coverage_forecast": {
+        "method": "estimate",
+        "forecast_range_unit": "availability",
+        "scope": {
+          "kind": "inventory",
+          "label": "eligible destination inventory"
+        },
+        "bucket_semantics": "exclusive",
+        "bucket_completeness": "partial",
+        "points": [
+          {
+            "label": "present",
+            "dimensions": [
+              {
+                "kind": "signal",
+                "signal_ref": {
+                  "scope": "data_provider",
+                  "data_provider_domain": "pinnacle-data.example",
+                  "signal_id": "luxury_auto_intenders"
+                },
+                "presence": "present"
+              }
+            ],
+            "metrics": {
+              "coverage_rate": { "mid": 0.12 }
+            }
+          }
+        ]
+      },
       "deployments": [
         {
           "type": "agent",
@@ -253,7 +378,7 @@ Because the authenticated caller matches the deployment target, the response inc
 
 ### MCP Response - Multiple Pricing Options
 
-Some signals offer multiple pricing models. The buyer selects one and passes its `pricing_option_id` in `report_usage`:
+Some signals offer multiple pricing models. The buyer selects one and passes its `pricing_option_id` in `report_usage` for direct signal usage or in package-level `signal_targeting_groups` when the signal is selected on a media buy:
 
 ```json
 {
@@ -265,10 +390,10 @@ Some signals offer multiple pricing models. The buyer selects one and passes its
   "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
   "signals": [
     {
-      "signal_id": {
-        "source": "catalog",
+      "signal_ref": {
+        "scope": "data_provider",
         "data_provider_domain": "acmedata.com",
-        "id": "eco_conscious_shoppers"
+        "signal_id": "eco_conscious_shoppers"
       },
       "signal_agent_segment_id": "eco_conscious_shoppers",
       "name": "Eco-Conscious Shoppers",
@@ -360,10 +485,10 @@ A buyer with credentials for both The Trade Desk and Amazon DSP receives keys fo
   "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
   "signals": [
     {
-      "signal_id": {
-        "source": "catalog",
+      "signal_ref": {
+        "scope": "data_provider",
         "data_provider_domain": "experian.com",
-        "id": "luxury_auto_intenders"
+        "signal_id": "luxury_auto_intenders"
       },
       "signal_agent_segment_id": "luxury_auto_intenders",
       "name": "Luxury Automotive Intenders",
@@ -470,6 +595,11 @@ A2A returns results as artifacts with the same data structure:
             "context_id": "ctx-signals-123",
             "signals": [
               {
+                "signal_ref": {
+                  "scope": "data_provider",
+                  "data_provider_domain": "experian.com",
+                  "signal_id": "luxury_auto_intenders"
+                },
                 "signal_agent_segment_id": "luxury_auto_intenders",
                 "name": "Luxury Automotive Intenders",
                 "description": "High-income individuals researching luxury vehicles",
@@ -547,10 +677,10 @@ Discover all available deployments across platforms:
   "cache_scope": "public",
   "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
   "signals": [{
-    "signal_id": {
-      "source": "catalog",
+    "signal_ref": {
+      "scope": "data_provider",
       "data_provider_domain": "peer39.com",
-      "id": "peer39_luxury_auto"
+      "signal_id": "peer39_luxury_auto"
     },
     "signal_agent_segment_id": "peer39_luxury_auto",
     "name": "Luxury Automotive Context",
@@ -611,19 +741,22 @@ Discover all available deployments across platforms:
 
 - **context_id** (string): Context identifier for session persistence
 - **signals** (array): Array of matching signals
-  - **signal_agent_segment_id** (string): Universal identifier for the signal
+  - **signal_agent_segment_id** (string): Opaque signal handle issued by this signal source. Use it verbatim for `activate_signal`; do not treat it as a globally portable signal ID. For media-buy signal groups, `signal_ref` is the buy-time identity and this handle is echoed only when the selected product option exposes it as a separate execution handle.
   - **name** (string): Human-readable signal name
   - **description** (string): Detailed signal description
-  - **signal_type** (string): `marketplace` (resold third-party), `owned` (agent's first-party data), or `custom` (agent-native segment built on demand)
-  - **data_provider** (string): Provider of the signal data
-  - **coverage_percentage** (number): Estimated reach percentage
+  - **signal_type** (string): `marketplace` (resold third-party), `owned` (signal source first-party data), or `custom` (source-native segment built on demand)
+  - **data_provider** (string, optional): Human-readable source/provider name when applicable
+  - **coverage_percentage** (number, optional, deprecated): Legacy scalar estimated reach percentage. Use only as a fallback when `coverage_forecast` is absent or unsupported by the client.
+  - **coverage_forecast** (object, optional): Forecast-shaped coverage breakdown with an explicit denominator and availability points. Use `presence: "present"` with omitted `signal_value` for an aggregate "any present value" bucket; add `signal_value` only when the row is for a specific value. Use `bucket_semantics: "exclusive"` when returned buckets do not overlap, or `"overlapping"` when multi-value signals can make returned rates sum above 1.0. Use `bucket_completeness: "complete"` only when the returned buckets cover the declared denominator; otherwise use `"partial"` and buyers must treat omitted share as undisclosed, other, or unsupported buckets.
+
+Use `coverage_forecast` as the authoritative field for signal-first discovery: "how much inventory has this signal or its values?" Use product or proposal forecasts with `kind: "signal"` dimensions as the authoritative surface for product-specific planning: "how does this signal restrict this product's baseline availability?" Bucket-specific filtering is client-side for now; request filters such as `min_coverage_percentage` still use the legacy scalar.
   - **deployments** (array): Platform-specific deployment information
     - **platform** (string): Target platform name
     - **account** (string, nullable): Specific account if account-specific
     - **is_live** (boolean): Whether signal is currently active
     - **activation_key** (object): The key to use for targeting. Only present when `is_live=true` and the caller has access. See Activation Key Object above.
     - **estimated_activation_duration_minutes** (number, optional): Time to activate if not live
-  - **pricing_options** (array): Array of pricing options available for this signal. Select one and pass its `pricing_option_id` in `report_usage`.
+  - **pricing_options** (array): Array of pricing options available for this signal when it has an incremental price. Select one and pass its `pricing_option_id` in `report_usage` or package-level `signal_targeting_groups`.
     - **pricing_option_id** (string): Unique identifier for this pricing option
     - **model** (string): Pricing model — `cpm`, `percent_of_media`, `flat_fee`, `per_unit`, or `custom`
 
@@ -652,9 +785,21 @@ Discover all available deployments across platforms:
 5. **Activation Required**: If `is_live` is false, use the `activate_signal` task
 6. **The message field** provides a quick summary of the most relevant findings
 
+## Seller-offered signals on media products
+
+A sales agent that owns or is authorized to apply targeting signals exposes buy-time product eligibility through `get_products`. It can also expose a broader cross-product signal feed through `get_signals` when buyers need discovery or activation before package selection:
+
+- `get_products` declares whether a product has package-level signal targeting. `products[].included_signals` describes non-selectable signals already bundled into or planned into a product. Inline `products[].signal_targeting_options` can carry a product-specific menu, price, activation handle, default, grouping hint, or brief/refine-selected subset; wholesale products can omit inline options and use `get_signals` as the selectable signal feed.
+- `get_signals` optionally returns cross-product signal metadata, including `signal_ref`, `signal_agent_segment_id`, value metadata, and any default or account-scoped `pricing_options`.
+- `create_media_buy` selects the signal for a package in `packages[].targeting_overlay.signal_targeting_groups`, carrying the selected signal `pricing_option_id`, `signal_ref`, and any separate seller execution handle when required.
+
+This gives buyers a product-first buy-time eligibility path without forcing products to duplicate a large wholesale signal feed: use the selected product's inline `signal_targeting_options` when present and `signal_targeting_rules` to determine what may be applied on that package. When a product omits inline options but allows signal targeting, use `get_signals` for candidate discovery and activation metadata, then use `get_products.filters.signal_targeting` or a product-specific `get_products` query to confirm the candidate set is selectable and jointly composable for the intended product before calling `create_media_buy`. When both surfaces include pricing, the product-scoped `signal_targeting_options[].pricing_options` price is authoritative for that product. For product-local signals exposed on both surfaces, `signal_ref.signal_id` in the product option MUST match the seller's `get_signals.signals[].signal_ref.signal_id` for the same signal. `included_signals` is descriptive only and does not make a signal selectable.
+
+For media-buy product targeting, product options and package groups use the same `signal_ref` identity: `scope: "product"` for product-local signal options, `scope: "data_provider"` with `data_provider_domain` for signals defined in published adagents.json `signals[]`, or `scope: "signal_source"` for source-native custom signals that are not published in adagents.json `signals[]`. When a provider-published signal is selected, buyers can verify the seller's authorization by checking the provider's `adagents.json` `authorized_agents` rules for the signal id or tags. The older Signals Protocol `signal_id.source` shape is deprecated and retained only for backwards compatibility.
+
 ## Wholesale signals feed
 
-When a consumer (storefront, federated marketplace, registry) needs to mirror a signals agent's full priced signals feed, set `discovery_mode: "wholesale"` and omit `signal_spec` / `signal_ids`. Wholesale enumeration is symmetric with [`get_products` `buying_mode: "wholesale"`](/docs/media-buy/task-reference/get_products): synchronous, paginated, firm-priced, with partial completion declared via `incomplete[]`.
+When a consumer (storefront, federated marketplace, registry) needs to mirror a signals agent's full priced signals feed, set `discovery_mode: "wholesale"` and omit `signal_spec` / `signal_refs` / deprecated `signal_ids`. Wholesale enumeration is symmetric with [`get_products` `buying_mode: "wholesale"`](/docs/media-buy/task-reference/get_products): synchronous, paginated, firm-priced, with partial completion declared via `incomplete[]`.
 
 ### Request
 
@@ -683,7 +828,7 @@ When a consumer (storefront, federated marketplace, registry) needs to mirror a 
   "wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412",
   "signals": [
     {
-      "signal_id": { "source": "catalog", "data_provider_domain": "acme-data.com", "id": "luxury_auto_intenders" },
+      "signal_ref": { "scope": "data_provider", "data_provider_domain": "acme-data.com", "signal_id": "luxury_auto_intenders" },
       "signal_agent_segment_id": "sigagent_seg_4421",
       "name": "Luxury Auto Intenders",
       "description": "Households researching premium vehicles in the last 30 days.",
@@ -713,7 +858,7 @@ Marketplace signals (`signal_type: "marketplace"`) remain attributable to their 
 
 ### Pricing
 
-`pricing_options[]` MUST be populated for authenticated callers when the agent has firm prices to declare. When `account` is omitted, the agent returns default rate-card pricing or omits `pricing_options[]` (in which case the caller MUST re-query with `account` before composing). Unauthenticated callers MAY receive signal metadata without pricing.
+`pricing_options[]` MUST be populated for authenticated callers when the agent has firm standalone signal prices to declare. When `account` is omitted, the agent returns default rate-card pricing or omits `pricing_options[]` (in which case the caller MUST re-query with `account` or use product-scoped pricing from `get_products` before composing). Unauthenticated callers MAY receive signal metadata without pricing. Signals bundled into a media product or carrying no incremental cost MAY omit `pricing_options[]`.
 
 ### Capability declaration
 
@@ -775,7 +920,7 @@ When `unchanged: true`, `signals[]` MUST be omitted and consumers MUST NOT mutat
   "cache_scope": "public",
   "signals": [
     {
-      "signal_id": { "source": "catalog", "data_provider_domain": "acme-data.com", "id": "luxury_auto_intenders" },
+      "signal_ref": { "scope": "data_provider", "data_provider_domain": "acme-data.com", "signal_id": "luxury_auto_intenders" },
       "signal_agent_segment_id": "sigagent_seg_4421",
       "name": "Luxury Auto Intenders",
       "description": "Households researching premium vehicles in the last 30 days.",
@@ -849,26 +994,26 @@ When the agent cannot complete all work within the caller's `time_budget` (or du
 
 ## Iterative refinement
 
-`get_signals` supports iterative refinement without a separate mode flag. The combination of `signal_spec` and `signal_ids` determines the operation:
+`get_signals` supports iterative refinement without a separate mode flag. The combination of `signal_spec` and `signal_refs` determines the operation:
 
 | Fields provided | Behavior |
 |----------------|----------|
 | `signal_spec` only | Discovery — find signals matching the description |
-| `signal_ids` only | Exact lookup — return specific signals by ID |
-| `signal_ids` + `signal_spec` | Refinement — start from known signals, adjust per the spec |
-| `discovery_mode: "wholesale"` (neither `signal_spec` nor `signal_ids`) | Wholesale — enumerate the agent's full priced signals feed. See [Wholesale signals feed](#wholesale-signals-feed). |
+| `signal_refs` only | Exact lookup — return specific signals by reference |
+| `signal_refs` + `signal_spec` | Refinement — start from known signals, adjust per the spec |
+| `discovery_mode: "wholesale"` (neither `signal_spec` nor `signal_refs`) | Wholesale — enumerate the agent's full priced signals feed. See [Wholesale signals feed](#wholesale-signals-feed). |
 
-To refine previous results, pass back the `signal_id` values from signals you want to keep, and provide an updated `signal_spec` describing what to change:
+To refine previous results, pass back the `signal_ref` values from signals you want to keep, and provide an updated `signal_spec` describing what to change:
 
 ```json
 {
   "$schema": "/schemas/signals/get-signals-request.json",
   "signal_spec": "Same audience but with broader coverage, ideally above 20%",
-  "signal_ids": [
+  "signal_refs": [
     {
-      "source": "catalog",
+      "scope": "data_provider",
       "data_provider_domain": "experian.com",
-      "id": "luxury_auto_intenders"
+      "signal_id": "luxury_auto_intenders"
     }
   ],
   "destinations": [
@@ -891,6 +1036,11 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
   "context_id": "ctx-signals-abc123",
   "signals": [
     {
+      "signal_ref": {
+        "scope": "data_provider",
+        "data_provider_domain": "acme-data.com",
+        "signal_id": "affluent_shoppers"
+      },
       "signal_agent_segment_id": "acme_affluent_shoppers",
       "name": "Affluent Shoppers",
       "description": "Users with demonstrated luxury purchase behavior",
@@ -945,10 +1095,10 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
   "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
   "signals": [
     {
-      "signal_id": {
-        "source": "catalog",
+      "signal_ref": {
+        "scope": "data_provider",
         "data_provider_domain": "experian.com",
-        "id": "premium_auto_shoppers"
+        "signal_id": "premium_auto_shoppers"
       },
       "signal_agent_segment_id": "premium_auto_shoppers",
       "name": "Premium Auto Shoppers",
@@ -1047,7 +1197,8 @@ def generate_signals_message(signals, request):
                 price_commentary = ""
         else:
             price_commentary = ""
-        return f"I found a perfect match: '{signal.name}' from {signal.data_provider} with {signal.coverage_percentage}% coverage. {deployment_status} {price_commentary}"
+        coverage_commentary = f" with {signal.coverage_percentage}% coverage" if getattr(signal, "coverage_percentage", None) is not None else ""
+        return f"I found a perfect match: '{signal.name}' from {signal.data_provider}{coverage_commentary}. {deployment_status} {price_commentary}"
     else:
         return f"I found {len(signals)} signals matching your {extract_key_criteria(request.signal_spec)} criteria. {describe_best_option(best_signal)} {get_pricing_range(signals)}."
 

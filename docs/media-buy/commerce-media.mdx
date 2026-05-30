@@ -45,7 +45,7 @@ The table below maps familiar retail media concepts to their AdCP equivalents.
 | GTIN / SKU selection for promotion | Catalog selectors (`ids`, `gtins`, `tags`) on `Catalog` | [Catalogs](/docs/creative/catalogs) |
 | Sponsored product listing | Product with catalog-rendered creative | [Creative Formats](/docs/creative/formats) |
 | On-site display / video | Product with standard `format_ids` | [Media Products](/docs/media-buy/product-discovery/media-products) |
-| Retailer first-party audience | Brief-based; named segments via `data_provider_signals` | [Targeting](/docs/media-buy/advanced-topics/targeting) |
+| Retailer-owned shopper signal | Brief-based; optional named segments discovered in `signal_targeting_options` and selected with package-level `signal_targeting_groups` | [Targeting](/docs/media-buy/advanced-topics/targeting) |
 | ROAS target / max conversions | `optimization_goals` on package | [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) |
 | Closed-loop measurement | `outcome_measurement` + `conversion_tracking` on product | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
 | Attribution window (14d click, 1d view) | `attribution_window` in delivery response | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
@@ -245,13 +245,17 @@ Homepage takeovers, category sponsorships, seasonal event placements. These high
   ],
   "placements": [
     {
+      "kind": "seller_inline",
       "placement_id": "homepage_hero",
       "name": "Homepage Hero Banner",
+      "mode": "targetable",
       "format_ids": [{ "agent_url": "https://creative.adcontextprotocol.org", "id": "display_970x250" }]
     },
     {
+      "kind": "seller_inline",
       "placement_id": "homepage_sidebar",
       "name": "Homepage Sidebar",
+      "mode": "targetable",
       "format_ids": [{ "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }]
     }
   ],
@@ -305,23 +309,29 @@ In-store is where retail media networks have inventory that no one else can repl
   ],
   "placements": [
     {
+      "kind": "seller_inline",
       "placement_id": "checkout_screen",
       "name": "Checkout Lane Screens",
+      "mode": "targetable",
       "format_ids": [
         { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_1080x1920" },
         { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s" }
       ]
     },
     {
+      "kind": "seller_inline",
       "placement_id": "endcap_screen",
       "name": "Aisle End-Cap Displays",
+      "mode": "targetable",
       "format_ids": [
         { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_1080x1920" }
       ]
     },
     {
+      "kind": "seller_inline",
       "placement_id": "pharmacy_waiting",
       "name": "Pharmacy Waiting Area",
+      "mode": "targetable",
       "format_ids": [
         { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_1080x1920" },
         { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s" }

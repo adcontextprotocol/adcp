@@ -111,15 +111,20 @@ const trainingBuilderAccounts: AccountStore<TrainingCreativeBuilderMeta> = {
 export class TrainingCreativeBuilderPlatform
   implements DecisioningPlatform<TrainingCreativeBuilderConfig, TrainingCreativeBuilderMeta>
 {
-  capabilities = {
+  constructor(private readonly storyboardCompat?: TrainingContext['storyboardCompat']) {}
+
+  get capabilities() {
+    return {
     specialisms: ['creative-template', 'creative-generative'] as const,
     creative_agents: [],
     channels: [] as const,
     pricingModels: ['cpm', 'cpa'] as const,
+    requireOperatorAuth: this.storyboardCompat?.version === '3.0' ? true : false,
     supportedBillings: ['agent', 'operator'] as const,
     compliance_testing: {},
-    config: { strict: false },
-  };
+      config: { strict: false },
+    };
+  }
 
   statusMappers = {};
   accounts: AccountStore<TrainingCreativeBuilderMeta> = trainingBuilderAccounts;

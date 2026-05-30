@@ -1,6 +1,6 @@
 ---
 title: Authentication
-description: "AdCP authentication guide: public vs authenticated operations, bearer token implementation, and credential management for buyer and seller agents."
+description: "AdCP authentication guide: public vs authenticated operations, static credential implementation, and credential management for buyer and seller agents."
 "og:title": "AdCP — Authentication"
 ---
 
@@ -47,25 +47,28 @@ AdCP supports three authentication mechanisms for authenticated operations. The 
 |---|---|---|---|
 | **RFC 9421 request signing** | RECOMMENDED for all authenticated operations | **REQUIRED** for mutating / financial operations | Asymmetric, body-bound, replay-resistant. See [RFC 9421 request signing](/docs/building/by-layer/L1/security#request-signing). |
 | **Mutual TLS (mTLS)** | Permitted for any operation | Permitted as an alternative to 9421 | Transport-layer identity; recommended when the deployment already terminates mTLS at the edge. |
-| **Bearer tokens** | Permitted; effective baseline for 3.0 | **PROHIBITED for mutating / financial operations**; permitted for read / discovery only | Documented sunset for mutating ops — see the [known limitation](/docs/reference/known-limitations). |
+| **Static Authorization credentials (Bearer or Basic)** | Permitted; effective baseline for 3.0 | **PROHIBITED for mutating / financial operations**; permitted for read / discovery only | Shared-secret transport. Bearer is the canonical example; HTTP Basic is also acceptable when sent over TLS and validated on every protected request. Documented sunset for mutating ops — see the [known limitation](/docs/reference/known-limitations). |
 
 <Warning>
-  **3.0 mutating-operation floor.** Until 3.1 lands, Bearer tokens over TLS are the effective floor for mutating operations. Operators handling spend commitments SHOULD ship RFC 9421 request signing before the 3.1 deprecation date to avoid a forced cutover.
+  **3.0 mutating-operation floor.** Until 3.1 lands, static Authorization-header credentials over TLS are the effective floor for mutating operations. Operators handling spend commitments SHOULD ship RFC 9421 request signing before the 3.1 deprecation date to avoid a forced cutover.
 </Warning>
 
-### Bearer tokens (3.0 baseline)
+### Static Authorization credentials (3.0 baseline)
 
 ```
 Authorization: Bearer <token>
+Authorization: Basic <base64(username:password)>
 ```
 
-Tokens may be:
+Bearer tokens may be:
 - **Opaque tokens**: Server-validated strings mapped to agents
 - **JWT tokens**: Self-contained tokens with embedded claims
 
-Implementations MUST enforce TLS 1.2+ on all Bearer-authenticated endpoints. See the [implementation security reference](/docs/building/by-layer/L1/security) for transport requirements.
+HTTP Basic credentials are also a static shared-secret mechanism. They MUST be sent in the `Authorization` header over TLS, and servers MUST validate the credential on every protected request. Basic credentials are not stronger than Bearer tokens; they are accepted as the same conformance class because both carry a pre-provisioned shared secret on the transport.
 
-The credential MUST be carried in the `Authorization` request header per [RFC 6750 §2](https://www.rfc-editor.org/rfc/rfc6750#section-2). Sellers MUST NOT require non-canonical aliases (e.g. `x-adcp-auth`, which appeared in some early MCP-only deployments) and MUST NOT advertise them as the supported header in agent cards, capability responses, or documentation. A seller MAY accept such an alias as a transitional input while it phases out an existing adopter's integration, but `Authorization: Bearer` MUST also be accepted on the same endpoint. Buyer agents and SDKs MUST emit `Authorization: Bearer`; SDK examples and docstrings MUST NOT show alias headers as the canonical form.
+Implementations MUST enforce TLS 1.2+ on all static-credential-authenticated endpoints. See the [implementation security reference](/docs/building/by-layer/L1/security) for transport requirements.
+
+The credential MUST be carried in the `Authorization` request header. Sellers MUST NOT require non-canonical aliases (e.g. `x-adcp-auth`, which appeared in some early MCP-only deployments) and MUST NOT advertise them as the supported header in agent cards, capability responses, or documentation. A seller MAY accept such an alias as a transitional input while it phases out an existing adopter's integration, but `Authorization: Bearer` or `Authorization: Basic` MUST also be accepted on the same endpoint. Buyer agents and SDKs SHOULD emit `Authorization: Bearer` unless a seller explicitly provisions Basic credentials; SDK examples and docstrings MUST NOT show alias headers as the canonical form.
 
 ### RFC 9421 request signing (recommended; required for mutating ops in 3.1+)
 
@@ -102,7 +105,7 @@ For schema definitions, see [`account.json`](https://adcontextprotocol.org/schem
 
 ## Tenant resolution
 
-AdCP resolves tenant from the authenticated principal, not from request payloads. Seller agents map the authenticated identity (bearer token, mTLS client cert, or RFC 9421 key) to the originating buyer's account via their own authorization context. Task payloads never carry tenant identity as a substitute for authentication — when a schema requires a globally-unique resource ID (`plan_id`, `rights_id`, `standards_id`, `event_source_id`, `list_id`) rather than an `account` envelope, the seller resolves ID → tenant via the same authorization context. The authenticated principal must hold access to the referenced resource, and the resource itself carries the brand it was provisioned for; envelope identity on those calls would be redundant and, if it disagreed with the authenticated principal, a spoofing vector.
+AdCP resolves tenant from the authenticated principal, not from request payloads. Seller agents map the authenticated identity (bearer token, Basic credential, mTLS client cert, or RFC 9421 key) to the originating buyer's account via their own authorization context. Task payloads never carry tenant identity as a substitute for authentication — when a schema requires a globally-unique resource ID (`plan_id`, `rights_id`, `standards_id`, `event_source_id`, `list_id`) rather than an `account` envelope, the seller resolves ID → tenant via the same authorization context. The authenticated principal must hold access to the referenced resource, and the resource itself carries the brand it was provisioned for; envelope identity on those calls would be redundant and, if it disagreed with the authenticated principal, a spoofing vector.
 
 Compliance storyboards in the training agent inject envelope identity on these calls as a sandbox routing convention, because the training agent has no authenticated-principal layer of its own — see [Storyboard authoring](/docs/contributing/storyboard-authoring). Production sellers do not require it.
 
@@ -110,7 +113,7 @@ Compliance storyboards in the training agent inject envelope identity on these c
 
 Credentials authenticating the **buyer principal** MUST arrive on the transport's authentication channel and MUST NOT be placed in the task payload — top-level, inside `context`, inside `ext`, or in any other nested location. The transport channel is:
 
-- **Bearer tokens over HTTP** — `Authorization: Bearer <token>` per [RFC 6750 §2](https://www.rfc-editor.org/rfc/rfc6750#section-2).
+- **Static credentials over HTTP** — `Authorization: Bearer <token>` per [RFC 6750 §2](https://www.rfc-editor.org/rfc/rfc6750#section-2), or `Authorization: Basic <base64(username:password)>` when the seller provisions HTTP Basic credentials.
 - **RFC 9421 signed requests** — the `Signature` and `Signature-Input` headers per [RFC 9421 §2](https://www.rfc-editor.org/rfc/rfc9421#section-2). The signature itself is the credential; nothing in the payload authenticates the signer.
 - **MCP and A2A authentication framing** — the transport's authentication descriptor (e.g., MCP's `authInfo`, A2A's `authentication.schemes`). Discovery of the authentication requirement follows [RFC 9728 §3](https://www.rfc-editor.org/rfc/rfc9728#section-3) protected-resource metadata where applicable.
 - **Mutual TLS** — the peer certificate, per the mTLS row in the table above.
@@ -130,7 +133,7 @@ The agency / A2A relay topology (brand → relay → seller) authenticates **und
 
 ## Protocol Configuration
 
-Both MCP and A2A use `Authorization: Bearer <token>` ([RFC 6750 §2](https://www.rfc-editor.org/rfc/rfc6750#section-2)) as the authentication header. Configure your client with:
+Most MCP and A2A integrations use `Authorization: Bearer <token>` ([RFC 6750 §2](https://www.rfc-editor.org/rfc/rfc6750#section-2)) as the authentication header. Configure your client with:
 
 ```json
 {
@@ -143,10 +146,12 @@ Both MCP and A2A use `Authorization: Bearer <token>` ([RFC 6750 §2](https://www
 
 The client library handles adding the `Authorization: Bearer <token>` header to requests.
 
-**Header alias policy by leg.** The two protocol legs differ in what aliases they accept beyond the standard header:
+If a seller explicitly provisions HTTP Basic credentials, the same transport rule applies: send `Authorization: Basic <base64(username:password)>` on every authenticated request over HTTPS.
 
-- **A2A** — `Authorization: Bearer <token>` only. The `x-adcp-auth` custom header is not recognized on the A2A surface; the seller's agent card declares a `bearerAuth` `HTTPAuthSecurityScheme` (see the [A2A guide — Agent Cards](/docs/building/by-layer/L0/a2a-guide#agent-cards)). Sending `x-adcp-auth` on the A2A leg returns HTTP 401.
-- **MCP** — `Authorization: Bearer <token>` (primary). `x-adcp-auth` is accepted as a back-compat alias for integrations predating adcp 4.5.0. New implementations should use the standard header on both legs.
+**Header alias policy by leg.** The two protocol legs differ in what aliases they accept beyond the standard `Authorization` header:
+
+- **A2A** — `Authorization` only. For Bearer credentials, send `Authorization: Bearer <token>` and declare a `bearerAuth` `HTTPAuthSecurityScheme` in the seller's agent card (see the [A2A guide — Agent Cards](/docs/building/by-layer/L0/a2a-guide#agent-cards)). For Basic credentials, send `Authorization: Basic <base64(username:password)>` and declare HTTP Basic. The `x-adcp-auth` custom header is not recognized on the A2A surface.
+- **MCP** — `Authorization` is primary for Bearer and Basic credentials. `x-adcp-auth` is accepted as a back-compat Bearer alias for integrations predating adcp 4.5.0. New implementations should use the standard header on both legs.
 
 <Warning>
 **Sellers migrating to adcp 4.5.0.** If you previously configured `x-adcp-auth` as the A2A leg header via the `a2a_header_name` knob, verify that knob is set to the RFC 6750 default before updating your agent card to declare `bearerAuth` — buyers that have not yet migrated off the legacy header will otherwise receive HTTP 401.

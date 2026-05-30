@@ -780,6 +780,9 @@
     let reviewingContent = null;
     let canReview = false;
     let isAdmin = false;
+    // Set to false once we know the user lacks the Professional+ tier required
+    // to submit content. null = not yet determined.
+    let contentSubmissionEligible = null;
 
     // Initialize
     async function init() {
@@ -1099,6 +1102,14 @@
 
     // Show create modal
     function showCreateModal() {
+      // Membership gate — Professional+ required for content submission.
+      if (contentSubmissionEligible === false) {
+        alert(
+          'Publishing perspectives is a benefit of Professional, Builder, Partner, or Leader membership.\n\n' +
+          'To submit content, upgrade at:\nhttps://agenticadvertising.org/dashboard/membership'
+        );
+        return;
+      }
       editingContent = null;
       document.getElementById('modalTitle').textContent = 'Create Content';
       document.getElementById('contentForm').reset();
@@ -1318,6 +1329,19 @@
 
         if (!response.ok) {
           const err = await response.json();
+          // Detect the Professional+ tier gate (HTTP 403 from the propose endpoint)
+          // and show a persistent upgrade nudge instead of a generic error.
+          if (!id && response.status === 403 && err.message?.includes('/dashboard/membership')) {
+            contentSubmissionEligible = false;
+            closeModal();
+            alert(
+              'Publishing perspectives is a benefit of Professional, Builder, Partner, or Leader membership.\n\n' +
+              'To submit content, upgrade at:\nhttps://agenticadvertising.org/dashboard/membership'
+            );
+            btn.disabled = false;
+            btn.textContent = 'Save';
+            return;
+          }
           throw new Error(err.message || 'Failed to save');
         }
 

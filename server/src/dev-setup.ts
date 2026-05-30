@@ -55,13 +55,31 @@ async function seedDevOrganizations(orgDb: OrganizationDatabase): Promise<void> 
           revenue_tier: devOrg.revenue_tier || undefined,
           membership_tier: (devOrg as any).membership_tier || undefined,
         });
+        if ((devOrg as any).membership_tier) {
+          const pool = getPool();
+          await pool.query(
+            `UPDATE organizations
+             SET subscription_status = 'active',
+                 subscription_canceled_at = NULL
+             WHERE workos_organization_id = $1`,
+            [devOrg.id]
+          );
+        }
         logger.info({ orgId: devOrg.id, name: devOrg.name }, 'Created dev organization');
       } else if ((devOrg as any).membership_tier) {
         // Ensure tier and subscription status are set for paid dev orgs
         const pool = getPool();
         await pool.query(
-          `UPDATE organizations SET membership_tier = $1, subscription_status = 'active'
-           WHERE workos_organization_id = $2 AND (membership_tier IS DISTINCT FROM $1 OR subscription_status IS DISTINCT FROM 'active')`,
+          `UPDATE organizations
+           SET membership_tier = $1,
+               subscription_status = 'active',
+               subscription_canceled_at = NULL
+           WHERE workos_organization_id = $2
+             AND (
+               membership_tier IS DISTINCT FROM $1
+               OR subscription_status IS DISTINCT FROM 'active'
+               OR subscription_canceled_at IS NOT NULL
+             )`,
           [(devOrg as any).membership_tier, devOrg.id]
         );
       }

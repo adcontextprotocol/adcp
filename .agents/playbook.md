@@ -44,12 +44,15 @@ through this lens: **is this worth the tokens it will cost to complete?**
 
 ### How to apply
 
-- **In triage:** default-defer low-value issues, and use the
-  `Evergreen` milestone only for non-versioned work that still matters
-  later. Closing issues is a human call; triage should route, clarify,
-  defer, or leave an implementation brief. Don't punt for the sake of
-  punting — spec quality and pain-prevention are strong "keep" signals
-  even without an active PR.
+- **In triage:** default-defer low-value issues. Use the `P0 Bugs`
+  milestone for immediate user/revenue/security/reliability bugs that
+  should be worked before the general backlog. Use `Spec Backlog` for
+  protocol/spec/schema/normative-doc work that is not yet committed to a
+  numbered release. Use `Evergreen` only for non-spec, non-versioned
+  work that still matters later. Closing issues is a human call; triage
+  should route, clarify, defer, or leave an implementation brief. Don't
+  punt for the sake of punting — spec quality and pain-prevention are
+  strong "keep" signals even without an active PR.
 - **In implementation:** if a task touches three files when you scoped
   it to one, stop. Either re-scope or defer.
 - **In scope decisions:** prefer the smallest change that closes the
@@ -282,6 +285,14 @@ Description of change.
 ```
 
 Types: `patch` (fixes), `minor` (new features), `major` (breaking), `--empty` (no protocol impact)
+
+#### PR title hygiene
+
+PR titles must be review- and release-ready:
+
+- Use conventional-commits format (`fix(scope): summary`, `docs: summary`, `feat(schema): summary`).
+- Do not prefix titles with the tool or model that authored the PR. In particular, never use `[codex]`, `[claude]`, `[agent]`, or similar ownership tags.
+- The authoring tool belongs in the PR body/session link or labels when useful, not in the title. PR titles flow into release/review surfaces, so tool prefixes create noise and can break title-based automation.
 
 **Use `--empty` (no package entry) for everything that isn't a protocol change:**
 - Addie (any server-side AI behavior, tools, routing, bolt app)

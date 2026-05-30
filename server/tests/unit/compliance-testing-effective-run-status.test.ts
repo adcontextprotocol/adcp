@@ -14,6 +14,7 @@ vi.mock('../../src/services/storyboards.js', () => ({
 }));
 
 vi.mock('../../src/services/adcp-taxonomy.js', () => ({
+  SUPPORTED_BADGE_VERSIONS: ['3.0'],
   isStableSpecialism: vi.fn(() => true),
 }));
 
@@ -101,5 +102,25 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
 
     // No active tracks — falls through to mapOverallStatus('partial') → 'partial'
     expect(out.overall_status).toBe('partial');
+  });
+
+  it('marks full-suite results as authoritative storyboard replacements', () => {
+    const result = makeResult([makeTrack('pass')], 'passing');
+    const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
+
+    expect(out.replace_storyboard_statuses).toBe(true);
+  });
+
+  it('does not replace all storyboard rows for explicit single-storyboard runs', () => {
+    const result = makeResult([makeTrack('pass')], 'passing');
+    const out = complianceResultToDbInput(
+      result as any,
+      'https://agent.example.com/mcp',
+      'production',
+      'owner_test',
+      ['signal_owned'],
+    );
+
+    expect(out.replace_storyboard_statuses).toBe(false);
   });
 });

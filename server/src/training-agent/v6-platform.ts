@@ -117,6 +117,7 @@ function translateV5Result<T extends object>(result: unknown): T {
 function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undefined): TrainingContext {
   return {
     mode: 'open',
+    tenantId: 'signals',
     principal: account?.authInfo?.principal ?? 'anonymous',
   };
 }
@@ -129,9 +130,12 @@ function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undef
  * / accounts / brandRights / customTools`) until they're ported.
  */
 export class TrainingPlatform implements DecisioningPlatform<TrainingConfig, TrainingMeta> {
+  constructor(private readonly storyboardCompat?: TrainingContext['storyboardCompat']) {}
+
   // Claim only the specialism we've ported. RequiredPlatformsFor<S> compile-
   // checks that signal-marketplace + signal-owned ⇒ this.signals exists.
-  capabilities = {
+  get capabilities() {
+    return {
     specialisms: ['signal-marketplace', 'signal-owned'] as const,
     creative_agents: [],
     channels: [] as const,
@@ -154,9 +158,11 @@ export class TrainingPlatform implements DecisioningPlatform<TrainingConfig, Tra
       supported_hashed_identifiers: ['hashed_email' as const],
       supported_action_sources: ['website' as const, 'app' as const],
     },
+    requireOperatorAuth: this.storyboardCompat?.version === '3.0' ? true : false,
     supportedBillings: ['agent', 'operator'] as const,
-    config: { strict: false },
-  };
+      config: { strict: false },
+    };
+  }
 
   statusMappers = {};
 
