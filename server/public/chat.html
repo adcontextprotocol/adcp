@@ -4118,6 +4118,10 @@
                openBrackets === closeBrackets;
       }
 
+      function hasCodeFence(text) {
+        return text.includes('```');
+      }
+
       // Strip markdown markers for plain text display during streaming
       function stripMarkdownMarkers(text) {
         return text
@@ -4138,6 +4142,13 @@
       // Strategy: Split into paragraphs, render complete ones with balanced markdown,
       // show the incomplete trailing paragraph as plain text (with markers stripped)
       function appendToStreamingMessage(contentDiv, text, fullContent) {
+        if (hasCodeFence(fullContent)) {
+          contentDiv.innerHTML = renderMessage(fullContent) + '<span class="streaming-cursor">|</span>';
+          setupChatImages(contentDiv);
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+          return;
+        }
+
         // Split on paragraph breaks (double newline)
         const paragraphs = fullContent.split(/\n\n/);
 

@@ -8,11 +8,15 @@
  * the `extra` bag the bearer authenticator stamped on the AuthPrincipal,
  * looks up the buyer agent's commercial relationship with the seller
  * (passthrough_only / agent_billable) and returns a `BuyerAgent` record
- * with the appropriate `billing_capabilities` Set. The framework
- * threads the resolved record through `ctx.agent` to platform handlers
- * (`accounts.upsert`, `getProducts`, etc.) — read-side handlers that
- * want to gate on commercial state consult `ctx.agent.billing_capabilities`
- * directly, no separate lookup needed.
+ * with the appropriate `billing_capabilities` Set. Authenticated callers
+ * without an explicit demo commercial relationship resolve to a neutral
+ * broad-capability sandbox agent so the framework preserves the legacy
+ * "no per-agent commercial gate" path instead of preempting
+ * `sync_accounts` with a failed row. The framework threads the resolved
+ * record through `ctx.agent` to platform handlers (`accounts.upsert`,
+ * `getProducts`, etc.) — read-side handlers that want to gate on
+ * commercial state consult `ctx.agent.billing_capabilities` directly, no
+ * separate lookup needed.
  *
  * **Why bearerOnly.** The training-agent's auth chain is bearer-shaped
  * (`verifyApiKey` static keys + dynamic `demo-*` prefix matcher). No
@@ -60,31 +64,43 @@ const AGENT_BILLABLE_BILLING_CAPABILITIES = new Set([
   'advertiser',
 ] as const);
 
+function agentForRelationship(token: string, relationship: 'passthrough_only' | 'agent_billable'): BuyerAgent {
+  const billing_capabilities =
+    relationship === 'passthrough_only'
+      ? PASSTHROUGH_BILLING_CAPABILITIES
+      : AGENT_BILLABLE_BILLING_CAPABILITIES;
+
+  return {
+    // Stable agent_url per token. Real sellers would use the buyer's
+    // canonical agent URL from their onboarding ledger; the training
+    // agent synthesizes a per-token URL so log/audit lines distinguish
+    // demo callers without colliding.
+    agent_url: `${TRAINING_AGENT_BASE_URL}/demo/${token}`,
+    display_name: `Demo ${relationship.replace('_', ' ')} agent (${token})`,
+    status: 'active',
+    billing_capabilities,
+  };
+}
+
+function neutralAuthenticatedAgent(credential: { key_id: string }): BuyerAgent {
+  const suffix = credential.key_id.replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 48) || 'api-key';
+  return {
+    agent_url: `${TRAINING_AGENT_BASE_URL}/authenticated/${suffix}`,
+    display_name: 'Authenticated sandbox buyer agent',
+    status: 'active',
+    billing_capabilities: AGENT_BILLABLE_BILLING_CAPABILITIES,
+  };
+}
+
 export const trainingBuyerAgentRegistry = BuyerAgentRegistry.bearerOnly({
   resolveByCredential: async (credential, extra) => {
     if (credential.kind !== 'api_key') return null;
     const token = extra?.demo_token;
-    if (typeof token !== 'string') return null;
+    if (typeof token !== 'string') return neutralAuthenticatedAgent(credential);
 
-    const principal = `static:demo:${token}`;
-    const relationship = getCommercialRelationship(principal);
-    if (!relationship) return null;
-
-    const billing_capabilities =
-      relationship === 'passthrough_only'
-        ? PASSTHROUGH_BILLING_CAPABILITIES
-        : AGENT_BILLABLE_BILLING_CAPABILITIES;
-
-    const agent: BuyerAgent = {
-      // Stable agent_url per token. Real sellers would use the buyer's
-      // canonical agent URL from their onboarding ledger; the training
-      // agent synthesizes a per-token URL so log/audit lines distinguish
-      // demo callers without colliding.
-      agent_url: `${TRAINING_AGENT_BASE_URL}/demo/${token}`,
-      display_name: `Demo ${relationship.replace('_', ' ')} agent (${token})`,
-      status: 'active',
-      billing_capabilities,
-    };
-    return agent;
+    const relationship = getCommercialRelationship(`static:demo:${token}`);
+    return relationship
+      ? agentForRelationship(token, relationship)
+      : neutralAuthenticatedAgent(credential);
   },
 });

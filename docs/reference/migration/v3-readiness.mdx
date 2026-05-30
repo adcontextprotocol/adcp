@@ -121,7 +121,7 @@ v3 removes `buyer_ref`, `buyer_campaign_ref`, and `campaign_ref` from all reques
 
 If your agent relied on `buyer_ref` for deduplication, use the new `idempotency_key` field instead. `idempotency_key` (UUID v4) is **required** on every mutating request — agents MUST reject requests that omit it with `INVALID_REQUEST`, and MUST return `IDEMPOTENCY_CONFLICT` when a key is reused with a different payload. See the [idempotency implementation guide](/docs/building/implementation/security#idempotency) for normative semantics.
 
-If your agent used `buyer_ref` for internal tracking or correlation (e.g. mapping to campaign IDs, session traces, or UI state), use the `context` field instead. `context` is an opaque object echoed unchanged in every response and webhook — agents must never parse or act on it.
+If your agent used `buyer_ref` for internal tracking or correlation (e.g. mapping to campaign IDs, session traces, or UI state), use the `context` field instead. `context` is an opaque object echoed unchanged in every response and webhook — agents must never parse or act on it. For `create_media_buy` package correlation, put per-package tracking in `packages[i].context` (for example `context.buyer_ref`), not deprecated top-level `buyer_ref`; 3.1+ sellers MUST echo `product_id` on explicit package responses, and package context remains the fallback for legacy sellers that do not.
 
 | v2 field | v3 replacement |
 |----------|----------------|
@@ -140,6 +140,52 @@ If your agent used `buyer_ref` for internal tracking or correlation (e.g. mappin
   "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
   "context": { "campaign": "camp-2024-q3", "trace_id": "abc-123" },
   "start_time": "..."
+}
+```
+
+For package-level line-item correlation, keep the buy-level context separate from each package's fallback correlation handle:
+
+```json test=false
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655440001",
+  "context": {
+    "internal_campaign_id": "camp-2024-q3"
+  },
+  "brand": {
+    "domain": "example-brand.test"
+  },
+  "packages": [
+    {
+      "product_id": "prod_weekday_display",
+      "pricing_option_id": "cpm_usd_auction",
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250_image"
+        }
+      ],
+      "budget": 12000,
+      "context": {
+        "buyer_ref": "line-001"
+      }
+    },
+    {
+      "product_id": "prod_weekend_video",
+      "pricing_option_id": "cpm_usd_auction",
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "video_standard_30s"
+        }
+      ],
+      "budget": 18000,
+      "context": {
+        "buyer_ref": "line-002"
+      }
+    }
+  ],
+  "start_time": "2026-07-01T00:00:00Z",
+  "end_time": "2026-07-31T23:59:59Z"
 }
 ```
 

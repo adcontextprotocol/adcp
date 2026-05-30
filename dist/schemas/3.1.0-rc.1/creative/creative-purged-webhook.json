@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.1/creative/creative-purged-webhook.json",
+  "title": "Creative Purged Webhook",
+  "description": "Account-level push notification fired when a creative is destroyed from the seller's library — retention sweep, takedown enforcement, legal erasure. Fires per registered subscriber against each `notification_configs[]` entry whose `event_types` includes `creative.purged`. Distinct from `creative.status_changed` because purge is destruction, not a status transition — the creative is gone; status no longer applies. Soft purges retain a tombstone on `list_creatives` (with `include_purged: true`) for the seller's webhook retention window; hard purges do not — this webhook is the buyer's only signal. Sellers MUST NOT coalesce `creative.purged` fires (default no-coalescence window).",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated key stable across retries of the same fire.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "notification_id": {
+      "type": "string",
+      "description": "Stable identifier for this purge event. Receivers correlate fires by this id; a single creative can only be purged once, so a new id implies a different creative or (rare) a re-emission of the same purge after retention-driven snapshot loss.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "creative.purged",
+      "description": "Fixed notification type discriminator."
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller initiated this fire. Sellers MUST fire `creative.purged` immediately after purge — coalescence is not permitted on this notification type."
+    },
+    "subscriber_id": {
+      "type": "string",
+      "description": "Identifies which `notification_configs[]` entry on the recipient account is receiving this fire.",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Seller's identifier for the account that owned the purged creative.",
+      "x-entity": "account"
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "Seller's identifier for the purged creative. After a `soft` purge this id resolves on `list_creatives` (with `include_purged: true`) for the seller's tombstone retention window; after a `hard` purge no record remains.",
+      "x-entity": "creative"
+    },
+    "purge_kind": {
+      "type": "string",
+      "enum": [
+        "soft",
+        "hard"
+      ],
+      "description": "`soft` — tombstone retained on `list_creatives` (with `include_purged: true`) for the seller's retention window (default 30 days, MUST match the `webhook_activity[]` retention rule). `hard` — no tombstone; the seller MUST NOT retain or echo the asset content elsewhere. `hard` is reserved for legal erasure or equivalent compelled destruction; sellers SHOULD default to `soft`."
+    },
+    "purged_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller observed the destruction. Distinct from `fired_at`."
+    },
+    "reason_code": {
+      "$ref": "/schemas/3.1.0-rc.1/enums/creative-event-reason-code.json",
+      "description": "Categorical reason for the purge. Typical values: `retention_expired`, `legal_erasure`, `takedown_request`. Receivers MUST treat unknown reason codes as forward-compatible additions."
+    },
+    "reason_detail": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Human-readable supplement. Sellers MUST NOT include third-party PII or the asset content in this field — the field is meant for operational context, not asset preservation."
+    },
+    "initiator": {
+      "type": "string",
+      "enum": [
+        "seller",
+        "system"
+      ],
+      "description": "Who initiated the purge. `seller` — explicit decision (legal team, content policy, takedown handler). `system` — automated retention sweep, storage policy enforcement. `buyer` never appears on this event — buyer-initiated destruction (if and when supported) is acknowledged on the `sync_creatives` response path."
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-rc.1/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_id",
+    "notification_type",
+    "fired_at",
+    "subscriber_id",
+    "account_id",
+    "creative_id",
+    "purge_kind",
+    "purged_at",
+    "reason_code",
+    "initiator"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Retention-driven soft purge (tombstone available on list_creatives)",
+      "data": {
+        "idempotency_key": "whk_01HW9H4X5ZTQ8R0O2P4S6U8V0X",
+        "notification_id": "cp_ft87100_retention",
+        "notification_type": "creative.purged",
+        "fired_at": "2026-05-18T03:00:00Z",
+        "subscriber_id": "buyer-primary",
+        "account_id": "acc_acme_pinnacle",
+        "creative_id": "ft_87100",
+        "purge_kind": "soft",
+        "purged_at": "2026-05-18T02:59:48Z",
+        "reason_code": "retention_expired",
+        "reason_detail": "Creative inactive for 365 days; retention sweep applied.",
+        "initiator": "system"
+      }
+    },
+    {
+      "description": "Legal erasure (hard purge, no tombstone)",
+      "data": {
+        "idempotency_key": "whk_01HW9J5Y6AURP9S1Q3R5T7V9X1Y",
+        "notification_id": "cp_ft86200_erasure",
+        "notification_type": "creative.purged",
+        "fired_at": "2026-05-18T11:30:00Z",
+        "subscriber_id": "buyer-primary",
+        "account_id": "acc_acme_pinnacle",
+        "creative_id": "ft_86200",
+        "purge_kind": "hard",
+        "purged_at": "2026-05-18T11:29:55Z",
+        "reason_code": "legal_erasure",
+        "initiator": "seller"
+      }
+    }
+  ]
+}

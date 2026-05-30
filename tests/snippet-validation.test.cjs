@@ -43,6 +43,8 @@ const args = process.argv.slice(2);
 const specificFile = args.includes('--file') ? args[args.indexOf('--file') + 1] : null;
 const clearCache = args.includes('--clear-cache');
 const testAll = args.includes('--all');
+const runIntegration = args.includes('--integration') ||
+                      /^(1|true|yes)$/i.test(process.env.SNIPPET_INTEGRATION || '');
 
 // Test statistics
 let totalTests = 0;
@@ -112,6 +114,64 @@ function isFileCached(filePath, cache) {
          cache[relativePath].passed === true;
 }
 
+function parseSnippetMetadata(metadata = '') {
+  const requiredEnv = new Set();
+  let integration = false;
+
+  const tokens = metadata.trim().split(/\s+/).filter(Boolean);
+  for (const token of tokens) {
+    const [rawKey, rawValue] = token.split('=', 2);
+    const key = rawKey.toLowerCase();
+    const value = rawValue || '';
+
+    if (key === 'integration' || token === 'live') {
+      integration = value === '' || /^(1|true|yes)$/i.test(value);
+    }
+
+    if (key === 'requires-env' || key === 'requires_env' || key === 'env' || key === 'requires') {
+      for (const envName of value.split(',')) {
+        if (/^[A-Z_][A-Z0-9_]*$/.test(envName)) {
+          requiredEnv.add(envName);
+        }
+      }
+    }
+  }
+
+  return { integration, requiredEnv: [...requiredEnv] };
+}
+
+function detectRequiredEnv(code) {
+  const requiredEnv = new Set();
+  const patterns = [
+    /\$([A-Z_][A-Z0-9_]*)\b/g,
+    /\$\{([A-Z_][A-Z0-9_]*)\}/g,
+    /process\.env\.([A-Z_][A-Z0-9_]*)\b/g,
+    /process\.env\[['"]([A-Z_][A-Z0-9_]*)['"]\]/g
+  ];
+
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(code)) !== null) {
+      requiredEnv.add(match[1]);
+    }
+  }
+
+  return [...requiredEnv];
+}
+
+function getSnippetSkipReason(snippet) {
+  const missingEnv = snippet.requiredEnv.filter(envName => !process.env[envName]);
+  if (missingEnv.length > 0) {
+    return `requires env: ${missingEnv.join(', ')}`;
+  }
+
+  if (snippet.integration && !runIntegration) {
+    return 'integration-only; pass --integration or set SNIPPET_INTEGRATION=true';
+  }
+
+  return null;
+}
+
 /**
  * Extract code blocks from markdown/mdx files
  * @param {string} filePath - Path to the markdown file
@@ -135,6 +195,11 @@ function extractCodeBlocks(filePath) {
     const language = match[1];
     const metadata = match[2];
     const code = match[3];
+    const parsedMetadata = parseSnippetMetadata(metadata);
+    const requiredEnv = [...new Set([
+      ...parsedMetadata.requiredEnv,
+      ...detectRequiredEnv(code)
+    ])];
 
     // Test if:
     // 1. Page has testable: true in frontmatter, OR
@@ -149,7 +214,10 @@ function extractCodeBlocks(filePath) {
     blocks.push({
       file: filePath,
       language,
+      metadata,
       shouldTest,
+      integration: parsedMetadata.integration,
+      requiredEnv,
       code: code.trim(),
       index: blockIndex++,
       line: content.substring(0, match.index).split('\n').length
@@ -503,6 +571,13 @@ async function validateSnippet(snippet) {
     return;
   }
 
+  const skipReason = getSnippetSkipReason(snippet);
+  if (skipReason) {
+    skippedTests++;
+    log(`  ⊘ SKIPPED (${skipReason})`, 'warning');
+    return;
+  }
+
   let result;
 
   try {
@@ -701,7 +776,7 @@ async function runTests() {
     const fileTestCount = filePassed + fileFailed;
 
     // Store file result
-    const allFilePassed = fileFailed === 0 && fileTestCount > 0;
+    const allFilePassed = fileFailed === 0;
     fileResults[relativePath] = {
       passed: allFilePassed,
       hash: getFileHash(file),

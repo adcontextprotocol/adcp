@@ -276,7 +276,7 @@ export const __test_lengthThresholds = {
  * short follow-up prompts ("?", "what happened?"). Substituting a clarifying
  * line is better than shipping the void.
  */
-const EMPTY_RESPONSE_FALLBACK =
+export const EMPTY_RESPONSE_FALLBACK =
   "Sorry, I lost the thread there. Could you rephrase or give me a bit more context?";
 
 /**

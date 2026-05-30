@@ -3,6 +3,21 @@ import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 import { safeFetchAxiosLike, classifySafeFetchError } from './utils/url-security.js';
 import { canonicalizePublisherDomain } from './services/publisher-domain.js';
 
+function isManagerdomainFallbackEligibleResponse(status: number, data: unknown): boolean {
+  if (status === 404) return true;
+  if (status !== 403) return false;
+
+  // safeFetchAxiosLike returns Buffer data, but keep the string branch so
+  // unit fixtures can exercise the response-shape predicate directly.
+  const text = Buffer.isBuffer(data)
+    ? data.toString('utf-8')
+    : typeof data === 'string'
+      ? data
+      : '';
+
+  return /<Code>\s*AccessDenied\s*<\/Code>/i.test(text);
+}
+
 export interface ValidationError {
   field: string;
   message: string;
@@ -104,6 +119,8 @@ export interface SignalDefinition {
   methodology_url?: string;
 }
 
+export type FormatDefinition = Record<string, unknown>;
+
 export interface AgentCardValidationResult {
   agent_url: string;
   valid: boolean;
@@ -120,6 +137,7 @@ export interface AdAgentsJsonInline {
   authorized_agents: AuthorizedAgent[];
   properties?: PropertyDefinition[];
   placements?: PlacementDefinition[];
+  formats?: FormatDefinition[];
   tags?: Record<string, { name: string; description: string }>;
   placement_tags?: Record<string, { name: string; description: string }>;
   signals?: SignalDefinition[];
@@ -131,6 +149,7 @@ export interface AdAgentsJsonInline {
     seller_id?: string;
     tag_id?: string;
   };
+  catalog_etag?: string;
   last_updated?: string;
 }
 
@@ -167,6 +186,10 @@ export interface CreateAdAgentsJsonOptions {
   includeSchema?: boolean;
   includeTimestamp?: boolean;
   properties?: PropertyDefinition[];
+  placements?: PlacementDefinition[];
+  placementTags?: Record<string, { name: string; description: string }>;
+  formats?: FormatDefinition[];
+  catalogEtag?: string;
   signals?: SignalDefinition[];
   signalTags?: Record<string, { name: string; description: string }>;
 }
@@ -224,9 +247,13 @@ export class AdAgentsManager {
       // Check HTTP status
       if (response.status !== 200) {
         // Fallback for publisher-manager patterns: if the publisher does not
-        // serve /.well-known/adagents.json but does serve ads.txt with a
-        // managerdomain declaration, attempt discovery on the manager domain.
-        if (response.status === 404) {
+        // serve a directly usable /.well-known/adagents.json but does serve
+        // ads.txt with a managerdomain declaration, attempt discovery on the
+        // manager domain. S3/CloudFront commonly returns a 403 AccessDenied
+        // XML body instead of 404 for missing or inaccessible objects, so
+        // that shape is included but still must pass the manager-side
+        // explicit-scope gate.
+        if (isManagerdomainFallbackEligibleResponse(response.status, response.data)) {
           const managerDomains = await this.tryResolveManagerDomains(normalizedDomain);
           const isHopAllowed = managerFallbackDepth < 1;
           if (managerDomains.length > 0 && isHopAllowed) {
@@ -264,7 +291,7 @@ export class AdAgentsManager {
                     ...managerResult.warnings,
                     {
                       field: 'managerdomain',
-                      message: `No adagents.json at ${url}; used ads.txt managerdomain ${managerDomain}`,
+                      message: `No directly usable adagents.json at ${url}; used ads.txt managerdomain ${managerDomain}`,
                     },
                   ],
                 };
@@ -308,9 +335,6 @@ export class AdAgentsManager {
         return result;
       }
 
-      // Only include raw data for successful responses
-      result.raw_data = adagentsData;
-
       // Check if this is a URL reference
       let wasUrlReference = false;
       if (this.isUrlReference(adagentsData)) {
@@ -328,6 +352,11 @@ export class AdAgentsManager {
           return result;
         }
       }
+
+      // Surface the canonical (post-pointer) manifest so downstream
+      // callers like validate_adagents count agents/properties from the
+      // authoritative file rather than the pointer stub (#5093).
+      result.raw_data = adagentsData;
 
       this.validateStructure(adagentsData, result);
       this.validateContent(adagentsData, result);
@@ -603,6 +632,14 @@ export class AdAgentsManager {
       this.validateAgent(agent, index, result);
     });
 
+    if (data.catalog_etag !== undefined && typeof data.catalog_etag !== 'string') {
+      result.errors.push({
+        field: 'catalog_etag',
+        message: 'catalog_etag must be a string',
+        severity: 'error'
+      });
+    }
+
     // Validate signals array if present (for data providers)
     if (data.signals !== undefined) {
       if (!Array.isArray(data.signals)) {
@@ -614,6 +651,90 @@ export class AdAgentsManager {
       } else {
         data.signals.forEach((signal: any, index: number) => {
           this.validateSignal(signal, index, result);
+        });
+      }
+    }
+
+    if (data.formats !== undefined) {
+      if (!Array.isArray(data.formats)) {
+        result.errors.push({
+          field: 'formats',
+          message: 'formats must be an array',
+          severity: 'error'
+        });
+      } else {
+        data.formats.forEach((format: any, index: number) => {
+          if (typeof format !== 'object' || format === null || Array.isArray(format)) {
+            result.errors.push({
+              field: `formats[${index}]`,
+              message: 'Each format must be an object',
+              severity: 'error'
+            });
+          }
+          if (format?.capability_id !== undefined) {
+            result.errors.push({
+              field: `formats[${index}].capability_id`,
+              message: 'Use format_option_id for publisher format catalog entries; capability_id is not valid here',
+              severity: 'error'
+            });
+          }
+        });
+      }
+    }
+
+    if (data.placements !== undefined) {
+      if (!Array.isArray(data.placements)) {
+        result.errors.push({
+          field: 'placements',
+          message: 'placements must be an array',
+          severity: 'error'
+        });
+      } else {
+        data.placements.forEach((placement: any, index: number) => {
+          const prefix = `placements[${index}]`;
+          if (typeof placement !== 'object' || placement === null || Array.isArray(placement)) {
+            result.errors.push({
+              field: prefix,
+              message: 'Each placement must be an object',
+              severity: 'error'
+            });
+            return;
+          }
+          if (!placement.placement_id || typeof placement.placement_id !== 'string') {
+            result.errors.push({
+              field: `${prefix}.placement_id`,
+              message: 'placement_id is required and must be a string',
+              severity: 'error'
+            });
+          }
+          if (!placement.name || typeof placement.name !== 'string') {
+            result.errors.push({
+              field: `${prefix}.name`,
+              message: 'name is required and must be a string',
+              severity: 'error'
+            });
+          }
+          if (placement.property_ids !== undefined && !Array.isArray(placement.property_ids)) {
+            result.errors.push({
+              field: `${prefix}.property_ids`,
+              message: 'property_ids must be an array',
+              severity: 'error'
+            });
+          }
+          if (placement.property_tags !== undefined && !Array.isArray(placement.property_tags)) {
+            result.errors.push({
+              field: `${prefix}.property_tags`,
+              message: 'property_tags must be an array',
+              severity: 'error'
+            });
+          }
+          if (!Array.isArray(placement.property_ids) && !Array.isArray(placement.property_tags)) {
+            result.errors.push({
+              field: prefix,
+              message: 'placement must include property_ids or property_tags',
+              severity: 'error'
+            });
+          }
         });
       }
     }
@@ -1294,6 +1415,28 @@ export class AdAgentsManager {
       });
     }
 
+    const formatOptionIds = new Set<string>();
+    if (data.formats && Array.isArray(data.formats)) {
+      data.formats.forEach((format: any, index: number) => {
+        if (format?.format_option_id && typeof format.format_option_id === 'string') {
+          if (formatOptionIds.has(format.format_option_id)) {
+            result.warnings.push({
+              field: `formats[${index}].format_option_id`,
+              message: `Duplicate format_option_id: ${format.format_option_id}`,
+              suggestion: 'Use unique format_option_id values within a publisher adagents.json file'
+            });
+          }
+          formatOptionIds.add(format.format_option_id);
+        } else {
+          result.warnings.push({
+            field: `formats[${index}].format_option_id`,
+            message: 'Publisher catalog format is missing format_option_id',
+            suggestion: 'Add format_option_id so placements and products can reference this declaration'
+          });
+        }
+      });
+    }
+
     const placementTagDefinitions = new Set<string>(
       data.placement_tags ? Object.keys(data.placement_tags) : []
     );
@@ -1318,6 +1461,31 @@ export class AdAgentsManager {
                 field: `placements[${index}].property_ids`,
                 message: `Placement property_id "${propertyId}" not found in properties`,
                 suggestion: 'Ensure placement property_ids reference properties defined in the top-level properties array'
+              });
+            }
+          });
+        }
+
+        if (placement.format_options && Array.isArray(placement.format_options)) {
+          placement.format_options.forEach((formatOption: any, formatIndex: number) => {
+            if (formatOption?.capability_id !== undefined) {
+              result.errors.push({
+                field: `placements[${index}].format_options[${formatIndex}].capability_id`,
+                message: 'Use format_option_id for placement format references; capability_id is not valid here',
+                severity: 'error'
+              });
+            }
+
+            const isReference = formatOption
+              && typeof formatOption === 'object'
+              && typeof formatOption.format_option_id === 'string'
+              && typeof formatOption.format_kind !== 'string';
+
+            if (isReference && !formatOptionIds.has(formatOption.format_option_id)) {
+              result.errors.push({
+                field: `placements[${index}].format_options[${formatIndex}].format_option_id`,
+                message: `Placement references unknown format_option_id "${formatOption.format_option_id}"`,
+                severity: 'error'
               });
             }
           });
@@ -1618,6 +1786,22 @@ export class AdAgentsManager {
       adagents.properties = opts.properties;
     }
 
+    if (opts.catalogEtag) {
+      adagents.catalog_etag = opts.catalogEtag;
+    }
+
+    if (opts.formats && opts.formats.length > 0) {
+      adagents.formats = opts.formats;
+    }
+
+    if (opts.placements && opts.placements.length > 0) {
+      adagents.placements = opts.placements;
+    }
+
+    if (opts.placementTags && Object.keys(opts.placementTags).length > 0) {
+      adagents.placement_tags = opts.placementTags;
+    }
+
     if (opts.signals && opts.signals.length > 0) {
       adagents.signals = opts.signals;
     }
@@ -1640,10 +1824,21 @@ export class AdAgentsManager {
   /**
    * Validates a proposed adagents.json structure before creation
    */
-  validateProposed(agents: AuthorizedAgent[]): AdAgentsValidationResult {
+  validateProposed(optionsOrAgents: CreateAdAgentsJsonOptions | AuthorizedAgent[]): AdAgentsValidationResult {
+    const opts: CreateAdAgentsJsonOptions = Array.isArray(optionsOrAgents)
+      ? { agents: optionsOrAgents }
+      : optionsOrAgents;
+
     const mockData = {
       $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
-      authorized_agents: agents,
+      authorized_agents: opts.agents,
+      ...(opts.properties && opts.properties.length > 0 ? { properties: opts.properties } : {}),
+      ...(opts.catalogEtag ? { catalog_etag: opts.catalogEtag } : {}),
+      ...(opts.formats && opts.formats.length > 0 ? { formats: opts.formats } : {}),
+      ...(opts.placements && opts.placements.length > 0 ? { placements: opts.placements } : {}),
+      ...(opts.placementTags && Object.keys(opts.placementTags).length > 0 ? { placement_tags: opts.placementTags } : {}),
+      ...(opts.signals && opts.signals.length > 0 ? { signals: opts.signals } : {}),
+      ...(opts.signalTags && Object.keys(opts.signalTags).length > 0 ? { signal_tags: opts.signalTags } : {}),
       last_updated: new Date().toISOString()
     };
 

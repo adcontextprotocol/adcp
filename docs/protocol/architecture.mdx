@@ -18,7 +18,7 @@ AdCP operates at multiple layers, providing a clean separation between business 
 
 Three protocol domains establish who the parties are before any transaction occurs.
 
-**Brand Protocol** defines buy-side identity through `brand.json` files hosted at `/.well-known/brand.json`. Brands declare their corporate hierarchy, sub-brands, properties, and authorized operators. Any domain can be resolved to a canonical brand identity. See [Brand Protocol](/docs/brand-protocol).
+**Brand Protocol** defines organization identity through `brand.json` files hosted at `/.well-known/brand.json`. Buyers use it for advertiser identity and authorized operators; sellers use it for operator identity, sales-agent discovery, signing-key discovery, and property relationship declarations. Any domain can be resolved to a canonical brand identity. See [Brand Protocol](/docs/brand-protocol).
 
 **Registry** provides a public REST API for entity resolution and agent discovery. Resolve a brand domain, find which agents are authorized to sell a publisher's inventory, or discover agents by capability. See [Registry API](/docs/registry).
 
@@ -37,7 +37,7 @@ Four protocol domains handle core advertising operations. The [Trusted Match Pro
 
 **Creative** handles format discovery (`list_creative_formats`), AI-powered creative generation (`build_creative`), catalog synchronization (`sync_catalogs`), and creative delivery tracking. Creative agents resolve brand identity from the Brand Protocol to generate on-brand assets. See [Creative](/docs/creative).
 
-**Signals** enables audience and targeting data discovery (`get_signals`) and activation (`activate_signal`). Data providers publish signal catalogs that buyers can discover with natural language queries, then activate on decisioning platforms. See [Signals](/docs/signals/overview).
+**Signals** enables audience and targeting data discovery (`get_signals`) and activation (`activate_signal`). Data providers publish signal definitions that buyers can discover with natural language queries, then activate on decisioning platforms. See [Signals](/docs/signals/overview).
 
 **Sponsored Intelligence** defines conversational brand experiences in AI assistants. When a user expresses interest in a brand, the host initiates a consent-first session where the brand's agent engages conversationally with text, voice, UI components, or commerce handoffs. See [Sponsored Intelligence](/docs/sponsored-intelligence/overview).
 

@@ -292,12 +292,13 @@ export function createPublicBillingRouter(): Router {
 
       // Agreement gate. If the caller is accepting inline we validate the
       // version against the currently-published agreement. If they're
-      // relying on a previous acceptance we use whatever was stored on the
-      // org. Either way, store the acceptance as "pending"; the webhook on
+      // relying on a previous org-level acceptance, it must still be current;
+      // stale pending agreements are surfaced back to the user for re-accept.
+      // Either way, store the acceptance as "pending"; the webhook on
       // invoice.paid / subscription.created records it permanently.
-      let pendingVersion = org.pending_agreement_version;
+      const currentAgreement = await orgDb.getCurrentAgreementByType('membership');
+      let acceptedVersion = org.pending_agreement_version || org.agreement_version;
       if (agreement_version?.trim()) {
-        const currentAgreement = await orgDb.getCurrentAgreementByType('membership');
         if (!currentAgreement || agreement_version.trim() !== currentAgreement.version) {
           return res.status(400).json({
             error: "Agreement version mismatch",
@@ -306,9 +307,11 @@ export function createPublicBillingRouter(): Router {
             current_version: currentAgreement?.version ?? null,
           });
         }
-        pendingVersion = currentAgreement.version;
+        acceptedVersion = currentAgreement.version;
+      } else if (acceptedVersion && (!currentAgreement || acceptedVersion !== currentAgreement.version)) {
+        acceptedVersion = null;
       }
-      if (!pendingVersion) {
+      if (!acceptedVersion) {
         return res.status(400).json({
           error: "Membership agreement required",
           message:
@@ -321,7 +324,7 @@ export function createPublicBillingRouter(): Router {
       // billing address in a single UPDATE so a partial failure can't leave
       // one set without the other.
       await orgDb.updateOrganization(orgId, {
-        pending_agreement_version: pendingVersion,
+        pending_agreement_version: acceptedVersion,
         pending_agreement_accepted_at: new Date(),
         pending_agreement_user_id: user.id,
         billing_address: sanitizedAddress,
@@ -668,6 +671,14 @@ export function createPublicBillingRouter(): Router {
             return res.status(404).json({ error: "Organization not found" });
           }
           const isPersonal = devOrg.is_personal || false;
+          const currentAgreement = await orgDb.getCurrentAgreementByType('membership');
+          const agreementState = {
+            agreement_version: devOrg.agreement_version || null,
+            agreement_signed_at: devOrg.agreement_signed_at || null,
+            pending_agreement_version: devOrg.pending_agreement_version || null,
+            pending_agreement_accepted_at: devOrg.pending_agreement_accepted_at || null,
+            current_membership_agreement_version: currentAgreement?.version || null,
+          };
 
           if (devUser.isMember && !isPersonal) {
             // Company org with active membership
@@ -687,6 +698,8 @@ export function createPublicBillingRouter(): Router {
               revenue_tier: "5m_50m",
               is_personal: false,
               pending_invoices: [],
+              billing_address: devOrg.billing_address || null,
+              ...agreementState,
               suggested_company_type: "adtech",
               suggested_revenue_tier: "5m_50m",
             });
@@ -708,6 +721,8 @@ export function createPublicBillingRouter(): Router {
               revenue_tier: null,
               is_personal: true,
               pending_invoices: [],
+              billing_address: devOrg.billing_address || null,
+              ...agreementState,
               suggested_company_type: null,
               suggested_revenue_tier: null,
             });
@@ -721,6 +736,8 @@ export function createPublicBillingRouter(): Router {
               revenue_tier: null,
               is_personal: isPersonal,
               pending_invoices: [],
+              billing_address: devOrg.billing_address || null,
+              ...agreementState,
               suggested_company_type: null,
               suggested_revenue_tier: null,
             });
@@ -863,6 +880,7 @@ export function createPublicBillingRouter(): Router {
         const suggestedRevenueTier = mapRevenueToTier(
           orgWithEnrichment.enrichment_revenue
         );
+        const currentAgreement = await orgDb.getCurrentAgreementByType('membership');
 
         res.json({
           subscription: subscriptionInfo,
@@ -873,6 +891,11 @@ export function createPublicBillingRouter(): Router {
           is_personal: org.is_personal || false,
           pending_invoices: pendingInvoices,
           billing_address: org.billing_address || null,
+          agreement_version: org.agreement_version || null,
+          agreement_signed_at: org.agreement_signed_at || null,
+          pending_agreement_version: org.pending_agreement_version || null,
+          pending_agreement_accepted_at: org.pending_agreement_accepted_at || null,
+          current_membership_agreement_version: currentAgreement?.version || null,
           // Enrichment-based suggestions for prefilling the profile modal
           suggested_company_type: suggestedCompanyType,
           suggested_revenue_tier: suggestedRevenueTier,

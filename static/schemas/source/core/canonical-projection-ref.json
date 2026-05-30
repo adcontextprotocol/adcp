@@ -20,34 +20,7 @@
       "minItems": 1,
       "description": "When the v1 named format's slot shape differs from the canonical's default slots, this carries the override that the projected v2 declaration's `params.slots[]` should use. REPLACES (does not merge with) the canonical's default slots — projection-time semantics. The slot vocabulary follows `asset-group-vocabulary.json`. Asset IDs in the v1 format's `assets[*]` MUST resolve (directly or via the vocabulary's aliases) to the `asset_group_id` values declared here.",
       "items": {
-        "type": "object",
-        "required": ["asset_group_id", "asset_type"],
-        "properties": {
-          "asset_group_id": {
-            "type": "string",
-            "description": "Asset group identifier from `asset-group-vocabulary.json` (e.g., `generation_prompt`, `creative_brief`, `image_main`, `video_main`)."
-          },
-          "asset_type": {
-            "type": "string",
-            "description": "Asset type — `image`, `video`, `audio`, `text`, `html`, `javascript`, `url`, `zip`, `brief`."
-          },
-          "required": {
-            "type": "boolean",
-            "default": false,
-            "description": "Whether the slot is required in the projected declaration."
-          },
-          "max_chars": {
-            "type": "integer",
-            "minimum": 1,
-            "description": "Max character count for text slots."
-          },
-          "consumed_for_production": {
-            "type": "boolean",
-            "default": true,
-            "description": "When false, slot is for moderation/review only and is NOT consumed by the seller's renderer (e.g., a brand-safety brief that informs review but doesn't appear in the rendered ad)."
-          }
-        },
-        "additionalProperties": true
+        "$ref": "/schemas/core/canonical-projection-slot-override.json"
       }
     }
   },

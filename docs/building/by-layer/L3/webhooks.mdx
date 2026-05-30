@@ -188,6 +188,66 @@ If the task completes synchronously (initial response is already `completed` or 
 
 Every webhook payload carries a required `idempotency_key` — a sender-generated key that is stable across retries of the same event. This is the canonical dedup field; see [Reliability](#reliability) below.
 
+### Payload anatomy: envelope vs. result
+
+Webhook receivers must distinguish the **wire envelope** from the task-specific **result**. The full MCP webhook envelope is the JSON object sent as the HTTP POST body. Delivery-report content lives under `result`; it is not valid as the top-level POST body by itself.
+
+For a delivery reporting fire, the full wire payload looks like:
+
+```json
+{
+  "idempotency_key": "whk_20260526_example_000031",
+  "operation_id": "delivery_report_67_2026_04",
+  "task_id": "delivery_report_67_2026_04_000031",
+  "task_type": "media_buy_delivery",
+  "status": "completed",
+  "timestamp": "2026-05-26T09:00:44.582Z",
+  "message": "Scheduled media buy delivery report available",
+  "result": {
+    "notification_type": "scheduled",
+    "sequence_number": 31,
+    "reporting_period": {
+      "start": "2026-05-25T00:00:00Z",
+      "end": "2026-05-25T23:59:00Z"
+    },
+    "currency": "USD",
+    "media_buy_deliveries": [
+      {
+        "media_buy_id": "mb_001",
+        "status": "active",
+        "totals": {
+          "impressions": 125000,
+          "spend": 5625.0,
+          "clicks": 250
+        },
+        "by_package": []
+      }
+    ]
+  }
+}
+```
+
+This inner result object is valid delivery-report content, but it is **not valid as the top-level webhook POST body**:
+
+```json
+{
+  "notification_type": "scheduled",
+  "sequence_number": 31,
+  "reporting_period": {
+    "start": "2026-05-25T00:00:00Z",
+    "end": "2026-05-25T23:59:00Z"
+  },
+  "currency": "USD",
+  "media_buy_deliveries": []
+}
+```
+
+The top-level `status` is the async webhook status (`completed`, `failed`, `working`, and so on). The nested `media_buy_deliveries[].status` is the media buy lifecycle or reporting state (`active`, `paused`, `reporting_delayed`, and so on). Do not collapse the two fields.
+
+For delivery-report data events such as `scheduled`, `final`, `delayed`, and `adjusted`, `notification_id` is absent by design; dedupe the transport event with `idempotency_key`. The `aggregated_totals` field is API-only for `get_media_buy_delivery` responses and must not be emitted in reporting webhook result payloads.
+
+Signatures and content digests are computed over the exact raw JSON bytes sent as this full envelope. Re-serializing just the `result` object, adding whitespace, or changing field order before verification changes the bytes and breaks signature validation.
+
 ### A2A
 
 A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for progress). For final states (`completed`, `failed`), AdCP result data is in `.artifacts[0].parts[]`. For interim states (`working`, `input-required`), data is in `status.message.parts[]`.
@@ -273,7 +333,7 @@ Covered components are fixed: `@method`, `@target-uri`, `@authority`, `content-t
 
 - Error codes use the `webhook_signature_*` prefix (see [Webhook error taxonomy](/docs/building/by-layer/L1/security#webhook-error-taxonomy)).
 - `tag` MUST be `adcp/webhook-signing/v1`.
-- Resolve `keyid` via the seller's `adagents.json` `agents[]` entry (you already have the seller's agent URL from your integration).
+- Resolve `keyid` via the seller operator's `brand.json` `agents[].jwks_uri`, applying any publisher `adagents.json` `signing_keys[]` pin when present (you already have the seller's agent URL from your integration).
 
 **Receiver implementation sketch:**
 ```typescript
@@ -283,7 +343,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 app.post('/webhooks/adcp/*', async (req, res) => {
   try {
     // 1. Parse Signature-Input / Signature headers and reject on malformed.
-    // 2. Resolve keyid against the seller's adagents.json JWKS.
+    // 2. Resolve keyid against the seller operator's brand.json JWKS.
     // 3. Run the AdCP webhook verifier checklist (14 steps).
     await verifyAdcpWebhookSignature(req, {
       sellerAgentUrl: req.sellerContext.agentUrl, // known from your integration

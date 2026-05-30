@@ -247,9 +247,9 @@ export function formatCapExceededMessage(result: CostCheckResult): string {
   return (
     `You've hit today's Claude API usage cap (${capUsd} USD) — ` +
     `spent ≈ $${spentUsd} in the last 24 hours. ` +
-    `The cap resets in ${humanReset}. ` +
+    `You can try again in ${humanReset}. ` +
     (tier === 'member_paid'
-      ? 'Ping the AAO team if you need a higher ceiling for legitimate work.'
+      ? 'Ping the AgenticAdvertising.org team if you need a higher ceiling for legitimate work.'
       : 'Upgrade your membership at /membership for a higher daily ceiling.')
   );
 }

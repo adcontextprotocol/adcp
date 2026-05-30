@@ -4,11 +4,11 @@
   "title": "AdCP Schema Registry",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "3.1.0-beta.3",
+  "adcp_version": "3.1.0-rc.3",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
-  "lastUpdated": "2026-05-16",
+  "lastUpdated": "2026-05-29",
   "baseUrl": "/schemas/latest",
   "schemas": {
     "core": {
@@ -26,6 +26,10 @@
           "$ref": "/schemas/core/package.json",
           "description": "A specific product within a media buy (line item)"
         },
+        "committed-metric": {
+          "$ref": "/schemas/core/committed-metric.json",
+          "description": "One metric in a package's binding reporting contract"
+        },
         "creative-asset": {
           "$ref": "/schemas/core/creative-asset.json",
           "description": "Creative asset for upload to library - supports static assets, generative formats, and third-party ad serving (VAST, DAAST, HTML, JavaScript)"
@@ -33,6 +37,10 @@
         "account": {
           "$ref": "/schemas/core/account.json",
           "description": "Billing account representing who pays for advertising. Accounts have rate cards, payment terms, and platform mappings."
+        },
+        "account-with-authorization": {
+          "$ref": "/schemas/core/account-with-authorization.json",
+          "description": "List-accounts response item combining Account with caller-specific authorization metadata"
         },
         "targeting": {
           "$ref": "/schemas/core/targeting.json",
@@ -73,6 +81,30 @@
         "delivery-metrics": {
           "$ref": "/schemas/core/delivery-metrics.json",
           "description": "Standard delivery metrics for reporting"
+        },
+        "delivery-metric-aggregate": {
+          "$ref": "/schemas/core/delivery-metric-aggregate.json",
+          "description": "Cross-buy delivery aggregate partitioned by metric scope and qualifier"
+        },
+        "missing-metric": {
+          "$ref": "/schemas/core/missing-metric.json",
+          "description": "Metric from the binding reporting contract that is absent from a delivery report"
+        },
+        "catalog-item-delivery-metrics": {
+          "$ref": "/schemas/core/catalog-item-delivery-metrics.json",
+          "description": "Delivery metrics row for one catalog item"
+        },
+        "creative-delivery-metrics": {
+          "$ref": "/schemas/core/creative-delivery-metrics.json",
+          "description": "Delivery metrics row for one creative"
+        },
+        "keyword-delivery-metrics": {
+          "$ref": "/schemas/core/keyword-delivery-metrics.json",
+          "description": "Delivery metrics row for one keyword and match type"
+        },
+        "geo-delivery-metrics": {
+          "$ref": "/schemas/core/geo-delivery-metrics.json",
+          "description": "Delivery metrics row for one geographic area"
         },
         "creative-policy": {
           "$ref": "/schemas/core/creative-policy.json",
@@ -158,6 +190,14 @@
           "$ref": "/schemas/core/reference-asset.json",
           "description": "A reference asset with semantic role for creative context"
         },
+        "registry-event": {
+          "$ref": "/schemas/core/registry-event.json",
+          "description": "A cursor-ordered registry change-feed event from /api/registry/feed"
+        },
+        "registry-feed-response": {
+          "$ref": "/schemas/core/registry-feed-response.json",
+          "description": "Response wrapper for GET /api/registry/feed"
+        },
         "proposal": {
           "$ref": "/schemas/core/proposal.json",
           "description": "A proposed media plan with budget allocations across products - actionable via create_media_buy"
@@ -174,6 +214,10 @@
           "$ref": "/schemas/core/delivery-forecast.json",
           "description": "Forecasted delivery metrics for a proposal or product allocation"
         },
+        "signal-coverage-forecast": {
+          "$ref": "/schemas/core/signal-coverage-forecast.json",
+          "description": "Forecast-shaped availability guidance for a signal, without requiring monetary currency"
+        },
         "forecast-range": {
           "$ref": "/schemas/core/forecast-range.json",
           "description": "A forecast value with optional low/high bounds"
@@ -181,6 +225,38 @@
         "forecast-point": {
           "$ref": "/schemas/core/forecast-point.json",
           "description": "A single point on a budget-to-outcome curve"
+        },
+        "forecast-point-dimensions": {
+          "$ref": "/schemas/core/forecast-point-dimensions.json",
+          "description": "Dimensional slice represented by a forecast point"
+        },
+        "forecast-dimension-geo": {
+          "$ref": "/schemas/core/forecast-dimension-geo.json",
+          "description": "Geographic forecast dimension variant"
+        },
+        "forecast-dimension-placement": {
+          "$ref": "/schemas/core/forecast-dimension-placement.json",
+          "description": "Placement forecast dimension variant"
+        },
+        "forecast-dimension-device-type": {
+          "$ref": "/schemas/core/forecast-dimension-device-type.json",
+          "description": "Device form-factor forecast dimension variant"
+        },
+        "forecast-dimension-device-platform": {
+          "$ref": "/schemas/core/forecast-dimension-device-platform.json",
+          "description": "Device platform forecast dimension variant"
+        },
+        "forecast-dimension-audience": {
+          "$ref": "/schemas/core/forecast-dimension-audience.json",
+          "description": "Audience forecast dimension variant"
+        },
+        "forecast-dimension-signal": {
+          "$ref": "/schemas/core/forecast-dimension-signal.json",
+          "description": "Signal forecast dimension variant"
+        },
+        "forecast-vendor-metric-value": {
+          "$ref": "/schemas/core/forecast-vendor-metric-value.json",
+          "description": "Forecasted vendor-defined measurement value with low/mid/high bounds"
         },
         "catalog": {
           "$ref": "/schemas/core/catalog.json",
@@ -205,6 +281,10 @@
         "product-format-declaration": {
           "$ref": "/schemas/core/product-format-declaration.json",
           "description": "v2 inline format declaration on products. Keyed by canonical format name; product narrows exactly one canonical with platform-specific parameters."
+        },
+        "canonical-projection-slot-override": {
+          "$ref": "/schemas/core/canonical-projection-slot-override.json",
+          "description": "Slot override used when projecting a legacy named format to a canonical format declaration"
         },
         "platform-extension-ref": {
           "$ref": "/schemas/core/platform-extension-ref.json",
@@ -269,6 +349,14 @@
         "placement": {
           "$ref": "/schemas/core/placement.json",
           "description": "Represents a specific ad placement within a product's inventory"
+        },
+        "placement-ref": {
+          "$ref": "/schemas/core/placement-ref.json",
+          "description": "Reference to a publisher-scoped placement"
+        },
+        "format-option-ref": {
+          "$ref": "/schemas/core/format-option-ref.json",
+          "description": "Reference to a publisher-scoped format option"
         },
         "placement-definition": {
           "$ref": "/schemas/core/placement-definition.json",
@@ -356,11 +444,27 @@
         },
         "signal-id": {
           "$ref": "/schemas/core/signal-id.json",
-          "description": "Universal signal identifier - discriminated union by source: 'catalog' (data_provider_domain + id, verifiable) or 'agent' (agent_url + id, trust-based)"
+          "description": "Universal signal identifier - discriminated union by source: 'catalog' (data_provider_domain + id, verifiable) or 'agent' (agent_url + id for a signal-source-native signal)"
+        },
+        "signal-ref": {
+          "$ref": "/schemas/core/signal-ref.json",
+          "description": "Named signal reference for discovery, activation, and media-buy product targeting: scope 'product' for product-local signal options, scope 'data_provider' for published adagents.json signals[], or scope 'signal_source' for source-native signals"
+        },
+        "signal-listing": {
+          "$ref": "/schemas/core/signal-listing.json",
+          "description": "Shared signal_ref plus optional definition metadata used by get_signals and media products"
+        },
+        "product-signal-targeting-option": {
+          "$ref": "/schemas/core/product-signal-targeting-option.json",
+          "description": "Product-scoped signal option available for package-level signal_targeting_groups"
         },
         "signal-definition": {
           "$ref": "/schemas/core/signal-definition.json",
-          "description": "Signal definition published in a data provider's adagents.json catalog"
+          "description": "Signal definition published in a data provider's adagents.json signals[]"
+        },
+        "signal-modeling-disclosure": {
+          "$ref": "/schemas/core/signal-modeling-disclosure.json",
+          "description": "Signal-specific modeling and AI-use disclosure metadata for data signals"
         },
         "data-provider-signal-selector": {
           "$ref": "/schemas/core/data-provider-signal-selector.json",
@@ -372,7 +476,31 @@
         },
         "signal-targeting": {
           "$ref": "/schemas/core/signal-targeting.json",
-          "description": "Targeting constraint for a signal - discriminated union by value_type (binary, categorical, numeric)"
+          "description": "Signals Protocol targeting constraint using signal_ref - discriminated union by value_type (binary, categorical, numeric)"
+        },
+        "signal-targeting-rules": {
+          "$ref": "/schemas/core/signal-targeting-rules.json",
+          "description": "Product-scoped composition rules for package-level signal_targeting_groups"
+        },
+        "signal-selection-group-rule": {
+          "$ref": "/schemas/core/signal-selection-group-rule.json",
+          "description": "Override for one product signal selection group"
+        },
+        "signal-targeting-expression": {
+          "$ref": "/schemas/core/signal-targeting-expression.json",
+          "description": "Media-buy product targeting expression using signal_ref - discriminated union by value_type (binary, categorical, numeric)"
+        },
+        "package-signal-targeting": {
+          "$ref": "/schemas/core/package-signal-targeting.json",
+          "description": "One selected signal inside a package signal targeting group"
+        },
+        "package-signal-targeting-group": {
+          "$ref": "/schemas/core/package-signal-targeting-group.json",
+          "description": "One include or exclude child group inside package-level signal_targeting_groups"
+        },
+        "package-signal-targeting-groups": {
+          "$ref": "/schemas/core/package-signal-targeting-groups.json",
+          "description": "Portable package-level signal composition: top-level all with child any/none groups"
         },
         "event": {
           "$ref": "/schemas/core/event.json",
@@ -397,6 +525,10 @@
         "vendor-metric-optimization": {
           "$ref": "/schemas/core/vendor-metric-optimization.json",
           "description": "Product-level capability declaration for vendor-attested metric optimization (attention, brand lift, emissions, retail-media partner metrics)"
+        },
+        "vendor-metric-optimization-supported-metric": {
+          "$ref": "/schemas/core/vendor-metric-optimization-supported-metric.json",
+          "description": "One vendor metric a product can optimize toward"
         },
         "audience-member": {
           "$ref": "/schemas/core/audience-member.json",
@@ -524,6 +656,10 @@
           "$ref": "/schemas/enums/creative-quality.json",
           "description": "Quality tier for creative generation (draft, production)"
         },
+        "logo-slot": {
+          "$ref": "/schemas/enums/logo-slot.json",
+          "description": "Renderer-facing logo slots for selecting brand.json logo variants"
+        },
         "pacing": {
           "$ref": "/schemas/enums/pacing.json",
           "description": "Budget pacing strategy"
@@ -543,6 +679,10 @@
         "channels": {
           "$ref": "/schemas/enums/channels.json",
           "description": "Advertising channels (display, video, dooh, ctv, audio, etc.)"
+        },
+        "video-placement-type": {
+          "$ref": "/schemas/enums/video-placement-type.json",
+          "description": "Declared video placement classifications using IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions"
         },
         "task-status": {
           "$ref": "/schemas/enums/task-status.json",
@@ -602,7 +742,7 @@
         },
         "signal-catalog-type": {
           "$ref": "/schemas/enums/signal-catalog-type.json",
-          "description": "Types of signal catalogs (marketplace, custom, owned)"
+          "description": "Commercial/provenance types for signals (marketplace, custom, owned)"
         },
         "metric-type": {
           "$ref": "/schemas/enums/metric-type.json",
@@ -762,7 +902,7 @@
         },
         "signal-source": {
           "$ref": "/schemas/enums/signal-source.json",
-          "description": "Source type for signal identifiers: 'catalog' (verifiable via data provider) or 'agent' (trust-based)"
+          "description": "Source type for signal identifiers: 'catalog' (verifiable via data provider) or 'agent' (signal source identified by agent_url)"
         },
         "universal-macro": {
           "$ref": "/schemas/enums/universal-macro.json",
@@ -1550,7 +1690,7 @@
       "description": "Agent authorization file format specification for publishers and data providers",
       "$ref": "/schemas/adagents.json",
       "file_location": "/.well-known/adagents.json",
-      "purpose": "Declares authorized agents. Publishers use it for sales agent authorization over properties. Data providers use it to publish signal catalogs and authorize signals agents to resell their data."
+      "purpose": "Declares authorized agents. Publishers use it for sales agent authorization over properties. Data providers use it to publish signal definitions and authorize signals agents to resell their data."
     },
     "brand": {
       "description": "Brand identity claim file format specification",
@@ -1747,5 +1887,5 @@
       "code": "// Use everit-org/json-schema or similar library"
     }
   ],
-  "published_version": "3.1.0-beta.3"
+  "published_version": "3.1.0-rc.3"
 }

@@ -29,6 +29,7 @@ import {
   handleSyncCreatives,
   handleListCreatives,
   handleListCreativeFormats,
+  hasAdcpSuccessPayload,
 } from './task-handlers.js';
 import {
   handleProvidePerformanceFeedback,
@@ -43,6 +44,7 @@ import type { ToolArgs, TrainingContext } from './types.js';
 
 interface TrainingSalesMeta {
   brand_domain?: string;
+  operator?: string;
   [key: string]: unknown;
 }
 
@@ -50,14 +52,64 @@ interface TrainingSalesConfig {
   strict: boolean;
 }
 
-/** Build a TrainingContext from a v6 RequestContext.Account.authInfo. */
+export const TRAINING_SALES_CAPABILITIES = {
+  specialisms: ['sales-non-guaranteed', 'sales-guaranteed'] as const,
+  creative_agents: [],
+  channels: [] as const,
+  pricingModels: ['cpm', 'cpa'] as const,
+  targeting: {
+    geo_countries: true,
+    geo_regions: true,
+    geo_metros: { nielsen_dma: true },
+    geo_postal_areas: { us_zip: true },
+    language: true,
+    keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] as const },
+    negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] as const },
+  },
+  audience_targeting: {
+    supported_identifier_types: ['hashed_email' as const],
+    minimum_audience_size: 100,
+  },
+  conversion_tracking: {
+    supported_event_types: ['purchase' as const, 'add_to_cart' as const, 'lead' as const, 'page_view' as const],
+    supported_hashed_identifiers: ['hashed_email' as const],
+    supported_action_sources: ['website' as const, 'app' as const],
+  },
+  // Seller-level rollup of metric-optimization capabilities. Honest union
+  // across catalog products (product-factory.ts assigns these by channel mix).
+  // The tenant router projects these fields onto get_adcp_capabilities until
+  // the SDK exposes them directly (adcp-client#1818).
+  supported_optimization_metrics: ['clicks' as const, 'views' as const, 'completed_views' as const, 'engagements' as const, 'reach' as const],
+  vendor_metric_optimization: {
+    supported_targets: ['threshold_rate' as const],
+  },
+  requireOperatorAuth: false,
+  supportedBillings: ['agent', 'operator'] as const,
+  // Auto-derives `compliance_testing.scenarios[]` from the adapters wired in
+  // `serverOptions.complyTest`. Empty block opts in; the capability/adapter
+  // consistency check at construction throws if adapters aren't supplied.
+  compliance_testing: {},
+  config: { strict: false },
+};
+
+export function salesCapabilityProjection() {
+  return {
+    supported_optimization_metrics: [...TRAINING_SALES_CAPABILITIES.supported_optimization_metrics],
+    vendor_metric_optimization: {
+      supported_targets: [...TRAINING_SALES_CAPABILITIES.vendor_metric_optimization.supported_targets],
+    },
+  };
+}
+
+/** Build a TrainingContext from the v6 request context auth bridge. */
 function buildTrainingCtx(
-  account: { authInfo?: { principal?: string } } | undefined,
+  ctx: { account?: { authInfo?: { principal?: string } }; authInfo?: { clientId?: string } } | undefined,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): TrainingContext {
   return {
     mode: 'open',
-    principal: account?.authInfo?.principal ?? 'anonymous',
+    tenantId: 'sales',
+    principal: ctx?.authInfo?.clientId ?? ctx?.account?.authInfo?.principal ?? 'anonymous',
     ...(storyboardCompat && { storyboardCompat }),
   };
 }
@@ -74,12 +126,30 @@ function brandDomainFromCtx(account: unknown): string | undefined {
   return (account as { ctx_metadata?: TrainingSalesMeta } | undefined)?.ctx_metadata?.brand_domain;
 }
 
+function accountRefFromCtx(account: unknown): ToolArgs['account'] | undefined {
+  const acct = account as { id?: unknown; operator?: unknown; ctx_metadata?: TrainingSalesMeta } | undefined;
+  const brandDomain = acct?.ctx_metadata?.brand_domain;
+  const accountId = typeof acct?.id === 'string' && !acct.id.startsWith('synthetic_') && acct.id !== 'public_sandbox'
+    ? acct.id
+    : undefined;
+  if (!accountId && !brandDomain) return undefined;
+  return {
+    ...(accountId && { account_id: accountId }),
+    ...(brandDomain && { brand: { domain: brandDomain } }),
+    ...(typeof acct?.ctx_metadata?.operator === 'string'
+      ? { operator: acct.ctx_metadata.operator }
+      : typeof acct?.operator === 'string'
+        ? { operator: acct.operator }
+        : {}),
+  };
+}
+
 /**
  * v5 → v6 envelope translator. v5 handlers return `{ errors: [...] }` for
  * structured rejection; v6 platform methods throw `AdcpError`.
  */
-function translateV5Result<T extends object>(result: unknown): T {
-  const errs = (result as {
+function translateV5Result<T extends object>(result: unknown, options: { allowAdvisories?: boolean } = {}): T {
+  const resultObj = result as (Record<string, unknown> & {
     errors?: Array<{
       code: string;
       message: string;
@@ -87,8 +157,10 @@ function translateV5Result<T extends object>(result: unknown): T {
       details?: unknown;
       recovery?: string;
     }>;
-  } | undefined)?.errors;
-  if (Array.isArray(errs) && errs.length > 0) {
+  } | undefined);
+  const errs = resultObj?.errors;
+  const hasAdvisorySuccessPayload = options.allowAdvisories === true && hasAdcpSuccessPayload(resultObj);
+  if (Array.isArray(errs) && errs.length > 0 && !hasAdvisorySuccessPayload) {
     const first = errs[0]!;
     const recovery = (first.recovery === 'transient' || first.recovery === 'correctable' || first.recovery === 'terminal')
       ? first.recovery
@@ -118,7 +190,8 @@ function translateV5Result<T extends object>(result: unknown): T {
  */
 const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
   resolution: 'explicit',
-  resolve: async (ref, _ctx) => {
+  resolve: async (ref, ctx) => {
+    const principal = ctx?.authInfo?.clientId;
     if (ref == null) {
       return {
         id: 'public_sandbox',
@@ -127,7 +200,7 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
         mode: 'sandbox',
         ctx_metadata: {},
         sandbox: true,
-        authInfo: { kind: 'public' },
+        authInfo: { kind: 'public', ...(principal && { principal }) },
       };
     }
     const brandDomain =
@@ -137,16 +210,17 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
     const accountId =
       'account_id' in ref && typeof ref.account_id === 'string' ? ref.account_id : undefined;
     const id = accountId ?? `synthetic_${brandDomain ?? 'anon'}`;
+    const operator = 'operator' in ref && typeof ref.operator === 'string' ? ref.operator : undefined;
     return {
       id,
       name: brandDomain ?? id,
       status: 'active',
       mode: 'sandbox',
       ...(brandDomain != null && { brand: { domain: brandDomain } }),
-      ...('operator' in ref && typeof ref.operator === 'string' && { operator: ref.operator }),
-      ctx_metadata: { brand_domain: brandDomain },
+      ...(operator && { operator }),
+      ctx_metadata: { brand_domain: brandDomain, ...(operator && { operator }) },
       sandbox: true,
-      authInfo: { kind: 'api_key' },
+      authInfo: { kind: 'api_key', ...(principal && { principal }) },
     };
   },
   upsert: syncAccountsUpsert,
@@ -157,48 +231,7 @@ export class TrainingSalesPlatform
 {
   constructor(private readonly storyboardCompat?: TrainingContext['storyboardCompat']) {}
 
-  capabilities = {
-    specialisms: ['sales-non-guaranteed', 'sales-guaranteed'] as const,
-    creative_agents: [],
-    channels: [] as const,
-    pricingModels: ['cpm', 'cpa'] as const,
-    targeting: {
-      geo_countries: true,
-      geo_regions: true,
-      geo_metros: { nielsen_dma: true },
-      geo_postal_areas: { us_zip: true },
-      language: true,
-      keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] as const },
-      negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] as const },
-    },
-    audience_targeting: {
-      supported_identifier_types: ['hashed_email' as const],
-      minimum_audience_size: 100,
-    },
-    conversion_tracking: {
-      supported_event_types: ['purchase' as const, 'add_to_cart' as const, 'lead' as const, 'page_view' as const],
-      supported_hashed_identifiers: ['hashed_email' as const],
-      supported_action_sources: ['website' as const, 'app' as const],
-    },
-    // Seller-level rollup of metric-optimization capabilities. Honest
-    // union across catalog products (product-factory.ts assigns these
-    // by channel mix). Mirrors the same declaration on the legacy /mcp
-    // route (task-handlers.ts handleGetAdcpCapabilities). adcp-client#1818
-    // will auto-derive this from product-level supported_metrics once
-    // the SDK ships the seller-level field; until then both surfaces
-    // declare it manually for parity.
-    supported_optimization_metrics: ['clicks' as const, 'views' as const, 'completed_views' as const, 'engagements' as const, 'reach' as const],
-    vendor_metric_optimization: {
-      supported_targets: ['threshold_rate' as const],
-    },
-    supportedBillings: ['agent', 'operator'] as const,
-    // Auto-derives `compliance_testing.scenarios[]` from the adapters
-    // wired in `serverOptions.complyTest`. Empty block opts in; the
-    // capability/adapter consistency check at construction throws if
-    // adapters aren't supplied alongside.
-    compliance_testing: {},
-    config: { strict: false },
-  };
+  capabilities = TRAINING_SALES_CAPABILITIES;
 
   statusMappers = {};
   accounts: AccountStore<TrainingSalesMeta> = trainingSalesAccounts;
@@ -207,12 +240,12 @@ export class TrainingSalesPlatform
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sales: SalesPlatform<TrainingSalesMeta> = {
     getProducts: async (req, ctx) => {
-      const result = await handleGetProducts(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
-      return translateV5Result(result);
+      const result = await handleGetProducts(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
+      return translateV5Result(result, { allowAdvisories: true });
     },
 
     createMediaBuy: async (req, ctx) => {
-      const v5Result = await handleCreateMediaBuy(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+      const v5Result = await handleCreateMediaBuy(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       // Detect the submitted-arm envelope the v5 handler returns when the
       // `force_create_media_buy_arm` test-controller directive is set.
       // The framework's projector rejects hand-rolled
@@ -254,7 +287,7 @@ export class TrainingSalesPlatform
       const args = brandDomain
         ? { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>) };
-      const v5Result = await handleUpdateMediaBuy(args as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+      const v5Result = await handleUpdateMediaBuy(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(v5Result);
     },
 
@@ -267,13 +300,15 @@ export class TrainingSalesPlatform
       // response signature returns only `SyncCreativesRow[]`, so
       // `assignments[]` are observable via subsequent `get_media_buys`,
       // not in the sync_creatives response itself.
-      const fromInput = pickFromInput(ctx.input, ['assignments', 'dry_run'] as const);
+      const fromInput = pickFromInput(ctx.input, ['assignments', 'dry_run', 'account'] as const);
+      const accountRef = (fromInput as { account?: ToolArgs['account'] }).account ?? accountRefFromCtx(ctx.account);
       const args = {
         creatives,
         ...fromInput,
+        ...(accountRef && { account: accountRef }),
         ...(brandDomain && { brand: { domain: brandDomain } }),
       };
-      const v5Result = await handleSyncCreatives(args as unknown as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+      const v5Result = await handleSyncCreatives(args as unknown as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       // v5 returns wire-wrapped `{ creatives: [...] }`; v6 SalesPlatform
       // wants rows directly — framework re-wraps.
       const wrapped = translateV5Result<{ creatives?: unknown[] }>(v5Result);
@@ -285,7 +320,7 @@ export class TrainingSalesPlatform
       const args = brandDomain
         ? { ...(filter as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : filter;
-      const result = await handleGetMediaBuyDelivery(args as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+      const result = await handleGetMediaBuyDelivery(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
 
@@ -295,12 +330,12 @@ export class TrainingSalesPlatform
       const args = brandDomain
         ? { ...(req as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : req;
-      const result = await handleGetMediaBuys(args as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+      const result = await handleGetMediaBuys(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
 
     listCreativeFormats: async (req, ctx) => {
-      const result = await handleListCreativeFormats(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+      const result = await handleListCreativeFormats(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
 
@@ -309,12 +344,12 @@ export class TrainingSalesPlatform
       const args = brandDomain
         ? { ...(req as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : req;
-      const result = await handleListCreatives(args as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+      const result = await handleListCreatives(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
 
     providePerformanceFeedback: async (req, ctx) => {
-      const result = await handleProvidePerformanceFeedback(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+      const result = await handleProvidePerformanceFeedback(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
 
@@ -328,7 +363,7 @@ export class TrainingSalesPlatform
       const args = brandDomain
         ? { ...(req as unknown as Record<string, unknown>), account: { brand: { domain: brandDomain } }, brand: { domain: brandDomain } }
         : req;
-      const result = await handleSyncEventSources(args as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+      const result = await handleSyncEventSources(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
 
@@ -337,7 +372,7 @@ export class TrainingSalesPlatform
       const args = brandDomain
         ? { ...(req as unknown as Record<string, unknown>), account: { brand: { domain: brandDomain } }, brand: { domain: brandDomain } }
         : req;
-      const result = await handleLogEvent(args as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+      const result = await handleLogEvent(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
   };
@@ -359,7 +394,7 @@ export class TrainingSalesPlatform
         idempotency_key: `framework-projected-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
         ...(brandDomain && { account: { brand: { domain: brandDomain } }, brand: { domain: brandDomain } }),
       };
-      const result = await handleSyncAudiences(args as unknown as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+      const result = await handleSyncAudiences(args as unknown as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       const wrapped = translateV5Result<{ audiences?: SyncAudiencesRow[] }>(result);
       return (wrapped.audiences ?? []) as SyncAudiencesRow[];
     },

@@ -92,7 +92,7 @@ Rather than hardcoding the state machine, read `valid_actions` from `get_media_b
 }
 ```
 
-Always pass `revision` in `update_media_buy` calls. The seller rejects with `CONFLICT` if the revision has changed since your last read.
+Buyers SHOULD pass the latest `revision` in every `update_media_buy` call intended to change state. The field is optional for backward compatibility, but when present the seller rejects with `CONFLICT` if the revision has changed since your last read, and the check must happen atomically with the write so concurrent updates cannot overwrite each other. See [optimistic concurrency](/docs/media-buy/task-reference/update_media_buy#optimistic-concurrency).
 
 ## Guaranteed / PG deal variation
 
@@ -212,6 +212,8 @@ When the underlying resource returns to a serviceable state (audience re-syncs, 
 ### Pushed via `impairment` webhook
 
 When a buy's `health` transitions or an impairment is added/removed, the seller fires an `impairment` notification against the buy's `push_notification_config`. The payload reuses the `impairment` object shape plus the buy's updated `health`. See the [persistent webhook contract](/docs/building/by-layer/L3/webhooks#persistent-channel-contract) for delivery semantics (at-least-once, no-ordering, coalescence, replay via snapshot).
+
+Impairment webhooks identify affected packages with `package_ids[]` by design. Buyers that need package-level correlation context, such as `context.buyer_ref`, should call `get_media_buys` after receiving an impairment fire and read the package snapshot.
 
 ### Materiality coverage
 

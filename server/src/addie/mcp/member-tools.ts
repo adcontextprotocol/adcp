@@ -12,8 +12,6 @@
 
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '../../logger.js';
-
-const logger = createLogger('addie-member-tools');
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
 import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
@@ -40,6 +38,7 @@ import {
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
   complianceResultToDbInput,
+  loadComplianceIndex,
   type ComplyOptions,
   type ComplianceTrack,
 } from '../services/compliance-testing.js';
@@ -47,7 +46,6 @@ import {
   listAllComplianceStoryboards,
   getComplianceStoryboardById,
   resolveStoryboardsForCapabilities,
-  loadComplianceIndex,
   runStoryboard,
   runStoryboardStep,
   createTestClient,
@@ -59,6 +57,15 @@ import {
 } from '@adcp/sdk/testing';
 import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
+import {
+  hostedComplianceTarget,
+  hostedComplianceOptions,
+  hostedCapabilitiesForCompliance,
+  withHostedStoryboardRunOptions,
+  withHostedTestOptions,
+  isDefaultHostedComplianceTarget,
+  badgeEligibleVersionsForHostedComplianceTarget,
+} from '../../services/hosted-compliance-version.js';
 import { AgentContextDatabase, validateAuthTokenChars, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
 import { isOAuthRequiredErrorMessage } from '../../routes/helpers/oauth-error-detection.js';
@@ -114,6 +121,37 @@ import { getWorkos } from '../../auth/workos-client.js';
 import { resolveUserRole } from '../../utils/resolve-user-role.js';
 import { recordAgentTestRun } from '../../db/agent-test-db.js';
 import { canonicalizeAgentUrl } from '../../db/publisher-db.js';
+
+const logger = createLogger('addie-member-tools');
+const complianceTarget = hostedComplianceTarget();
+function targetFromInput(input: Record<string, unknown>): ReturnType<typeof hostedComplianceTarget> {
+  const requested = input.compliance_target;
+  try {
+    return typeof requested === 'string' && requested.trim()
+      ? hostedComplianceTarget(requested.trim())
+      : complianceTarget;
+  } catch {
+    throw new ToolError('Invalid compliance_target. Use 3.0, 3.1-beta, or an exact bundled version.');
+  }
+}
+
+function formatComplianceTarget(
+  target = complianceTarget,
+  resolvedVersion = target.version,
+  options: { includeBadgeEligibility?: boolean } = {},
+): string {
+  let label = target.requested === resolvedVersion
+    ? resolvedVersion
+    : `${target.requested} (resolved ${resolvedVersion})`;
+
+  if (options.includeBadgeEligibility) {
+    const versions = badgeEligibleVersionsForHostedComplianceTarget(target);
+    label += versions.length
+      ? ` — badge eligible for public AdCP ${versions.join('/')} badges`
+      : ' — diagnostic only';
+  }
+  return label;
+}
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
@@ -1104,6 +1142,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to evaluate' },
         tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable, driven by the agent\'s get_adcp_capabilities response)' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" for the badge-eligible default line or "3.1-beta" for an explicit beta diagnostic run. Defaults to 3.0.' },
       },
       required: ['agent_url'],
     },
@@ -1210,6 +1249,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to discover and recommend storyboards for' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
       },
       required: ['agent_url'],
     },
@@ -1223,6 +1263,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         storyboard_id: { type: 'string', description: 'Storyboard ID (from recommend_storyboards)' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
       },
       required: ['storyboard_id'],
     },
@@ -1238,6 +1279,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL to test' },
         storyboard_id: { type: 'string', description: 'Storyboard ID to run' },
         dry_run: { type: 'boolean', description: 'If true (default), use test data that won\'t affect production state', default: true },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" or "3.1-beta". Defaults to 3.0. Explicit non-default targets are diagnostic-only.' },
       },
       required: ['agent_url', 'storyboard_id'],
     },
@@ -1255,6 +1297,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         step_id: { type: 'string', description: 'Step ID to run (from storyboard detail or previous step\'s next.step_id)' },
         context: { type: 'object', description: 'Accumulated context from previous step (pass the context field from the previous run_storyboard_step result)', additionalProperties: true },
         dry_run: { type: 'boolean', description: 'If true (default), use test data', default: true },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" or "3.1-beta". Defaults to 3.0. Explicit non-default targets are diagnostic-only.' },
       },
       required: ['agent_url', 'storyboard_id', 'step_id'],
     },
@@ -2440,7 +2483,7 @@ export function createMemberToolHandlers(
       if (result.code === 'workos_misconfigured') {
         // Anti-loop: don't have the model offer to retry. The fix lives in
         // the WorkOS dashboard, not in the user's flow.
-        return `<!-- STATUS: workos_misconfigured -->\n\nI can't issue a DNS challenge for ${rawDomain} right now — our identity provider isn't returning a DNS record prefix, which means I have nowhere to tell you to publish the TXT record. This is an operator-side issue (WorkOS DNS verification template), not something you can fix. **Stop here.** The AAO team has been alerted; ask them to set this up manually if you need to move forward today.`;
+        return `<!-- STATUS: workos_misconfigured -->\n\nI can't issue a DNS challenge for ${rawDomain} right now — our identity provider did not return enough DNS record data. This is an operator-side issue, not something you can fix. **Stop here.** The AgenticAdvertising.org team has been alerted; ask them to set this up manually if you need to move forward today.`;
       }
       return `<!-- STATUS: workos_error -->\n\nCouldn't issue the domain challenge: ${result.message}`;
     }
@@ -2449,15 +2492,13 @@ export function createMemberToolHandlers(
       return `<!-- STATUS: already_verified -->\n\n${result.domain} is already verified for your organization in WorkOS. The brand registry should already reflect that — call \`verify_brand_domain_challenge\` if you want to force a sync.`;
     }
 
-    // Defensive: the service should have returned workos_misconfigured before
-    // reaching here, but if WorkOS returns a token without a prefix and the
-    // service guard ever regresses, surface the same failure mode rather than
-    // handing the model a half-broken record to render.
-    if (!result.verification_token || !result.verification_prefix) {
-      return `<!-- STATUS: workos_misconfigured -->\n\nIssued a challenge for ${result.domain} but WorkOS didn't return a complete DNS record (missing prefix or token). This is an operator-side issue — ask the AAO team to verify ${result.domain} manually for you.`;
+    if (!result.verification_token) {
+      return `<!-- STATUS: workos_error -->\n\nIssued a challenge for ${result.domain}, but WorkOS did not return a DNS TXT value. Ask the AgenticAdvertising.org team to verify ${result.domain} manually for you.`;
     }
 
-    const recordName = `${result.verification_prefix}.${result.domain}`;
+    const recordName = result.verification_prefix
+      ? `${result.verification_prefix}.${result.domain}`
+      : result.domain;
     const lines = [
       `<!-- STATUS: dns_record_issued -->`,
       ``,
@@ -3686,6 +3727,9 @@ export function createMemberToolHandlers(
   handlers.set('evaluate_agent_quality', async (input) => {
     const agentUrl = input.agent_url as string;
     const tracks = input.tracks as ComplianceTrack[] | undefined;
+    const runTarget = targetFromInput(input);
+    const writesCanonicalComplianceState = isDefaultHostedComplianceTarget(runTarget);
+    let skippedCanonicalWriteForTarget = false;
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
@@ -3712,7 +3756,7 @@ export function createMemberToolHandlers(
     if (tracks) complyOptions.tracks = tracks;
 
     try {
-      const result = await comply(resolved.resolvedUrl, complyOptions);
+      const result = await comply(resolved.resolvedUrl, complyOptions, runTarget);
 
       // Surface OAuth-required short-circuit. comply() doesn't throw on auth
       // failures — it pushes a `category: 'auth'` observation and runs a
@@ -3768,7 +3812,7 @@ export function createMemberToolHandlers(
           );
         }
 
-        if (isAgentOwner) {
+        if (isAgentOwner && writesCanonicalComplianceState && !tracks) {
           try {
             const metadata = await complianceDb.getRegistryMetadata(resolved.resolvedUrl);
             // Skip canonical write if the owner has opted out of compliance monitoring.
@@ -3780,6 +3824,9 @@ export function createMemberToolHandlers(
                   metadata?.lifecycle_stage ?? 'production',
                   'owner_test',
                 ),
+                // Track-filtered evaluations are diagnostic slices, not an
+                // authoritative replacement for every storyboard row.
+                replace_storyboard_statuses: !tracks,
                 // Owner test runs are not dry runs — they update the live public record.
                 // (complianceResultToDbInput hard-codes dry_run: true; override here.)
                 dry_run: false,
@@ -3789,7 +3836,7 @@ export function createMemberToolHandlers(
                 // See migration 490.
                 triggered_org_id: organizationId,
               };
-              await complianceDb.recordComplianceRun(dbInput);
+              const { run } = await complianceDb.recordComplianceRun(dbInput);
               // notifyComplianceChange intentionally omitted: owner test runs are
               // exploratory; compliance-change notifications fire on heartbeat
               // transitions only to prevent iteration-loop spam.
@@ -3800,12 +3847,14 @@ export function createMemberToolHandlers(
               // Verification-change notifications are intentionally skipped —
               // the owner already received the result in their chat response.
               const declaredSpecialisms = result.agent_profile?.specialisms ?? [];
-              if (declaredSpecialisms.length > 0) {
+              if (declaredSpecialisms.length > 0 && dbInput.storyboard_statuses?.length) {
                 try {
                   await runBadgeFanOut({
                     complianceDb,
                     agentUrl: resolved.resolvedUrl,
                     declaredSpecialisms,
+                    runId: tracks ? null : run.id,
+                    adcpVersions: badgeEligibleVersionsForHostedComplianceTarget(runTarget),
                   });
                 } catch (badgeError) {
                   logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Badge fan-out failed after owner_test run');
@@ -3815,6 +3864,10 @@ export function createMemberToolHandlers(
           } catch (error) {
             logger.warn({ error, agentUrl: resolved.resolvedUrl }, 'Could not write owner test result to canonical compliance state');
           }
+        } else if (isAgentOwner && writesCanonicalComplianceState && tracks) {
+          skippedCanonicalWriteForTarget = true;
+        } else if (isAgentOwner) {
+          skippedCanonicalWriteForTarget = true;
         }
 
         // Legacy write to agent_contexts + agent_test_history. Retained ONLY
@@ -3864,6 +3917,10 @@ export function createMemberToolHandlers(
       const safeName = sanitizeAgentField(result.agent_profile.name, 120);
       output += `## Quality Evaluation: ${safeName || resolved.resolvedUrl}\n\n`;
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
+      output += `**Compliance target:** ${formatComplianceTarget(runTarget, result.adcp_version ?? runTarget.version, { includeBadgeEligibility: true })}\n`;
+      if (skippedCanonicalWriteForTarget) {
+        output += `_Explicit non-default compliance targets are diagnostic only; public compliance status and badges were not updated._\n`;
+      }
       const safeTools = (result.agent_profile.tools || []).map(t => sanitizeAgentField(t, 80)).filter(Boolean);
       output += `**Tools:** ${safeTools.length} (${safeTools.join(', ')})\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
@@ -3949,6 +4006,21 @@ export function createMemberToolHandlers(
       if (capsError) {
         const presentation = presentCapabilityResolutionError(capsError);
         logger.warn({ agentUrl: resolved.resolvedUrl, ...presentation.logFields }, presentation.logMsg);
+        if (capsError.kind === 'unsupported_adcp_version') {
+          const safeVersion = fenceAgentValue(capsError.complianceVersion ?? '', 80);
+          const safeSupported = (capsError.supportedVersions ?? [])
+            .map(v => fenceAgentValue(v, 40))
+            .filter(Boolean)
+            .join(', ');
+          const supportedLine = safeSupported || '`(none advertised)`';
+          return (
+            `**Unsupported compliance target.** The selected compliance target resolves to ` +
+            `${safeVersion}, but the agent at ${resolved.resolvedUrl} advertises ` +
+            `\`adcp.supported_versions\`: ${supportedLine}.\n\n` +
+            `Select a compliance target the seller actually supports, then re-run ` +
+            `\`evaluate_agent_quality\`.`
+          );
+        }
         const safeSpec = fenceAgentValue(capsError.specialism ?? '', 80);
         if (capsError.kind === 'specialism_parent_protocol_missing') {
           const safeParent = fenceAgentValue(capsError.parentProtocol ?? '', 80);
@@ -4003,6 +4075,8 @@ export function createMemberToolHandlers(
 
   handlers.set('recommend_storyboards', async (input) => {
     const agentUrl = input.agent_url as string;
+    const runTarget = targetFromInput(input);
+    const runOptions = hostedComplianceOptions(runTarget);
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
@@ -4016,9 +4090,9 @@ export function createMemberToolHandlers(
     const authOption = buildAuthOption(resolved);
     let profile: AgentProfile | undefined;
     try {
-      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, {
+      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, withHostedTestOptions({
         ...(authOption && { auth: authOption }),
-      });
+      }, runTarget));
       profile = caps.profile;
 
       // testCapabilityDiscovery catches its own throws and surfaces them as
@@ -4063,7 +4137,7 @@ export function createMemberToolHandlers(
     // real cache version instead of emitting a literal `{version}` placeholder.
     let index;
     try {
-      index = loadComplianceIndex();
+      index = loadComplianceIndex(runTarget);
     } catch (err) {
       logger.warn({ err }, 'recommend_storyboards: failed to load compliance index');
     }
@@ -4087,6 +4161,7 @@ export function createMemberToolHandlers(
     let output = '';
     if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
     else if (resolved.source === 'oauth') output += '_Using saved OAuth credentials._\n\n';
+    output += `_Compliance target: AdCP ${formatComplianceTarget(runTarget)}._\n\n`;
     output += `## Agent: ${safeAgentName || resolved.resolvedUrl}\n\n`;
 
     // No capabilities declared — disambiguate: auth failure vs. genuinely
@@ -4145,15 +4220,18 @@ export function createMemberToolHandlers(
     }
 
     // Resolve capabilities → bundles. `resolveStoryboardsForCapabilities` fails
-    // closed for two distinct agent-config problems: a specialism whose parent
-    // protocol is missing from supported_protocols, or a specialism whose
-    // bundle isn't in the local cache. Classify and coach accordingly.
+    // closed for agent-config or target-selection problems: missing parent
+    // protocol, unknown specialism, or unsupported compliance cache version.
+    // Classify and coach accordingly.
     let resolvedBundles: Array<{ ref: { id: string; kind: string }; storyboards: Storyboard[] }>;
     try {
-      const res = resolveStoryboardsForCapabilities({
+      const caps = hostedCapabilitiesForCompliance({
         supported_protocols: supportedProtocols,
         specialisms,
-      });
+        major_versions: profile?.adcp_major_versions,
+        supported_versions: profile?.adcp_supported_versions,
+      }, runTarget);
+      const res = resolveStoryboardsForCapabilities(caps, runOptions);
       resolvedBundles = res.bundles;
     } catch (error) {
       const capsError = classifyCapabilityResolutionError(error);
@@ -4162,17 +4240,29 @@ export function createMemberToolHandlers(
       const safeDeclared = specialisms.map(s => fenceAgentValue(s, 80)).filter(Boolean).join(', ');
       const safeProtocolsDeclared = supportedProtocols.map(p => fenceAgentValue(p, 80)).filter(Boolean).join(', ');
 
-      if (capsError?.kind === 'specialism_parent_protocol_missing') {
+      if (capsError) {
         const presentation = presentCapabilityResolutionError(capsError);
         logger.warn({ agentUrl: resolved.resolvedUrl, ...presentation.logFields }, presentation.logMsg);
-        const safeSpec = fenceAgentValue(capsError.specialism ?? '', 80);
-        const safeParent = fenceAgentValue(capsError.parentProtocol ?? '', 80);
-        output += `**Capabilities misconfigured.** The agent declares the ${safeSpec} specialism, but its parent protocol ${safeParent} is missing from \`supported_protocols\`. Every specialism must roll up to a declared protocol.\n\n`;
-        if (safeProtocolsDeclared) {
-          output += `Currently declared protocols: ${safeProtocolsDeclared}.\n\n`;
+        if (capsError.kind === 'unsupported_adcp_version') {
+          const safeVersion = fenceAgentValue(capsError.complianceVersion ?? '', 80);
+          const safeSupported = (capsError.supportedVersions ?? [])
+            .map(v => fenceAgentValue(v, 40))
+            .filter(Boolean)
+            .join(', ');
+          output += `**Unsupported compliance target.** The selected compliance target resolves to ${safeVersion}, but the agent advertises \`adcp.supported_versions\`: ${safeSupported || '`(none advertised)`'}.\n\n`;
+          output += `Select a compatible compliance target, then re-run \`recommend_storyboards\`.\n`;
+          return output;
         }
-        output += `Add the ${safeParent} protocol to the \`supported_protocols\` array in \`get_adcp_capabilities\`, redeploy, then re-run \`recommend_storyboards\`.\n`;
-        return output;
+        if (capsError.kind === 'specialism_parent_protocol_missing') {
+          const safeSpec = fenceAgentValue(capsError.specialism ?? '', 80);
+          const safeParent = fenceAgentValue(capsError.parentProtocol ?? '', 80);
+          output += `**Capabilities misconfigured.** The agent declares the ${safeSpec} specialism, but its parent protocol ${safeParent} is missing from \`supported_protocols\`. Every specialism must roll up to a declared protocol.\n\n`;
+          if (safeProtocolsDeclared) {
+            output += `Currently declared protocols: ${safeProtocolsDeclared}.\n\n`;
+          }
+          output += `Add the ${safeParent} protocol to the \`supported_protocols\` array in \`get_adcp_capabilities\`, redeploy, then re-run \`recommend_storyboards\`.\n`;
+          return output;
+        }
       }
 
       logger.warn({ err: error, agentUrl: resolved.resolvedUrl, supportedProtocols, specialisms }, 'recommend_storyboards: unknown specialism');
@@ -4266,10 +4356,12 @@ export function createMemberToolHandlers(
 
   handlers.set('get_storyboard_detail', async (input) => {
     const storyboardId = input.storyboard_id as string;
+    const runTarget = targetFromInput(input);
+    const runOptions = hostedComplianceOptions(runTarget);
 
-    const sb = getComplianceStoryboardById(storyboardId);
+    const sb = getComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) {
-      const all = listAllComplianceStoryboards();
+      const all = listAllComplianceStoryboards(runOptions);
       const ids = all.map(s => `\`${s.id}\``).join(', ');
       return `Storyboard "${storyboardId}" not found. Available: ${ids}`;
     }
@@ -4316,11 +4408,13 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const storyboardId = input.storyboard_id as string;
     const dryRun = input.dry_run !== false;
+    const runTarget = targetFromInput(input);
+    const runOptions = hostedComplianceOptions(runTarget);
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
-    const sb = getComplianceStoryboardById(storyboardId);
+    const sb = getComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) return `Storyboard "${storyboardId}" not found. Use \`recommend_storyboards\` to see applicable storyboards.`;
 
     const organizationId = memberContext?.organization?.workos_organization_id;
@@ -4328,9 +4422,9 @@ export function createMemberToolHandlers(
 
     try {
       const authOption = buildAuthOption(resolved);
-      const result = await runStoryboard(resolved.resolvedUrl, sb, {
+      const result = await runStoryboard(resolved.resolvedUrl, sb, withHostedStoryboardRunOptions({
         ...(authOption && { auth: authOption }),
-      });
+      }, runTarget));
 
       // runStoryboard catches its own throws and surfaces them as step
       // errors. Detect OAuth on the first failing step before rendering a
@@ -4393,6 +4487,7 @@ export function createMemberToolHandlers(
 
       output += `## ${result.storyboard_title}\n\n`;
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
+      output += `**Compliance target:** ${formatComplianceTarget(runTarget)}\n`;
       output += `**Result:** ${result.overall_passed ? 'PASSED' : 'FAILED'} — ${result.passed_count} passed, ${result.failed_count} failed, ${result.skipped_count} skipped\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
 
@@ -4472,11 +4567,13 @@ export function createMemberToolHandlers(
     const stepId = input.step_id as string;
     const context = (input.context as StoryboardContext) || {};
     const dryRun = input.dry_run !== false;
+    const runTarget = targetFromInput(input);
+    const runOptions = hostedComplianceOptions(runTarget);
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
-    const sb = getComplianceStoryboardById(storyboardId);
+    const sb = getComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) return `Storyboard "${storyboardId}" not found.`;
 
     // Resolve stepId: if caller passed a phase ID, remap to first step of that phase.
@@ -4512,10 +4609,10 @@ export function createMemberToolHandlers(
 
     try {
       const authOption = buildAuthOption(resolved);
-      const result: StoryboardStepResult = await runStoryboardStep(resolved.resolvedUrl, sb, resolvedStepId, {
+      const result: StoryboardStepResult = await runStoryboardStep(resolved.resolvedUrl, sb, resolvedStepId, withHostedStoryboardRunOptions({
         context,
         ...(authOption && { auth: authOption }),
-      });
+      }, runTarget));
 
       // runStoryboardStep catches its own throws and surfaces them as
       // result.error strings. Detect OAuth before rendering.
@@ -4548,6 +4645,7 @@ export function createMemberToolHandlers(
 
       const icon = result.skipped ? 'SKIP' : result.passed ? 'PASS' : 'FAIL';
       output += `## Step: ${result.title} [${icon}]\n\n`;
+      output += `**Compliance target:** ${formatComplianceTarget(runTarget)}\n`;
       output += `**Task:** \`${result.task}\`\n`;
       output += `**Duration:** ${(result.duration_ms / 1000).toFixed(1)}s\n`;
 

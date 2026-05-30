@@ -16,6 +16,8 @@ import {
   createWebhookEmitter,
   memoryWebhookKeyStore,
   type WebhookEmitter,
+  type WebhookAuthentication,
+  type WebhookEmitResult,
 } from '@adcp/sdk/server';
 import type { SignerKey, SigningProvider } from '@adcp/sdk/signing';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
@@ -203,6 +205,22 @@ export function maybeEmitCompletionWebhook(opts: {
   };
   void emitter.emit({ url: webhookUrl, payload, operation_id: idempotencyScope })
     .catch(err => logger.warn({ err, tool: opts.toolName, url: webhookUrl }, 'Webhook emission failed'));
+}
+
+export async function emitAccountNotificationWebhook(opts: {
+  url: string;
+  payload: Record<string, unknown>;
+  operationId: string;
+  notificationType: string;
+  authentication?: WebhookAuthentication;
+}): Promise<WebhookEmitResult> {
+  const emitter = getWebhookEmitter();
+  return emitter.emit({
+    url: opts.url,
+    payload: opts.payload,
+    operation_id: opts.operationId,
+    ...(opts.authentication !== undefined && { authentication: opts.authentication }),
+  });
 }
 
 const ENV_KEY = 'WEBHOOK_SIGNING_KEY_JWK';

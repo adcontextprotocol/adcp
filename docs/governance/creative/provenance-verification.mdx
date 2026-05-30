@@ -134,6 +134,38 @@ When `sync_creatives` rejects a creative for provenance reasons, the per-creativ
 
 Buyers receiving these codes can self-correct without negotiating with the seller — the failure is machine-readable. Auto-retry without correction will not pass.
 
+### Audit observations, not rejections
+
+Some provenance claims deserve audit routing even when the verifier has not refuted them. The canonical case is `provenance.human_oversight` set to `edited` or `directed` while `provenance.disclosure.required` is `false`. That combination may be legitimate when the declaring party invokes an editorial-responsibility carve-out, but the verifier cannot adjudicate the legal prerequisites from schema fields alone.
+
+Governance agents SHOULD surface that claim combination on successful `get_creative_features` responses as `OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED`. The observation is claim-driven: verifier observations such as `observed_value` and `confidence` are useful audit context when available, but they are not required for the observation to fire. `field` anchors the risky claim side of the multi-field combination, so the canonical path is `creative_manifest.provenance.disclosure.required`.
+
+```json
+{
+  "audit_observations": [
+    {
+      "code": "OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED",
+      "severity": "audit-worthy",
+      "recovery": "informational",
+      "field": "creative_manifest.provenance.disclosure.required",
+      "message": "Creative claims human-directed AI output does not require disclosure; retain for audit review.",
+      "details": {
+        "agent_url": "https://governance.encypher.seller.example",
+        "feature_id": "ai_generated",
+        "claimed_value": {
+          "human_oversight": "directed",
+          "disclosure_required": false
+        },
+        "observed_value": true,
+        "confidence": 0.94
+      }
+    }
+  ]
+}
+```
+
+This observation is not `PROVENANCE_CLAIM_CONTRADICTED`, and it is not grounds for rejection on its own. Sellers MAY accept the creative while retaining the observation for audit, routing it to a human reviewer, or asking the declaring party for corroborating evidence out of band. As with contradiction errors, `audit_observations[].details` is limited to the audit-safe allowlist `{ agent_url, feature_id, claimed_value, observed_value, confidence, substituted_for }`; for `OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED`, `claimed_value` is `{ human_oversight, disclosure_required }`, with `disclosure_required` as the flattened alias for `creative_manifest.provenance.disclosure.required`. Sellers MUST NOT copy arbitrary verifier extension fields, `detail_url`, or cross-tenant report data into their own buyer-facing responses.
+
 ## AI detection via get_creative_features
 
 AI detection is a creative governance feature, evaluated by specialist agents through `get_creative_features` -- the same task used for security scanning, creative quality, and content categorization. AI detection does not require a separate protocol or workflow.
@@ -228,6 +260,9 @@ if (detection.errors) {
 const aiDetected = detection.results.find(
   f => f.feature_id === 'ai_generated'
 );
+const claimsDisclosureCarveout =
+  ['edited', 'directed'].includes(provenance?.human_oversight) &&
+  provenance?.disclosure?.required === false;
 
 // Case 1: Provenance claims non-AI, detection says AI
 if (
@@ -239,7 +274,17 @@ if (
   return;
 }
 
-// Case 2: AI content in jurisdiction requiring disclosure
+// Case 2: AI content with a declared editorial-responsibility carve-out
+if (
+  aiDetected?.value === true &&
+  claimsDisclosureCarveout
+) {
+  // Accept or continue review; retain audit_observations[] for audit routing
+  recordAuditObservations(detection.audit_observations ?? []);
+  return;
+}
+
+// Case 3: AI content without disclosure metadata or a carve-out claim
 if (
   aiDetected?.value === true &&
   !provenance?.disclosure?.required
@@ -504,6 +549,7 @@ flowchart TB
 | Run AI detection | Call `get_creative_features` against the on-list governance agent that matches the buyer's representation (or one you select from `accepted_verifiers` if the buyer omits `verify_agent`) |
 | Compare claims vs detection | Implement logic to compare `digital_source_type` against `ai_generated` feature results |
 | Reject contradictions | Use `PROVENANCE_CLAIM_CONTRADICTED` with `error.details` limited to `{ agent_url, feature_id, claimed_value, observed_value, confidence }` (and `substituted_for` when you called an on-list agent other than the one the buyer nominated) |
+| Record audit observations | Preserve `get_creative_features.audit_observations[]` for downstream audit routing; do not reject solely because `OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED` is present |
 | Enforce disclosure | Verify that AI content includes appropriate `disclosure` metadata for target jurisdictions |
 | Declare artifact provenance | Attach `provenance` to content artifacts submitted via content standards |
 
@@ -522,6 +568,7 @@ flowchart TB
 | Declare detection features | Advertise `ai_generated` and related features via `get_adcp_capabilities` |
 | Implement `get_creative_features` | Accept creative manifests and return detection results |
 | Return confidence scores | Include `confidence` on detection results for probabilistic assessments |
+| Surface audit-worthy carve-out claims | Emit `audit_observations[]` with `OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED` when `human_oversight` is `edited` or `directed` and `disclosure.required` is `false` |
 | Provide detail URLs | Link to full reports via `detail_url` for audit trails |
 
 ## Related

@@ -244,6 +244,21 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         const extendedContext: typeof context & {
           addie_goal?: { goal_key: string; goal_name: string; reasoning: string };
           insights?: Array<{ type_key: string; type_name: string; value: string }>;
+          relationship_engagement?: {
+            opportunities: Array<{
+              id: string;
+              description: string;
+              dimension: string;
+              relevance: number;
+            }>;
+            contact_eligibility: {
+              can_contact: boolean;
+              reason?: string;
+              channel?: string;
+            };
+            relationship_stage: string;
+            unreplied_count: number;
+          };
         } = { ...context };
 
         if (workosUserId) {
@@ -361,7 +376,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                   certification: relCtx.certification,
                 });
 
-                (extendedContext as unknown as Record<string, unknown>).engagement = {
+                extendedContext.relationship_engagement = {
                   opportunities: opportunities.map(o => ({
                     id: o.id,
                     description: o.description,

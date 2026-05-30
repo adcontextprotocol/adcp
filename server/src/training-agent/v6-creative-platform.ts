@@ -41,6 +41,7 @@ function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undef
   return {
     mode: 'open',
     principal: account?.authInfo?.principal ?? 'anonymous',
+    creativeBillsThroughAdcp: false,
   };
 }
 
@@ -108,15 +109,20 @@ const trainingCreativeAccounts: AccountStore<TrainingCreativeMeta> = {
 export class TrainingCreativePlatform
   implements DecisioningPlatform<TrainingCreativeConfig, TrainingCreativeMeta>
 {
-  capabilities = {
+  constructor(private readonly storyboardCompat?: TrainingContext['storyboardCompat']) {}
+
+  get capabilities() {
+    return {
     specialisms: ['creative-ad-server'] as const,
     creative_agents: [],
     channels: [] as const,
     pricingModels: ['cpm', 'cpa'] as const,
+    requireOperatorAuth: this.storyboardCompat?.version === '3.0' ? true : false,
     supportedBillings: ['agent', 'operator'] as const,
     compliance_testing: {},
-    config: { strict: false },
-  };
+      config: { strict: false },
+    };
+  }
 
   statusMappers = {};
   accounts: AccountStore<TrainingCreativeMeta> = trainingCreativeAccounts;

@@ -996,6 +996,7 @@ export async function handleAcquireRights(
         return {
           rights_id: rightsId,
           status: 'rejected',
+          rights_status: 'rejected',
           brand_id: talent.brand_id,
           reason: msg,
         };
@@ -1012,6 +1013,7 @@ export async function handleAcquireRights(
       return {
         rights_id: rightsId,
         status: 'rejected',
+        rights_status: 'rejected',
         brand_id: talent.brand_id,
         reason: isStructured ? rule.reason : rule,
         ...(isStructured && rule.suggestions ? { suggestions: rule.suggestions } : {}),
@@ -1026,6 +1028,7 @@ export async function handleAcquireRights(
       return {
         rights_id: rightsId,
         status: 'pending_approval',
+        rights_status: 'pending_approval',
         brand_id: talent.brand_id,
         detail: `${talentName}'s management requires review for ${keyword} category campaigns. Request submitted for talent approval.`,
         estimated_response_time: '48h',
@@ -1062,6 +1065,7 @@ export async function handleAcquireRights(
   return {
     rights_id: rightsId,
     status: 'acquired',
+    rights_status: 'acquired',
     brand_id: talent.brand_id,
     terms: {
       pricing_option_id: pricingOptionId,

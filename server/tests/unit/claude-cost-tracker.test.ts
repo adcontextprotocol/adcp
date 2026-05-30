@@ -126,7 +126,7 @@ describe('formatCapExceededMessage', () => {
       retryAfterMs: 60 * 60 * 1000,
       tier: 'member_paid',
     });
-    expect(msg).toContain('AAO team');
+    expect(msg).toContain('AgenticAdvertising.org team');
     expect(msg).not.toContain('Upgrade');
   });
 });

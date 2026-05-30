@@ -15,7 +15,7 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { SessionState, AccountRef, BrandRef, CreativeState } from './types.js';
+import type { SessionState, AccountRef, BrandRef, CreativeState, MediaBuyState, PackageState } from './types.js';
 import { cleanupExpiredTasks } from '@adcp/sdk';
 import {
   InMemoryStateStore,
@@ -178,6 +178,8 @@ function createSession(): SessionState {
       seededProducts: new Map(),
       seededPricingOptions: new Map(),
       seededCreativeFormats: new Map(),
+      seededMeasurementCatalogs: new Map(),
+      provenanceAuditObservations: new Map(),
     },
     createdAt: now,
     lastAccessedAt: now,
@@ -220,6 +222,111 @@ export function getComplianceCreatives(): CreativeState[] {
 
 export function getComplianceCreative(id: string): CreativeState | undefined {
   return getComplianceCreatives().find(c => c.creativeId === id);
+}
+
+/**
+ * Canonical compliance media-buy fixtures for the open sandbox mode.
+ *
+ * Read-through fallback returned by handleGetMediaBuys and
+ * handleGetMediaBuyDelivery when the session has no caller-created buys.
+ * Sessions that already have buys return only those — no mixing.
+ *
+ * Product IDs are training-agent-internal labels that don't resolve against
+ * the live catalog; derivePricing falls back to the default $10 CPM rate,
+ * which is intentional — the teaching goal is delivery-metric interpretation,
+ * not catalog browsing.
+ *
+ * AUTHORING NOTE: storyboard and lesson-plan authors MUST NOT reference the
+ * fixture IDs (seed_mb_display_q2, seed_mb_video_q1) in criterion text or
+ * criterion IDs — only in exercise scaffolds. Embedding a fixture ID in a
+ * criterion string means that renaming a fixture would silently break
+ * recertification triggers without surfacing as a criterion-ID drift.
+ *
+ * Two buys cover the two primary B3 lesson states:
+ *  - seed_mb_display_q2: active, partial delivery (default status filter)
+ *  - seed_mb_video_q1: completed, 100% delivery (requires status_filter: ['completed'])
+ *
+ * Dates are recomputed on each call so elapsed fractions remain realistic
+ * across server restarts.
+ */
+export function getComplianceMediaBuys(): MediaBuyState[] {
+  const now = Date.now();
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const daysAgo = (n: number) => iso(now - n * 864e5);
+  const daysOut = (n: number) => iso(now + n * 864e5);
+
+  const displayPackage: PackageState = {
+    packageId: 'seed_pkg_display_q2_a',
+    productId: 'seed_product_display',
+    pricingOptionId: 'seed_po_display_cpm',
+    budget: 50000,
+    paused: false,
+    startTime: daysAgo(14),
+    endTime: daysOut(44),
+    creativeAssignments: ['campaign_hero_video'],
+  };
+
+  const socialPackage: PackageState = {
+    packageId: 'seed_pkg_display_q2_b',
+    productId: 'seed_product_social',
+    pricingOptionId: 'seed_po_social_cpm',
+    budget: 25000,
+    paused: false,
+    startTime: daysAgo(14),
+    endTime: daysOut(44),
+    creativeAssignments: ['campaign_hero_video'],
+  };
+
+  const videoPackage: PackageState = {
+    packageId: 'seed_pkg_video_q1_a',
+    productId: 'seed_product_video',
+    pricingOptionId: 'seed_po_video_cpm',
+    budget: 75000,
+    paused: false,
+    startTime: daysAgo(90),
+    endTime: daysAgo(30),
+    creativeAssignments: ['campaign_hero_video'],
+    optimizationGoals: [{ kind: 'metric', metric: 'reach', reach_unit: 'devices' }],
+  };
+
+  const activeBrand: AccountRef = { account_id: 'demo', brand: { domain: 'demo.example.com' } };
+
+  return [
+    {
+      mediaBuyId: 'seed_mb_display_q2',
+      accountRef: activeBrand,
+      brandRef: { domain: 'demo.example.com' },
+      status: 'active',
+      currency: 'USD',
+      packages: [displayPackage, socialPackage],
+      startTime: daysAgo(14),
+      endTime: daysOut(44),
+      revision: 1,
+      confirmedAt: daysAgo(15),
+      createdAt: daysAgo(15),
+      updatedAt: daysAgo(14),
+      history: [],
+    },
+    {
+      mediaBuyId: 'seed_mb_video_q1',
+      accountRef: activeBrand,
+      brandRef: { domain: 'demo.example.com' },
+      status: 'completed',
+      currency: 'USD',
+      packages: [videoPackage],
+      startTime: daysAgo(90),
+      endTime: daysAgo(30),
+      revision: 2,
+      confirmedAt: daysAgo(91),
+      createdAt: daysAgo(91),
+      updatedAt: daysAgo(30),
+      history: [],
+    },
+  ];
+}
+
+export function getComplianceMediaBuy(id: string): MediaBuyState | undefined {
+  return getComplianceMediaBuys().find(mb => mb.mediaBuyId === id);
 }
 
 /**
@@ -284,6 +391,8 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
       seededProducts: asMap(hydratedComply.seededProducts, fresh.complyExtensions.seededProducts),
       seededPricingOptions: asMap(hydratedComply.seededPricingOptions, fresh.complyExtensions.seededPricingOptions),
       seededCreativeFormats: asMap(hydratedComply.seededCreativeFormats, fresh.complyExtensions.seededCreativeFormats),
+      seededMeasurementCatalogs: asMap(hydratedComply.seededMeasurementCatalogs, fresh.complyExtensions.seededMeasurementCatalogs),
+      provenanceAuditObservations: asMap(hydratedComply.provenanceAuditObservations, fresh.complyExtensions.provenanceAuditObservations),
       forcedCreateMediaBuyArm: hydratedComply.forcedCreateMediaBuyArm,
     },
     lastGetProductsContext: (hydrated.lastGetProductsContext as SessionState['lastGetProductsContext']) ?? undefined,
@@ -372,7 +481,7 @@ function safeKey(value: string | undefined, max: number, pattern: RegExp): strin
  * the spec's `account` invariant on every step).
  */
 export function sessionKeyFromArgs(
-  args: { account?: AccountRef; brand?: BrandRef; plans?: unknown },
+  args: { account?: AccountRef; brand?: BrandRef; plans?: unknown; accounts?: unknown },
   mode: 'open' | 'training',
   userId?: string,
   moduleId?: string,
@@ -403,6 +512,15 @@ export function sessionKeyFromArgs(
     if (safePlanDomain) return `open:${safePlanDomain.toLowerCase()}`;
     if (planDomain && !safePlanDomain) {
       logger.debug({ domain: planDomain }, 'Rejected plans[0].brand.domain as session key; falling back');
+    }
+  }
+  if (Array.isArray(args.accounts) && args.accounts.length > 0) {
+    const first = args.accounts[0] as { brand?: BrandRef; account?: AccountRef } | undefined;
+    const accountDomain = first?.brand?.domain ?? first?.account?.brand?.domain;
+    const safeAccountDomain = safeKey(accountDomain, MAX_DOMAIN_LEN, SAFE_DOMAIN_RE);
+    if (safeAccountDomain) return `open:${safeAccountDomain.toLowerCase()}`;
+    if (accountDomain && !safeAccountDomain) {
+      logger.debug({ domain: accountDomain }, 'Rejected accounts[0].brand.domain as session key; falling back');
     }
   }
   return 'open:default';
@@ -505,4 +623,3 @@ export async function clearSessions(): Promise<void> {
   }
   // Other AdcpStateStore implementations: no-op. Tests should inject a known store.
 }
-

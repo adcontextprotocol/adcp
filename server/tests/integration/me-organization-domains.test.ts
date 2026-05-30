@@ -379,6 +379,7 @@ describe('POST /api/me/organization/domains (issue + verify challenge)', () => {
       domain: 'me-domains-new.test',
       already_verified: false,
       verification_prefix: '_workos',
+      dns_record_name: '_workos.me-domains-new.test',
       verification_strategy: 'dns',
     });
     expect(typeof res.body.verification_token).toBe('string');
@@ -463,6 +464,7 @@ describe('POST /api/me/organization/domains (issue + verify challenge)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.verification_token).toBe('preexisting-token');
+    expect(res.body.dns_record_name).toBe('_workos.me-domains-new.test');
     expect(res.body.already_verified).toBe(false);
 
     // Local row mirrors pending state at source=workos.
@@ -472,6 +474,45 @@ describe('POST /api/me/organization/domains (issue + verify challenge)', () => {
     );
     expect(row.rows[0].source).toBe('workos');
     expect(row.rows[0].verified).toBe(false);
+  });
+
+  it('uses the domain apex as the TXT record name when WorkOS returns no verificationPrefix', async () => {
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [TEST_ORG, 'Me Domains Test Co'],
+    );
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const fakeWorkos = makeFakeWorkos([
+      {
+        id: 'org_domain_existing_no_prefix',
+        domain: 'me-domains-apex.test',
+        state: 'pending',
+        verificationToken: 'preexisting-token',
+        verificationPrefix: null,
+        verificationStrategy: 'dns',
+      },
+    ]);
+    const app = buildApp(() => { cacheInvalidations += 1; }, fakeWorkos);
+
+    const res = await request(app)
+      .post('/api/me/organization/domains?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER)
+      .send({ domain: 'me-domains-apex.test' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      domain: 'me-domains-apex.test',
+      verification_token: 'preexisting-token',
+      verification_prefix: null,
+      dns_record_name: 'me-domains-apex.test',
+      already_verified: false,
+    });
+    expect(fakeWorkos.state.domains).toHaveLength(1);
+    expect(fakeWorkos.state.domains[0].id).toBe('org_domain_existing_no_prefix');
   });
 
   it('returns 409 when WorkOS reports the domain belongs to another org', async () => {
@@ -563,12 +604,46 @@ describe('POST /api/me/organization/domains (issue + verify challenge)', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('still_pending');
+    expect(res.body.dns_record_name).toBe('_workos.me-domains-new.test');
 
     const row = await pool.query<{ verified: boolean }>(
       `SELECT verified FROM organization_domains WHERE workos_organization_id = $1 AND domain = $2`,
       [TEST_ORG, 'me-domains-new.test'],
     );
     expect(row.rows[0].verified).toBe(false);
+  });
+
+  it('verify still_pending uses the domain apex when WorkOS challenge has no verificationPrefix', async () => {
+    await seedOrgWithDomains(pool, [
+      { domain: 'me-domains-apex.test', verified: false, is_primary: false, source: 'workos' },
+    ]);
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const fakeWorkos = makeFakeWorkos([
+      {
+        id: 'org_domain_apex',
+        domain: 'me-domains-apex.test',
+        state: 'pending',
+        verificationToken: 'token123',
+        verificationPrefix: null,
+        verificationStrategy: 'dns',
+      },
+    ]);
+    const pendingErr: any = new Error('not yet propagated');
+    pendingErr.status = 422;
+    fakeWorkos.setVerifyError(pendingErr);
+    const app = buildApp(() => { cacheInvalidations += 1; }, fakeWorkos);
+
+    const res = await request(app)
+      .post('/api/me/organization/domains/me-domains-apex.test/verify?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('still_pending');
+    expect(res.body.dns_record_name).toBe('me-domains-apex.test');
+    expect(res.body.message).toContain('me-domains-apex.test');
+    expect(res.body.message).not.toContain('prefix.domain');
   });
 
   it('verify returns 404 when no WorkOS challenge exists', async () => {
@@ -722,10 +797,11 @@ describe('POST /api/me/organization/domains (issue + verify challenge)', () => {
   });
 
   it('deletes and recreates a broken pending WorkOS entry (no verification token)', async () => {
-    // Broken state on WorkOS: a domain is attached but verificationToken /
-    // verificationPrefix are null. Returning the broken state would echo
-    // nulls back to the user forever. The route deletes the broken entry
-    // and falls through to a fresh create.
+    // Broken state on WorkOS: a domain is attached but verificationToken is
+    // null. Returning the broken state would echo nulls back to the user
+    // forever. The route deletes the broken entry and falls through to a
+    // fresh create. A missing verificationPrefix alone is valid: it means
+    // publish at the domain apex.
     await pool.query(
       `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
        VALUES ($1, $2, false, NOW(), NOW())

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/signals/get-signals-request.json",
   "title": "Get Signals Request",
-  "description": "Request parameters for discovering and refining signals. Use signal_spec for natural language discovery, signal_ids for exact lookups, both together to refine previous results, or discovery_mode: 'wholesale' to enumerate the agent's full priced signals feed (symmetric with get_products buying_mode: 'wholesale').",
+  "description": "Request parameters for discovering and refining signals. Use signal_spec for natural language discovery, signal_refs for exact lookups, both together to refine previous results, or discovery_mode: 'wholesale' to enumerate the agent's full priced signals feed (symmetric with get_products buying_mode: 'wholesale'). The legacy signal_ids field is deprecated.",
   "type": "object",
   "allOf": [
     {
@@ -44,7 +44,7 @@
         "wholesale"
       ],
       "default": "brief",
-      "description": "Declares caller intent for this request. 'brief' (default): semantic discovery — signal_spec or signal_ids is required and the agent performs inference/RAG. 'wholesale': raw wholesale signals feed enumeration — signal_spec and signal_ids MUST NOT be provided and the agent returns its full priced signals feed, paginated, scoped by filters/account/destinations/countries when present. Sellers receiving requests from pre-v3.1 clients without discovery_mode MUST default to 'brief'. Timing semantics: 'wholesale' is a wholesale signals feed read — agents SHOULD respond synchronously and MUST NOT route a 'wholesale' request through the async/Submitted arm; partial completion is signalled via the response's incomplete[] field, not via a task-handoff envelope. Agents that do not implement wholesale enumeration MAY return INVALID_REQUEST for wholesale calls; callers SHOULD probe via get_adcp_capabilities (signals.discovery_modes) first."
+      "description": "Declares caller intent for this request. 'brief' (default): semantic discovery — signal_spec, signal_refs, or legacy signal_ids is required and the agent performs inference/RAG. 'wholesale': raw wholesale signals feed enumeration — signal_spec, signal_refs, and signal_ids MUST NOT be provided and the agent returns its full priced signals feed, paginated, scoped by filters/account/destinations/countries when present. Sellers receiving requests from pre-v3.1 clients without discovery_mode MUST default to 'brief'. Timing semantics: 'wholesale' is a wholesale signals feed read — agents SHOULD respond synchronously and MUST NOT route a 'wholesale' request through the async/Submitted arm; partial completion is signalled via the response's incomplete[] field, not via a task-handoff envelope. Agents that do not implement wholesale enumeration MAY return INVALID_REQUEST for wholesale calls; callers SHOULD probe via get_adcp_capabilities (signals.discovery_modes) first."
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
@@ -52,11 +52,20 @@
     },
     "signal_spec": {
       "type": "string",
-      "description": "Natural language description of the desired signals. When used alone, enables semantic discovery. When combined with signal_ids, provides context for the agent but signal_ids matches are returned first. MUST NOT be provided when discovery_mode is 'wholesale'."
+      "description": "Natural language description of the desired signals. When used alone, enables semantic discovery. When combined with signal_refs, provides context for the agent but signal_ref matches are returned first. MUST NOT be provided when discovery_mode is 'wholesale'."
+    },
+    "signal_refs": {
+      "type": "array",
+      "description": "Specific signals to look up by reference. Returns exact matches for the requested SignalRef values. When combined with signal_spec, these signals anchor the starting set and signal_spec guides adjustments. MUST NOT be provided when discovery_mode is 'wholesale'.",
+      "items": {
+        "$ref": "/schemas/core/signal-ref.json"
+      },
+      "minItems": 1
     },
     "signal_ids": {
       "type": "array",
-      "description": "Specific signals to look up by data provider and ID. Returns exact matches from the data provider's published signal definitions. When combined with signal_spec, these signals anchor the starting set and signal_spec guides adjustments. MUST NOT be provided when discovery_mode is 'wholesale'.",
+      "description": "DEPRECATED. Use signal_refs instead. Legacy exact lookup field using SignalId objects. MUST NOT be provided when discovery_mode is 'wholesale'.",
+      "deprecated": true,
       "items": {
         "$ref": "/schemas/core/signal-id.json"
       },
@@ -81,6 +90,47 @@
     },
     "filters": {
       "$ref": "/schemas/core/signal-filters.json"
+    },
+    "fields": {
+      "type": "array",
+      "description": "Specific signal fields to include in the response, aligned with get_products.fields. Required identity and activation fields such as signal_ref or signal_id, signal_agent_segment_id, name, description, signal_type, coverage_percentage, and deployments are always included when required by the response schema. Use for progressive disclosure of rich signal-definition metadata: request fields such as taxonomy, data_sources, methodology, segmentation_criteria, criteria_url, refresh_cadence, lookback_window, onboarder, modeling, audience_expansion, device_expansion, countries, consent_basis, restricted_attributes, policy_categories, art9_basis, and data_subject_rights when the buyer needs them inline. Omit for the agent's default discovery projection. Agents SHOULD honor requested fields for exact lookup, refinement, and small custom-signal result sets when available. For broad discovery and wholesale pages, agents MAY return compact pointers instead of inlining large resources, especially when provider-published definitions can be resolved from signal_ref, taxonomy.ref, criteria_url, disclosure_url, and validators such as taxonomy.etag.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "signal_ref",
+          "signal_id",
+          "signal_agent_segment_id",
+          "name",
+          "description",
+          "value_type",
+          "categories",
+          "range",
+          "signal_type",
+          "data_provider",
+          "coverage_percentage",
+          "deployments",
+          "pricing_options",
+          "taxonomy",
+          "data_sources",
+          "methodology",
+          "segmentation_criteria",
+          "criteria_url",
+          "refresh_cadence",
+          "lookback_window",
+          "onboarder",
+          "modeling",
+          "audience_expansion",
+          "device_expansion",
+          "countries",
+          "consent_basis",
+          "restricted_attributes",
+          "policy_categories",
+          "art9_basis",
+          "data_subject_rights"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
     },
     "max_results": {
       "type": "integer",
@@ -118,12 +168,17 @@
     ]
   },
   "then": {
-    "description": "Wholesale enumeration: signal_spec and signal_ids MUST NOT be present.",
+    "description": "Wholesale enumeration: signal_spec, signal_refs, and legacy signal_ids MUST NOT be present.",
     "not": {
       "anyOf": [
         {
           "required": [
             "signal_spec"
+          ]
+        },
+        {
+          "required": [
+            "signal_refs"
           ]
         },
         {
@@ -135,11 +190,16 @@
     }
   },
   "else": {
-    "description": "Brief mode (default): signal_spec or signal_ids is required.",
+    "description": "Brief mode (default): signal_spec, signal_refs, or legacy signal_ids is required.",
     "anyOf": [
       {
         "required": [
           "signal_spec"
+        ]
+      },
+      {
+        "required": [
+          "signal_refs"
         ]
       },
       {
