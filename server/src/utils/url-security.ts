@@ -1,10 +1,15 @@
 import dns from 'dns/promises';
 import { lookup as dnsLookup, type LookupAddress, type LookupOptions } from 'dns';
 import { isIP, type LookupFunction } from 'net';
-import { Agent, type Dispatcher } from 'undici';
+import { Agent, fetch as undiciFetch, type Dispatcher } from 'undici';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('url-security');
+
+const fetchWithDispatcher = undiciFetch as unknown as (
+  input: string | URL,
+  init?: RequestInit & { dispatcher: Dispatcher },
+) => Promise<Response>;
 
 /**
  * The SSRF-safe dispatcher in `safeFetch` enforces private-IP rejection at TCP
@@ -386,7 +391,7 @@ export async function safeFetch(
   // Response body is a stream the caller consumes after this function returns;
   // closing here would tear down the underlying socket mid-stream. Connections
   // are reaped by undici's idle timeout (the same lifecycle as the global agent).
-  let response = await fetch(sanitizeUrl(parsedUrl), {
+  let response = await fetchWithDispatcher(sanitizeUrl(parsedUrl), {
     method,
     headers,
     body,
@@ -420,7 +425,7 @@ export async function safeFetch(
           }),
         )
       : headers;
-    response = await fetch(sanitizeUrl(redirectUrl), {
+    response = await fetchWithDispatcher(sanitizeUrl(redirectUrl), {
       method: redirectMethod,
       headers: redirectHeaders,
       body: redirectBody,
