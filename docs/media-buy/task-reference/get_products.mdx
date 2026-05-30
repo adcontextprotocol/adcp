@@ -164,6 +164,7 @@ The seller must declare `features.property_list_filtering: true` in [`get_adcp_c
 |-----------|------|-------------|
 | `delivery_type` | string | Filter by `"guaranteed"` or `"non_guaranteed"` |
 | `is_fixed_price` | boolean | Filter for fixed-price vs auction products. Products with both pricing types can match either value, but the returned `pricing_options` array must include only options matching the requested pricing type so buyers can select deterministically from discovery. |
+| `pricing_currencies` | string[] | Filter by ISO 4217 currencies the buyer can use for the media product transaction (e.g., `["USD"]`). Products match when they offer at least one product-level `pricing_options` entry in one of the requested currencies and any seller-applied or otherwise mandatory product-scoped signal charges are satisfiable in one of those currencies or have no incremental price. Sellers MUST return only matching product `pricing_options` so buyers can select deterministically from discovery. Optional signal or vendor add-on pricing is not pruned by this filter. |
 | `format_ids` | FormatID[] | Filter by specific format IDs |
 | `standard_formats_only` | boolean | Only return products accepting IAB standard formats |
 | `min_exposures` | integer | Minimum exposures needed for measurement validity |
@@ -230,6 +231,29 @@ Signal-targeting filter example:
   ]
 }
 ```
+
+### Currency filtering
+
+Use `filters.pricing_currencies` when the buyer's constraint is "only show products whose media price I can transact in." Use `budget_range.currency` when the buyer is also providing a budget amount or range.
+
+Buyers MAY send both. Sellers apply them conjunctively: `budget_range.currency` denominates the budget amounts, while `pricing_currencies` narrows which returned product `pricing_options` are eligible. If the two fields conflict, sellers SHOULD return zero matching products rather than reject the request solely because of the conflict. Because product-scoped signal pricing is a separate add-on surface, this filter only gates mandatory seller-applied signal charges; optional signal or vendor add-ons may still advertise other currencies, and buyers should not select unsupported add-on prices.
+
+When combined with `is_fixed_price`, returned product `pricing_options` MUST satisfy both filters: the option must be fixed-price when requested and its `currency` must be in `pricing_currencies`.
+
+Currency-only filter example:
+
+```json
+{
+  "$schema": "/schemas/media-buy/get-products-request.json",
+  "buying_mode": "wholesale",
+  "filters": {
+    "pricing_currencies": ["USD"]
+  },
+  "fields": ["product_id", "name", "pricing_options"]
+}
+```
+
+If a product has both USD and EUR media pricing and the buyer sends `pricing_currencies: ["USD"]`, the seller returns the product with only its USD product-level `pricing_options`. If the product also has a fixed or otherwise mandatory product-scoped signal charge, that mandatory charge must either be priced in USD or have no incremental price; otherwise the product does not match the filter. A mandatory `custom` signal price without `currency` is not satisfiable for this filter unless the seller can truthfully treat it as having no incremental price. Optional signal add-ons do not affect product matching.
 
 ### Budget Range Object
 
@@ -387,7 +411,7 @@ When the seller can attribute exclusions to specific filters, the response MAY i
 |-------|------|-------------|
 | `semantics` | string | `"only"` (deterministic; counts products that would have been included if not for *this* filter alone — recommended for triage), `"any"` (counts products excluded by any filter; counts may overlap), or `"approximate"` (seller can't cleanly attribute exclusions to a single filter). Buyers SHOULD inspect `semantics` before doing arithmetic on counts. |
 | `total_candidates` | integer | Number of products considered before filters were applied. May be sampled or capped when the candidate pool is large. Optional. |
-| `excluded_by` | object | Keys are filter property names from the request (`required_metrics`, `required_geo_targeting`, `budget_range`, etc.). Each value is `{ count, values?, notes? }`. Only filters that meaningfully narrowed the set need appear. |
+| `excluded_by` | object | Keys are filter property names from the request (`pricing_currencies`, `required_metrics`, `required_geo_targeting`, `budget_range`, etc.). Each value is `{ count, values?, notes? }`. Only filters that meaningfully narrowed the set need appear. |
 | `excluded_by.<filter>.count` | integer | Count of products excluded by this filter, interpreted per the parent `semantics` field. |
 | `excluded_by.<filter>.values` | array | Optional list of the specific filter values that contributed to exclusions (e.g., `["completed_views"]` for `required_metrics`). Items are strings or objects depending on filter shape; opaque without filter-specific knowledge. |
 | `excluded_by.<filter>.notes` | string | Optional human-readable note about the narrowing. |
@@ -401,6 +425,7 @@ When the seller can attribute exclusions to specific filters, the response MAY i
     "excluded_by": {
       "required_metrics": { "count": 31, "values": ["completed_views"] },
       "required_geo_targeting": { "count": 9 },
+      "pricing_currencies": { "count": 3, "values": ["USD"] },
       "budget_range": { "count": 7 }
     }
   }
