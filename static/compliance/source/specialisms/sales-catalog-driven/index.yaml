@@ -350,7 +350,7 @@ phases:
       into a URL context. Nested macro expansion is prohibited.
 
       This phase exercises the rule with three attacker-shaped catalog values
-      drawn from the unit-test fixture at `static/test-vectors/catalog-macro-substitution.json`:
+      drawn from the versioned compliance fixture at `test-vectors/catalog-macro-substitution.json`:
       reserved-char breakout, nested-expansion preservation, and non-ASCII
       UTF-8. The remaining canonical vectors (CRLF injection, bidi-override,
       mixed path/query, url-scheme injection) are exercised at the unit-test
@@ -484,7 +484,7 @@ phases:
           # Each binding: `catalog_item_id` is the item_id in the synced
           # catalog; `vector_name` is the fixture entry whose raw_value and
           # expected_encoded the runner loads from
-          # static/test-vectors/catalog-macro-substitution.json.
+          # test-vectors/catalog-macro-substitution.json.
           - macro: "{SKU}"
             catalog_item_id: "reserved_char_breakout"
             vector_name: "reserved-character-breakout"
