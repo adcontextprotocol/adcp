@@ -68,7 +68,7 @@ For pure generation, provide a minimal source manifest with the required input a
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-request.json",
   "idempotency_key": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
   "message": "Create a banner promoting our winter sale with a warm, inviting feel",
   "target_format_id": {
@@ -106,7 +106,7 @@ For transformation, provide the complete source manifest:
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-request.json",
   "idempotency_key": "b2c3d4e5-f6a7-4890-b123-456789abcdef",
   "message": "Adapt this creative for mobile, making the text larger and CTA more prominent",
   "creative_manifest": {
@@ -160,7 +160,7 @@ Retrieve a creative from the agent's library and resolve it into a manifest with
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-request.json",
   "idempotency_key": "c3d4e5f6-a7b8-4901-c234-56789abcdef0",
   "creative_id": "ft_88201",
   "concept_id": "concept_holiday_2026",
@@ -180,7 +180,7 @@ Retrieve a creative from the agent's library and resolve it into a manifest with
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.example.com",
@@ -214,7 +214,7 @@ Generate creatives for multiple formats in a single call using `target_format_id
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-request.json",
   "idempotency_key": "d4e5f6a7-b8c9-4012-d345-6789abcdef01",
   "message": "Create display banners for our spring campaign",
   "target_format_ids": [
@@ -269,7 +269,7 @@ The response uses `creative_manifests` (array) instead of `creative_manifest` (s
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-response.json",
   "creative_manifests": [
     {
       "format_id": {
@@ -333,7 +333,7 @@ When the creative agent charges and `account` is provided, the response includes
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-request.json",
   "idempotency_key": "e5f6a7b8-c9d0-4123-e456-789abcdef012",
   "account": { "account_id": "acct_acme_creative" },
   "creative_id": "cr_hero_banner",
@@ -346,7 +346,7 @@ When the creative agent charges and `account` is provided, the response includes
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.example.com",
@@ -373,7 +373,7 @@ The `pricing_option_id` corresponds to one of the options from [`list_creatives`
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-response.json",
   "creative_manifest": { "..." : "..." },
   "pricing_option_id": "po_video_cpm",
   "vendor_cost": 0,
@@ -389,7 +389,7 @@ When the request uses `target_format_id`, the response contains a single creativ
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -426,7 +426,7 @@ When the request uses `target_format_ids`, the response contains an array of cre
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-response.json",
   "creative_manifests": [
     {
       "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_static", "width": 300, "height": 250 },
@@ -456,7 +456,7 @@ If the manifest includes a brief asset with `compliance` requirements that the c
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-response.json",
   "errors": [
     {
       "code": "COMPLIANCE_UNSATISFIED",
@@ -590,7 +590,7 @@ Generate a creative from scratch using a generative format:
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-request.json",
   "idempotency_key": "f6a7b8c9-d0e1-4234-f567-89abcdef0123",
   "message": "Create a display banner for our winter sale. Use warm colors and emphasize the 50% discount",
   "target_format_id": {
@@ -625,7 +625,7 @@ Generate a creative from scratch using a generative format:
 **Response**:
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -658,7 +658,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-request.json",
   "idempotency_key": "a7b8c9d0-e1f2-4345-a678-9abcdef01234",
   "message": "Adapt this leaderboard creative to a 300x250 banner format",
   "creative_manifest": {
@@ -693,7 +693,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
 **Response**:
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -725,7 +725,7 @@ Adapt a creative for mobile with specific design changes:
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-request.json",
   "idempotency_key": "b8c9d0e1-f2a3-4456-b789-abcdef012345",
   "message": "Make this mobile-friendly: increase text size, simplify the layout, and make the CTA button more prominent",
   "creative_manifest": {
@@ -764,7 +764,7 @@ Adapt a creative for mobile with specific design changes:
 **Response**:
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -796,7 +796,7 @@ Generate a creative using structured campaign context via `brand` and a brief as
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-request.json",
   "idempotency_key": "c9d0e1f2-a3b4-4567-c890-bcdef0123456",
   "message": "Create a display banner for the holiday campaign targeting gift shoppers",
   "target_format_id": {
@@ -856,7 +856,7 @@ Generate a financial services creative with regulatory disclosures and prohibite
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-request.json",
   "idempotency_key": "d0e1f2a3-b4c5-4678-d901-cdef01234567",
   "message": "Create a display banner promoting retirement planning advisory services",
   "target_format_id": {
@@ -931,7 +931,7 @@ Generate a sponsored product carousel with campaign context, compliance disclosu
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-request.json",
   "idempotency_key": "e1f2a3b4-c5d6-4789-e012-def012345678",
   "message": "Create a product carousel highlighting the top 4 sale items",
   "target_format_id": {
@@ -987,7 +987,7 @@ Build a creative and get preview renders in the same response:
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-request.json",
   "idempotency_key": "f2a3b4c5-d6e7-4890-f123-ef0123456789",
   "message": "Create a banner for our spring campaign",
   "target_format_id": {
@@ -1027,7 +1027,7 @@ Build a creative and get preview renders in the same response:
 **Response** (when the agent supports inline preview):
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -1094,7 +1094,7 @@ Generate a draft-quality creative from a large catalog, capping the number of it
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-request.json",
   "idempotency_key": "a3b4c5d6-e7f8-4901-a234-f01234567890",
   "message": "Create hero images for our top sale items",
   "target_format_id": {
@@ -1127,7 +1127,7 @@ The catalog may contain hundreds of products, but `item_limit: 4` ensures only 4
 **Response**:
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -1228,7 +1228,7 @@ To refine, pass the previous response's `creative_manifest` back as input with a
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/3.0.1/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.1/media-buy/build-creative-request.json",
   "idempotency_key": "b4c5d6e7-f8a9-4012-b345-012345678901",
   "message": "Make the headline bolder and increase the contrast on the CTA button",
   "target_format_id": {
