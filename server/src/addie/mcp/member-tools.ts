@@ -3729,7 +3729,7 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const tracks = input.tracks as ComplianceTrack[] | undefined;
     const runTarget = targetFromInput(input);
-    let skippedCanonicalWriteForTarget = false;
+    let skippedCanonicalWriteReason: 'target' | 'tracks' | null = null;
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
@@ -3870,9 +3870,9 @@ export function createMemberToolHandlers(
             logger.warn({ error, agentUrl: resolved.resolvedUrl }, 'Could not write owner test result to canonical compliance state');
           }
         } else if (isAgentOwner && writesCanonicalComplianceState && tracks) {
-          skippedCanonicalWriteForTarget = true;
+          skippedCanonicalWriteReason = 'tracks';
         } else if (isAgentOwner) {
-          skippedCanonicalWriteForTarget = true;
+          skippedCanonicalWriteReason = 'target';
         }
 
         // Legacy write to agent_contexts + agent_test_history. Retained ONLY
@@ -3923,7 +3923,9 @@ export function createMemberToolHandlers(
       output += `## Quality Evaluation: ${safeName || resolved.resolvedUrl}\n\n`;
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
       output += `**Compliance target:** ${formatComplianceTarget(runTarget, result.adcp_version ?? runTarget.version, { includeBadgeEligibility: true })}\n`;
-      if (skippedCanonicalWriteForTarget) {
+      if (skippedCanonicalWriteReason === 'tracks') {
+        output += `_Track-filtered evaluations are diagnostic slices; public compliance status and badges were not updated._\n`;
+      } else if (skippedCanonicalWriteReason === 'target') {
         output += `_This compliance target is diagnostic only for this agent; public compliance status and badges were not updated._\n`;
       }
       const safeTools = (result.agent_profile.tools || []).map(t => sanitizeAgentField(t, 80)).filter(Boolean);

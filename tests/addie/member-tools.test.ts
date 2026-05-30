@@ -8,13 +8,52 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MemberContext } from '../../server/src/addie/member-context.js';
 
+const memberToolMocks = vi.hoisted(() => ({
+  checkToolRateLimit: vi.fn(),
+  comply: vi.fn(),
+  isOrgOwnerOfAgent: vi.fn(),
+  recordAgentTestRun: vi.fn(),
+  runBadgeFanOut: vi.fn(),
+  setAgentTesterLogger: vi.fn(),
+}));
+
 vi.mock('../../server/src/services/pipes.js', () => ({
   getGitHubAccessToken: vi.fn(),
 }));
 
+vi.mock('../../server/src/addie/mcp/tool-rate-limiter.js', () => ({
+  checkToolRateLimit: memberToolMocks.checkToolRateLimit,
+}));
+
+vi.mock('../../server/src/addie/services/compliance-testing.js', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    comply: memberToolMocks.comply,
+    setAgentTesterLogger: memberToolMocks.setAgentTesterLogger,
+  };
+});
+
+vi.mock('../../server/src/db/agent-test-db.js', () => ({
+  recordAgentTestRun: memberToolMocks.recordAgentTestRun,
+}));
+
+vi.mock('../../server/src/services/agent-ownership.js', () => ({
+  isOrgOwnerOfAgent: memberToolMocks.isOrgOwnerOfAgent,
+}));
+
+vi.mock('../../server/src/services/badge-issuance.js', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    runBadgeFanOut: memberToolMocks.runBadgeFanOut,
+  };
+});
+
 // Import the tool definitions directly (no side effects)
 import { MEMBER_TOOLS, createMemberToolHandlers } from '../../server/src/addie/mcp/member-tools.js';
 import { getGitHubAccessToken } from '../../server/src/services/pipes.js';
+import { AgentContextDatabase } from '../../server/src/db/agent-context-db.js';
 import { ComplianceDatabase } from '../../server/src/db/compliance-db.js';
 import { AgentSnapshotDatabase } from '../../server/src/db/agent-snapshot-db.js';
 import * as wgService from '../../server/src/services/working-group-membership-service.js';
@@ -542,6 +581,163 @@ describe('createMemberToolHandlers', () => {
 
       expect(result).toContain('network error');
       expect(result).toContain('draft_github_issue');
+    });
+  });
+
+  describe('evaluate_agent_quality handler', () => {
+    const ownerContext = {
+      is_mapped: true,
+      is_member: true,
+      slack_linked: false,
+      workos_user: {
+        workos_user_id: 'user_owner',
+        email: 'owner@example.com',
+        first_name: 'Owner',
+        last_name: 'User',
+      },
+      organization: {
+        workos_organization_id: 'org_owner',
+        name: 'Acme Corp',
+      },
+    } as unknown as MemberContext;
+
+    function makeComplianceResult(supportedVersions: string[]) {
+      return {
+        agent_url: 'https://seller.example.com/mcp',
+        adcp_version: '3.0.14',
+        requested_compliance_target: '3.0',
+        agent_profile: {
+          name: 'Seller Agent',
+          tools: ['get_products'],
+          adcp_supported_versions: supportedVersions,
+          specialisms: ['sales-catalog-driven'],
+        },
+        overall_status: 'passing',
+        tracks: [{
+          track: 'media_buy',
+          status: 'pass',
+          label: 'Media buy',
+          skipped_scenarios: [],
+          observations: [],
+          duration_ms: 25,
+          scenarios: [{
+            scenario: 'sales_catalog_driven/discovery',
+            overall_passed: true,
+            duration_ms: 25,
+            steps: [{
+              step: 'discover-products',
+              passed: true,
+              duration_ms: 25,
+            }],
+          }],
+        }],
+        tested_tracks: [],
+        skipped_tracks: [],
+        summary: {
+          tracks_passed: 1,
+          tracks_failed: 0,
+          tracks_skipped: 0,
+          tracks_partial: 0,
+          tracks_silent: 0,
+          headline: 'All applicable tracks passed',
+        },
+        observations: [],
+        total_duration_ms: 25,
+      } as never;
+    }
+
+    beforeEach(() => {
+      memberToolMocks.checkToolRateLimit.mockResolvedValue({ ok: true });
+      memberToolMocks.comply.mockResolvedValue(makeComplianceResult(['3.0']));
+      memberToolMocks.isOrgOwnerOfAgent.mockResolvedValue(true);
+      memberToolMocks.recordAgentTestRun.mockResolvedValue(undefined);
+      memberToolMocks.runBadgeFanOut.mockResolvedValue({ issued: [], revoked: [], degraded: [], unchanged: [] });
+      vi.spyOn(AgentContextDatabase.prototype, 'getAuthInfoByOrgAndUrl').mockResolvedValue(null as never);
+      vi.spyOn(AgentContextDatabase.prototype, 'getOAuthTokensByOrgAndUrl').mockResolvedValue(null as never);
+      vi.spyOn(ComplianceDatabase.prototype, 'getRegistryMetadata').mockResolvedValue({
+        lifecycle_stage: 'production',
+        compliance_opt_out: false,
+        monitoring_paused: false,
+        check_interval_hours: 12,
+        monitoring_paused_at: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      } as never);
+      vi.spyOn(ComplianceDatabase.prototype, 'recordComplianceRun').mockResolvedValue({
+        run: { id: 'run_123' },
+        statusTransition: null,
+        storyboardStatuses: [],
+      } as never);
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+      memberToolMocks.checkToolRateLimit.mockReset();
+      memberToolMocks.comply.mockReset();
+      memberToolMocks.isOrgOwnerOfAgent.mockReset();
+      memberToolMocks.recordAgentTestRun.mockReset();
+      memberToolMocks.runBadgeFanOut.mockReset();
+    });
+
+    it('writes canonical compliance state and fans out badges for owner full-suite stable-line runs', async () => {
+      const handlers = createMemberToolHandlers(ownerContext);
+      const result = await handlers.get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp',
+        compliance_target: '3.0',
+      });
+
+      expect(result).toContain('Quality Evaluation: Seller Agent');
+      expect(result).not.toContain('diagnostic only');
+      expect(ComplianceDatabase.prototype.recordComplianceRun).toHaveBeenCalledTimes(1);
+      expect(ComplianceDatabase.prototype.recordComplianceRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agent_url: 'https://seller.example.com/mcp',
+          requested_compliance_target: '3.0',
+          adcp_version: '3.0.14',
+          triggered_by: 'owner_test',
+          triggered_org_id: 'org_owner',
+          dry_run: false,
+          replace_storyboard_statuses: true,
+        }),
+      );
+      expect(memberToolMocks.runBadgeFanOut).toHaveBeenCalledWith(expect.objectContaining({
+        agentUrl: 'https://seller.example.com/mcp',
+        declaredSpecialisms: ['sales-catalog-driven'],
+        runId: 'run_123',
+        adcpVersions: ['3.0'],
+      }));
+    });
+
+    it('keeps exact historical stable-cache targets diagnostic-only', async () => {
+      memberToolMocks.comply.mockResolvedValueOnce({
+        ...makeComplianceResult(['3.0.5']),
+        adcp_version: '3.0.5',
+        requested_compliance_target: '3.0.5',
+      } as never);
+
+      const handlers = createMemberToolHandlers(ownerContext);
+      const result = await handlers.get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp',
+        compliance_target: '3.0.5',
+      });
+
+      expect(result).toContain('diagnostic only for this agent');
+      expect(ComplianceDatabase.prototype.recordComplianceRun).not.toHaveBeenCalled();
+      expect(memberToolMocks.runBadgeFanOut).not.toHaveBeenCalled();
+    });
+
+    it('keeps track-filtered owner runs diagnostic without blaming the target', async () => {
+      const handlers = createMemberToolHandlers(ownerContext);
+      const result = await handlers.get('evaluate_agent_quality')!({
+        agent_url: 'https://seller.example.com/mcp',
+        compliance_target: '3.0',
+        tracks: ['media_buy'],
+      });
+
+      expect(result).toContain('Track-filtered evaluations are diagnostic slices');
+      expect(result).not.toContain('This compliance target is diagnostic only for this agent');
+      expect(ComplianceDatabase.prototype.recordComplianceRun).not.toHaveBeenCalled();
+      expect(memberToolMocks.runBadgeFanOut).not.toHaveBeenCalled();
     });
   });
 
