@@ -17,6 +17,7 @@ import {
   memoryWebhookKeyStore,
   type WebhookEmitter,
   type WebhookAuthentication,
+  type WebhookEmitParams,
   type WebhookEmitResult,
 } from '@adcp/sdk/server';
 import type { SignerKey, SigningProvider } from '@adcp/sdk/signing';
@@ -383,6 +384,10 @@ export function getWebhookEmitter(): WebhookEmitter {
     fetch: createWebhookFetch({ allowPrivateIp }),
   });
   return emitter;
+}
+
+export async function emitFrameworkTaskWebhook(params: WebhookEmitParams): Promise<WebhookEmitResult> {
+  return getWebhookEmitter().emit(params);
 }
 
 /** Reset state — tests only. */

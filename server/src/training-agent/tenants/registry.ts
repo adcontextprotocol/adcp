@@ -37,7 +37,7 @@ import {
 } from '@adcp/sdk/server';
 import { getPool } from '../../db/client.js';
 import { getIdempotencyStore, scopedPrincipal } from '../idempotency.js';
-import { getWebhookSigningMaterial } from '../webhooks.js';
+import { emitFrameworkTaskWebhook, getWebhookSigningMaterial } from '../webhooks.js';
 import { buildSignalsTenantConfig } from './signals.js';
 import { buildSalesTenantConfig } from './sales.js';
 import { buildGovernanceTenantConfig } from './governance.js';
@@ -198,6 +198,9 @@ function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboar
     ...(storyboardCompat?.version === '3.0' && { adcpVersion: '3.0' }),
     idempotency: getIdempotencyStore(),
     webhooks: getWebhookSigningMaterial(),
+    taskWebhookEmitter: {
+      emit: emitFrameworkTaskWebhook,
+    },
     taskRegistry: pickTaskRegistry(),
     stateStore: pickStateStore(),
     mergeSeam: 'log-once',
