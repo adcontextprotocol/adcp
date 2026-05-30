@@ -358,70 +358,7 @@
                       "type": "array",
                       "description": "Metrics that the binding reporting contract declared but that are NOT populated in this report. Reconciliation source: when `package.committed_metrics` is present, `missing_metrics` is computed against entries where `committed_at < reporting_period.end` — independent of subsequent product mutations and respecting the commitment timestamp on each entry (a metric committed mid-flight is only flagged missing in reports for periods after its commitment). When `package.committed_metrics` is absent, fall back to the product's current `reporting_capabilities.available_metrics` (no timestamp filter). Empty array (or absent) indicates clean delivery against the contract. Non-empty signals an accountability breach — the seller committed to the metric but did not produce the value here. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`. Each entry uses an explicit `scope` discriminator: `standard` for entries from the closed `available-metric.json` enum, `vendor` for vendor-defined metrics anchored on a BrandRef. Symmetric with `committed_metrics`.",
                       "items": {
-                        "type": "object",
-                        "discriminator": {
-                          "propertyName": "scope"
-                        },
-                        "oneOf": [
-                          {
-                            "properties": {
-                              "scope": {
-                                "type": "string",
-                                "const": "standard"
-                              },
-                              "metric_id": {
-                                "$ref": "/schemas/enums/available-metric.json"
-                              },
-                              "qualifier": {
-                                "type": "object",
-                                "description": "Mirrors the qualifier on `committed_metrics` so the missing entry preserves the contract distinction (e.g., flagging MRC viewability as missing when only GroupM was reported, vendor-attested completion as missing when only seller-attested was reported, or deterministic_purchase attribution as missing when only probabilistic was reported). MUST match the qualifier on the corresponding `committed_metrics` entry the missing flag refers to.",
-                                "properties": {
-                                  "viewability_standard": {
-                                    "$ref": "/schemas/enums/viewability-standard.json"
-                                  },
-                                  "completion_source": {
-                                    "$ref": "/schemas/enums/completion-source.json"
-                                  },
-                                  "attribution_methodology": {
-                                    "$ref": "/schemas/enums/attribution-methodology.json"
-                                  },
-                                  "attribution_window": {
-                                    "$ref": "/schemas/core/duration.json"
-                                  },
-                                  "lift_dimension": {
-                                    "$ref": "/schemas/enums/lift-dimension.json"
-                                  }
-                                },
-                                "additionalProperties": false
-                              }
-                            },
-                            "required": [
-                              "scope",
-                              "metric_id"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "properties": {
-                              "scope": {
-                                "type": "string",
-                                "const": "vendor"
-                              },
-                              "vendor": {
-                                "$ref": "/schemas/core/brand-ref.json"
-                              },
-                              "metric_id": {
-                                "$ref": "/schemas/core/vendor-metric-id.json"
-                              }
-                            },
-                            "required": [
-                              "scope",
-                              "vendor",
-                              "metric_id"
-                            ],
-                            "additionalProperties": false
-                          }
-                        ]
+                        "$ref": "/schemas/core/missing-metric.json"
                       },
                       "examples": [
                         [],
@@ -450,128 +387,28 @@
                       "type": "array",
                       "description": "Delivery by catalog item within this package. Available for catalog-driven packages when the seller supports item-level reporting.",
                       "items": {
-                        "allOf": [
-                          {
-                            "$ref": "/schemas/core/delivery-metrics.json"
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "content_id": {
-                                "type": "string",
-                                "description": "Catalog item identifier (e.g., SKU, GTIN, job_id, offering_id)"
-                              },
-                              "content_id_type": {
-                                "$ref": "/schemas/enums/content-id-type.json",
-                                "description": "Identifier type for this content_id"
-                              }
-                            },
-                            "required": [
-                              "content_id",
-                              "impressions",
-                              "spend"
-                            ]
-                          }
-                        ]
+                        "$ref": "/schemas/core/catalog-item-delivery-metrics.json"
                       }
                     },
                     "by_creative": {
                       "type": "array",
                       "description": "Metrics broken down by creative within this package. Available when the seller supports creative-level reporting.",
                       "items": {
-                        "allOf": [
-                          {
-                            "$ref": "/schemas/core/delivery-metrics.json"
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "creative_id": {
-                                "type": "string",
-                                "description": "Creative identifier matching the creative assignment",
-                                "x-entity": "creative"
-                              },
-                              "weight": {
-                                "type": "number",
-                                "description": "Observed delivery share for this creative within the package during the reporting period, expressed as a percentage (0-100). Reflects actual delivery distribution, not a configured setting.",
-                                "minimum": 0,
-                                "maximum": 100
-                              }
-                            },
-                            "required": [
-                              "creative_id",
-                              "impressions",
-                              "spend"
-                            ]
-                          }
-                        ]
+                        "$ref": "/schemas/core/creative-delivery-metrics.json"
                       }
                     },
                     "by_keyword": {
                       "type": "array",
                       "description": "Metrics broken down by keyword within this package. One row per (keyword, match_type) pair — the same keyword with different match types appears as separate rows. Keyword-grain only: rows reflect aggregate performance of each targeted keyword, not individual search queries. Rows may not sum to package totals when a single impression is attributed to the triggering keyword only. Available for search and retail media packages when the seller supports keyword-level reporting.",
                       "items": {
-                        "allOf": [
-                          {
-                            "$ref": "/schemas/core/delivery-metrics.json"
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "keyword": {
-                                "type": "string",
-                                "description": "The targeted keyword"
-                              },
-                              "match_type": {
-                                "$ref": "/schemas/enums/match-type.json"
-                              }
-                            },
-                            "required": [
-                              "keyword",
-                              "match_type",
-                              "impressions",
-                              "spend"
-                            ]
-                          }
-                        ]
+                        "$ref": "/schemas/core/keyword-delivery-metrics.json"
                       }
                     },
                     "by_geo": {
                       "type": "array",
                       "description": "Delivery by geographic area within this package. Available when the buyer requests geo breakdown via reporting_dimensions and the seller supports it. Each dimension's rows are independent slices that should sum to the package total.",
                       "items": {
-                        "allOf": [
-                          {
-                            "$ref": "/schemas/core/delivery-metrics.json"
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "geo_level": {
-                                "$ref": "/schemas/enums/geo-level.json",
-                                "description": "Geographic level of this entry (country, region, metro, postal_area)"
-                              },
-                              "system": {
-                                "type": "string",
-                                "description": "Classification system for metro or postal_area levels (e.g., 'nielsen_dma', 'us_zip'). Present when geo_level is 'metro' or 'postal_area'."
-                              },
-                              "geo_code": {
-                                "type": "string",
-                                "description": "Geographic code within the level and system. Country: ISO 3166-1 alpha-2 ('US'). Region: ISO 3166-2 with country prefix ('US-CA'). Metro/postal: system-specific code ('501', '10001')."
-                              },
-                              "geo_name": {
-                                "type": "string",
-                                "description": "Human-readable geographic name (e.g., 'United States', 'California', 'New York DMA')"
-                              }
-                            },
-                            "required": [
-                              "geo_level",
-                              "geo_code",
-                              "impressions",
-                              "spend"
-                            ]
-                          }
-                        ]
+                        "$ref": "/schemas/core/geo-delivery-metrics.json"
                       }
                     },
                     "by_geo_truncated": {

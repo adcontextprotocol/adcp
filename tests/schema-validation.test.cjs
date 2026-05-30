@@ -297,12 +297,12 @@ async function runTests() {
   });
 
   // Test 4B: Validate ADCP open-payload annotations
-  await test('x-adcp-open-payload annotations are explicit booleans', () => {
+  await test('x-adcp-open-payload annotations use currently supported values', () => {
     for (const [schemaPath, schema] of schemas) {
       const occurrences = collectKeywordOccurrences(schema, 'x-adcp-open-payload', path.basename(schemaPath));
       for (const occurrence of occurrences) {
-        if (typeof occurrence.value !== 'boolean') {
-          return `${occurrence.location}: x-adcp-open-payload must be boolean, found ${typeof occurrence.value}`;
+        if (occurrence.value !== true) {
+          return `${occurrence.location}: x-adcp-open-payload must be true; false is reserved and omission means unclassified`;
         }
       }
     }
