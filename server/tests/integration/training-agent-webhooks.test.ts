@@ -142,6 +142,7 @@ describe('Training Agent webhook emission', () => {
       const delivery = deliveries[0];
       const body = JSON.parse(delivery.body) as Record<string, unknown>;
       expect(body.task_id).toBeDefined();
+      expect(body.operation_id).toBeDefined();
       expect(body.task_type).toBe('create_media_buy');
       expect(body.status).toBe('completed');
       expect(body.idempotency_key).toMatch(/^[A-Za-z0-9_.:-]{16,255}$/);

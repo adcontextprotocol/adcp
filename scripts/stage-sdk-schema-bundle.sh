@@ -78,29 +78,4 @@ rm -rf "$DST"
 mkdir -p "$DST"
 (cd "$SRC" && tar -cf - .) | (cd "$DST" && tar -xf -)
 
-# SDK 8.1.0-beta.12's loader deliberately skips response-tool files during
-# core pre-registration so response root relaxation can happen lazily. Some
-# published schema bundles have core/async-response-data.json $ref directly to
-# tool async response schemas, so those refs must still be registered before
-# core schemas compile. Duplicating them under core/ keeps the original bundle
-# intact while placing a copy in a directory the loader treats as fragments.
-ASYNC_REF_DIR="$DST/core/async-response-refs"
-mkdir -p "$ASYNC_REF_DIR"
-find "$DST" \
-  -path "$DST/bundled" -prune -o \
-  -path "$DST/core/async-response-refs" -prune -o \
-  -type f \( \
-    -name '*-async-response-submitted.json' -o \
-    -name '*-async-response-working.json' -o \
-    -name '*-async-response-input-required.json' \
-  \) -print | while read -r file; do
-  rel="${file#"$DST/"}"
-  case "$rel" in
-    core/*) continue ;;
-  esac
-  target="$ASYNC_REF_DIR/$rel"
-  mkdir -p "$(dirname "$target")"
-  cp "$file" "$target"
-done
-
 echo "Schema bundle staged at $DST"
