@@ -1,5 +1,28 @@
 # Changelog
 
+## 3.1.0-rc.3
+
+### Minor Changes
+
+- f138c04: Extract remaining delivery-report inline row schemas into named core schemas for SDK generation, and reserve `x-adcp-open-payload: false` until a canonical generator contract exists.
+- dbc5b56: Name 3.1 schema component shapes used by SDK code generators: account-with-authorization response items, forecast dimension variants, signal selection-group rules, canonical projection slot overrides, committed metrics, delivery metric aggregates, and vendor-metric optimization rows. Document nullable scalar representation and mark intentionally open payload fields with `x-adcp-open-payload`.
+- 6fcedae: Adds webhook receiver envelope conformance coverage for delivery reporting webhooks.
+
+  - Adds `media_buy_delivery` as the task type for persistent delivery-report webhook events.
+  - Extends `async-response-data` with the payload-only delivery-report result shape used under `mcp-webhook-payload.result`.
+  - Adds receiver replay vectors that accept full MCP webhook envelopes and reject bare `notification_type` delivery results, missing envelope fields, and invalid top-level task statuses.
+  - Clarifies docs that reporting webhook signatures cover the exact raw bytes of the full envelope, not a reserialized inner result.
+
+  Closes adcontextprotocol/adcp#5173 and adcontextprotocol/adcp#5174.
+
+### Patch Changes
+
+- 088840d: Improve AAO agent dashboard failure visibility by exposing owner-scoped storyboard diagnostics in the compliance API, highlighting failing and partial storyboard rows in the Test panel, and making declared-specialism chips readable in dark mode.
+- 445a011: Restore 3.0 as the default hosted compliance target and keep public badge
+  issuance scoped to the selected stable compliance line. Previously, the 3.1
+  beta default could reject 3.0-only agents or leave premature public 3.1 badges
+  visible; stale public 3.1 badges are now revoked until that line is GA-ready.
+
 ## 3.1.0-rc.2
 
 ### Patch Changes
