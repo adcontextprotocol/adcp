@@ -29,7 +29,7 @@ import {
   removeWorkosDomainAndReselectPrimary,
 } from '../db/organization-domains-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
-import { getWorkos } from '../auth/workos-client.js';
+import { getWorkos, getOwnerlessPromotionWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
 import { resolveUserNameWithFallbacks } from '../utils/resolve-user-name.js';
@@ -229,7 +229,7 @@ async function upsertMembership(
   // WorkOS first and only then write the resolved role locally. WorkOS is
   // the source of truth — local must never get ahead of it.
   const resolution = await resolveRoleWithWorkosFirstPromote({
-    workos: getWorkos(),
+    workos: getOwnerlessPromotionWorkos(),
     membershipId: membership.id,
     userId: membership.user_id,
     organizationId: membership.organization_id,
