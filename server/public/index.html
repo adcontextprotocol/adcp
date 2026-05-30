@@ -6,7 +6,7 @@
 <title>AgenticAdvertising.org — The open standard for AI-powered advertising</title>
 <meta name="description" content="AgenticAdvertising.org publishes AdCP, the open protocol for AI-powered advertising. We certify the professionals who use it and govern how it evolves. For ad tech companies, agencies, publishers, brand marketers, and practitioners.">
 <meta property="og:title" content="AgenticAdvertising.org — The open standard for AI-powered advertising">
-<meta property="og:description" content="AgenticAdvertising.org publishes AdCP — the protocol that lets AI agents discover, plan, buy, sell, and measure media across every channel. 23+ members including Yahoo, PubMatic, Scope3, and Samba TV.">
+<meta property="og:description" content="AgenticAdvertising.org publishes AdCP — the protocol that lets AI agents discover, plan, buy, sell, and measure media across every channel. {{PUBLIC_MEMBER_COUNT_PLUS}} members including Yahoo, PubMatic, Scope3, and Samba TV.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://agenticadvertising.org">
 <meta property="og:image" content="https://agenticadvertising.org/img/aao-social-card.jpg">
@@ -74,7 +74,7 @@
   </div>
   <p class="hero-free-note">Free to sign up. Talk to Addie and start your first certification module at no cost.</p>
   <div class="hero-logos">
-    <p class="hero-logos-label"><span id="member-count">23+</span> members including</p>
+    <p class="hero-logos-label"><span id="member-count">{{PUBLIC_MEMBER_COUNT_PLUS}}</span> members including</p>
     <div class="logo-carousel" id="logo-carousel" aria-label="Member logos">
       <div class="logo-carousel-track" id="member-logos">
         <span class="logo-placeholder">Yahoo</span>
@@ -142,7 +142,7 @@
         <p>&ldquo;It felt like you were watching the first banner ad being served.&rdquo;</p>
         <cite>&mdash; Adam Broitman, Partner, McKinsey &amp; Company</cite>
       </blockquote>
-      <p>Since then, <span class="member-count">23+</span> companies have joined &mdash; from Yahoo and PubMatic to Scope3 and Samba TV.</p>
+      <p>Since then, <span class="member-count">{{PUBLIC_MEMBER_COUNT_PLUS}}</span> companies have joined &mdash; from Yahoo and PubMatic to Scope3 and Samba TV.</p>
     </div>
   </div>
 </section>
@@ -253,6 +253,13 @@
 
       const data = await response.json();
       const members = (data.members || []).filter(m => m.resolved_brand?.logo_url || m.resolved_brand?.logo_url_dark);
+      const memberCount = Number.parseInt(data.member_count, 10);
+      const memberCountLabel = data.member_count_label || (Number.isFinite(memberCount) && memberCount > 0 ? memberCount + '+' : '');
+      if (memberCountLabel) {
+        document.querySelectorAll('#member-count, .member-count').forEach(el => {
+          el.textContent = memberCountLabel;
+        });
+      }
 
       const track = document.getElementById('member-logos');
       if (members.length > 0) {
@@ -270,13 +277,6 @@
         }).join('');
         // Duplicate the set so the scroll loops seamlessly
         track.innerHTML = logosHtml + logosHtml;
-
-        // Update all member count elements
-        if (data.members) {
-          document.querySelectorAll('#member-count, .member-count').forEach(el => {
-            el.textContent = data.members.length + '+';
-          });
-        }
       }
     } catch (error) {
       console.debug('Failed to load dynamic members, keeping static content:', error);

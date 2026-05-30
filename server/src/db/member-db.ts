@@ -353,6 +353,16 @@ export class MemberDatabase {
   }
 
   /**
+   * Count public profiles shown in the member directory.
+   */
+  async countPublicProfiles(): Promise<number> {
+    const result = await query<{ count: string }>(
+      'SELECT COUNT(*)::text as count FROM member_profiles WHERE is_public = true'
+    );
+    return Number.parseInt(result.rows[0]?.count ?? '0', 10);
+  }
+
+  /**
    * Get profiles for homepage carousel (public + show_in_carousel)
    */
   async getCarouselProfiles(): Promise<MemberProfile[]> {
