@@ -1309,9 +1309,14 @@ export class WorkingGroupDatabase {
       `SELECT wg.*, COUNT(DISTINCT wgm.id)::int AS member_count
        FROM working_groups wg
        INNER JOIN working_group_leaders wgl ON wg.id = wgl.working_group_id
-       LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
+       LEFT JOIN slack_user_mappings leader_sm ON wgl.user_id = leader_sm.slack_user_id AND leader_sm.workos_user_id IS NOT NULL
+       LEFT JOIN slack_user_mappings input_sm ON input_sm.slack_user_id = $1 AND input_sm.workos_user_id IS NOT NULL
        LEFT JOIN working_group_memberships wgm ON wg.id = wgm.working_group_id AND wgm.status = 'active'
-       WHERE (wgl.user_id = $1 OR sm.workos_user_id = $1)
+       WHERE (
+         wgl.user_id = $1
+         OR leader_sm.workos_user_id = $1
+         OR wgl.user_id = input_sm.workos_user_id
+       )
          AND wg.status = 'active'
        GROUP BY wg.id
        ORDER BY wg.display_order, wg.name`,

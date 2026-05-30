@@ -1,8 +1,8 @@
 /**
  * Luma → AAO Event Sync
  *
- * Creates AAO events from Luma events. Used by:
- * - Webhook handler (event.created, event.updated for unknown events)
+ * Creates and updates AAO events from Luma events. Used by:
+ * - Webhook handler (event.created, event.updated)
  * - Periodic calendar poll (safety net for missed webhooks)
  */
 
@@ -17,7 +17,7 @@ import {
   isLumaEnabled,
   type LumaEvent,
 } from './client.js';
-import type { CreateEventInput, EventFormat, EventVisibility } from '../types.js';
+import type { CreateEventInput, Event, EventFormat, EventVisibility, UpdateEventInput } from '../types.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 
 const logger = createLogger('luma-sync');
@@ -90,6 +90,63 @@ function mapVisibility(lumaVisibility: LumaEvent['visibility']): EventVisibility
   return lumaVisibility === 'private' ? 'invite_unlisted' : 'public';
 }
 
+function statusFromLumaEvent(lumaEvent: LumaEvent): 'completed' | 'published' {
+  const endTime = new Date(lumaEvent.end_at);
+  return endTime < new Date() ? 'completed' : 'published';
+}
+
+function mapLumaEventFields(lumaEvent: LumaEvent): Omit<CreateEventInput, 'slug'> {
+  const endTime = new Date(lumaEvent.end_at);
+  return {
+    title: lumaEvent.name,
+    description: lumaEvent.description || undefined,
+    event_type: 'meetup',
+    event_format: inferEventFormat(lumaEvent),
+    start_time: new Date(lumaEvent.start_at),
+    end_time: endTime,
+    timezone: lumaEvent.timezone,
+    venue_name: lumaEvent.geo_address_json?.description || undefined,
+    venue_address: lumaEvent.geo_address_json?.full_address || undefined,
+    venue_city: lumaEvent.geo_address_json?.city || inferCityFromTitle(lumaEvent.name) || undefined,
+    venue_state: lumaEvent.geo_address_json?.region || undefined,
+    venue_country: lumaEvent.geo_address_json?.country || undefined,
+    venue_lat: lumaEvent.geo_address_json?.latitude || lumaEvent.geo_latitude || undefined,
+    venue_lng: lumaEvent.geo_address_json?.longitude || lumaEvent.geo_longitude || undefined,
+    virtual_url: lumaEvent.meeting_url || lumaEvent.zoom_meeting_url || undefined,
+    luma_event_id: lumaEvent.api_id,
+    luma_url: lumaEvent.url,
+    featured_image_url: lumaEvent.cover_url || undefined,
+    status: statusFromLumaEvent(lumaEvent),
+    visibility: mapVisibility(lumaEvent.visibility),
+    metadata: {
+      synced_from_luma: true,
+      luma_calendar: lumaEvent.calendar?.name || null,
+    },
+  };
+}
+
+function isSlugEligibleForLumaMigration(event: Event, lumaEvent: LumaEvent): boolean {
+  const metadata = event.metadata || {};
+  if (metadata.synced_from_luma !== true) return false;
+
+  const currentGeneratedSlug = generateSlug(event.title, new Date(event.start_time).toISOString());
+  const currentGeneratedSlugPattern = new RegExp(`^${currentGeneratedSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:-\\d+)?$`);
+  return currentGeneratedSlugPattern.test(event.slug) && event.slug !== generateSlug(lumaEvent.name, lumaEvent.start_at);
+}
+
+async function uniqueSlug(baseSlug: string, currentSlug?: string, eventId?: string): Promise<string> {
+  if (baseSlug === currentSlug) return baseSlug;
+
+  let finalSlug = baseSlug;
+  let attempt = 0;
+  while (!(await eventsDb.isSlugAvailable(finalSlug, eventId))) {
+    attempt++;
+    finalSlug = `${baseSlug}-${attempt}`;
+    if (finalSlug === currentSlug) return finalSlug;
+  }
+  return finalSlug;
+}
+
 /**
  * Create an AAO event from a Luma event.
  * Returns the created event, or null if the event already exists.
@@ -117,36 +174,9 @@ export async function createEventFromLuma(lumaEvent: LumaEvent): Promise<{ id: s
     finalSlug = `${slug}-${attempt}`;
   }
 
-  // Past events get 'completed' status, future events get 'published'
-  const endTime = new Date(lumaEvent.end_at);
-  const isPast = endTime < new Date();
-
   const eventInput: CreateEventInput = {
     slug: finalSlug,
-    title: lumaEvent.name,
-    description: lumaEvent.description || undefined,
-    event_type: 'meetup',
-    event_format: inferEventFormat(lumaEvent),
-    start_time: new Date(lumaEvent.start_at),
-    end_time: endTime,
-    timezone: lumaEvent.timezone,
-    venue_name: lumaEvent.geo_address_json?.description || undefined,
-    venue_address: lumaEvent.geo_address_json?.full_address || undefined,
-    venue_city: lumaEvent.geo_address_json?.city || inferCityFromTitle(lumaEvent.name) || undefined,
-    venue_state: lumaEvent.geo_address_json?.region || undefined,
-    venue_country: lumaEvent.geo_address_json?.country || undefined,
-    venue_lat: lumaEvent.geo_address_json?.latitude || lumaEvent.geo_latitude || undefined,
-    venue_lng: lumaEvent.geo_address_json?.longitude || lumaEvent.geo_longitude || undefined,
-    virtual_url: lumaEvent.meeting_url || lumaEvent.zoom_meeting_url || undefined,
-    luma_event_id: lumaEvent.api_id,
-    luma_url: lumaEvent.url,
-    featured_image_url: lumaEvent.cover_url || undefined,
-    status: isPast ? 'completed' : 'published',
-    visibility: mapVisibility(lumaEvent.visibility),
-    metadata: {
-      synced_from_luma: true,
-      luma_calendar: lumaEvent.calendar?.name || null,
-    },
+    ...mapLumaEventFields(lumaEvent),
   };
 
   const event = await eventsDb.createEvent(eventInput);
@@ -183,6 +213,55 @@ export async function createEventFromLuma(lumaEvent: LumaEvent): Promise<{ id: s
   }
 
   return { id: event.id, slug: finalSlug };
+}
+
+/**
+ * Update an existing AAO event from Luma canonical fields.
+ * Returns the updated event, or null if the Luma event is not imported yet.
+ */
+export async function updateEventFromLuma(lumaEvent: LumaEvent): Promise<Event | null> {
+  const event = await eventsDb.getEventByLumaId(lumaEvent.api_id);
+  if (!event) return null;
+
+  const mapped = mapLumaEventFields(lumaEvent);
+  const updates: UpdateEventInput = {
+    ...mapped,
+    metadata: {
+      ...(event.metadata || {}),
+      ...(mapped.metadata || {}),
+      last_luma_sync_at: new Date().toISOString(),
+    },
+  };
+
+  const newSlug = generateSlug(lumaEvent.name, lumaEvent.start_at);
+  if (isSlugEligibleForLumaMigration(event, lumaEvent)) {
+    updates.slug = await uniqueSlug(newSlug, event.slug, event.id);
+  }
+
+  const updated = await eventsDb.updateEvent(event.id, updates);
+  if (!updated) return null;
+
+  if (updates.slug && updates.slug !== event.slug) {
+    await eventsDb.removeSlugRedirect(updates.slug);
+    await eventsDb.createSlugRedirect(event.id, event.slug);
+    logger.info({
+      eventId: event.id,
+      oldSlug: event.slug,
+      newSlug: updates.slug,
+      lumaEventId: lumaEvent.api_id,
+    }, 'Updated event slug from Luma');
+  }
+
+  await syncEventRegistrations(event.id, lumaEvent.api_id);
+
+  logger.info({
+    eventId: event.id,
+    slug: updated.slug,
+    lumaEventId: lumaEvent.api_id,
+    title: lumaEvent.name,
+  }, 'Updated event from Luma');
+
+  return updated;
 }
 
 /**
@@ -300,7 +379,7 @@ let intervalId: ReturnType<typeof setInterval> | null = null;
  * On first run (bootstrap=true), fetches all events including past.
  * On subsequent hourly runs, only fetches recent events (last 7 days).
  */
-async function syncCalendar(calendarId: string, stats: { created: number; skipped: number; errors: number }, bootstrap: boolean): Promise<void> {
+async function syncCalendar(calendarId: string, stats: { created: number; updated: number; skipped: number; errors: number }, bootstrap: boolean): Promise<void> {
   const options = bootstrap
     ? {} // Fetch all events on first run
     : { after: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() };
@@ -315,19 +394,12 @@ async function syncCalendar(calendarId: string, stats: { created: number; skippe
       if (result) {
         stats.created++;
       } else {
-        // Event already exists — backfill registrations if empty
-        const pool = getPool();
-        const existing = await pool.query(
-          `SELECT e.id FROM events e
-           WHERE e.luma_event_id = $1
-             AND NOT EXISTS (SELECT 1 FROM event_registrations er WHERE er.event_id = e.id)`,
-          [lumaEvent.api_id]
-        );
-        if (existing.rows[0]) {
-          const synced = await syncEventRegistrations(existing.rows[0].id, lumaEvent.api_id);
-          if (synced > 0) stats.created += synced; // Count registration syncs
+        const updated = await updateEventFromLuma(lumaEvent);
+        if (updated) {
+          stats.updated++;
+        } else {
+          stats.skipped++;
         }
-        stats.skipped++;
       }
     } catch (err) {
       stats.errors++;
@@ -342,13 +414,13 @@ async function syncCalendar(calendarId: string, stats: { created: number; skippe
  *
  * @param bootstrap - If true, fetches all events (past + future). If false, only recent events.
  */
-export async function syncLumaCalendar(bootstrap = false): Promise<{ created: number; skipped: number; errors: number }> {
+export async function syncLumaCalendar(bootstrap = false): Promise<{ created: number; updated: number; skipped: number; errors: number }> {
   if (!isLumaEnabled()) {
     logger.debug('Luma not enabled, skipping calendar sync');
-    return { created: 0, skipped: 0, errors: 0 };
+    return { created: 0, updated: 0, skipped: 0, errors: 0 };
   }
 
-  const stats = { created: 0, skipped: 0, errors: 0 };
+  const stats = { created: 0, updated: 0, skipped: 0, errors: 0 };
 
   try {
     if (LUMA_CALENDAR_ID) {

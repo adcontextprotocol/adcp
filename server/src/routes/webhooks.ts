@@ -27,7 +27,7 @@ import {
   parseWebhookPayload as parseLumaWebhook,
   type LumaWebhookPayload,
 } from '../luma/client.js';
-import { createEventFromLuma } from '../luma/sync.js';
+import { createEventFromLuma, updateEventFromLuma } from '../luma/sync.js';
 import { eventsDb } from '../db/events-db.js';
 import { CommunityDatabase } from '../db/community-db.js';
 import {
@@ -1166,42 +1166,15 @@ async function handleLumaEventUpdated(payload: LumaWebhookPayload): Promise<void
     return;
   }
 
-  const pool = getPool();
-
-  // Find our event by Luma event ID
-  const eventResult = await pool.query(
-    `SELECT id FROM events WHERE luma_event_id = $1`,
-    [lumaEvent.api_id]
-  );
-
-  if (eventResult.rows.length === 0) {
+  const updated = await updateEventFromLuma(lumaEvent);
+  if (!updated) {
     // Event doesn't exist yet — create it
     logger.info({ lumaEventId: lumaEvent.api_id }, 'Luma event.updated for unknown event, creating');
     await createEventFromLuma(lumaEvent);
     return;
   }
 
-  const eventId = eventResult.rows[0].id;
-
-  // Update our event with Luma changes (all fields that createEventFromLuma maps)
-  await eventsDb.updateEvent(eventId, {
-    title: lumaEvent.name,
-    description: lumaEvent.description || undefined,
-    start_time: new Date(lumaEvent.start_at),
-    end_time: new Date(lumaEvent.end_at),
-    timezone: lumaEvent.timezone,
-    venue_name: lumaEvent.geo_address_json?.description || undefined,
-    venue_address: lumaEvent.geo_address_json?.full_address || undefined,
-    venue_city: lumaEvent.geo_address_json?.city || undefined,
-    venue_state: lumaEvent.geo_address_json?.region || undefined,
-    venue_country: lumaEvent.geo_address_json?.country || undefined,
-    venue_lat: lumaEvent.geo_address_json?.latitude || lumaEvent.geo_latitude || undefined,
-    venue_lng: lumaEvent.geo_address_json?.longitude || lumaEvent.geo_longitude || undefined,
-    virtual_url: lumaEvent.meeting_url || lumaEvent.zoom_meeting_url || undefined,
-    featured_image_url: lumaEvent.cover_url || undefined,
-  });
-
-  logger.info({ eventId, lumaEventId: lumaEvent.api_id }, 'Updated event from Luma webhook');
+  logger.info({ eventId: updated.id, lumaEventId: lumaEvent.api_id }, 'Updated event from Luma webhook');
 }
 
 /**

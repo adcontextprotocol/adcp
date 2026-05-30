@@ -15,6 +15,7 @@ import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { isSlackUserAAOAdmin } from './admin-tools.js';
 import { eventsDb } from '../../db/events-db.js';
+import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { upsertEmailContact } from '../../db/contacts-db.js';
 import { query } from '../../db/client.js';
 import {
@@ -33,12 +34,20 @@ import type {
   EventType,
   EventFormat,
   Event,
+  WorkingGroupWithMemberCount,
 } from '../../types.js';
 
 const logger = createLogger('addie-event-tools');
 
-// Committee slugs whose leads can create events
-const EVENT_CREATOR_COMMITTEES = ['marketing', 'education', 'aao-admin'];
+// Committee types whose leaders can create and manage events
+export const EVENT_CREATOR_COMMITTEE_TYPES = new Set(['working_group', 'council', 'chapter', 'industry_gathering']);
+const workingGroupDb = new WorkingGroupDatabase();
+
+type EventToolAccess = {
+  isAAOAdmin: boolean;
+  eligibleCommittees: WorkingGroupWithMemberCount[];
+  ledCommitteeIds: Set<string>;
+};
 
 /**
  * Result from getting personalized events for a user
@@ -298,16 +307,28 @@ async function getPersonalizedEvents(
 
 /**
  * Check if a Slack user can create events
- * Must be an admin or lead of marketing/education committees
+ * Must be an AAO admin or active committee leader
  */
 export async function canCreateEvents(slackUserId: string): Promise<boolean> {
   // Admins can always create events
   const isAdmin = await isSlackUserAAOAdmin(slackUserId);
   if (isAdmin) return true;
 
-  // TODO: Check committee membership when that's implemented
-  // For now, only admins can create events
-  return false;
+  const ledGroups = await workingGroupDb.getCommitteesLedByUser(slackUserId);
+  const canCreate = ledGroups.some(group => EVENT_CREATOR_COMMITTEE_TYPES.has(group.committee_type));
+  if (canCreate) {
+    logger.debug({ slackUserId, groupCount: ledGroups.length }, 'User is a committee leader with event permissions');
+  }
+  return canCreate;
+}
+
+export function canCreateEventsFromMemberContext(memberContext?: MemberContext | null): boolean {
+  if (!memberContext) return false;
+  return memberContext.working_groups?.some(group =>
+    group.is_leader &&
+    !!group.committee_type &&
+    EVENT_CREATOR_COMMITTEE_TYPES.has(group.committee_type)
+  ) ?? false;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -564,6 +585,10 @@ Optional: description, end_time, timezone, location details, virtual_url, max_at
           type: 'boolean',
           description: 'If true, registrations require admin approval before being confirmed.',
         },
+        committee_id: {
+          type: 'string',
+          description: 'Committee ID, slug, or exact name for the hosting committee. Required for non-admins unless they lead exactly one eligible committee.',
+        },
       },
       required: ['title', 'start_time', 'event_type'],
     },
@@ -600,6 +625,10 @@ Optional: description, end_time, timezone, location details, virtual_url, max_at
         event_slug: {
           type: 'string',
           description: 'Event identifier — internal slug, UUID, Luma api_id, full Luma URL, Luma URL slug, or unique title fragment',
+        },
+        slug: {
+          type: 'string',
+          description: 'New AAO event URL slug. When changed, the old slug will redirect to the new slug.',
         },
         title: {
           type: 'string',
@@ -702,21 +731,86 @@ export const EVENT_TOOLS: AddieTool[] = [...EVENT_READONLY_TOOLS, ...EVENT_ADMIN
  */
 export function createEventToolHandlers(
   memberContext?: MemberContext | null,
-  slackUserId?: string
+  slackUserId?: string,
+  isAAOAdmin = false
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
+  let accessPromise: Promise<EventToolAccess> | null = null;
+
+  const getEventAccess = (): Promise<EventToolAccess> => {
+    if (!accessPromise) {
+      accessPromise = (async () => {
+        const admin = isAAOAdmin || (slackUserId ? await isSlackUserAAOAdmin(slackUserId) : false);
+        if (admin) {
+          return { isAAOAdmin: true, eligibleCommittees: [], ledCommitteeIds: new Set<string>() };
+        }
+
+        const lookupUserId = slackUserId || memberContext?.workos_user?.workos_user_id;
+        if (!lookupUserId) {
+          return { isAAOAdmin: false, eligibleCommittees: [], ledCommitteeIds: new Set<string>() };
+        }
+
+        const eligibleCommittees = (await workingGroupDb.getCommitteesLedByUser(lookupUserId))
+          .filter(group => EVENT_CREATOR_COMMITTEE_TYPES.has(group.committee_type));
+
+        return {
+          isAAOAdmin: false,
+          eligibleCommittees,
+          ledCommitteeIds: new Set(eligibleCommittees.map(group => group.id)),
+        };
+      })();
+    }
+    return accessPromise;
+  };
+
+  const resolveManagedCommittee = async (input: Record<string, unknown>, access: EventToolAccess): Promise<WorkingGroupWithMemberCount | string | null> => {
+    if (access.isAAOAdmin) return null;
+    if (access.eligibleCommittees.length === 0) {
+      return '⚠️ You need to be an AAO admin or eligible committee lead to create events.';
+    }
+
+    const rawCommitteeId = typeof input.committee_id === 'string' ? input.committee_id.trim() : '';
+    if (!rawCommitteeId) {
+      if (access.eligibleCommittees.length === 1) {
+        return access.eligibleCommittees[0];
+      }
+      const options = access.eligibleCommittees
+        .map(group => `• ${group.name} (${group.id})`)
+        .join('\n');
+      return `⚠️ Please specify committee_id for the committee hosting this event.\n\n${options}`;
+    }
+
+    const match = access.eligibleCommittees.find(group =>
+      group.id === rawCommitteeId ||
+      group.slug === rawCommitteeId ||
+      group.name.toLowerCase() === rawCommitteeId.toLowerCase()
+    );
+    if (!match) {
+      return '⚠️ You can only create events for eligible committees you lead.';
+    }
+    return match;
+  };
+
+  const canManageEvent = async (event: Event): Promise<boolean> => {
+    const access = await getEventAccess();
+    if (access.isAAOAdmin) return true;
+    if (access.ledCommitteeIds.size === 0) return false;
+
+    const linkedCommittees = await eventsDb.getCommitteesForEvent(event.id);
+    return linkedCommittees.some(link => access.ledCommitteeIds.has(link.committee_id));
+  };
+
+  const assertCanManageEvent = async (event: Event): Promise<string | null> => {
+    return (await canManageEvent(event))
+      ? null
+      : '⚠️ You can only manage events linked to committees you lead.';
+  };
 
   // Helper to check event creation permission
   const checkCreatePermission = async (): Promise<string | null> => {
-    if (slackUserId) {
-      const canCreate = await canCreateEvents(slackUserId);
-      if (!canCreate) {
-        return '⚠️ You need to be an AAO admin or committee lead to create events.';
-      }
-    } else if (memberContext) {
-      if (memberContext.org_membership?.role !== 'admin') {
-        return '⚠️ You need admin access to create events.';
-      }
+    const access = await getEventAccess();
+    if (!access.isAAOAdmin && access.eligibleCommittees.length === 0) {
+      return '⚠️ You need to be an AAO admin or eligible committee lead to create events.';
     }
     return null;
   };
@@ -725,6 +819,10 @@ export function createEventToolHandlers(
   handlers.set('create_event', async (input) => {
     const permCheck = await checkCreatePermission();
     if (permCheck) return permCheck;
+
+    const access = await getEventAccess();
+    const managedCommittee = await resolveManagedCommittee(input, access);
+    if (typeof managedCommittee === 'string') return managedCommittee;
 
     const title = input.title as string;
     const startTimeStr = input.start_time as string;
@@ -824,6 +922,14 @@ export function createEventToolHandlers(
 
     // Create in AAO database
     const event = await eventsDb.createEvent(eventInput);
+    if (managedCommittee) {
+      await eventsDb.linkEventToCommittee(
+        event.id,
+        managedCommittee.id,
+        'host',
+        memberContext?.workos_user?.workos_user_id || slackUserId
+      );
+    }
 
     // Build response
     const baseUrl = process.env.PUBLIC_URL || 'https://agenticadvertising.org';
@@ -839,6 +945,9 @@ export function createEventToolHandlers(
     }
 
     response += `**Type:** ${eventType.replace('_', ' ')}\n`;
+    if (managedCommittee) {
+      response += `**Host:** ${managedCommittee.name}\n`;
+    }
 
     if (event.max_attendees) {
       response += `**Capacity:** ${event.max_attendees} attendees\n`;
@@ -858,6 +967,7 @@ export function createEventToolHandlers(
       eventId: event.id,
       slug: event.slug,
       lumaEventId,
+      committeeId: managedCommittee?.id,
       createdBy: memberContext?.workos_user?.workos_user_id || slackUserId,
     }, 'Event created via Addie');
 
@@ -978,12 +1088,12 @@ export function createEventToolHandlers(
       return `❌ Event not found: "${eventSlug}"`;
     }
 
-    // Non-admin users can only see published/completed public events
-    const isAdmin = slackUserId ? await canCreateEvents(slackUserId) : (memberContext?.org_membership?.role === 'admin');
-    if (!isAdmin && !['published', 'completed'].includes(event.status)) {
+    // Non-managers can only see published/completed public events.
+    const canManage = await canManageEvent(event);
+    if (!canManage && !['published', 'completed'].includes(event.status)) {
       return `❌ Event not found: "${eventSlug}"`;
     }
-    if (!isAdmin && event.visibility === 'invite_unlisted') {
+    if (!canManage && event.visibility === 'invite_unlisted') {
       return `❌ Event not found: "${eventSlug}"`;
     }
 
@@ -1039,6 +1149,8 @@ export function createEventToolHandlers(
     if (!event) {
       return `❌ Event not found: "${eventSlug}"`;
     }
+    const manageCheck = await assertCanManageEvent(event);
+    if (manageCheck) return manageCheck;
 
     const registrations = await eventsDb.getEventRegistrations(event.id);
 
@@ -1149,6 +1261,8 @@ export function createEventToolHandlers(
     if (!event) {
       return `❌ Event not found: "${eventSlug}"`;
     }
+    const manageCheck = await assertCanManageEvent(event);
+    if (manageCheck) return manageCheck;
 
     const updates: Record<string, unknown> = {};
     const changes: string[] = [];
@@ -1156,6 +1270,14 @@ export function createEventToolHandlers(
     if (input.title) {
       updates.title = input.title;
       changes.push(`Title → ${input.title}`);
+    }
+    if (input.slug && input.slug !== event.slug) {
+      const slugAvailable = await eventsDb.isSlugAvailable(input.slug as string, event.id);
+      if (!slugAvailable) {
+        return `❌ The slug "${input.slug}" is already in use. Choose a different event slug.`;
+      }
+      updates.slug = input.slug;
+      changes.push(`Slug → ${input.slug}`);
     }
     if (input.description) {
       updates.description = input.description;
@@ -1194,6 +1316,10 @@ export function createEventToolHandlers(
     }
 
     await eventsDb.updateEvent(event.id, updates);
+    if (updates.slug && updates.slug !== event.slug) {
+      await eventsDb.removeSlugRedirect(updates.slug as string);
+      await eventsDb.createSlugRedirect(event.id, event.slug);
+    }
 
     // Sync to Luma if event has a Luma ID
     if (event.luma_event_id && isLumaEnabled()) {
@@ -1234,12 +1360,12 @@ export function createEventToolHandlers(
       return `❌ Event not found: "${eventSlug}"`;
     }
 
-    // Non-admin users can only register interest in published public events
-    const isAdmin = slackUserId ? await canCreateEvents(slackUserId) : (memberContext?.org_membership?.role === 'admin');
-    if (!isAdmin && !['published', 'completed'].includes(event.status)) {
+    // Non-managers can only register interest in published public events.
+    const canManage = await canManageEvent(event);
+    if (!canManage && !['published', 'completed'].includes(event.status)) {
       return `❌ Event not found: "${eventSlug}"`;
     }
-    if (!isAdmin && event.visibility === 'invite_unlisted') {
+    if (!canManage && event.visibility === 'invite_unlisted') {
       return `❌ Event not found: "${eventSlug}"`;
     }
 
@@ -1291,12 +1417,12 @@ export function createEventToolHandlers(
       return `❌ Event not found: "${eventSlug}"`;
     }
 
-    // Non-admin users can only see attendees for published/completed public events
-    const isAdmin = slackUserId ? await canCreateEvents(slackUserId) : (memberContext?.org_membership?.role === 'admin');
-    if (!isAdmin && !['published', 'completed'].includes(event.status)) {
+    // Non-managers can only see attendees for published/completed public events.
+    const canManage = await canManageEvent(event);
+    if (!canManage && !['published', 'completed'].includes(event.status)) {
       return `❌ Event not found: "${eventSlug}"`;
     }
-    if (!isAdmin && event.visibility === 'invite_unlisted') {
+    if (!canManage && event.visibility === 'invite_unlisted') {
       return `❌ Event not found: "${eventSlug}"`;
     }
 
@@ -1314,10 +1440,10 @@ export function createEventToolHandlers(
     if (registered.length > 0) {
       response += `**Registered (${registered.length})**\n`;
       for (const reg of registered.slice(0, MAX_DISPLAY)) {
-        const name = isAdmin
+        const name = canManage
           ? (reg.name || reg.email?.split('@')[0] || 'Unknown')
           : (reg.name || 'Attendee');
-        const checkMark = isAdmin && reg.attended ? ' ✅' : '';
+        const checkMark = canManage && reg.attended ? ' ✅' : '';
         response += `• ${name}${checkMark}\n`;
       }
       if (registered.length > MAX_DISPLAY) {
@@ -1329,7 +1455,7 @@ export function createEventToolHandlers(
     if (waitlisted.length > 0) {
       response += `**Waitlisted (${waitlisted.length})**\n`;
       for (const reg of waitlisted.slice(0, MAX_DISPLAY)) {
-        const name = isAdmin
+        const name = canManage
           ? (reg.name || reg.email?.split('@')[0] || 'Unknown')
           : (reg.name || 'Attendee');
         response += `• ${name}\n`;
@@ -1352,6 +1478,8 @@ export function createEventToolHandlers(
 
     const event = await resolveEvent(eventSlug);
     if (!event) return `❌ Event not found: "${eventSlug}"`;
+    const manageCheck = await assertCanManageEvent(event);
+    if (manageCheck) return manageCheck;
 
     const isEmail = personQuery.includes('@');
 
@@ -1429,6 +1557,8 @@ export function createEventToolHandlers(
 
     const event = await resolveEvent(eventSlug);
     if (!event) return `❌ Event not found: "${eventSlug}"`;
+    const manageCheck = await assertCanManageEvent(event);
+    if (manageCheck) return manageCheck;
 
     // Check if already registered
     const registrations = await eventsDb.getEventRegistrations(event.id);

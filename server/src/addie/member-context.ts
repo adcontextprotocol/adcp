@@ -363,7 +363,10 @@ export interface MemberContext {
 
   /** Working groups the user is a member of */
   working_groups?: Array<{
+    id?: string;
     name: string;
+    slug?: string;
+    committee_type?: string;
     is_leader: boolean;
   }>;
 
@@ -745,7 +748,10 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
     if (userWorkingGroups.length > 0) {
       const workingGroupsWithLeadership = await Promise.all(
         userWorkingGroups.map(async (wg) => ({
+          id: wg.id,
           name: wg.name,
+          slug: wg.slug,
+          committee_type: wg.committee_type,
           is_leader: await workingGroupDb.isLeader(wg.id, workosUserId).catch(() => false),
         }))
       );
@@ -972,7 +978,10 @@ async function resolveContextFromLocalDb(
     if (userWorkingGroups.length > 0) {
       const workingGroupsWithLeadership = await Promise.all(
         userWorkingGroups.map(async (wg) => ({
+          id: wg.id,
           name: wg.name,
+          slug: wg.slug,
+          committee_type: wg.committee_type,
           is_leader: await workingGroupDb.isLeader(wg.id, workosUserId),
         }))
       );
