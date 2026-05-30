@@ -1,13 +1,8 @@
 import { existsSync, readdirSync } from 'node:fs';
-import { AsyncLocalStorage } from 'node:async_hooks';
-import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
-import { registerExternalSchemaRoot } from '@adcp/sdk/testing';
 import type {
-  AgentCapabilities,
   ComplyOptions,
   ResolveOptions,
-  ResolvedStoryboards,
   StoryboardRunOptions,
   TestOptions,
 } from '@adcp/sdk/testing';
@@ -24,24 +19,8 @@ export interface HostedComplianceTarget {
 
 type HostedResolveOptions = ResolveOptions & { schemaRoot: string };
 
-const registeredSchemaRoots = new Set<string>();
-const SDK_STORYBOARD_RESOLVER_PATCHED = Symbol.for('adcp.hostedStoryboardResolverPatched');
-const hostedComplianceContext = new AsyncLocalStorage<HostedComplianceTarget>();
-
-type SdkStoryboardResolverFn = ((
-  caps: AgentCapabilities,
-  options?: ResolveOptions,
-) => ResolvedStoryboards) & {
-  [SDK_STORYBOARD_RESOLVER_PATCHED]?: true;
-};
-
 function repoPath(...parts: string[]): string {
   return resolve(process.cwd(), ...parts);
-}
-
-function schemaRootCacheKey(version: string): string {
-  const stable = version.match(/^([1-9][0-9]*)\.([0-9]+)\.[0-9]+$/);
-  return stable ? `${stable[1]}.${stable[2]}` : version;
 }
 
 function escapeRegex(input: string): string {
@@ -89,63 +68,6 @@ function stableLineForHostedPrereleaseTarget(target: HostedComplianceTarget): st
 
   const line = prereleaseComplianceLine(target.version);
   return line === target.requested ? line : undefined;
-}
-
-export function hostedSupportedVersionsForCompliance(
-  supportedVersions: readonly string[] | undefined,
-  target: HostedComplianceTarget,
-): string[] | undefined {
-  if (!supportedVersions || supportedVersions.length === 0) return supportedVersions ? [] : undefined;
-
-  const line = stableLineForHostedPrereleaseTarget(target);
-  if (!line || !supportedVersions.includes(line) || supportedVersions.includes(target.version)) {
-    return [...supportedVersions];
-  }
-
-  return [target.version, ...supportedVersions];
-}
-
-export function hostedCapabilitiesForCompliance(
-  caps: AgentCapabilities,
-  target: HostedComplianceTarget,
-): AgentCapabilities {
-  const supported_versions = hostedSupportedVersionsForCompliance(caps.supported_versions, target);
-  return supported_versions === caps.supported_versions ? caps : { ...caps, supported_versions };
-}
-
-export function withHostedComplianceCompatibility<T>(
-  target: HostedComplianceTarget,
-  fn: () => T,
-): T {
-  return hostedComplianceContext.run(target, fn);
-}
-
-function installHostedStoryboardResolverPatch(): void {
-  // The hosted badge line can resolve to a checked-in prerelease bundle before
-  // GA (for example public target `3.1` backed by cache `3.1.0-beta.7`).
-  // Keep the compatibility shim scoped to storyboard compliance resolution;
-  // normal AdCP wire-version negotiation still requires exact prerelease pins.
-  let complianceModule: { resolveStoryboardsForCapabilities?: SdkStoryboardResolverFn };
-  try {
-    const require = createRequire(import.meta.url);
-    const packageRoot = resolve(require.resolve('@adcp/sdk/package.json'), '..');
-    complianceModule = require(join(packageRoot, 'dist', 'lib', 'testing', 'storyboard', 'compliance.js')) as {
-      resolveStoryboardsForCapabilities?: SdkStoryboardResolverFn;
-    };
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new Error(`Failed to install hosted storyboard resolver patch: ${detail}`);
-  }
-
-  const original = complianceModule.resolveStoryboardsForCapabilities;
-  if (!original || original[SDK_STORYBOARD_RESOLVER_PATCHED]) return;
-
-  const patched: SdkStoryboardResolverFn = (caps, options) => {
-    const target = hostedComplianceContext.getStore();
-    return original(target ? hostedCapabilitiesForCompliance(caps, target) : caps, options);
-  };
-  patched[SDK_STORYBOARD_RESOLVER_PATCHED] = true;
-  complianceModule.resolveStoryboardsForCapabilities = patched;
 }
 
 function complianceVersions(): string[] {
@@ -298,22 +220,22 @@ function assertHostedArtifacts(version: string): void {
   }
 }
 
-export function registerHostedComplianceSchemaRoot(version = DEFAULT_HOSTED_COMPLIANCE_VERSION): void {
-  const cacheKey = schemaRootCacheKey(version);
-  if (registeredSchemaRoots.has(cacheKey)) return;
-
-  assertHostedArtifacts(version);
-
-  registerExternalSchemaRoot(version, hostedSchemaRoot(version));
-  registeredSchemaRoots.add(cacheKey);
+function hostedStableLineAliasForVersion(
+  target: HostedComplianceTarget,
+  version: string,
+): string | undefined {
+  if (version !== target.version) return undefined;
+  return stableLineForHostedPrereleaseTarget(target);
 }
 
 export function hostedComplianceOptions(target: HostedComplianceTarget): HostedResolveOptions {
-  registerHostedComplianceSchemaRoot(target.version);
+  assertHostedArtifacts(target.version);
+  const hostedStableLineAlias = hostedStableLineAliasForVersion(target, target.version);
   return {
     version: target.version,
     complianceDir: target.complianceDir,
     schemaRoot: target.schemaRoot,
+    ...(hostedStableLineAlias && { hostedStableLineAlias }),
   };
 }
 
@@ -323,13 +245,15 @@ export function withHostedComplianceOptions<T extends Partial<ResolveOptions> | 
 ): (T extends undefined ? HostedResolveOptions : NonNullable<T> & HostedResolveOptions) {
   const input = (options ?? {}) as Partial<ResolveOptions>;
   const version = resolveHostedComplianceVersion(input.version ?? target.version);
-  registerHostedComplianceSchemaRoot(version);
+  assertHostedArtifacts(version);
+  const hostedStableLineAlias = hostedStableLineAliasForVersion(target, version);
 
   return {
     ...input,
     version,
     complianceDir: input.complianceDir ?? (version === target.version ? target.complianceDir : hostedComplianceDir(version)),
     schemaRoot: input.schemaRoot ?? hostedSchemaRootForVersion(version, target),
+    ...(hostedStableLineAlias && { hostedStableLineAlias }),
   } as T extends undefined ? HostedResolveOptions : NonNullable<T> & HostedResolveOptions;
 }
 
@@ -348,12 +272,14 @@ export function withHostedStoryboardRunOptions<T extends Partial<StoryboardRunOp
 ): (T extends undefined ? StoryboardRunOptions : NonNullable<T> & StoryboardRunOptions) {
   const input = (options ?? {}) as Partial<StoryboardRunOptions>;
   const version = resolveHostedComplianceVersion(input.adcpVersion ?? target.version);
-  registerHostedComplianceSchemaRoot(version);
+  assertHostedArtifacts(version);
+  const hostedStableLineAlias = hostedStableLineAliasForVersion(target, version);
 
   return {
     ...input,
     adcpVersion: version,
     schemaRoot: input.schemaRoot ?? hostedSchemaRootForVersion(version, target),
+    ...(hostedStableLineAlias && { wireAdcpVersion: hostedStableLineAlias }),
   } as T extends undefined ? StoryboardRunOptions : NonNullable<T> & StoryboardRunOptions;
 }
 
@@ -363,13 +289,13 @@ export function withHostedTestOptions<T extends Partial<TestOptions> | undefined
 ): (T extends undefined ? TestOptions : NonNullable<T> & TestOptions) {
   const input = (options ?? {}) as Partial<TestOptions>;
   const version = resolveHostedComplianceVersion(input.adcpVersion ?? target.version);
-  registerHostedComplianceSchemaRoot(version);
+  assertHostedArtifacts(version);
+  const hostedStableLineAlias = hostedStableLineAliasForVersion(target, version);
 
   return {
     ...input,
     adcpVersion: version,
     schemaRoot: input.schemaRoot ?? hostedSchemaRootForVersion(version, target),
+    ...(hostedStableLineAlias && { wireAdcpVersion: hostedStableLineAlias }),
   } as T extends undefined ? TestOptions : NonNullable<T> & TestOptions;
 }
-
-installHostedStoryboardResolverPatch();

@@ -5,6 +5,7 @@ on:
     branches: [main, '3.0.x']
     paths:
       - 'server/src/training-agent/**'
+      - 'server/src/services/hosted-compliance-version.ts'
       - 'server/tests/manual/run-storyboards.ts'
       - 'package.json'
       - 'package-lock.json'
@@ -22,6 +23,7 @@ on:
     branches: [main, '3.0.x']
     paths:
       - 'server/src/training-agent/**'
+      - 'server/src/services/hosted-compliance-version.ts'
       - 'server/tests/manual/run-storyboards.ts'
       - 'package.json'
       - 'package-lock.json'
