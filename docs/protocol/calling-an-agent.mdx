@@ -40,16 +40,19 @@ Missing the key → `adcp_error.code: 'VALIDATION_ERROR'` with `/idempotency_key
 `account` is a discriminated union. On `create_media_buy` and `update_media_buy`, two variants:
 
 ```json
-// variant 0: by seller-assigned id (from sync_accounts or list_accounts)
+// variant 0: by seller-assigned id (from list_accounts or out-of-band onboarding;
+// buyer-declared sellers may also echo account_id from sync_accounts as an internal handle)
 "account": { "account_id": "seller_assigned_id" }
 
 // variant 1: by natural key (brand + operator, optional sandbox)
 //   brand.domain — the buyer's brand domain (e.g., advertiser website)
-//   operator     — the seller agent's deployment hostname / brand.json identifier
-"account": { "brand": { "domain": "acme.com" }, "operator": "sales.example" }
+//   operator     — the buyer-side entity operating on behalf of the brand
+"account": { "brand": { "domain": "acme.com" }, "operator": "pinnacle-media.com" }
 ```
 
 **Do NOT merge required fields across variants.** `additionalProperties: false` on each variant means `{account_id, brand}` fails BOTH.
+
+When a task schema requires `account`, send an explicit `AccountRef` even if the SDK auto-selected the only account available to the authenticated credential. Hidden credential-implied defaulting is not a protocol model. When a task marks `account` optional, omission has only the semantics documented by that task.
 
 Other tools (e.g. `sync_creatives`) may accept a superset — always check the specific tool's schema.
 

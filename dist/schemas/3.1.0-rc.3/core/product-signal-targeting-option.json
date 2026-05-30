@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.3/core/product-signal-targeting-option.json",
+  "title": "Product Signal Targeting Option",
+  "description": "A signal the seller makes available inline for package-level signal composition on this product. Product.signal_targeting_options is used when the product needs product-scoped pricing, activation handles, defaults, grouping hints, a brief/refine-selected subset, or a curated inline menu. Wholesale products can instead omit inline options when the selectable menu is the broader get_signals feed. Product-local signals define their name and value_type inline through the shared signal-listing fields; data-provider and signal-source refs may omit those definition fields when the referenced definition or source is authoritative.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-rc.3/core/signal-listing.json"
+    },
+    {
+      "description": "Signals that require activation need an operational handle the buyer can pass to activate_signal before package selection.",
+      "if": {
+        "properties": {
+          "activation_status": {
+            "const": "requires_activation"
+          }
+        },
+        "required": ["activation_status"]
+      },
+      "then": {
+        "required": ["signal_agent_segment_id"]
+      }
+    }
+  ],
+  "required": ["signal_ref"],
+  "properties": {
+    "signal_agent_segment_id": {
+      "type": "string",
+      "description": "Optional opaque seller execution handle for this signal. Omit when signal_ref is sufficient for the seller to resolve the signal. Include only when the seller exposes a distinct runtime or activation handle that buyers must echo in packages[].targeting_overlay.signal_targeting_groups.groups[].signals[].signal_agent_segment_id.",
+      "x-entity": "signal_activation_id"
+    },
+    "activation_status": {
+      "type": "string",
+      "description": "Whether this signal option is ready to select on create_media_buy for the requesting account. 'ready' means the buyer can select it directly. 'requires_activation' means the buyer must activate the signal first or include an activation_key the seller accepts.",
+      "enum": [
+        "ready",
+        "requires_activation"
+      ],
+      "default": "ready"
+    },
+    "allowed_targeting_modes": {
+      "type": "array",
+      "description": "How this signal may be used when composing package-level signal targeting groups. 'include' means the signal may appear in an 'any' child group. 'exclude' means the signal may appear in a 'none' child group. Omit when the signal is include-only. This field declares the allowed buy-time group operator; binary package signal entries still use value=true in both include and exclude groups.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "include",
+          "exclude"
+        ]
+      },
+      "uniqueItems": true,
+      "minItems": 1,
+      "default": [
+        "include"
+      ]
+    },
+    "default_selected": {
+      "type": "boolean",
+      "description": "Whether the seller recommends or preselects this signal when composing this product. Buyers may remove it unless signal_targeting_rules.selection_mode is 'fixed'. When selection_mode is 'fixed', sellers apply default_selected signals even if the buyer omits signal_targeting_groups and MUST echo the applied entries on the resulting package state.",
+      "default": false
+    },
+    "selection_group": {
+      "type": "string",
+      "description": "Optional product-defined composability bucket for signal options, such as alternative audience tiers, a key-value targeting plane, or an audience-segment targeting plane. Signals in the same selection_group are expected to be OR-combinable inside one child group for a given targeting mode, subject to signal_targeting_rules. Use different selection_group values when the product requires separate ANDed clauses, such as signal sets backed by different platform targeting primitives that cannot be collapsed into one child group. selection_group is a product-option grouping key, not a reference to one child object in packages[].targeting_overlay.signal_targeting_groups.groups[]. Sellers can use signal_targeting_rules.max_selected_per_group and signal_targeting_rules.selection_group_rules with selection_group to guide and validate storefront composition."
+    },
+    "pricing_options": {
+      "type": "array",
+      "description": "Signal pricing options available when this signal is selected on this product. Product-scoped pricing is authoritative for this product; if get_signals exposes a different default rate card, use this product-scoped price when composing the buy. Buyers pass the selected pricing_option_id in packages[].targeting_overlay.signal_targeting_groups.groups[].signals[].pricing_option_id. Omit when the signal is bundled into the product price or has no incremental cost.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.3/core/vendor-pricing-option.json"
+      },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": true
+}

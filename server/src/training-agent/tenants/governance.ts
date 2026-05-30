@@ -13,10 +13,12 @@ import type { TenantConfig } from '@adcp/sdk/server';
 import { TrainingGovernancePlatform } from '../v6-governance-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildGovernanceComplyConfig } from './comply.js';
+import { listAccountsTool } from './account-tools.js';
+import type { TrainingContext } from '../types.js';
 
 const TENANT_ID = 'governance';
 
-export function buildGovernanceTenantConfig(host: string): {
+export function buildGovernanceTenantConfig(host: string, options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): {
   tenantId: string;
   config: TenantConfig;
 } {
@@ -28,8 +30,11 @@ export function buildGovernanceTenantConfig(host: string): {
       signingKey: material.signingKey,
       label: 'Training agent — governance',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      platform: new TrainingGovernancePlatform() as any,
+      platform: new TrainingGovernancePlatform(options.storyboardCompat) as any,
       serverOptions: {
+        customTools: {
+          list_accounts: listAccountsTool(options.storyboardCompat),
+        },
         complyTest: buildGovernanceComplyConfig(),
       },
     },

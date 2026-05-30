@@ -1305,8 +1305,11 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     }
   }
 
-  // Member profile details
+  // Company profile — registry-sourced facts only. Response policy (what to
+  // do when sparse or absent) lives in rules/constraints.md §"Ground
+  // Company-Specific Statements in Registry Data".
   if (context.member_profile) {
+    lines.push('### Company Profile (source: AgenticAdvertising.org registry)');
     if (context.member_profile.tagline) {
       lines.push(`Company description: ${context.member_profile.tagline}`);
     }
@@ -1316,6 +1319,9 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     if (context.member_profile.headquarters) {
       lines.push(`Company headquarters: ${context.member_profile.headquarters}`);
     }
+  } else if (context.organization && !context.organization.is_personal) {
+    lines.push('### Company Profile');
+    lines.push('No registry profile on file for this organization.');
   }
 
   // Persona and journey stage

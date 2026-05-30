@@ -1,0 +1,288 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.3/formats/canonical/display_tag.json",
+  "title": "Canonical Format: Display Tag",
+  "description": "Third-party-served display tag (JS, iframe, or 1×1 redirect). The buyer's adserver hosts the creative; the seller calls the tag URL at impression time. Slot: `tag_url` (url asset with appropriate `url_type`). Tracking model: opaque to seller — third party serves and measures. Click tracking via redirect URL substitution using universal_macros. Distinct from `image` (static asset hosted by seller) and `html5` (zip bundle hosted by seller).",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-rc.3/formats/canonical/_base.json"
+    },
+    {
+      "title": "Size-mode mutex",
+      "description": "Exactly one of: (a) fixed (`width` + `height` both set), (b) multi-size (`sizes` set), (c) responsive (any of `min_width`/`max_width`/`min_height`/`max_height` set), (d) none (no size constraint declared — accepts any dimensions). Combining modes is rejected at schema layer.",
+      "oneOf": [
+        {
+          "title": "fixed",
+          "required": [
+            "width",
+            "height"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "sizes"
+                ]
+              },
+              {
+                "required": [
+                  "min_width"
+                ]
+              },
+              {
+                "required": [
+                  "max_width"
+                ]
+              },
+              {
+                "required": [
+                  "min_height"
+                ]
+              },
+              {
+                "required": [
+                  "max_height"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "title": "multi-size",
+          "required": [
+            "sizes"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "width"
+                ]
+              },
+              {
+                "required": [
+                  "height"
+                ]
+              },
+              {
+                "required": [
+                  "min_width"
+                ]
+              },
+              {
+                "required": [
+                  "max_width"
+                ]
+              },
+              {
+                "required": [
+                  "min_height"
+                ]
+              },
+              {
+                "required": [
+                  "max_height"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "title": "responsive",
+          "anyOf": [
+            {
+              "required": [
+                "min_width"
+              ]
+            },
+            {
+              "required": [
+                "max_width"
+              ]
+            },
+            {
+              "required": [
+                "min_height"
+              ]
+            },
+            {
+              "required": [
+                "max_height"
+              ]
+            }
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "width"
+                ]
+              },
+              {
+                "required": [
+                  "height"
+                ]
+              },
+              {
+                "required": [
+                  "sizes"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "title": "none",
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "width"
+                ]
+              },
+              {
+                "required": [
+                  "height"
+                ]
+              },
+              {
+                "required": [
+                  "sizes"
+                ]
+              },
+              {
+                "required": [
+                  "min_width"
+                ]
+              },
+              {
+                "required": [
+                  "max_width"
+                ]
+              },
+              {
+                "required": [
+                  "min_height"
+                ]
+              },
+              {
+                "required": [
+                  "max_height"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "properties": {
+    "slots": {
+      "default": [
+        {
+          "asset_group_id": "tag_url",
+          "asset_type": "url",
+          "required": true
+        },
+        {
+          "asset_group_id": "backup_image",
+          "asset_type": "image",
+          "required": false
+        }
+      ],
+      "description": "Default slots for display_tag canonical. Buyer ships a URL pointing at the third-party-served creative (JS, iframe, or 1×1 redirect) plus an optional backup image. Click and impression macros are substituted into the tag URL by the seller using `universal_macros`."
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required tag rendering width in pixels — use for fixed-size slots. For multi-size flexible slots use `sizes[]`; for responsive use `min_width`/`max_width`/`min_height`/`max_height`. Exactly one of `(width, height)`, `sizes[]`, or `min/max_width` + `min/max_height` ranges MUST be set."
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required tag rendering height in pixels. See `width` for size-mode mutual exclusion."
+    },
+    "sizes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "width",
+          "height"
+        ],
+        "properties": {
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "List of accepted (width, height) pairs for a multi-size flexible slot. The buyer's third-party tag must render at one of the listed sizes; the seller picks which size to request at impression time. Mutually exclusive with `(width, height)` and with responsive ranges."
+    },
+    "min_width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum accepted width for responsive third-party tags. Pair with `max_width`. Mutually exclusive with `(width, height)` and `sizes[]`."
+    },
+    "max_width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum accepted width for responsive third-party tags. Pair with `min_width`."
+    },
+    "min_height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum accepted height for responsive third-party tags. Pair with `max_height`."
+    },
+    "max_height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum accepted height for responsive third-party tags. Pair with `min_height`."
+    },
+    "supported_tag_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "iframe",
+          "javascript",
+          "1x1_redirect"
+        ]
+      },
+      "description": "Tag delivery mechanisms accepted."
+    },
+    "ssl_required": {
+      "type": "boolean",
+      "description": "Whether the tag URL must be HTTPS."
+    },
+    "max_redirect_depth": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum redirect chain depth permitted."
+    },
+    "max_response_time_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum tag-server response time in milliseconds."
+    },
+    "backup_image_required": {
+      "type": "boolean",
+      "description": "Whether a backup image must accompany the tag for environments that cannot render the third-party tag."
+    },
+    "backup_image_max_size_kb": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "om_sdk_required": {
+      "type": "boolean",
+      "description": "Whether the buyer's tag must integrate IAB Open Measurement SDK for viewability."
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,23 +1,25 @@
 ---
-title: Canonical Formats (preview)
-description: "Canonical formats live on AdCP; sellers' products narrow them inline. Phase 1 + Phase 2 preview against RFC #3305."
+title: Canonical Formats
+description: "Canonical formats live in AdCP 3.1; sellers' products narrow them inline, with experimental flags on immature canonicals and product declarations."
 "og:title": "AdCP — Canonical Formats"
 testable: true
 ---
 
-# Canonical Formats (preview)
+# Canonical Formats
 
 > **TL;DR for adopters reading cold:**
-> - **7 of 12 canonical formats ship `stable` at 3.1 GA** (`image`, `display_tag`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `native_in_feed` — all re-encodings of IAB / VAST / DAAST / IAB OpenRTB Native 1.2). 5 stay `preview` past GA (`html5`, `image_carousel`, `sponsored_placement`, `responsive_creative`, `agent_placement`).
+> - **9 of 12 canonical formats ship non-experimental at 3.1 GA** (`image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `native_in_feed`). 3 canonicals stay experimental past GA (`sponsored_placement`, `responsive_creative`, `agent_placement`), and the `custom` escape-hatch `format_kind` is inherently experimental until a shape is promoted.
 > - **v1 named formats stay first-class** through 4.x with a 5.0 sunset floor. Dual-emission is the migration mode; SDKs translate either direction. Realistic v2-only buyer-agent timing is 4.x at the earliest.
 > - **15 v1→v2 mapping registry entries at GA, 71+ of audited v1 formats are v1-only** out of the gate (need seller `canonical` field or registry PR to project to v2). v2-aware buyers see meaningfully thinner inventory than v1-aware ones through 3.x. Dual-read codepath realistic through 3.3.
-> - **Phase 4 (SDK codegen) is the gating dependency for adopter consumption.** Schemas are shippable today; the typed-tagged-union ergonomics this design earns land fully only with codegen. The runtime Ajv validator is the load-bearing gate — generated TS/Pydantic types lose `if/then` narrowing on `format_kind: "custom"` and `result_kind`.
+> - **SDK codegen is the gating dependency for ergonomic adopter consumption.** Schemas are shippable today; the typed-tagged-union ergonomics this design earns land fully only with codegen. The runtime Ajv validator is the load-bearing gate — generated TS/Pydantic types lose `if/then` narrowing on `format_kind: "custom"` and `result_kind`.
 
-> **Status:** Preview track. The canonical-formats surface is being designed in flight against [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) and the [#3307 implementation branch](https://github.com/adcontextprotocol/adcp/pull/3307).
+> **Status:** 3.1 surface in release-candidate preparation. The canonical-formats framework ships with 3.1; until GA, adopters should use exact prerelease pins advertised by `supported_versions` (for example `"3.1-beta.7"` today and `"3.1-rc.1"` once an RC artifact exists). Three canonicals plus `custom` remain marked `experimental` until adopter evidence supports promotion. Historical design context lives in [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) and [#3307](https://github.com/adcontextprotocol/adcp/pull/3307).
 >
 > *Naming note*: This work was originally drafted as "creative formats v2" — the v1↔v2 contrast describes the two format-authoring models (legacy named-format registry vs new canonical formats on products). To avoid collision with AdCP-the-protocol's own version numbering (currently 3.x), file paths, identifiers, and the body of this doc use **canonical formats** terminology. The v1↔v2 contrast is reserved as schema-description shorthand where it disambiguates the two authoring paths on `Product.format_ids` vs `Product.format_options`.
 
 Canonical formats collapse today's separate format registry into product-bound declarations. AdCP defines a small set of **canonical formats** (universal building blocks); sellers' products carry inline `ProductFormatDeclaration`s that narrow canonicals with platform-specific parameters. Creative agents become transformation services declaring `build_creative` capabilities targeting canonical formats. Most existing concepts (CTAs, destinations, tracking, brand identity) are reused or stay in their current homes — canonical formats don't create a new vocabulary layer for those.
+
+For hands-on authoring practice, use the [S2 creative specialist module](/docs/learning/specialist/creative), which links to this reference instead of duplicating it.
 
 ## Glossary
 
@@ -26,11 +28,12 @@ Canonical formats collapse today's separate format registry into product-bound d
 | **Canonical format** | One of 12 AdCP-defined format archetypes that products narrow (e.g., `image`, `video_vast`, `audio_hosted`, `native_in_feed`). The buyer's stable validation target. |
 | **`format_kind`** | Discriminator value naming a canonical format (e.g., `"image"`). Selects which canonical's parameter schema applies. |
 | **`format_options`** | Array of `ProductFormatDeclaration`s on a v2 product. The 90% case is single-element; multi-element declares "accepts any of." |
-| **`ProductFormatDeclaration`** | Inline format declaration: `format_kind` + `params` + `capability_id` (REQUIRED when entries share `format_kind`; SHOULD be set on every entry per 3.1 so V2 buyers can author against the product via `PackageRequest.capability_ids[]`) + optional `applies_to_channels` + optional `experimental` + optional `v1_format_ref[]` (always array — see below). |
+| **`ProductFormatDeclaration`** | Inline format declaration: `format_kind` + `params` + `format_option_id` (REQUIRED when entries share `format_kind`; SHOULD be set on every entry per 3.1 so V2 buyers can author against the product via `PackageRequest.format_option_refs[]`) + optional `publisher_domain` for publisher-catalog-backed options + optional `applies_to_channels` + optional `experimental` + optional `v1_format_ref[]` (always array — see below). |
 | **`v1_format_ref`** | Array of `{agent_url, id}` references linking a v2 declaration to one or more v1 named formats. Always array; single-ref is `[{...}]`. Multi-size declarations carry one ref per size (see "Multi-size fan-out" below). |
 | **`canonical:` annotation** | The v1 catalog entry's projection annotation. Always object form — `{ kind: "image" }` minimum, `{ kind, asset_source, slots_override }` rich form for entries whose v1 shape doesn't follow the canonical's defaults (generative, brief-driven). Never bare-string. |
 | **Sibling refinement principle** | Before reaching for a new canonical, check whether `asset_source` + `slots_override` + `applies_to_channels` + event_log surface covers the case. Applied to: generative (image + asset_source: agent_synthesized), broadcast TV (video_hosted + applies_to_channels: ["tv"]), DOOH (image + applies_to_channels: ["dooh"]), native (image + slots_override). No new canonical for any of them. |
-| **`capability_id`** | Stable identifier for a format declaration. REQUIRED when `format_options` carries multiple declarations sharing the same `format_kind` (to disambiguate). SHOULD be set on every `format_options[]` entry — not just when forced by collision — so V2-mental-model buyers can author against the product via `PackageRequest.capability_ids[]` and `creative-manifest.capability_id`. Without it, products are still 3.1-conformant but the V2 authoring path is unreachable and buyers fall back to v1 `format_ids[]`. The 4.0 cutover will tighten this from SHOULD to MUST. |
+| **`format_option_id`** | Stable identifier for a format declaration within its namespace. REQUIRED when `format_options` carries multiple declarations sharing the same `format_kind` (to disambiguate). SHOULD be set on every `format_options[]` entry — not just when forced by collision — so V2-mental-model buyers can author against the product via `PackageRequest.format_option_refs[]` and `creative-manifest.format_option_ref`. Publisher-catalog-backed declarations carry `publisher_domain`; product-local declarations omit it. Without selectable `format_option_id` values, products are still 3.1-conformant but the V2 authoring path is unreachable and buyers fall back to v1 `format_ids[]`. |
+| **`FormatOptionRef`** | Discriminated buyer-facing selector for a product format option. Use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-catalog-backed options; use `{scope: "product", format_option_id}` for product-local options. Product-scoped refs resolve only inside the target product/package, not a seller-wide, cross-product, or cross-publisher namespace. |
 | **`applies_to_channels`** | Subset of the product's declared channels this format declaration applies to. Lets multi-channel products carry per-channel format options. |
 | **`experimental`** | Boolean on canonical (`_base.json`) and on `ProductFormatDeclaration`. `true` = may not work as declared; have a v1 fallback ready. Replaces the earlier `status` + `runtime_status` enums (single binary flag rather than two stability axes). |
 | **`slots`** | Programmatic declaration on a format of which `asset_group_id` slots a manifest must (or may) populate, each paired with an `asset_type`. |
@@ -40,7 +43,7 @@ Canonical formats collapse today's separate format registry into product-bound d
 | **`provenance_required`** | When true, the product rejects unsigned synthesized assets. Builders attach C2PA-compatible provenance manifests. |
 | **`platform_extensions`** | URI+digest references to platform-specific extensions narrowing the canonical (pixel ID shapes, conversion event taxonomies). |
 | **`asset_source`** | Production-source declaration: who renders the asset bytes. Single shared 5-value enum across `image` / `video_hosted` / `audio_hosted`. `item_production_model` on `sponsored_placement` covers the same axis with a 4-value subset (drops `publisher_host_recorded`, which is audio-specific). |
-| **`status` on canonicals** | Spec-maturity axis (`stable` / `preview` / `deprecated`). All canonicals are `preview` while v2 itself is in preview; per-canonical promotion to `stable` happens at 3.1 GA based on adopter evidence. |
+| **Canonical maturity** | 3.1 uses the `experimental` boolean instead of a separate `stable` / `preview` status axis. Non-experimental canonicals are the default production path; experimental canonicals and `custom` require extra validation before routing budget. |
 | **`since_version` / `migration_target_version`** | Release-precision lifecycle metadata on canonicals — when introduced, when stabilization or breaking revision is expected. |
 | **`validate_input`** | Spec-defined dry-run primitive — buyers verify a manifest against canonicals/products without committing to a render. |
 | **`build_creative`** | Creative-agent surface that produces a manifest from inputs (brief, video_brief, brand). Sales agents do NOT expose `build_creative`. |
@@ -87,9 +90,9 @@ Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model
 
 A canonical (or a seller's specific product declaration) carries a single `experimental: boolean` flag. Same semantics as `experimental` on protocols: 'this is shipping but may break, evolve, or fail.' Buyers reading `experimental: true` SHOULD have a v1 fallback ready and SHOULD validate via `validate_input` or a sandbox before routing production budget. This replaces the earlier two-axis design (`status` + `runtime_status` enums) — collapsed because what buyers actually care about is binary: do I treat this as production-stable, or as use-at-your-own-risk.
 
-`experimental: true` is set at 3.1 GA on four canonicals:
+`experimental: true` is set at 3.1 GA on three canonicals plus the `custom` escape hatch:
 
-| Canonical | Why experimental | Promotion gated on |
+| Format kind | Why experimental | Promotion gated on |
 |---|---|---|
 | `sponsored_placement` | Four meaningfully different retail-media adapter contracts (Amazon SP, Criteo SP / CitrusAd SP, Pinterest Collection, generative-per-SKU) under one canonical — see [Sponsored Placement adapter contracts](/docs/creative/sponsored-placement-adapter-contracts) | Two adopters with `format_schema` evidence |
 | `responsive_creative` | Algorithmic composition (surface picks combinations); no clean v1-translatable equivalent | Adopter evidence + per-surface conformance |
@@ -185,7 +188,7 @@ These shapes are real ad-industry product types — but they're either multi-can
         "uri": "https://nytimes.example/schemas/formats/homepage_takeover_v3",
         "digest": "sha256:e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0a3"
       },
-      "capability_id": "nytimes_homepage_takeover_premium",
+      "format_option_id": "nytimes_homepage_takeover_premium",
       "applies_to_channels": ["display", "olv"],
       "params": {
         "components": [
@@ -307,7 +310,7 @@ Meta Reels is a useful test of canonical-formats coverage: a platform-specific f
 | Logo overlay | NOT in the format. Auto-applied by Meta from the linked Page. | `BrandRef.brand_kit_override.logo` exists for formats whose seller-side renderer overlays a logo (host-read podcasts, CTV bumpers, publisher direct). Meta doesn't use it. |
 | Music overlay (Reels music library) | NOT in this declaration. Would be a `platform_extension` on the format if added; **not present in 3.1** — too platform-specific to be worth a schema seat without 2+ adopters. | Sellers can layer it via `ext` on the manifest in the meantime. |
 | Pixel / conversion tracking | NOT on the format. Conversion tracking is `sync_event_sources` / `event_log` territory — campaign-scoped, not creative-scoped. | The same pixel fires for every ad in the campaign regardless of creative; one declaration in `event_log` covers the campaign. |
-| Placement selection (Feed vs Reels vs Stories) | NOT on the format. Placement is selected at media-buy time (`Placement.format_options[].capability_id`) — pick `meta_reels` to buy Reels, `meta_stories_video` to buy Stories. | They're separate format declarations on the publisher catalog; not a runtime extension parameter. |
+| Placement selection (Feed vs Reels vs Stories) | NOT on the format. Placement is selected at media-buy time (`Placement.format_options[].format_option_id`) — pick `meta_reels` to buy Reels, `meta_stories_video` to buy Stories. | They're separate format options on the publisher catalog; not a runtime extension parameter. |
 
 ### Where to declare a format
 
@@ -316,10 +319,12 @@ Three places. Pick by who owns the assertion.
 | Surface | Authority | When to use |
 |---|---|---|
 | `adagents.json` top-level `formats[]` (publisher catalog) | Publisher (or AAO community mirror standing in) | Shared across all sellers of a publisher's inventory — declares the publisher-authoritative shape once. Use `applies_to_property_ids` / `applies_to_property_tags` to scope to a subset of the file's `properties[]`. |
-| `Product.format_options[]` (inline on a product) | Seller, on a specific product | Seller-specific narrowing, custom format, or one-off pricing variant. SHOULD reference a publisher catalog entry by `capability_id` when the publisher has one. |
-| `Placement.format_options[]` (capability_id reference OR inline) | Publisher (or seller publishing placements) | Ties a placement to one or more accepted formats. Reference by `capability_id` (recommended; resolves against the file's top-level `formats[]`) or inline for placement-local narrowing. Same-file scope — cross-file `capability_id` lookup is not supported. |
+| `Product.format_options[]` (inline on a product) | Seller, on a specific product | Seller-specific narrowing, custom format, or one-off pricing variant. SHOULD reference a publisher catalog entry by `{publisher_domain, format_option_id}` when the publisher has one. |
+| `Placement.format_options[]` (format_option_id reference OR inline) | Publisher (or seller publishing placements) | Ties a placement to one or more accepted formats. Reference by `format_option_id` (recommended; resolves against the file's top-level `formats[]`) or inline for placement-local narrowing. Same-file scope — cross-file `format_option_id` lookup is not supported. |
 
-`applies_to_property_ids` and `Placement.format_options[]` answer different questions: the first scopes a FORMAT to a subset of properties ("Reels applies to Instagram + Facebook but not WhatsApp"); the second binds a PLACEMENT to one or more formats ("Instagram Reels accepts the meta_reels capability"). Property-level format support → `applies_to_property_ids`. Placement-level binding → `placements[].format_options[]`.
+`applies_to_property_ids` and `Placement.format_options[]` answer different questions: the first scopes a FORMAT to a subset of properties ("Reels applies to Instagram + Facebook but not WhatsApp"); the second binds a PLACEMENT to one or more formats ("Instagram Reels accepts the `meta_reels` format option"). Property-level format support → `applies_to_property_ids`. Placement-level binding → `placements[].format_options[]`.
+
+**Naming boundary:** `format_option_id` selects a buyable product or publisher-catalog format contract. Creative-agent `capability_id` remains separate: it selects a build path on `creative.supported_formats` when calling `build_creative`. Do not use `capability_id` on media-buy products, placements, package requests, creative manifests, or creative assets.
 
 ### Format discovery (resolution order)
 
@@ -343,7 +348,7 @@ A buyer agent seeing a `Product` with `publisher_properties[].publisher_domain =
 
 ```
 buyer holds: Product { publisher_properties: [{publisher_domain: "instagram.com"}],
-                       format_options: [{capability_id: "meta_reels", ...}, ...] }
+                       format_options: [{publisher_domain: "meta.example", format_option_id: "meta_reels", ...}, ...] }
 buyer wants: full ProductFormatDeclaration for each format_options entry,
              scoped to instagram.com's instagram property
 ```
@@ -361,11 +366,11 @@ buyer wants: full ProductFormatDeclaration for each format_options entry,
 - `meta_stories_video` → applies_to_property_ids: ["instagram", "facebook"] → matches
 - `meta_feed_carousel` → applies_to_property_ids: ["instagram", "facebook"] → matches
 
-The Product on hand carries `format_options: [{ capability_id: "meta_reels" }]`. The buyer agent now knows the FULL declaration: `format_kind: video_hosted`, vertical 9:16, 3-90s duration, the full Meta CTA enum, plus the `v1_format_ref[]` array for v1-wire dual emission.
+The Product on hand carries `format_options: [{ publisher_domain: "meta.example", format_option_id: "meta_reels" }]`. The buyer agent now knows the FULL declaration: `format_kind: video_hosted`, vertical 9:16, 3-90s duration, the full Meta CTA enum, plus the `v1_format_ref[]` array for v1-wire dual emission.
 
-**Step 5 — Resolve placement references (if any).** If the publisher catalog includes `placements[]` and a placement carries `format_options: [{ capability_id: "meta_reels" }]`, the buyer resolves the capability_id against the SAME file's top-level `formats[]` (same-file scope; cross-file lookup is not supported by design). When the reference is broken — capability_id not present in `formats[]` — the SDK MUST surface `FORMAT_CAPABILITY_UNRESOLVED` on the response `errors[]` and fail closed for that placement.
+**Step 5 — Resolve placement references (if any).** If the publisher catalog includes `placements[]` and a placement carries `format_options: [{ format_option_id: "meta_reels" }]`, the buyer resolves the format_option_id against the SAME file's top-level `formats[]`. Cross-file lookup is not supported by design because same-file resolution keeps validators bounded and prevents one file from squatting on another publisher's `format_option_id`. When the reference is broken — format_option_id not present in `formats[]` — the SDK MUST surface `FORMAT_OPTION_UNRESOLVED` on the response `errors[]` and fail closed for that placement.
 
-**Step 6 — Multi-tier discovery cache.** Buyer SDK caches the file by `<resolved URL>@<sha256>` for the duration the publisher honors (typically `Cache-Control: max-age`, capped at 24h). Subsequent products from the same publisher reuse the cached file without re-fetching.
+**Step 6 — Multi-tier discovery cache.** Buyer SDK caches the file by resolved URL plus `catalog_etag` when present, falling back to HTTP validators (`ETag`/`Last-Modified`) and then a bounded TTL. Subsequent products from the same publisher reuse the cached file until the catalog token or HTTP validator changes, then re-resolve placement and format references.
 
 **Concrete payload sequence** (Meta Reels, scoped to Instagram):
 
@@ -378,7 +383,7 @@ GET https://creative.adcontextprotocol.org/translated/meta/adagents.json
 {
   "properties": [{"property_id": "instagram", ...}, ...],
   "formats": [
-    { "capability_id": "meta_reels", "format_kind": "video_hosted",
+    { "format_option_id": "meta_reels", "format_kind": "video_hosted",
       "applies_to_property_ids": ["instagram", "facebook"],
       "params": { ... } },
     ...
@@ -391,8 +396,8 @@ GET https://creative.adcontextprotocol.org/translated/meta/adagents.json
 filter formats[] by applies_to_property_ids ∋ "instagram":
 → 4 declarations match
 
-product's format_options carries: [{ capability_id: "meta_reels" }]
-→ resolve capability_id "meta_reels" against formats[] → full declaration
+product's format_options carries: [{ publisher_domain: "meta.example", format_option_id: "meta_reels" }]
+→ resolve FormatOptionRef { scope: "publisher", publisher_domain: "meta.example", format_option_id: "meta_reels" } against formats[] → full declaration
 
 result: SDK knows the full ProductFormatDeclaration for the product,
         scoped to the right property, with the right v1 dual-emission
@@ -416,7 +421,7 @@ Meta hasn't adopted AdCP, so its `adagents.json` lives at the AAO community-regi
   ],
   "formats": [
     {
-      "capability_id": "meta_reels",
+      "format_option_id": "meta_reels",
       "display_name": "Meta Reels (Instagram + Facebook)",
       "format_kind": "video_hosted",
       "applies_to_property_ids": ["instagram", "facebook"],
@@ -444,13 +449,13 @@ Meta hasn't adopted AdCP, so its `adagents.json` lives at the AAO community-regi
       "placement_id": "instagram_reels",
       "name": "Instagram Reels",
       "property_ids": ["instagram"],
-      "format_options": [{ "capability_id": "meta_reels" }]
+      "format_options": [{ "format_option_id": "meta_reels" }]
     },
     {
       "placement_id": "facebook_reels",
       "name": "Facebook Reels",
       "property_ids": ["facebook"],
-      "format_options": [{ "capability_id": "meta_reels" }]
+      "format_options": [{ "format_option_id": "meta_reels" }]
     }
   ]
 }
@@ -460,7 +465,7 @@ Buyer SDKs answer `list_creative_formats(publisher_domain="meta.com")` by fetchi
 
 ### Product reuses the catalog declaration
 
-A seller's `meta_reels_us` product references the publisher-catalog declaration by `capability_id`, narrowing only the parts specific to that product (geography, pricing). The format shape itself is inherited from `creative.adcontextprotocol.org/translated/meta`:
+A seller's `meta_reels_us` product references the publisher-catalog declaration by `{publisher_domain, format_option_id}`, narrowing only the parts specific to that product (geography, pricing). The format shape itself is inherited from `creative.adcontextprotocol.org/translated/meta`:
 
 ```json test=false
 {
@@ -473,7 +478,8 @@ A seller's `meta_reels_us` product references the publisher-catalog declaration 
   "format_options": [
     {
       "format_kind": "video_hosted",
-      "capability_id": "meta_reels",
+      "publisher_domain": "meta.example",
+      "format_option_id": "meta_reels",
       "v1_format_ref": [
         { "agent_url": "https://creative.adcontextprotocol.org/translated/meta", "id": "meta_reels" }
       ],
@@ -498,7 +504,7 @@ A seller's `meta_reels_us` product references the publisher-catalog declaration 
 }
 ```
 
-The `capability_id: "meta_reels"` tag lets buyer agents recognize this as the same Meta Reels they read from the publisher catalog — the seller didn't reinvent the format, they're selling inventory against the catalog declaration. The buyer's manifest validates against canonical `video_hosted` first (does it satisfy the contract any seller speaking that canonical accepts?), then narrows against this product's specific parameters.
+The `{publisher_domain, format_option_id}` pair lets buyer agents recognize this as the same Meta Reels format option they read from the publisher catalog — the seller didn't reinvent the format, they're selling inventory against the catalog declaration. The buyer's manifest validates against canonical `video_hosted` first (does it satisfy the contract any seller speaking that canonical accepts?), then narrows against this product's specific parameters.
 
 ### What lives where (and why)
 
@@ -536,7 +542,7 @@ The example below is the NYTimes Homepage above-the-fold slot: accepts image, HT
   "format_options": [
     {
       "format_kind": "image",
-      "capability_id": "nytimes_homepage_image",
+      "format_option_id": "nytimes_homepage_image",
       "params": {
         "sizes": [
           { "width": 300, "height": 250 },
@@ -551,7 +557,7 @@ The example below is the NYTimes Homepage above-the-fold slot: accepts image, HT
     },
     {
       "format_kind": "html5",
-      "capability_id": "nytimes_homepage_html5",
+      "format_option_id": "nytimes_homepage_html5",
       "params": {
         "sizes": [
           { "width": 300, "height": 250 },
@@ -566,7 +572,7 @@ The example below is the NYTimes Homepage above-the-fold slot: accepts image, HT
     },
     {
       "format_kind": "display_tag",
-      "capability_id": "nytimes_homepage_3p_tag",
+      "format_option_id": "nytimes_homepage_3p_tag",
       "params": {
         "sizes": [
           { "width": 300, "height": 250 },
@@ -777,9 +783,9 @@ A generative DSP (universalads, Pencil, AdCreative.ai-shaped tools) is a sales a
 
 Buyer's manifest carries the brief, headline, and clickthrough URL — no rendered image asset. Seller's `sync_creatives` produces the rendered MREC PNG and registers it. Two axes: `composition_model: deterministic` (the surface serves what it received), `asset_source: seller_pre_rendered_from_brief` (the seller renders from inputs at sync time). `buyer_asset_acceptance: "rejected"` makes it explicit that the buyer cannot ship a pre-rendered image directly — the production model is brief-driven only.
 
-## Worked example — multi-format product (Flashtalking html5 OR internal display_tag)
+## Worked example — multi-format product (third-party html5 OR internal display_tag)
 
-A placement that accepts EITHER a third-party-hosted creative OR an internal tag — buyer picks at sync_creatives time by aligning their manifest's `format_kind` (and `capability_id` if needed) to the matching declaration:
+A placement that accepts EITHER a third-party-hosted creative OR an internal tag — buyer picks at sync_creatives time by aligning their manifest's `format_kind` and, when needed, `format_option_ref` to the matching declaration:
 
 ```json test=false
 {
@@ -787,7 +793,8 @@ A placement that accepts EITHER a third-party-hosted creative OR an internal tag
   "channels": ["display"],
   "format_options": [
     {
-      "capability_id": "html5_flashtalking_hosted",
+      "publisher_domain": "regional-news.example",
+      "format_option_id": "html5_third_party_hosted",
       "format_kind": "html5",
       "params": {
         "width": 300,
@@ -798,7 +805,8 @@ A placement that accepts EITHER a third-party-hosted creative OR an internal tag
       }
     },
     {
-      "capability_id": "display_tag_internal",
+      "publisher_domain": "regional-news.example",
+      "format_option_id": "display_tag_internal",
       "format_kind": "display_tag",
       "params": {
         "width": 300,
@@ -816,7 +824,11 @@ Buyer's manifest, targeting the html5 option:
 ```json test=false
 {
   "format_kind": "html5",
-  "capability_id": "html5_flashtalking_hosted",
+  "format_option_ref": {
+    "scope": "publisher",
+    "publisher_domain": "regional-news.example",
+    "format_option_id": "html5_third_party_hosted"
+  },
   "assets": { "html5_bundle": { /* ... */ }, "backup_image": { /* ... */ } }
 }
 ```
@@ -824,10 +836,10 @@ Buyer's manifest, targeting the html5 option:
 **Routing rule for multi-element `format_options`** (normative):
 
 - `format_kind` selects the canonical and its slot vocabulary.
-- `capability_id` is **REQUIRED** on the manifest when the target product's `format_options` contains two or more declarations sharing the same `format_kind` — without it, the seller can't disambiguate which option the buyer is shipping against.
-- `capability_id` is **OPTIONAL** when each `format_kind` in the product's `format_options` is unique (the example above: one html5 entry, one display_tag entry) — `format_kind` alone routes the manifest. Buyers MAY still send `capability_id` as a clarity hint.
+- `format_option_ref` is **REQUIRED** on the manifest when the target product's `format_options` contains two or more declarations sharing the same `format_kind` — without it, the seller can't disambiguate which option the buyer is shipping against.
+- `format_option_ref` is **OPTIONAL** when each `format_kind` in the product's `format_options` is unique (the example above: one html5 entry, one display_tag entry) — `format_kind` alone routes the manifest. Buyers MAY still send `format_option_ref` as a clarity hint.
 
-In this example each option carries a distinct `format_kind`, so `capability_id` is optional. Including it (as shown) is a recommended habit — it makes the manifest unambiguous to logs, replays, and downstream tooling, and it keeps the buyer-side codepath identical regardless of whether the seller's product has one or many options sharing a kind.
+In this example each option carries a distinct `format_kind`, so `format_option_ref` is optional. Including it (as shown) is a recommended habit — it makes the manifest unambiguous to logs, replays, and downstream tooling, and it keeps the buyer-side codepath identical regardless of whether the seller's product has one or many options sharing a kind.
 
 ## Worked example — sponsored_placement with item_production_model
 
@@ -948,13 +960,35 @@ When NOT to use `validate_input`:
 
 | Tool | Who calls | What it does | Side effects |
 |---|---|---|---|
-| `validate_input` | Buyer | Dry-run validation against canonicals and/or products. Returns per-target `ok` + violations. | None (no creative registered, no synthesis triggered). |
+| `validate_input` | Buyer | Dry-run validation against canonicals and/or products. Returns per-target `validated_pass`, `validated_fail`, or `unvalidatable_nondeterministic`. | None (no creative registered, no synthesis triggered). |
 | `build_creative` | Buyer (calling a creative agent) | Produces a creative manifest from inputs (brief, video_brief, brand). For deterministic flows: one round-trip. For nondeterministic flows: returns task with QA-loop semantics. | Synthesis happens; output manifest is returned. May register a creative on the creative agent's library if the agent supports `has_creative_library`. Does NOT register on the seller. |
 | `sync_creatives` | Buyer (calling a seller) | Submits a manifest to the sales agent for the seller to register against a product. | Validates against canonical + product narrowing; registers creative on the seller's library on success; returns violations on failure. |
 
 For the third-party creative-agent flow: `validate_input` first (cheap pre-flight) → `build_creative` on the creative agent → `sync_creatives` on the sales agent. For the in-house pre-rendered flow: skip `build_creative`; `validate_input` then `sync_creatives`. For the seller-renders-from-brief flow (universalads-class): skip `build_creative` (the seller does the rendering at `sync_creatives` time); `validate_input` then `sync_creatives` directly.
 
 See [`build_creative` task reference](/docs/creative/task-reference/build_creative) for the full request/response shape.
+
+### Format matching vs product satisfaction
+
+Sellers and SDKs MUST normalize legacy named formats before comparing them to canonical declarations. A legacy `format_id` such as `{ "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }` resolves through the explicit `canonical` annotation, `v1_format_ref`, or the canonical mapping registry to a canonical declaration such as `format_kind: "image"` with `params.width: 300` and `params.height: 250`. After that projection, implementations compare the canonical shape and parameters, not the raw `(agent_url, id)` pair.
+
+Two related checks use different directionality:
+
+- **Equivalence matching** answers whether two declarations identify the same underlying creative shape after normalization. `display_300x250` and `format_kind: "image"` with `width: 300` and `height: 250` are equivalent even though their wire identifiers differ.
+- **Product satisfaction** answers whether a submitted or requested creative is specific enough for a product's accepted format declaration. When the product declares a fixed `width`, `height`, `duration_ms_exact`, or equivalent duration range, the requested creative or package selector MUST declare and match that constraint. An under-specified request is not a wildcard for product gating.
+
+Range constraints use containment, not overlap. A range-based request satisfies a product only when every value the request permits falls within the product's accepted range; overlap alone is insufficient. An exact value, such as `duration_ms_exact`, satisfies a range when that exact value falls inside the accepted range.
+
+Concrete examples:
+
+| Product declaration | Buyer request / creative | Result |
+|---|---|---|
+| `image`, `width: 300`, `height: 250` | legacy `display_300x250`, projected to `image` 300x250 | Match |
+| `image`, `width: 300`, `height: 250` | `image` with no width/height | Reject for this product — request is under-specified |
+| `image` with no width/height constraint | `image` 300x250 | Match — a broad product can accept a specific creative |
+| `video_hosted`, `duration_ms_exact: 30000` | `video_hosted` with no duration | Reject for this product — duration is under-specified |
+
+This asymmetry prevents two failure modes: exact-ID comparison rejecting compatible legacy/canonical pairs, and overly-broad matching allowing an under-specified request to satisfy a fixed-size or fixed-duration product.
 
 ### Discovery + validation at scale
 
@@ -1180,7 +1214,7 @@ By design, v2 doesn't introduce new vocabulary for things AdCP already handles o
 - **`destination_kinds` as a new schema** — `url-asset.json` already has `url_type` covering URL kind disambiguation. Platform-specific destinations (Meta `messenger_thread`, etc.) are platform extensions.
 - **`cta_vocabulary` as a canonical pattern** — CTAs vary meaningfully across surfaces; we let products declare `cta_values` arrays inline until cross-platform demand emerges.
 - **`list_build_capabilities` as a separate tool** — folded into `get_adcp_capabilities` under `creative.supported_formats`.
-- **`build_capability`, `build_capability_ref`, and a separate `inputs` map** — collapsed into the canonical `slots` model on the format declaration. The format declares slots (canonical `asset_group_id` + `asset_type` + constraints); the manifest has a single `assets` map keyed by slot name; the seller dispatches per the format (render assets verbatim or consume them for production). The format itself tells the buyer what it requires; how production happens is implementation detail.
+- **Separate build-time format option fields and an `inputs` map** — collapsed into the canonical `slots` model on the format declaration. The format declares slots (canonical `asset_group_id` + `asset_type` + constraints); the manifest has a single `assets` map keyed by slot name; the seller dispatches per the format (render assets verbatim or consume them for production). The format itself tells the buyer what it requires; how production happens is implementation detail.
 
 ### Channels covered by sibling refinement (no new canonical)
 
@@ -1261,6 +1295,7 @@ The SDK side's v1→v2 projection (validated in [adcp-client #1815](https://gith
 
 ## Related
 
+- [S2 creative specialist module](/docs/learning/specialist/creative) — training lab for reading product `format_options[]`, selecting `format_kind`, and mapping `asset_source`
 - [v1 → canonical-formats migration guide](/docs/creative/canonical-formats-migration) — concrete migration paths for sellers, creative agents, buyers, and publisher-direct integrations
 - [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) — v2 architecture decisions and rationale
 - [PR #3307](https://github.com/adcontextprotocol/adcp/pull/3307) — Phase 1 + Phase 2 implementation, on hold pending 3.1.0 beta cycle

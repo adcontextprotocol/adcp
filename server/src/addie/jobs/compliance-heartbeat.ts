@@ -21,9 +21,15 @@ import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
 import { runBadgeFanOut } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
+import {
+  badgeEligibleVersionsForHostedComplianceTarget,
+  hostedComplianceTarget,
+} from '../../services/hosted-compliance-version.js';
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
 const complianceDb = new ComplianceDatabase();
+const complianceTarget = hostedComplianceTarget();
+const badgeEligibleAdcpVersions = [...badgeEligibleVersionsForHostedComplianceTarget(complianceTarget)];
 
 interface HeartbeatOptions {
   limit?: number;
@@ -74,7 +80,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         userAgent: AAO_UA_COMPLIANCE,
       };
 
-      const complianceResult = await comply(agent.agent_url, complyOptions);
+      const complianceResult = await comply(agent.agent_url, complyOptions, complianceTarget);
 
       logOutboundRequest({
         agent_url: agent.agent_url,
@@ -91,7 +97,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         'heartbeat',
       );
       dbInput.dry_run = false;
-      const { statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+      const { run, statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
 
       result.checked++;
       if (dbInput.overall_status === 'passing') {
@@ -126,12 +132,14 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       // notification, since owner-driven runs already have a chat response.
       const declaredSpecialisms = complianceResult.agent_profile?.specialisms ?? [];
 
-      if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0) {
+      if (declaredSpecialisms.length > 0) {
         try {
           const badgeResult = await runBadgeFanOut({
             complianceDb,
             agentUrl: agent.agent_url,
             declaredSpecialisms,
+            runId: run.id,
+            adcpVersions: badgeEligibleAdcpVersions,
           });
 
           if (badgeResult.issued.length > 0 || badgeResult.revoked.length > 0) {
@@ -201,6 +209,8 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       try {
         await complianceDb.recordComplianceRun({
           agent_url: agent.agent_url,
+          requested_compliance_target: complianceTarget.requested,
+          adcp_version: complianceTarget.version,
           lifecycle_stage: agent.lifecycle_stage as LifecycleStage,
           overall_status: 'failing',
           headline,
@@ -212,7 +222,35 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           observations_json: [{ category: observationCategory, severity: observationSeverity, message: observationMessage }],
           triggered_by: 'heartbeat',
           dry_run: false,
+          replace_storyboard_statuses: true,
         });
+
+        const existingBadges = await complianceDb.getBadgesForAgent(agent.agent_url);
+        const revoked = [];
+        for (const badge of existingBadges) {
+          await complianceDb.revokeBadge(
+            agent.agent_url,
+            badge.role,
+            badge.adcp_version,
+            'Authoritative compliance run failed before storyboard verification',
+          );
+          revoked.push({
+            role: badge.role,
+            reason: 'Authoritative compliance run failed',
+            adcp_version: badge.adcp_version,
+          });
+        }
+        if (revoked.length > 0) {
+          try {
+            await notifyVerificationChange({
+              agentUrl: agent.agent_url,
+              issued: [],
+              revoked,
+            });
+          } catch (notifyError) {
+            logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification revocation notification');
+          }
+        }
       } catch (recordError) {
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
       }

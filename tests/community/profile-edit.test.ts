@@ -222,6 +222,40 @@ describe('profile-edit: handleSubmit', () => {
     expect(capturedPayload!.contact_email).toBeUndefined();
   });
 
+  it('uploads a selected profile photo when saving', async () => {
+    const fileInput = win.document.getElementById('portrait-photo-input') as HTMLInputElement;
+    const file = new win.File(['avatar-bytes'], 'avatar.png', { type: 'image/png' });
+    Object.defineProperty(fileInput, 'files', {
+      value: [file],
+      configurable: true,
+    });
+
+    const calls: string[] = [];
+    let uploadedPhoto: unknown = null;
+    win.fetch = async (url: unknown, opts: { body?: BodyInit }) => {
+      calls.push(String(url));
+      if (url === '/api/me/community-profile') {
+        return { ok: true, json: async () => ({}) };
+      }
+      if (url === '/api/me/community-avatar') {
+        uploadedPhoto = (opts.body as FormData).get('photo');
+        return {
+          ok: true,
+          json: async () => ({ avatar_url: '/api/community/avatars/avatar-id.png' }),
+        };
+      }
+      return { ok: false };
+    };
+
+    const event = new win.Event('submit', { cancelable: true });
+    await win.ProfileEdit.handleSubmit(event);
+
+    expect(calls).toEqual(['/api/me/community-profile', '/api/me/community-avatar']);
+    expect(uploadedPhoto).toBe(file);
+    const img = win.document.querySelector('#avatar-preview img') as HTMLImageElement;
+    expect(img.getAttribute('src')).toBe('/api/community/avatars/avatar-id.png');
+  });
+
   it('includes offerings and contact fields for personal accounts', async () => {
     win.ProfileEdit.setPersonalAccount(true);
     (win.document.getElementById('offering-consulting') as HTMLInputElement).checked = true;

@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.5/core/package-signal-targeting.json",
+  "title": "Package Signal Targeting",
+  "description": "Buy-time selection of one seller-offered signal inside a package signal targeting group. The signal_ref uses scope 'product' for a product-local signal option, scope 'data_provider' for a signal defined by a data provider's published adagents.json signal catalog, or scope 'signal_source' for a source-native signal that is not catalog-published. The selected product's inline Product.signal_targeting_options, get_signals feed, and signal_targeting_rules define buy-time eligibility. Inclusion and exclusion are controlled by the parent group operator: use operator 'any' to include users matching the signal expression and operator 'none' to exclude users matching the signal expression. For binary signals, value MUST be true; do not use value=false for exclusion inside signal_targeting_groups. Use audience_include/audience_exclude only for buyer-managed first-party audiences registered through sync_audiences.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-beta.5/core/signal-targeting-expression.json"
+    }
+  ],
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Pricing option selected for this signal. Use the pricing_option_id from the product's signal_targeting_options entry when product-scoped pricing is present; otherwise use the seller get_signals pricing only when the product option does not override it. Required when the selected signal has pricing_options; omit only when the signal is bundled into the product price or has no incremental cost.",
+      "x-entity": "vendor_pricing_option"
+    },
+    "signal_agent_segment_id": {
+      "type": "string",
+      "description": "Optional opaque seller execution handle for this signal. Omit when signal_ref is sufficient for the seller to resolve the signal. Include only when the product option exposes a separate runtime or activation handle that differs from the named signal reference.",
+      "x-entity": "signal_activation_id"
+    },
+    "activation_key": {
+      "$ref": "/schemas/3.1.0-beta.5/core/activation-key.json",
+      "description": "Destination-specific activation key returned by get_signals or activate_signal. Usually omitted for seller-offered signals selected directly through the same seller; include only when the selected signal was separately activated and the seller requires the activation key to correlate the package selection."
+    }
+  },
+  "additionalProperties": true
+}

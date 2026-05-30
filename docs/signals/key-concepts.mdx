@@ -1,6 +1,6 @@
 ---
 title: Key concepts
-description: "AdCP signal types (binary, categorical, numeric), signal sources (catalog vs agent), discovery via get_signals, activation via activate_signal, and authorization through adagents.json."
+description: "AdCP signal types (binary, categorical, numeric), signal references, discovery via get_signals, activation via activate_signal, and authorization through adagents.json."
 "og:title": "AdCP — Signals key concepts"
 ---
 
@@ -67,18 +67,21 @@ User has a score or measurement within a range.
 
 **Targeting**: Target users within a value range (e.g., "propensity score > 0.7").
 
-## Signal sources
+## Signal references
 
-Signal IDs use `source` as a discriminator:
+Signals use `signal_ref.scope` as the identity discriminator:
 
-| Source | Fields | Verification |
+| Scope | Fields | Verification |
 |--------|--------|--------------|
-| `catalog` | `data_provider_domain` + `id` | Verifiable via data provider's adagents.json |
-| `agent` | `agent_url` + `id` | Trust-based — buyer trusts the agent |
+| `data_provider` | `data_provider_domain` + `signal_id` | Verifiable via the publisher domain's adagents.json `signals[]` |
+| `signal_source` | `signal_source_url` + `signal_id` | Trust-based — buyer trusts the issuing signal source |
+| `product` | `signal_id` | Product-local; meaningful only in the selected product/package context |
 
-**Catalog signals** come from external data providers who publish their offerings at `/.well-known/adagents.json`. Buyers can independently verify that a signal agent is authorized to resell them.
+**Data-provider signals** come from external data providers who publish their offerings at `/.well-known/adagents.json`. Buyers can independently verify that a seller or signal source is authorized to resell them.
 
-**Agent-native signals** are proprietary to the signal agent — custom models, first-party data, or composite segments the agent builds from multiple sources.
+**Signal-source signals** are proprietary to a signal source and use `scope: "signal_source"` with that source's `signal_source_url` when they are not published in adagents.json `signals[]`.
+
+The legacy `signal_id.source` object is deprecated. New `get_signals`, product targeting, and buy-time references use `signal_ref`.
 
 ## The two tasks
 
@@ -89,7 +92,7 @@ Signal IDs use `source` as a discriminator:
 
 ### Discovery with get_signals
 
-Buyers describe what they need in natural language. The signal agent searches across all its data providers' catalogs and its own proprietary signals:
+Buyers describe what they need in natural language. The signal agent searches across its authorized data-provider signals and its own proprietary signals:
 
 ```json
 {
@@ -135,14 +138,14 @@ Once signals are activated on a platform, all usage reporting, billing, and camp
 
 Data providers control who can resell their signals via the `authorized_agents` array in their `adagents.json`. Two patterns:
 
-- **Signal IDs**: Authorize specific signals by ID — fine-grained control
+- **Signal IDs**: Authorize specific local `signals[].id` values in the data provider's catalog — fine-grained control
 - **Signal tags**: Authorize all signals with certain tags — scales as catalogs grow
 
-Buyers can verify authorization by fetching the data provider's `adagents.json` and checking whether the signal agent appears in `authorized_agents`.
+Buyers can verify authorization by fetching the data provider's `adagents.json` and checking whether the seller or signal source appears in `authorized_agents`.
 
 ## Go deeper
 
-- [Data provider guide](/docs/signals/data-providers) — how to publish a signal catalog
+- [Data provider guide](/docs/signals/data-providers) — how to publish signal definitions
 - [Signals ecosystem](/docs/signals/ecosystem) — how each type of company participates
 - [Protocol specification](/docs/signals/specification) — formal conformance requirements
 - [get_signals task reference](/docs/signals/tasks/get_signals) — discovery API details

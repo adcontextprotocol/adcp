@@ -33,6 +33,7 @@
     "payload": {
       "type": "object",
       "description": "The full tool arguments as they would be sent to the seller. Present on intent checks. The governance agent can inspect any field to validate against the plan.",
+      "x-adcp-open-payload": true,
       "additionalProperties": true
     },
     "governance_context": {

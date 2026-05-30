@@ -5,6 +5,7 @@
     "email": "registry@adcontextprotocol.org",
     "domain": "adcontextprotocol.org"
   },
+  "catalog_etag": "meta-community-2026-05-25",
   "properties": [
     {
       "property_id": "instagram",
@@ -105,7 +106,7 @@
   },
   "formats": [
     {
-      "capability_id": "meta_reels",
+      "format_option_id": "meta_reels",
       "display_name": "Meta Reels (Instagram + Facebook)",
       "format_kind": "video_hosted",
       "v1_format_ref": [
@@ -152,7 +153,7 @@
       }
     },
     {
-      "capability_id": "meta_feed_image",
+      "format_option_id": "meta_feed_image",
       "display_name": "Meta Feed Image (Instagram + Facebook)",
       "format_kind": "image",
       "v1_format_ref": [
@@ -187,7 +188,7 @@
       }
     },
     {
-      "capability_id": "meta_stories_video",
+      "format_option_id": "meta_stories_video",
       "display_name": "Meta Stories Video (Instagram + Facebook)",
       "format_kind": "video_hosted",
       "v1_format_ref": [
@@ -229,7 +230,7 @@
       }
     },
     {
-      "capability_id": "meta_feed_carousel",
+      "format_option_id": "meta_feed_carousel",
       "display_name": "Meta Feed Carousel (Instagram + Facebook)",
       "format_kind": "image_carousel",
       "v1_format_ref": [
@@ -268,7 +269,7 @@
       ],
       "format_options": [
         {
-          "capability_id": "meta_reels"
+          "format_option_id": "meta_reels"
         }
       ]
     },
@@ -285,7 +286,7 @@
       ],
       "format_options": [
         {
-          "capability_id": "meta_reels"
+          "format_option_id": "meta_reels"
         }
       ]
     },
@@ -301,10 +302,10 @@
       ],
       "format_options": [
         {
-          "capability_id": "meta_feed_image"
+          "format_option_id": "meta_feed_image"
         },
         {
-          "capability_id": "meta_feed_carousel"
+          "format_option_id": "meta_feed_carousel"
         }
       ]
     },
@@ -321,7 +322,7 @@
       ],
       "format_options": [
         {
-          "capability_id": "meta_stories_video"
+          "format_option_id": "meta_stories_video"
         }
       ]
     }

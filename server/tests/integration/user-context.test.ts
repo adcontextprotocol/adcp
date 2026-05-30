@@ -153,6 +153,20 @@ describe('User Context API Tests', () => {
       [TEST_SLACK_USER_ID, 'test@example.com', 'Test User', 'Test User', false, false, 'mapped', TEST_WORKOS_USER_ID]
     );
 
+    await pool.query(
+      `DELETE FROM person_relationships
+       WHERE slack_user_id = $1 OR workos_user_id = $2 OR email = $3`,
+      [TEST_SLACK_USER_ID, TEST_WORKOS_USER_ID, 'test@example.com']
+    );
+
+    await pool.query(
+      `INSERT INTO person_relationships (
+        slack_user_id, workos_user_id, email, display_name, stage,
+        interaction_count, sentiment_trend, unreplied_outreach_count
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [TEST_SLACK_USER_ID, TEST_WORKOS_USER_ID, 'test@example.com', 'Test User', 'participating', 3, 'neutral', 0]
+    );
+
     // Create test member profile
     await pool.query(
       `INSERT INTO member_profiles (workos_organization_id, display_name, slug, tagline, offerings, headquarters, created_at, updated_at)
@@ -170,6 +184,7 @@ describe('User Context API Tests', () => {
   afterAll(async () => {
     // Clean up test data
     await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM person_relationships WHERE slack_user_id = $1 OR workos_user_id = $2', [TEST_SLACK_USER_ID, TEST_WORKOS_USER_ID]);
     await pool.query('DELETE FROM slack_user_mappings WHERE slack_user_id = $1', [TEST_SLACK_USER_ID]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_ORG_ID]);
 
@@ -200,6 +215,27 @@ describe('User Context API Tests', () => {
       expect(response.body).toHaveProperty('slack_linked');
       expect(response.body.slack_user).toBeDefined();
       expect(response.body.slack_user.slack_user_id).toBe(TEST_SLACK_USER_ID);
+    });
+
+    it('should preserve member engagement when relationship engagement is present', async () => {
+      const response = await request(app)
+        .get(`/api/admin/users/${TEST_SLACK_USER_ID}/context?type=slack`)
+        .expect(200);
+
+      expect(response.body.engagement).toMatchObject({
+        login_count_30d: expect.any(Number),
+        working_group_count: expect.any(Number),
+        email_click_count_30d: expect.any(Number),
+      });
+
+      expect(response.body.relationship_engagement).toMatchObject({
+        opportunities: expect.any(Array),
+        contact_eligibility: expect.objectContaining({
+          can_contact: expect.any(Boolean),
+        }),
+        relationship_stage: 'participating',
+        unreplied_count: expect.any(Number),
+      });
     });
 
     it('should auto-detect WorkOS user ID format (starts with user_)', async () => {

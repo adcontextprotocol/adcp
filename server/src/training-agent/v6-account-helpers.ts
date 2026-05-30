@@ -65,10 +65,32 @@ export const syncAccountsUpsert: NonNullable<AccountStore['upsert']> = async (re
   // drop list too but `handleSyncAccounts` doesn't implement it yet, so
   // threading it would be inert — wire when v5 grows support.
   const fromInput = pickFromInput(ctx?.input, ['dry_run'] as const);
-  const v5Result = handleSyncAccounts(
-    { accounts: refs as unknown[], ...fromInput } as ToolArgs,
+  const rawAccounts = (ctx?.input && typeof ctx.input === 'object' && Array.isArray((ctx.input as { accounts?: unknown }).accounts))
+    ? (ctx.input as { accounts: Array<Record<string, unknown>> }).accounts
+    : undefined;
+  const refsWithRawConfig = rawAccounts && rawAccounts.length === refs.length
+    ? refs.map((ref, i) => ({
+        ...(ref as Record<string, unknown>),
+        ...(rawAccounts[i].notification_configs !== undefined && {
+          notification_configs: rawAccounts[i].notification_configs,
+        }),
+      }))
+    : refs;
+  const v5Result = await handleSyncAccounts(
+    { accounts: refsWithRawConfig as unknown[], ...fromInput } as ToolArgs,
     trainingCtx,
   );
+  const topLevelErrors = (v5Result as { errors?: Array<{ code: string; message: string }> }).errors;
+  if (topLevelErrors?.length) {
+    type RefWithNaturalKey = { brand?: { domain: string; brand_id?: string }; operator?: string };
+    return refs.map(ref => ({
+      brand: ('brand' in ref ? (ref as RefWithNaturalKey).brand : undefined) ?? { domain: 'unknown.example' },
+      operator: ('operator' in ref ? (ref as RefWithNaturalKey).operator : undefined) ?? 'unknown.example',
+      action: 'failed',
+      status: 'rejected',
+      errors: topLevelErrors,
+    })) as SyncAccountsResultRow[];
+  }
   // v5 handleSyncAccounts returns `{ accounts: [...] }` where each entry
   // is the per-account result row (status, action, billing, errors, etc.).
   // Per-account errors live inside individual rows — they don't trip the

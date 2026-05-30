@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
-import { existsSync, readFileSync, rmSync } from 'fs';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { Buffer } from 'buffer';
 import sharp from 'sharp';
 import { Reader } from '@contentauth/c2pa-node';
@@ -11,7 +12,7 @@ import {
   resetC2PASignerCache,
 } from '../../src/services/c2pa.js';
 
-const FIXTURE_DIR = join(__dirname, '..', 'fixtures', 'c2pa');
+const FIXTURE_DIR = mkdtempSync(join(tmpdir(), 'adcp-c2pa-unit-'));
 const CERT_PATH = join(FIXTURE_DIR, 'aao-c2pa.cert.pem');
 const KEY_PATH = join(FIXTURE_DIR, 'aao-c2pa.key.pem');
 
@@ -21,10 +22,8 @@ let KEY_B64: string;
 
 beforeAll(async () => {
   // Generate a test cert + key via the production ops script. Fixtures are
-  // gitignored so secret scanners never see them; regenerating also exercises
-  // the script as a side effect.
-  if (existsSync(CERT_PATH)) rmSync(CERT_PATH);
-  if (existsSync(KEY_PATH)) rmSync(KEY_PATH);
+  // created in a per-file temp dir so parallel Vitest workers cannot race by
+  // deleting each other's key material; regenerating also exercises the script.
   execFileSync('bash', [join(__dirname, '..', '..', '..', 'scripts', 'generate-c2pa-cert.sh'), FIXTURE_DIR], {
     stdio: 'pipe',
   });
@@ -36,6 +35,10 @@ beforeAll(async () => {
   })
     .png()
     .toBuffer();
+});
+
+afterAll(() => {
+  rmSync(FIXTURE_DIR, { recursive: true, force: true });
 });
 
 const originalEnv = {

@@ -18,8 +18,10 @@ import {
   complianceResultToDbInput,
   type ComplyOptions,
 } from '../addie/services/compliance-testing.js';
+import { hostedComplianceTarget } from '../services/hosted-compliance-version.js';
 
 const urls = process.argv.slice(2).filter(a => !a.startsWith('--'));
+const complianceTarget = hostedComplianceTarget();
 
 if (urls.length === 0) {
   console.error('Usage: test-comply-storyboard-statuses.ts <agent-url> [<agent-url> ...]');
@@ -38,7 +40,7 @@ async function probe(agentUrl: string): Promise<void> {
 
   let result;
   try {
-    result = await comply(agentUrl, opts);
+    result = await comply(agentUrl, opts, complianceTarget);
   } catch (err) {
     console.log(`  comply() threw: ${err instanceof Error ? err.message : String(err)}`);
     return;
@@ -46,6 +48,8 @@ async function probe(agentUrl: string): Promise<void> {
 
   const duration = Date.now() - start;
   console.log(`\nOverall: ${result.overall_status}  (${duration}ms)`);
+  console.log(`Compliance target: ${complianceTarget.requested}`);
+  console.log(`Compliance version: ${result.adcp_version ?? complianceTarget.version}`);
   console.log(`Headline: ${result.summary.headline}`);
   console.log(`Declared specialisms: ${JSON.stringify(result.agent_profile?.specialisms ?? [])}`);
   console.log(`Storyboards executed: ${JSON.stringify(result.storyboards_executed ?? '(field absent)')}`);

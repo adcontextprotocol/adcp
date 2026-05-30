@@ -65,6 +65,11 @@
       "$ref": "/schemas/media-buy/update-media-buy-async-response-submitted.json"
     },
     {
+      "title": "MediaBuyDeliveryWebhookResult",
+      "description": "Delivery-report payload for media_buy_delivery webhook notifications. This is the inner result object carried by mcp-webhook-payload.json, not the full top-level get_media_buy_delivery task response envelope.",
+      "$ref": "/schemas/media-buy/media-buy-delivery-webhook-result.json"
+    },
+    {
       "title": "BuildCreativeResponse",
       "description": "Response for completed or failed build_creative",
       "$ref": "/schemas/media-buy/build-creative-response.json"

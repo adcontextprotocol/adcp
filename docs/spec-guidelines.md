@@ -296,6 +296,44 @@ When making breaking changes:
 3. **Document migration**: Provide before/after examples
 4. **Deprecation period**: Support both versions for defined period
 
+## JSON Schema Conventions
+
+### Nullable Scalars
+
+For AdCP 3.x draft-07 schemas, encode nullable scalar fields as a JSON Schema
+type union:
+
+```json
+{ "type": ["string", "null"] }
+```
+
+Use the same pattern for nullable numbers, integers, booleans, and mixed scalar
+value buckets. Do not introduce OpenAPI-style `nullable: true` in source
+schemas; it is not part of JSON Schema Draft 07 and creates inconsistent SDK
+projection rules.
+
+Nullable enums must include `null` in both the `type` union and the `enum` value
+set:
+
+```json
+{
+  "type": ["string", "null"],
+  "enum": ["active", "paused", null]
+}
+```
+
+Nullability and presence are separate in JSON Schema Draft 07:
+
+- `type: ["string", "null"]` means the field may be `null` when it is present.
+- The enclosing object's `required` array controls whether the field must be present.
+- Optional nullable fields therefore have three states: omitted, present with `null`,
+  and present with a scalar value.
+- Required nullable fields have two states: present with `null` or present with a
+  scalar value.
+
+When omission and explicit `null` carry different semantics, state that distinction
+in the field description so SDK generators do not collapse the cases.
+
 ## Testing Schemas
 
 All schema changes must:

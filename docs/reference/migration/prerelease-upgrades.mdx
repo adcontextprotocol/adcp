@@ -216,7 +216,7 @@ All request and response schemas across governance, collection, property, sponso
 - **Creative capability discovery** — Creative agents can declare `supports_generation`, `supports_transformation`, and `has_creative_library`. `list_creatives` now uses library-oriented fields like `include_snapshot`, `has_served`, and `items`.
 - **Product discovery and planning** — `get_products` adds `exclusivity`, `preferred_delivery_types`, and `time_budget`, with `incomplete` in the response. Products may omit `delivery_measurement`, and packages can now carry per-package `start_time` / `end_time`.
 - **Compliance and governance** — Creative disclosures add persistence semantics, and campaign governance introduces `sync_plans`, `check_governance`, `report_plan_outcome`, and `get_plan_audit_logs`.
-- **Accounts and sandbox ergonomics** — `sync_accounts` adds `payment_terms`, and sandbox now participates in the natural account key for implicit account references.
+- **Accounts and sandbox ergonomics** — `sync_accounts` adds `payment_terms`, and sandbox now participates in the natural account key for buyer-declared account references.
 
 ---
 

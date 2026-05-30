@@ -10,22 +10,22 @@ AgenticAdvertising.org uses AI extensively to write content, generate imagery, s
 
 ## What's AI-authored
 
-These surfaces are written primarily by an AI agent operated by AAO, with human editorial oversight:
+These surfaces are written primarily by an AI agent operated by AgenticAdvertising.org, with human editorial oversight:
 
-- **Addie** — AAO's teaching assistant and chat agent. All Addie chat responses are AI-generated.
+- **Addie** — AgenticAdvertising.org's teaching assistant and chat agent. All Addie chat responses are AI-generated.
 - **Sage** — the AdCP protocol explainer agent. Protocol Q&A in the docs chat is answered by Sage.
-- **The Prompt** — our biweekly newsletter, authored in first person as Addie. The Prompt is editorial and is also a marketing surface for AAO; read it as both.
+- **The Prompt** — our biweekly newsletter, authored in first person as Addie. The Prompt is editorial and is also a marketing surface for AgenticAdvertising.org; read it as both.
 - **The Build** — our triweekly technical newsletter, authored by Sage.
 - **Member portraits** — graphic-novel-style illustrations for members are AI-generated.
-- **Certification grading** — Addie grades the free Basics track against a fixed rubric of 3–5 required demonstrations per module, and also grades the paid Practitioner and Specialist tracks. AAO is both the issuer and the grader of these credentials; we disclose this conflict rather than deny it, and human review of any grading decision is available on request (see below).
+- **Certification grading** — Addie grades the free Basics track against a fixed rubric of 3–5 required demonstrations per module, and also grades the paid Practitioner and Specialist tracks. AgenticAdvertising.org is both the issuer and the grader of these credentials; we disclose this conflict rather than deny it, and human review of any grading decision is available on request (see below).
 
 ## What's AI-assisted
 
-Most of the rest of AAO's public surface is built with AI coding assistants, reviewed by humans before publishing. This includes:
+Most of the rest of AgenticAdvertising.org's public surface is built with AI coding assistants, reviewed by humans before publishing. This includes:
 
 - The protocol schemas and documentation (this site)
 - The open-source reference implementations
-- The admin tools operated by AAO staff
+- The admin tools operated by AgenticAdvertising.org staff
 - Most public-facing code in the [adcontextprotocol](https://github.com/adcontextprotocol) organization
 
 We don't mark individual paragraphs or pull requests as AI-assisted — the default is that AI tools were involved.
@@ -38,7 +38,7 @@ We don't mark individual paragraphs or pull requests as AI-assisted — the defa
 
 ## Data handling
 
-- **Addie and Sage chat** — conversations are logged to improve teaching quality and to allow appeals on grading decisions. Logs are retained by AAO and not used by model providers for training. EU/UK residents: chat inputs are processed on our behalf by Anthropic; see our [privacy policy](https://agenticadvertising.org/api/agreement?type=privacy_policy) for the current data-processor chain and transfer mechanism.
+- **Addie and Sage chat** — conversations are logged to improve teaching quality and to allow appeals on grading decisions. Logs are retained by AgenticAdvertising.org and not used by model providers for training. EU/UK residents: chat inputs are processed on our behalf by Anthropic; see our [privacy policy](https://agenticadvertising.org/api/agreement?type=privacy_policy) for the current data-processor chain and transfer mechanism.
 - **Grading decisions** — the required-demonstrations, the Addie interaction that produced the credit, and the resulting assessment are retained so that a learner (or a regulator) can reconstruct the decision.
 - **Member portraits** — AI-generated images are produced from member-provided inputs; the prompt and generated image are retained on the member's profile.
 
@@ -46,15 +46,15 @@ We don't mark individual paragraphs or pull requests as AI-assisted — the defa
 
 You can request human review on any AI-generated surface.
 
-**Certification grading appeals SLA.** Because AAO is both the issuer and the AI grader of its certifications, every grading appeal gets a documented human-review path:
+**Certification grading and targeting review SLA.** Because AgenticAdvertising.org is both the issuer and the AI grader of its certifications, every grading appeal and protocol-update targeting dispute gets a documented human-review path:
 
-- **Acknowledgement: 72 hours** from receipt at [help@agenticadvertising.org](mailto:help@agenticadvertising.org).
-- **Decision: 10 business days** from acknowledgement, by an AAO staff reviewer who did not participate in the original grading.
-- **Outcome on upheld appeals**: the credential is granted (if the appeal is for a denied attempt) or the assessment fee is refunded (if the appeal is for a graded attempt the learner does not want re-credentialed).
-- **Escalation**: appeals that the staff reviewer cannot resolve are escalated to the AAO certification committee, which meets monthly.
-- **Annual transparency report**: AAO publishes appeals volume, upheld rate, and median time-to-decision once per year as part of the AGM materials. The first report covers the period ending 2027-04.
+- **Acknowledgement: 2 business days** from receipt at [certification@agenticadvertising.org](mailto:certification@agenticadvertising.org).
+- **Resolution:** handled through the [certification complaints process](/docs/learning/policies/complaints), by an AgenticAdvertising.org staff reviewer who did not participate in the original grading or targeting decision.
+- **Outcome on upheld appeals**: the credential is granted or the learner record is corrected, depending on the issue under review.
+- **Escalation**: appeals that the staff reviewer cannot resolve are escalated to AgenticAdvertising.org program leadership.
+- **Annual transparency report**: AgenticAdvertising.org publishes appeals volume, upheld rate, and median time-to-decision once per year as part of the AGM materials. The first report covers the period ending 2027-04.
 
-To file a grading appeal, email [help@agenticadvertising.org](mailto:help@agenticadvertising.org) with your learner ID, the module or assessment in question, and the specific finding you are contesting.
+To file a grading appeal or protocol-update targeting dispute, email [certification@agenticadvertising.org](mailto:certification@agenticadvertising.org) with your learner ID, the module or assessment in question, and the specific finding you are contesting.
 
 Other AI-surface review paths:
 
@@ -63,20 +63,20 @@ Other AI-surface review paths:
 
 ## Content provenance (C2PA)
 
-Every AI-generated image AAO publishes carries an embedded [C2PA](https://c2pa.org/) manifest signed by AAO:
+Every AI-generated image AgenticAdvertising.org publishes carries an embedded [C2PA](https://c2pa.org/) manifest signed by AgenticAdvertising.org:
 
 - **Member portraits** — also carry a visible "AI" badge in the bottom-right corner (CA SB 942 visible-disclosure path).
 - **Newsletter cover art** — The Prompt and The Build covers, including the copies that ship in subscriber email and render as OpenGraph share cards.
 - **Perspective article hero images** — every editorial illustration attached to a published perspective.
 - **Docs walkthrough and concept illustrations** — the panel PNGs embedded throughout this site's walkthroughs and concept explainers.
 
-The manifest identifies Google Gemini as the generating software agent, marks the asset as `trainedAlgorithmicMedia` per the IPTC digital-source-type vocabulary, and includes a timestamp plus a SHA-256 of the generation prompt (not the prompt itself — portraits are generated from member-provided descriptions we do not want to republish). AAO signs with a self-signed P-256 certificate held in production secrets. CAI trust-list inclusion is a future step; today, public verifiers will show the signature as cryptographically valid but flag *"issuer not on trust list."*
+The manifest identifies Google Gemini as the generating software agent, marks the asset as `trainedAlgorithmicMedia` per the IPTC digital-source-type vocabulary, and includes a timestamp plus a SHA-256 of the generation prompt (not the prompt itself — portraits are generated from member-provided descriptions we do not want to republish). AgenticAdvertising.org signs with a self-signed P-256 certificate held in production secrets. CAI trust-list inclusion is a future step; today, public verifiers will show the signature as cryptographically valid but flag *"issuer not on trust list."*
 
-**Verify any AAO image** at [contentcredentials.org/verify](https://contentcredentials.org/verify) by uploading the file or pasting its URL.
+**Verify any AgenticAdvertising.org image** at [contentcredentials.org/verify](https://contentcredentials.org/verify) by uploading the file or pasting its URL.
 
-For editorial illustrations and docs storyboards where a visible mark would undermine the graphic-novel aesthetic, the C2PA manifest is the sole disclosure surface. CA SB 942's visible-disclosure rule targets upstream generative-AI providers rather than downstream publishers, so this placement is defensible for AAO — but it is a deliberate choice, not an oversight.
+For editorial illustrations and docs storyboards where a visible mark would undermine the graphic-novel aesthetic, the C2PA manifest is the sole disclosure surface. CA SB 942's visible-disclosure rule targets upstream generative-AI providers rather than downstream publishers, so this placement is defensible for AgenticAdvertising.org — but it is a deliberate choice, not an oversight.
 
-If you find an AAO-generated image that does not carry a manifest, please [open an issue](https://github.com/adcontextprotocol/adcp/issues) — we treat missing provenance as a bug.
+If you find an AgenticAdvertising.org-generated image that does not carry a manifest, please [open an issue](https://github.com/adcontextprotocol/adcp/issues) — we treat missing provenance as a bug.
 
 ## Regulatory posture
 
@@ -89,13 +89,13 @@ If you believe a specific AI surface falls short of an applicable standard, let 
 
 ## Institutional conflicts
 
-AI authorship and evaluation by AAO intersect with AAO's broader governance in ways readers should know:
+AI authorship and evaluation by AgenticAdvertising.org intersect with AgenticAdvertising.org's broader governance in ways readers should know:
 
-- AAO is both the issuer and the grader of its certifications (Addie evaluates coursework and grants credentials AAO sells).
-- AAO's founder's other company (Scope3) contributed funding and foundational IP — see the [FAQ entry](/docs/faq#how-is-aao-related-to-scope3) for the full relationship.
+- AgenticAdvertising.org is both the issuer and the grader of its certifications (Addie evaluates coursework and grants credentials AgenticAdvertising.org sells).
+- AgenticAdvertising.org's founder's other company (Scope3) contributed funding and foundational IP — see the [FAQ entry](/docs/faq#how-is-aao-related-to-scope3) for the full relationship.
 
 The governance framework, board composition, and recusal rules are set out in [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md), with the authoritative board list and funding disclosures at [agenticadvertising.org/governance](https://agenticadvertising.org/governance).
 
 ---
 
-Material changes to how AI is used at AAO will be reflected on this page.
+Material changes to how AI is used at AgenticAdvertising.org will be reflected on this page.

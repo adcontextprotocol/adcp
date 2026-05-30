@@ -369,6 +369,16 @@
       "pullRequestNo": 4918,
       "comment_id": 4518770414,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/4918#issuecomment-4518770414"
+    },
+    {
+      "name": "botbikamordehai2-sketch",
+      "id": 279158112,
+      "created_at": "2026-05-28T08:55:38Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp-client-python",
+      "pullRequestNo": 894,
+      "comment_id": 4562326912,
+      "comment_url": "https://github.com/adcontextprotocol/adcp-client-python/pull/894#issuecomment-4562326912"
     }
   ]
 }

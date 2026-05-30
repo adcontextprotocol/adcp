@@ -15,6 +15,7 @@ import type { TenantConfig } from '@adcp/sdk/server';
 import { TrainingBrandPlatform } from '../v6-brand-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { customToolFor } from './custom-tool-helper.js';
+import { listAccountsTool } from './account-tools.js';
 import { handleCreativeApproval } from '../brand-handlers.js';
 import type { TrainingContext } from '../types.js';
 
@@ -63,6 +64,7 @@ export function buildBrandTenantConfig(host: string, options: { storyboardCompat
       platform: new TrainingBrandPlatform(options.storyboardCompat) as any,
       serverOptions: {
         customTools: {
+          list_accounts: listAccountsTool(options.storyboardCompat),
           creative_approval: customToolFor(
             'creative_approval',
             'Submit a generated creative for brand approval against rights grant terms.',

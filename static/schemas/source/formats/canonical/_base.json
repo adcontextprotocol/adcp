@@ -8,7 +8,7 @@
     "experimental": {
       "type": "boolean",
       "default": false,
-      "description": "When true, this canonical (or a seller's specific narrowing of it) may not work as declared — adopters SHOULD have a v1 fallback ready and SHOULD NOT route production budget without testing. Same semantics as `experimental` on protocols: 'this is shipping but may break, evolve, or fail.' Buyers reading `experimental: true` SHOULD prefer the v1 path when a v1 fallback exists for the same product (via `format_ids` on the parent product or via the v2 declaration's `v1_format_ref`).\n\nThree drivers of `experimental: true`:\n1. **Spec maturity** — the canonical's tracking model or parameter shape is still being settled (`agent_placement`'s tracking macros, `sponsored_placement`'s per-adapter contracts, `responsive_creative`'s algorithmic composition).\n2. **Adopter runtime gap** — the seller has declared the canonical in their catalog but their runtime doesn't yet honor it cleanly.\n3. **Custom shapes** — `format_kind: \"custom\"` is inherently experimental until the working group promotes a `format_shape` to a first-class canonical.\n\nReplaces the earlier `status` enum (`stable | preview | deprecated`) + `runtime_status` enum (`stable | preview | declared_only`) — two axes with subtle overlap. The single boolean is what buyers actually care about: do I treat this as production-stable or as 'try at my own risk.' Sellers SHOULD set `experimental: true` on canonicals or product declarations that aren't yet production-ready, regardless of which axis (spec, runtime, custom) drives the experimentation. The 6 IAB/VAST/DAAST re-encodings (`image`, `display_tag`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`) default to non-experimental at the canonical level; sellers MAY still mark a specific product declaration experimental (e.g., a beta runtime path for an existing product)."
+      "description": "When true, this canonical (or a seller's specific narrowing of it) may not work as declared — adopters SHOULD have a v1 fallback ready and SHOULD NOT route production budget without testing. Same semantics as `experimental` on protocols: 'this is shipping but may break, evolve, or fail.' Buyers reading `experimental: true` SHOULD prefer the v1 path when a v1 fallback exists for the same product (via `format_ids` on the parent product or via the v2 declaration's `v1_format_ref`).\n\nThree drivers of `experimental: true`:\n1. **Spec maturity** — the canonical's tracking model or parameter shape is still being settled (`agent_placement`'s tracking macros, `sponsored_placement`'s per-adapter contracts, `responsive_creative`'s algorithmic composition).\n2. **Adopter runtime gap** — the seller has declared the canonical in their catalog but their runtime doesn't yet honor it cleanly.\n3. **Custom shapes** — `format_kind: \"custom\"` is inherently experimental until the working group promotes a `format_shape` to a first-class canonical.\n\nReplaces the earlier `status` enum (`stable | preview | deprecated`) + `runtime_status` enum (`stable | preview | declared_only`) — two axes with subtle overlap. The single boolean is what buyers actually care about: do I treat this as production-stable or as 'try at my own risk.' Sellers SHOULD set `experimental: true` on canonicals or product declarations that aren't yet production-ready, regardless of which axis (spec, runtime, custom) drives the experimentation. The 9 non-experimental canonicals at 3.1 GA (`image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `native_in_feed`) default to non-experimental at the canonical level; sellers MAY still mark a specific product declaration experimental (e.g., a beta runtime path for an existing product)."
     },
     "deprecated": {
       "type": "boolean",
@@ -90,6 +90,18 @@
             "minimum": 1,
             "description": "Per-slot file size limit in kilobytes. Valid only when `asset_type` is `image`, `video`, `audio`, or `zip`. Mutually exclusive with `max_chars` (which applies to text asset types). Schema enforces via if/then so a producer can't set both on the same slot."
           },
+          "logo_slots": {
+            "type": "array",
+            "items": { "$ref": "/schemas/enums/logo-slot.json" },
+            "uniqueItems": true,
+            "description": "When `asset_group_id` is `logo`, renderer-facing brand.json logo slots acceptable for this format slot. Producers selecting from brand.json SHOULD prefer `logos[]` entries whose `slots[]` intersects this list, then apply `visual_guidelines.logo_usage_rules[]`."
+          },
+          "required_logo_slots": {
+            "type": "array",
+            "items": { "$ref": "/schemas/enums/logo-slot.json" },
+            "uniqueItems": true,
+            "description": "Subset of `logo_slots` for which this format expects explicit logo coverage. A manifest or brand-derived logo pool SHOULD include at least one usable logo for each required slot; if coverage is missing, builders SHOULD surface a validation warning or approval mapping instead of guessing from prose."
+          },
           "description": {
             "type": "string",
             "description": "Human-readable description of what the slot expects from the buyer."
@@ -116,6 +128,21 @@
               "required": ["asset_type"]
             },
             "then": { "not": { "required": ["max_chars"] } }
+          },
+          {
+            "$comment": "Logo slot narrowing is only meaningful on the canonical logo asset group.",
+            "if": {
+              "not": {
+                "properties": { "asset_group_id": { "const": "logo" } },
+                "required": ["asset_group_id"]
+              }
+            },
+            "then": {
+              "not": { "anyOf": [
+                { "required": ["logo_slots"] },
+                { "required": ["required_logo_slots"] }
+              ] }
+            }
           },
           {
             "$comment": "Non-size asset types (url, catalog, html, css, javascript, webhook, daast, vast, card, object, pixel_tracker, vast_tracker, daast_tracker) reject both — there's no defined per-slot size semantics on those.",

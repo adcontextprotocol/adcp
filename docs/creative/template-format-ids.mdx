@@ -136,19 +136,21 @@ Publishers specify supported dimensions by listing all supported variants:
 
 ```json
 {
-  "placement_id": "homepage_banner"
-  "name": "Homepage Banner"
+  "kind": "seller_inline",
+  "placement_id": "homepage_banner",
+  "name": "Homepage Banner",
+  "mode": "targetable",
   "format_ids": [
     {
-      "agent_url": "https://creative.adcontextprotocol.org"
-      "id": "display_static"
-      "width": 300
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_static",
+      "width": 300,
       "height": 250
-    }
+    },
     {
-      "agent_url": "https://creative.adcontextprotocol.org"
-      "id": "display_static"
-      "width": 728
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_static",
+      "width": 728,
       "height": 90
     }
   ]
@@ -342,6 +344,10 @@ Both creative and sales agents can return template format definitions via `list_
 {
   "products": [{
     "placements": [{
+      "kind": "seller_inline",
+      "placement_id": "display_multi_size",
+      "name": "Display multi-size",
+      "mode": "targetable",
       "format_ids": [
         {"agent_url": "...", "id": "display_static", "width": 300, "height": 250},
         {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}
@@ -395,6 +401,10 @@ Both creative and sales agents can return template format definitions via `list_
   ```json
   {
     "placements": [{
+      "kind": "seller_inline",
+      "placement_id": "display_multi_size",
+      "name": "Display multi-size",
+      "mode": "targetable",
       "format_ids": [
         {"agent_url": "...", "id": "display_static", "width": 300, "height": 250},
         {"agent_url": "...", "id": "display_static", "width": 728, "height": 90},

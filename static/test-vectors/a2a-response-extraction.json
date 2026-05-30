@@ -134,7 +134,7 @@
     },
     {
       "id": "input-required-status-message",
-      "description": "Input-required status — reason data in status.message.parts",
+      "description": "Input-required status — reason data in status.message.parts. Extraction-only interim fixture; not a create_media_buy success payload.",
       "status": "input-required",
       "path": "status_message",
       "response": {
@@ -198,13 +198,13 @@
           "message": {
             "role": "agent",
             "parts": [
-              {"kind": "data", "data": {"status": "completed", "media_buy_id": "mb_789"}}
+              {"kind": "data", "data": {"status": "completed", "media_buy_id": "mb_789", "media_buy_status": "active", "confirmed_at": "2025-01-22T10:34:00Z", "revision": 1}}
             ]
           }
         },
         "artifacts": []
       },
-      "expected_data": {"status": "completed", "media_buy_id": "mb_789"}
+      "expected_data": {"status": "completed", "media_buy_id": "mb_789", "media_buy_status": "active", "confirmed_at": "2025-01-22T10:34:00Z", "revision": 1}
     },
     {
       "id": "wrapper-rejected",
@@ -771,12 +771,12 @@
             "artifactId": "result",
             "parts": [
               {"text": "Media buy created"},
-              {"data": {"media_buy_id": "mb_wrapped", "status": "active"}}
+              {"data": {"media_buy_id": "mb_wrapped", "status": "active", "confirmed_at": "2026-04-23T11:15:00.000Z", "revision": 1}}
             ]
           }]
         }
       },
-      "expected_data": {"media_buy_id": "mb_wrapped", "status": "active"}
+      "expected_data": {"media_buy_id": "mb_wrapped", "status": "active", "confirmed_at": "2026-04-23T11:15:00.000Z", "revision": 1}
     },
     {
       "id": "a2a-1.0-stream-wrapped-artifact-update-no-state",

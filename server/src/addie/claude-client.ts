@@ -18,10 +18,10 @@ import { loadRules, loadResponseStyle, invalidateRulesCache } from './rules/inde
 import { isMultimodalContent, extractMultimodalContent, isAllowedImageType, type FileReadResult } from './mcp/url-tools.js';
 import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } from '../utils/anthropic-retry.js';
 import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummary, type MessageTurn } from '../utils/token-limiter.js';
-import { notifyToolError } from './error-notifier.js';
+import { notifySystemError, notifyToolError } from './error-notifier.js';
 import { ToolError } from './tool-error.js';
 import { checkCostCap, recordCost, formatCapExceededMessage } from './claude-cost-tracker.js';
-import { applyResponsePipeline } from './response-postprocess.js';
+import { EMPTY_RESPONSE_FALLBACK, applyResponsePipeline, stripBannedRituals } from './response-postprocess.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
@@ -222,6 +222,87 @@ export function detectEmptyTurn(text: string, toolExecutions: ToolExecution[]): 
   if (successful > 0) return null;
   const errored = toolExecutions.length - successful;
   return `Empty turn: no text and no successful tool calls (toolExecutions=${toolExecutions.length}, errored=${errored})`;
+}
+
+export const ADDIE_EMPTY_RESPONSE_FALLBACK = EMPTY_RESPONSE_FALLBACK;
+
+/**
+ * Empty response detector for user-facing recovery. `detectEmptyTurn` remains
+ * the stricter "no text + no successful tools" safety flag, but any blank
+ * final text is a bad chat UX because most surfaces do not render raw tool
+ * results to the user.
+ */
+export function detectEmptyResponse(text: string, toolExecutions: ToolExecution[]): string | null {
+  if (text.trim().length > 0) return null;
+
+  const strictReason = detectEmptyTurn(text, toolExecutions);
+  if (strictReason) return strictReason;
+
+  const successful = toolExecutions.filter(t => !t.is_error).length;
+  const errored = toolExecutions.length - successful;
+  return `Empty response: no text after tool use (toolExecutions=${toolExecutions.length}, successful=${successful}, errored=${errored})`;
+}
+
+function applyResponsePipelineWithEmptyMonitoring(
+  question: string,
+  rawText: string,
+  toolExecutions: ToolExecution[],
+): { text: string; reason: string | null } {
+  const stripped = stripBannedRituals(rawText);
+  const reason = detectEmptyResponse(stripped, toolExecutions);
+  if (reason) return { text: EMPTY_RESPONSE_FALLBACK, reason };
+  return { text: applyResponsePipeline(question, rawText), reason: null };
+}
+
+function reportEmptyResponseFallback(
+  reason: string,
+  toolsUsed: string[],
+  toolExecutions: ToolExecution[],
+  options: ProcessMessageOptions | undefined,
+  source: 'processMessage' | 'processMessageStream',
+  model: string,
+  iteration: number,
+): void {
+  const successful = toolExecutions.filter(t => !t.is_error).length;
+  const errored = toolExecutions.length - successful;
+  const toolNames = toolsUsed.length > 0 ? toolsUsed.join(', ') : 'none';
+  const userKey = options?.slackUserId
+    ? `slack:${options.slackUserId}`
+    : options?.costScope?.userId
+      ? options.costScope.userId
+      : options?.userDisplayName
+        ? `display:${options.userDisplayName}`
+        : 'unknown';
+
+  logger.error(
+    {
+      event: 'addie_empty_response_fallback',
+      source,
+      reason,
+      threadId: options?.threadId,
+      user: userKey,
+      model,
+      iteration,
+      toolsUsed,
+      toolExecutionCount: toolExecutions.length,
+      successfulToolExecutions: successful,
+      erroredToolExecutions: errored,
+    },
+    'Addie: Empty response fallback returned to user',
+  );
+
+  notifySystemError({
+    source: 'addie-empty-response',
+    errorMessage: [
+      `${source}: ${reason}`,
+      `thread_id=${options?.threadId ?? 'unknown'}`,
+      `user=${userKey}`,
+      `model=${model}`,
+      `iteration=${iteration}`,
+      `tools_used=${toolNames}`,
+      `tool_executions=${toolExecutions.length} successful=${successful} errored=${errored}`,
+    ].join('\n'),
+  });
 }
 
 /** Default max tool iterations for regular users */
@@ -817,7 +898,8 @@ export class AddieClaudeClient {
           .map(block => block.type === 'text' ? block.text : '')
           .join('\n\n')
           .trim();
-        const text = applyResponsePipeline(userMessage, rawText);
+        const emptyResponse = applyResponsePipelineWithEmptyMonitoring(userMessage, rawText, toolExecutions);
+        const text = emptyResponse.text;
 
         // Calculate total tool execution time from tool_executions
         totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
@@ -828,11 +910,10 @@ export class AddieClaudeClient {
           logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie: Possible hallucinated action detected');
         }
 
-        const emptyTurnReason = detectEmptyTurn(text, toolExecutions);
-        if (emptyTurnReason) {
-          logger.warn({ toolsUsed, toolExecutions: toolExecutions.length }, 'Addie: Empty turn — no text and no successful tool calls');
+        if (emptyResponse.reason) {
+          reportEmptyResponseFallback(emptyResponse.reason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
         }
-        const flagReason = hallucinationReason ?? emptyTurnReason;
+        const flagReason = hallucinationReason ?? emptyResponse.reason;
 
         const finalUsage = {
           input_tokens: totalInputTokens,
@@ -954,13 +1035,18 @@ export class AddieClaudeClient {
         if (toolUseBlocks.length === 0 && serverToolBlocks.length === 0) {
           const textContent = response.content.find((c) => c.type === 'text');
           const rawText = textContent && textContent.type === 'text' ? textContent.text : "I'm not sure how to help with that.";
-          const text = applyResponsePipeline(userMessage, rawText);
+          const emptyResponse = applyResponsePipelineWithEmptyMonitoring(userMessage, rawText, toolExecutions);
+          const text = emptyResponse.text;
+          if (emptyResponse.reason) {
+            reportEmptyResponseFallback(emptyResponse.reason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
+          }
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
           return {
             text,
             tools_used: toolsUsed,
             tool_executions: toolExecutions,
-            flagged: false,
+            flagged: !!emptyResponse.reason,
+            flag_reason: emptyResponse.reason ?? undefined,
             active_rule_ids: undefined,
             config_version_id: configVersionId ?? undefined,
             timing: {
@@ -1482,23 +1568,26 @@ export class AddieClaudeClient {
           // non-stream path. If applyResponsePipeline strips the only text
           // (e.g., scrubbed a refused-action sentence), that should look like
           // an empty turn to the user, which is what we want to flag.
-          const pipelined = applyResponsePipeline(userMessage, fullText);
-          const hallucinationReason = detectHallucinatedAction(pipelined, toolExecutions);
+          const emptyResponse = applyResponsePipelineWithEmptyMonitoring(userMessage, fullText, toolExecutions);
+          if (emptyResponse.reason) {
+            reportEmptyResponseFallback(emptyResponse.reason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
+            yield { type: 'text', text: emptyResponse.text };
+            fullText += emptyResponse.text;
+          }
+
+          const finalText = emptyResponse.text;
+          const hallucinationReason = detectHallucinatedAction(finalText, toolExecutions);
           if (hallucinationReason) {
             logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie Stream: Possible hallucinated action detected');
           }
-          const emptyTurnReason = detectEmptyTurn(pipelined, toolExecutions);
-          if (emptyTurnReason) {
-            logger.warn({ toolsUsed, toolExecutions: toolExecutions.length }, 'Addie Stream: Empty turn — no text and no successful tool calls');
-          }
-          const flagReason = hallucinationReason ?? emptyTurnReason;
+          const flagReason = hallucinationReason ?? emptyResponse.reason;
 
           const streamUsage = buildStreamUsage();
           await chargeStreamCost(streamUsage);
           yield {
             type: 'done',
             response: {
-              text: pipelined,
+              text: finalText,
               tools_used: toolsUsed,
               tool_executions: toolExecutions,
               flagged: !!flagReason,
@@ -1526,13 +1615,20 @@ export class AddieClaudeClient {
             totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
             const streamUsage = buildStreamUsage();
             await chargeStreamCost(streamUsage);
+            const emptyResponse = applyResponsePipelineWithEmptyMonitoring(userMessage, fullText, toolExecutions);
+            if (emptyResponse.reason) {
+              reportEmptyResponseFallback(emptyResponse.reason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
+              yield { type: 'text', text: emptyResponse.text };
+              fullText += emptyResponse.text;
+            }
             yield {
               type: 'done',
               response: {
-                text: applyResponsePipeline(userMessage, fullText),
+                text: emptyResponse.text,
                 tools_used: toolsUsed,
                 tool_executions: toolExecutions,
-                flagged: false,
+                flagged: !!emptyResponse.reason,
+                flag_reason: emptyResponse.reason ?? undefined,
                 active_rule_ids: undefined,
                 config_version_id: configVersionId ?? undefined,
                 timing: {

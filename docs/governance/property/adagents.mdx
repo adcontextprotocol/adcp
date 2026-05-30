@@ -31,9 +31,11 @@ The `adagents.json` file provides a standardized way for publishers to declare t
 }
 ```
 
-This combined model is common for publishers with first-party data — the same domain authorizes sales agents (via `properties`) and declares signal catalogs (via `signals`). The two namespaces are independent: authorization for property sales does not grant signal access, and signal registration does not imply property authorization.
+This combined model is common for publishers with first-party data — the same domain authorizes sales agents (via `properties`) and declares published signal definitions (via `signals`). The two namespaces are independent: authorization for property sales does not grant signal access, and signal registration does not imply property authorization.
 
 See [Signal data providers](/docs/signals/data-providers) for the signals-side documentation.
+
+For the sell-side decision tree that pairs publisher authorization with operator `brand.json` identity and signing-key discovery, see [seller setup](/docs/brand-protocol/seller-setup).
 
 <Tip>
 **[AdAgents.json Builder](https://agenticadvertising.org/adagents/builder)** - Validate existing files or create new ones with guided validation
@@ -66,17 +68,17 @@ For the higher-level framing and a side-by-side example, see [Why adagents.json 
 
 ### Where does sellers.json fit?
 
-In programmatic, `sellers.json` is hosted by the seller/exchange and declares which publishers they represent. AdCP handles this through `brand.json` instead of a separate file. An operator declares properties in their [`brand.json`](/docs/brand-protocol/brand-json) using the `relationship` field, which uses the same values as `delegation_type`: `direct`, `delegated`, or `ad_network`. This creates the same bilateral verification pattern:
+In programmatic, `sellers.json` is hosted by the seller/exchange and declares which publishers they represent. AdCP handles this through `brand.json` instead of a separate file. An operator declares properties in their [`brand.json`](/docs/brand-protocol/brand-json) using the `relationship` field. For first-party inventory, the operator can use `relationship: "owned"`. For delegated or network sell-side paths, `relationship` uses the same values as `delegation_type`: `direct`, `delegated`, or `ad_network`. This creates the same bilateral verification pattern:
 
 | Programmatic | AdCP equivalent | Purpose |
 |---|---|---|
 | `ads.txt` (publisher) | `adagents.json` with `delegation_type` (publisher) | "These agents are authorized, here's the relationship" |
 | `sellers.json` (seller) | `brand.json` properties with `relationship` (operator) | "I sell for these publishers, here's how" |
 
-Both sides must agree — and the `delegation_type` and `relationship` values should match. See [ad networks](/docs/sponsored-intelligence/networks) for how this works in practice.
+For delegated or network paths, both sides must agree — the `delegation_type` and `relationship` values should match. For first-party inventory, `relationship: "owned"` is an inline ownership declaration and has no matching `delegation_type` value. See [ad networks](/docs/sponsored-intelligence/networks) for how this works in practice.
 
 <Note>
-The field is called `delegation_type` in adagents.json and `relationship` in brand.json. The names differ because they describe the same commercial arrangement from different perspectives — the publisher delegates authority (`delegation_type`), the operator declares its relationship to the property (`relationship`). The values are the same: `direct`, `delegated`, `ad_network`.
+The field is called `delegation_type` in adagents.json and `relationship` in brand.json. The names differ because they describe the same commercial arrangement from different perspectives — the publisher delegates authority (`delegation_type`), the operator declares its relationship to the property (`relationship`). Delegated/network values match (`direct`, `delegated`, `ad_network`); `owned` is only a brand.json relationship value.
 </Note>
 
 ## File Location
@@ -139,6 +141,11 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
   - **`tag_id`** *(optional)*: TAG Certified Against Fraud ID
   - **`privacy_policy_url`** *(optional)*: URL to entity's privacy policy for consumer consent flows
 
+**`catalog_etag`** *(optional)*: Opaque cache/version token for the public catalog portions of this file
+  - Publishers SHOULD change it whenever `properties`, `collections`, `placements`, `formats`, `signals`, or their tag metadata changes
+  - Buyer SDKs SHOULD cache resolved references by URL plus `catalog_etag` and re-resolve catalog references when the value changes
+  - If absent, buyers fall back to HTTP validators such as `ETag`/`Last-Modified`, then a bounded TTL
+
 **`properties`** *(optional)*: Array of properties covered by this file (canonical property definitions)
   - **`supported_channels`** *(optional)*: Advertising channels this property supports (e.g., `["display", "olv", "social"]`). See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
 
@@ -149,7 +156,8 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 **`placements`** *(optional)*: Canonical placement definitions for the properties in this file
   - Products SHOULD reuse these `placement_id` values when declaring `placements`
   - Reusing a registered `placement_id` means the product is referring to the same semantic placement, not inventing a different one with the same ID
-  - Placement definitions can include `tags` for grouping, `property_ids` or `property_tags` for property linkage, and optional `format_ids` for canonical format support
+  - Placement definitions can include `tags`, `property_ids` or `property_tags` for property linkage, `channels`, and `format_options` for creative support
+  - Placements in `adagents.json` are public by definition. Do not publish seller-private placement IDs, source/origin fields, or delivery-system mappings in this file.
   - Authorization entries can narrow scope to specific `placement_ids`
   - Authorization entries can also use `placement_tags` for governed placement groupings such as `programmatic`, `direct_only`, or `managed_by_riverline`
   - Useful for expressing distinctions like "available via this agent only for homepage native feed" or "only for pre-roll"
@@ -159,6 +167,92 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 **`placement_tags`** *(optional)*: Metadata for publisher-defined placement tags
   - Provides human-readable definitions for placement tag values used in `placements[*].tags` and `authorized_agents[*].placement_tags`
   - These are publisher-local concepts, not a global taxonomy
+
+### Public placement catalog
+
+The `placements[]` array is the publisher's public placement catalog. It defines stable, semantic placement IDs that products and authorization rules can reference. A buyer should not have to interpret a raw ad-server ad unit path, delivery placement ID, video-ad-server zone, or other seller-internal delivery identifier to understand what a product offers.
+
+Publishers that expose placement, format, collection, or property catalogs, or published `signals[]` definitions, should publish `catalog_etag` and update it whenever those entries change. This lets buyer SDKs cache catalog lookups without silently resolving the same `{publisher_domain, placement_id}` or `{publisher_domain, format_option_id}` to different metadata after a publisher deployment.
+
+At minimum, a public placement should describe:
+
+- stable `placement_id`
+- `name` and `description`
+- the `property_ids` or `property_tags` where it can run
+- supported `format_options`, which can reference publisher-owned formats and canonical formats
+- optional `channels`
+
+Placement format support is a new 3.1 catalog feature and uses the 3.1+ canonical format-option model only:
+
+- `format_options[]` may reference declarations in the same file's top-level `formats[]` by `format_option_id`. Those top-level declarations can be publisher-owned custom formats or narrowed canonical formats.
+- `format_options[]` may also carry an inline canonical `ProductFormatDeclaration` when the placement-specific narrowing is not worth a reusable top-level format entry.
+
+The canonical anchor is `format_kind`. A placement entry that carries only `{ "format_option_id": "..." }` inherits the canonical format by resolving that ID to the same file's top-level `formats[]` declaration, then reading its `format_kind`. Outside this file, a buyer-facing `FormatOptionRef` for a publisher-declared format option uses `{ "scope": "publisher", "publisher_domain": "...", "format_option_id": "..." }`.
+
+Placement catalog formats describe what the public placement can support. When a product later references that placement, the product-level `format_ids` or `format_options` remain the buyable creative contract; placement `format_options` narrow that set for the specific placement. If the catalog placement and product declarations disagree, buyers use the intersection and should not treat a catalog-only format as accepted by the product.
+
+```json
+{
+  "catalog_etag": "daily-pulse-2026-05-25",
+  "formats": [
+    {
+      "format_kind": "html5",
+      "format_option_id": "publisher_takeover_html5",
+      "display_name": "Publisher takeover HTML5",
+      "params": {
+        "width": 970,
+        "height": 250,
+        "max_file_size_kb": 200
+      }
+    }
+  ],
+  "placements": [
+    {
+      "placement_id": "homepage_takeover",
+      "name": "Homepage takeover",
+      "description": "High-impact homepage sponsorship across the main article rail and top video module.",
+      "property_ids": ["daily_pulse"],
+      "channels": ["display", "olv"],
+      "format_options": [
+        { "format_option_id": "publisher_takeover_html5" },
+        {
+          "format_kind": "image",
+          "params": {
+            "width": 300,
+            "height": 250,
+            "image_formats": ["jpg", "png"],
+            "max_file_size_kb": 150
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+Because `adagents.json` is public, it is not the place to expose operational inventory internals. Keep source/origin (`synced` vs synthetic), raw ad-server IDs, delivery mappings, and seller-private placement groupings in the seller's internal inventory registry. The public placement catalog should describe only buyer-understandable inventory that the publisher is willing to make discoverable.
+
+### Product targetability
+
+`adagents.json` does not decide whether a placement is targetable in a product. It only publishes stable public placement IDs and their buyer-understandable semantics.
+
+A sales agent decides per product whether a public placement is buyer-selectable or merely part of the product composition. That decision is exposed, when needed, in the sales agent's `get_products` product placement object, not in the publisher's `adagents.json`.
+
+If a product depends on seller-private delivery composition, describe that composition in product prose and keep the underlying placement IDs in the seller system. Do not publish private placement IDs in `adagents.json` or `get_products`.
+
+### Internal mapping
+
+Publishers still need to map public placements to delivery systems, and they may need synthetic internal groupings when the delivery system does not have the right semantic object. That mapping is implementation detail, not public protocol state.
+
+Common internal cases:
+
+- grouping multiple synced placements
+- grouping multiple ad units or zones
+- exposing an ad unit as a buyer-understandable placement
+- mapping ambiguous `1x1`, fluid, native, out-of-page, or video objects to the format they actually render
+- preserving strategic opacity while keeping products free of raw delivery IDs
+
+These internal mappings can produce public `placements[]` entries, but the mapping details themselves remain out of `adagents.json`.
 
 **`authorized_agents`** *(required)*: Array of authorized sales agents
   - **`url`** *(required)*: Agent's API endpoint URL
@@ -226,7 +320,7 @@ For managed-network deployments in AdCP, the normative delegation pattern remain
 `/.well-known/adagents.json` pointer file. New deployments SHOULD use that pattern.
 </Warning>
 
-When `https://{publisher}/.well-known/adagents.json` returns `404`, validators MAY attempt a compatibility fallback via `https://{publisher}/ads.txt`:
+When `https://{publisher}/.well-known/adagents.json` returns `404`, or returns an S3/CloudFront-style `403` `AccessDenied` XML response, validators MAY attempt a compatibility fallback via `https://{publisher}/ads.txt`:
 
 1. Read `ads.txt` and parse `managerdomain` entries.
    - Accepted form: `MANAGERDOMAIN=example.com` (IAB directive form only).
@@ -239,6 +333,7 @@ When `https://{publisher}/.well-known/adagents.json` returns `404`, validators M
 - **One hop only**: maximum depth is exactly one (`publisher -> managerdomain`). Do not chain managerdomain lookups.
 - **Cycle detection required**: if `managerdomain` points to a visited domain, ignore it.
 - **`#noagents` opt-out**: if a managerdomain line has a trailing comment containing the token `noagents` (case-insensitive), clients MUST ignore that managerdomain for adagents discovery. Example: `MANAGERDOMAIN=example.com #NOAGENTS`.
+- **Trigger statuses are narrow**: validators SHOULD only attempt this fallback when the publisher's direct `adagents.json` fetch returns `404` or an S3/CloudFront-style `403` `AccessDenied` XML response. Other statuses and failures — generic `403` denial, `500`, timeout, malformed JSON, content-type mismatch, or schema validation failure — do not trigger `managerdomain`.
 - **Explicit publisher scoping required**: a manager-hosted `adagents.json` MUST positively name the source publisher domain in a `publisher_domain` field that is reachable from at least one `authorized_agents[]` entry. "Reachable" means one of the following paths resolves to the source domain:
 
   1. **Per-agent paths.** The agent entry directly carries the publisher domain under `publisher_properties[].publisher_domain`, inside `publisher_properties[].publisher_domains[]` (the compact managed-network form), or under `collections[].publisher_domain`.
@@ -588,13 +683,13 @@ Use `collections` when authorization should only apply to inventory associated w
 
 ### `placement_ids`
 
-Use `placement_ids` to narrow authorization to canonical placements published in this same `adagents.json`. This is the field that lets a publisher say "this agent is authorized for MSN homepage native feed, but not for the entire property" or "this network can sell pre-roll but not host-read sponsorships."
+Use `placement_ids` to narrow authorization to canonical placements published in this same `adagents.json`. This is the field that lets a publisher say "this agent is authorized for MSN homepage native feed, but not for the entire property" or "this network can sell pre-roll but not host-read sponsorships." In product responses and creative assignment, the corresponding placement identity is `{ publisher_domain, placement_id }`.
 
 Canonical placement definitions can also carry:
 
 - `tags` for grouping placements across properties and products
 - `property_ids` or `property_tags` to answer "what placements are on property X?" and "what properties is placement Y on?"
-- `format_ids` to answer "what formats does this placement support?" without relying entirely on product-local placement definitions
+- `format_options` to answer "what formats does this placement support?" without relying entirely on product response placement details
 
 ### `placement_tags`
 
@@ -669,8 +764,14 @@ Set `exclusive: true` when this agent is the publisher's sole authorized path fo
       "tags": ["audio", "pre_roll", "programmatic"],
       "property_ids": ["publisher_podcast"],
       "collection_ids": ["signal_noise"],
-      "format_ids": [
-        {"agent_url": "https://creative.example.com", "id": "audio_15s"}
+      "format_options": [
+        {
+          "format_kind": "audio_hosted",
+          "params": {
+            "duration_ms_exact": 15000,
+            "audio_codecs": ["mp3"]
+          }
+        }
       ]
     },
     {
@@ -679,8 +780,15 @@ Set `exclusive: true` when this agent is the publisher's sole authorized path fo
       "tags": ["audio", "host_read", "premium", "direct_only"],
       "property_ids": ["publisher_podcast"],
       "collection_ids": ["signal_noise"],
-      "format_ids": [
-        {"agent_url": "https://creative.example.com", "id": "audio_60s"}
+      "format_options": [
+        {
+          "format_kind": "audio_hosted",
+          "params": {
+            "duration_ms_exact": 60000,
+            "asset_source": "publisher_host_recorded",
+            "buyer_asset_acceptance": "rejected"
+          }
+        }
       ]
     }
   ],
@@ -722,7 +830,7 @@ Set `exclusive: true` when this agent is the publisher's sole authorized path fo
 
 This lets a publisher say "buy host reads directly from us in some markets, but use a network path for pre-roll in others" without implying that every authorized path is equivalent.
 
-`adagents.json` now provides a canonical publisher-level placement registry. Products still declare their own `placements`, but they SHOULD reuse the publisher's registered `placement_id` values when the placement is part of that registry. Reusing a placement ID means the product is inheriting that placement's identity; the product can narrow `format_ids`, preserve or narrow placement tags, or add operational detail, but it should not redefine the placement into something incompatible.
+`adagents.json` now provides a canonical publisher-level placement registry. Products still return their own `placements`, but placement IDs are publisher-scoped: catalog-backed placements SHOULD reference the publisher registry with `{ publisher_domain, placement_id }`. When a product spans multiple publishers and catalog IDs collide, the `publisher_domain` disambiguates them; creative assignments should use structured `placement_refs` for those cases. Referencing a catalog placement means the product is inheriting that placement's identity; the product can narrow `format_ids`, preserve or narrow placement tags, or add operational detail, but it should not redefine the placement into something incompatible.
 
 ## Domain Matching Rules
 

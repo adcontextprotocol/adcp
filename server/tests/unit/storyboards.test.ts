@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { createRequire } from 'node:module';
 import {
   listStoryboards,
   getStoryboard,
@@ -11,6 +12,25 @@ import {
   type Storyboard,
   type StoryboardSummary,
 } from '../../src/services/storyboards.js';
+import {
+  DEFAULT_HOSTED_COMPLIANCE_LINE,
+  DEFAULT_HOSTED_COMPLIANCE_VERSION,
+  badgeEligibleVersionsForHostedComplianceTarget,
+  hostedComplianceOptions,
+  hostedComplianceTarget,
+  hostedCapabilitiesForCompliance,
+  hostedSupportedVersionsForCompliance,
+  isDefaultHostedComplianceTarget,
+  withHostedComplianceCompatibility,
+  withHostedComplianceOptions,
+} from '../../src/services/hosted-compliance-version.js';
+import {
+  isComplianceVersionSupported,
+  loadComplianceIndex,
+  resolveStoryboardsForCapabilities,
+} from '@adcp/sdk/testing';
+
+const require = createRequire(import.meta.url);
 
 /**
  * These tests cover the wrapper in services/storyboards.ts. Catalog content
@@ -119,17 +139,15 @@ describe('getTestKitForStoryboard', () => {
 
   it('resolves to a kit when a storyboard declares prerequisites.test_kit', () => {
     const summaries = listStoryboards();
-    // Scan at most 20 to keep the test fast — we're testing the resolver, not the catalog.
-    for (const summary of summaries.slice(0, 20)) {
+    for (const summary of summaries) {
       const sb = getStoryboard(summary.id);
       if (!sb?.prerequisites?.test_kit) continue;
       const kit = getTestKitForStoryboard(sb.id);
-      if (kit) {
-        expect(kit.id).toBeTruthy();
-        expect(kit.name).toBeTruthy();
-        return; // one positive case is enough to cover the resolver path
-      }
+      expect(kit).toBeDefined();
+      expect(kit!.id).toBeTruthy();
+      return; // one positive case is enough to cover the resolver path
     }
+    throw new Error('Expected at least one storyboard to declare prerequisites.test_kit');
   });
 });
 
@@ -139,6 +157,87 @@ describe('wrapper contract', () => {
     const summary: StoryboardSummary = first;
     expect(typeof summary.phase_count).toBe('number');
     expect(typeof summary.step_count).toBe('number');
+  });
+
+  it('uses the hosted badge-eligible compliance bundle by default', () => {
+    const target = hostedComplianceTarget();
+    const index = loadComplianceIndex(hostedComplianceOptions(target));
+    expect(index.adcp_version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
+    expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.0');
+    expect(target.requested).toBe(DEFAULT_HOSTED_COMPLIANCE_LINE);
+    expect(target.version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
+    expect(target.version).toMatch(/^3\.0\.\d+$/);
+    expect(isDefaultHostedComplianceTarget(target)).toBe(true);
+  });
+
+  it('resolves compliance target aliases against checked-in caches', () => {
+    const stable = hostedComplianceTarget('3.0');
+    expect(stable.requested).toBe('3.0');
+    expect(stable.version).toMatch(/^3\.0\.\d+$/);
+
+    const beta = hostedComplianceTarget('3.1-beta');
+    expect(beta.requested).toBe('3.1-beta');
+    expect(beta.version).toMatch(/^3\.1\.0-beta\.\d+$/);
+  });
+
+  it('keeps explicit beta targets diagnostic-only', () => {
+    expect(isDefaultHostedComplianceTarget(hostedComplianceTarget('3.0'))).toBe(true);
+    expect(isDefaultHostedComplianceTarget(hostedComplianceTarget('3.1-beta'))).toBe(false);
+    expect(badgeEligibleVersionsForHostedComplianceTarget(hostedComplianceTarget('3.0'))).toEqual(['3.0']);
+    expect(badgeEligibleVersionsForHostedComplianceTarget(hostedComplianceTarget('3.1-beta'))).toEqual([]);
+  });
+
+  it('rejects unsupported compliance targets before path resolution', () => {
+    expect(() => hostedComplianceTarget('../3.0.12')).toThrow(/Unsupported AdCP compliance target/);
+    expect(() => hostedComplianceTarget('3.1-latest')).toThrow(/Unsupported AdCP compliance target/);
+  });
+
+  it('canonicalizes alias versions passed through SDK option helpers', () => {
+    const target = hostedComplianceTarget('3.0');
+    const options = withHostedComplianceOptions({ version: '3.0' }, target);
+    expect(options.version).toBe(target.version);
+    expect(options.complianceDir).toContain(target.version);
+  });
+
+  it('does not let explicit beta targets run for sellers advertising only the future stable line', () => {
+    const defaultTarget = hostedComplianceTarget('3.0');
+    const betaTarget = hostedComplianceTarget('3.1-beta');
+
+    expect(hostedSupportedVersionsForCompliance(['3.0'], defaultTarget)).toEqual(['3.0']);
+    expect(hostedSupportedVersionsForCompliance(['3.1'], betaTarget)).toEqual(['3.1']);
+    expect(isComplianceVersionSupported(defaultTarget.version, ['3.0'])).toBe(true);
+
+    const rawTarget = hostedComplianceTarget('3.0');
+    const rawResolve = () => resolveStoryboardsForCapabilities({
+      supported_versions: ['3.0'],
+    }, hostedComplianceOptions(rawTarget));
+    expect(rawResolve).not.toThrow();
+
+    const target = hostedComplianceTarget('3.0');
+    const caps = hostedCapabilitiesForCompliance({
+      supported_versions: ['3.0'],
+    }, target);
+    const resolved = resolveStoryboardsForCapabilities({
+      supported_versions: caps.supported_versions,
+    }, hostedComplianceOptions(target));
+    expect(resolved.storyboards.length).toBeGreaterThan(0);
+
+    const sdkPackageRoot = require.resolve('@adcp/sdk/package.json').replace(/\/package\.json$/, '');
+    const sdkCompliance = require(`${sdkPackageRoot}/dist/lib/testing/storyboard/compliance.js`) as {
+      resolveStoryboardsForCapabilities: typeof resolveStoryboardsForCapabilities;
+    };
+
+    expect(() => withHostedComplianceCompatibility(target, () => sdkCompliance.resolveStoryboardsForCapabilities({
+      supported_versions: ['3.0'],
+    }, hostedComplianceOptions(target)))).not.toThrow();
+    const betaResolveWithStableOnly = () => withHostedComplianceCompatibility(betaTarget, () => sdkCompliance.resolveStoryboardsForCapabilities({
+      supported_versions: ['3.1'],
+    }, hostedComplianceOptions(betaTarget)));
+    if (/-/.test(betaTarget.version)) {
+      expect(betaResolveWithStableOnly).toThrow(/not supported by this seller/);
+    } else {
+      expect(betaResolveWithStableOnly).not.toThrow();
+    }
   });
 });
 
@@ -180,11 +279,13 @@ describe('compareAdcpVersions', () => {
 
 describe('getStoryboardsForVersion', () => {
   it('returns every storyboard when target is the highest supported version', () => {
-    // All current storyboards have unset `introduced_in` (always-applied),
-    // so a 3.0 target returns every storyboard in the catalog.
     const all = getAllStoryboards();
-    const for30 = getStoryboardsForVersion('3.0');
-    expect(for30.length).toBe(all.length);
+    const highestIntroduced = all.reduce((highest, sb) => {
+      if (!sb.introduced_in) return highest;
+      return compareAdcpVersions(sb.introduced_in, highest) > 0 ? sb.introduced_in : highest;
+    }, '3.0');
+    const forHighest = getStoryboardsForVersion(highestIntroduced);
+    expect(forHighest.length).toBe(all.length);
   });
 
   it('omits storyboards with introduced_in above the target', () => {
@@ -210,5 +311,9 @@ describe('getStoryboardsForVersion', () => {
 
   it('getStoryboardIdsForVersion returns the same length as getStoryboardsForVersion', () => {
     expect(getStoryboardIdsForVersion('3.0').length).toBe(getStoryboardsForVersion('3.0').length);
+  });
+
+  it('does not reuse the 3.0 cache for unavailable future stable badge lines', () => {
+    expect(getStoryboardsForVersion('3.1')).toEqual([]);
   });
 });

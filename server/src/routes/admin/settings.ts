@@ -27,6 +27,8 @@ import {
   setEditorialChannel,
   getAnnouncementChannel,
   setAnnouncementChannel,
+  getS2CanonicalFormatsDeltaRelease,
+  setS2CanonicalFormatsDeltaRelease,
   getSettingAuditHistory,
 } from '../../db/system-settings-db.js';
 import {
@@ -77,6 +79,18 @@ async function requireChannelPrivacy(
   });
 }
 
+function normalizeOptionalDate(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    return undefined;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed.toISOString();
+}
+
 export function createAdminSettingsRouter(): Router {
   const router = Router();
 
@@ -93,6 +107,7 @@ export function createAdminSettingsRouter(): Router {
 
       const editorialChannel = await getEditorialChannel();
       const announcementChannel = await getAnnouncementChannel();
+      const s2CanonicalFormatsDeltaRelease = await getS2CanonicalFormatsDeltaRelease();
 
       res.json({
         settings,
@@ -104,6 +119,7 @@ export function createAdminSettingsRouter(): Router {
         error_channel: errorChannel,
         editorial_channel: editorialChannel,
         announcement_channel: announcementChannel,
+        s2_canonical_formats_delta_release: s2CanonicalFormatsDeltaRelease,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to get system settings');
@@ -475,6 +491,38 @@ export function createAdminSettingsRouter(): Router {
       logger.error({ err: error }, 'Failed to update announcement channel');
       res.status(500).json({
         error: 'Failed to update announcement channel',
+      });
+    }
+  });
+
+  // PUT /api/admin/settings/s2-canonical-formats-delta-release
+  router.put('/s2-canonical-formats-delta-release', ...requireGlobalAdmin, async (req: Request, res: Response) => {
+    try {
+      const adcpGaAt = normalizeOptionalDate(req.body?.adcp_3_1_ga_at);
+      const criteriaDeployedAt = normalizeOptionalDate(req.body?.criteria_deployed_at);
+
+      if (adcpGaAt === undefined || criteriaDeployedAt === undefined) {
+        res.status(400).json({
+          error: 'Invalid release gate',
+          message: 'adcp_3_1_ga_at and criteria_deployed_at must be ISO date strings or null',
+        });
+        return;
+      }
+
+      const userId = req.user?.id;
+      await setS2CanonicalFormatsDeltaRelease({
+        adcp_3_1_ga_at: adcpGaAt,
+        criteria_deployed_at: criteriaDeployedAt,
+      }, userId);
+
+      logger.info({ adcpGaAt, criteriaDeployedAt, userId }, 'S2 canonical formats delta release gates updated');
+
+      const updated = await getS2CanonicalFormatsDeltaRelease();
+      res.json({ success: true, s2_canonical_formats_delta_release: updated });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to update S2 canonical formats delta release gates');
+      res.status(500).json({
+        error: 'Failed to update release gates',
       });
     }
   });
