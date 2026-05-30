@@ -23,7 +23,6 @@ import {
 import {
   hostedComplianceTarget,
   hostedAuthProbeTaskForProfile,
-  withHostedComplianceCompatibility,
   withHostedComplianceRunOptions,
   type HostedComplianceTarget,
 } from '../../services/hosted-compliance-version.js';
@@ -77,10 +76,7 @@ export async function comply(
   target: HostedComplianceTarget,
 ): Promise<ComplianceResult> {
   const authProbeTask = await hostedAuthProbeTaskForRun(agentUrl, options);
-  const result = await withHostedComplianceCompatibility(
-    target,
-    () => sdkComply(agentUrl, withHostedComplianceRunOptions(options, target, authProbeTask)),
-  );
+  const result = await sdkComply(agentUrl, withHostedComplianceRunOptions(options, target, authProbeTask));
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { requested_compliance_target?: string }).requested_compliance_target = target.requested;
   return result;

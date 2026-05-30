@@ -25,7 +25,6 @@ import {
   hostedComplianceTarget,
   hostedComplianceOptions,
   hostedAuthProbeTaskForProfile,
-  hostedCapabilitiesForCompliance,
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
   badgeEligibleVersionsForHostedComplianceTarget,
@@ -6161,12 +6160,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       let resolved;
       try {
-        const caps = hostedCapabilitiesForCompliance({
+        const caps = {
           supported_protocols: supportedProtocols,
           specialisms,
           major_versions: profile?.adcp_major_versions,
           supported_versions: profile?.adcp_supported_versions,
-        }, complianceTarget);
+        };
         resolved = resolveStoryboardsForCapabilities(caps, complianceOptions);
       } catch (resolveErr) {
         // Fail-closed: agent capabilities are malformed. Distinguish the two

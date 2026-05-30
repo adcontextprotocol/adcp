@@ -61,7 +61,6 @@ import {
   hostedComplianceTarget,
   hostedComplianceOptions,
   hostedAuthProbeTaskForProfile,
-  hostedCapabilitiesForCompliance,
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
   isDefaultHostedComplianceTarget,
@@ -4270,12 +4269,12 @@ export function createMemberToolHandlers(
     // Classify and coach accordingly.
     let resolvedBundles: Array<{ ref: { id: string; kind: string }; storyboards: Storyboard[] }>;
     try {
-      const caps = hostedCapabilitiesForCompliance({
+      const caps = {
         supported_protocols: supportedProtocols,
         specialisms,
         major_versions: profile?.adcp_major_versions,
         supported_versions: profile?.adcp_supported_versions,
-      }, runTarget);
+      };
       const res = resolveStoryboardsForCapabilities(caps, runOptions);
       resolvedBundles = res.bundles;
     } catch (error) {
