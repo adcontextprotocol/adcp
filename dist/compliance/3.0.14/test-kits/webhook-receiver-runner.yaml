@@ -1,0 +1,265 @@
+# Webhook Receiver Runner — Harness Contract Test Kit
+#
+# Applies to:
+#   - universal/webhook-emission.yaml (primary consumer — grades outbound
+#     webhook conformance: idempotency_key presence, stability across retries,
+#     and RFC 9421 signature validity when 9421 is in effect)
+#   - universal/idempotency.yaml (replay-side-effect invariant — "no duplicate
+#     webhooks on replay" step is gated on this contract being in scope)
+#   - Any future storyboard that needs to observe outbound webhooks.
+#
+# The webhook-emission universal grades an agent's outbound-webhook
+# conformance: idempotency_key presence and stability across retries, and —
+# when the 9421 webhook profile is in effect — RFC 9421 signature validity per
+# docs/building/implementation/security.mdx#webhook-callbacks.
+#
+# Storyboards are unidirectional by default (runner → agent). Verifying what
+# the agent sends back requires the runner to host a webhook receiver during
+# test execution and observe inbound deliveries. This test-kit defines the
+# coordination contract between that receiver and a webhook-emitting agent
+# under test.
+#
+# Clean seam: the runner does NOT reimplement signature verification or dedup.
+# It delegates to `@adcp/client` primitives (AsyncHandler, WebhookMetadata,
+# IdempotencyBackend) so the same code that production receivers use is what
+# the conformance runner exercises. A single bug fix in the library covers both.
+
+id: webhook_receiver_runner
+applies_to:
+  universals:
+    - webhook-emission
+    - idempotency
+
+description: |
+  Coordination contract between a black-box runner hosting a webhook receiver
+  and a webhook-emitting agent under test. The runner mints per-step HTTPS
+  endpoints, injects them into push_notification_config.url on the steps that
+  trigger webhooks, observes incoming deliveries via @adcp/client AsyncHandler
+  hooks, and asserts on idempotency_key presence, idempotency_key stability
+  across retries, and (when advertised) 9421 signature validity.
+
+endpoint_scope: sandbox
+# Storyboards that drive webhook emission typically call spend-committing
+# operations (create_media_buy, acquire_*, activate_signal). Running those
+# against production would create real commitments. Graders MUST target a
+# sandbox/staging endpoint. Agents claiming the specialism SHOULD expose a
+# dedicated grading endpoint.
+
+harness_mode: black_box
+
+# --- Ephemeral endpoint mechanism ---
+#
+# Three viable shapes with materially different operational costs. The runner
+# selects per run mode; storyboard authors SHOULD NOT assume a specific mode.
+#
+#   loopback_mock (default for lint/fast runs):
+#     The runner intercepts the agent's outbound HTTP at the library-client
+#     level (via @adcp/client AsyncHandler) before the request leaves the
+#     process. Zero network dependencies. Exercises serialization, signature
+#     math, and idempotency-key logic, but not real wire behavior (no TLS
+#     handshake, no proxy interposition, no real DNS). Appropriate for CI lint
+#     gates and SDK self-tests.
+#
+#   proxy_url (default for full conformance runs):
+#     The CI environment exposes an HTTPS URL that routes into the runner
+#     process. The runner mints per-step paths under that base. Exercises real
+#     wire behavior end-to-end, including TLS, proxies, and body preservation.
+#     Appropriate for AdCP Verified grading where the agent under test is a
+#     remote service.
+#
+#   tunnel (optional wrapper, NOT a hard dep):
+#     ngrok, cloudflared, or similar. Operators MAY configure a tunnel as the
+#     proxy_url provider, but the runner MUST NOT require a specific tunnel
+#     vendor. Adding a tunnel is a wrapper concern outside the spec.
+#
+# The specialism grades observable agent behavior; the receiver mechanism is
+# an implementation detail below the conformance seam. An agent that passes
+# under loopback_mock MUST also pass under proxy_url for the same storyboard —
+# any divergence is a conformance bug in the runner or the client library, not
+# a legitimate agent-behavior difference.
+
+endpoint_modes:
+  - mode: loopback_mock
+    default_for: [lint, fast]
+    description: |
+      Intercepts the agent's outbound HTTP at the @adcp/client AsyncHandler
+      layer. No external network exposure. Zero CI setup cost.
+    runner_config:
+      intercept_layer: adcp_client_async_handler
+
+  - mode: proxy_url
+    default_for: [full_conformance, adcp_verified]
+    description: |
+      Operator-supplied HTTPS URL routing to the runner process. The runner
+      mints per-step paths under this base.
+    runner_config:
+      base_url_env: ADCP_RUNNER_WEBHOOK_BASE_URL
+      required_for_adcp_verified: true
+      scheme: https
+      # HTTPS is REQUIRED for proxy_url. Runners MUST reject an
+      # ADCP_RUNNER_WEBHOOK_BASE_URL with an http:// scheme unless the runner
+      # is started with an explicit local-dev flag (not exposed in AdCP
+      # Verified grading). The loopback_mock mode operates in-process and has
+      # no TLS surface; this rule applies only to proxy_url.
+
+# --- Per-step receiver URLs ---
+#
+# The runner exposes two substitution variables to storyboards:
+#
+#   {{runner.webhook_base}}            HTTPS base for the current run
+#   {{runner.webhook_url:<step_id>}}   Per-step URL unique to step <step_id>
+#
+# Per-step URLs scope assertions cleanly: an expect_webhook on step_A matches
+# only webhooks delivered to step_A's URL. Fan-in scenarios (one URL receiving
+# from multiple emitting steps) are deferred — see storyboard-schema.yaml
+# "shared_receiver (deferred / out of scope v1)."
+
+receiver_urls:
+  per_step_url_template: "{{runner.webhook_base}}/step/<step_id>/<operation_id>"
+  operation_id_source: push_notification_config.url
+  # <operation_id> in the URL template is the ID the RUNNER (acting as caller)
+  # sets in the path segment of push_notification_config.url when it registers
+  # the webhook on the triggering step. This is NOT a server-generated ID — the
+  # agent under test MUST NOT mint its own operation_id. The agent's webhook
+  # payload MUST echo this operation_id back verbatim so the runner can match
+  # inbound deliveries to the step that triggered them.
+
+# --- Retry-replay assertion shape ---
+#
+# expect_webhook_retry_keys_stable is the only step that requires a specific
+# receiver-behavior contract. The runner's webhook receiver deterministically
+# returns HTTP 5xx for the first `count` deliveries, then 2xx, and records the
+# idempotency_key on every delivery. The runner then asserts all recorded keys
+# are byte-identical.
+#
+# The sender's retry back-off is out of scope for the contract — the runner
+# sets a sufficient timeout_seconds on the step to cover reasonable back-off
+# schedules (default 90s). Any conformant at-least-once sender will retry
+# within that window.
+
+retry_replay_contract:
+  mechanism: receiver_returns_5xx_then_2xx
+  default_count: 3
+  min_count: 1
+  max_count: 10
+  # Hard ceiling on retry_trigger.count. Runners MUST reject storyboards whose
+  # retry_trigger.count falls outside [min_count, max_count] with a storyboard
+  # validation error at load time. The ceiling prevents a typo (count: 1000000)
+  # from turning a runner into a DoS amplifier against a real seller in
+  # proxy_url mode. Sellers exercise retry back-off with N=3 routinely;
+  # higher counts do not add meaningful conformance signal.
+  default_http_status: 503
+  allowed_statuses: [429, 500, 502, 503, 504]
+  # Runners MUST reject retry_trigger.http_status values outside this
+  # allowlist. Statuses like 400 or 404 are not retryable signals for
+  # at-least-once senders — a storyboard declaring one is a bug, not a
+  # legitimate test shape.
+  default_timeout_seconds: 90
+  expected_behavior: |
+    The sender retries on each 5xx response. Every retry MUST carry the
+    byte-identical idempotency_key the first delivery carried. The runner
+    records all deliveries and asserts key stability; a key rotation across
+    retries fails the step with `idempotency_key_rotated`.
+
+    When 9421 is in effect for the storyboard, the runner ALSO verifies the
+    signature on every retry delivery using the run-scoped replay store (see
+    client_primitives.signature_replay_store). A sender that reuses the 9421
+    `nonce` sig-param across retries fails the step with `signature_replayed`
+    on the second delivery even though idempotency_key is stable — nonce
+    freshness is a separate invariant.
+
+# --- @adcp/client primitives the runner hooks ---
+#
+# The runner does NOT reimplement signature verification or dedup. It consumes
+# the following primitives from @adcp/client (see adcontextprotocol/adcp-client)
+# so the conformance surface matches what production receivers use:
+
+client_primitives:
+  async_handler_config:
+    # AdCPClient is constructed with an AsyncHandlerConfig whose webhookDedup
+    # uses a runner-owned IdempotencyBackend. The runner's backend wraps the
+    # standard memoryBackend() and records every (agent_id, idempotency_key)
+    # observed for later assertion.
+    reference: AsyncHandlerConfig.webhookDedup
+    doc: https://github.com/adcontextprotocol/adcp-client/pull/629
+
+  webhook_metadata:
+    # Every onXxxStatusChange handler receives a WebhookMetadata second arg
+    # carrying idempotency_key. The runner's handlers write this into the
+    # per-step observation buffer.
+    reference: WebhookMetadata.idempotency_key
+    doc: https://github.com/adcontextprotocol/adcp-client/pull/629
+
+  activity_webhook_duplicate:
+    # The client emits Activity { type: "webhook_duplicate" } when a repeat
+    # idempotency_key hits the dedup backend. The runner counts these to
+    # assert that retries triggered by expect_webhook_retry_keys_stable do
+    # reach the client (indicating the sender is retrying) AND are suppressed
+    # as duplicates (indicating the key stayed stable).
+    reference: Activity.type == "webhook_duplicate"
+    doc: https://github.com/adcontextprotocol/adcp-client/pull/629
+
+  webhook_signature_verifier:
+    # Once RFC 9421 webhook signing lands in the client library (follow-up to
+    # adcontextprotocol/adcp#2423), the runner hooks the verifier to surface
+    # webhook_signature_* error codes on failure. Until that lands,
+    # expect_webhook_signature_valid grades as preview / skip with a stable
+    # non-applicable marker.
+    reference: 9421 webhook verifier (TBD in @adcp/client)
+    status: pending
+    blocked_on: "@adcp/client implementation of docs/building/implementation/security.mdx#webhook-callbacks"
+
+  signature_replay_store:
+    # The runner MUST maintain ONE (keyid, nonce) replay store shared across
+    # every webhook delivery it observes in a storyboard run — including
+    # every expect_webhook_signature_valid step AND every retry delivery
+    # produced under expect_webhook_retry_keys_stable.
+    #
+    # Rationale: without a shared store, a publisher emitting the same signed
+    # bytes at two different expect_webhook_signature_valid steps would pass
+    # both in isolation, silently missing cross-step nonce replay. The 9421
+    # profile's (keyid, nonce) uniqueness guarantee is per-signer, not
+    # per-step — scoping replay state per-step in the runner would redefine
+    # the guarantee in a way production receivers don't.
+    #
+    # Scope: one store per storyboard run; destroyed at run end. Not shared
+    # across runs (a fresh run is a fresh counterparty-session from the
+    # publisher's perspective).
+    reference: Run-scoped (keyid, nonce) replay store
+    required_for:
+      - expect_webhook_signature_valid
+      - expect_webhook_retry_keys_stable (when 9421 in effect)
+
+# --- Claim scope ---
+
+scope:
+  in_scope: |
+    - Per-step receiver URL template and operation_id echo pattern.
+    - Retry-replay receiver-behavior contract (5xx-then-2xx, count and status).
+    - @adcp/client primitives the runner delegates to for observation and
+      verification.
+    - Endpoint mode selection (loopback_mock vs. proxy_url) and which mode
+      AdCP Verified grading runs under.
+    - Black-box-only harness mode (white_box is out of scope for webhook
+      receiver testing because the seam is the client library, not the
+      agent's internals).
+  out_of_scope: |
+    - The agent's internal webhook emission code path — the contract grades
+      observable behavior only.
+    - Which 9421 library the client uses — the client is free to pin any
+      validated RFC 9421 implementation.
+    - HTTP retry back-off schedules — the runner's timeout_seconds is
+      sufficient; precise back-off is sender-implementation-specific.
+    - Webhook-signing negative conformance vectors — those live at
+      /compliance/{version}/test-vectors/webhook-signing/ (follow-up) and
+      are graded per-vector, not via this contract.
+    - Production webhook receiver configuration — this contract configures
+      test counterparties only.
+
+references:
+  universal: static/compliance/source/universal/webhook-emission.yaml
+  spec_section: /docs/building/implementation/security.mdx#webhook-callbacks
+  client_receiver_pr: https://github.com/adcontextprotocol/adcp-client/pull/629
+  signing_upstream_pr: https://github.com/adcontextprotocol/adcp/pull/2423
+  idempotency_upstream_pr: https://github.com/adcontextprotocol/adcp/pull/2417
+  runner_implementation_tracking: https://github.com/adcontextprotocol/adcp/issues/2426

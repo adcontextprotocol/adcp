@@ -1,0 +1,27 @@
+{
+  "name": "Presented JWK is scoped to governance signing (adcp_use != request-signing)",
+  "spec_reference": "#verifier-checklist-requests step 8",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"AAAAAAAAAAAAAAAAAAAAAA\";keyid=\"test-gov-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": ["create_media_buy"]
+  },
+  "jwks_ref": ["test-gov-2026"],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_key_purpose_invalid",
+    "failed_step": 8
+  },
+  "$comment": "The keyid test-gov-2026 resolves to a JWK in keys.json with adcp_use='governance-signing'. Per spec step 8, verifier MUST reject because adcp_use is not 'request-signing'. This exercises the cross-purpose key reuse prevention: a single JWK declares one purpose, and verifiers enforce locally without cross-JWKS lookup."
+}
