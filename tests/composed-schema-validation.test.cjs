@@ -275,39 +275,112 @@ async function runTests() {
 
   // Test 4: Get Media Buy Delivery Response (allOf with delivery-metrics.json)
   log('Get Media Buy Delivery Response Schema (allOf with delivery-metrics.json):', 'info');
-  await testSchemaValidation(
-    '/schemas/media-buy/get-media-buy-delivery-response.json',
-    {
-      status: 'completed',
-      reporting_period: {
-        start: '2024-06-01T00:00:00Z',
-        end: '2024-06-15T23:59:59Z'
-      },
-      currency: 'USD',
-      media_buy_deliveries: [
-        {
-          media_buy_id: 'mb_123',
-          status: 'active',
-          totals: {
+  const deliveryResponseWithBreakdowns = {
+    status: 'completed',
+    reporting_period: {
+      start: '2024-06-01T00:00:00Z',
+      end: '2024-06-15T23:59:59Z'
+    },
+    currency: 'USD',
+    media_buy_deliveries: [
+      {
+        media_buy_id: 'mb_123',
+        status: 'active',
+        totals: {
+          spend: 25000,
+          impressions: 1000000,
+          effective_rate: 25.0
+        },
+        by_package: [
+          {
+            package_id: 'pkg_1',
             spend: 25000,
             impressions: 1000000,
-            effective_rate: 25.0
-          },
-          by_package: [
-            {
-              package_id: 'pkg_1',
-              spend: 25000,
-              impressions: 1000000,
-              pacing_index: 1.05,
-              pricing_model: 'cpm',
-              rate: 25.0,
-              currency: 'USD'
-            }
-          ]
-        }
-      ]
-    },
+            pacing_index: 1.05,
+            pricing_model: 'cpm',
+            rate: 25.0,
+            currency: 'USD',
+            missing_metrics: [
+              {
+                scope: 'standard',
+                metric_id: 'completed_views'
+              },
+              {
+                scope: 'vendor',
+                vendor: {
+                  domain: 'attentionvendor.example'
+                },
+                metric_id: 'attention_units'
+              }
+            ],
+            by_catalog_item: [
+              {
+                content_id: 'sku-123',
+                content_id_type: 'sku',
+                spend: 1200,
+                impressions: 48000
+              }
+            ],
+            by_creative: [
+              {
+                creative_id: 'cr_123',
+                spend: 14000,
+                impressions: 560000,
+                weight: 56
+              }
+            ],
+            by_keyword: [
+              {
+                keyword: 'trail running shoes',
+                match_type: 'phrase',
+                spend: 900,
+                impressions: 36000
+              }
+            ],
+            by_geo: [
+              {
+                geo_level: 'region',
+                geo_code: 'US-CA',
+                geo_name: 'California',
+                spend: 6500,
+                impressions: 260000
+              }
+            ],
+            by_geo_truncated: false
+          }
+        ]
+      }
+    ]
+  };
+
+  await testSchemaValidation(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    deliveryResponseWithBreakdowns,
     'Delivery response with aggregate metrics (allOf composition)'
+  );
+
+  const missingVendorMetricResponse = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));
+  delete missingVendorMetricResponse.media_buy_deliveries[0].by_package[0].missing_metrics[1].vendor;
+  await testSchemaRejection(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    missingVendorMetricResponse,
+    'Delivery response rejects vendor missing_metric without vendor'
+  );
+
+  const missingKeywordMatchTypeResponse = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));
+  delete missingKeywordMatchTypeResponse.media_buy_deliveries[0].by_package[0].by_keyword[0].match_type;
+  await testSchemaRejection(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    missingKeywordMatchTypeResponse,
+    'Delivery response rejects keyword metrics without match_type'
+  );
+
+  const missingGeoCodeResponse = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));
+  delete missingGeoCodeResponse.media_buy_deliveries[0].by_package[0].by_geo[0].geo_code;
+  await testSchemaRejection(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    missingGeoCodeResponse,
+    'Delivery response rejects geo metrics without geo_code'
   );
 
   log('');
@@ -1124,6 +1197,48 @@ async function runTests() {
     },
     'get_signals request accepts requested inline signal fields'
   );
+  await testSchemaValidation(
+    '/schemas/signals/get-signals-response.json',
+    {
+      status: 'completed',
+      signals: [
+        {
+          signal_ref: {
+            scope: 'signal_source',
+            signal_source_url: 'https://signals.example.com/mcp',
+            signal_id: 'private-likely-ev-buyers'
+          },
+          signal_agent_segment_id: 'seg-private-ev-001',
+          name: 'Private likely EV buyers',
+          description: 'Private source-native modeled EV intent signal.',
+          signal_type: 'custom',
+          deployments: [
+            {
+              type: 'platform',
+              platform: 'dv360',
+              account: '123456',
+              is_live: true
+            }
+          ],
+          taxonomy: {
+            ref: 'https://taxonomy.example.com/audience/v1',
+            values: [{ id: 'auto.ev_intenders' }]
+          },
+          data_subject_rights: {
+            channels: [
+              {
+                rights: ['access'],
+                email: 'privacy@example.com'
+              }
+            ],
+            response_sla_days: 30
+          }
+        }
+      ],
+      cache_scope: 'account'
+    },
+    'get_signals response accepts typed inline enrichment fields for source-native signals'
+  );
   await testSchemaRejection(
     '/schemas/signals/get-signals-request.json',
     {
@@ -1272,7 +1387,6 @@ async function runTests() {
           }
         ],
         response_sla_days: 30,
-        gpc_honored: true,
         ccpa_opt_out_url: 'https://privacy.signals.example.com/opt-out'
       }
     },
@@ -1462,6 +1576,24 @@ async function runTests() {
     },
     'Rejects DSR routing that declares no access, erasure, or objection channel'
   );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'dsr_gpc_not_signal_level',
+      name: 'DSR with signal-level GPC rejected',
+      value_type: 'binary',
+      data_subject_rights: {
+        channels: [
+          {
+            rights: ['access'],
+            email: 'privacy@example.com'
+          }
+        ],
+        gpc_honored: true
+      }
+    },
+    'Rejects signal-level gpc_honored in DSR routing'
+  );
   log('');
 
   // Test 6: Bundled schemas (no $ref resolution needed)
@@ -1516,6 +1648,8 @@ async function runTests() {
 
       // Every bundled schema must be self-contained and compile standalone.
       await testAllBundledSchemasCompile(bundledPath);
+
+      await testBundledDeliveryMetricSchemaTitles(BUNDLED_DIR);
 
       // Test a response schema to verify nested refs are resolved
       await testBundledSchemaValidation(
@@ -1647,6 +1781,64 @@ async function testBundledSchemaCompile(schemaPath, description) {
     return true;
   } catch (error) {
     log(`  \u2717 ${description}: ${error.message}`, 'error');
+    failedTests++;
+    return false;
+  }
+}
+
+async function testBundledDeliveryMetricSchemaTitles(bundledDir) {
+  totalTests++;
+  try {
+    const latestDir = path.join(bundledDir, 'latest');
+    const coreSchemas = [
+      ['core/missing-metric.json', 'Missing Metric'],
+      ['core/catalog-item-delivery-metrics.json', 'Catalog Item Delivery Metrics'],
+      ['core/creative-delivery-metrics.json', 'Creative Delivery Metrics'],
+      ['core/keyword-delivery-metrics.json', 'Keyword Delivery Metrics'],
+      ['core/geo-delivery-metrics.json', 'Geo Delivery Metrics']
+    ];
+
+    const missing = [];
+    for (const [relPath, expectedTitle] of coreSchemas) {
+      const schemaPath = path.join(latestDir, relPath);
+      const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+      if (schema.title !== expectedTitle) {
+        missing.push(`${relPath} title=${JSON.stringify(schema.title)} expected ${JSON.stringify(expectedTitle)}`);
+      }
+    }
+
+    const deliverySchema = JSON.parse(fs.readFileSync(
+      path.join(latestDir, 'bundled/media-buy/get-media-buy-delivery-response.json'),
+      'utf8'
+    ));
+    const packageItems = deliverySchema.properties.media_buy_deliveries.items.properties.by_package.items;
+    const packageBreakdowns = packageItems.allOf[1].properties;
+    const bundledTitles = [
+      [packageBreakdowns.missing_metrics.items, 'Missing Metric', 'by_package.missing_metrics.items'],
+      [packageBreakdowns.by_catalog_item.items, 'Catalog Item Delivery Metrics', 'by_package.by_catalog_item.items'],
+      [packageBreakdowns.by_creative.items, 'Creative Delivery Metrics', 'by_package.by_creative.items'],
+      [packageBreakdowns.by_keyword.items, 'Keyword Delivery Metrics', 'by_package.by_keyword.items'],
+      [packageBreakdowns.by_geo.items, 'Geo Delivery Metrics', 'by_package.by_geo.items']
+    ];
+
+    for (const [schema, expectedTitle, label] of bundledTitles) {
+      if (!schema || schema.title !== expectedTitle) {
+        missing.push(`${label} title=${JSON.stringify(schema && schema.title)} expected ${JSON.stringify(expectedTitle)}`);
+      }
+    }
+
+    if (missing.length === 0) {
+      log(`  \u2713 Bundled delivery metric schemas preserve named titles`, 'success');
+      passedTests++;
+      return true;
+    }
+
+    log(`  \u2717 Bundled delivery metric schemas preserve named titles`, 'error');
+    for (const issue of missing) log(`      ${issue}`, 'error');
+    failedTests++;
+    return false;
+  } catch (error) {
+    log(`  \u2717 Bundled delivery metric schemas preserve named titles: ${error.message}`, 'error');
     failedTests++;
     return false;
   }

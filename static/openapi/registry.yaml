@@ -583,7 +583,7 @@ components:
           type:
             - string
             - "null"
-          description: Requested compliance target before alias resolution, e.g. 3.1, 3.0, or 3.1-beta.
+          description: Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta.
         adcp_version:
           type:
             - string
@@ -1410,7 +1410,7 @@ components:
           type:
             - string
             - "null"
-          description: Requested compliance target before alias resolution, e.g. 3.1, 3.0, or 3.1-beta. Null for legacy rows before target recording.
+          description: Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Null for legacy rows before target recording.
         adcp_version:
           type:
             - string
@@ -1481,6 +1481,61 @@ components:
               - untested
               - unknown
           description: Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status
+        storyboard_statuses:
+          type: array
+          items:
+            type: object
+            properties:
+              storyboard_id:
+                type: string
+              requested_compliance_target:
+                type:
+                  - string
+                  - "null"
+              adcp_version:
+                type:
+                  - string
+                  - "null"
+              title:
+                type: string
+              category:
+                type:
+                  - string
+                  - "null"
+              track:
+                type:
+                  - string
+                  - "null"
+              status:
+                type: string
+                enum:
+                  - passing
+                  - failing
+                  - partial
+                  - untested
+              steps_passed:
+                type: integer
+              steps_total:
+                type: integer
+              last_tested_at:
+                type:
+                  - string
+                  - "null"
+              last_passed_at:
+                type:
+                  - string
+                  - "null"
+            required:
+              - storyboard_id
+              - title
+              - category
+              - track
+              - status
+              - steps_passed
+              - steps_total
+              - last_tested_at
+              - last_passed_at
+          description: Owner-scoped per-storyboard diagnostics used by the dashboard. Empty for non-owners.
         notices:
           type: array
           items: {}
@@ -1635,7 +1690,7 @@ components:
           type:
             - string
             - "null"
-          description: Requested compliance target from the run that produced this storyboard verdict, e.g. 3.1, 3.0, or 3.1-beta.
+          description: Requested compliance target from the run that produced this storyboard verdict, e.g. 3.0 or 3.1-beta.
         adcp_version:
           type:
             - string
@@ -6918,7 +6973,7 @@ paths:
                         description: Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh.
                       requested_compliance_target:
                         type: string
-                        description: Requested compliance target before alias resolution, e.g. 3.1, 3.0, or 3.1-beta. Present when `ran` is true.
+                        description: Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Present when `ran` is true.
                       adcp_version:
                         type: string
                         description: Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12 or 3.1.0-beta.7. Present when `ran` is true.
@@ -6929,7 +6984,7 @@ paths:
                         type: array
                         items:
                           type: string
-                        description: Public badge versions this run can issue, e.g. ['3.1', '3.0'].
+                        description: Public badge versions this run can issue, e.g. ['3.0'].
                       overall_status:
                         type: string
                         description: Aggregate verdict from the run (passing / failing / partial / unknown). Only present when `ran` is true.

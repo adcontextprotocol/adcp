@@ -1,0 +1,321 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.4/core/signal-definition-enrichment.json",
+  "title": "Signal Definition Enrichment",
+  "description": "Optional signal-definition enrichment fields that may be projected inline on signal listings when requested through get_signals.fields. This schema intentionally excludes signal identity and required definition fields so source-native, private, or compact listings can include typed partial disclosure without becoming a full adagents.json signal definition.",
+  "type": "object",
+  "properties": {
+    "restricted_attributes": {
+      "type": "array",
+      "description": "Restricted attribute categories this signal touches.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.4/enums/restricted-attribute.json"
+      },
+      "minItems": 1
+    },
+    "policy_categories": {
+      "type": "array",
+      "description": "Policy categories this signal is sensitive for.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "taxonomy": {
+      "type": "object",
+      "description": "Optional taxonomy metadata describing what this signal means in an external audience, content, retail-media, or provider-owned taxonomy.",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "format": "uri"
+        },
+        "version": {
+          "type": "string"
+        },
+        "segtax": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "etag": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "path": {
+                "type": "string"
+              },
+              "modifiers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["id"],
+            "additionalProperties": false
+          }
+        },
+        "value_mappings": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "taxonomy_value_id": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "modifiers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["value", "taxonomy_value_id"],
+            "additionalProperties": false
+          }
+        },
+        "parent_match_behavior": {
+          "type": "string",
+          "enum": ["exact_only", "descendants_supported", "unknown"]
+        }
+      },
+      "required": ["ref", "values"],
+      "additionalProperties": false
+    },
+    "segmentation_criteria": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "criteria_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "data_sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "app_behavior",
+          "app_usage",
+          "web_usage",
+          "geo_location",
+          "email",
+          "tv_ott_or_stb_device",
+          "panel",
+          "online_ecommerce",
+          "credit_data",
+          "loyalty_card",
+          "transaction",
+          "online_survey",
+          "offline_survey",
+          "public_record_census",
+          "public_record_voter_file",
+          "public_record_other",
+          "offline_transaction"
+        ]
+      }
+    },
+    "methodology": {
+      "type": "string",
+      "enum": ["observed", "declared", "derived", "inferred", "modeled"]
+    },
+    "audience_expansion": {
+      "type": "boolean"
+    },
+    "device_expansion": {
+      "type": "boolean"
+    },
+    "refresh_cadence": {
+      "type": "string",
+      "enum": ["intra_day", "daily", "weekly", "monthly", "bi_monthly", "quarterly", "bi_annually", "annually"]
+    },
+    "lookback_window": {
+      "type": "string",
+      "enum": ["intra_day", "daily", "weekly", "monthly", "bi_monthly", "quarterly", "bi_annually", "annually"]
+    },
+    "onboarder": {
+      "type": "object",
+      "properties": {
+        "match_keys": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": ["name", "address", "email", "postal", "lat_long", "mobile_id", "cookie_id", "ip", "customer_id", "phone"]
+          }
+        },
+        "pre_onboarding_audience_expansion": {
+          "type": "boolean"
+        },
+        "pre_onboarding_device_expansion": {
+          "type": "boolean"
+        },
+        "pre_onboarding_precision_level": {
+          "type": "string",
+          "enum": ["individual", "household", "business", "geography"]
+        }
+      },
+      "required": ["match_keys"],
+      "additionalProperties": false
+    },
+    "countries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "consent_basis": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.4/enums/consent-basis.json"
+      }
+    },
+    "art9_basis": {
+      "type": "string",
+      "enum": ["explicit_consent", "manifestly_made_public", "substantial_public_interest", "vital_interests"]
+    },
+    "modeling": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["lookalike", "supervised", "embedding", "rules"]
+        },
+        "seed_source": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["first_party_crm", "panel", "declared_survey", "transactional", "behavioral"]
+            },
+            "provider_signed": {
+              "type": "boolean",
+              "description": "Provider assertion that the seed source carries a signed attestation. Consumers MUST NOT treat this boolean alone as cryptographic proof."
+            }
+          },
+          "required": ["type", "provider_signed"],
+          "additionalProperties": false
+        },
+        "training_data_jurisdictions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          }
+        },
+        "ai_act_risk_class": {
+          "type": "string",
+          "enum": ["minimal", "limited", "high_risk"]
+        },
+        "disclosure": {
+          "$ref": "/schemas/3.1.0-rc.4/core/signal-modeling-disclosure.json"
+        }
+      },
+      "required": ["method", "seed_source", "training_data_jurisdictions", "ai_act_risk_class"],
+      "additionalProperties": false
+    },
+    "data_subject_rights": {
+      "type": "object",
+      "description": "Per-signal data-subject-rights routing. This is a contact/routing reference, not a machine-callable AdCP API.",
+      "properties": {
+        "upstream_source_domain": {
+          "type": "string",
+          "format": "hostname",
+          "maxLength": 253
+        },
+        "channels": {
+          "type": "array",
+          "minItems": 1,
+          "contains": {
+            "type": "object",
+            "properties": {
+              "rights": {
+                "type": "array",
+                "contains": {
+                  "enum": ["access", "erasure", "objection"]
+                }
+              }
+            },
+            "required": ["rights"]
+          },
+          "items": {
+            "type": "object",
+            "properties": {
+              "rights": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["access", "rectification", "erasure", "portability", "objection"]
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https://"
+              },
+              "email": {
+                "type": "string",
+                "format": "email"
+              },
+              "languages": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "countries": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{2}$"
+                }
+              }
+            },
+            "required": ["rights"],
+            "anyOf": [
+              { "required": ["url"] },
+              { "required": ["email"] }
+            ],
+            "additionalProperties": false
+          }
+        },
+        "response_sla_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 90
+        },
+        "ccpa_opt_out_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        }
+      },
+      "required": ["channels"],
+      "additionalProperties": false
+    },
+    "dts_compliant_version": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

@@ -556,6 +556,18 @@ function main() {
     process.exit(1);
   }
 
+  // Packaged-reference lint: authored storyboards may only point at files that
+  // ship in the versioned compliance tree. This catches source-tree-only
+  // references before they produce protocol tarballs that SDKs cannot load.
+  try {
+    execSync('node scripts/lint-compliance-packaged-refs.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Pagination invariant: schema examples and storyboard fixtures MUST NOT
   // teach the cursor↔has_more contradiction. has_more=true requires cursor;
   // has_more=false MUST omit cursor. See pagination-response.json.

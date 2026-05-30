@@ -65,8 +65,9 @@
     }
     .section-header {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       justify-content: space-between;
+      gap: var(--space-4);
       margin-bottom: var(--space-6);
     }
     .section-heading {
@@ -77,6 +78,26 @@
       color: var(--color-text-secondary);
       margin: 0;
       white-space: nowrap;
+    }
+    .section-more-link {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      color: var(--color-text-heading);
+      font-size: var(--text-sm);
+      font-weight: var(--font-bold);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .section-more-link::after {
+      content: "->";
+      font-weight: var(--font-bold);
+    }
+    .section-more-link:hover {
+      color: var(--color-brand);
+    }
+    .section-more-link[hidden] {
+      display: none;
     }
     .section-desc {
       font-size: var(--text-sm);
@@ -90,24 +111,6 @@
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: var(--space-6);
-    }
-    /* Horizontal scroll track for featured/report sections */
-    .scroll-track {
-      display: flex;
-      gap: var(--space-6);
-      overflow-x: auto;
-      scroll-snap-type: x mandatory;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-      padding-bottom: var(--space-2);
-    }
-    .scroll-track::-webkit-scrollbar { display: none; }
-    .scroll-track .card {
-      flex: 0 0 340px;
-      scroll-snap-align: start;
-    }
-    @media (max-width: 600px) {
-      .scroll-track .card { flex: 0 0 280px; }
     }
     .card {
       background: var(--color-bg-card);
@@ -309,6 +312,10 @@
       .stories-hero { padding: var(--space-8) var(--space-4) var(--space-3); }
       .stories-hero h1 { font-size: var(--text-2xl); }
       .content-section { padding-left: var(--space-4); padding-right: var(--space-4); }
+      .section-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
       .pill-tabs { justify-content: flex-start; }
     }
   </style>
@@ -340,6 +347,7 @@
     <div class="content-inner">
       <div class="section-header">
         <h2 class="section-heading">Stories</h2>
+        <a href="#" class="section-more-link" data-more-section="stories" hidden>Click here to view more content</a>
       </div>
       <p class="section-desc">Fictional scenarios, real protocol. See how agentic advertising plays out through the people building it.</p>
       <div class="card-grid" id="stories-grid">
@@ -385,9 +393,10 @@
     <div class="content-inner">
       <div class="section-header">
         <h2 class="section-heading">Reports &amp; Research</h2>
+        <a href="#" class="section-more-link" data-more-section="research" hidden>Click here to view more content</a>
       </div>
-      <p class="section-desc">Official reports, white papers, and analysis from the Agentic Advertising Organization.</p>
-      <div class="scroll-track" id="research-grid"></div>
+      <p class="section-desc">Official reports, white papers, and analysis from AgenticAdvertising.org.</p>
+      <div class="card-grid" id="research-grid"></div>
     </div>
   </section>
 
@@ -396,6 +405,7 @@
     <div class="content-inner">
       <div class="section-header">
         <h2 class="section-heading">Member Perspectives</h2>
+        <a href="#" class="section-more-link" data-more-section="perspectives" hidden>Click here to view more content</a>
       </div>
       <p class="section-desc">Analysis and commentary from the people building agentic advertising.</p>
       <div class="card-grid" id="perspectives-grid"></div>
@@ -486,13 +496,52 @@
       });
       buildPills();
       buildOriginFilter();
-      if (activeTopic !== 'all' || activeOrigin !== 'all') applyFilter(activeTopic, activeOrigin);
 
       var pillsBuilt = true;
 
       // Store perspective and news data for filtering
       var perspectiveItems = [];
       var newsItems = [];
+      var SECTION_PREVIEW_LIMIT = 6;
+      var expandedSections = {
+        stories: false,
+        research: false,
+        perspectives: false,
+      };
+
+      function applySectionPreview(sectionKey, matchingCards) {
+        var expanded = !!expandedSections[sectionKey];
+        var hasMore = matchingCards.length > SECTION_PREVIEW_LIMIT;
+        var moreLink = document.querySelector('[data-more-section="' + sectionKey + '"]');
+
+        matchingCards.forEach(function(card, index) {
+          if (!expanded && index >= SECTION_PREVIEW_LIMIT) {
+            card.hidden = true;
+          }
+        });
+
+        if (moreLink) {
+          moreLink.hidden = !hasMore || expanded;
+          moreLink.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        }
+
+        return expanded ? matchingCards.length : Math.min(matchingCards.length, SECTION_PREVIEW_LIMIT);
+      }
+
+      function wireMoreLinks() {
+        document.querySelectorAll('.section-more-link').forEach(function(link) {
+          link.addEventListener('click', function(e) {
+            e.preventDefault();
+            var sectionKey = link.getAttribute('data-more-section');
+            if (!sectionKey) return;
+            expandedSections[sectionKey] = true;
+            applyFilter(activeTopic, activeOrigin);
+          });
+        });
+      }
+
+      wireMoreLinks();
+      applyFilter(activeTopic, activeOrigin);
 
       function applyFilter(topic, origin) {
         if (topic !== undefined) activeTopic = topic;
@@ -517,36 +566,39 @@
         var totalVisible = 0;
 
         // Filter stories (origin = 'story', always show unless origin filter excludes)
-        var storiesVisible = 0;
+        var storyMatches = [];
         var showStories = activeOrigin === 'all';
         document.querySelectorAll('#stories-grid .card').forEach(function(card) {
           var show = showStories && matchesTopic(card.getAttribute('data-topics'), activeTopic);
           card.hidden = !show;
-          if (show) storiesVisible++;
+          if (show) storyMatches.push(card);
         });
+        var storiesVisible = applySectionPreview('stories', storyMatches);
         document.getElementById('stories-section').hidden = storiesVisible === 0;
         totalVisible += storiesVisible;
 
         // Filter research (official content)
-        var researchVisible = 0;
+        var researchMatches = [];
         var showResearch = activeOrigin === 'all' || activeOrigin === 'official';
         document.querySelectorAll('#research-grid .card').forEach(function(card) {
           var show = showResearch && matchesTopic(card.getAttribute('data-topics'), activeTopic);
           card.hidden = !show;
-          if (show) researchVisible++;
+          if (show) researchMatches.push(card);
         });
+        var researchVisible = applySectionPreview('research', researchMatches);
         var researchSection = document.getElementById('research-section');
         if (researchSection) researchSection.hidden = researchVisible === 0;
         totalVisible += researchVisible;
 
         // Filter member perspectives
-        var perspectivesVisible = 0;
+        var perspectiveMatches = [];
         var showMember = activeOrigin === 'all' || activeOrigin === 'member';
         document.querySelectorAll('#perspectives-grid .card').forEach(function(card) {
           var show = showMember && matchesTopic(card.getAttribute('data-topics'), activeTopic);
           card.hidden = !show;
-          if (show) perspectivesVisible++;
+          if (show) perspectiveMatches.push(card);
         });
+        var perspectivesVisible = applySectionPreview('perspectives', perspectiveMatches);
         document.getElementById('perspectives-section').hidden = perspectivesVisible === 0;
         totalVisible += perspectivesVisible;
 
@@ -707,7 +759,7 @@
 
           // Rebuild pills with perspective topics added
           buildPills();
-          if (activeTopic !== 'all' || activeOrigin !== 'all') applyFilter(activeTopic, activeOrigin);
+          applyFilter(activeTopic, activeOrigin);
         } catch (e) {
           // Pills already built from static stories; no rebuild needed
         }

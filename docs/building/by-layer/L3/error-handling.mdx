@@ -496,7 +496,7 @@ The wire-level `recovery: "correctable"` on the sandbox-only path is the registe
 | `PROPOSAL_EXPIRED` | correctable | Referenced proposal has passed its `expires_at` | Run `get_products` to get a fresh proposal |
 | `PROPOSAL_NOT_FOUND` | correctable | `proposal_id` is unknown to the seller (never finalized, wrong tenant, or evicted from cache) | Re-issue `get_products` with `buying_mode: "refine"` + `action: "finalize"` to obtain a current proposal_id |
 | `MULTI_FINALIZE_UNSUPPORTED` | correctable | `refine[]` carried multiple `action: "finalize"` entries; seller cannot guarantee atomic multi-proposal commit | Sequence single-proposal finalize calls (one finalize per `get_products` call) |
-| `REQUOTE_REQUIRED` | correctable | Requested update falls outside the envelope (budget, dates, volume, targeting) the original quote was priced against; `pricing_option` remains locked | Call `get_products` with `buying_mode: "refine"` against the existing `proposal_id`, then resubmit against the new `proposal_id` |
+| `REQUOTE_REQUIRED` | correctable | Requested update falls outside the envelope (budget, dates, volume, targeting) the original quote was priced against; `pricing_option` remains locked | Adjust the update to fit the current quote, rediscover products/terms, add packages when available, or create a separate media buy. 3.1 does not define an amendment-quote artifact for `update_media_buy`. |
 | `SIGNAL_NOT_FOUND` | correctable | Referenced signal does not exist in the catalog | Verify `signal_id` via `get_signals`, or confirm availability from this agent |
 | `AUDIENCE_TOO_SMALL` | correctable | Audience segment below minimum size | Broaden targeting or upload more audience members |
 

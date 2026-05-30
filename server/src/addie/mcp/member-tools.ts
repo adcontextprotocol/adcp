@@ -64,6 +64,7 @@ import {
   withHostedTestOptions,
   isDefaultHostedComplianceTarget,
   badgeEligibleVersionsForHostedComplianceTarget,
+  agentAdvertisesBadgeEligibleHostedComplianceTarget,
 } from '../../services/hosted-compliance-version.js';
 import { AgentContextDatabase, validateAuthTokenChars, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
@@ -130,7 +131,7 @@ function targetFromInput(input: Record<string, unknown>): ReturnType<typeof host
       ? hostedComplianceTarget(requested.trim())
       : complianceTarget;
   } catch {
-    throw new ToolError('Invalid compliance_target. Use 3.1, 3.0, 3.1-beta, or an exact bundled version.');
+    throw new ToolError('Invalid compliance_target. Use 3.0, 3.1-beta, or an exact bundled version.');
   }
 }
 
@@ -561,6 +562,21 @@ function wrapUntrusted(source: string, content: string): string {
 
 function sanitizeInline(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+function sanitizeAuthorizationError(raw: string): string {
+  const withoutMarkdown = neutralizeAndTruncate(raw, 400)
+    .replace(/[\\`*_{}\[\]<>()#+\-.!|]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!withoutMarkdown) {
+    return 'Unknown error';
+  }
+
+  return withoutMarkdown.length > 200
+    ? withoutMarkdown.slice(0, 200)
+    : withoutMarkdown;
 }
 
 function normalizePricingModel(pm: string): string {
@@ -1107,13 +1123,17 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'check_publisher_authorization',
     description:
-      'Check if a publisher domain has authorized a specific agent.',
-    usage_hints: 'use for authorization verification, "is my agent authorized?"',
+      'Check if a publisher domain has authorized a specific agent. Results are cached briefly; pass force_refresh: true after the publisher changes adagents.json to bypass the cache.',
+    usage_hints: 'use for authorization verification, "is my agent authorized?". If the result is negative and the user says they just updated adagents.json, proactively offer to rerun with force_refresh: true.',
     input_schema: {
       type: 'object',
       properties: {
         domain: { type: 'string', description: 'Publisher domain' },
         agent_url: { type: 'string', description: 'Agent URL' },
+        force_refresh: {
+          type: 'boolean',
+          description: 'Bypass the cached authorization result and fetch the publisher adagents.json live.',
+        },
       },
       required: ['domain', 'agent_url'],
     },
@@ -1141,7 +1161,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to evaluate' },
         tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable, driven by the agent\'s get_adcp_capabilities response)' },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1" for the badge-eligible default line, "3.0" for a diagnostic 3.0 run, or "3.1-beta" for an explicit beta diagnostic run. Defaults to 3.1.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" for a badge-eligible stable line or "3.1-beta" for an explicit beta diagnostic run. Defaults to 3.0.' },
       },
       required: ['agent_url'],
     },
@@ -1248,7 +1268,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to discover and recommend storyboards for' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.1", "3.0", or "3.1-beta". Defaults to 3.1.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
       },
       required: ['agent_url'],
     },
@@ -1262,7 +1282,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         storyboard_id: { type: 'string', description: 'Storyboard ID (from recommend_storyboards)' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.1", "3.0", or "3.1-beta". Defaults to 3.1.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
       },
       required: ['storyboard_id'],
     },
@@ -1278,7 +1298,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL to test' },
         storyboard_id: { type: 'string', description: 'Storyboard ID to run' },
         dry_run: { type: 'boolean', description: 'If true (default), use test data that won\'t affect production state', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1", "3.0", or "3.1-beta". Defaults to 3.1. Explicit non-default targets are diagnostic-only.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" or "3.1-beta". Defaults to 3.0. Explicit non-default targets are diagnostic-only.' },
       },
       required: ['agent_url', 'storyboard_id'],
     },
@@ -1296,7 +1316,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         step_id: { type: 'string', description: 'Step ID to run (from storyboard detail or previous step\'s next.step_id)' },
         context: { type: 'object', description: 'Accumulated context from previous step (pass the context field from the previous run_storyboard_step result)', additionalProperties: true },
         dry_run: { type: 'boolean', description: 'If true (default), use test data', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1", "3.0", or "3.1-beta". Defaults to 3.1. Explicit non-default targets are diagnostic-only.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" or "3.1-beta". Defaults to 3.0. Explicit non-default targets are diagnostic-only.' },
       },
       required: ['agent_url', 'storyboard_id', 'step_id'],
     },
@@ -3678,10 +3698,11 @@ export function createMemberToolHandlers(
   handlers.set('check_publisher_authorization', async (input) => {
     const domain = input.domain as string;
     const agentUrl = input.agent_url as string;
+    const forceRefresh = input.force_refresh === true;
 
     let data;
     try {
-      data = await adagentsValidator.validate(domain, agentUrl);
+      data = await adagentsValidator.validate(domain, agentUrl, undefined, forceRefresh);
     } catch (err) {
       throw new ToolError(`Failed to check authorization: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -3699,12 +3720,13 @@ export function createMemberToolHandlers(
     } else {
       response += `❌ **Not Authorized.** This agent is NOT listed in ${data.domain}'s adagents.json.\n`;
       if (data.error) {
-        response += `\n**Reason:** ${data.error}\n`;
+        response += `\n**Reason:** ${sanitizeAuthorizationError(data.error)}\n`;
       }
       response += `\n### To Fix This\n`;
       response += `1. The publisher needs to add this agent to their adagents.json file\n`;
       response += `2. The file should be at: https://${data.domain}/.well-known/adagents.json\n`;
       response += `3. Use validate_adagents to check the publisher's current configuration\n`;
+      response += `4. If the publisher just updated the file, rerun this check with force_refresh: true\n`;
     }
 
     return response;
@@ -3727,8 +3749,7 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const tracks = input.tracks as ComplianceTrack[] | undefined;
     const runTarget = targetFromInput(input);
-    const writesCanonicalComplianceState = isDefaultHostedComplianceTarget(runTarget);
-    let skippedCanonicalWriteForTarget = false;
+    let skippedCanonicalWriteReason: 'target' | 'tracks' | null = null;
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
@@ -3756,6 +3777,11 @@ export function createMemberToolHandlers(
 
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions, runTarget);
+      const writesCanonicalComplianceState = isDefaultHostedComplianceTarget(runTarget) ||
+        agentAdvertisesBadgeEligibleHostedComplianceTarget(
+          result.agent_profile.adcp_supported_versions,
+          runTarget,
+        );
 
       // Surface OAuth-required short-circuit. comply() doesn't throw on auth
       // failures — it pushes a `category: 'auth'` observation and runs a
@@ -3853,6 +3879,7 @@ export function createMemberToolHandlers(
                     agentUrl: resolved.resolvedUrl,
                     declaredSpecialisms,
                     runId: tracks ? null : run.id,
+                    adcpVersions: badgeEligibleVersionsForHostedComplianceTarget(runTarget),
                   });
                 } catch (badgeError) {
                   logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Badge fan-out failed after owner_test run');
@@ -3863,9 +3890,9 @@ export function createMemberToolHandlers(
             logger.warn({ error, agentUrl: resolved.resolvedUrl }, 'Could not write owner test result to canonical compliance state');
           }
         } else if (isAgentOwner && writesCanonicalComplianceState && tracks) {
-          skippedCanonicalWriteForTarget = true;
+          skippedCanonicalWriteReason = 'tracks';
         } else if (isAgentOwner) {
-          skippedCanonicalWriteForTarget = true;
+          skippedCanonicalWriteReason = 'target';
         }
 
         // Legacy write to agent_contexts + agent_test_history. Retained ONLY
@@ -3916,8 +3943,10 @@ export function createMemberToolHandlers(
       output += `## Quality Evaluation: ${safeName || resolved.resolvedUrl}\n\n`;
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
       output += `**Compliance target:** ${formatComplianceTarget(runTarget, result.adcp_version ?? runTarget.version, { includeBadgeEligibility: true })}\n`;
-      if (skippedCanonicalWriteForTarget) {
-        output += `_Explicit non-default compliance targets are diagnostic only; public compliance status and badges were not updated._\n`;
+      if (skippedCanonicalWriteReason === 'tracks') {
+        output += `_Track-filtered evaluations are diagnostic slices; public compliance status and badges were not updated._\n`;
+      } else if (skippedCanonicalWriteReason === 'target') {
+        output += `_This compliance target is diagnostic only for this agent; public compliance status and badges were not updated._\n`;
       }
       const safeTools = (result.agent_profile.tools || []).map(t => sanitizeAgentField(t, 80)).filter(Boolean);
       output += `**Tools:** ${safeTools.length} (${safeTools.join(', ')})\n`;

@@ -28,12 +28,17 @@
         "context": {
           "$ref": "/schemas/core/context.json"
         },
+        "signed_response": {
+          "$ref": "#/definitions/signed_response",
+          "description": "Payload-envelope JWS attesting the canonical bulk success response for verify_brand_claims. The signed payload response MUST match the unsigned task-body fields on this response, excluding signed_response and protocol/version envelope fields."
+        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
       },
       "required": [
-        "results"
+        "results",
+        "signed_response"
       ],
       "additionalProperties": true,
       "not": {
@@ -82,6 +87,71 @@
   ],
   "properties": {},
   "definitions": {
+    "signed_response": {
+      "allOf": [
+        {
+          "$ref": "/schemas/core/response-payload-jws-envelope.json"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "payload": {
+              "type": "object",
+              "properties": {
+                "task": {
+                  "type": "string",
+                  "const": "verify_brand_claims"
+                },
+                "response": {
+                  "$ref": "#/definitions/signed_success_payload"
+                }
+              },
+              "required": [
+                "task",
+                "response"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "signed_success_payload": {
+      "type": "object",
+      "description": "Canonical bulk task-body success payload signed inside signed_response.payload.response. Excludes protocol/version envelope fields and signed_response itself.",
+      "properties": {
+        "results": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/result_entry"
+          }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "results"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "errors"
+            ]
+          },
+          {
+            "required": [
+              "signed_response"
+            ]
+          }
+        ]
+      }
+    },
     "result_entry": {
       "type": "object",
       "description": "One entry in `results[]`. Either a per-claim success (claim_type + status + optional details/context_note) or a per-claim error (error field only). Mirrors the single-target `verify_brand_claim` response success arm shape.",

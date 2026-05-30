@@ -165,6 +165,10 @@ function isValidSlug(slug: string): boolean {
   return /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(slug.toLowerCase());
 }
 
+function formatPublicMemberCount(count: number): string {
+  return `${Math.max(0, Math.trunc(count))}+`;
+}
+
 /**
  * Extract publisher validation stats from adagents.json validation result
  */
@@ -811,6 +815,8 @@ export class HTTPServer {
         // redirect through AAO to pick up the session (if one exists).
         if (this.bridgeIfNeeded(req, res)) return;
 
+        html = await this.injectHomepageMemberCount(html);
+
         // Get user from session (if authenticated), passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
@@ -916,6 +922,20 @@ export class HTTPServer {
     return false;
   }
 
+  private async injectHomepageMemberCount(html: string, memberDb = new MemberDatabase()): Promise<string> {
+    if (!html.includes('{{PUBLIC_MEMBER_COUNT_PLUS}}')) {
+      return html;
+    }
+
+    try {
+      const memberCount = await memberDb.countPublicProfiles();
+      return html.replace(/\{\{PUBLIC_MEMBER_COUNT_PLUS\}\}/g, formatPublicMemberCount(memberCount));
+    } catch (error) {
+      logger.warn({ error }, 'Failed to inject dynamic homepage member count');
+      return html.replace(/\{\{PUBLIC_MEMBER_COUNT_PLUS\}\}/g, process.env.PUBLIC_MEMBER_COUNT_FALLBACK || '80+');
+    }
+  }
+
   /**
    * Serve an HTML file with APP_CONFIG injected.
    * This ensures clean URL routes (like /membership) get the same config injection
@@ -938,6 +958,7 @@ export class HTTPServer {
 
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
+      html = await this.injectHomepageMemberCount(html);
       const configScript = getAppConfigScript(user);
 
       // Inject before </head>
@@ -8421,7 +8442,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // GET /api/members/carousel - Get member profiles for homepage carousel
     this.app.get('/api/members/carousel', async (req, res) => {
       try {
-        const profiles = await memberDb.getCarouselProfiles();
+        const [profiles, memberCount] = await Promise.all([
+          memberDb.getCarouselProfiles(),
+          memberDb.countPublicProfiles(),
+        ]);
 
         // Batch-fetch all brand data in two queries to avoid pool exhaustion.
         // Brand-primary domains come from the Stage 1 resolver (org_domains.is_primary
@@ -8446,7 +8470,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           }
         }
 
-        res.json({ members: profiles });
+        res.json({
+          members: profiles,
+          member_count: memberCount,
+          member_count_label: formatPublicMemberCount(memberCount),
+        });
       } catch (error) {
         logger.error({ err: error }, 'Get carousel members error');
         res.status(500).json({

@@ -214,6 +214,31 @@ function validateRegistryConsistency() {
   return true;
 }
 
+function collectKeywordOccurrences(value, keyword, location, occurrences = []) {
+  if (!value || typeof value !== 'object') {
+    return occurrences;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, keyword)) {
+    occurrences.push({
+      location,
+      value: value[keyword]
+    });
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      collectKeywordOccurrences(item, keyword, `${location}/${index}`, occurrences);
+    });
+  } else {
+    for (const [key, child] of Object.entries(value)) {
+      collectKeywordOccurrences(child, keyword, `${location}/${key}`, occurrences);
+    }
+  }
+
+  return occurrences;
+}
+
 // Main test execution
 async function runTests() {
   log('🧪 Starting JSON Schema Validation Tests', 'info');
@@ -269,6 +294,19 @@ async function runTests() {
   // Test 4: Validate registry consistency
   await test('Schema registry is consistent with actual schemas', () => {
     return validateRegistryConsistency();
+  });
+
+  // Test 4B: Validate ADCP open-payload annotations
+  await test('x-adcp-open-payload annotations use currently supported values', () => {
+    for (const [schemaPath, schema] of schemas) {
+      const occurrences = collectKeywordOccurrences(schema, 'x-adcp-open-payload', path.basename(schemaPath));
+      for (const occurrence of occurrences) {
+        if (occurrence.value !== true) {
+          return `${occurrence.location}: x-adcp-open-payload must be true; false is reserved and omission means unclassified`;
+        }
+      }
+    }
+    return true;
   });
 
   // Test 5: Validate enum schemas
@@ -629,6 +667,91 @@ async function runTests() {
 
     if (!validateComplyResponse(response)) {
       return `JCS_NON_FINITE_NUMBER response unexpectedly failed validation: ${validateComplyResponse.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    return true;
+  });
+
+  // Test 11B: Validate comply_test_controller scenario strings are open for extension
+  await test('Compliance scenario fields accept custom scenario strings', async () => {
+    const complyRequestSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'compliance/comply-test-controller-request.json'));
+    const complyResponseSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'compliance/comply-test-controller-response.json'));
+    const capabilitiesSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-response.json'));
+
+    if (complyRequestSchema.properties?.scenario?.enum) {
+      return 'comply_test_controller request scenario must remain an open string, not a closed enum';
+    }
+    if (complyRequestSchema.properties?.scenario?.type !== 'string') {
+      return 'comply_test_controller request scenario must remain typed as string';
+    }
+    const listScenariosResponse = complyResponseSchema.oneOf?.find(branch => branch.title === 'ListScenariosSuccess');
+    if (!listScenariosResponse) {
+      return 'ListScenariosSuccess branch missing from comply_test_controller response schema; selector is out of date';
+    }
+    const listScenariosResponseItems = listScenariosResponse?.properties?.scenarios?.items;
+    if (listScenariosResponseItems?.enum) {
+      return 'comply_test_controller list_scenarios response items must remain open strings, not a closed enum';
+    }
+    if (listScenariosResponseItems?.type !== 'string') {
+      return 'comply_test_controller list_scenarios response items must remain typed as string';
+    }
+    const capabilityScenarioItems = capabilitiesSchema.properties?.compliance_testing?.properties?.scenarios?.items;
+    if (capabilityScenarioItems?.enum) {
+      return 'compliance_testing.scenarios items must remain open strings, not a closed enum';
+    }
+    if (capabilityScenarioItems?.type !== 'string') {
+      return 'compliance_testing.scenarios items must remain typed as string';
+    }
+
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validateComplyRequest = await testAjv.compileAsync(complyRequestSchema);
+    const customScenarioRequest = {
+      scenario: 'seller_custom_fixture_reset',
+      params: {
+        fixture_scope: 'all'
+      },
+      account: {
+        sandbox: true
+      }
+    };
+    if (!validateComplyRequest(customScenarioRequest)) {
+      return `custom comply_test_controller scenario unexpectedly failed validation: ${validateComplyRequest.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const validateComplyResponse = await testAjv.compileAsync(complyResponseSchema);
+    const customScenarioResponse = {
+      status: 'completed',
+      success: true,
+      scenarios: ['force_creative_status', 'seller_custom_fixture_reset']
+    };
+    if (!validateComplyResponse(customScenarioResponse)) {
+      return `custom list_scenarios response unexpectedly failed validation: ${validateComplyResponse.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const validateCapabilities = await testAjv.compileAsync(capabilitiesSchema);
+    const customScenarioCapabilities = {
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: {
+          supported: false
+        }
+      },
+      supported_protocols: ['media_buy'],
+      compliance_testing: {
+        scenarios: ['force_creative_status', 'seller_custom_fixture_reset']
+      }
+    };
+    if (!validateCapabilities(customScenarioCapabilities)) {
+      return `custom compliance_testing scenario unexpectedly failed validation: ${validateCapabilities.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
     }
 
     return true;

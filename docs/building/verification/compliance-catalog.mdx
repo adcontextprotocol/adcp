@@ -28,13 +28,14 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | `version-negotiation` | Release-precision `adcp.supported_versions` advertisement and response-envelope `adcp_version` echo; advisory in 3.1, promoted in later cuts |
 | `v3-envelope-integrity` | v3 protocol envelopes MUST NOT carry the v2 legacy `task_status` or `response_status` fields — `status` is the single canonical lifecycle field in v3. |
 | `error-compliance` | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
-| `error-compliance-signals` | Error handling for signals protocol — nonexistent signal IDs, missing fields, VERSION_UNSUPPORTED, transport binding; gated on `get_signals` + `activate_signal` |
+| `error-compliance-signals` | Error handling for signals protocol — nonexistent signal IDs, missing fields, VERSION_UNSUPPORTED, transport binding; discovery phases are gated on `get_signals`; activation phases run only for agents that claim activation support such as `signal-marketplace` |
 | `stale-response-advisory` | `STALE_RESPONSE` wire placement — advisory rides in `errors[]` on a populated success response with transport success preserved; stale-cache forcing steps gated on `comply_test_controller` with `force_upstream_unavailable` |
 | `idempotency` | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
 | `read-tool-idempotency` | Read-only task wrappers accept the 3.1 every-request `idempotency_key` envelope without strict request-wrapper rejection; includes the 3.1 omitted-key grace probe. |
 | `canonical-format-validate-input` | Canonical-format `validate_input` result semantics — structural pass/fail across required slots and `unvalidatable_nondeterministic` for seeded product declarations. Gated on agents that advertise `validate_input`; the seeded-product branch also requires `comply_test_controller` seeding support. |
 | `security` | **Authentication baseline — unauth rejection, static-credential enforcement (Bearer API key or HTTP Basic), OAuth discovery + RFC 9728 audience binding.** See [Authentication](/docs/building/by-layer/L2/authentication). |
 | `webhook-emission` | Outbound webhook conformance — stable `idempotency_key` across retries; RFC 9421 webhook signing (or HMAC fallback if the buyer opted in). Runs for any agent that accepts `push_notification_config` on any operation. |
+| `webhook-receiver-envelope` | Buyer receiver replay conformance: accepts full MCP webhook envelopes, rejects bare delivery-result payloads, verifies signatures over raw body bytes, and dedupes retries by `idempotency_key`. |
 | `notification-config-event-scope` | `sync_accounts.accounts[].notification_configs[]` semantic validation — account-level subscribers reject media-buy-anchored notification types (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) even though they are valid values in the shared notification-type enum. |
 | `notification-config-lifecycle` | Account-level `notification_configs[]` lifecycle on `sync_accounts`: paused registration, durable `list_accounts` echo, subscriber-keyed replacement, and clear-all semantics. |
 | `notification-config-rejections` | Semantic `notification_configs[]` request rejection path for duplicate `subscriber_id` values. |
@@ -71,6 +72,7 @@ Top-level agent capability claims. An agent claims a protocol by listing it in `
 | `governance` | `protocols/governance/` | Property governance, brand standards, compliance |
 | `brand` | `protocols/brand/` | Brand identity, rights discovery, rights acquisition *— small protocol today, growing with rights licensing work; see `brand-rights` specialism.* |
 | `sponsored_intelligence` | `protocols/sponsored-intelligence/` | AI-mediated commerce and conversational sponsored experiences |
+| `measurement` | Preview / no stable baseline | Experimental 3.1 metric-catalog discovery. Agents implementing it must list `measurement.core` in `experimental_features`. |
 
 <Note>
 Support for the [compliance test controller](/docs/building/by-layer/L3/comply-test-controller) is declared via the `capabilities.compliance_testing` block on `get_adcp_capabilities`, not via `supported_protocols`. Compliance testing is an RPC surface for the test harness, not a functional protocol.
@@ -131,8 +133,8 @@ Specialisms are grouped below by parent protocol.
 
 | Specialism | Status | Purpose |
 |-----------|--------|---------|
-| `signal-owned` | stable | Owned signal agent exposing first-party segments |
-| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data |
+| `signal-owned` | stable | Owned signal agent exposing first-party segments through `get_signals`; activation is not required for this claim |
+| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data; requires `get_signals` and `activate_signal` |
 
 ### governance
 
@@ -145,7 +147,7 @@ Specialisms are grouped below by parent protocol.
 | `governance-spend-authority` | stable | Conditional spend approval and human-in-the-loop governance |
 
 <Note>
-**Coming in 3.1.** `measurement-verification` (third-party viewability, attribution, brand-safety, and SI-outcome verification) is scheduled for 3.1 under a dedicated `measurement` protocol.
+**Experimental in 3.1.** Measurement metric-catalog discovery is available through the experimental `measurement` capability block and `measurement.core` experimental feature. A stable `measurement-verification` specialism and baseline storyboard are deferred until the measurement task surface is frozen.
 </Note>
 
 ### brand
@@ -188,11 +190,11 @@ Three specialisms apply to specific delivery channels and have their own storybo
 
 <Step title="Set media_buy.supports_proposals (sales-guaranteed only)">
 
-`media_buy.supports_proposals` is a boolean in the `media_buy` capabilities block of your `get_adcp_capabilities` response. It gates whether the `proposal_finalize` compliance scenario runs.
+`media_buy.supports_proposals` is a boolean in the `media_buy` capabilities block of your `get_adcp_capabilities` response. It gates whether the `proposal_finalize` compliance scenario runs. It is a conformance declaration, not the buyer's per-proposal routing signal: buyers decide whether a returned proposal can be bought from `proposal_status`.
 
 | If you… | Set |
 |---|---|
-| Accept RFPs, generate proposals, and finalize to committed status before IO | `media_buy.supports_proposals: true` |
+| Accept RFPs, generate proposals, and finalize draft proposals to committed status before create | `media_buy.supports_proposals: true` |
 | Sell direct-buy guaranteed only (auction PG, retail SKU, quoted-rate — no RFP flow) | `media_buy.supports_proposals: false` (or omit — default is `false`) |
 
 ```jsonc
@@ -233,8 +235,8 @@ Three specialisms apply to specific delivery channels and have their own storybo
 
 | Specialism | Status | Purpose |
 |-----------|--------|---------|
-| `signal-owned` | stable | Owned signal agent exposing first-party segments |
-| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data |
+| `signal-owned` | stable | Owned signal agent exposing first-party segments through `get_signals`; activation is not required for this claim |
+| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data; requires `get_signals` and `activate_signal` |
 
 ### governance
 
@@ -247,7 +249,7 @@ Three specialisms apply to specific delivery channels and have their own storybo
 | `governance-spend-authority` | stable | Conditional spend approval and human-in-the-loop governance |
 
 <Note>
-**Coming in 3.1.** `measurement-verification` (third-party viewability, attribution, brand-safety, and SI-outcome verification) is scheduled for 3.1 under a dedicated `measurement` protocol.
+**Experimental in 3.1.** Measurement metric-catalog discovery is available through the experimental `measurement` capability block and `measurement.core` experimental feature. A stable `measurement-verification` specialism and baseline storyboard are deferred until the measurement task surface is frozen.
 </Note>
 
 ### brand

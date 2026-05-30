@@ -14,9 +14,11 @@ import {
 import {
   DEFAULT_HOSTED_COMPLIANCE_LINE,
   DEFAULT_HOSTED_COMPLIANCE_VERSION,
+  badgeEligibleVersionsForHostedComplianceTarget,
   hostedComplianceOptions,
   hostedComplianceTarget,
   isDefaultHostedComplianceTarget,
+  agentAdvertisesBadgeEligibleHostedComplianceTarget,
   withHostedComplianceOptions,
 } from '../../src/services/hosted-compliance-version.js';
 import {
@@ -156,10 +158,10 @@ describe('wrapper contract', () => {
     const target = hostedComplianceTarget();
     const index = loadComplianceIndex(hostedComplianceOptions(target));
     expect(index.adcp_version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
-    expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.1');
+    expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.0');
     expect(target.requested).toBe(DEFAULT_HOSTED_COMPLIANCE_LINE);
     expect(target.version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
-    expect(target.version).toMatch(/^3\.1\.(?:\d+|0-beta\.\d+)$/);
+    expect(target.version).toMatch(/^3\.0\.\d+$/);
     expect(isDefaultHostedComplianceTarget(target)).toBe(true);
   });
 
@@ -173,9 +175,27 @@ describe('wrapper contract', () => {
     expect(beta.version).toMatch(/^3\.1\.0-beta\.\d+$/);
   });
 
-  it('keeps explicit non-default targets diagnostic-only', () => {
-    expect(isDefaultHostedComplianceTarget(hostedComplianceTarget('3.0'))).toBe(false);
+  it('keeps explicit beta targets diagnostic-only', () => {
+    expect(isDefaultHostedComplianceTarget(hostedComplianceTarget('3.0'))).toBe(true);
     expect(isDefaultHostedComplianceTarget(hostedComplianceTarget('3.1-beta'))).toBe(false);
+    expect(badgeEligibleVersionsForHostedComplianceTarget(hostedComplianceTarget('3.0'))).toEqual(['3.0']);
+    expect(badgeEligibleVersionsForHostedComplianceTarget(hostedComplianceTarget('3.1-beta'))).toEqual([]);
+  });
+
+  it('recognizes badge-eligible line targets advertised by the agent', () => {
+    const stableLine = hostedComplianceTarget('3.0');
+    const exactHistoricalCache = hostedComplianceTarget('3.0.5');
+
+    expect(badgeEligibleVersionsForHostedComplianceTarget(stableLine)).toEqual(['3.0']);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.0'], stableLine)).toBe(true);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.0.5'], stableLine)).toBe(true);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.1'], stableLine)).toBe(false);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.0-beta.1'], stableLine)).toBe(false);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(undefined, stableLine)).toBe(false);
+
+    expect(isDefaultHostedComplianceTarget(exactHistoricalCache)).toBe(false);
+    expect(badgeEligibleVersionsForHostedComplianceTarget(exactHistoricalCache)).toEqual([]);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.0.5'], exactHistoricalCache)).toBe(false);
   });
 
   it('rejects unsupported compliance targets before path resolution', () => {
@@ -190,37 +210,21 @@ describe('wrapper contract', () => {
     expect(options.complianceDir).toContain(target.version);
   });
 
-  it('lets only the default hosted prerelease cache run for sellers advertising the stable line', () => {
-    const defaultTarget = hostedComplianceTarget('3.1');
+  it('does not let explicit beta targets run for sellers advertising only the future stable line', () => {
+    const defaultTarget = hostedComplianceTarget('3.0');
     const betaTarget = hostedComplianceTarget('3.1-beta');
-    const defaultIsPrerelease = /-/.test(defaultTarget.version);
 
-    expect(isComplianceVersionSupported(defaultTarget.version, ['3.1'])).toBe(!defaultIsPrerelease);
-    expect(isComplianceVersionSupported(
-      defaultTarget.version,
-      ['3.1'],
-      hostedComplianceOptions(defaultTarget),
-    )).toBe(true);
-    expect(isComplianceVersionSupported(
-      betaTarget.version,
-      ['3.1'],
-      hostedComplianceOptions(betaTarget),
-    )).toBe(!/-/.test(betaTarget.version));
+    expect(isComplianceVersionSupported(defaultTarget.version, ['3.0'])).toBe(true);
 
-    const rawTarget = hostedComplianceTarget('3.1');
-    const { hostedStableLineAlias: _hostedStableLineAlias, ...rawOptions } = hostedComplianceOptions(rawTarget);
+    const rawTarget = hostedComplianceTarget('3.0');
     const rawResolve = () => resolveStoryboardsForCapabilities({
-      supported_versions: ['3.1'],
-    }, rawOptions);
-    if (defaultIsPrerelease) {
-      expect(rawResolve).toThrow(/not supported by this seller/);
-    } else {
-      expect(rawResolve).not.toThrow();
-    }
+      supported_versions: ['3.0'],
+    }, hostedComplianceOptions(rawTarget));
+    expect(rawResolve).not.toThrow();
 
-    const target = hostedComplianceTarget('3.1');
+    const target = hostedComplianceTarget('3.0');
     const caps = {
-      supported_versions: ['3.1'],
+      supported_versions: ['3.0'],
     };
     const resolved = resolveStoryboardsForCapabilities({
       supported_versions: caps.supported_versions,
@@ -308,5 +312,9 @@ describe('getStoryboardsForVersion', () => {
 
   it('getStoryboardIdsForVersion returns the same length as getStoryboardsForVersion', () => {
     expect(getStoryboardIdsForVersion('3.0').length).toBe(getStoryboardsForVersion('3.0').length);
+  });
+
+  it('does not reuse the 3.0 cache for unavailable future stable badge lines', () => {
+    expect(getStoryboardsForVersion('3.1')).toEqual([]);
   });
 });

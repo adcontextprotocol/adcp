@@ -26,7 +26,7 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | `v3-envelope-integrity` | v3 protocol envelopes MUST NOT carry the v2 legacy `task_status` or `response_status` fields — `status` is the single canonical lifecycle field in v3. |
 | `error-compliance` | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
 | `idempotency` | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
-| `security` | **Authentication baseline — unauth rejection, API key enforcement, OAuth discovery + RFC 9728 audience binding.** See [Authentication](/dist/docs/3.0.2/building/integration/authentication). |
+| `security` | **Authentication baseline — unauth rejection, static-credential enforcement (Bearer API key or HTTP Basic), OAuth discovery + RFC 9728 audience binding.** See [Authentication](/dist/docs/3.0.2/building/integration/authentication). |
 | `webhook-emission` | Outbound webhook conformance — stable `idempotency_key` across retries; RFC 9421 webhook signing (or HMAC fallback if the buyer opted in). Runs for any agent that accepts `push_notification_config` on any operation. |
 | `pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_creatives` response from a continuation page through to terminal. |
 | `get-signals-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `get_signals` response under a broad query — page 1 must be non-terminal against any non-trivial catalog, page 2 follows the cursor. |
@@ -37,6 +37,7 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | `collection-lists-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_collection_lists` response — storyboard bootstraps three collection lists via `create_collection_list`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
 | `property-lists-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_property_lists` response — storyboard bootstraps three property lists via `create_property_list`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
 | `deterministic-testing` | `comply_test_controller` state-machine verification — skipped if `capabilities.compliance_testing.supported: false`. |
+| `comply-controller-mode-gate` | `comply_test_controller` live-mode denial gate — verifies sellers return `FORBIDDEN` when a live-mode account calls the controller; skipped for agents that do not expose `comply_test_controller`. |
 | `signed-requests` | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
 
 Capability-gated rows (`deterministic-testing`, `signed-requests`) are skipped only when the agent advertises the capability as `false`; they cannot be claimed and partially implemented. Declaring `supported: true` and failing the storyboard is non-conformant — declare `false` rather than ship a partial implementation.

@@ -464,7 +464,7 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 
 ### measurement
 
-Measurement protocol capabilities. Only present if `measurement` is in `supported_protocols`. The `measurement` protocol is in development — currently scoped to `get_adcp_capabilities` for catalog discovery (this block); additional measurement tasks (reporting, attribution, panel queries) and a baseline compliance storyboard land in subsequent minors. The capability block is shipping now so measurement vendors can publish their per-metric catalogs and AAO can crawl them, before the broader task surface is settled.
+Experimental measurement protocol capabilities. Only present if `measurement` is in `supported_protocols`; agents implementing it must also list `measurement.core` in `experimental_features`. The `measurement` protocol is currently scoped to `get_adcp_capabilities` for catalog discovery (this block); additional measurement tasks (reporting, attribution, panel queries) and a baseline compliance storyboard land in subsequent minors. The capability block is shipping now so measurement vendors can publish their per-metric catalogs and AAO can crawl them, before the broader task surface is settled.
 
 **Scope.** An agent claiming `measurement` computes one or more quantitative metrics about ad delivery, exposure, or effect (impression verification, viewability, IVT, attention, brand lift, incrementality, outcomes, emissions — vendors define the surface in `metrics[]`). Returns metric definitions (this block), not pricing or coverage (negotiated per buy via `measurement_terms`) and not live values (returned per buy via `vendor_metric_values`). Same mechanical model as `compliance_testing` and `webhook_signing`: presence asserts the capability; the block carries the structured payload.
 
@@ -522,7 +522,7 @@ Compliance testing capabilities. The presence of this block declares that the ag
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `scenarios` | string[] | Compliance testing scenarios this agent supports. Values mirror the canonical controller enum except for `list_scenarios`, which is a discovery operation rather than a test capability. Current values include `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_create_media_buy_arm`, `force_task_completion`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`, `seed_creative_format`, `seed_measurement_catalog`, `query_upstream_traffic`, `query_provenance_audit_observations`, and `force_upstream_unavailable`. Runners MUST accept unknown scenario strings — new scenarios may be added in additive releases. |
+| `scenarios` | string[] | Compliance testing scenarios this agent supports. Values SHOULD include every canonical controller scenario the agent implements, excluding `list_scenarios` because that value is a discovery operation rather than a test capability. Current canonical values include `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_create_media_buy_arm`, `force_task_completion`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`, `seed_creative_format`, `seed_measurement_catalog`, `query_upstream_traffic`, `query_provenance_audit_observations`, and `force_upstream_unavailable`. Values MAY also include implementation-specific scenarios. Runners MUST treat scenario names as open strings — new scenarios may be added in additive releases. |
 
 Storyboard runners check for the `compliance_testing` block before running deterministic testing steps. If the agent does not include the block, controller-dependent storyboard steps cannot be validated.
 
@@ -586,14 +586,14 @@ Array of experimental AdCP surfaces this agent implements. A surface is experime
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "trusted_match.core", "sponsored_intelligence.core"]`) |
+| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "measurement.core", "trusted_match.core", "sponsored_intelligence.core"]`) |
 
 Buyers should inspect `experimental_features` before relying on an experimental surface. A seller that does not list a surface is asserting it does not implement it — there is no "silently experimental" mode.
 
 **Example:**
 ```json
 {
-  "experimental_features": ["brand.rights_lifecycle", "trusted_match.core"]
+  "experimental_features": ["brand.rights_lifecycle", "measurement.core", "trusted_match.core"]
 }
 ```
 

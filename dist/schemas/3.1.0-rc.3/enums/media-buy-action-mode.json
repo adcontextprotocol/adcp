@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.3/enums/media-buy-action-mode.json",
+  "title": "Media Buy Action Mode",
+  "description": "How a seller honors a given action on a media buy. Buyers branch on this to decide whether to expect a synchronous response, an automatic-with-fallback flow, a proposal lifecycle round-trip, or an asynchronous human approval. The mode is declared on each entry of `allowed_actions[]` (product, as `modes[]` array) or `available_actions[]` (buy, as singular `mode`).",
+  "type": "string",
+  "enum": [
+    "self_serve",
+    "conditional_self_serve",
+    "requires_proposal",
+    "requires_approval"
+  ],
+  "enumDescriptions": {
+    "self_serve": "Seller honors the request synchronously without approval or conditional checks. Buyer SDK can dispatch the update_media_buy call and expect an immediate result.",
+    "conditional_self_serve": "Seller auto-approves within declared tolerances and escalates outside them. Covers programmatic guaranteed flows on platforms like FreeWheel, Magnite, and GAM where small mutations clear automatically but large ones queue for human review. Constraint metadata defining the tolerances is out of scope for v1 and the natural home is #4425's `requires` predicate grammar; until #4425 lands, tolerances are declared out-of-band and buyers cannot statically predict which mutations will auto-approve from this surface alone.",
+    "requires_proposal": "Routes through the proposal lifecycle (`create_proposal` / `finalize_proposal`). Ties to `media_buy.supports_proposals` on `get_adcp_capabilities`. Buyer SDK should expect a proposal task back, not a direct update result.",
+    "requires_approval": "Human-in-the-loop, asynchronous, no proposal artifact. Buyer SDK should expect a pending-status poll or webhook callback when the seller's operator approves or rejects."
+  }
+}

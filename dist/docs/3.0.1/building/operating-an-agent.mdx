@@ -95,7 +95,7 @@ What the compliance suite checks (so you don't have to teach it):
 
 | Storyboard | What it verifies |
 |---|---|
-| `security_baseline` (universal) | Auth is required on protected operations; invalid keys rejected; at least one of API key or OAuth 2.0 is correctly advertised. |
+| `security_baseline` (universal) | Auth is required on protected operations; invalid credentials rejected; at least one static credential mechanism (Bearer API key or HTTP Basic) or OAuth 2.0 is correctly advertised. |
 | `idempotency` (universal) | Mutating requests honor `idempotency_key`: replay returns cached, conflict returns `IDEMPOTENCY_CONFLICT`, missing key returns `INVALID_REQUEST`. |
 | `schema-validation`, `error-compliance` | Responses match schemas; errors use the standard taxonomy. |
 | Protocol + specialism storyboards | Per-protocol behavior (media buy lifecycle, creative workflow, signals activation) is correct end-to-end. |

@@ -235,7 +235,7 @@
         },
         "excluded_by": {
           "type": "object",
-          "description": "Per-filter exclusion counts, keyed by the filter property name as it appears in the request's `filters` object (e.g., `required_metrics`, `required_vendor_metrics`, `required_geo_targeting`, `budget_range`). Values are objects carrying `count` and optional filter-specific detail. Only filters that actually narrowed the set need appear here; absence of a key means that filter did not exclude anything (or was not in the request).",
+          "description": "Per-filter exclusion counts, keyed by the filter property name as it appears in the request's `filters` object (e.g., `pricing_currencies`, `required_metrics`, `required_vendor_metrics`, `required_geo_targeting`, `budget_range`). Values are objects carrying `count` and optional filter-specific detail. Only filters that actually narrowed the set need appear here; absence of a key means that filter did not exclude anything (or was not in the request).",
           "additionalProperties": {
             "type": "object",
             "properties": {
@@ -284,6 +284,12 @@
             },
             "required_geo_targeting": {
               "count": 9
+            },
+            "pricing_currencies": {
+              "count": 3,
+              "values": [
+                "USD"
+              ]
             },
             "budget_range": {
               "count": 7

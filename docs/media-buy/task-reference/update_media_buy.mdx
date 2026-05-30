@@ -55,10 +55,9 @@ Each entry in `available_actions[]` carries a singular `mode` (resolved against 
 |------|---------|
 | `self_serve` | Seller honors the request synchronously |
 | `conditional_self_serve` | Auto-approves within tolerances, escalates outside them (programmatic guaranteed pattern) |
-| `requires_proposal` | Routes through `create_proposal` / `finalize_proposal`; buyer SDK expects a proposal task back |
 | `requires_approval` | Human-in-the-loop, async, no proposal artifact; buyer SDK polls or awaits webhook |
 
-Buyer SDKs MUST branch on `mode` to decide whether to expect a synchronous response, a proposal task, or an asynchronous approval callback.
+Buyer SDKs MUST branch on `mode` to decide whether to expect a synchronous response, conditional handling, or an asynchronous approval callback. Requotes are not modeled as an action mode in 3.1; sellers return `REQUOTE_REQUIRED` when a requested update exceeds the current quoted envelope.
 
 **PATCH Semantics**: Only specified fields are updated; omitted fields remain unchanged.
 
@@ -661,12 +660,11 @@ The body-level `media_buy_status` is the canonical 3.1 field for the buy's lifec
 {
   "errors": [{
     "code": "REQUOTE_REQUIRED",
-    "message": "Doubling budget and extending end_time into Q4 changes the pricing basis of proposal prop_abc123",
+    "message": "Doubling budget and extending end_time into Q4 changes the pricing basis of the current buy",
     "details": {
-      "proposal_id": "prop_abc123",
       "envelope_field": ["packages[0].budget", "end_time"]
     },
-    "suggestion": "Call get_products with buying_mode='refine' against proposal_id prop_abc123 to obtain a fresh quote, then resubmit this update against the new proposal_id"
+    "suggestion": "Adjust the update to stay within the current quote envelope, rediscover products/terms, add packages when available, or create a separate media buy"
   }]
 }
 ```
@@ -743,7 +741,7 @@ Common errors and resolutions:
 | `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
 | `BUDGET_EXCEEDED` | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
 | `CONFLICT` | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
-| `REQUOTE_REQUIRED` | Requested change (budget, dates, volume, targeting, or signal targeting price) falls outside the envelope the original quote was priced against | Call `get_products` with `buying_mode: "refine"` against the existing `proposal_id` to obtain a fresh quote, then resubmit the update against the new `proposal_id`. Seller's `error.details.envelope_field` names which fields breached. |
+| `REQUOTE_REQUIRED` | Requested change (budget, dates, volume, targeting, or signal targeting price) falls outside the envelope the original quote was priced against | Adjust the update to fit the current quote, rediscover products/terms, add packages when `add_packages` is available, or create a separate media buy. 3.1 does not define an amendment-quote artifact for `update_media_buy`. Seller's `error.details.envelope_field` names which fields breached. |
 | `VALIDATION_ERROR` | Request format or business rule violation | Check error `field` and `message` for specifics |
 
 Example error response:

@@ -1,0 +1,143 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.3/core/webhook-challenge.json",
+  "title": "Webhook Challenge",
+  "description": "Proof-of-control challenge payload sent by a seller to an account-level notification_configs[] URL before activating a new or changed active subscriber. The seller sends this payload as an HTTPS POST after URL normalization and SSRF validation, and before treating the subscriber as active. The challenge POST itself MUST be signed with the seller's RFC 9421 webhook-signing key even when the candidate config selects legacy delivery auth; `delivery_auth` describes the future webhook delivery mode, not the challenge's own signing mode.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "webhook.challenge",
+      "description": "Discriminator for endpoint proof-of-control challenges."
+    },
+    "challenge": {
+      "type": "string",
+      "description": "Opaque, cryptographically random value that the receiver must echo in the response body. Recommended encoding: base64url without padding.",
+      "minLength": 32,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{32,255}$"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Seller account identifier for the account whose notification_configs[] entry is being challenged.",
+      "x-entity": "account"
+    },
+    "subscriber_id": {
+      "type": "string",
+      "description": "Buyer-supplied subscriber identifier from the notification_configs[] entry being challenged.",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "seller_agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Exact seller agent URL whose RFC 9421 webhook-signing key signs this challenge and that will send subsequent webhooks."
+    },
+    "delivery_auth": {
+      "type": "object",
+      "description": "Authentication/signing mode the seller will use for subsequent webhooks delivered to this notification config.",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "rfc9421",
+            "Bearer",
+            "HMAC-SHA256"
+          ],
+          "description": "Future webhook delivery authentication mode. `rfc9421` is used when notification_configs[].authentication is absent; Bearer and HMAC-SHA256 are the deprecated legacy modes selected by notification_configs[].authentication."
+        },
+        "credential_fingerprint": {
+          "type": "string",
+          "description": "SHA-256 hex fingerprint of the exact legacy credential string supplied in notification_configs[].authentication.credentials. Required when mode is Bearer or HMAC-SHA256; absent for rfc9421.",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "rfc9421"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "credential_fingerprint"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "Bearer",
+                  "HMAC-SHA256"
+                ]
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "credential_fingerprint"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "event_types": {
+      "type": "array",
+      "description": "Normalized notification types requested by the subscriber at the time of the challenge. Part of the endpoint proof scope; changing event_types[] requires a fresh challenge before the new set can become active.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.3/enums/notification-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "type",
+    "challenge",
+    "account_id",
+    "subscriber_id",
+    "seller_agent_url",
+    "delivery_auth",
+    "event_types"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Endpoint proof-of-control challenge",
+      "data": {
+        "type": "webhook.challenge",
+        "challenge": "example-challenge-token-000000000000",
+        "account_id": "acct_123",
+        "subscriber_id": "buyer-primary",
+        "seller_agent_url": "https://seller.example/adcp",
+        "delivery_auth": {
+          "mode": "rfc9421"
+        },
+        "event_types": [
+          "creative.status_changed",
+          "creative.purged"
+        ]
+      }
+    }
+  ]
+}

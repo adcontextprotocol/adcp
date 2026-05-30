@@ -456,6 +456,52 @@ function applyFixedPriceFilterToProducts(products: Product[], fixedPrice: boolea
     .filter((product): product is Product => product !== null);
 }
 
+function pricingOptionCurrency(option: unknown): string | undefined {
+  if (!option || typeof option !== 'object' || Array.isArray(option)) return undefined;
+  const currency = (option as { currency?: unknown }).currency;
+  return typeof currency === 'string' ? currency : undefined;
+}
+
+function applyPricingCurrenciesFilter(product: Product, currencies: Set<string>): Product | null {
+  const pricingOptions = product.pricing_options.filter(option => {
+    const currency = pricingOptionCurrency(option);
+    return currency !== undefined && currencies.has(currency);
+  });
+  if (pricingOptions.length === 0) return null;
+  if (!mandatoryProductSignalChargesSatisfied(product, currencies)) return null;
+  return { ...product, pricing_options: pricingOptions };
+}
+
+function applyPricingCurrenciesFilterToProducts(products: Product[], currencies: string[]): Product[] {
+  const currencySet = new Set(currencies);
+  return products
+    .map(product => applyPricingCurrenciesFilter(product, currencySet))
+    .filter((product): product is Product => product !== null);
+}
+
+function mandatoryProductSignalChargesSatisfied(product: Product, currencies: Set<string>): boolean {
+  const rules = (product as unknown as { signal_targeting_rules?: { selection_mode?: unknown } }).signal_targeting_rules;
+  if (rules?.selection_mode !== 'fixed') return true;
+
+  const options = (product as unknown as { signal_targeting_options?: unknown }).signal_targeting_options;
+  if (!Array.isArray(options)) return true;
+
+  return options.every(option => {
+    if (!option || typeof option !== 'object' || Array.isArray(option)) return true;
+    const defaultSelected = (option as { default_selected?: unknown }).default_selected;
+    if (defaultSelected !== true) return true;
+    return signalPricingSatisfiedInCurrencies(option as { pricing_options?: unknown }, currencies);
+  });
+}
+
+function signalPricingSatisfiedInCurrencies(signalOption: { pricing_options?: unknown }, currencies: Set<string>): boolean {
+  if (!Array.isArray(signalOption.pricing_options) || signalOption.pricing_options.length === 0) return true;
+  return signalOption.pricing_options.some(option => {
+    const currency = pricingOptionCurrency(option);
+    return currency !== undefined && currencies.has(currency);
+  });
+}
+
 // Proposal lifecycle fields not yet in @adcp/sdk — remove after client update
 interface ProposalLifecycle {
   proposal_status?: 'draft' | 'committed';
@@ -1168,7 +1214,6 @@ function normalizeProductAllowedActions(product: Product | undefined): MediaBuyP
     const modes = src.modes.filter((mode): mode is MediaBuyAvailableActionState['mode'] =>
       mode === 'self_serve'
       || mode === 'conditional_self_serve'
-      || mode === 'requires_proposal'
       || mode === 'requires_approval',
     );
     if (modes.length === 0) continue;
@@ -1835,6 +1880,15 @@ function overlaySeededProducts(
     backfillTrainingProductDefaults(merged as Product, ownAgentUrl);
     productMap.set(productId, merged as Product);
   }
+}
+
+function seededProductIds(session: import('./types.js').SessionState): Set<string> {
+  const ids = new Set<string>(session.complyExtensions.seededProducts.keys());
+  for (const key of session.complyExtensions.seededPricingOptions.keys()) {
+    const sep = key.indexOf(':');
+    ids.add(sep > 0 ? key.slice(0, sep) : key);
+  }
+  return ids;
 }
 
 type CanonicalFormatRef = { agent_url?: string; id?: string };
@@ -2632,6 +2686,14 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
 
   // Apply filters
   if (req.filters) {
+    const pricingCurrencies = (req.filters as { pricing_currencies?: string[] }).pricing_currencies;
+    if (pricingCurrencies?.length) {
+      const seededIds = seededProductIds(session);
+      if (seededIds.size > 0) {
+        products = products.filter(p => seededIds.has(p.product_id));
+      }
+      products = applyPricingCurrenciesFilterToProducts(products, pricingCurrencies);
+    }
     const channelFilter = req.filters.channels;
     if (channelFilter?.length) {
       products = products.filter(p =>

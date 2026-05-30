@@ -309,15 +309,15 @@ server.tool(
 The `details` field varies by `claim_type`. Build the typed response from your internal record, then strip authorized-only fields when the caller isn't linked.
 
 ```typescript
-async function answerSubsidiary(claim, { isAuthorized }) {
+async function answerSubsidiary(claim, { isAuthorized, requestContext }) {
   const record = await subsidiaries.findByDomain(claim.subsidiary_domain);
 
   if (!record) {
     return signedResponse({
       claim_type: "subsidiary",
-      status: "not_ours",
+      verification_status: "not_ours",
       context_note: "We have no record of this brand.",
-    });
+    }, requestContext);
   }
 
   const details: Record<string, unknown> = {};
@@ -343,9 +343,9 @@ async function answerSubsidiary(claim, { isAuthorized }) {
 
   return signedResponse({
     claim_type: "subsidiary",
-    status: record.status,
+    verification_status: record.status,
     details,
-  });
+  }, requestContext);
 }
 ```
 
@@ -357,9 +357,9 @@ Mirror the public/authorized split from `get_brand_identity`. The split per clai
 
 | Public | Authorized-only |
 |---|---|
-| `claim_type`, `status`, `context_note` (always) | `details.first_observed_by_house_at` |
+| `claim_type`, `verification_status`, `context_note` (always) | `details.first_observed_by_house_at` |
 | `details.brand_id`, `details.relationship`, `details.matched_registration`, `details.countries`, `details.nice_classes`, `details.regions` | `details.expected_resolution_window_days` (except when REQUIRED on `pending_review`) |
-| `details.licensor_domain` (when status is `licensed_in`) | `details.use_case_authorization` |
+| `details.licensor_domain` (when `verification_status` is `licensed_in`) | `details.use_case_authorization` |
 
 Queue position, ticket state, and team routing are never exposed at any tier.
 
@@ -398,6 +398,10 @@ Event-driven implementations work too — schedule a deferred job at `first_obse
 Responses are signed under the brand's `adcp_use: "response-signing"` JWK. **This is a distinct key from the `request-signing` key the agent uses for its own outbound calls** — per the keys-per-purpose convention, receivers enforce purpose at the JWK `adcp_use` level. Reusing a key across purposes is forbidden by the spec.
 
 The signature is a **JWS payload envelope** carried inside the response body (not RFC 9421 §2.2.9 transport response signing — that primitive is undefined in 3.x). `verify_brand_claim` and `verify_brand_claims` are the only tasks on the spec's [designated-task response-signing list](/docs/building/by-layer/L1/security#designated-task-response-signing) — the closed-list rule and admission criterion live there.
+
+The envelope is carried in the response's `signed_response` field and follows [`response-payload-jws-envelope.json`](https://adcontextprotocol.org/schemas/v3/core/response-payload-jws-envelope.json). Populate `brand_domain` from server-side tenant resolution, not from caller input. Shared multi-brand fleets also need distinct response-signing key material and distinct `kid` values per `brand_domain`; key reuse across brands defeats tenant-bound replay analysis and is non-conformant for `adcp_use: "response-signing"`.
+
+AdCP 3.1 conformance uses the normal task response plus nested `signed_response`. Pre-release examples that returned the JWS envelope as the entire response body are not 3.1-conformant; verifiers MAY accept that draft shape only during private migration and MUST NOT treat it as a conformant designated-task response.
 
 Publish the JWK in the agent's JWKS, referenced from the relevant `agents[]` entry in `brand.json`:
 
@@ -439,23 +443,58 @@ Publish the JWK in the agent's JWKS, referenced from the relevant `agents[]` ent
 }
 ```
 
-In code, sign the response payload before returning it:
+In code, sign the response payload before returning it. The unsigned outer fields remain for ordinary task consumers; the signed payload is the canonical attestable object.
 
 ```typescript
-import { signResponseEnvelope } from "./signing"; // your library of choice
+import { createHash } from "node:crypto";
+import { jcsCanonicalize, signResponseEnvelope } from "./signing"; // your library of choice
 
-function signedResponse(body: Record<string, unknown>) {
-  const signed = signResponseEnvelope(body, {
+function sha256Base64Url(input: string) {
+  return createHash("sha256").update(input).digest("base64url");
+}
+
+function signedResponse(
+  body: Record<string, unknown>,
+  request: {
+    task: "verify_brand_claim" | "verify_brand_claims";
+    requestBody: unknown;
+    callerIdentity: string | null;
+    resolvedBrandDomain: string;
+    agentUrl: string;
+    maxAgeSeconds: number;
+  }
+) {
+  const now = Math.floor(Date.now() / 1000);
+  const requestBinding = {
+    task: request.task,
+    brand_domain: request.resolvedBrandDomain,
+    agent_url: request.agentUrl,
+    caller_identity: request.callerIdentity,
+    request: request.requestBody,
+  };
+  const payload = {
+    typ: "adcp-response-payload+jws",
+    task: request.task,
+    brand_domain: request.resolvedBrandDomain,
+    agent_url: request.agentUrl,
+    request_hash: `sha256:${sha256Base64Url(jcsCanonicalize(requestBinding))}`,
+    iat: now,
+    exp: now + request.maxAgeSeconds,
+    response: body,
+  };
+  const signed = signResponseEnvelope(payload, {
     kid: "brand-agent-response-2026-01",
+    alg: "ES256",
+    typ: "adcp-response-payload+jws",
     adcp_use: "response-signing",
   });
-  return { content: [{ type: "text", text: JSON.stringify(signed) }] };
+  return { content: [{ type: "text", text: JSON.stringify({ ...body, signed_response: signed }) }] };
 }
 ```
 
 See [request-signing](/docs/building/by-layer/L1/request-signing) for the keypair-generation and JWKS-publication pattern; the response-signing key follows the same shape with a different `adcp_use` tag.
 
-**Response-body middleware caveat.** Payload-envelope JWS verifies against the exact bytes the receiver parses. Middleware that re-serializes the JSON response — pretty-printing, key reordering, whitespace normalization, alternate Unicode escaping — silently breaks verification at the receiver. Transport-layer transforms that preserve the body bytes (HTTP gzip / brotli compression and decompression, chunked transfer encoding) are safe; body-mutating proxies and CDN response rewriters are not. The defensible pattern is to compute the JWS over a stable sub-object (or a `b64: false` detached payload of the canonical bytes) that the agent emits verbatim in the response, rather than relying on the full response JSON staying byte-identical end-to-end.
+**Response-body middleware caveat.** The signed object is `signed_response.payload`, canonicalized with RFC 8785/JCS before signature verification. Whitespace and key-order changes outside that sub-object do not affect the signature, but middleware that changes `signed_response.payload`, `signed_response.protected`, or `signed_response.signature` breaks verification. If outer convenience fields are present, verifiers MUST reject the signed response when they disagree with `signed_response.payload.response`.
 
 ### Rate limiting
 

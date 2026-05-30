@@ -21,11 +21,15 @@ import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
 import { runBadgeFanOut } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
-import { hostedComplianceTarget } from '../../services/hosted-compliance-version.js';
+import {
+  badgeEligibleVersionsForHostedComplianceTarget,
+  hostedComplianceTarget,
+} from '../../services/hosted-compliance-version.js';
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
 const complianceDb = new ComplianceDatabase();
 const complianceTarget = hostedComplianceTarget();
+const badgeEligibleAdcpVersions = [...badgeEligibleVersionsForHostedComplianceTarget(complianceTarget)];
 
 interface HeartbeatOptions {
   limit?: number;
@@ -135,6 +139,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             agentUrl: agent.agent_url,
             declaredSpecialisms,
             runId: run.id,
+            adcpVersions: badgeEligibleAdcpVersions,
           });
 
           if (badgeResult.issued.length > 0 || badgeResult.revoked.length > 0) {

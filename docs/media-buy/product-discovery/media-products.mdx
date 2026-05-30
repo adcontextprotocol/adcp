@@ -94,7 +94,7 @@ See [Conversion Tracking & Optimization Goals](/docs/media-buy/conversion-tracki
 Publishers declare which pricing models they support for each product. Buyers select from the available options when creating a media buy. This approach supports:
 
 - **Multiple pricing models per product** - Publishers can offer the same inventory via different pricing structures
-- **Multi-currency support** - Publishers declare supported currencies; buyers must use a supported currency
+- **Multi-currency support** - Publishers declare supported currencies per `pricing_options` entry; buyers can use `filters.pricing_currencies` during discovery to narrow media product transaction currencies and must use a supported currency at buy time
 - **Flexible pricing** - Support for CPM, CPCV, CPP (GRP-based), CPA, and more
 
 #### Supported Pricing Models
@@ -837,14 +837,14 @@ This ensures a consistent user experience regardless of what product metadata is
 
 ## Proposals
 
-Publishers can return **proposals** alongside products - structured media plans with budget allocations that buyers can execute directly.
+Publishers can return **proposals** alongside products - structured media plans with budget allocations that buyers can execute through a defined path. Committed proposals execute directly; draft proposals must be finalized first.
 
 ### What Are Proposals?
 
 A proposal is a recommended buying strategy that groups products with suggested budget allocations. Proposals encode publisher expertise - the kind of media planning guidance that traditionally required human sales reps.
 
 Key characteristics:
-- **Actionable**: Buyers execute proposals directly via `create_media_buy` with a `proposal_id`
+- **Actionable**: A returned proposal is buyable through its lifecycle. `proposal_status: "draft"` means finalize first; `proposal_status: "committed"` means execute via `create_media_buy` with `proposal_id` before `expires_at`.
 - **Budget-agnostic**: Allocations use percentages, allowing the same proposal to scale to any budget
 - **Forecast-equipped**: Proposals and allocations can include delivery forecasts to help buyers evaluate expected performance before purchase
 
@@ -951,7 +951,7 @@ See [`get_products` refinement](/docs/media-buy/task-reference/get_products#refi
 
 ### Executing a Proposal
 
-To execute a proposal, provide the `proposal_id` and `total_budget` in `create_media_buy`:
+To execute a committed proposal, provide the `proposal_id` and `total_budget` in `create_media_buy`:
 
 ```json
 {
@@ -968,6 +968,8 @@ To execute a proposal, provide the `proposal_id` and `total_budget` in `create_m
 
 The publisher converts the proposal's allocation percentages into packages:
 - `ch_desktop_de`: 20% × \$50,000 = \$10,000
+
+Finalization is the seller commitment step: it firms pricing, terms, availability, and any inventory hold. It is not buyer acceptance. `create_media_buy(proposal_id)` is the acceptance/execution step. Sellers reject attempts to execute a draft proposal with `PROPOSAL_NOT_COMMITTED`; finalize with `get_products` in `refine` mode and `action: "finalize"` before retrying create.
 - `ch_desktop_fr`: 30% × \$50,000 = \$15,000
 - etc.
 

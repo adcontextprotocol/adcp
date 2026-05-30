@@ -2,7 +2,7 @@
 /**
  * Fail the build if any storyboard's `expect_substitution_safe` step references
  * a `vector_name` that isn't in the canonical fixture at
- * `static/test-vectors/catalog-macro-substitution.json`, or if the runner
+ * `static/compliance/source/test-vectors/catalog-macro-substitution.json`, or if the runner
  * contract's `canonical_vector_names` list drifts from the fixture's names.
  *
  * Scans every storyboard .yaml under static/compliance/source/ for steps of
@@ -29,7 +29,8 @@ const yaml = require('js-yaml');
 
 const ROOT = path.resolve(__dirname, '..');
 const SOURCE_DIR = path.join(ROOT, 'static', 'compliance', 'source');
-const FIXTURE_PATH = path.join(ROOT, 'static', 'test-vectors', 'catalog-macro-substitution.json');
+const FIXTURE_PATH = path.join(ROOT, 'static', 'compliance', 'source', 'test-vectors', 'catalog-macro-substitution.json');
+const LEGACY_FIXTURE_PATH = path.join(ROOT, 'static', 'test-vectors', 'catalog-macro-substitution.json');
 const CONTRACT_PATH = path.join(ROOT, 'static', 'compliance', 'source', 'test-kits', 'substitution-observer-runner.yaml');
 
 function loadFixtureNames() {
@@ -38,6 +39,18 @@ function loadFixtureNames() {
     throw new Error(`Fixture at ${FIXTURE_PATH} missing or malformed 'vectors' array.`);
   }
   return new Set(raw.vectors.map(v => v.name).filter(n => typeof n === 'string'));
+}
+
+function assertLegacyFixtureSync() {
+  const fixture = JSON.parse(fs.readFileSync(FIXTURE_PATH, 'utf8'));
+  const legacy = JSON.parse(fs.readFileSync(LEGACY_FIXTURE_PATH, 'utf8'));
+  if (JSON.stringify(legacy) !== JSON.stringify(fixture)) {
+    throw new Error(
+      `Legacy unversioned catalog macro fixture is out of sync with the versioned compliance fixture.\n` +
+      `  Versioned: ${FIXTURE_PATH}\n` +
+      `  Legacy:    ${LEGACY_FIXTURE_PATH}`
+    );
+  }
 }
 
 function loadContractNames() {
@@ -118,7 +131,7 @@ function lintFile(filePath, fixtureNames) {
       filePath,
       trail: hit.trail,
       name: hit.vector_name,
-      reason: `not in canonical fixture (static/test-vectors/catalog-macro-substitution.json)`,
+      reason: `not in canonical fixture (static/compliance/source/test-vectors/catalog-macro-substitution.json)`,
       severity: 'error',
     });
   }
@@ -148,7 +161,7 @@ function checkContractFixtureSync(contractNames, fixtureNames) {
       violations.push({
         source: 'contract',
         name,
-        reason: `declared in substitution-observer-runner.yaml#canonical_vector_names but missing from fixture (static/test-vectors/catalog-macro-substitution.json)`,
+        reason: `declared in substitution-observer-runner.yaml#canonical_vector_names but missing from fixture (static/compliance/source/test-vectors/catalog-macro-substitution.json)`,
       });
     }
   }
@@ -165,6 +178,7 @@ function checkContractFixtureSync(contractNames, fixtureNames) {
 }
 
 function main() {
+  assertLegacyFixtureSync();
   const fixtureNames = loadFixtureNames();
   const contractNames = loadContractNames();
   const syncViolations = checkContractFixtureSync(contractNames, fixtureNames);

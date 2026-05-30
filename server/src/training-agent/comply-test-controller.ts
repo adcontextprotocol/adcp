@@ -177,7 +177,6 @@ function normalizeAvailableActions(actions: unknown): MediaBuyAvailableActionSta
     if (
       src.mode !== 'self_serve'
       && src.mode !== 'conditional_self_serve'
-      && src.mode !== 'requires_proposal'
       && src.mode !== 'requires_approval'
     ) continue;
     const mode = src.mode;
