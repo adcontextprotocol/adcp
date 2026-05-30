@@ -21,6 +21,7 @@ import {
   hostedCapabilitiesForCompliance,
   hostedSupportedVersionsForCompliance,
   isDefaultHostedComplianceTarget,
+  agentAdvertisesBadgeEligibleHostedComplianceTarget,
   withHostedComplianceCompatibility,
   withHostedComplianceOptions,
 } from '../../src/services/hosted-compliance-version.js';
@@ -185,6 +186,22 @@ describe('wrapper contract', () => {
     expect(isDefaultHostedComplianceTarget(hostedComplianceTarget('3.1-beta'))).toBe(false);
     expect(badgeEligibleVersionsForHostedComplianceTarget(hostedComplianceTarget('3.0'))).toEqual(['3.0']);
     expect(badgeEligibleVersionsForHostedComplianceTarget(hostedComplianceTarget('3.1-beta'))).toEqual([]);
+  });
+
+  it('recognizes badge-eligible line targets advertised by the agent', () => {
+    const stableLine = hostedComplianceTarget('3.0');
+    const exactHistoricalCache = hostedComplianceTarget('3.0.5');
+
+    expect(badgeEligibleVersionsForHostedComplianceTarget(stableLine)).toEqual(['3.0']);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.0'], stableLine)).toBe(true);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.0.5'], stableLine)).toBe(true);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.1'], stableLine)).toBe(false);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.0-beta.1'], stableLine)).toBe(false);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(undefined, stableLine)).toBe(false);
+
+    expect(isDefaultHostedComplianceTarget(exactHistoricalCache)).toBe(false);
+    expect(badgeEligibleVersionsForHostedComplianceTarget(exactHistoricalCache)).toEqual([]);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.0.5'], exactHistoricalCache)).toBe(false);
   });
 
   it('rejects unsupported compliance targets before path resolution', () => {

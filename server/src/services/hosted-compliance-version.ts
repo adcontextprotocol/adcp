@@ -256,8 +256,29 @@ export function badgeEligibleVersionsForHostedComplianceTarget(
     return [];
   }
 
-  const line = complianceReleaseLine(target.requested) ?? complianceReleaseLine(target.version);
-  return line && (SUPPORTED_BADGE_VERSIONS as readonly string[]).includes(line) ? [line] : [];
+  const line = complianceReleaseLine(target.requested);
+  if (!line || target.requested !== line) return [];
+
+  return (SUPPORTED_BADGE_VERSIONS as readonly string[]).includes(line) ? [line] : [];
+}
+
+export function agentAdvertisesBadgeEligibleHostedComplianceTarget(
+  supportedVersions: readonly string[] | undefined,
+  target: HostedComplianceTarget,
+): boolean {
+  if (!supportedVersions?.length) return false;
+
+  const eligibleVersions = new Set(badgeEligibleVersionsForHostedComplianceTarget(target));
+  const [requestedLine] = eligibleVersions;
+  if (!requestedLine) {
+    return false;
+  }
+
+  return supportedVersions.some(version => {
+    if (version.includes('-')) return false;
+    const line = complianceReleaseLine(version);
+    return line === requestedLine;
+  });
 }
 
 function assertHostedArtifacts(version: string): void {
