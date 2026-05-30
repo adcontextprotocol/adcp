@@ -8,7 +8,7 @@
 import { Router } from "express";
 import Stripe from "stripe";
 import { createLogger } from "../logger.js";
-import { requireAuth, requireAdmin } from "../middleware/auth.js";
+import { requireAuth, requireAdmin, requireGlobalAdmin } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { getPool } from "../db/client.js";
 import {
@@ -26,7 +26,7 @@ import {
   type UpdateProductInput,
   type PendingInvoice,
 } from "../billing/stripe-client.js";
-import { OrganizationDatabase, buildSubscriptionUpdate } from "../db/organization-db.js";
+import { OrganizationDatabase, TIER_PRESERVING_STATUSES, buildSubscriptionUpdate } from "../db/organization-db.js";
 import { invalidateMembershipCache } from "../db/org-filters.js";
 import { pickMembershipSub } from "../billing/membership-prices.js";
 
@@ -155,7 +155,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
     });
   });
 
-  pageRouter.get("/billing", requireAuth, requireAdmin, (req, res) => {
+  pageRouter.get("/billing", ...requireGlobalAdmin, (req, res) => {
     serveHtmlWithConfig(req, res, "admin-billing.html").catch((err) => {
       logger.error({ err }, "Error serving admin billing page");
       res.status(500).send("Internal server error");
@@ -569,7 +569,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   // =========================================================================
 
   // GET /api/admin/stripe-customers - List all Stripe customers with link status and payment totals
-  apiRouter.get("/stripe-customers", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/stripe-customers", ...requireGlobalAdmin, async (req, res) => {
     if (!stripe) {
       return res.status(400).json({ error: "Stripe not configured" });
     }
@@ -680,9 +680,10 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   });
 
   // POST /api/admin/stripe-customers/:customerId/link - Manually link a Stripe customer to an org
-  apiRouter.post("/stripe-customers/:customerId/link", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post("/stripe-customers/:customerId/link", ...requireGlobalAdmin, async (req, res) => {
     const { customerId } = req.params;
     const { org_id, force } = req.body;
+    const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
 
     if (!customerId || !customerId.startsWith("cus_")) {
       return res.status(400).json({ error: "Invalid customer ID format" });
@@ -692,12 +693,33 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       return res.status(400).json({ error: "org_id is required" });
     }
 
+    if (reason.length < 10) {
+      return res.status(400).json({
+        error: "Reason required",
+        message: "reason must be at least 10 characters",
+      });
+    }
+
+    if (!stripe) {
+      return res.status(503).json({
+        error: "Stripe not configured",
+        message: "Cannot validate Stripe customer before linking",
+      });
+    }
+
     try {
       const pool = getPool();
 
       // Verify org exists
       const orgResult = await pool.query(
-        "SELECT workos_organization_id, name, stripe_customer_id, is_personal FROM organizations WHERE workos_organization_id = $1",
+        `SELECT workos_organization_id, name, stripe_customer_id, is_personal,
+                subscription_status, stripe_subscription_id, subscription_amount,
+                subscription_currency, subscription_interval,
+                subscription_current_period_end, subscription_canceled_at,
+                subscription_product_id, subscription_product_name,
+                subscription_price_id, subscription_price_lookup_key,
+                membership_tier
+           FROM organizations WHERE workos_organization_id = $1`,
         [org_id]
       );
 
@@ -719,7 +741,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         }
         previousCustomerId = org.stripe_customer_id;
         logger.info(
-          { customerId, orgId: org_id, previousCustomerId, adminEmail: req.user?.email },
+          { customerId, orgId: org_id, previousCustomerId, adminEmail: req.user?.email, reason },
           "Force-replacing existing Stripe customer link"
         );
       }
@@ -737,8 +759,215 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         });
       }
 
-      // Clear org metadata on the old Stripe customer to prevent stale search matches
-      if (previousCustomerId && stripe) {
+      let customer: Stripe.Customer | Stripe.DeletedCustomer;
+      try {
+        customer = await stripe.customers.retrieve(customerId);
+      } catch (err) {
+        const stripeError = err as { code?: string; statusCode?: number; message?: string };
+        const notFound = stripeError.code === 'resource_missing' || stripeError.statusCode === 404;
+        logger.warn({ err, customerId, org_id }, "Failed to validate Stripe customer before linking");
+        return res.status(notFound ? 404 : 502).json({
+          error: notFound ? "Stripe customer not found" : "Stripe validation failed",
+          message: stripeError.message ?? "Unable to retrieve Stripe customer",
+        });
+      }
+
+      if ('deleted' in customer && customer.deleted) {
+        return res.status(400).json({
+          error: "Stripe customer deleted",
+          message: "Cannot link a deleted Stripe customer",
+        });
+      }
+
+      let stripeSubscriptions: Stripe.Subscription[];
+      try {
+        const subscriptionsResp = await stripe.subscriptions.list({
+          customer: customerId,
+          status: 'all',
+          limit: 100,
+        });
+        stripeSubscriptions = subscriptionsResp.data;
+      } catch (err) {
+        const stripeError = err as { message?: string };
+        logger.warn({ err, customerId, org_id }, "Failed to list Stripe subscriptions before linking");
+        return res.status(502).json({
+          error: "Stripe validation failed",
+          message: stripeError.message ?? "Unable to list Stripe subscriptions",
+        });
+      }
+
+      // Sync subscription data from Stripe
+      let subscriptionSynced = false;
+      const liveSubscriptions = stripeSubscriptions
+        .filter((sub) => (TIER_PRESERVING_STATUSES as readonly string[]).includes(sub.status));
+      const conflictingStripeOrgIds = new Set(
+        liveSubscriptions
+          .map((sub) => sub.metadata?.workos_organization_id)
+          .filter((stripeOrgId): stripeOrgId is string => Boolean(stripeOrgId && stripeOrgId !== org_id)),
+      );
+      if (conflictingStripeOrgIds.size > 0) {
+        return res.status(400).json({
+          error: "Stripe customer belongs to another organization",
+          message: "This Stripe customer has a live subscription associated with a different organization",
+          conflicting_org_ids: [...conflictingStripeOrgIds],
+        });
+      }
+
+      // Filter to membership subs before picking. A customer with a
+      // non-membership sub stacked alongside a real membership would
+      // otherwise have its row overwritten with the wrong sub's state
+      // because Stripe doesn't guarantee `subscriptions.data` order.
+      const subscription = pickMembershipSub(stripeSubscriptions);
+      const subUpdate = subscription
+        ? buildSubscriptionUpdate(subscription as any, org.is_personal ?? false)
+        : null;
+
+      const beforeState = {
+        stripe_customer_id: org.stripe_customer_id,
+        subscription_status: org.subscription_status,
+        stripe_subscription_id: org.stripe_subscription_id,
+        subscription_amount: org.subscription_amount,
+        subscription_currency: org.subscription_currency,
+        subscription_interval: org.subscription_interval,
+        subscription_current_period_end: org.subscription_current_period_end,
+        subscription_canceled_at: org.subscription_canceled_at,
+        subscription_product_id: org.subscription_product_id,
+        subscription_product_name: org.subscription_product_name,
+        subscription_price_id: org.subscription_price_id,
+        subscription_price_lookup_key: org.subscription_price_lookup_key,
+        membership_tier: org.membership_tier,
+      };
+      const afterState = subUpdate
+        ? { stripe_customer_id: customerId, ...subUpdate }
+        : previousCustomerId
+          ? {
+              stripe_customer_id: customerId,
+              subscription_status: null,
+              stripe_subscription_id: null,
+              subscription_amount: null,
+              subscription_currency: null,
+              subscription_interval: null,
+              subscription_current_period_end: null,
+              subscription_canceled_at: null,
+              subscription_product_id: null,
+              subscription_product_name: null,
+              subscription_price_id: null,
+              subscription_price_lookup_key: null,
+              membership_tier: null,
+            }
+          : { ...beforeState, stripe_customer_id: customerId };
+
+      const txClient = await pool.connect();
+      try {
+        await txClient.query("BEGIN");
+        await txClient.query(
+          "UPDATE organizations SET stripe_customer_id = $1, updated_at = NOW() WHERE workos_organization_id = $2",
+          [customerId, org_id],
+        );
+
+        if (subUpdate) {
+          await txClient.query(
+            `UPDATE organizations
+             SET subscription_status = $1,
+                 subscription_amount = $2,
+                 subscription_interval = $3,
+                 subscription_currency = $4,
+                 subscription_current_period_end = $5,
+                 subscription_canceled_at = $6,
+                 stripe_subscription_id = $7,
+                 subscription_product_id = $8,
+                 subscription_product_name = COALESCE($9, subscription_product_name),
+                 subscription_price_id = $10,
+                 subscription_price_lookup_key = $11,
+                 membership_tier = $12,
+                 updated_at = NOW()
+             WHERE workos_organization_id = $13`,
+            [
+              subUpdate.subscription_status,
+              subUpdate.subscription_amount,
+              subUpdate.subscription_interval,
+              subUpdate.subscription_currency,
+              subUpdate.subscription_current_period_end,
+              subUpdate.subscription_canceled_at,
+              subUpdate.stripe_subscription_id,
+              subUpdate.subscription_product_id,
+              subUpdate.subscription_product_name,
+              subUpdate.subscription_price_id,
+              subUpdate.subscription_price_lookup_key,
+              subUpdate.membership_tier,
+              org_id,
+            ]
+          );
+          subscriptionSynced = true;
+        } else if (previousCustomerId) {
+          // Force-replace path with no membership sub on the new customer:
+          // clear subscription state derived from the old customer.
+          await txClient.query(
+            `UPDATE organizations SET
+                stripe_subscription_id = NULL,
+                subscription_status = NULL,
+                subscription_amount = NULL,
+                subscription_currency = NULL,
+                subscription_interval = NULL,
+                subscription_current_period_end = NULL,
+                subscription_canceled_at = NULL,
+                subscription_product_id = NULL,
+                subscription_product_name = NULL,
+                subscription_price_id = NULL,
+                subscription_price_lookup_key = NULL,
+                membership_tier = NULL,
+                updated_at = NOW()
+             WHERE workos_organization_id = $1`,
+            [org_id],
+          );
+        }
+
+        await txClient.query(
+          `INSERT INTO registry_audit_log
+           (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            org_id,
+            req.user?.id ?? 'unknown',
+            previousCustomerId ? 'admin_stripe_link_replace' : 'admin_stripe_link',
+            'subscription',
+            customerId,
+            JSON.stringify({
+              stripe_customer_id: customerId,
+              ...(previousCustomerId && { previous_customer_id: previousCustomerId }),
+              subscription_synced: subscriptionSynced,
+              admin_email: req.user?.email,
+              reason,
+              before_state: beforeState,
+              after_state: afterState,
+            }),
+          ],
+        );
+        await txClient.query("COMMIT");
+      } catch (txErr) {
+        try { await txClient.query("ROLLBACK"); } catch { /* swallow */ }
+        throw txErr;
+      } finally {
+        txClient.release();
+      }
+
+      if (subscriptionSynced || previousCustomerId) {
+        invalidateMembershipCache(org_id);
+      }
+
+      try {
+        await stripe.customers.update(customerId, {
+          metadata: { workos_organization_id: org_id },
+        });
+      } catch (err) {
+        logger.warn({ err, customerId, org_id }, "Failed to stamp metadata on new Stripe customer");
+      }
+
+      // Clear org metadata on the old Stripe customer and its subscriptions to
+      // prevent stale webhook fallback from silently relinking the old customer.
+      // This happens after the DB transaction commits so a failed audit insert
+      // cannot leave Stripe metadata cleared while the local link is unchanged.
+      if (previousCustomerId) {
         try {
           await stripe.customers.update(previousCustomerId, {
             metadata: { workos_organization_id: '' },
@@ -746,133 +975,40 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         } catch (err) {
           logger.warn({ err, previousCustomerId }, "Failed to clear metadata on old Stripe customer");
         }
-      }
 
-      // Link the customer
-      await pool.query("UPDATE organizations SET stripe_customer_id = $1 WHERE workos_organization_id = $2", [
-        customerId,
-        org_id,
-      ]);
-
-      // Sync invoices for this customer to local cache
-      const invoicesSynced = await syncInvoicesForCustomer(customerId, org_id);
-
-      // Sync subscription data from Stripe
-      let subscriptionSynced = false;
-      let subscriptionSyncError: string | null = null;
-      if (stripe) {
         try {
-          const customerResp = await stripe.customers.retrieve(customerId, {
-            expand: ["subscriptions"],
+          const subs = await stripe.subscriptions.list({
+            customer: previousCustomerId,
+            status: 'all',
+            limit: 100,
           });
-          const customer = customerResp as Stripe.Customer | Stripe.DeletedCustomer;
-
-          if (!('deleted' in customer && customer.deleted)) {
-            const subscriptions = (customer as Stripe.Customer).subscriptions;
-            // Filter to membership subs before picking. A customer with a
-            // non-membership sub stacked alongside a real membership would
-            // otherwise have its row overwritten with the wrong sub's state
-            // — Stripe doesn't guarantee `subscriptions.data` order. Same
-            // hardening as POST /api/admin/accounts/:orgId/sync (#3646).
-            const subscription = subscriptions
-              ? pickMembershipSub(subscriptions.data)
-              : null;
-            if (subscription) {
-              const subUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal ?? false);
-
-              await pool.query(
-                `UPDATE organizations
-                 SET subscription_status = $1,
-                     subscription_amount = $2,
-                     subscription_interval = $3,
-                     subscription_currency = $4,
-                     subscription_current_period_end = $5,
-                     subscription_canceled_at = $6,
-                     stripe_subscription_id = $7,
-                     subscription_product_id = $8,
-                     subscription_product_name = COALESCE($9, subscription_product_name),
-                     subscription_price_id = $10,
-                     subscription_price_lookup_key = $11,
-                     membership_tier = $12,
-                     updated_at = NOW()
-                 WHERE workos_organization_id = $13`,
-                [
-                  subUpdate.subscription_status,
-                  subUpdate.subscription_amount,
-                  subUpdate.subscription_interval,
-                  subUpdate.subscription_currency,
-                  subUpdate.subscription_current_period_end,
-                  subUpdate.subscription_canceled_at,
-                  subUpdate.stripe_subscription_id,
-                  subUpdate.subscription_product_id,
-                  subUpdate.subscription_product_name,
-                  subUpdate.subscription_price_id,
-                  subUpdate.subscription_price_lookup_key,
-                  subUpdate.membership_tier,
-                  org_id,
-                ]
-              );
-              subscriptionSynced = true;
-              invalidateMembershipCache(org_id);
-            } else if (previousCustomerId) {
-              // Force-replace path with no membership sub on the new
-              // customer: clear the subscription state that came from the
-              // previous customer. Without this, the org keeps stale
-              // `subscription_status='active'` etc. derived from a
-              // customer it's no longer linked to.
-              await pool.query(
-                `UPDATE organizations SET
-                    stripe_subscription_id = NULL,
-                    subscription_status = NULL,
-                    subscription_amount = NULL,
-                    subscription_interval = NULL,
-                    subscription_current_period_end = NULL,
-                    subscription_canceled_at = NULL,
-                    subscription_product_id = NULL,
-                    subscription_product_name = NULL,
-                    subscription_price_id = NULL,
-                    subscription_price_lookup_key = NULL,
-                    membership_tier = NULL,
-                    updated_at = NOW()
-                 WHERE workos_organization_id = $1`,
-                [org_id],
-              );
-              invalidateMembershipCache(org_id);
+          for (const sub of subs.data) {
+            if (sub.metadata?.workos_organization_id) {
+              try {
+                await stripe.subscriptions.update(sub.id, {
+                  metadata: { workos_organization_id: '' },
+                });
+              } catch (subErr) {
+                logger.warn(
+                  { err: subErr, previousCustomerId, subscriptionId: sub.id },
+                  "Failed to clear workos_organization_id metadata on old Stripe subscription during replace",
+                );
+              }
             }
           }
-        } catch (syncError) {
-          subscriptionSyncError = syncError instanceof Error ? syncError.message : "Unknown error";
-          logger.warn({ err: syncError, customerId, org_id }, "Failed to sync subscription data during link");
+        } catch (listErr) {
+          logger.warn(
+            { err: listErr, previousCustomerId },
+            "Failed to list subscriptions during replace for metadata clear",
+          );
         }
       }
 
-      // Forensic record of the entitlement-affecting admin action. Mirrors
-      // the audit row written by the unlink path. Force-replace is the
-      // riskier branch — it changes which Stripe customer drives this org's
-      // entitlement.
-      const orgDb = new OrganizationDatabase();
-      await orgDb.recordAuditLog({
-        workos_organization_id: org_id,
-        workos_user_id: req.user?.id ?? 'unknown',
-        action: previousCustomerId ? 'admin_stripe_link_replace' : 'admin_stripe_link',
-        resource_type: 'subscription',
-        resource_id: customerId,
-        details: {
-          stripe_customer_id: customerId,
-          ...(previousCustomerId && { previous_customer_id: previousCustomerId }),
-          subscription_synced: subscriptionSynced,
-          ...(subscriptionSyncError && { subscription_sync_error: subscriptionSyncError }),
-          admin_email: req.user?.email,
-        },
-      }).catch((err) => {
-        logger.error(
-          { err, customerId, org_id },
-          `Failed to record ${previousCustomerId ? 'admin_stripe_link_replace' : 'admin_stripe_link'} audit log entry`,
-        );
-      });
+      // Sync invoices for this customer to local cache after the link/audit commit.
+      const invoicesSynced = await syncInvoicesForCustomer(customerId, org_id);
 
       logger.info(
-        { customerId, orgId: org_id, orgName: org.name, adminEmail: req.user?.email, invoicesSynced, subscriptionSynced, subscriptionSyncError },
+        { customerId, orgId: org_id, orgName: org.name, adminEmail: req.user?.email, invoicesSynced, subscriptionSynced },
         "Manually linked Stripe customer to org"
       );
 
@@ -887,7 +1023,6 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         invoices_synced: invoicesSynced,
         subscription_synced: subscriptionSynced,
         ...(previousCustomerId && { previous_customer_id: previousCustomerId }),
-        ...(subscriptionSyncError && { subscription_sync_error: subscriptionSyncError }),
       });
     } catch (error) {
       logger.error({ err: error, customerId, org_id }, "Error linking Stripe customer");
@@ -898,7 +1033,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   });
 
   // POST /api/admin/stripe-customers/:customerId/unlink - Unlink a Stripe customer from its org
-  apiRouter.post("/stripe-customers/:customerId/unlink", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post("/stripe-customers/:customerId/unlink", ...requireGlobalAdmin, async (req, res) => {
     const { customerId } = req.params;
 
     if (!customerId || !customerId.startsWith("cus_")) {
@@ -1047,7 +1182,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   });
 
   // GET /api/admin/org-search - Search organizations for linking
-  apiRouter.get("/org-search", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/org-search", ...requireGlobalAdmin, async (req, res) => {
     const rawQuery = req.query.q;
     const query = Array.isArray(rawQuery) ? String(rawQuery[0]) : String(rawQuery || '');
 
@@ -1080,7 +1215,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   });
 
   // DELETE /api/admin/stripe-customers/:customerId - Delete an unlinked Stripe customer
-  apiRouter.delete("/stripe-customers/:customerId", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.delete("/stripe-customers/:customerId", ...requireGlobalAdmin, async (req, res) => {
     const { customerId } = req.params;
 
     if (!customerId || !customerId.startsWith("cus_")) {

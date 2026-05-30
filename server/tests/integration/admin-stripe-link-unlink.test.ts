@@ -24,6 +24,13 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
     next();
   },
   requireAdmin: (_req: any, _res: any, next: any) => next(),
+  requireGlobalAdmin: [
+    (req: any, _res: any, next: any) => {
+      req.user = { id: 'user_test_admin', email: 'admin@test.com', is_admin: true };
+      next();
+    },
+    (_req: any, _res: any, next: any) => next(),
+  ],
 }));
 
 vi.mock('../../src/middleware/csrf.js', () => ({
@@ -148,6 +155,7 @@ describe('POST /api/admin/stripe-customers/:customerId/link + /unlink', () => {
   let pool: Pool;
   const TEST_ORG_ID = 'org_link_test_target';
   const ADMIN_USER_ID = 'user_test_admin';
+  const LINK_REASON = 'correcting wrong Stripe customer link';
 
   beforeAll(async () => {
     pool = initializeDatabase({
@@ -176,6 +184,13 @@ describe('POST /api/admin/stripe-customers/:customerId/link + /unlink', () => {
          stripe_customer_id = NULL,
          subscription_status = NULL,
          subscription_amount = NULL,
+         subscription_currency = NULL,
+         subscription_interval = NULL,
+         subscription_current_period_end = NULL,
+         subscription_canceled_at = NULL,
+         subscription_product_id = NULL,
+         subscription_product_name = NULL,
+         subscription_price_id = NULL,
          subscription_price_lookup_key = NULL,
          stripe_subscription_id = NULL,
          membership_tier = NULL`,
@@ -191,12 +206,23 @@ describe('POST /api/admin/stripe-customers/:customerId/link + /unlink', () => {
   });
 
   describe('link', () => {
+    it('requires an audit reason before looking up the org or Stripe customer', async () => {
+      const response = await request(app)
+        .post(`/api/admin/stripe-customers/${mocks.multiSubCustomer.id}/link`)
+        .send({ org_id: TEST_ORG_ID, reason: 'too short' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('Reason required');
+      expect(mocks.mockCustomersRetrieve).not.toHaveBeenCalled();
+    });
+
     it('picks the membership sub when customer has multi-sub (data[0] regression)', async () => {
       mocks.mockCustomersRetrieve.mockResolvedValueOnce(mocks.multiSubCustomer);
+      mocks.mockSubscriptionsList.mockResolvedValueOnce({ data: mocks.multiSubCustomer.subscriptions.data });
 
       const response = await request(app)
         .post(`/api/admin/stripe-customers/${mocks.multiSubCustomer.id}/link`)
-        .send({ org_id: TEST_ORG_ID });
+        .send({ org_id: TEST_ORG_ID, reason: LINK_REASON });
 
       expect(response.status).toBe(200);
       expect(response.body.subscription_synced).toBe(true);
@@ -218,10 +244,11 @@ describe('POST /api/admin/stripe-customers/:customerId/link + /unlink', () => {
 
     it('writes admin_stripe_link audit log entry', async () => {
       mocks.mockCustomersRetrieve.mockResolvedValueOnce(mocks.multiSubCustomer);
+      mocks.mockSubscriptionsList.mockResolvedValueOnce({ data: mocks.multiSubCustomer.subscriptions.data });
 
       await request(app)
         .post(`/api/admin/stripe-customers/${mocks.multiSubCustomer.id}/link`)
-        .send({ org_id: TEST_ORG_ID });
+        .send({ org_id: TEST_ORG_ID, reason: LINK_REASON });
 
       const audit = await pool.query<{ action: string; resource_id: string; details: any }>(
         `SELECT action, resource_id, details FROM registry_audit_log
@@ -231,6 +258,160 @@ describe('POST /api/admin/stripe-customers/:customerId/link + /unlink', () => {
       expect(audit.rows[0]?.action).toBe('admin_stripe_link');
       expect(audit.rows[0]?.resource_id).toBe(mocks.multiSubCustomer.id);
       expect(audit.rows[0]?.details?.admin_email).toBe('admin@test.com');
+      expect(audit.rows[0]?.details?.reason).toBe(LINK_REASON);
+      expect(audit.rows[0]?.details?.before_state?.stripe_customer_id).toBeNull();
+      expect(audit.rows[0]?.details?.after_state?.stripe_customer_id).toBe(mocks.multiSubCustomer.id);
+    });
+
+    it('force-replace clears stale state and old Stripe metadata fallback paths', async () => {
+      await pool.query(
+        `UPDATE organizations SET
+            stripe_customer_id = 'cus_link_test_previous',
+            stripe_subscription_id = 'sub_prior',
+            subscription_status = 'active',
+            subscription_amount = 25000,
+            subscription_currency = 'usd',
+            subscription_interval = 'year',
+            subscription_price_lookup_key = 'aao_membership_professional_250',
+            membership_tier = 'individual_professional'
+         WHERE workos_organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      mocks.mockCustomersRetrieve.mockResolvedValueOnce(mocks.nonMembershipCustomer);
+      mocks.mockSubscriptionsList
+        .mockResolvedValueOnce({ data: mocks.nonMembershipCustomer.subscriptions.data })
+        .mockResolvedValueOnce({
+          data: [
+            { id: 'sub_old_meta', metadata: { workos_organization_id: TEST_ORG_ID } },
+            { id: 'sub_old_no_meta', metadata: {} },
+          ],
+        });
+
+      const response = await request(app)
+        .post(`/api/admin/stripe-customers/${mocks.nonMembershipCustomer.id}/link`)
+        .send({ org_id: TEST_ORG_ID, force: true, reason: LINK_REASON });
+
+      expect(response.status).toBe(200);
+      expect(response.body.previous_customer_id).toBe('cus_link_test_previous');
+      expect(response.body.subscription_synced).toBe(false);
+
+      const orgRow = await pool.query<{
+        stripe_customer_id: string | null;
+        stripe_subscription_id: string | null;
+        subscription_status: string | null;
+        subscription_amount: number | null;
+        subscription_currency: string | null;
+        subscription_price_lookup_key: string | null;
+        membership_tier: string | null;
+      }>(
+        `SELECT stripe_customer_id, stripe_subscription_id, subscription_status,
+                subscription_amount, subscription_currency, subscription_price_lookup_key,
+                membership_tier
+           FROM organizations WHERE workos_organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      expect(orgRow.rows[0]).toMatchObject({
+        stripe_customer_id: mocks.nonMembershipCustomer.id,
+        stripe_subscription_id: null,
+        subscription_status: null,
+        subscription_amount: null,
+        subscription_currency: null,
+        subscription_price_lookup_key: null,
+        membership_tier: null,
+      });
+
+      expect(mocks.mockCustomersUpdate).toHaveBeenCalledWith(mocks.nonMembershipCustomer.id, {
+        metadata: { workos_organization_id: TEST_ORG_ID },
+      });
+      expect(mocks.mockCustomersUpdate).toHaveBeenCalledWith('cus_link_test_previous', {
+        metadata: { workos_organization_id: '' },
+      });
+      expect(mocks.mockSubscriptionsList).toHaveBeenCalledWith({
+        customer: 'cus_link_test_previous',
+        status: 'all',
+        limit: 100,
+      });
+      expect(mocks.mockSubscriptionsUpdate).toHaveBeenCalledWith('sub_old_meta', {
+        metadata: { workos_organization_id: '' },
+      });
+      expect(mocks.mockSubscriptionsUpdate).not.toHaveBeenCalledWith('sub_old_no_meta', expect.anything());
+
+      const audit = await pool.query<{ action: string; details: any }>(
+        `SELECT action, details FROM registry_audit_log
+          WHERE workos_organization_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [TEST_ORG_ID],
+      );
+      expect(audit.rows[0]?.action).toBe('admin_stripe_link_replace');
+      expect(audit.rows[0]?.details?.previous_customer_id).toBe('cus_link_test_previous');
+      expect(audit.rows[0]?.details?.reason).toBe(LINK_REASON);
+      expect(audit.rows[0]?.details?.before_state?.stripe_customer_id).toBe('cus_link_test_previous');
+      expect(audit.rows[0]?.details?.after_state?.stripe_subscription_id).toBeNull();
+    });
+
+    it('refuses to link a deleted Stripe customer before writing the org row', async () => {
+      mocks.mockCustomersRetrieve.mockResolvedValueOnce({
+        id: 'cus_link_test_deleted',
+        deleted: true,
+      });
+
+      const response = await request(app)
+        .post('/api/admin/stripe-customers/cus_link_test_deleted/link')
+        .send({ org_id: TEST_ORG_ID, reason: LINK_REASON });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('Stripe customer deleted');
+
+      const orgRow = await pool.query<{ stripe_customer_id: string | null }>(
+        `SELECT stripe_customer_id FROM organizations WHERE workos_organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      expect(orgRow.rows[0].stripe_customer_id).toBeNull();
+    });
+
+    it('blocks live Stripe subscriptions associated with another org', async () => {
+      mocks.mockCustomersRetrieve.mockResolvedValueOnce({
+        id: 'cus_link_test_conflict',
+        deleted: false,
+        metadata: { workos_organization_id: 'org_other_owner' },
+        subscriptions: {
+          data: [
+            {
+              id: 'sub_other_owner',
+              status: 'active',
+              metadata: { workos_organization_id: 'org_other_owner' },
+              current_period_end: Math.floor(Date.now() / 1000) + 86400 * 30,
+              canceled_at: null,
+              items: { data: [] },
+            },
+          ],
+        },
+      });
+      mocks.mockSubscriptionsList.mockResolvedValueOnce({
+        data: [
+          {
+            id: 'sub_other_owner',
+            status: 'active',
+            metadata: { workos_organization_id: 'org_other_owner' },
+            current_period_end: Math.floor(Date.now() / 1000) + 86400 * 30,
+            canceled_at: null,
+            items: { data: [] },
+          },
+        ],
+      });
+
+      const response = await request(app)
+        .post('/api/admin/stripe-customers/cus_link_test_conflict/link')
+        .send({ org_id: TEST_ORG_ID, reason: LINK_REASON });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('Stripe customer belongs to another organization');
+      expect(response.body.conflicting_org_ids).toEqual(['org_other_owner']);
+
+      const orgRow = await pool.query<{ stripe_customer_id: string | null }>(
+        `SELECT stripe_customer_id FROM organizations WHERE workos_organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      expect(orgRow.rows[0].stripe_customer_id).toBeNull();
     });
   });
 

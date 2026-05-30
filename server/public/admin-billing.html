@@ -633,7 +633,7 @@
       document.getElementById(`link-btn-${customerId}`).disabled = false;
     }
 
-    async function linkCustomer(customerId, force) {
+    async function linkCustomer(customerId, force, existingReason) {
       const selectedOrg = selectedOrgs[customerId];
       if (!selectedOrg) {
         showError('Please select an organization first');
@@ -646,6 +646,12 @@
         }
       }
 
+      const reason = existingReason || prompt(`Reason for linking ${customerId} to "${selectedOrg.name}" (required):`);
+      if (!reason || reason.trim().length < 10) {
+        showError('A reason of at least 10 characters is required');
+        return;
+      }
+
       const btn = document.getElementById(`link-btn-${customerId}`);
       btn.disabled = true;
       btn.textContent = 'Linking...';
@@ -654,7 +660,11 @@
         const response = await fetch(`/api/admin/stripe-customers/${customerId}/link`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ org_id: selectedOrg.id, force: force || !!selectedOrg.existingCustomerId }),
+          body: JSON.stringify({
+            org_id: selectedOrg.id,
+            force: force || !!selectedOrg.existingCustomerId,
+            reason: reason.trim(),
+          }),
         });
 
         const data = await response.json();
@@ -662,7 +672,7 @@
         if (data.requires_force && !force) {
           // Server says force is needed (org got linked between search and submit)
           if (confirm(`${data.message} Replace anyway?`)) {
-            return linkCustomer(customerId, true);
+            return linkCustomer(customerId, true, reason);
           }
           btn.disabled = false;
           btn.textContent = 'Link';
