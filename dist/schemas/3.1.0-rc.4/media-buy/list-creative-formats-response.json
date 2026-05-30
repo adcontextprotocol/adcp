@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.4/media-buy/list-creative-formats-response.json",
+  "title": "List Creative Formats Response",
+  "description": "Response payload for list_creative_formats task",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-rc.4/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/3.1.0-rc.4/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "formats": {
+      "type": "array",
+      "description": "Full format definitions for all formats this agent supports. Each format's authoritative source is indicated by its agent_url field.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.4/core/format.json"
+      }
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "publisher",
+        "aao_mirror",
+        "agent_derived"
+      ],
+      "description": "Which tier of the resolution order produced this `formats[]` list when the request carried a `publisher_domain` filter. `publisher`: agent fetched `<publisher_domain>/.well-known/adagents.json` and returned its `formats[]` directly (publisher-authoritative). `aao_mirror`: publisher's hosted file was 404 / lacked `formats[]`, agent fell back to `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json` (community-curated; lower authority — buyer SHOULD treat as advisory until platform adopts). `agent_derived`: neither tier 1 nor tier 2 returned a catalog, so the agent synthesized `formats[]` from the union of its own products' `format_options[]` for products selling the publisher's inventory (lowest authority — agent's view of what it sells, not the publisher's catalog). When two SDKs query the same agent for the same publisher and the agent-derived tier is in play, results may diverge by product set; buyers SHOULD record `source` for telemetry. When the request did NOT carry `publisher_domain`, this field MAY be omitted."
+    },
+    "creative_agents": {
+      "type": "array",
+      "description": "Optional: Creative agents that provide additional formats. Buyers can recursively query these agents to discover more formats. No authentication required for list_creative_formats.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "agent_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Base URL for the creative agent (e.g., 'https://reference.example.com', 'https://dco.example.com')."
+          },
+          "agent_name": {
+            "type": "string",
+            "description": "Human-readable name for the creative agent"
+          },
+          "capabilities": {
+            "type": "array",
+            "description": "Capabilities this creative agent provides",
+            "items": {
+              "$ref": "/schemas/3.1.0-rc.4/enums/creative-agent-capability.json"
+            }
+          }
+        },
+        "required": [
+          "agent_url"
+        ]
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., format availability issues)",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.4/core/error.json"
+      }
+    },
+    "pagination": {
+      "$ref": "/schemas/3.1.0-rc.4/core/pagination-response.json"
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "When true, this response contains simulated data from sandbox mode."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-rc.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-rc.4/core/ext.json"
+    }
+  },
+  "required": [
+    "formats"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,236 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.4/media-buy/media-buy-delivery-webhook-result.json",
+  "title": "Media Buy Delivery Webhook Result",
+  "description": "Payload-only delivery report result carried under core/mcp-webhook-payload.json result for task_type media_buy_delivery. This is not a top-level webhook POST body and does not include protocol envelope fields such as task_id or status.",
+  "type": "object",
+  "properties": {
+    "notification_type": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "final",
+        "delayed",
+        "adjusted",
+        "window_update"
+      ],
+      "description": "Type of delivery-report notification: scheduled = regular periodic update, final = campaign completed, delayed = data not yet available, adjusted = corrected data for the same window, window_update = a wider measurement window supersedes a prior window."
+    },
+    "partial_data": {
+      "type": "boolean",
+      "description": "Indicates if any media buys in this webhook have missing or delayed data."
+    },
+    "unavailable_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of media buys with reporting_delayed or failed status when partial_data is true."
+    },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Sequential notification number for this reporting webhook stream."
+    },
+    "next_expected_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp for the next expected notification. Omitted on final notifications."
+    },
+    "reporting_period": {
+      "type": "object",
+      "description": "UTC date range covered by the delivery report.",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code.",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "attribution_window": {
+      "$ref": "/schemas/3.1.0-rc.4/core/attribution-window.json",
+      "description": "Attribution methodology and lookback windows used for conversion metrics in this report."
+    },
+    "media_buy_deliveries": {
+      "type": "array",
+      "description": "Delivery rows for one or more media buys included in this notification.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "media_buy_id": {
+            "type": "string",
+            "description": "Seller's media buy identifier.",
+            "x-entity": "media_buy"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current media buy lifecycle or reporting status. This is distinct from the webhook envelope's top-level task status.",
+            "enum": [
+              "pending_creatives",
+              "pending_start",
+              "pending",
+              "active",
+              "paused",
+              "completed",
+              "rejected",
+              "canceled",
+              "failed",
+              "reporting_delayed"
+            ]
+          },
+          "expected_availability": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When delayed data is expected to be available. Present when status is reporting_delayed."
+          },
+          "is_adjusted": {
+            "type": "boolean",
+            "description": "Indicates this row contains updated data for a previously reported period."
+          },
+          "is_final": {
+            "type": "boolean",
+            "description": "Whether this row's delivery data is final for the reporting period."
+          },
+          "finalized_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this row became final. Present only when is_final is true."
+          },
+          "pricing_model": {
+            "$ref": "/schemas/3.1.0-rc.4/enums/pricing-model.json"
+          },
+          "totals": {
+            "allOf": [
+              {
+                "$ref": "/schemas/3.1.0-rc.4/core/delivery-metrics.json"
+              },
+              {
+                "type": "object",
+                "description": "Aggregate metrics for this media buy across all packages.",
+                "properties": {
+                  "effective_rate": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "spend"
+                ],
+                "additionalProperties": true
+              }
+            ]
+          },
+          "by_package": {
+            "type": "array",
+            "description": "Metrics broken down by package.",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "/schemas/3.1.0-rc.4/core/delivery-metrics.json"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "package_id": {
+                      "type": "string",
+                      "x-entity": "package"
+                    },
+                    "pacing_index": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "pricing_model": {
+                      "$ref": "/schemas/3.1.0-rc.4/enums/pricing-model.json"
+                    },
+                    "rate": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "currency": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{3}$"
+                    },
+                    "delivery_status": {
+                      "type": "string",
+                      "enum": [
+                        "delivering",
+                        "completed",
+                        "budget_exhausted",
+                        "flight_ended",
+                        "goal_met"
+                      ]
+                    },
+                    "paused": {
+                      "type": "boolean"
+                    },
+                    "is_final": {
+                      "type": "boolean"
+                    },
+                    "finalized_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "measurement_window": {
+                      "type": "string",
+                      "maxLength": 50
+                    },
+                    "supersedes_window": {
+                      "type": "string",
+                      "maxLength": 50
+                    }
+                  },
+                  "required": [
+                    "spend"
+                  ],
+                  "additionalProperties": true
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "media_buy_id",
+          "status",
+          "totals",
+          "by_package"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific delivery errors or warnings.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.4/core/error.json"
+      }
+    },
+    "sandbox": {
+      "type": "boolean"
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-rc.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-rc.4/core/ext.json"
+    }
+  },
+  "required": [
+    "notification_type",
+    "reporting_period",
+    "currency",
+    "media_buy_deliveries"
+  ],
+  "additionalProperties": true
+}

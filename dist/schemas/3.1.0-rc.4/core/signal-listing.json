@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.4/core/signal-listing.json",
+  "title": "Signal Listing",
+  "description": "Shared signal identity and definition metadata used when a signal is listed outside its authoritative definition. New listings carry signal_ref; legacy listings may carry deprecated signal_id during the SignalRef migration window. Product-local signals use the listing as the definition boundary and MUST include name and value_type. Data-provider and signal-source refs MAY omit definition metadata when the buyer can resolve it from the referenced provider-published definition or source; any supplied name, description, value_type, categories, range, methodology_url, or last_updated is product/account/source context and does not replace the authoritative definition.",
+  "type": "object",
+  "properties": {
+    "signal_ref": {
+      "$ref": "/schemas/3.1.0-rc.4/core/signal-ref.json",
+      "description": "Canonical signal reference. Use scope 'product' for a product-local signal defined by this listing; use scope 'data_provider' with data_provider_domain for a signal defined in a data provider's published adagents.json signals[]; use scope 'signal_source' with signal_source_url for a source-native signal."
+    },
+    "signal_id": {
+      "$ref": "/schemas/3.1.0-rc.4/core/signal-id.json",
+      "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older Signals Protocol clients.",
+      "deprecated": true
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable signal name. Required when signal_ref.scope is 'product'. For data_provider and signal_source refs, this is optional contextual display text; the referenced definition or source remains authoritative."
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed signal description. For data_provider and signal_source refs, this is optional contextual display text and MUST NOT replace the referenced definition."
+    },
+    "methodology_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional link to published methodology, media-kit, or data documentation. For data_provider and signal_source refs, this SHOULD match or supplement the referenced definition."
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this listing record was last updated. This indicates freshness of the listing record, not an attestation that the underlying data or model was refreshed at that time."
+    },
+    "value_type": {
+      "$ref": "/schemas/3.1.0-rc.4/enums/signal-value-type.json",
+      "description": "The data type of this signal's values. Required when signal_ref.scope is 'product'."
+    },
+    "categories": {
+      "type": "array",
+      "description": "Valid values for categorical signals. Present when value_type is 'categorical'.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "range": {
+      "type": "object",
+      "description": "Valid range for numeric signals. Present when value_type is 'numeric'.",
+      "properties": {
+        "min": {
+          "type": "number",
+          "description": "Minimum value, inclusive."
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum value, inclusive."
+        }
+      },
+      "required": ["min", "max"],
+      "additionalProperties": false
+    }
+  },
+  "anyOf": [
+    { "required": ["signal_ref"] },
+    { "required": ["signal_id"] }
+  ],
+  "allOf": [
+    {
+      "description": "Product-local signal listings define the signal inline, so they need a display name and value type.",
+      "if": {
+        "properties": {
+          "signal_ref": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "const": "product"
+              }
+            },
+            "required": ["scope"]
+          }
+        },
+        "required": ["signal_ref"]
+      },
+      "then": {
+        "required": ["name", "value_type"]
+      }
+    }
+  ],
+  "additionalProperties": true
+}
