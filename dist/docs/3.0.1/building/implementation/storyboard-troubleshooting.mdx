@@ -74,9 +74,49 @@ The storyboard dispatched a step that requires a capability your agent does not 
 × (unknown step): missing auth — step requires authenticated or signed
 ```
 
-The runner encountered a mutating step that expected either authenticated credentials or a signed request, and the transport carried neither. Typically this means the test kit didn't declare `auth.api_key` AND the agent doesn't advertise request-signing support — leaving the runner with no way to authenticate the call.
+The runner encountered a mutating step that expected either authenticated credentials or a signed request, and the transport carried neither. Typically this means the test kit didn't declare `auth.api_key` or `auth.basic` AND the agent doesn't advertise request-signing support — leaving the runner with no way to authenticate the call.
 
-**Fix:** Either (a) declare `auth.api_key` in the test kit so the runner uses Bearer auth, or (b) advertise request-signing via `get_adcp_capabilities.request_signing` so the runner signs the request instead. The runner's `requireAuthenticatedOrSigned` gate accepts either path — it fails only when both are absent.
+**Fix:** Either (a) declare `auth.api_key` or `auth.basic` in the test kit so the runner uses a static Authorization-header credential, or (b) advertise request-signing via `get_adcp_capabilities.request_signing` so the runner signs the request instead. The runner's `requireAuthenticatedOrSigned` gate accepts either path — it fails only when both are absent.
+
+## Static-credential agent: no auth mechanism contributed (assert_mechanism)
+
+```json
+{
+  "check": "assertion",
+  "passed": false,
+  "description": "Probe validations failed.",
+  "expected": ["auth_mechanism_verified"],
+  "actual": []
+}
+```
+
+The `mechanism_required` phase found no contribution to `auth_mechanism_verified` from any optional auth phase. This is the most common failure for static-credential-only agents (Bearer API key or HTTP Basic), and it is not a real auth problem — it is a test-kit configuration gap.
+
+**What happened:** The `api_key_path` phase has `skip_if: "!test_kit.auth.api_key"` and the `basic_path` phase has `skip_if: "!test_kit.auth.basic"` — each is skipped unless the test kit declares the matching credential. The `oauth_discovery` phase 404s on `/.well-known/oauth-protected-resource/...` (expected for static-credential-only agents; those failures are silently ignored by the runner). With all optional auth phases contributing nothing, `assert_mechanism` sees `actual: []`.
+
+**The `--auth TOKEN` distinction:** The `--auth TOKEN` flag you pass to the runner is the runner's own session credential — it authorizes the runner's own requests to your agent. It is entirely separate from `test_kit.auth.api_key` or `test_kit.auth.basic`, which are the specific credentials the static-credential phases send during positive and invalid-credential probes. These are not the same token and are not interchangeable.
+
+**Fix for Bearer API key agents:** Every default AdCP brand test kit declares its probe API key under `auth.api_key` using the `demo-<kit>-v1` naming convention. The default test kit (`acme-outdoor`) uses `demo-acme-outdoor-v1`. Configure your agent to accept the kit's probe key as a valid compliance-testing credential alongside your production key. The `demo-<kit>-` prefix is the AdCP conformance handle — accept any Bearer token matching the prefix for the kits you run against (the suffix can rotate across spec versions, the prefix stays stable):
+
+```typescript
+serve({
+  authenticate: verifyApiKey({
+    keys: {
+      [PRODUCTION_TOKEN]: { principal: 'my-principal' },
+      // Accept the default compliance kit's probe key (and any future suffix rotation)
+      'demo-acme-outdoor-v1': { principal: 'compliance-runner' },
+    }
+  })
+})
+```
+
+**Fix for HTTP Basic agents:** Use a test kit that declares `auth.basic` with either `username`/`password` or a single `credentials` value containing the unencoded `username:password` pair. Configure your agent to accept that Basic credential as a valid compliance-testing credential alongside your production Basic credential. The `basic_path` phase then sends the valid Basic credential and a random-invalid Basic credential, and contributes `auth_mechanism_verified` only when the agent accepts the valid credential and rejects the invalid one.
+
+Agents that only accept their own production credential skip the matching static path (no test-kit credential matches), fail `oauth_discovery` (no PRM), and land at `actual: []` in `assert_mechanism`. Adding the test-kit credential to your allowed-credentials set is sufficient — you do not need a PRM endpoint or an OAuth issuer.
+
+Do not serve a fake `/.well-known/oauth-protected-resource/...` pointing at a non-existent issuer to "pass" the OAuth phase. That triggers the advertised-but-unserved failure mode the storyboard was designed to catch.
+
+See [Known spec ambiguities — PRM required for non-OAuth agents](/docs/building/implementation/known-ambiguities#prm-required-for-non-oauth-agents) for background on why the carve-out exists and how the static-credential / `oauth_discovery` phase semantics were designed.
 
 ## `INVALID_STATE` vs `INVALID_TRANSITION`
 
