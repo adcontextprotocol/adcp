@@ -9,6 +9,7 @@ import {
   setAgentTesterLogger,
   comply as sdkComply,
   loadComplianceIndex as sdkLoadComplianceIndex,
+  testCapabilityDiscovery,
   type ComplyOptions,
   type ComplianceResult,
   type ComplianceTrack,
@@ -21,9 +22,11 @@ import {
 } from '@adcp/sdk/testing';
 import {
   hostedComplianceTarget,
+  hostedAuthProbeTaskForProfile,
   withHostedComplianceRunOptions,
   type HostedComplianceTarget,
 } from '../../services/hosted-compliance-version.js';
+import { createLogger } from '../../logger.js';
 
 import type {
   TrackSummaryEntry,
@@ -35,6 +38,7 @@ import type {
   TriggeredBy,
 } from '../../db/compliance-db.js';
 
+const logger = createLogger('addie-compliance-testing');
 
 // ── Re-exports ────────────────────────────────────────────────────
 
@@ -49,12 +53,30 @@ export type {
   SampleBrief,
 };
 
+async function hostedAuthProbeTaskForRun(
+  agentUrl: string,
+  options: ComplyOptions,
+): Promise<string | undefined> {
+  const auth = options.auth;
+  if (auth?.type !== 'bearer' && auth?.type !== 'basic') return undefined;
+  if (options.test_kit?.auth?.probe_task) return options.test_kit.auth.probe_task;
+
+  try {
+    const discovery = await testCapabilityDiscovery(agentUrl, options);
+    return hostedAuthProbeTaskForProfile(discovery.profile);
+  } catch (err) {
+    logger.warn({ err, agentUrl }, 'Could not pre-discover hosted auth probe task; using default');
+    return undefined;
+  }
+}
+
 export async function comply(
   agentUrl: string,
   options: ComplyOptions,
   target: HostedComplianceTarget,
 ): Promise<ComplianceResult> {
-  const result = await sdkComply(agentUrl, withHostedComplianceRunOptions(options, target));
+  const authProbeTask = await hostedAuthProbeTaskForRun(agentUrl, options);
+  const result = await sdkComply(agentUrl, withHostedComplianceRunOptions(options, target, authProbeTask));
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { requested_compliance_target?: string }).requested_compliance_target = target.requested;
   return result;

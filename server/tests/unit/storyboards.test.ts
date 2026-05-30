@@ -15,10 +15,12 @@ import {
   DEFAULT_HOSTED_COMPLIANCE_LINE,
   DEFAULT_HOSTED_COMPLIANCE_VERSION,
   badgeEligibleVersionsForHostedComplianceTarget,
+  hostedAuthProbeTaskForProfile,
   hostedComplianceOptions,
   hostedComplianceTarget,
   isDefaultHostedComplianceTarget,
   agentAdvertisesBadgeEligibleHostedComplianceTarget,
+  withHostedAuthTestKit,
   withHostedComplianceOptions,
 } from '../../src/services/hosted-compliance-version.js';
 import {
@@ -158,6 +160,7 @@ describe('wrapper contract', () => {
     const target = hostedComplianceTarget();
     const index = loadComplianceIndex(hostedComplianceOptions(target));
     expect(index.adcp_version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
+    expect(DEFAULT_HOSTED_COMPLIANCE_VERSION).toBe('3.0.14');
     expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.0');
     expect(target.requested).toBe(DEFAULT_HOSTED_COMPLIANCE_LINE);
     expect(target.version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
@@ -168,6 +171,7 @@ describe('wrapper contract', () => {
   it('resolves compliance target aliases against checked-in caches', () => {
     const stable = hostedComplianceTarget('3.0');
     expect(stable.requested).toBe('3.0');
+    expect(stable.version).toBe('3.0.14');
     expect(stable.version).toMatch(/^3\.0\.\d+$/);
 
     const beta = hostedComplianceTarget('3.1-beta');
@@ -208,6 +212,44 @@ describe('wrapper contract', () => {
     const options = withHostedComplianceOptions({ version: '3.0' }, target);
     expect(options.version).toBe(target.version);
     expect(options.complianceDir).toContain(target.version);
+  });
+
+  it('threads bearer auth into the hosted runtime test kit', () => {
+    const options = withHostedAuthTestKit({
+      auth: { type: 'bearer', token: 'secret-token' },
+    });
+
+    expect(options.test_kit?.auth?.api_key).toBe('secret-token');
+    expect(options.test_kit?.auth?.probe_task).toBe('list_creatives');
+  });
+
+  it('threads Basic auth into the hosted runtime test kit', () => {
+    const options = withHostedAuthTestKit({
+      auth: { type: 'basic', username: 'agent-user', password: 'agent-pass' },
+    });
+
+    expect((options.test_kit?.auth as any)?.basic).toEqual({
+      username: 'agent-user',
+      password: 'agent-pass',
+    });
+    expect(options.test_kit?.auth?.probe_task).toBe('list_creatives');
+  });
+
+  it('selects a hosted auth probe task from the discovered agent profile', () => {
+    expect(hostedAuthProbeTaskForProfile({
+      tools: ['get_adcp_capabilities', 'get_signals'],
+      supported_protocols: ['signals'],
+    })).toBe('get_signals');
+
+    expect(hostedAuthProbeTaskForProfile({
+      tools: ['get_adcp_capabilities', 'list_content_standards'],
+      supported_protocols: ['governance'],
+    })).toBe('list_content_standards');
+
+    expect(hostedAuthProbeTaskForProfile({
+      tools: ['get_adcp_capabilities', 'unknown_read'],
+      supported_protocols: ['unknown'],
+    })).toBe('list_creatives');
   });
 
   it('does not let explicit beta targets run for sellers advertising only the future stable line', () => {
