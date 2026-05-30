@@ -18,7 +18,7 @@ narrative: |
   same surface when update_media_buy is called.
 
   This scenario creates a media buy from a product whose allowed_actions[]
-  advertise one self-serve budget action, one proposal-routed flight action,
+  advertise one self-serve budget action, one approval-routed flight action,
   and one approval-routed cancellation action. The runner then verifies that
   the created buy and subsequent get/update responses carry the resolved
   available_actions[] surface, that the self-serve update succeeds, and that
@@ -61,7 +61,7 @@ fixtures:
             response_max: "PT5M"
             completion_max: "PT1H"
         - action: "extend_flight"
-          modes: ["requires_proposal"]
+          modes: ["requires_approval"]
           sla:
             response_max: "PT4H"
             completion_max: "P2D"
@@ -135,11 +135,11 @@ phases:
           - check: field_value
             path: "products[0].allowed_actions[1].action"
             value: "extend_flight"
-            description: "Product advertises the proposal-routed flight extension action"
+            description: "Product advertises the approval-routed flight extension action"
           - check: field_value
             path: "products[0].allowed_actions[1].modes[0]"
-            value: "requires_proposal"
-            description: "Product declares extend_flight as proposal-routed"
+            value: "requires_approval"
+            description: "Product declares extend_flight as approval-routed"
           - check: field_value
             path: "products[0].allowed_actions[2].action"
             value: "cancel"
@@ -228,8 +228,8 @@ phases:
             description: "Created buy carries extend_flight from product allowed_actions"
           - check: field_value
             path: "available_actions[1].mode"
-            value: "requires_proposal"
-            description: "Created buy resolves extend_flight to requires_proposal"
+            value: "requires_approval"
+            description: "Created buy resolves extend_flight to requires_approval"
           - check: field_value
             path: "available_actions[1].terms_ref"
             value: "terms://available-actions/extension"
@@ -292,11 +292,11 @@ phases:
           - check: field_value
             path: "media_buys[0].available_actions[1].action"
             value: "extend_flight"
-            description: "Persisted buy carries the proposal-routed action"
+            description: "Persisted buy carries the approval-routed action"
           - check: field_value
             path: "media_buys[0].available_actions[1].mode"
-            value: "requires_proposal"
-            description: "Persisted buy keeps the proposal mode"
+            value: "requires_approval"
+            description: "Persisted buy keeps the approval mode"
           - check: field_value
             path: "media_buys[0].available_actions[2].action"
             value: "cancel"
@@ -314,7 +314,7 @@ phases:
     title: "Enforce advertised actions"
     narrative: |
       The buyer attempts updates against the created buy. The self-serve action
-      succeeds, proposal/approval modes reject direct mutation with
+      succeeds, approval modes reject direct mutation with
       mode_mismatch, and an action never advertised by the product rejects as
       not_supported_on_product.
     steps:
@@ -359,8 +359,8 @@ phases:
             value: "available_actions--increase_budget"
             description: "Context correlation_id returned unchanged"
 
-      - id: direct_extend_requires_proposal
-        title: "Reject direct update for proposal-routed extension"
+      - id: direct_extend_requires_approval
+        title: "Reject direct update for approval-routed extension"
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
         response_schema_ref: "media-buy/update-media-buy-response.json"
@@ -371,7 +371,7 @@ phases:
         stateful: true
         expected: |
           Reject with ACTION_NOT_ALLOWED because extend_flight is advertised,
-          but its resolved mode is requires_proposal rather than self_serve.
+          but its resolved mode is requires_approval rather than self_serve.
         sample_request:
           account:
             brand:
@@ -387,7 +387,7 @@ phases:
         validations:
           - check: error_code
             code: ACTION_NOT_ALLOWED
-            description: "Seller rejects direct mutation for proposal-routed action"
+            description: "Seller rejects direct mutation for approval-routed action"
           - check: field_value
             path: "errors[0].details.attempted_action"
             value: "extend_flight"
@@ -402,8 +402,8 @@ phases:
             description: "Mode mismatch is a correctable flow-switch recovery"
           - check: field_value
             path: "errors[0].details.currently_available_actions[1].mode"
-            value: "requires_proposal"
-            description: "Recovery details echo the current proposal-routed action surface"
+            value: "requires_approval"
+            description: "Recovery details echo the current approval-routed action surface"
           - check: field_value
             path: "context.correlation_id"
             value: "available_actions--extend_direct"

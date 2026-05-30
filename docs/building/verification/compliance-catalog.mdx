@@ -72,6 +72,7 @@ Top-level agent capability claims. An agent claims a protocol by listing it in `
 | `governance` | `protocols/governance/` | Property governance, brand standards, compliance |
 | `brand` | `protocols/brand/` | Brand identity, rights discovery, rights acquisition *— small protocol today, growing with rights licensing work; see `brand-rights` specialism.* |
 | `sponsored_intelligence` | `protocols/sponsored-intelligence/` | AI-mediated commerce and conversational sponsored experiences |
+| `measurement` | Preview / no stable baseline | Experimental 3.1 metric-catalog discovery. Agents implementing it must list `measurement.core` in `experimental_features`. |
 
 <Note>
 Support for the [compliance test controller](/docs/building/by-layer/L3/comply-test-controller) is declared via the `capabilities.compliance_testing` block on `get_adcp_capabilities`, not via `supported_protocols`. Compliance testing is an RPC surface for the test harness, not a functional protocol.
@@ -146,7 +147,7 @@ Specialisms are grouped below by parent protocol.
 | `governance-spend-authority` | stable | Conditional spend approval and human-in-the-loop governance |
 
 <Note>
-**Coming in 3.1.** `measurement-verification` (third-party viewability, attribution, brand-safety, and SI-outcome verification) is scheduled for 3.1 under a dedicated `measurement` protocol.
+**Experimental in 3.1.** Measurement metric-catalog discovery is available through the experimental `measurement` capability block and `measurement.core` experimental feature. A stable `measurement-verification` specialism and baseline storyboard are deferred until the measurement task surface is frozen.
 </Note>
 
 ### brand
@@ -189,11 +190,11 @@ Three specialisms apply to specific delivery channels and have their own storybo
 
 <Step title="Set media_buy.supports_proposals (sales-guaranteed only)">
 
-`media_buy.supports_proposals` is a boolean in the `media_buy` capabilities block of your `get_adcp_capabilities` response. It gates whether the `proposal_finalize` compliance scenario runs.
+`media_buy.supports_proposals` is a boolean in the `media_buy` capabilities block of your `get_adcp_capabilities` response. It gates whether the `proposal_finalize` compliance scenario runs. It is a conformance declaration, not the buyer's per-proposal routing signal: buyers decide whether a returned proposal can be bought from `proposal_status`.
 
 | If you… | Set |
 |---|---|
-| Accept RFPs, generate proposals, and finalize to committed status before IO | `media_buy.supports_proposals: true` |
+| Accept RFPs, generate proposals, and finalize draft proposals to committed status before create | `media_buy.supports_proposals: true` |
 | Sell direct-buy guaranteed only (auction PG, retail SKU, quoted-rate — no RFP flow) | `media_buy.supports_proposals: false` (or omit — default is `false`) |
 
 ```jsonc
@@ -248,7 +249,7 @@ Three specialisms apply to specific delivery channels and have their own storybo
 | `governance-spend-authority` | stable | Conditional spend approval and human-in-the-loop governance |
 
 <Note>
-**Coming in 3.1.** `measurement-verification` (third-party viewability, attribution, brand-safety, and SI-outcome verification) is scheduled for 3.1 under a dedicated `measurement` protocol.
+**Experimental in 3.1.** Measurement metric-catalog discovery is available through the experimental `measurement` capability block and `measurement.core` experimental feature. A stable `measurement-verification` specialism and baseline storyboard are deferred until the measurement task surface is frozen.
 </Note>
 
 ### brand

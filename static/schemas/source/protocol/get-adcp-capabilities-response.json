@@ -132,7 +132,7 @@
     },
     "supported_protocols": {
       "type": "array",
-      "description": "AdCP protocols this agent supports. Each value both (a) declares which tools the agent implements and (b) commits the agent to pass the baseline compliance storyboard at /compliance/{version}/protocols/{protocol}/ (with snake_case → kebab-case path mapping, e.g. media_buy → /compliance/.../protocols/media-buy/). The `measurement` protocol is in development — currently scoped to `get_adcp_capabilities` for catalog discovery; additional measurement tasks (reporting, attribution, etc.) and a baseline storyboard land in subsequent minors. Compliance testing support is declared separately via the `compliance_testing` capability block (below), not as a protocol claim.",
+      "description": "AdCP protocols this agent supports. Stable values both (a) declare which tools the agent implements and (b) commit the agent to pass the baseline compliance storyboard at /compliance/{version}/protocols/{protocol}/ (with snake_case → kebab-case path mapping, e.g. media_buy → /compliance/.../protocols/media-buy/). The `measurement` protocol is experimental in 3.1 and currently scoped to `get_adcp_capabilities` catalog discovery; agents implementing it MUST also list `measurement.core` in `experimental_features`. Additional measurement tasks (reporting, attribution, etc.) and a baseline storyboard land in subsequent minors. Compliance testing support is declared separately via the `compliance_testing` capability block (below), not as a protocol claim.",
       "items": {
         "type": "string",
         "enum": [
@@ -204,7 +204,7 @@
         },
         "buying_modes": {
           "type": "array",
-          "description": "Buying modes this seller supports on get_products. 'brief' (semantic discovery driven by the brief) is universally supported and implicit. 'wholesale' (raw wholesale product feed enumeration — caller omits brief and the seller returns the full priced product feed, paginated) is opt-in and SHOULD be declared explicitly so buyers can probe before issuing wholesale calls. 'refine' (iterate on prior products/proposals) is implicit when the seller declares supports_proposals or otherwise honors the refine array. Sellers MAY declare ['brief', 'wholesale'] to signal wholesale support; absent declaration is treated as ['brief'] for wholesale-feed probing purposes and sellers MAY return INVALID_REQUEST for wholesale calls they do not support. Symmetric with signals.discovery_modes.",
+          "description": "Buying modes this seller supports on get_products. 'brief' (semantic discovery driven by the brief) is universally supported and implicit. 'wholesale' (raw wholesale product feed enumeration — caller omits brief and the seller returns the full priced product feed, paginated) is opt-in and SHOULD be declared explicitly so buyers can probe before issuing wholesale calls. 'refine' lets buyers iterate on prior products/proposals and is also the vehicle for finalizing draft proposals when the seller returns them. Sellers MAY declare ['brief', 'wholesale'] to signal wholesale support; absent declaration is treated as ['brief'] for wholesale-feed probing purposes and sellers MAY return INVALID_REQUEST for wholesale calls they do not support. Symmetric with signals.discovery_modes.",
           "items": {
             "type": "string",
             "enum": [
@@ -243,7 +243,7 @@
         },
         "supports_proposals": {
           "type": "boolean",
-          "description": "Whether this seller commits to the proposal lifecycle on get_products: when called with buying_mode: 'brief' the seller will return at least one entry in proposals[]; when called with buying_mode: 'refine' + action: 'finalize' the seller will transition a proposal from draft to committed. A declaration of true is a commitment the seller will be graded against, not just a feature flag — sellers that decline a brief on policy grounds still owe a structured proposal-shaped rejection rather than an empty proposals[]. Most guaranteed-deal sellers (premium pubs, broadcast, CTV) declare true; auction-based PG, retail SKU, and quoted-rate direct-buy flows declare false. When false or absent, the seller serves products directly without proposal abstraction; conformance runners skip proposal-lifecycle storyboards.",
+          "description": "Conformance declaration that this seller supports the full proposal lifecycle on get_products: returned proposals are actionable, draft proposals can be finalized with buying_mode: 'refine' + action: 'finalize', and committed proposals can be executed via create_media_buy with proposal_id before expires_at. Buyers SHOULD NOT use this field to decide whether a specific returned proposal is executable; proposal_status is the per-proposal source of truth. A declaration of true opts the seller into proposal-lifecycle grading. When false or absent, conformance runners skip proposal-lifecycle storyboards, but buyers should still honor any proposals the seller actually returns.",
           "default": false
         },
         "propagation_surfaces": {
@@ -1396,7 +1396,8 @@
     },
     "measurement": {
       "type": "object",
-      "description": "Measurement capability block. Presence indicates this agent computes one or more quantitative metrics about ad delivery, exposure, or effect, and is willing to be discovered as a measurement vendor. Returns metric definitions (this surface), not pricing/coverage (negotiated via `measurement_terms` on `create_media_buy`) or live values (returned per buy via `vendor_metric_values`). Modeled as a capability block (like `compliance_testing` and `webhook_signing`) rather than a `supported_protocols` value because measurement agents have one surface — this catalog — not a tool-set with mandatory tasks. AAO crawls each measurement agent's `metrics[]` on a TTL to populate the federated cross-vendor index. Same self-describing pattern as `governance.property_features[]`: agents own the catalog; the registry aggregates.",
+      "x-status": "experimental",
+      "description": "Experimental measurement capability block. Presence indicates this agent computes one or more quantitative metrics about ad delivery, exposure, or effect, and is willing to be discovered as a measurement vendor. Agents implementing this block MUST list `measurement.core` in experimental_features. Returns metric definitions (this surface), not pricing/coverage (negotiated via `measurement_terms` on `create_media_buy`) or live values (returned per buy via `vendor_metric_values`). AAO crawls each measurement agent's `metrics[]` on a TTL to populate the federated cross-vendor index. Same self-describing pattern as `governance.property_features[]`: agents own the catalog; the registry aggregates.",
       "properties": {
         "metrics": {
           "type": "array",
@@ -1543,7 +1544,7 @@
       "items": {
         "type": "string",
         "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$",
-        "description": "Experimental feature id (dot-separated lowercase identifiers, e.g., 'brand.rights_lifecycle', 'governance.campaign', 'trusted_match.core')"
+        "description": "Experimental feature id (dot-separated lowercase identifiers, e.g., 'brand.rights_lifecycle', 'governance.campaign', 'measurement.core', 'trusted_match.core')"
       },
       "uniqueItems": true
     },

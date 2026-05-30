@@ -199,7 +199,7 @@ The product entries define which products the seller should consider for the pro
 
 ## Finalize is exclusive within `refine[]`
 
-`action: "finalize"` is a commit, not a refinement — it transitions a draft proposal to committed with an expires_at hold window. When a buyer wants to finalize, the spec requires the `refine[]` array contain **only** finalize entries:
+`action: "finalize"` is seller commitment, not buyer acceptance — it transitions a draft proposal to committed with firm pricing and an expires_at hold window. The buyer accepts/executes a committed proposal later via `create_media_buy(proposal_id)`. When a buyer wants to finalize, the spec requires the `refine[]` array contain **only** finalize entries:
 
 - If any entry has `action: "finalize"`, **all** entries in the array MUST be proposal-scoped with `action: "finalize"`. Mixing finalize with `include` / `omit` entries, or with request- or product-scoped entries, MUST be rejected by the seller with `INVALID_REQUEST`.
 - Buyers needing to refine *and* commit in close succession **sequence** the calls: first a refine call (no finalize), then a finalize call against the resulting `proposal_id`(s). The two intents are distinct decisions and the spec treats them as distinct calls.

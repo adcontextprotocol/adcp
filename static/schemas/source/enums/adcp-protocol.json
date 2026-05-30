@@ -12,6 +12,6 @@
     "creative": "Creative asset management, format discovery, and rendering",
     "brand": "Brand identity, rights discovery, and rights acquisition",
     "sponsored-intelligence": "AI-mediated commerce and conversational sponsored experiences, including buyer-agent sessions and measurement of AI-surfaced outcomes",
-    "measurement": "Measurement vendor capability discovery and per-metric reporting. Currently scoped to `get_adcp_capabilities` for catalog discovery (the `measurement` capability block); additional measurement tasks (reporting, attribution, panel queries) land in subsequent minors."
+    "measurement": "Experimental in 3.1. Measurement vendor capability discovery and per-metric reporting. Currently scoped to `get_adcp_capabilities` for catalog discovery (the `measurement` capability block); agents implementing it must list `measurement.core` in experimental_features. Additional measurement tasks (reporting, attribution, panel queries) land in subsequent minors."
   }
 }
