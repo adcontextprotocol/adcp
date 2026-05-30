@@ -41,7 +41,6 @@ test('ledger entries include removal conditions and upstream asks', () => {
 
 test('scanner finds the expected high-risk SDK reach-ins', () => {
   const findings = collectFindings();
-  assert.ok(findings.some((f) => f.file === 'server/src/training-agent/tenants/registry.ts' && f.term.includes('taskWebhookEmitter')));
   assert.ok(findings.some((f) => f.file === 'scripts/stage-sdk-schema-bundle.sh' && f.term.includes('schemas-data')));
   assert.ok(findings.some((f) => f.file === 'scripts/overlay-compliance-cache.sh' && f.term.includes('schemas.generated.js')));
 });

@@ -116,12 +116,13 @@
     "docs:json-field-audit": "node scripts/docs-json-field-audit.cjs"
   },
   "dependencies": {
-    "@adcp/sdk": "^8.1.0-beta.17",
+    "@adcp/sdk": "^8.1.0-beta.18",
     "@anthropic-ai/sdk": "^0.98.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.5.4",
     "@google-cloud/kms": "^5.5.0",
     "@google/generative-ai": "^0.24.1",
+    "@googleapis/calendar": "^14.3.0",
     "@modelcontextprotocol/sdk": "^1.28.0",
     "@mozilla/readability": "^0.6.0",
     "@opentelemetry/api-logs": "^0.218.0",
@@ -143,7 +144,6 @@
     "express-rate-limit": "^8.5.1",
     "file-type": "^22.0.1",
     "free-email-domains": "^1.9.16",
-    "@googleapis/calendar": "^14.3.0",
     "google-auth-library": "^10.1.0",
     "isomorphic-dompurify": "^3.14.0",
     "jose": "^6.2.2",

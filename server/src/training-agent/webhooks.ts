@@ -386,35 +386,8 @@ export function getWebhookEmitter(): WebhookEmitter {
   return emitter;
 }
 
-function runnerOperationIdFromWebhookUrl(rawUrl: string): string | undefined {
-  try {
-    const { pathname } = new URL(rawUrl);
-    return /^\/step\/[A-Za-z0-9_]+\/([A-Za-z0-9_-]+)\/?$/.exec(pathname)?.[1];
-  } catch {
-    return undefined;
-  }
-}
-
-export function ensureFrameworkWebhookPayloadOperationId(params: WebhookEmitParams): WebhookEmitParams {
-  if (typeof params.payload.operation_id === 'string' && params.payload.operation_id.length > 0) {
-    return params;
-  }
-  // Temporary SDK beta17 bridge: framework auto-emits receive an internal
-  // operation key but omit the wire payload's operation_id. Prefer the local
-  // storyboard receiver's URL operation id for 3.0 compatibility, then fall
-  // back to the SDK emit key so the payload remains schema-valid.
-  const operationId = runnerOperationIdFromWebhookUrl(params.url) ?? params.operation_id;
-  return {
-    ...params,
-    payload: {
-      operation_id: operationId,
-      ...params.payload,
-    },
-  };
-}
-
 export async function emitFrameworkTaskWebhook(params: WebhookEmitParams): Promise<WebhookEmitResult> {
-  return getWebhookEmitter().emit(ensureFrameworkWebhookPayloadOperationId(params));
+  return getWebhookEmitter().emit(params);
 }
 
 /** Reset state — tests only. */

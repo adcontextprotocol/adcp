@@ -1,22 +1,5 @@
 [
   {
-    "id": "framework-webhook-operation-id-bridge",
-    "title": "Framework webhook payload operation_id bridge",
-    "kind": "public_sdk_escape_hatch",
-    "status": "temporary",
-    "owner": "training-agent",
-    "upstream": "adcontextprotocol/adcp-client#2128",
-    "problem": "The SDK beta17 decisioning framework auto-emits webhook payloads without top-level operation_id even though mcp-webhook-payload.json requires it.",
-    "localBehavior": "Wrap the framework taskWebhookEmitter for the training-agent tenants and inject a payload operation_id before delegating to the signed SDK webhook emitter.",
-    "removalCondition": "Remove when the SDK framework threads push_notification_config.operation_id into auto-emitted webhook payloads or otherwise includes a schema-valid payload operation_id directly.",
-    "paths": [
-      "server/src/training-agent/tenants/registry.ts"
-    ],
-    "terms": [
-      "taskWebhookEmitter"
-    ]
-  },
-  {
     "id": "stage-sdk-schema-bundle-cache-copy",
     "title": "Staged SDK schema bundle cache copy",
     "kind": "node_modules_sdk_cache_mutation",

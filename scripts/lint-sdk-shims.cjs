@@ -28,7 +28,6 @@ const PRIVATE_SDK_PATTERNS = [
   /['"`]dist['"`]\s*,\s*['"`]lib['"`]/,
   /\bTOOL_RESPONSE_SCHEMAS\b/,
   /\bValidateInputResponseSchema\b/,
-  /\btaskWebhookEmitter\b/,
   /\bschemas\.generated\.js\b/,
 ];
 
