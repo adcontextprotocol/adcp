@@ -8,23 +8,24 @@ Push notifications let sellers deliver task status updates to you directly, inst
 
 ## How it works
 
-1. A unique operation ID is generated per task invocation
-2. A webhook URL is built by substituting that ID (and other routing params) into a URL template
-3. `push_notification_config` is injected into the task request body with just the URL — no secret required
+1. A unique operation ID is generated per task invocation for webhook correlation
+2. A webhook URL is built for your receiver. The URL may contain your own routing token, but it is opaque to the seller
+3. `push_notification_config` is injected into the task request body with the URL and explicit `operation_id` — no shared secret required
 4. The seller POSTs webhook notifications to your URL as the task status changes, signing each POST with its `adcp_use: "webhook-signing"` key published in its own brand.json `agents[]` entry
 5. You verify the signature against the seller's published JWKS and dedupe by `idempotency_key`
-6. Each notification echoes `operation_id` back in the payload so you can correlate it without parsing the URL
+6. Each notification echoes the explicit `operation_id` back in the payload so you can correlate it without parsing the URL
 
 ```
 create_media_buy request
   └── push_notification_config
-        └── url: "https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-afac-ed7789c3a443"
+        └── url: "https://you.com/adcp/webhook/create_media_buy/agent_123/route_abc123"
+        └── operation_id: "op_456"
               // No shared secret — the seller signs with its own key, you verify against
               // its published JWKS. See "Signature verification" below.
 
               ↓ seller processes task ↓
 
-POST https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-afac-ed7789c3a443
+POST https://you.com/adcp/webhook/create_media_buy/agent_123/route_abc123
   Signature-Input: sig1=("@method" "@target-uri" "@authority" "content-type" "content-digest");
                    created=1706097600;expires=1706097900;nonce="...";keyid="seller-webhook-2025";
                    alg="ed25519";tag="adcp/webhook-signing/v1"
@@ -35,7 +36,7 @@ POST https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-
   {
     "idempotency_key": "whk_01HW9D3H8FZP2N6R8T0V4X6Z9B",   ← dedup by this
     "task_id": "task_456",
-    "operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443",   ← echoed from your URL
+    "operation_id": "op_456",   ← echoed from push_notification_config.operation_id
     "status": "completed",
     "result": { ... }
   }
@@ -53,8 +54,8 @@ This trips people up. There are two naming conventions in play:
 
 | Context | Field name | Example |
 |---------|-----------|---------|
-| **MCP task arguments** (AdCP JSON) | `push_notification_config` | `{ push_notification_config: { url: ... } }` |
-| **A2A configuration object** | `pushNotificationConfig` | `configuration: { pushNotificationConfig: { url: ... } }` |
+| **MCP task arguments** (AdCP JSON) | `push_notification_config` | `{ push_notification_config: { url: ..., operation_id: ... } }` |
+| **A2A configuration object** | `pushNotificationConfig` | `configuration: { pushNotificationConfig: { url: ..., operation_id: ... } }` |
 
 The AdCP field name is always **`push_notification_config`** (snake_case). It goes in the task request body alongside your other task parameters.
 
@@ -73,7 +74,8 @@ Include `push_notification_config` as a task argument, merged with the rest of y
   "end_time": "2025-06-30T23:59:59Z",
   "packages": [...],
   "push_notification_config": {
-    "url": "https://you.com/webhooks/adcp/create_media_buy/op_abc123"
+    "url": "https://you.com/webhooks/adcp/create_media_buy/route_abc123",
+    "operation_id": "op_abc123"
   }
 }
 ```
@@ -99,7 +101,8 @@ For A2A, skill parameters stay in `message.parts[].data.parameters`. The push no
   },
   "configuration": {
     "pushNotificationConfig": {
-      "url": "https://you.com/webhooks/adcp/create_media_buy/op_abc123"
+      "url": "https://you.com/webhooks/adcp/create_media_buy/route_abc123",
+      "operation_id": "op_abc123"
     }
   }
 }
@@ -107,39 +110,40 @@ For A2A, skill parameters stay in `message.parts[].data.parameters`. The push no
 
 ## Operation IDs and URL templates
 
-Operation IDs let you route incoming webhooks to the right handler. The pattern:
+Operation IDs let you correlate incoming webhooks to the right task invocation. The pattern:
 
-1. Buyer generates a unique ID per task call
-2. Buyer threads it through to the seller as `operation_id` (typically by embedding in the webhook URL path, but the URL structure is the buyer's choice and is **opaque to the seller**)
+1. Buyer generates a unique operation ID per task call
+2. Buyer threads it through to the seller as `push_notification_config.operation_id`. The webhook URL structure is the buyer's choice and is **opaque to the seller**
 3. Seller echoes `operation_id` verbatim in every webhook payload — no URL parsing needed
 
 **Normative wire contract:**
 
-- **Buyers MUST** supply `operation_id` to the seller for every webhook registration and SHOULD generate it as a unique value per task invocation (UUID recommended).
+- **Buyers SHOULD** supply `operation_id` to the seller for every webhook registration and generate a unique value per task invocation (UUID recommended). Sellers MAY reject a webhook registration that omits `operation_id` with `INVALID_REQUEST`.
 - **Sellers MUST** echo the buyer-supplied `operation_id` value in every webhook payload exactly as received. The payload field is the **only** source of truth for correlation.
 - **Sellers MUST NOT** derive `operation_id` by parsing `push_notification_config.url` — the URL structure (path template, query parameters, opaque token, etc.) is implementation-defined from the seller's point of view and cannot be reliably reversed across implementations. A buyer's URL convention is not part of the protocol.
-- **Receivers MUST NOT** correlate webhooks by URL-path inspection in production code. The URL is for buyer-side server routing convenience only; the wire-level correlation identifier is the payload field.
+- **Receivers MAY** dispatch HTTP endpoints by URL path or query string, but **MUST NOT** use URL-derived values as the operation correlation key. The wire-level correlation identifier is the payload field.
 
 This matches the precedent set by every comparable async-notification protocol in ad tech (OpenRTB `nurl`/`burl`, VAST tracking pixels, A2A `PushNotificationConfig`): the entity firing the HTTP call never parses the receiver's URL for correlation data.
 
 **URL template pattern (buyer-side convention only):**
 ```
-https://you.com/webhooks/{task_type}/{agent_id}/{operation_id}
+https://you.com/webhooks/{task_type}/{agent_id}/{route_token}
 ```
 
-The template above is a useful **server-side routing aid for the buyer** — it lets a buyer's HTTP server dispatch on path segments without first parsing the body — but it is not normative and sellers cannot rely on it. A buyer who prefers `?op=…`, a flat path, or an entirely opaque token is fully conformant as long as the seller-side `operation_id` is supplied through the SDK's send-side API.
+The template above is a useful **server-side routing aid for the buyer** — it lets a buyer's HTTP server dispatch on path segments without first parsing the body — but it is not normative and sellers cannot rely on it. A buyer who prefers `?route=…`, a flat path, or an entirely opaque token is fully conformant as long as the seller-side `operation_id` is supplied through the SDK's send-side API.
 
 **Example (client library handles this automatically):**
 ```typescript
 import { randomUUID } from 'crypto';
 
 const operationId = randomUUID(); // e.g. "cd51e063-2b79-4a6d-afac-ed7789c3a443"
-const webhookUrl = `https://you.com/adcp/webhook/create_media_buy/${agentId}/${operationId}`;
+const routeId = randomUUID(); // receiver-local routing token; opaque to the seller
+const webhookUrl = `https://you.com/adcp/webhook/create_media_buy/${agentId}/${routeId}`;
 
-// pass webhookUrl in push_notification_config.url
+// pass both webhookUrl and operationId in push_notification_config
 ```
 
-The seller's webhook payload will include `"operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443"`, so your handler can route to the right pending operation by reading the payload field directly — never by parsing the URL it arrived on.
+The seller's webhook payload will include `"operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443"`, so your handler can correlate to the right pending operation by reading the payload field directly. URL paths can select an HTTP handler, but not the protocol operation ID.
 
 **Seller-SDK implementations** surface `operation_id` as an explicit parameter on the send-side webhook API (e.g., Python `WebhookSender.send_mcp(url=…, operation_id=…)`). The seller's application code threads the value through from the original task request to the webhook fire; the SDK never attempts to recover it from the URL.
 
@@ -528,7 +532,7 @@ When a buyer suspects a webhook isn't reaching its endpoint — gateway 5xx, sta
 3. **Return 2xx on duplicates** — a successfully-deduped event is a no-op, not an error; returning non-2xx triggers the sender's retry back-off and creates retry storms
 4. **Verify signatures before processing** — run the 9421 webhook verifier checklist (or the legacy HMAC check if you opted in) before any side effects
 5. **Acknowledge immediately** — return `200` before doing any heavy processing to avoid seller timeouts and unnecessary retries
-6. **Don't rely on URL structure** — use `operation_id` from the payload for routing, not URL parsing
+6. **Don't rely on URL structure** — use `operation_id` from the payload for business correlation; URL paths may only demux endpoints
 7. **Plan for HMAC removal in 4.0** — if you're currently on the legacy HMAC fallback, migrate to the 9421 webhook profile during 3.x
 
 ## Payload extraction

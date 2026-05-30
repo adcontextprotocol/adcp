@@ -342,6 +342,7 @@ phases:
                   max_variance_percent: 10
           push_notification_config:
             url: "{{runner.webhook_url:create_media_buy}}"
+            operation_id: "op_broadcast_delivery_window_update"
             authentication:
               schemes:
                 - "HMAC-SHA256"
@@ -582,15 +583,16 @@ phases:
           notification_type: window_update with the supersedes_window progression
           appropriate to the window that has matured.
 
-          The filter currently matches on operation_id only — runner extensions
-          for nested payload matching (e.g. result.notification_type) will allow
-          separating the C3 and C7 deliveries into distinct assertions in a
-          follow-up. Runs only when the webhook_receiver_runner contract is in
-          scope.
+          The filter currently matches the top-level payload operation_id only
+          — runner extensions for nested payload matching (e.g.
+          result.notification_type) will allow separating the C3 and C7
+          deliveries into distinct assertions in a follow-up. Runs only when
+          the webhook_receiver_runner contract is in scope.
         task: expect_webhook
         triggered_by: create_media_buy
         filter:
-          operation_id: "{{prior_step.create_media_buy.operation_id}}"
+          body:
+            operation_id: "op_broadcast_delivery_window_update"
         timeout_seconds: 30
         expect_idempotency_key: true
         webhook_payload_schema_ref: "core/mcp-webhook-payload.json"

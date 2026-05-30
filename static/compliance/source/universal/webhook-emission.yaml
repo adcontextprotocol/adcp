@@ -1,8 +1,8 @@
 id: webhook_emission
-version: "1.0.0"
-title: "Webhook emission — outbound webhook conformance (signing + idempotency)"
+version: "1.1.0"
+title: "Webhook emission — outbound webhook conformance (operation ID + signing + idempotency)"
 category: core
-summary: "Any agent that emits webhooks MUST carry a stable idempotency_key across retries and — when the buyer has not opted into the deprecated HMAC fallback — MUST sign deliveries under the RFC 9421 webhook profile. Graded by a runner hosting a webhook receiver during storyboard execution."
+summary: "Any agent that emits webhooks MUST echo the caller-supplied operation_id in every payload, carry a stable idempotency_key across retries, and — when the buyer has not opted into the deprecated HMAC fallback — MUST sign deliveries under the RFC 9421 webhook profile. Graded by a runner hosting a webhook receiver during storyboard execution."
 track: core
 
 narrative: |
@@ -13,14 +13,19 @@ narrative: |
   Every agent that accepts `push_notification_config` on any operation is in
   scope for this universal — no capability flag, no opt-in.
 
-  Two load-bearing conformance requirements apply to every outbound webhook:
+  Three load-bearing conformance requirements apply to every outbound webhook:
 
-  1. **`idempotency_key` is present on every payload and stable across retries.**
+  1. **`operation_id` echoes the caller-supplied value from
+     `push_notification_config.operation_id`.** The webhook URL is opaque to
+     the seller. Sellers MUST NOT derive operation correlation by parsing the
+     receiver URL path or query string.
+
+  2. **`idempotency_key` is present on every payload and stable across retries.**
      Required by adcontextprotocol/adcp#2417. Receivers dedupe on this field;
      a sender that regenerates the key on retry breaks at-least-once delivery
      semantics and creates duplicate side effects downstream.
 
-  2. **RFC 9421 webhook signing is baseline in 3.0** unless the buyer opts into
+  3. **RFC 9421 webhook signing is baseline in 3.0** unless the buyer opts into
      the deprecated HMAC fallback via `push_notification_config.authentication`.
      Required by adcontextprotocol/adcp#2423. Signatures carry
      `tag="adcp/webhook-signing/v1"`, cover `content-digest`, and verify
@@ -149,7 +154,8 @@ phases:
           webhook-emitting (typically `create_media_buy` for sales agents,
           `acquire_rights` for rights agents, etc.), passing
           `push_notification_config.url = {{runner.webhook_url:trigger_webhook_operation}}`
-          — no `authentication` block (9421 is the baseline for conformance).
+          and an explicit `push_notification_config.operation_id` — no
+          `authentication` block (9421 is the baseline for conformance).
         task: "$test_kit.operations.primary_webhook_emitter"
         task_default: create_media_buy
         schema_ref: "$test_kit.schemas.primary_request"
@@ -160,6 +166,7 @@ phases:
         sample_request:
           push_notification_config:
             url: "{{runner.webhook_url:trigger_webhook_operation}}"
+            operation_id: "op_webhook_presence_explicit"
           idempotency_key: "$generate:uuid_v4#webhook_emission_trigger"
           context:
             correlation_id: "webhook_emission--trigger_webhook_operation"
@@ -177,7 +184,8 @@ phases:
         task: expect_webhook
         triggered_by: trigger_webhook_operation
         filter:
-          operation_id: "{{prior_step.trigger_webhook_operation.operation_id}}"
+          body:
+            operation_id: "op_webhook_presence_explicit"
         timeout_seconds: 30
         expect_idempotency_key: true
         webhook_payload_schema_ref: "core/mcp-webhook-payload.json"
@@ -185,10 +193,79 @@ phases:
         expected: |
           Webhook arrives within 30 seconds. Payload validates against
           mcp-webhook-payload.json. idempotency_key is present and matches
-          the pattern `^[A-Za-z0-9_.:-]{16,255}$`. Any other status fails the
+          the pattern `^[A-Za-z0-9_.:-]{16,255}$`. Any other outcome fails the
           phase with a specific error code: no_webhook_received,
           schema_violation, missing_idempotency_key, or
           invalid_idempotency_key_format.
+
+  - id: operation_id_echo
+    title: "Webhook payload echoes explicit operation_id"
+    narrative: |
+      The runner triggers a webhook-emitting operation with both a per-step
+      receiver URL and an explicit `push_notification_config.operation_id`.
+      The receiver URL's internal capture identifier is intentionally different
+      from the explicit operation_id. The seller MUST treat the URL as opaque
+      and echo the explicit field verbatim in the webhook payload.
+
+      This catches the SDK/framework regression where the delivery layer had
+      an operation id for routing but the JSON payload omitted it, and the
+      equally dangerous variant where a seller parses a URL path segment
+      instead of using the registered `operation_id` field.
+
+    steps:
+      - id: trigger_operation_id_echo
+        title: "Trigger an operation with an explicit operation_id"
+        narrative: |
+          Runner calls a webhook-emitting operation with
+          `push_notification_config.url = {{runner.webhook_url:trigger_operation_id_echo}}`
+          and `push_notification_config.operation_id =
+          op_storyboard_echo_123`. The URL is a receiver-routing detail; the
+          payload echo must come from the explicit operation_id field.
+        task: "$test_kit.operations.primary_webhook_emitter"
+        task_default: create_media_buy
+        schema_ref: "$test_kit.schemas.primary_request"
+        response_schema_ref: "$test_kit.schemas.primary_response"
+        doc_ref: "/building/implementation/webhooks"
+        comply_scenario: webhook_operation_id_echo_trigger
+        stateful: false
+        sample_request:
+          push_notification_config:
+            url: "{{runner.webhook_url:trigger_operation_id_echo}}"
+            operation_id: "op_storyboard_echo_123"
+          idempotency_key: "$generate:uuid_v4#webhook_emission_operation_id_echo_trigger"
+          context:
+            correlation_id: "webhook_emission--trigger_operation_id_echo"
+        expected: |
+          Agent accepts the request and begins async execution. The webhook it
+          emits uses the receiver URL only for delivery, and carries
+          operation_id: op_storyboard_echo_123 in the JSON payload.
+
+      - id: expect_operation_id_echo
+        title: "Assert webhook payload operation_id came from push_notification_config"
+        narrative: |
+          Wait for a webhook whose payload operation_id equals the explicit
+          registration value. The runner validates the full payload against
+          mcp-webhook-payload.json, which requires operation_id, task_id,
+          task_type, status, timestamp, and the task-specific result shape.
+          A payload that omits operation_id, or echoes a value parsed from the
+          URL instead of push_notification_config.operation_id, does not match
+          this assertion and fails the phase.
+        task: expect_webhook
+        triggered_by: trigger_operation_id_echo
+        filter:
+          body:
+            operation_id: "op_storyboard_echo_123"
+        timeout_seconds: 30
+        expect_idempotency_key: true
+        webhook_payload_schema_ref: "core/mcp-webhook-payload.json"
+        stateful: true
+        expected: |
+          Webhook arrives within 30 seconds. Payload validates against
+          mcp-webhook-payload.json and carries top-level operation_id exactly
+          equal to op_storyboard_echo_123. The payload carries the task_type,
+          status, and result shape required by the schema; any task status is
+          acceptable because every webhook for the operation must echo the
+          registered operation_id.
 
   - id: idempotency_key_stability
     title: "idempotency_key is byte-identical across retries of the same event"
@@ -209,7 +286,9 @@ phases:
         title: "Trigger a webhook that will be retried via 5xx response"
         narrative: |
           Runner calls a webhook-emitting operation with
-          push_notification_config.url = {{runner.webhook_url:trigger_retry_scenario}}.
+          push_notification_config.url =
+          {{runner.webhook_url:trigger_retry_scenario}} and an explicit
+          push_notification_config.operation_id.
           The runner's receiver at that URL returns 503 for the first 3
           deliveries and 200 afterwards. Any conformant at-least-once sender
           will retry on each 5xx and eventually succeed.
@@ -223,6 +302,7 @@ phases:
         sample_request:
           push_notification_config:
             url: "{{runner.webhook_url:trigger_retry_scenario}}"
+            operation_id: "op_webhook_retry_explicit"
           idempotency_key: "$generate:uuid_v4#webhook_emission_retry_trigger"
           context:
             correlation_id: "webhook_emission--trigger_retry_scenario"
@@ -240,7 +320,8 @@ phases:
         task: expect_webhook_retry_keys_stable
         triggered_by: trigger_retry_scenario
         filter:
-          operation_id: "{{prior_step.trigger_retry_scenario.operation_id}}"
+          body:
+            operation_id: "op_webhook_retry_explicit"
         retry_trigger:
           count: 3
           http_status: 503
@@ -253,7 +334,8 @@ phases:
           Fails with insufficient_retries if fewer than 2 deliveries arrive,
           idempotency_key_rotated if the key changes across deliveries, or
           idempotency_key_format_changed if a later delivery carries a
-          different-shaped value.
+          different-shaped value. If the payload omits or mismatches the
+          registered operation_id, it will not match this payload assertion.
 
   - id: signing_keys_published
     title: "Agent publishes a webhook-signing JWKS at brand.json"
@@ -342,8 +424,8 @@ phases:
         title: "Trigger a webhook the agent will sign"
         narrative: |
           Runner calls a webhook-emitting operation with no `authentication`
-          block on push_notification_config, forcing 9421 signing per the
-          baseline rule.
+          block on push_notification_config and with an explicit operation_id,
+          forcing 9421 signing per the baseline rule.
         task: "$test_kit.operations.primary_webhook_emitter"
         task_default: create_media_buy
         schema_ref: "$test_kit.schemas.primary_request"
@@ -354,6 +436,7 @@ phases:
         sample_request:
           push_notification_config:
             url: "{{runner.webhook_url:trigger_signed_webhook}}"
+            operation_id: "op_webhook_signed_explicit"
           idempotency_key: "$generate:uuid_v4#webhook_emission_signed_trigger"
           context:
             correlation_id: "webhook_emission--trigger_signed_webhook"
@@ -375,7 +458,8 @@ phases:
         task: expect_webhook_signature_valid
         triggered_by: trigger_signed_webhook
         filter:
-          operation_id: "{{prior_step.trigger_signed_webhook.operation_id}}"
+          body:
+            operation_id: "op_webhook_signed_explicit"
         timeout_seconds: 30
         require_tag: "adcp/webhook-signing/v1"
         stateful: true
@@ -383,16 +467,18 @@ phases:
           Signature verifies under the 9421 webhook profile. Fails with the
           specific webhook_signature_* error code on any checklist failure
           (e.g., signature_invalid, signature_expired, signature_key_unknown,
-          signature_digest_mismatch, signature_tag_invalid). Not_applicable
-          if the client library doesn't yet implement 9421 webhook
-          verification.
+          signature_digest_mismatch, signature_tag_invalid). If the payload
+          omits or mismatches the registered operation_id, it will not match
+          this payload assertion. Not_applicable if the client library doesn't
+          yet implement 9421 webhook verification.
 
 grading:
   pass_criteria: |
-    Phases idempotency_key_presence, idempotency_key_stability,
-    signing_keys_published, and signature_validity MUST pass when the agent
-    advertises any webhook-emitting operation and the runner hosts a webhook
-    receiver. Agents without a published webhook-signing JWKS fail
+    Phases idempotency_key_presence, operation_id_echo,
+    idempotency_key_stability, signing_keys_published, and
+    signature_validity MUST pass when the agent advertises any
+    webhook-emitting operation and the runner hosts a webhook receiver.
+    Agents without a published webhook-signing JWKS fail
     signing_keys_published — there is no exemption for "HMAC legacy mode."
     Agents that advertise no webhook-emitting operations grade the entire
     universal as not_applicable. Runners without a webhook receiver grade the

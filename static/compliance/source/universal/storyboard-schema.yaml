@@ -1892,6 +1892,15 @@
 #
 #   {{runner.webhook_base}}            → HTTPS base of the runner's receiver for this run
 #   {{runner.webhook_url:<step_id>}}   → per-step URL; unique per step
+#                                      The URL may contain a runner-internal
+#                                      capture id for receiver routing. That id
+#                                      is not the protocol operation_id. When a
+#                                      request includes
+#                                      push_notification_config.operation_id,
+#                                      the runner MUST make any URL capture id
+#                                      distinct so sellers that parse the URL
+#                                      fail a filter.body.operation_id payload
+#                                      assertion.
 #
 # Per-step receivers are the only supported shape in v1 so each step's
 # expect_webhook matches only its own deliveries. Fan-in scenarios are deferred
@@ -1904,16 +1913,24 @@
 # and reference earlier steps by id.
 #
 # task: expect_webhook
-#   Wait up to `timeout_seconds` (default 30) for a webhook matching the filter,
-#   then validate. Runner delegates to the `@adcp/client` AsyncHandler; the webhook
-#   is observed via onActivity with type webhook_received, and WebhookMetadata
-#   (including idempotency_key) is provided by the client.
+#   Wait up to `timeout_seconds` (default 30) for a webhook delivered to the
+#   triggered receiver, validate the payload, then apply the filter. Runner
+#   delegates to the `@adcp/client` AsyncHandler; the webhook is observed via
+#   onActivity with type webhook_received, and WebhookMetadata (including
+#   idempotency_key) is provided by the client.
+#
+#   `triggered_by` scopes the assertion to the per-step receiver URL. Payload
+#   fields are matched through `filter.body` using dotted paths. Authors MUST
+#   use `filter.body.operation_id` to assert the protocol payload operation_id;
+#   `filter.operation_id` is reserved for runner receiver routing and is not the
+#   protocol correlation field.
 #
 #   Fields:
 #     triggered_by: <step_id>     # earlier step whose task triggered this webhook
-#     filter:                     # match by payload fields
-#       operation_id: "{{prior_step.<id>.operation_id}}"
-#       status: "completed"       # optional; match any status if omitted
+#     filter:
+#       body:                     # match by webhook payload fields, never URL path
+#         operation_id: "op_explicit_from_push_notification_config"
+#         status: "completed"     # optional; match any status if omitted
 #     timeout_seconds: 30         # optional; fail if no match within window
 #     expect_idempotency_key: true  # default true; assert the key is present and pattern-valid
 #     webhook_payload_schema_ref: <path>
@@ -1936,8 +1953,9 @@
 #                                 # webhook_receiver_runner being active.
 #
 #   Error modes: no_webhook_received, schema_violation, missing_idempotency_key,
-#   invalid_idempotency_key_format, signature_invalid (when signature assertion on),
-#   duplicate_webhook_on_replay (when expect_max_deliveries_per_logical_event exceeded).
+#   invalid_idempotency_key_format, signature_invalid (when signature assertion
+#   on), duplicate_webhook_on_replay (when
+#   expect_max_deliveries_per_logical_event exceeded).
 #
 # task: expect_webhook_retry_keys_stable
 #   The runner's webhook receiver deterministically returns 5xx for the first
@@ -2010,8 +2028,8 @@
 #     require_tag: "adcp/webhook-signing/v1"  # default; sanity check
 #
 #   Error modes: signature_invalid, signature_expired, signature_key_unknown,
-#   signature_key_purpose_invalid, signature_digest_mismatch, signature_tag_invalid,
-#   signature_replayed.
+#   signature_key_purpose_invalid, signature_digest_mismatch,
+#   signature_tag_invalid, signature_replayed.
 #
 # task: expect_substitution_safe
 #   Assert that a creative preview (preview_html or preview_url) contains
@@ -2193,7 +2211,7 @@
 #      `unresolved_substitution` as the reason, and skip execution entirely.
 #      This is the preferred behavior for absent webhook receivers.
 #   2. Before individual step execution — if a later-computed substitution
-#      (e.g., {{prior_step.<id>.operation_id}}) fails to resolve, grade the
+#      (e.g., {{prior_step.<id>.task_id}}) fails to resolve, grade the
 #      step as failed with `unresolved_substitution`.
 #
 # Neither path may ship a literal `{{...}}` token on the wire.
