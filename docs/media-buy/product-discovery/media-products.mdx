@@ -94,7 +94,7 @@ See [Conversion Tracking & Optimization Goals](/docs/media-buy/conversion-tracki
 Publishers declare which pricing models they support for each product. Buyers select from the available options when creating a media buy. This approach supports:
 
 - **Multiple pricing models per product** - Publishers can offer the same inventory via different pricing structures
-- **Multi-currency support** - Publishers declare supported currencies; buyers must use a supported currency
+- **Multi-currency support** - Publishers declare supported currencies per `pricing_options` entry; buyers can use `filters.pricing_currencies` during discovery to narrow media product transaction currencies and must use a supported currency at buy time
 - **Flexible pricing** - Support for CPM, CPCV, CPP (GRP-based), CPA, and more
 
 #### Supported Pricing Models

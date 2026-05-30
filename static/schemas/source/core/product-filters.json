@@ -16,6 +16,18 @@
       "type": "boolean",
       "description": "Filter by pricing availability and returned pricing options: true = products offering fixed pricing (at least one option with fixed_price), false = products offering auction pricing (at least one option without fixed_price). Products with both fixed and auction options match both true and false, but sellers MUST return only the pricing_options entries matching the requested pricing type so buyers can deterministically select from the returned options."
     },
+    "pricing_currencies": {
+      "type": "array",
+      "description": "Filter by currencies the buyer can use for the media product transaction, using ISO 4217 currency codes. Products match when they offer at least one product-level pricing_options entry in one of the requested currencies and any seller-applied or otherwise mandatory product-scoped signal charges are satisfiable in one of those currencies or have no incremental price. Mandatory custom signal pricing without currency is not satisfiable for this filter unless the seller can truthfully treat it as having no incremental price. Sellers MUST return only product pricing_options entries whose currency is in this list so buyers can select deterministically from discovery. This filter does not require pruning optional signal or vendor add-on pricing; buyers should avoid optional add-ons priced only in unsupported currencies.",
+      "items": {
+        "type": "string",
+        "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')",
+        "pattern": "^[A-Z]{3}$"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-canonicalization": "set"
+    },
     "format_ids": {
       "type": "array",
       "description": "Filter by specific format IDs",
