@@ -65,6 +65,7 @@ import {
   withHostedTestOptions,
   isDefaultHostedComplianceTarget,
   badgeEligibleVersionsForHostedComplianceTarget,
+  agentAdvertisesBadgeEligibleHostedComplianceTarget,
 } from '../../services/hosted-compliance-version.js';
 import { AgentContextDatabase, validateAuthTokenChars, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
@@ -1142,7 +1143,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to evaluate' },
         tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable, driven by the agent\'s get_adcp_capabilities response)' },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" for the badge-eligible default line or "3.1-beta" for an explicit beta diagnostic run. Defaults to 3.0.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" for a badge-eligible stable line or "3.1-beta" for an explicit beta diagnostic run. Defaults to 3.0.' },
       },
       required: ['agent_url'],
     },
@@ -3728,7 +3729,6 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const tracks = input.tracks as ComplianceTrack[] | undefined;
     const runTarget = targetFromInput(input);
-    const writesCanonicalComplianceState = isDefaultHostedComplianceTarget(runTarget);
     let skippedCanonicalWriteForTarget = false;
 
     const urlError = validateAgentUrl(agentUrl);
@@ -3757,6 +3757,11 @@ export function createMemberToolHandlers(
 
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions, runTarget);
+      const writesCanonicalComplianceState = isDefaultHostedComplianceTarget(runTarget) ||
+        agentAdvertisesBadgeEligibleHostedComplianceTarget(
+          result.agent_profile.adcp_supported_versions,
+          runTarget,
+        );
 
       // Surface OAuth-required short-circuit. comply() doesn't throw on auth
       // failures — it pushes a `category: 'auth'` observation and runs a
@@ -3919,7 +3924,7 @@ export function createMemberToolHandlers(
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
       output += `**Compliance target:** ${formatComplianceTarget(runTarget, result.adcp_version ?? runTarget.version, { includeBadgeEligibility: true })}\n`;
       if (skippedCanonicalWriteForTarget) {
-        output += `_Explicit non-default compliance targets are diagnostic only; public compliance status and badges were not updated._\n`;
+        output += `_This compliance target is diagnostic only for this agent; public compliance status and badges were not updated._\n`;
       }
       const safeTools = (result.agent_profile.tools || []).map(t => sanitizeAgentField(t, 80)).filter(Boolean);
       output += `**Tools:** ${safeTools.length} (${safeTools.join(', ')})\n`;
