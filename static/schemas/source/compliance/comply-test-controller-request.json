@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/compliance/comply-test-controller-request.json",
   "title": "Comply Test Controller Request",
-  "description": "Request payload for the comply_test_controller tool. Triggers seller-side state transitions for compliance testing. Sandbox only — sellers MUST NOT expose this tool in production. Naturally idempotent: the `scenario` enum is either a lookup (`list_scenarios`) or a state-forcing operation whose target state is carried in the payload (`force_*_status`, `simulate_*`), so replays converge to the same observable state without needing an idempotency_key. The compliance harness drives this tool deterministically and does not rely on the seller's at-most-once replay cache.",
+  "description": "Request payload for the comply_test_controller tool. Triggers seller-side state transitions for compliance testing. Sandbox only — sellers MUST NOT expose this tool in production. Naturally idempotent: each known `scenario` is either a lookup (`list_scenarios`) or a state-forcing operation whose target state is carried in the payload (`force_*_status`, `simulate_*`), so replays converge to the same observable state without needing an idempotency_key. The compliance harness drives this tool deterministically and does not rely on the seller's at-most-once replay cache.",
   "type": "object",
   "allOf": [
     {
@@ -503,28 +503,6 @@
   "properties": {
     "scenario": {
       "type": "string",
-      "enum": [
-        "list_scenarios",
-        "force_creative_status",
-        "force_account_status",
-        "force_media_buy_status",
-        "force_create_media_buy_arm",
-        "force_task_completion",
-        "force_creative_purge",
-        "force_session_status",
-        "simulate_delivery",
-        "simulate_budget_spend",
-        "seed_product",
-        "seed_pricing_option",
-        "seed_creative",
-        "seed_plan",
-        "seed_media_buy",
-        "seed_creative_format",
-        "seed_measurement_catalog",
-        "query_upstream_traffic",
-        "query_provenance_audit_observations",
-        "force_upstream_unavailable"
-      ],
       "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'force_creative_purge' destroys or tombstones a sandbox creative so account-level `creative.purged` webhooks can be observed where the seller supports the lifecycle surface. 'seed_*' scenarios pre-populate fixtures (product, pricing option, creative, plan, media buy, creative format, measurement catalog) so storyboards can reference fixture IDs and external-catalog facts without implementers guessing which fixtures the conformance suite expects. 'query_upstream_traffic' returns outbound HTTP calls the agent has made since session start (or since a caller-supplied timestamp), so storyboard runners can assert upstream side-effects via `check: upstream_traffic`. 'query_provenance_audit_observations' returns sandbox-only audit observations recorded for a submitted creative so storyboards can assert non-blocking governance observations without exposing an internal audit log on public seller responses. 'force_upstream_unavailable' marks a named upstream dependency as unreachable for the duration of the compliance session (or until the seller resets it), so storyboards can exercise stale-cache fallback paths — see the `stale_response_advisory` universal storyboard. The contract raises the bar against unintentional façades — adapters that satisfy AdCP schema requirements with synthetic placeholders. It is NOT an adversarial integrity check: adopters self-report their own traffic. Adopters MUST scope the response to traffic caused by the requesting principal's session/auth context — cross-caller traffic MUST NOT be returned, regardless of the supplied since_timestamp. Multi-tenant sandboxes MUST key the recording buffer on the comply_test_controller invocation's auth principal. Runners and sellers MUST accept unknown scenario strings — new scenarios may be added in additive releases."
     },
     "params": {
