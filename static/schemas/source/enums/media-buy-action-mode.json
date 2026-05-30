@@ -2,8 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/media-buy-action-mode.json",
   "title": "Media Buy Action Mode",
-  "description": "How a seller honors a given action on a media buy. Buyers branch on this to decide whether to expect a synchronous response, an automatic-with-fallback flow, or an asynchronous human approval. The mode is declared on each entry of `allowed_actions[]` (product, as `modes[]` array) or `available_actions[]` (buy, as singular `mode`). Requotes that fall outside the current buy envelope are not an action mode in 3.1; sellers return REQUOTE_REQUIRED from update_media_buy instead.",
+  "description": "How a seller honors a given action on a media buy. Buyers branch on this to decide whether to expect a synchronous response, an automatic-with-fallback flow, or an asynchronous human approval. The mode is declared on each entry of `allowed_actions[]` (product, as `modes[]` array) or `available_actions[]` (buy, as singular `mode`). Requotes that fall outside the current buy envelope are not an action mode in 3.1; sellers return REQUOTE_REQUIRED from update_media_buy instead. Buyer SDKs MUST tolerate unknown future values by treating the affected action as unavailable until they re-fetch the product or buy and inspect the current `available_actions[]` / `allowed_actions[]` metadata.",
   "type": "string",
+  "x-extensible": true,
   "enum": [
     "self_serve",
     "conditional_self_serve",
