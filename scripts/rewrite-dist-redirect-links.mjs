@@ -8,7 +8,7 @@
  * the redirected destination path inside the same snapshot.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -19,6 +19,20 @@ function distPath(version, docsPath) {
     return null;
   }
   return `/dist/docs/${version}/${docsPath.slice('/docs/'.length)}`;
+}
+
+function hasSnapshotFile(distDocsPath) {
+  if (!distDocsPath?.startsWith('/dist/docs/')) {
+    return false;
+  }
+
+  const localPath = distDocsPath.slice(1);
+  return [
+    `${localPath}.mdx`,
+    `${localPath}.md`,
+    `${localPath}/index.mdx`,
+    `${localPath}/index.md`,
+  ].some((candidate) => existsSync(candidate));
 }
 
 function main() {
@@ -35,7 +49,7 @@ function main() {
       source: distPath(version, redirect.source || ''),
       destination: distPath(version, redirect.destination || ''),
     }))
-    .filter((rule) => rule.source && rule.destination)
+    .filter((rule) => rule.source && rule.destination && hasSnapshotFile(rule.destination))
     .sort((a, b) => b.source.length - a.source.length);
 
   let content = readFileSync(file, 'utf8');
