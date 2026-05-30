@@ -346,6 +346,10 @@
           "$ref": "/schemas/core/agent-signing-key.json",
           "description": "Publisher-attested public key material for an authorized agent"
         },
+        "response-payload-jws-envelope": {
+          "$ref": "/schemas/core/response-payload-jws-envelope.json",
+          "description": "Decoded-payload JWS envelope used by the closed designated-task response-signing profile"
+        },
         "placement": {
           "$ref": "/schemas/core/placement.json",
           "description": "Represents a specific ad placement within a product's inventory"

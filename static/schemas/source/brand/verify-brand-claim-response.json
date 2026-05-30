@@ -44,13 +44,18 @@
         "context": {
           "$ref": "/schemas/core/context.json"
         },
+        "signed_response": {
+          "$ref": "#/definitions/signed_response",
+          "description": "Payload-envelope JWS attesting the canonical success response for verify_brand_claim. The signed payload response MUST match the unsigned task-body fields on this response, excluding signed_response and protocol/version envelope fields."
+        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
       },
       "required": [
         "claim_type",
-        "verification_status"
+        "verification_status",
+        "signed_response"
       ],
       "additionalProperties": true,
       "not": {
@@ -101,5 +106,86 @@
       }
     }
   ],
-  "properties": {}
+  "properties": {},
+  "definitions": {
+    "signed_response": {
+      "allOf": [
+        {
+          "$ref": "/schemas/core/response-payload-jws-envelope.json"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "payload": {
+              "type": "object",
+              "properties": {
+                "task": {
+                  "type": "string",
+                  "const": "verify_brand_claim"
+                },
+                "response": {
+                  "$ref": "#/definitions/signed_success_payload"
+                }
+              },
+              "required": [
+                "task",
+                "response"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "signed_success_payload": {
+      "type": "object",
+      "description": "Canonical task-body success payload signed inside signed_response.payload.response. Excludes protocol/version envelope fields and signed_response itself.",
+      "properties": {
+        "claim_type": {
+          "type": "string",
+          "enum": [
+            "subsidiary",
+            "parent",
+            "property",
+            "trademark"
+          ]
+        },
+        "verification_status": {
+          "$ref": "/schemas/brand/verification-status.json"
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "context_note": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "claim_type",
+        "verification_status"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "errors"
+            ]
+          },
+          {
+            "required": [
+              "signed_response"
+            ]
+          }
+        ]
+      }
+    }
+  }
 }
