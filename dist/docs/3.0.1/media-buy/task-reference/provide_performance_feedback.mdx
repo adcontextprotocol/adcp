@@ -150,7 +150,7 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
-  "$schema": "/schemas/3.0.1/media-buy/provide-performance-feedback-request.json",
+  "$schema": "/schemas/3.0.1/3.0.1/media-buy/provide-performance-feedback-request.json",
   "idempotency_key": "c7d8e9f0-a1b2-4345-c678-345678901234",
   "media_buy_id": "gam_1234567890",
   "measurement_period": {
@@ -169,7 +169,7 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
-  "$schema": "/schemas/3.0.1/media-buy/provide-performance-feedback-response.json",
+  "$schema": "/schemas/3.0.1/3.0.1/media-buy/provide-performance-feedback-response.json",
   "success": true,
   "message": "Performance feedback processed successfully. Optimization algorithms updated."
 }
@@ -180,7 +180,7 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
-  "$schema": "/schemas/3.0.1/media-buy/provide-performance-feedback-request.json",
+  "$schema": "/schemas/3.0.1/3.0.1/media-buy/provide-performance-feedback-request.json",
   "idempotency_key": "d8e9f0a1-b2c3-4456-d789-456789012345",
   "media_buy_id": "meta_9876543210",
   "package_id": "pkg_social_feed",
@@ -200,7 +200,7 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
-  "$schema": "/schemas/3.0.1/media-buy/provide-performance-feedback-response.json",
+  "$schema": "/schemas/3.0.1/3.0.1/media-buy/provide-performance-feedback-response.json",
   "success": true,
   "message": "Exceptional performance noted. Increasing allocation to similar segments."
 }
@@ -211,7 +211,7 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
-  "$schema": "/schemas/3.0.1/media-buy/provide-performance-feedback-request.json",
+  "$schema": "/schemas/3.0.1/3.0.1/media-buy/provide-performance-feedback-request.json",
   "idempotency_key": "e9f0a1b2-c3d4-4567-e890-567890123456",
   "media_buy_id": "ttd_5555555555",
   "creative_id": "creative_video_123",
@@ -231,7 +231,7 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
-  "$schema": "/schemas/3.0.1/media-buy/provide-performance-feedback-response.json",
+  "$schema": "/schemas/3.0.1/3.0.1/media-buy/provide-performance-feedback-response.json",
   "success": true,
   "message": "Creative performance feedback recorded. Consider creative optimization."
 }
@@ -244,7 +244,7 @@ To report multiple metrics for the same media buy, send one request per metric t
 #### Request - Viewability Feedback
 ```json
 {
-  "$schema": "/schemas/3.0.1/media-buy/provide-performance-feedback-request.json",
+  "$schema": "/schemas/3.0.1/3.0.1/media-buy/provide-performance-feedback-request.json",
   "idempotency_key": "f0a1b2c3-d4e5-4678-f901-678901234567",
   "media_buy_id": "ttd_5555555555",
   "measurement_period": {
@@ -260,7 +260,7 @@ To report multiple metrics for the same media buy, send one request per metric t
 #### Request - Completion Rate Feedback
 ```json
 {
-  "$schema": "/schemas/3.0.1/media-buy/provide-performance-feedback-request.json",
+  "$schema": "/schemas/3.0.1/3.0.1/media-buy/provide-performance-feedback-request.json",
   "idempotency_key": "a1b2c3d4-e5f6-4789-a012-789012345678",
   "media_buy_id": "ttd_5555555555",
   "measurement_period": {
@@ -276,7 +276,7 @@ To report multiple metrics for the same media buy, send one request per metric t
 #### Request - Brand Safety Feedback
 ```json
 {
-  "$schema": "/schemas/3.0.1/media-buy/provide-performance-feedback-request.json",
+  "$schema": "/schemas/3.0.1/3.0.1/media-buy/provide-performance-feedback-request.json",
   "idempotency_key": "b2c3d4e5-f6a7-4890-b123-890123456789",
   "media_buy_id": "ttd_5555555555",
   "measurement_period": {

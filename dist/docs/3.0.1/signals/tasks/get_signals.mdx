@@ -193,7 +193,7 @@ Because the authenticated caller matches the deployment target, the response inc
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/signals/get-signals-response.json",
+  "$schema": "/schemas/3.0.1/3.0.1/signals/get-signals-response.json",
   "message": "Found 1 luxury segment matching your criteria. Already activated for your sales agent.",
   "context_id": "ctx-signals-123",
   "signals": [
@@ -240,7 +240,7 @@ Some signals offer multiple pricing models. The buyer selects one and passes its
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/signals/get-signals-response.json",
+  "$schema": "/schemas/3.0.1/3.0.1/signals/get-signals-response.json",
   "message": "Found 1 segment matching your criteria. Three pricing options are available: CPM at $3.50, 15% of media spend, or $5,000/month flat fee.",
   "context_id": "ctx-signals-456",
   "signals": [
@@ -332,7 +332,7 @@ A buyer with credentials for both The Trade Desk and Amazon DSP receives keys fo
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/signals/get-signals-response.json",
+  "$schema": "/schemas/3.0.1/3.0.1/signals/get-signals-response.json",
   "message": "Found 1 luxury segment matching your criteria. Already activated on The Trade Desk, pending activation on Amazon DSP.",
   "context_id": "ctx-signals-123",
   "signals": [
@@ -497,7 +497,7 @@ Discover all available deployments across platforms:
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/signals/get-signals-request.json",
+  "$schema": "/schemas/3.0.1/3.0.1/signals/get-signals-request.json",
   "signal_spec": "Contextual segments for luxury automotive content",
   "destinations": [
     { "type": "platform", "platform": "index-exchange", "account": "agency-123-ix" },
@@ -519,7 +519,7 @@ Discover all available deployments across platforms:
 **Payload**:
 ```json
 {
-  "$schema": "/schemas/3.0.1/signals/get-signals-response.json",
+  "$schema": "/schemas/3.0.1/3.0.1/signals/get-signals-response.json",
   "signals": [{
     "signal_id": {
       "source": "catalog",
@@ -640,7 +640,7 @@ To refine previous results, pass back the `signal_id` values from signals you wa
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/signals/get-signals-request.json",
+  "$schema": "/schemas/3.0.1/3.0.1/signals/get-signals-request.json",
   "signal_spec": "Same audience but with broader coverage, ideally above 20%",
   "signal_ids": [
     {
@@ -715,7 +715,7 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/signals/get-signals-response.json",
+  "$schema": "/schemas/3.0.1/3.0.1/signals/get-signals-response.json",
   "message": "Found 2 luxury signals, but encountered some platform limitations. The 'Premium Auto Shoppers' signal has limited reach due to data restrictions, and pricing data is unavailable for one platform. Review the warnings below for optimization suggestions.",
   "context_id": "ctx-signals-abc123",
   "signals": [
@@ -782,7 +782,7 @@ The signal agent uses the provided IDs as a starting point and the spec as adjus
 
 ```json
 {
-  "$schema": "/schemas/3.0.1/signals/get-signals-response.json",
+  "$schema": "/schemas/3.0.1/3.0.1/signals/get-signals-response.json",
   "message": "I couldn't find any signals matching 'underwater basket weavers' in the requested platforms. This appears to be a very niche audience. Consider broadening your criteria to 'craft enthusiasts' or 'hobby communities' for better results. Alternatively, we could create a custom signal for this specific audience.",
   "context_id": "ctx-signals-abc123",
   "signals": []
