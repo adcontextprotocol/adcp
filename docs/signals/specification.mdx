@@ -135,7 +135,7 @@ Discover signals matching campaign criteria.
 
 **Reference**: [`activate_signal` task](/docs/signals/tasks/activate_signal)
 
-Activate a signal for use on a decisioning platform.
+Activate a signal for use on a decisioning platform. `activate_signal` is required for agents claiming `signal_marketplace`, advertising activation/deactivation, or returning signals that require buyer-managed activation; discovery-only owned-signal agents are not required to expose it.
 
 **Requirements:**
 - Orchestrators MUST include `signal_agent_segment_id` and `destinations`
@@ -174,7 +174,7 @@ All Signals Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 
 ### Signal Agent Conformance
 
-A conformant Signals Protocol agent MUST:
+A conformant baseline Signals Protocol agent MUST:
 
 1. Support at least one specified transport (MCP or A2A)
 2. Implement `get_signals` per schema
@@ -223,7 +223,7 @@ The `activate_signal` request supports two destination types. The choice depends
 
 - Orchestrators buying through a Sales Agent SHOULD use `type: "agent"` destinations with the SA's URL. The SA handles downstream platform coordination — which DSP it uses is an implementation detail.
 - Orchestrators buying directly on a DSP SHOULD use `type: "platform"` destinations. The orchestrator is responsible for ensuring the activation platform matches where campaigns will run.
-- Signal agents MUST support both destination types per the destination schema.
+- Signal marketplace agents MUST support both destination types per the destination schema.
 
 ## Schema Reference
 

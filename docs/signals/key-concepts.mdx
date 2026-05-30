@@ -87,8 +87,8 @@ The legacy `signal_id.source` object is deprecated. New `get_signals`, product t
 
 | Task | Purpose |
 |------|---------|
-| [`get_signals`](/docs/signals/tasks/get_signals) | Discover signals matching campaign criteria |
-| [`activate_signal`](/docs/signals/tasks/activate_signal) | Activate a signal for use in campaigns |
+| [`get_signals`](/docs/signals/tasks/get_signals) | Discover signals matching campaign criteria; required for every signals agent |
+| [`activate_signal`](/docs/signals/tasks/activate_signal) | Activate a marketplace signal for use in campaigns; required for `signal_marketplace` conformance |
 
 Every conformant Signals Protocol agent supports `get_signals`. Activation is a
 separate obligation for agents that claim marketplace activation support,
@@ -113,7 +113,7 @@ The response includes matching signals with pricing, size estimates, and value t
 
 ### Activation with activate_signal
 
-Once a buyer selects a signal, they activate it on their DSP or data platform:
+Once a buyer selects a marketplace signal, they activate it on their DSP or data platform:
 
 ```json
 {
