@@ -9,7 +9,7 @@ vi.mock('../../src/luma/client.js');
 import * as clientModule from '../../src/db/client.js';
 import { eventsDb } from '../../src/db/events-db.js';
 import * as lumaClient from '../../src/luma/client.js';
-import { createEventFromLuma, syncLumaCalendar } from '../../src/luma/sync.js';
+import { createEventFromLuma, syncLumaCalendar, updateEventFromLuma } from '../../src/luma/sync.js';
 
 function makeLumaEvent(overrides: Partial<LumaEvent> = {}): LumaEvent {
   return {
@@ -185,6 +185,84 @@ describe('Luma Sync', () => {
       const createCall = vi.mocked(eventsDb.createEvent).mock.calls[0][0];
       expect(createCall.visibility).toBe('invite_unlisted');
     });
+
+    it('updates an existing imported event from Luma canonical fields', async () => {
+      const lumaEvent = makeLumaEvent({
+        name: 'AAO Meetup: Singapore',
+        timezone: 'Asia/Singapore',
+        start_at: '2026-06-25T07:30:00.000Z',
+        end_at: '2026-06-25T12:00:00.000Z',
+        geo_address_json: {
+          city: 'Singapore',
+          region: 'Singapore',
+          country: 'Singapore',
+          latitude: 1.3521,
+          longitude: 103.8198,
+          full_address: 'Singapore',
+          description: 'Singapore Venue',
+          place_id: 'place_sg',
+        },
+      });
+
+      vi.mocked(eventsDb.getEventByLumaId).mockResolvedValueOnce({
+        id: 'evt_aao_1',
+        slug: 'aao-meetup-singapore-2026-05',
+        title: 'AAO Meetup: Singapore',
+        start_time: new Date('2026-05-26T07:30:00.000Z'),
+        metadata: { synced_from_luma: true },
+      } as any);
+      vi.mocked(eventsDb.isSlugAvailable).mockResolvedValueOnce(true);
+      vi.mocked(eventsDb.updateEvent).mockResolvedValueOnce({
+        id: 'evt_aao_1',
+        slug: 'aao-meetup-singapore-2026-06',
+      } as any);
+
+      const result = await updateEventFromLuma(lumaEvent);
+
+      expect(result?.slug).toBe('aao-meetup-singapore-2026-06');
+      expect(eventsDb.updateEvent).toHaveBeenCalledWith('evt_aao_1', expect.objectContaining({
+        slug: 'aao-meetup-singapore-2026-06',
+        title: 'AAO Meetup: Singapore',
+        start_time: new Date('2026-06-25T07:30:00.000Z'),
+        end_time: new Date('2026-06-25T12:00:00.000Z'),
+        timezone: 'Asia/Singapore',
+        venue_city: 'Singapore',
+        venue_country: 'Singapore',
+        visibility: 'public',
+      }));
+      expect(eventsDb.removeSlugRedirect).toHaveBeenCalledWith('aao-meetup-singapore-2026-06');
+      expect(eventsDb.createSlugRedirect).toHaveBeenCalledWith('evt_aao_1', 'aao-meetup-singapore-2026-05');
+    });
+
+    it('migrates imported events with generated numeric slug suffixes', async () => {
+      const lumaEvent = makeLumaEvent({
+        name: 'AAO Meetup: Singapore',
+        timezone: 'Asia/Singapore',
+        start_at: '2026-06-25T07:30:00.000Z',
+        end_at: '2026-06-25T12:00:00.000Z',
+      });
+
+      vi.mocked(eventsDb.getEventByLumaId).mockResolvedValueOnce({
+        id: 'evt_aao_1',
+        slug: 'aao-meetup-singapore-2026-05-1',
+        title: 'AAO Meetup: Singapore',
+        start_time: new Date('2026-05-26T07:30:00.000Z'),
+        metadata: { synced_from_luma: true },
+      } as any);
+      vi.mocked(eventsDb.isSlugAvailable).mockResolvedValueOnce(true);
+      vi.mocked(eventsDb.updateEvent).mockResolvedValueOnce({
+        id: 'evt_aao_1',
+        slug: 'aao-meetup-singapore-2026-06',
+      } as any);
+
+      await updateEventFromLuma(lumaEvent);
+
+      expect(eventsDb.updateEvent).toHaveBeenCalledWith('evt_aao_1', expect.objectContaining({
+        slug: 'aao-meetup-singapore-2026-06',
+      }));
+      expect(eventsDb.removeSlugRedirect).toHaveBeenCalledWith('aao-meetup-singapore-2026-06');
+      expect(eventsDb.createSlugRedirect).toHaveBeenCalledWith('evt_aao_1', 'aao-meetup-singapore-2026-05-1');
+    });
   });
 
   describe('syncLumaCalendar', () => {
@@ -205,13 +283,25 @@ describe('Luma Sync', () => {
         .mockResolvedValueOnce({ rows: [{ id: 'existing' }], rowCount: 1 }) // evt_1 exists
         .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // evt_2 doesn't exist
 
+      vi.mocked(eventsDb.getEventByLumaId).mockResolvedValueOnce({
+        id: 'existing',
+        slug: 'event-1-2026-04',
+        title: 'Event 1',
+        start_time: new Date('2026-04-13T17:00:00.000Z'),
+        metadata: { synced_from_luma: true },
+      } as any);
+      vi.mocked(eventsDb.updateEvent).mockResolvedValueOnce({
+        id: 'existing',
+        slug: 'event-1-2026-04',
+      } as any);
       vi.mocked(eventsDb.isSlugAvailable).mockResolvedValue(true);
       vi.mocked(eventsDb.createEvent).mockResolvedValue({ id: 'new_evt', slug: 'event-2-2026-04' } as any);
 
       const stats = await syncLumaCalendar();
 
       expect(stats.created).toBe(1);
-      expect(stats.skipped).toBe(1);
+      expect(stats.updated).toBe(1);
+      expect(stats.skipped).toBe(0);
       expect(stats.errors).toBe(0);
     });
 
@@ -220,7 +310,7 @@ describe('Luma Sync', () => {
 
       const stats = await syncLumaCalendar();
 
-      expect(stats).toEqual({ created: 0, skipped: 0, errors: 0 });
+      expect(stats).toEqual({ created: 0, updated: 0, skipped: 0, errors: 0 });
       expect(lumaClient.listCalendars).not.toHaveBeenCalled();
     });
 

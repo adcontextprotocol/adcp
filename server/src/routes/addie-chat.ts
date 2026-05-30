@@ -57,6 +57,7 @@ import {
   EVENT_READONLY_TOOLS,
   EVENT_ADMIN_TOOLS,
   createEventToolHandlers,
+  EVENT_CREATOR_COMMITTEE_TYPES,
 } from "../addie/mcp/event-tools.js";
 import {
   MEETING_TOOLS,
@@ -595,15 +596,18 @@ export async function prepareRequestWithMemberTools(
       }
     }
 
-    // Event tools: readonly for all users, admin tools for admins only
-    const eventHandlers = createEventToolHandlers(memberContext);
+    // Event tools: readonly for all users; management tools for admins and committee leaders
+    const eventHandlers = createEventToolHandlers(memberContext, undefined, userIsAdmin);
     allTools.push(...EVENT_READONLY_TOOLS);
     for (const tool of EVENT_READONLY_TOOLS) {
       const handler = eventHandlers.get(tool.name);
       if (handler) combinedHandlers.set(tool.name, handler);
     }
 
-    if (userIsAdmin) {
+    const eventEligibleLedGroups = ledGroups.filter(group =>
+      EVENT_CREATOR_COMMITTEE_TYPES.has(group.committee_type)
+    );
+    if (userIsAdmin || eventEligibleLedGroups.length > 0) {
       allTools.push(...EVENT_ADMIN_TOOLS);
       for (const tool of EVENT_ADMIN_TOOLS) {
         const handler = eventHandlers.get(tool.name);

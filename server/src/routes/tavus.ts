@@ -252,7 +252,7 @@ async function buildVoiceRequestTools(
   ]);
 
   // Event tools: readonly for all users, admin tools for admins only
-  const eventHandlers = createEventToolHandlers(memberContext);
+  const eventHandlers = createEventToolHandlers(memberContext, undefined, userIsAdmin);
   allTools.push(...EVENT_READONLY_TOOLS);
   for (const tool of EVENT_READONLY_TOOLS) {
     const handler = eventHandlers.get(tool.name);

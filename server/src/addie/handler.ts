@@ -44,6 +44,7 @@ import {
   EVENT_ADMIN_TOOLS,
   createEventToolHandlers,
   canCreateEvents,
+  canCreateEventsFromMemberContext,
 } from './mcp/event-tools.js';
 import {
   DIRECTORY_TOOLS,
@@ -445,7 +446,7 @@ async function createUserScopedTools(
     if (handler) allHandlers.set(tool.name, handler);
   }
 
-  const canCreate = slackUserId ? await canCreateEvents(slackUserId) : userIsAdmin;
+  const canCreate = slackUserId ? await canCreateEvents(slackUserId) : (userIsAdmin || canCreateEventsFromMemberContext(memberContext));
   if (canCreate) {
     allTools.push(...EVENT_ADMIN_TOOLS);
     for (const tool of EVENT_ADMIN_TOOLS) {

@@ -298,12 +298,17 @@ export const TOOL_SETS: Record<string, ToolSet> = {
   committee_leadership: {
     name: "committee_leadership",
     description:
-      "Manage committee co-leaders - add or remove co-leaders for committees you lead (working groups, councils, chapters, industry gatherings)",
+      "Manage committees you lead: co-leaders plus event management for working groups, councils, chapters, and industry gatherings",
     tools: [
       "add_committee_co_leader",
       "remove_committee_co_leader",
       "list_committee_co_leaders",
       "list_working_groups",
+      "create_event",
+      "update_event",
+      "manage_event_registrations",
+      "check_person_event_status",
+      "invite_to_event",
     ],
   },
 

@@ -600,6 +600,9 @@
 
         const data = await res.json();
         const event = data.event;
+        if (event.slug && event.slug !== slug) {
+          window.history.replaceState(null, '', `/events/${event.slug}`);
+        }
         const sponsors = data.sponsors || [];
         const speakers = data.speakers || [];
         const registrationCount = data.registration_count || 0;

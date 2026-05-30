@@ -108,7 +108,7 @@ Get the current user's personal profile — who they are as a person. Shows head
 
 ### `update_my_profile`
 
-Update the current user's personal profile — who they are as a person. Can update headline, bio, expertise, interests, location, and social links. Only updates fields that are provided.
+Update the current user's personal profile — who they are as a person. Can update headline, bio, expertise, interests, location, and social links. Only updates fields that are provided. Does NOT update first/last name — use set_my_name for that.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -716,7 +716,7 @@ Manage topics for a working group/committee. Topics help organize meetings and f
 
 ## committee_leadership
 
-Manage committee co-leaders - add or remove co-leaders for committees you lead (working groups, councils, chapters, industry gatherings)
+Manage committees you lead: co-leaders plus event management for working groups, councils, chapters, and industry gatherings
 
 ### `add_committee_co_leader`
 
@@ -757,6 +757,49 @@ Works for working groups, councils, chapters, and industry gatherings.
 List active committees in AgenticAdvertising.org. Can filter by type: working groups (technical), councils (industry verticals), or chapters (regional). Shows public groups to everyone, and includes private groups for members.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `create_event`
+
+Create a new AAO event. Use this when someone asks to create a meetup, webinar, summit, or workshop.
+The event will be created in both Luma (for registration) and the AAO website.
+Returns the Luma URL for sharing and the AAO event page URL.
+
+Required: title, start_time (ISO format), event_type
+Optional: description, end_time, timezone, location details, virtual_url, max_attendees
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
+
+### `update_event`
+
+Update an existing event. Use this to change event details like description, capacity, or timing.
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
+
+### `manage_event_registrations`
+
+Manage event registrations - view registrations, approve waitlisted attendees, or export attendee list.
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
+
+### `check_person_event_status`
+
+Look up a specific person's status at an event. Use when someone asks "Is [person] invited to [event]?", "Did [person] attend [event]?", "What's [person]'s RSVP status?", etc.
+
+Searches by name or email across invite list, registrations, and attendance records.
+Returns their invite status, registration status, and whether they attended.
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
+
+### `invite_to_event`
+
+Invite a person to an event. Adds them to the invite list and creates a registration record.
+
+Use when someone says "Invite [person] to [event]", "Add [person] to the Foundry guest list", etc.
+
+If draft_message is true, returns a suggested outreach message that can be sent via Slack or email.
+The invitation is recorded immediately; the outreach message is a draft for the admin to review.
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
 
 ## admin (admin only)
 
@@ -1435,7 +1478,13 @@ Approve pending content for publication. Only committee leads (for their committ
 
 ### `reject_content`
 
-Reject pending content with a reason. Only committee leads (for their committees) and admins can reject content. The proposer will see the rejection reason.
+Permanently reject content. Only committee leads (for their committees) and admins can reject content. The proposer will see the rejection reason. Use request_revisions instead if the author should address feedback and resubmit.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `request_revisions`
+
+Ask the author to revise and resubmit content. The article stays visible in the review queue as "needs revisions" until the author resubmits. Use this instead of reject_content when the content is fixable.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -1622,9 +1671,15 @@ Commit a previewed property import. Takes a property list (typically the output 
 
 ### `upload_brand_logo`
 
-Upload a logo file for a brand in the registry. The logo is auto-approved and immediately visible.
+Upload a logo file for a brand in the registry. The upload queues for moderator review (community contribution). Blocked when a brand has a verified DNS owner — only that org can change its logo, and the human must use the brand-builder UI for owner-attested uploads.
 
 *Source: `server/src/addie/mcp/brand-tools.ts`*
+
+### `check_credentials`
+
+Award any newly-eligible credentials and finalize any previously-deferred Certifier issuances for the current learner. Returns share links for newly-issued credentials, or a NAME_REQUIRED marker when the learner has no name on file. Use this after `set_my_name` to finalize a credential that was gated on the missing name.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
 
 ### `checkpoint_teaching_progress`
 
@@ -1643,6 +1698,12 @@ Get the exact instructions for a build project phase transition. You MUST call t
 Save learner feedback after completing a certification module. Call this when the learner shares thoughts about the experience — what was confusing, what worked well, suggestions for improvement.
 
 *Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `set_my_name`
+
+Set the current user's first name and (optionally) last name. Writes through to the local DB, organization memberships, and back to WorkOS. Use this when a credential check tells you the user has no name on file, or whenever the user explicitly asks to set or correct their name.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
 
 ### `recommend_storyboards`
 

@@ -1312,6 +1312,7 @@ export interface CreateEventInput {
 }
 
 export interface UpdateEventInput {
+  slug?: string;
   title?: string;
   description?: string;
   short_description?: string;
