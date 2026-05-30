@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.4.0"
+version: "2.5.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -43,8 +43,10 @@ authored_check_kinds:
   - response_schema
   - field_present
   - field_absent
+  - field_pattern
   - envelope_field_present
   - envelope_field_absent
+  - envelope_field_pattern
   - field_value
   - field_value_or_absent
   - status_code
@@ -146,8 +148,10 @@ validation_result:
     - check                   # Validation kind. For storyboard-authored checks,
                               # mirrors the storyboard's step.validations[].check:
                               # response_schema | field_present |
-                              # field_absent | envelope_field_present |
-                              # envelope_field_absent | field_value |
+                              # field_absent | field_pattern |
+                              # envelope_field_present |
+                              # envelope_field_absent |
+                              # envelope_field_pattern | field_value |
                               # field_value_or_absent | status_code | http_status |
                               # http_status_in | error_code | on_401_require_header |
                               # resource_equals_agent_url | any_of | refs_resolve |
@@ -206,10 +210,15 @@ validation_result:
                               #                          from the storyboard validation
                               #   field_present        → the path that should resolve
                               #   field_absent         → null (the field must not be present)
+                              #   field_pattern        → object { pattern } where pattern is
+                              #                          the JavaScript regular expression
+                              #                          source the observed string MUST match
                               #   envelope_field_present → the path that should resolve
                               #                          in the protocol envelope
                               #   envelope_field_absent → null (the envelope field must
                               #                          not be present)
+                              #   envelope_field_pattern → object { pattern } scoped to the
+                              #                          protocol/version envelope
                               #   status_code          → expected status
                               #   error_code           → expected error code
                               #   any_of               → array of acceptable forms
@@ -270,12 +279,18 @@ validation_result:
                               #                          value
                               #   field_absent         → observed value at path (any JSON
                               #                          type); emitted only on failure
+                              #   field_pattern        → observed value at path (any JSON
+                              #                          type); null when the field was
+                              #                          missing
                               #   envelope_field_present → null (the field was missing)
                               #                          or the observed non-object
                               #                          value (scoped to envelope)
                               #   envelope_field_absent → observed value at path (any JSON
                               #                          type); emitted only on failure
 	                              #                          and scoped to envelope
+                              #   envelope_field_pattern → observed envelope value at path
+                              #                          (any JSON type); null when the field
+                              #                          was missing
                               #   field_less_than      → the observed value at `path`
                               #                          (number when resolvable, null
                               #                          when the field was missing).

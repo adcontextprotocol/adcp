@@ -1063,10 +1063,15 @@
 # enum AND document semantics here in the same PR.
 #
 # check: string (what to validate: "response_schema", "field_present",
+#                "field_pattern" (path MUST resolve to a string matching
+#                `pattern`, a JavaScript regular expression source),
 #                "envelope_field_present" / "envelope_field_absent" (walks
 #                protocol-envelope.json instead of response_schema_ref — use for
 #                top-level envelope fields like `status`, `task_status`, and
 #                `response_status`),
+#                "envelope_field_pattern" (same as field_pattern, but scoped to
+#                protocol-envelope.json / version-envelope.json instead of
+#                response_schema_ref),
 #                "field_value",
 #                "field_value_or_absent", "status_code", "http_status", "http_status_in",
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",

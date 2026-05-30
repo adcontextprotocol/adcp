@@ -110,6 +110,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
+            is_fixed_price: false
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -132,6 +133,9 @@ phases:
           - check: field_present
             path: "products[0].signal_targeting_rules"
             description: "Product declares signal targeting composition rules"
+          - check: field_present
+            path: "products[0].pricing_options[0].floor_price"
+            description: "The captured pricing option accepts bid_price for auction-priced package creation"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
@@ -237,6 +241,7 @@ phases:
           packages:
             - product_id: "$context.product_id"
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 4.25
               budget: 12000
               targeting_overlay:
                 signal_targeting_groups:
@@ -350,6 +355,7 @@ phases:
           packages:
             - product_id: "$context.product_id"
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 4.25
               budget: 5000
               targeting_overlay:
                 signal_targeting_groups:

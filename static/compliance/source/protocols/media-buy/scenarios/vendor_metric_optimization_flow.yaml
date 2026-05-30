@@ -178,6 +178,7 @@ phases:
           buying_mode: "brief"
           brief: "Display inventory with attention-score optimization from attentionvendor."
           filters:
+            is_fixed_price: true
             channels: ["display"]
           account:
             brand:
@@ -194,6 +195,9 @@ phases:
           - check: field_present
             path: "products[0].product_id"
             description: "At least one product returned"
+          - check: field_present
+            path: "products[0].pricing_options[0].fixed_price"
+            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
           - check: field_present
             path: "products[0].vendor_metric_optimization.supported_metrics"
             description: "Product declares vendor_metric_optimization.supported_metrics[]"
