@@ -46,6 +46,34 @@ describe("AgentValidator", () => {
     expect(result.matched_authorization?.authorization_type).toBe("property_tags");
   });
 
+  it("authorizes property ID entries when legacy property fields identify the publisher domain", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        properties: [
+          {
+            property_id: "example.com",
+            type: "website",
+            name: "Example Site",
+            url: "https://example.com",
+          },
+        ],
+        authorized_agents: [
+          {
+            url: "https://sales.example.com",
+            authorized_for: "Direct",
+            authorization_type: "property_ids",
+            property_ids: ["example.com"],
+          },
+        ],
+      })
+    );
+
+    const result = await validator.validate("example.com", "https://sales.example.com");
+
+    expect(result.authorized).toBe(true);
+    expect(result.matched_authorization?.authorization_type).toBe("property_ids");
+  });
+
   it("does not widen placement-scoped authorization when placement scope is missing", async () => {
     fetchMock.mockResolvedValue(
       jsonResponse({
@@ -333,6 +361,30 @@ describe("AgentValidator", () => {
     expect(result.authorized).toBe(true);
     expect(result.source).toBe("https://cdn.example.com/adagents/v2/adagents.json");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("expires the default cache after five minutes", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          authorized_agents: [
+            {
+              url: "https://sales.example.com",
+              authorized_for: "Direct",
+            },
+          ],
+        })
+      );
+
+      await validator.validate("example.com", "https://sales.example.com");
+      vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+      await validator.validate("example.com", "https://sales.example.com");
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   describe("force_refresh", () => {
