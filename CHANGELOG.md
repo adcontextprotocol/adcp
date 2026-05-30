@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.14
+
+### Patch Changes
+
+- e23dc24: Accept HTTP Basic authentication in the universal `security_baseline` compliance storyboard. Basic credentials now have a dedicated valid/invalid probe path and can satisfy `auth_mechanism_verified` alongside Bearer API keys and OAuth discovery.
+
 ## 3.1.0-rc.3
 
 ### Minor Changes

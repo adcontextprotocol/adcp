@@ -1,0 +1,30 @@
+{
+  "name": "URL path with %2F (reserved) preserved literally through remove_dot_segments",
+  "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization step 5: remove_dot_segments operates on percent-encoded form; step 6: reserved bytes stay percent-encoded)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/segment%2Fwith-encoded-slash/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:2MVpRwioVrc-gLepGnleM5Nk0hI8M-V5A9buqMly0oL5Z4p3VfPh92ijitH1fKL2o7i97160AJ0Sf_wP9Q0KCQ:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_signature_base": "\"@method\": POST\n\"@target-uri\": https://seller.example.com/adcp/segment%2Fwith-encoded-slash/create_media_buy\n\"@authority\": seller.example.com\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+  "expected_outcome": {
+    "success": true
+  },
+  "$comment": "%2F is the percent-encoding of '/', a reserved character. Two properties MUST hold in canonical form: (a) remove_dot_segments per RFC 3986 §5.2.4 operates on the percent-encoded path and does NOT treat %2F as a segment separator, so 'segment%2Fwith-encoded-slash' stays as one path segment; (b) step 6 keeps reserved bytes percent-encoded (with uppercase hex) — the %2F does NOT decode to '/'. A verifier that decodes %2F before remove_dot_segments can produce a different path entirely (especially when combined with /./ or /../). Signature generated with the test-ed25519-2026 private key from the expected_signature_base."
+}
