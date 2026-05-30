@@ -126,7 +126,7 @@ describe('Training Agent webhook emission', () => {
                     start_time: '2027-06-01T00:00:00Z',
                     end_time: '2027-07-01T00:00:00Z',
                   }],
-                  push_notification_config: { url: webhookUrl },
+                  push_notification_config: { url: webhookUrl, operation_id: 'op_completion_webhook' },
                 },
               },
             });
@@ -142,6 +142,7 @@ describe('Training Agent webhook emission', () => {
       const delivery = deliveries[0];
       const body = JSON.parse(delivery.body) as Record<string, unknown>;
       expect(body.task_id).toBeDefined();
+      expect(body.operation_id).toBe('op_completion_webhook');
       expect(body.task_type).toBe('create_media_buy');
       expect(body.status).toBe('completed');
       expect(body.idempotency_key).toMatch(/^[A-Za-z0-9_.:-]{16,255}$/);
@@ -298,6 +299,7 @@ describe('Training Agent webhook emission', () => {
       expect(body.notification_type).toBe('creative.status_changed');
       expect(body.creative_id).toBe('creative_lifecycle_webhook_test');
       expect(body.subscriber_id).toBe('buyer-primary');
+      expect(body.operation_id).toMatch(/^acc_.*:buyer-primary:cs_/);
       expect(body.idempotency_key).toMatch(/^[A-Za-z0-9_.:-]{16,255}$/);
       expect(body.notification_id).toBeTruthy();
       expect(body.transition).toMatchObject({ from: 'approved', to: 'rejected' });

@@ -46,7 +46,7 @@ const VALID_PRICING_MODELS = [
 ] as const;
 
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
-const CURRENT_ADCP_VERSION = '3.1-beta.7';
+const CURRENT_ADCP_VERSION = '3.1-rc.4';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 
@@ -7357,7 +7357,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toMatchObject({
       major_versions: [3],
-      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7'],
+      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4'],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
     });
     expect(result.adcp_version).toBe('3.0');
@@ -7504,6 +7504,7 @@ describe('get_adcp_capabilities handler', () => {
       expect(received).toHaveLength(1);
       expect(received[0].notification_type).toBe('product.priced');
       expect(received[0].subscriber_id).toBe('wholesale-feed-sync');
+      expect(received[0].operation_id).toMatch(/^acc_.*:wholesale-feed-sync:/);
       expect((received[0].event as Record<string, unknown>).event_type).toBe('product.priced');
       expect(((received[0].event as Record<string, unknown>).payload as Record<string, unknown>).product_id).toBe('prod_training_wholesale');
 
@@ -8270,7 +8271,7 @@ describe('MCP Tasks protocol', () => {
         code: -32602,
         data: {
           adcp_version: '99.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4'],
           supported_majors: [3],
           context: { correlation_id: 'task-version-unsupported' },
           adcp_error: {
@@ -10081,7 +10082,7 @@ describe('AdCP protocol compliance', () => {
       brief: 'test',
     });
     expect(isError).toBeFalsy();
-    expect(result.adcp_version).toBe('3.1-beta.7');
+    expect(result.adcp_version).toBe(CURRENT_ADCP_VERSION);
     expect(Array.isArray(result.products)).toBe(true);
   });
 
@@ -10093,7 +10094,7 @@ describe('AdCP protocol compliance', () => {
     expect(parsed.adcp_version).toBe('3.0');
     expect(parsed.adcp).toMatchObject({
       major_versions: [3],
-      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7'],
+      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4'],
     });
   });
 
@@ -10114,7 +10115,7 @@ describe('AdCP protocol compliance', () => {
   it('echoes exact supported pre-release adcp_version pins', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
-    for (const adcpVersion of ['3.1-beta.5', '3.1-beta.7']) {
+    for (const adcpVersion of ['3.1-beta.5', '3.1-beta.7', '3.1-rc.4']) {
       const { parsed, isError } = await simulateCallToolRaw(server, 'get_products', {
         adcp_version: adcpVersion,
         adcp_major_version: 3,
@@ -10158,7 +10159,7 @@ describe('AdCP protocol compliance', () => {
       details: {
         adcp_version: '4.0',
         adcp_major_version: 4,
-        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7'],
+        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4'],
         supported_majors: [3],
       },
     });
@@ -10179,7 +10180,7 @@ describe('AdCP protocol compliance', () => {
       field: 'adcp_version',
       details: {
         adcp_version: '3.1-beta',
-        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7'],
+        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4'],
         supported_majors: [3],
       },
     });
