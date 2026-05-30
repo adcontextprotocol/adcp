@@ -174,6 +174,18 @@ test('classifyOutcome treats envelope_field_present as success assertion', () =>
   assert.equal(outcome.kind, 'success');
 });
 
+test('classifyOutcome treats pattern checks as success assertions', () => {
+  for (const check of ['field_pattern', 'envelope_field_pattern']) {
+    const step = {
+      validations: [
+        { check, path: 'adcp_version', pattern: '^\\d+\\.\\d+$' },
+      ],
+    };
+    const outcome = classifyOutcome(step);
+    assert.equal(outcome.kind, 'success', `${check} should imply success`);
+  }
+});
+
 test('classifyOutcome treats envelope_field_absent alone as unspecified', () => {
   const step = {
     validations: [
