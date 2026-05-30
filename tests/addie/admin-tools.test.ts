@@ -22,8 +22,9 @@ const {
   mockSubscriptionsList,
   mockSubscriptionsUpdate,
   mockInvoicesList,
+  mockProductsRetrieve,
   mockInvalidateMembershipCache,
-  mockPickMembershipSub,
+  mockPickMembershipSubWithProductFetch,
   mockBuildSubscriptionUpdate,
 } = vi.hoisted(() => {
   const mockPoolQuery = vi.fn();
@@ -38,8 +39,9 @@ const {
   const mockSubscriptionsList = vi.fn();
   const mockSubscriptionsUpdate = vi.fn();
   const mockInvoicesList = vi.fn();
+  const mockProductsRetrieve = vi.fn();
   const mockInvalidateMembershipCache = vi.fn();
-  const mockPickMembershipSub = vi.fn();
+  const mockPickMembershipSubWithProductFetch = vi.fn();
   const mockBuildSubscriptionUpdate = vi.fn();
   return {
     mockPoolQuery,
@@ -53,8 +55,9 @@ const {
     mockSubscriptionsList,
     mockSubscriptionsUpdate,
     mockInvoicesList,
+    mockProductsRetrieve,
     mockInvalidateMembershipCache,
-    mockPickMembershipSub,
+    mockPickMembershipSubWithProductFetch,
     mockBuildSubscriptionUpdate,
   };
 });
@@ -140,6 +143,9 @@ vi.mock("../../server/src/billing/stripe-client.js", () => ({
     invoices: {
       list: mockInvoicesList,
     },
+    products: {
+      retrieve: mockProductsRetrieve,
+    },
   },
   getPendingInvoices: vi.fn().mockResolvedValue([]),
   getAllOpenInvoices: vi.fn().mockResolvedValue([]),
@@ -156,7 +162,7 @@ vi.mock("../../server/src/db/org-filters.js", () => ({
 }));
 
 vi.mock("../../server/src/billing/membership-prices.js", () => ({
-  pickMembershipSub: mockPickMembershipSub,
+  pickMembershipSubWithProductFetch: mockPickMembershipSubWithProductFetch,
 }));
 
 // ── enrichment ────────────────────────────────────────────────────────────────
@@ -427,11 +433,46 @@ function makeStripeCustomer(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeTxClient() {
+function makePreviewRow(overrides: Record<string, unknown> = {}) {
+  return {
+    token: "preview-token",
+    workos_organization_id: "org_test_123",
+    new_customer_id: "cus_new_123",
+    current_customer_id: "cus_old_123",
+    actor_workos_user_id: "user_admin_123",
+    actor_email: "admin@aao.org",
+    expires_at: new Date(Date.now() + 10 * 60 * 1000),
+    ...overrides,
+  };
+}
+
+function makeTxClient(
+  overrides: {
+    previewRow?: Record<string, unknown>;
+    org?: ReturnType<typeof makeOrg>;
+  } = {},
+) {
   const calls: Array<{ sql: string; params?: unknown[] }> = [];
   const client = {
     query: vi.fn(async (sql: string, params?: unknown[]) => {
       calls.push({ sql, params });
+      if (sql.includes("DELETE FROM admin_stripe_customer_update_previews")) {
+        return { rows: [overrides.previewRow ?? makePreviewRow()] };
+      }
+      if (sql.includes("SELECT * FROM organizations")) {
+        return {
+          rows: [
+            overrides.org ??
+              makeOrg({ stripe_customer_id: "cus_old_123" }),
+          ],
+        };
+      }
+      if (
+        sql.includes("FROM organizations") &&
+        sql.includes("stripe_customer_id = $1")
+      ) {
+        return { rows: [] };
+      }
       return { rows: [] };
     }),
     release: vi.fn(),
@@ -511,22 +552,63 @@ describe("ADMIN_TOOLS definitions", () => {
         "confirm",
         "reason",
       ]);
+      expect(props.confirm).toMatchObject({ const: true });
+      expect(props.reason).toMatchObject({ minLength: 10 });
+    });
+
+    it("constrains the preview schema to Stripe customer IDs", () => {
+      const tool = ADMIN_TOOLS.find(
+        (t) => t.name === "preview_org_stripe_customer_update",
+      );
+      const props = tool?.input_schema.properties ?? {};
+      expect(props.new_customer_id).toMatchObject({ pattern: "^cus_" });
     });
   });
 });
 
 // ── org Stripe customer update handler tests ──────────────────────────────────
 describe("org Stripe customer update handlers", () => {
+  let previewRows: Record<string, unknown>[];
+
   beforeEach(() => {
     vi.clearAllMocks();
+    previewRows = [];
     mockGetOrganization.mockResolvedValue(makeOrg());
-    mockPoolQuery.mockResolvedValue({ rows: [] });
+    mockPoolQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (sql.includes("INSERT INTO admin_stripe_customer_update_previews")) {
+        previewRows.push(
+          makePreviewRow({
+            token: params?.[0],
+            workos_organization_id: params?.[1],
+            new_customer_id: params?.[2],
+            current_customer_id: params?.[3],
+            actor_workos_user_id: params?.[4],
+            actor_email: params?.[5],
+            expires_at: params?.[6],
+          }),
+        );
+        return { rows: [] };
+      }
+      if (
+        sql.includes("FROM admin_stripe_customer_update_previews") &&
+        sql.includes("WHERE token = $1")
+      ) {
+        return { rows: previewRows.filter((row) => row.token === params?.[0]) };
+      }
+      return { rows: [] };
+    });
     mockCustomersRetrieve.mockResolvedValue(makeStripeCustomer());
     mockCustomersUpdate.mockResolvedValue({});
     mockSubscriptionsList.mockResolvedValue({ data: [] });
     mockSubscriptionsUpdate.mockResolvedValue({});
     mockInvoicesList.mockResolvedValue({ data: [] });
-    mockPickMembershipSub.mockReturnValue(null);
+    mockProductsRetrieve.mockResolvedValue({
+      id: "prod_membership",
+      name: "Membership",
+      metadata: {},
+      deleted: false,
+    });
+    mockPickMembershipSubWithProductFetch.mockResolvedValue(null);
     mockBuildSubscriptionUpdate.mockReturnValue(null);
     mockResolvePersonId.mockResolvedValue("pr_admin_123");
   });
@@ -543,7 +625,13 @@ describe("org Stripe customer update handlers", () => {
     expect(result.success).toBe(true);
     expect(result.preview_token).toEqual(expect.any(String));
     expect(result.current_customer_id).toBeNull();
+    expect(result.org.name).toBe(
+      "<untrusted_proposer_input>Test Corp</untrusted_proposer_input>",
+    );
     expect(result.new_customer.id).toBe("cus_new_123");
+    expect(result.new_customer.name).toBe(
+      "<untrusted_proposer_input>Test Corp Billing</untrusted_proposer_input>",
+    );
     expect(mockGetOrganization).toHaveBeenCalledWith("org_test_123");
     expect(mockCustomersRetrieve).toHaveBeenCalledWith("cus_new_123");
     expect(mockSubscriptionsList).toHaveBeenCalledWith({
@@ -605,6 +693,20 @@ describe("org Stripe customer update handlers", () => {
     expect(eventData.old_customer_id).toBe("cus_old_123");
     expect(eventData.new_customer_id).toBe("cus_new_123");
     expect(eventData.actor_user_id).toBe("user_admin_123");
+
+    const previewDelete = tx.calls.find((call) =>
+      call.sql.includes("DELETE FROM admin_stripe_customer_update_previews"),
+    );
+    expect(previewDelete?.params).toEqual([preview.preview_token]);
+
+    const customerUpdate = tx.calls.find((call) =>
+      call.sql.includes("SET stripe_customer_id = $1"),
+    );
+    expect(customerUpdate?.params).toEqual([
+      "cus_new_123",
+      "org_test_123",
+      "cus_old_123",
+    ]);
 
     expect(mockCustomersUpdate).toHaveBeenCalledWith("cus_new_123", {
       metadata: { workos_organization_id: "org_test_123" },

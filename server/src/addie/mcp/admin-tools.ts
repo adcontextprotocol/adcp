@@ -57,7 +57,11 @@ import {
   type OpenInvoiceWithCustomer,
 } from "../../billing/stripe-client.js";
 import { invalidateMembershipCache } from "../../db/org-filters.js";
-import { pickMembershipSub } from "../../billing/membership-prices.js";
+import {
+  pickMembershipSubWithProductFetch,
+  type PickedMembershipSub,
+} from "../../billing/membership-prices.js";
+import { wrapUntrustedInput } from "./untrusted-input.js";
 import { enrichOrganization, enrichDomain } from "../../services/enrichment.js";
 import { researchDomain } from "../../services/brand-enrichment.js";
 import {
@@ -434,6 +438,7 @@ Returns a list of organizations with open or draft invoices.`,
         },
         new_customer_id: {
           type: "string",
+          pattern: "^cus_",
           description: "Proposed Stripe customer ID (cus_...) to validate",
         },
       },
@@ -455,10 +460,12 @@ Returns a list of organizations with open or draft invoices.`,
         },
         confirm: {
           type: "boolean",
+          const: true,
           description: "Must be true to commit the relink",
         },
         reason: {
           type: "string",
+          minLength: 10,
           description:
             "Audit reason for relinking this organization to the validated Stripe customer",
         },
@@ -2507,9 +2514,9 @@ interface PendingStripeCustomerUpdate {
   orgId: string;
   newCustomerId: string;
   currentCustomerId: string | null;
-  actorWorkosUserId: string | null;
+  actorWorkosUserId: string;
   actorEmail: string | null;
-  expiresAt: number;
+  expiresAt: Date;
 }
 
 type OrganizationRecord = NonNullable<
@@ -2520,21 +2527,7 @@ interface StripeCustomerUpdatePreview {
   org: OrganizationRecord;
   customer: Stripe.Customer;
   subscriptions: Stripe.Subscription[];
-  membershipSubscription: Stripe.Subscription | null;
-}
-
-const pendingStripeCustomerUpdates = new Map<
-  string,
-  PendingStripeCustomerUpdate
->();
-
-function pruneExpiredStripeCustomerUpdatePreviews(): void {
-  const now = Date.now();
-  for (const [token, pending] of pendingStripeCustomerUpdates.entries()) {
-    if (pending.expiresAt <= now) {
-      pendingStripeCustomerUpdates.delete(token);
-    }
-  }
+  membershipPick: PickedMembershipSub | null;
 }
 
 function normalizeStripeCustomerId(value: unknown): string | null {
@@ -2543,12 +2536,21 @@ function normalizeStripeCustomerId(value: unknown): string | null {
   return trimmed.startsWith("cus_") ? trimmed : null;
 }
 
-function formatStripeCustomerForTool(customer: Stripe.Customer): Record<string, unknown> {
+function safeToolText(
+  value: string | null | undefined,
+  maxLength = 160,
+): string | null {
+  return value ? wrapUntrustedInput(value, maxLength) : null;
+}
+
+function formatStripeCustomerForTool(
+  customer: Stripe.Customer,
+): Record<string, unknown> {
   return {
     id: customer.id,
-    name: customer.name ?? null,
-    email: customer.email ?? null,
-    metadata_org_id: customer.metadata?.workos_organization_id || null,
+    name: safeToolText(customer.name),
+    email: safeToolText(customer.email),
+    metadata_org_id: safeToolText(customer.metadata?.workos_organization_id),
   };
 }
 
@@ -2562,14 +2564,65 @@ function formatStripeSubscriptionForTool(
     id: subscription.id,
     status: subscription.status,
     product_name:
-      typeof price?.product === "object" && price.product && "name" in price.product
-        ? price.product.name
+      typeof price?.product === "object" &&
+      price.product &&
+      "name" in price.product
+        ? safeToolText(price.product.name)
         : null,
     lookup_key: price?.lookup_key ?? null,
     amount: price?.unit_amount ?? null,
     currency: price?.currency ?? null,
     interval: price?.recurring?.interval ?? null,
   };
+}
+
+function rowToPendingStripeCustomerUpdate(
+  row: Record<string, unknown>,
+): PendingStripeCustomerUpdate {
+  return {
+    token: row.token as string,
+    orgId: row.workos_organization_id as string,
+    newCustomerId: row.new_customer_id as string,
+    currentCustomerId: (row.current_customer_id as string | null) ?? null,
+    actorWorkosUserId: row.actor_workos_user_id as string,
+    actorEmail: (row.actor_email as string | null) ?? null,
+    expiresAt: new Date(row.expires_at as string | Date),
+  };
+}
+
+async function saveStripeCustomerUpdatePreview(
+  pending: PendingStripeCustomerUpdate,
+): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO admin_stripe_customer_update_previews
+       (token, workos_organization_id, new_customer_id, current_customer_id,
+        actor_workos_user_id, actor_email, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      pending.token,
+      pending.orgId,
+      pending.newCustomerId,
+      pending.currentCustomerId,
+      pending.actorWorkosUserId,
+      pending.actorEmail,
+      pending.expiresAt,
+    ],
+  );
+}
+
+async function getStripeCustomerUpdatePreview(
+  token: string,
+): Promise<PendingStripeCustomerUpdate | null> {
+  const pool = getPool();
+  const result = await pool.query(
+    `SELECT token, workos_organization_id, new_customer_id, current_customer_id,
+            actor_workos_user_id, actor_email, expires_at
+       FROM admin_stripe_customer_update_previews
+      WHERE token = $1 AND expires_at > NOW()`,
+    [token],
+  );
+  return result.rows[0] ? rowToPendingStripeCustomerUpdate(result.rows[0]) : null;
 }
 
 async function loadStripeCustomerUpdatePreview(
@@ -2586,12 +2639,12 @@ async function loadStripeCustomerUpdatePreview(
   }
 
   if (org.stripe_customer_id === customerId) {
-    throw new ToolError(`Organization "${org.name}" is already linked to ${customerId}.`);
+    throw new ToolError(`Organization ${orgId} is already linked to ${customerId}.`);
   }
 
   const pool = getPool();
   const existingLink = await pool.query(
-    "SELECT workos_organization_id, name FROM organizations WHERE stripe_customer_id = $1",
+    "SELECT workos_organization_id FROM organizations WHERE stripe_customer_id = $1",
     [customerId],
   );
   if (
@@ -2599,7 +2652,7 @@ async function loadStripeCustomerUpdatePreview(
     existingLink.rows[0].workos_organization_id !== orgId
   ) {
     throw new ToolError(
-      `Stripe customer ${customerId} is already linked to "${existingLink.rows[0].name}".`,
+      `Stripe customer ${customerId} is already linked to another organization (${existingLink.rows[0].workos_organization_id}).`,
     );
   }
 
@@ -2654,11 +2707,17 @@ async function loadStripeCustomerUpdatePreview(
     );
   }
 
+  const stripeClient = stripe;
+  const membershipPick = await pickMembershipSubWithProductFetch(
+    subscriptions,
+    (productId) => stripeClient.products.retrieve(productId),
+  );
+
   return {
     org,
     customer,
     subscriptions,
-    membershipSubscription: pickMembershipSub(subscriptions),
+    membershipPick,
   };
 }
 
@@ -2673,13 +2732,29 @@ async function syncInvoicesForRelinkedCustomer(
   try {
     const invoices = await stripe.invoices.list({ customer: customerId, limit: 100 });
     for (const invoice of invoices.data) {
+      let productName: string | null = null;
+      if (invoice.lines?.data && invoice.lines.data.length > 0) {
+        const primaryLine = invoice.lines.data[0] as any;
+        const productRef = primaryLine.price?.product;
+        if (productRef && typeof productRef === "object" && "name" in productRef) {
+          productName = productRef.name ?? null;
+        } else if (typeof productRef === "string") {
+          try {
+            const product = await stripe.products.retrieve(productRef);
+            productName = "deleted" in product ? null : product.name;
+          } catch {
+            productName = primaryLine.description || null;
+          }
+        }
+      }
+
       await pool.query(
         `INSERT INTO org_invoices (
           stripe_invoice_id, stripe_customer_id, workos_organization_id, status,
           amount_due, amount_paid, currency, invoice_number, hosted_invoice_url,
-          invoice_pdf, customer_email, created_at, due_date, paid_at, voided_at,
-          stripe_updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
+          invoice_pdf, product_name, customer_email, created_at, due_date,
+          paid_at, voided_at, stripe_updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
         ON CONFLICT (stripe_invoice_id) DO UPDATE SET
           workos_organization_id = EXCLUDED.workos_organization_id,
           status = EXCLUDED.status,
@@ -2688,6 +2763,7 @@ async function syncInvoicesForRelinkedCustomer(
           invoice_number = EXCLUDED.invoice_number,
           hosted_invoice_url = EXCLUDED.hosted_invoice_url,
           invoice_pdf = EXCLUDED.invoice_pdf,
+          product_name = COALESCE(EXCLUDED.product_name, org_invoices.product_name),
           customer_email = EXCLUDED.customer_email,
           paid_at = EXCLUDED.paid_at,
           voided_at = EXCLUDED.voided_at,
@@ -2703,6 +2779,7 @@ async function syncInvoicesForRelinkedCustomer(
           invoice.number || null,
           invoice.hosted_invoice_url || null,
           invoice.invoice_pdf || null,
+          productName,
           typeof invoice.customer_email === "string" ? invoice.customer_email : null,
           new Date(invoice.created * 1000),
           invoice.due_date ? new Date(invoice.due_date * 1000) : null,
@@ -2728,55 +2805,7 @@ async function commitStripeCustomerUpdatePreview(
     pending.orgId,
     pending.newCustomerId,
   );
-  const { org, subscriptions, membershipSubscription } = preview;
-  if (!org) {
-    throw new ToolError(`Organization ${pending.orgId} not found.`);
-  }
-  if (org.stripe_customer_id !== pending.currentCustomerId) {
-    throw new ToolError(
-      `Organization "${org.name}" changed after the preview. Run preview_org_stripe_customer_update again before relinking.`,
-    );
-  }
-
-  const previousCustomerId = org.stripe_customer_id;
-  const subUpdate = membershipSubscription
-    ? buildSubscriptionUpdate(membershipSubscription as any, org.is_personal ?? false)
-    : null;
-
-  const beforeState = {
-    stripe_customer_id: org.stripe_customer_id,
-    subscription_status: org.subscription_status,
-    stripe_subscription_id: org.stripe_subscription_id,
-    subscription_amount: org.subscription_amount,
-    subscription_currency: org.subscription_currency,
-    subscription_interval: org.subscription_interval,
-    subscription_current_period_end: org.subscription_current_period_end,
-    subscription_canceled_at: org.subscription_canceled_at,
-    subscription_product_id: org.subscription_product_id,
-    subscription_product_name: org.subscription_product_name,
-    subscription_price_id: org.subscription_price_id,
-    subscription_price_lookup_key: org.subscription_price_lookup_key,
-    membership_tier: org.membership_tier,
-  };
-  const afterState = subUpdate
-    ? { stripe_customer_id: pending.newCustomerId, ...subUpdate }
-    : previousCustomerId
-      ? {
-          stripe_customer_id: pending.newCustomerId,
-          subscription_status: null,
-          stripe_subscription_id: null,
-          subscription_amount: null,
-          subscription_currency: null,
-          subscription_interval: null,
-          subscription_current_period_end: null,
-          subscription_canceled_at: null,
-          subscription_product_id: null,
-          subscription_product_name: null,
-          subscription_price_id: null,
-          subscription_price_lookup_key: null,
-          membership_tier: null,
-        }
-      : { ...beforeState, stripe_customer_id: pending.newCustomerId };
+  const { subscriptions, membershipPick } = preview;
 
   const actorPersonId = pending.actorWorkosUserId
     ? await relationshipDb.resolvePersonId({
@@ -2788,11 +2817,112 @@ async function commitStripeCustomerUpdatePreview(
   const pool = getPool();
   const txClient = await pool.connect();
   let subscriptionSynced = false;
+  let previousCustomerId: string | null = null;
+  let orgName: string | null = null;
   try {
     await txClient.query("BEGIN");
-    await txClient.query(
-      "UPDATE organizations SET stripe_customer_id = $1, updated_at = NOW() WHERE workos_organization_id = $2",
+
+    const consumedPreview = await txClient.query(
+      `DELETE FROM admin_stripe_customer_update_previews
+        WHERE token = $1 AND expires_at > NOW()
+        RETURNING token, workos_organization_id, new_customer_id, current_customer_id,
+                  actor_workos_user_id, actor_email, expires_at`,
+      [pending.token],
+    );
+    if (consumedPreview.rows.length === 0) {
+      throw new ToolError(
+        "Preview token was not found or has expired. Run preview_org_stripe_customer_update again.",
+      );
+    }
+    const consumed = rowToPendingStripeCustomerUpdate(consumedPreview.rows[0]);
+    if (
+      consumed.orgId !== pending.orgId ||
+      consumed.newCustomerId !== pending.newCustomerId ||
+      consumed.currentCustomerId !== pending.currentCustomerId ||
+      consumed.actorWorkosUserId !== pending.actorWorkosUserId
+    ) {
+      throw new ToolError("Preview token contents changed unexpectedly. Run the preview again.");
+    }
+
+    const lockedOrgResult = await txClient.query(
+      `SELECT * FROM organizations WHERE workos_organization_id = $1 FOR UPDATE`,
+      [pending.orgId],
+    );
+    if (lockedOrgResult.rows.length === 0) {
+      throw new ToolError(`Organization ${pending.orgId} not found.`);
+    }
+    const org = lockedOrgResult.rows[0] as OrganizationRecord;
+    orgName = org.name;
+    previousCustomerId = org.stripe_customer_id;
+
+    if (previousCustomerId !== pending.currentCustomerId) {
+      throw new ToolError(
+        "Organization changed after the preview. Run preview_org_stripe_customer_update again before relinking.",
+      );
+    }
+
+    const existingLink = await txClient.query(
+      `SELECT workos_organization_id
+         FROM organizations
+        WHERE stripe_customer_id = $1 AND workos_organization_id <> $2
+        FOR UPDATE`,
       [pending.newCustomerId, pending.orgId],
+    );
+    if (existingLink.rows.length > 0) {
+      throw new ToolError(
+        `Stripe customer ${pending.newCustomerId} is already linked to another organization (${existingLink.rows[0].workos_organization_id}).`,
+      );
+    }
+
+    const subUpdate = membershipPick
+      ? buildSubscriptionUpdate(
+          membershipPick.sub as any,
+          org.is_personal ?? false,
+          membershipPick.product?.metadata ?? null,
+        )
+      : null;
+
+    const beforeState = {
+      stripe_customer_id: org.stripe_customer_id,
+      subscription_status: org.subscription_status,
+      stripe_subscription_id: org.stripe_subscription_id,
+      subscription_amount: org.subscription_amount,
+      subscription_currency: org.subscription_currency,
+      subscription_interval: org.subscription_interval,
+      subscription_current_period_end: org.subscription_current_period_end,
+      subscription_canceled_at: org.subscription_canceled_at,
+      subscription_product_id: org.subscription_product_id,
+      subscription_product_name: org.subscription_product_name,
+      subscription_price_id: org.subscription_price_id,
+      subscription_price_lookup_key: org.subscription_price_lookup_key,
+      membership_tier: org.membership_tier,
+    };
+    const afterState = subUpdate
+      ? { stripe_customer_id: pending.newCustomerId, ...subUpdate }
+      : previousCustomerId
+        ? {
+            stripe_customer_id: pending.newCustomerId,
+            subscription_status: null,
+            stripe_subscription_id: null,
+            subscription_amount: null,
+            subscription_currency: null,
+            subscription_interval: null,
+            subscription_current_period_end: null,
+            subscription_canceled_at: null,
+            subscription_product_id: null,
+            subscription_product_name: null,
+            subscription_price_id: null,
+            subscription_price_lookup_key: null,
+            membership_tier: null,
+          }
+        : { ...beforeState, stripe_customer_id: pending.newCustomerId };
+
+    await txClient.query(
+      `UPDATE organizations
+          SET stripe_customer_id = $1, updated_at = NOW()
+        WHERE workos_organization_id = $2
+          AND stripe_customer_id IS NOT DISTINCT FROM $3`,
+      [pending.newCustomerId, pending.orgId, pending.currentCustomerId],
     );
 
     if (subUpdate) {
@@ -2883,7 +3013,7 @@ async function commitStripeCustomerUpdatePreview(
           "addie",
           JSON.stringify({
             org_id: pending.orgId,
-            org_name: org.name,
+            org_name: orgName,
             old_customer_id: previousCustomerId,
             new_customer_id: pending.newCustomerId,
             actor_user_id: pending.actorWorkosUserId,
@@ -2967,18 +3097,19 @@ async function commitStripeCustomerUpdatePreview(
     pending.orgId,
   );
 
+  const safeOrgName = safeToolText(orgName) ?? pending.orgId;
   return {
     success: true,
     message: previousCustomerId
-      ? `Replaced Stripe customer link for "${org.name}": ${previousCustomerId} -> ${pending.newCustomerId}`
-      : `Linked Stripe customer ${pending.newCustomerId} to "${org.name}"`,
+      ? `Replaced Stripe customer link for ${safeOrgName}: ${previousCustomerId} -> ${pending.newCustomerId}`
+      : `Linked Stripe customer ${pending.newCustomerId} to ${safeOrgName}`,
     org_id: pending.orgId,
-    org_name: org.name,
+    org_name: safeOrgName,
     previous_customer_id: previousCustomerId,
     new_customer_id: pending.newCustomerId,
     subscription_synced: subscriptionSynced,
     invoices_synced: invoicesSynced,
-    subscription: formatStripeSubscriptionForTool(membershipSubscription),
+    subscription: formatStripeSubscriptionForTool(membershipPick?.sub ?? null),
     validated_subscription_count: subscriptions.length,
   };
 }
@@ -3269,20 +3400,27 @@ export function createAdminToolHandlers(
     }
 
     try {
-      pruneExpiredStripeCustomerUpdatePreviews();
-      const preview = await loadStripeCustomerUpdatePreview(orgId, newCustomerId);
-      const token = randomUUID();
       const actorWorkosUserId =
         memberContext?.workos_user?.workos_user_id ?? null;
+      if (!actorWorkosUserId) {
+        return JSON.stringify({
+          success: false,
+          error:
+            "Cannot preview a Stripe customer relink without a signed-in admin identity for the audit trail.",
+        });
+      }
+
+      const preview = await loadStripeCustomerUpdatePreview(orgId, newCustomerId);
+      const token = randomUUID();
       const actorEmail = memberContext?.workos_user?.email ?? null;
-      pendingStripeCustomerUpdates.set(token, {
+      await saveStripeCustomerUpdatePreview({
         token,
         orgId,
         newCustomerId,
         currentCustomerId: preview.org.stripe_customer_id,
         actorWorkosUserId,
         actorEmail,
-        expiresAt: Date.now() + STRIPE_CUSTOMER_UPDATE_PREVIEW_TTL_MS,
+        expiresAt: new Date(Date.now() + STRIPE_CUSTOMER_UPDATE_PREVIEW_TTL_MS),
       });
 
       return JSON.stringify({
@@ -3291,14 +3429,14 @@ export function createAdminToolHandlers(
         expires_in_minutes: STRIPE_CUSTOMER_UPDATE_PREVIEW_TTL_MS / 60_000,
         org: {
           id: preview.org.workos_organization_id,
-          name: preview.org.name,
+          name: safeToolText(preview.org.name),
         },
         current_customer_id: preview.org.stripe_customer_id,
         new_customer: formatStripeCustomerForTool(preview.customer),
         will_replace_existing_customer: Boolean(preview.org.stripe_customer_id),
         validated_subscription_count: preview.subscriptions.length,
         membership_subscription: formatStripeSubscriptionForTool(
-          preview.membershipSubscription,
+          preview.membershipPick?.sub ?? null,
         ),
         next_step:
           "Show this diff to the admin. If they explicitly approve, call confirm_org_stripe_customer_update with preview_token, confirm: true, and a reason of at least 10 characters.",
@@ -3337,8 +3475,7 @@ export function createAdminToolHandlers(
     }
 
     try {
-      pruneExpiredStripeCustomerUpdatePreviews();
-      const pending = pendingStripeCustomerUpdates.get(previewToken);
+      const pending = await getStripeCustomerUpdatePreview(previewToken);
       if (!pending) {
         return JSON.stringify({
           success: false,
@@ -3377,15 +3514,9 @@ export function createAdminToolHandlers(
       );
 
       const result = await commitStripeCustomerUpdatePreview(
-        {
-          ...pending,
-          actorWorkosUserId: pending.actorWorkosUserId ?? actorWorkosUserId,
-          actorEmail:
-            pending.actorEmail ?? memberContext?.workos_user?.email ?? null,
-        },
+        pending,
         reason,
       );
-      pendingStripeCustomerUpdates.delete(previewToken);
       return JSON.stringify(result);
     } catch (error) {
       const message =

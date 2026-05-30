@@ -51,6 +51,14 @@ describe('getToolsForSets', () => {
       expect(tools).toContain('find_membership_products');
     });
 
+    it('keeps Stripe customer relinks behind the precision-gated billing set', () => {
+      expect(TOOL_SETS.billing.requiresPrecision).toBe(true);
+      expect(TOOL_SETS.billing.tools).toContain('preview_org_stripe_customer_update');
+      expect(TOOL_SETS.billing.tools).toContain('confirm_org_stripe_customer_update');
+      expect(TOOL_SETS.admin.tools).not.toContain('preview_org_stripe_customer_update');
+      expect(TOOL_SETS.admin.tools).not.toContain('confirm_org_stripe_customer_update');
+    });
+
     it('still includes non-enrollment always-available tools in public channels', () => {
       const tools = getToolsForSets([], false, true);
       expect(tools).toContain('escalate_to_admin');

@@ -583,7 +583,7 @@ ${
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
 - Content workflows, GitHub issues, proposals → ["content"]
 - Questions about working group documents, brand guidelines, uploaded files → ["knowledge", "member"]
-- Billing, invoices, payment links, resending invoices → ["billing"]
+- Billing, invoices, payment links, resending invoices, Stripe customer relinks/customer ID updates → ["billing"]
 - Upcoming events, event registrations, "am I registered", event details, register interest, who's coming/attending → ["events"]
 - Invite someone to an event, create/update events, manage registrations → ["events", "admin"]
 - Scheduling meetings, calendar, covering topics, joining a call, meeting agendas → ["meetings"]

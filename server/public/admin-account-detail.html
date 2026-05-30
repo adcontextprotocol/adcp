@@ -2879,10 +2879,7 @@
     }
 
     function openBillingLinking() {
-      const params = accountData?.workos_organization_id
-        ? `?org_id=${encodeURIComponent(accountData.workos_organization_id)}`
-        : '';
-      window.open(`/admin/billing${params}`, '_blank');
+      window.open('/admin/billing', '_blank');
     }
 
     async function syncAccountBilling() {

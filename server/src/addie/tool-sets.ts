@@ -374,8 +374,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "list_paying_members",
       "resend_invoice",
       "update_billing_email",
-      "preview_org_stripe_customer_update",
-      "confirm_org_stripe_customer_update",
       "add_working_group_member",
       "remove_working_group_member",
       "rename_working_group",
