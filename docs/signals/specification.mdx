@@ -110,7 +110,11 @@ Signal definitions MAY carry additional fields for transparency, governance, and
 
 ## Tasks
 
-The Signals Protocol defines two tasks. See task reference pages for complete request/response schemas and examples.
+The Signals Protocol defines two task schemas. All conformant Signals Protocol
+agents implement `get_signals` for discovery. Agents that claim the
+marketplace activation specialism, advertise activation/deactivation, or return
+signals that require buyer-managed activation implement `activate_signal` as the
+activation lifecycle surface.
 
 ### get_signals
 
@@ -173,10 +177,16 @@ All Signals Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 A conformant Signals Protocol agent MUST:
 
 1. Support at least one specified transport (MCP or A2A)
-2. Implement `get_signals` and `activate_signal` tasks per schema
+2. Implement `get_signals` per schema
 3. Return required fields as defined in response schemas
 4. Use specified error codes
-5. Enforce access control for private signals and activation keys
+5. Enforce access control for private signals and, when activation is supported,
+   activation keys
+
+Agents claiming a marketplace activation specialism or otherwise advertising
+activation support MUST also implement `activate_signal` per schema. Discovery-
+only owned-signal agents MAY conform to the Signals Protocol baseline without
+implementing `activate_signal`.
 
 ### Orchestrator Conformance
 
@@ -184,8 +194,10 @@ A conformant Signals Protocol orchestrator MUST:
 
 1. Authenticate with signal agents
 2. Include required fields as defined in request schemas
-3. Handle async activation responses
-4. Use `activation_key` for external deployment targeting, and use package-level `signal_targeting_groups` for seller-offered signal selection on sales-agent media buys
+3. Handle async activation responses when using `activate_signal`
+4. Use `activation_key` for external deployment targeting when activation is in
+   scope, and use package-level `signal_targeting_groups` for seller-offered
+   signal selection on sales-agent media buys
 
 When a seller-offered signal should be applied only to specific packages on a sales-agent buy, orchestrators SHOULD carry that selection in `create_media_buy.packages[].targeting_overlay.signal_targeting_groups`, including the selected signal `pricing_option_id` when required and the selected `signal_ref`. `get_signals` is the broader discovery surface, while the selected product's inline `signal_targeting_options` when present and `signal_targeting_rules` govern buy-time eligibility and pricing; wholesale products can omit inline options and rely on `get_signals` for candidate discovery. `included_signals` is descriptive only: it identifies signals already bundled into or planned into the product, but does not make them selectable. If the product option or `get_signals` result exposes a separate `signal_agent_segment_id` required by the seller, buyers echo it as an execution handle; otherwise `signal_ref` is sufficient. This is the package-level binding; `audience_include` and `audience_exclude` remain scoped to buyer-managed audiences from `sync_audiences`.
 

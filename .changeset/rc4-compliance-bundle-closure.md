@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": patch
+"adcontextprotocol": minor
 ---
 
 Fix release validation for compliance bundle closure and remove `activate_signal` from the owned-signal specialism.
