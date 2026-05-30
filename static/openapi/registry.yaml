@@ -1481,6 +1481,61 @@ components:
               - untested
               - unknown
           description: Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status
+        storyboard_statuses:
+          type: array
+          items:
+            type: object
+            properties:
+              storyboard_id:
+                type: string
+              requested_compliance_target:
+                type:
+                  - string
+                  - "null"
+              adcp_version:
+                type:
+                  - string
+                  - "null"
+              title:
+                type: string
+              category:
+                type:
+                  - string
+                  - "null"
+              track:
+                type:
+                  - string
+                  - "null"
+              status:
+                type: string
+                enum:
+                  - passing
+                  - failing
+                  - partial
+                  - untested
+              steps_passed:
+                type: integer
+              steps_total:
+                type: integer
+              last_tested_at:
+                type:
+                  - string
+                  - "null"
+              last_passed_at:
+                type:
+                  - string
+                  - "null"
+            required:
+              - storyboard_id
+              - title
+              - category
+              - track
+              - status
+              - steps_passed
+              - steps_total
+              - last_tested_at
+              - last_passed_at
+          description: Owner-scoped per-storyboard diagnostics used by the dashboard. Empty for non-owners.
         notices:
           type: array
           items: {}

@@ -4623,25 +4623,26 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // cause of an overall `failing` status without cross-referencing
       // the storyboard track pills.
       let specialismStatus: Record<string, string> = {};
+      let storyboardStatuses: Awaited<ReturnType<typeof complianceDb.getStoryboardStatuses>> = [];
+      try {
+        storyboardStatuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForLatestRun: true });
+      } catch (err) {
+        if (!isUndefinedTableError(err)) throw err;
+        logger.warn({ err, agentUrl }, "Storyboard status query skipped because table is missing");
+      }
       if (declaredSpecialisms.length > 0) {
-        try {
-          const sbStatuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForLatestRun: true });
-          specialismStatus = computeSpecialismStatus(
-            declaredSpecialisms,
-            sbStatuses.map(s => ({
-              storyboard_id: s.storyboard_id,
-              adcp_version: s.adcp_version ?? null,
-              // Cast is bounded by the `valid_storyboard_status` CHECK
-              // constraint in agent_storyboard_status (migration 390).
-              status: s.status as 'passing' | 'failing' | 'partial' | 'untested',
-              steps_passed: s.steps_passed,
-              steps_total: s.steps_total,
-            })),
-          );
-        } catch (err) {
-          if (!isUndefinedTableError(err)) throw err;
-          logger.warn({ err, agentUrl }, "Per-specialism status query skipped because table is missing");
-        }
+        specialismStatus = computeSpecialismStatus(
+          declaredSpecialisms,
+          storyboardStatuses.map(s => ({
+            storyboard_id: s.storyboard_id,
+            adcp_version: s.adcp_version ?? null,
+            // Cast is bounded by the `valid_storyboard_status` CHECK
+            // constraint in agent_storyboard_status (migration 390).
+            status: s.status as 'passing' | 'failing' | 'partial' | 'untested',
+            steps_passed: s.steps_passed,
+            steps_total: s.steps_total,
+          })),
+        );
       }
 
       // Owner-only diagnostic: surface the agent owner's membership tier so
@@ -4668,6 +4669,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       } catch (err) {
         logger.warn({ err, agentUrl, userId }, "Owner membership lookup failed");
         ownerMembership = {
+          is_owner: false,
           membership_tier: null,
           membership_tier_label: null,
           subscription_status: null,
@@ -4676,6 +4678,24 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
 
       const encodedUrl = encodeURIComponent(agentUrl);
+      const storyboardStatusesForOwner = ownerMembership.is_owner
+        ? storyboardStatuses.map(s => {
+          const sb = getStoryboard(s.storyboard_id);
+          return {
+            storyboard_id: s.storyboard_id,
+            requested_compliance_target: s.requested_compliance_target ?? null,
+            adcp_version: s.adcp_version ?? null,
+            title: sb?.title || s.storyboard_id,
+            category: sb?.category || null,
+            track: sb?.track || null,
+            status: s.status,
+            steps_passed: s.steps_passed,
+            steps_total: s.steps_total,
+            last_tested_at: s.last_tested_at?.toISOString() || null,
+            last_passed_at: s.last_passed_at?.toISOString() || null,
+          };
+        })
+        : [];
 
       res.json({
         agent_url: agentUrl,
@@ -4696,6 +4716,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         check_interval_hours: metadata?.check_interval_hours ?? 12,
         declared_specialisms: declaredSpecialisms,
         specialism_status: specialismStatus,
+        // Owner-scoped: failing storyboard names and step counts for the
+        // dashboard hover states. Non-owners get an empty array so public
+        // registry consumers keep the same response shape without receiving
+        // implementation-level diagnostics.
+        storyboard_statuses: storyboardStatusesForOwner,
         // Advisory notices from the latest run. Forward-compat: unknown codes
         // and severities are passed through verbatim (runner-output-contract.yaml).
         notices,

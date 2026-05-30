@@ -1100,6 +1100,21 @@ export interface AgentCompliance {
   headline: string | null;
   monitoring_paused: boolean;
   check_interval_hours: number;
+  storyboards_passing?: number;
+  storyboards_total?: number;
+  storyboard_statuses?: Array<{
+    storyboard_id: string;
+    requested_compliance_target?: string | null;
+    adcp_version?: string | null;
+    title: string;
+    category: string | null;
+    track: string | null;
+    status: 'passing' | 'failing' | 'partial' | 'untested';
+    steps_passed: number;
+    steps_total: number;
+    last_tested_at: string | null;
+    last_passed_at: string | null;
+  }>;
   verified?: boolean;
   verified_roles?: string[];
 }
