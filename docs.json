@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
   "banner": {
-    "content": "🚀 AdCP 3.1 beta is now available — [see what's new](/docs/reference/whats-new-in-3-1)",
+    "content": "AdCP 3.1 is in active development — [see what's coming →](/docs/reference/release-notes)",
     "dismissible": true
   },
   "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
@@ -25,8 +25,8 @@
   "theme": "mint",
   "colors": {
     "primary": "#047857",
-    "light": "#07C983",
-    "dark": "#047857"
+    "light": "#34D399",
+    "dark": "#065F46"
   },
   "navbar": {
     "links": [
@@ -498,6 +498,7 @@
                       "docs/brand-protocol/walkthrough-rights-licensing",
                       "docs/brand-protocol/for-advertisers",
                       "docs/brand-protocol/for-rights-holders",
+                      "docs/brand-protocol/seller-setup",
                       "docs/brand-protocol/brand-json",
                       "docs/brand-protocol/building-a-brand-agent",
                       "docs/brand-protocol/ui-guidance",
@@ -651,6 +652,7 @@
                     "pages": [
                       "docs/learning/policies/nondiscrimination",
                       "docs/learning/policies/learner-records",
+                      "docs/learning/policies/recertification",
                       "docs/learning/policies/complaints",
                       "docs/learning/policies/conflict-of-interest",
                       "docs/learning/policies/intellectual-property",
@@ -1081,6 +1083,7 @@
                   "docs/brand-protocol/walkthrough-rights-licensing",
                   "docs/brand-protocol/for-advertisers",
                   "docs/brand-protocol/for-rights-holders",
+                  "docs/brand-protocol/seller-setup",
                   "docs/brand-protocol/brand-json",
                   "docs/brand-protocol/building-a-brand-agent",
                   "docs/brand-protocol/ui-guidance",
@@ -1220,6 +1223,7 @@
                 "pages": [
                   "docs/learning/policies/nondiscrimination",
                   "docs/learning/policies/learner-records",
+                  "docs/learning/policies/recertification",
                   "docs/learning/policies/complaints",
                   "docs/learning/policies/conflict-of-interest",
                   "docs/learning/policies/intellectual-property",
@@ -1457,7 +1461,8 @@
   "socials": {
     "linkedin": "https://www.linkedin.com/company/ad-context-protocol/",
     "youtube": "https://www.youtube.com/@AgenticAdvertising",
-    "github": "https://github.com/adcontextprotocol/adcp"
+    "github": "https://github.com/adcontextprotocol/adcp",
+    "slack": "https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA"
   },
   "api": {
     "maintainOrder": true

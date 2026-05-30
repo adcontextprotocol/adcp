@@ -7,10 +7,10 @@
 
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
-import { createHash, timingSafeEqual } from 'node:crypto';
 import rateLimit from 'express-rate-limit';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createLogger } from '../logger.js';
+import { constantTimeEqual } from '../utils/constant-time-equal.js';
 import { createCreativeAgentServer } from './task-handlers.js';
 import { getPreview, cleanExpiredPreviews } from './preview-store.js';
 
@@ -24,12 +24,6 @@ function setCORSHeaders(res: Response): void {
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
   res.setHeader('Access-Control-Expose-Headers', 'Content-Type');
-}
-
-function constantTimeEqual(a: string, b: string): boolean {
-  const ha = createHash('sha256').update(a).digest();
-  const hb = createHash('sha256').update(b).digest();
-  return timingSafeEqual(ha, hb);
 }
 
 function requireToken(req: Request, res: Response, next: NextFunction): void {

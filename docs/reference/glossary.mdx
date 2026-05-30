@@ -14,7 +14,7 @@ A billing relationship between a buyer and a seller. The account determines rate
 Classification of MCP session credentials as either "platform" (aggregator) or "customer" (direct advertiser/agency).
 
 **Audience** (AdCP context)
-A named group of users uploaded by a buyer for targeted advertising. Distinct from signals: audiences are buyer-owned first-party CRM data uploaded via `sync_audiences`; signals are named targeting dimensions discovered through product signal options, data-provider catalogs, or `get_signals`. Audiences are account-scoped — an `audience_id` cannot be used across sellers. Reference audiences in `targeting_overlay.audience_include` or `audience_exclude` in `create_media_buy`. See also [Audience Member](#audience-member) and [Hashed Identifier](#hashed-identifier).
+A named group of users uploaded by a buyer for targeted advertising. Distinct from signals: audiences are buyer-owned first-party CRM data uploaded via `sync_audiences`; signals are named targeting dimensions discovered through product signal options, provider-published signal definitions, or `get_signals`. Audiences are account-scoped — an `audience_id` cannot be used across sellers. Reference audiences in `targeting_overlay.audience_include` or `audience_exclude` in `create_media_buy`. See also [Audience Member](#audience-member) and [Hashed Identifier](#hashed-identifier).
 
 **Audience Member**
 A hashed identifier record representing one person in a CRM audience. Contains at least one of: `hashed_email`, `hashed_phone`, or `uids`. All PII is normalized and hashed (SHA-256) by the buyer before transmission — the wire format never carries cleartext email or phone. Hashing is data minimization at the transport boundary, not anonymization: see [Hashed Identifier](#hashed-identifier) for the pseudonymous-PII caveat that governs retention and consent. Providing multiple identifiers for the same person improves match rates. See also [UID](#uid-universal-id).
@@ -86,10 +86,10 @@ Direct advertiser or agency account with specific seat access and negotiated rat
 ## D
 
 **Data Provider**
-An organization that owns and publishes audience or contextual data (e.g., Polk, Experian, Acxiom). Data providers publish signal catalogs via `/.well-known/adagents.json` on their domain, enabling discovery and authorization verification. See [Data Provider Guide](/docs/signals/data-providers).
+An organization that owns and publishes audience or contextual data (e.g., Polk, Experian, Acxiom). Data providers publish signal definitions via `/.well-known/adagents.json` on their domain, enabling discovery and authorization verification. See [Data Provider Guide](/docs/signals/data-providers).
 
 **Data Provider Domain**
-The domain where a data provider publishes their signal catalog (e.g., `polk.com`). Used in `signal_ref` objects to reference catalog-published signals: `{ "scope": "data_provider", "data_provider_domain": "polk.com", "signal_id": "likely_tesla_buyers" }`.
+The domain where a data provider publishes adagents.json `signals[]` definitions (e.g., `polk.com`). Used in `signal_ref` objects to reference provider-published signals: `{ "scope": "data_provider", "data_provider_domain": "polk.com", "signal_id": "likely_tesla_buyers" }`.
 
 **Daypart**
 Specific time-of-day segment for time-based advertising, commonly used in DOOH (e.g., morning_commute, evening_prime, overnight).
@@ -263,7 +263,7 @@ Milestones in video ad viewing: Q1 (25% viewed), Q2 (50% viewed), Q3 (75% viewed
 The number or percentage of unique individuals exposed to an advertisement at least once during a campaign.
 
 **Relationship** (brand.json field)
-Field on brand.json properties declaring how the brand relates to a property: `owned` (default), `direct`, `delegated`, or `ad_network`. Uses the same values as `delegation_type` in adagents.json. Non-owned properties create bilateral verification — the operator declares the relationship in brand.json, the publisher confirms by authorizing the operator's agent in adagents.json. The AdCP equivalent of sellers.json.
+Field on brand.json properties declaring how the brand relates to a property: `owned` (default), `direct`, `delegated`, or `ad_network`. Delegated and network values align with `delegation_type` in adagents.json; `owned` is a brand.json-only ownership claim. Non-owned properties create bilateral verification — the operator declares the relationship in brand.json, the publisher confirms by authorizing the operator's agent in adagents.json. The AdCP equivalent of sellers.json.
 
 **Resolution Model**
 Product-level signal targeting rule that tells buyers how selected signals are applied. `direct_targeting` means selected signals behave like targeting predicates on the package inventory. `seller_planned` means selected signals are planning inputs the seller resolves against product-specific inventory, timing, availability, reach, or pacing constraints.
@@ -306,11 +306,8 @@ Percentage of available ad inventory allocated to a specific advertiser in DOOH 
 **Signal Agent**
 A server (via MCP or A2A) that provides signal discovery and activation services. Enables natural language audience discovery and deploys signals to decisioning platforms. Can be private (owned by a single buyer and visible only to that buyer's accounts) or marketplace (licensing data across multiple accounts). Signal agents are authorized by data providers via `adagents.json` to resell specific signals. Examples: LiveRamp, The Trade Desk, Peer39.
 
-**Signal Catalog**
-A collection of signal definitions published by a data provider via `/.well-known/adagents.json`. The catalog includes signal metadata (id, name, value_type, tags) and authorization declarations for signals agents. See [Data Provider Guide](/docs/signals/data-providers).
-
 **Signal Definition**
-A single signal entry in a data provider's signal catalog, containing: `id` (unique identifier), `name` (human-readable), `value_type` (binary, categorical, or numeric), and optional fields like `description`, `tags`, `allowed_values`, and `range`.
+A single signal entry in a data provider's `adagents.json` `signals[]`. The required fields are `id`, `name`, and `value_type` (`binary`, `categorical`, or `numeric`). Optional enrichment can describe taxonomy mappings, DTS-style source and methodology disclosures, modeling disclosures, jurisdiction and consent metadata, governance-sensitive categories, and per-signal rights-routing channels.
 
 **Signal Discovery**
 The process of finding relevant data signals (audiences, contextual, geographical, temporal) using natural language descriptions or structured `signal_ref` lookup.
@@ -319,13 +316,19 @@ The process of finding relevant data signals (audiences, contextual, geographica
 Deprecated structured identifier previously used by the Signals Protocol for discovery and activation. New discovery, activation, product targeting, and buy-time surfaces use [Signal Ref](#signal-ref).
 
 **Signal Ref**
-A structured signal reference using `scope` as the discriminator. `scope: "data_provider"` references a signal published in an adagents.json signal catalog (`data_provider_domain` + `signal_id`, verifiable). `scope: "signal_source"` references a source-native signal (`signal_source_url` + `signal_id`, trust-based). `scope: "product"` references a product-local signal option meaningful only inside the selected product/package context.
+A structured signal reference using `scope` as the discriminator. `scope: "data_provider"` references a signal published in adagents.json `signals[]` (`data_provider_domain` + `signal_id`, verifiable). `scope: "signal_source"` references a source-native signal (`signal_source_url` + `signal_id`, trust-based). `scope: "product"` references a product-local signal option meaningful only inside the selected product/package context.
 
 **Signal Source**
-A source that issues or activates signals. Source-native signals that are not published in an adagents.json signal catalog use `signal_ref.scope: "signal_source"` with `signal_source_url`.
+A source that issues or activates signals. Source-native signals that are not published in adagents.json `signals[]` use `signal_ref.scope: "signal_source"` with `signal_source_url`.
 
 **Signal Tags**
-Tags used to group related signals within a data provider's catalog. Enable efficient authorization (authorize "all automotive signals" rather than listing individual IDs). Tags must be lowercase alphanumeric with underscores/hyphens.
+Tags used to group related signals within a data provider's published signal definitions. Enable efficient authorization (authorize "all automotive signals" rather than listing individual IDs). Tags must be lowercase alphanumeric with underscores/hyphens.
+
+**Signal Targeting Groups**
+The package-level grouped expression for buyer-selected seller-offered signals. `targeting_overlay.signal_targeting_groups` has top-level `operator: "all"` and child `any` groups for inclusion or `none` groups for exclusion.
+
+**Signal Targeting Rules**
+Product-level rules that govern package signal selection: resolution model, optional/required/fixed selection, min/max counts, selection group limits, and group-count limits. These rules live on the product because one seller may route different products through different ad servers or planning layers.
 
 **Signal Targeting Groups**
 The package-level grouped expression for buyer-selected seller-offered signals. `targeting_overlay.signal_targeting_groups` has top-level `operator: "all"` and child `any` groups for inclusion or `none` groups for exclusion.

@@ -63,7 +63,7 @@ The agent dashboard at [agenticadvertising.org/dashboard/agents](https://agentic
 
 ## How to manually trigger a re-probe
 
-AAO runs probes automatically on the ~1h heartbeat, but there are two ways to trigger an immediate refresh:
+AAO runs probes automatically on the ~1h heartbeat, but there are three ways to refresh agent state:
 
 ### Registry crawl (metadata update)
 
@@ -104,10 +104,14 @@ This runs asynchronously and returns `202 Accepted`. Rate-limited to one request
 
 ### Dashboard Refresh button
 
-In the agent card on [agenticadvertising.org/dashboard/agents](https://agenticadvertising.org/dashboard/agents), the **Refresh** button calls `/api/registry/agents/{encodedUrl}/refresh`. Like the crawl-request endpoint, this re-reads your agent's registry metadata and updates the dashboard view. It is a registry metadata refresh, not a full compliance re-run.
+In the agent card on [agenticadvertising.org/dashboard/agents](https://agenticadvertising.org/dashboard/agents), the **Recheck status** button calls `/api/registry/agents/{encodedUrl}/refresh`. It re-reads your agent's registry metadata and, when you own the agent and the capability probe succeeds, runs the full compliance storyboard suite synchronously before updating the dashboard view.
+
+### Compliance requeue
+
+The **Requeue comply** button does not run the storyboard suite immediately. It clears `last_checked_at` so the agent is picked up by the next scheduled heartbeat cycle, which can take up to about 1 hour.
 
 <Note>
-**Re: comply re-runner (#4253).** Manually triggering a full compliance storyboard re-run (outside the ~1h heartbeat schedule) is not currently available via the dashboard or API. If you need to confirm a fix before the next scheduled heartbeat, reproduce the storyboard locally using `@adcp/sdk/testing` — the local runner runs the same storyboard suite the heartbeat uses.
+If you need to confirm a fix immediately, use **Recheck status** or the dashboard **Test** flow rather than **Requeue comply**. For local reproduction, run the same storyboards with `@adcp/sdk/testing`.
 </Note>
 
 ## How to read a comply report

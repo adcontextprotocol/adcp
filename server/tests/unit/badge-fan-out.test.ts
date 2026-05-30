@@ -8,6 +8,7 @@ vi.mock('../../src/db/client.js', () => ({
 
 import { query } from '../../src/db/client.js';
 import { runBadgeFanOut } from '../../src/services/badge-issuance.js';
+import { SUPPORTED_BADGE_VERSIONS } from '../../src/services/adcp-taxonomy.js';
 import type {
   AgentVerificationBadge,
   BadgeRole,
@@ -76,6 +77,39 @@ describe('runBadgeFanOut', () => {
     expect(queryMock).not.toHaveBeenCalled();
   });
 
+  it('no-ops when the selected compliance target has no public badge version', async () => {
+    const db = makeDb({});
+    const result = await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      adcpVersions: [],
+    });
+    expect(result.issued).toHaveLength(0);
+    expect(result.revoked).toHaveLength(0);
+    expect(db.getStoryboardStatuses).not.toHaveBeenCalled();
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it('full-suite runId path still processes badges when the authoritative run wrote zero storyboard rows', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
+
+    const db = makeDb({
+      existingBadges: [badge('media-buy')],
+      latestStatuses: [],
+    });
+
+    const result = await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      runId: 'run-zero-storyboards',
+    });
+
+    expect(db.getStoryboardStatuses).toHaveBeenCalledWith('https://example.com/mcp', { runId: 'run-zero-storyboards' });
+    expect(result.degraded.map(d => d.role)).toContain('media-buy');
+  });
+
   it('reads ALL latest storyboard statuses from the canonical table — not just what one partial run touched', async () => {
     // Agent declared two specialisms across two roles. The OTHER storyboard
     // is still passing on disk; this run only retested the broadcast-tv
@@ -97,9 +131,27 @@ describe('runBadgeFanOut', () => {
     });
 
     expect(db.getStoryboardStatuses).toHaveBeenCalledWith('https://example.com/mcp');
-    // Both roles should be issued — no revoke of the role we didn't retest
+    // Both roles should be issued at the target public badge version — no
+    // revoke of the role we didn't retest.
     expect(db.upsertBadge).toHaveBeenCalledTimes(2);
     expect(db.revokeBadge).not.toHaveBeenCalled();
+  });
+
+  it('scopes storyboard reads to runId when full-suite callers provide one', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
+
+    const db = makeDb({
+      latestStatuses: [status('sales_broadcast_tv', 'passing')],
+    });
+
+    await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      runId: 'run-full-suite',
+    });
+
+    expect(db.getStoryboardStatuses).toHaveBeenCalledWith('https://example.com/mcp', { runId: 'run-full-suite' });
   });
 
   it('passes undefined membershipOrgId when the org lookup returns no row, causing all badges to revoke', async () => {
@@ -120,6 +172,36 @@ describe('runBadgeFanOut', () => {
     expect(result.revoked[0].reason).toBe('Membership lapsed');
   });
 
+  it('revokes previously issued badges for versions no longer publicly badge-eligible', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
+
+    const db = makeDb({
+      existingBadges: [badge('media-buy', 'active', '3.1')],
+      latestStatuses: [status('sales_broadcast_tv', 'passing')],
+    });
+
+    const result = await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      adcpVersions: ['3.0'],
+    });
+
+    expect(result.revoked).toEqual([
+      {
+        role: 'media-buy',
+        reason: 'AdCP 3.1 public badge issuance is not currently enabled',
+        adcp_version: '3.1',
+      },
+    ]);
+    expect(db.revokeBadge).toHaveBeenCalledWith(
+      'https://example.com/mcp',
+      'media-buy',
+      '3.1',
+      'AdCP 3.1 public badge issuance is not currently enabled',
+    );
+  });
+
   it('aggregates results across supported AdCP versions', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
 
@@ -131,12 +213,11 @@ describe('runBadgeFanOut', () => {
       complianceDb: db,
       agentUrl: 'https://example.com/mcp',
       declaredSpecialisms: ['sales-broadcast-tv'],
+      adcpVersions: SUPPORTED_BADGE_VERSIONS,
     });
 
-    // With one supported version (3.0) we get one issuance; the test
-    // documents the aggregation contract (one entry per (role, version)
-    // pair) so adding 3.1 to SUPPORTED_BADGE_VERSIONS will surface here.
-    expect(result.issued.length).toBeGreaterThanOrEqual(1);
-    expect(result.issued.every(i => typeof i.adcp_version === 'string')).toBe(true);
+    expect(result.issued.map(i => i.adcp_version)).toEqual([...SUPPORTED_BADGE_VERSIONS]);
+    expect((db.upsertBadge as ReturnType<typeof vi.fn>).mock.calls.map(call => call[0].adcp_version))
+      .toEqual([...SUPPORTED_BADGE_VERSIONS]);
   });
 });

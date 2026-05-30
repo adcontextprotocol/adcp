@@ -23,6 +23,15 @@ else
   RELEASE_GIT_REF="${RELEASE_BASE_REF}"
 fi
 export ADCP_RELEASE_GIT_REF="${RELEASE_GIT_REF}"
+SDK_GENERATED_SCHEMA_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js"
+
+restore_sdk_generated_schema() {
+  local backup="${SDK_GENERATED_SCHEMA_FILE}.adcp-overlay-backup"
+  if [ -f "${backup}" ]; then
+    cp "${backup}" "${SDK_GENERATED_SCHEMA_FILE}"
+    rm -f "${backup}"
+  fi
+}
 
 usage() {
   cat <<'USAGE'
@@ -104,8 +113,15 @@ NODE
         bundle_tmp=$(mktemp -d -t "storyboards-3-0-compat.XXXXXX")
         git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/compliance/${latest_3_0}" | tar -x -C "${bundle_tmp}"
         COMPLIANCE_DIR="${bundle_tmp}/dist/compliance/${latest_3_0}"
+        if git -C "${REPO_ROOT}" cat-file -e "${RELEASE_GIT_REF}:dist/schemas/${latest_3_0}/index.json" 2>/dev/null; then
+          git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/schemas/${latest_3_0}" | tar -x -C "${bundle_tmp}"
+          bash "${SCRIPT_DIR}/stage-sdk-schema-bundle.sh" "${bundle_tmp}/dist/schemas/${latest_3_0}" "${latest_3_0}"
+        fi
       else
         COMPLIANCE_DIR="${REPO_ROOT}/dist/compliance/${latest_3_0}"
+        if [ -f "${REPO_ROOT}/dist/schemas/${latest_3_0}/index.json" ]; then
+          bash "${SCRIPT_DIR}/stage-sdk-schema-bundle.sh" "${REPO_ROOT}/dist/schemas/${latest_3_0}" "${latest_3_0}"
+        fi
       fi
       LABEL="released compliance bundle: ${latest_3_0}"
       FLOOR_SET="3.0-compat"
@@ -146,7 +162,9 @@ NODE
   fi
 fi
 
+restore_sdk_generated_schema
 if [ "${OVERLAY}" -eq 1 ]; then
+  trap restore_sdk_generated_schema EXIT
   # Mirror CI's overlay step before running tenants: copies in-repo
   # compliance source onto the SDK's bundled cache so the runner grades
   # against current-PR fixtures, not the SDK-published snapshot. Without
@@ -182,8 +200,61 @@ fi
 REGRESSED=0
 SUMMARY=""
 REQUIRED_CLEAN_CURRENT_SALES=(
+  "media_buy_seller/billing_finality_delivery"
   "media_buy_seller/canonical_formats"
+  "media_buy_seller/vendor_metric_catalog_precondition"
+  "canonical_format_validate_input"
+  "notification_config_event_scope"
+  "notification_config_lifecycle"
+  "notification_config_rejections"
+  "wholesale_feed_products"
+  "wholesale_feed_product_webhooks"
+  "wholesale_feed_bulk_webhooks"
 )
+REQUIRED_CLEAN_CURRENT_SIGNALS=(
+  "wholesale_feed_signals"
+  "wholesale_feed_signal_webhooks"
+  "wholesale_feed_bulk_webhooks"
+)
+REQUIRED_CLEAN_CURRENT_CREATIVE=(
+  "canonical_format_validate_input"
+  "creative/billing_out_of_band"
+)
+REQUIRED_CLEAN_CURRENT_CREATIVE_BUILDER=(
+  "canonical_format_validate_input"
+)
+
+storyboard_passed() {
+  local storyboard_id="$1"
+  local log_file="$2"
+  awk -v id="${storyboard_id}" '
+    $0 ~ "^[[:space:]]+" id "([[:space:]]|$)" {
+      if ($0 ~ /[[:space:]]✓[[:space:]]/) {
+        found = 1
+        exit 0
+      }
+      if ($0 ~ /[[:space:]]✗[[:space:]]/) {
+        exit 1
+      }
+      in_storyboard = 1
+      next
+    }
+    in_storyboard && $0 ~ /^[[:space:]]*✓[[:space:]]/ {
+      found = 1
+      exit 0
+    }
+    in_storyboard && $0 ~ /^[[:space:]]*✗[[:space:]]/ {
+      exit 1
+    }
+    in_storyboard && $0 ~ /^[[:space:]]+[[:alnum:]_\/-]+[[:space:]]/ {
+      exit 1
+    }
+    END {
+      if (found) exit 0
+      exit 1
+    }
+  ' "${log_file}"
+}
 
 for entry in "${TENANTS[@]}"; do
   tenant="${entry%%:*}"
@@ -231,7 +302,52 @@ for entry in "${TENANTS[@]}"; do
 
   if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "sales" ]; then
     for storyboard_id in "${REQUIRED_CLEAN_CURRENT_SALES[@]}"; do
-      if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" "${log}" >/dev/null; then
+      if storyboard_passed "${storyboard_id}" "${log}"; then
+        echo "  ✓ required-clean ${storyboard_id}"
+      else
+        status="✗"
+        if [ -n "${failed_floor}" ]; then
+          failed_floor="${failed_floor}; required-clean ${storyboard_id} did not pass"
+        else
+          failed_floor="required-clean ${storyboard_id} did not pass"
+        fi
+      fi
+    done
+  fi
+
+  if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "signals" ]; then
+    for storyboard_id in "${REQUIRED_CLEAN_CURRENT_SIGNALS[@]}"; do
+      if storyboard_passed "${storyboard_id}" "${log}"; then
+        echo "  ✓ required-clean ${storyboard_id}"
+      else
+        status="✗"
+        if [ -n "${failed_floor}" ]; then
+          failed_floor="${failed_floor}; required-clean ${storyboard_id} did not pass"
+        else
+          failed_floor="required-clean ${storyboard_id} did not pass"
+        fi
+      fi
+    done
+  fi
+
+  if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "creative" ]; then
+    for storyboard_id in "${REQUIRED_CLEAN_CURRENT_CREATIVE[@]}"; do
+      if storyboard_passed "${storyboard_id}" "${log}"; then
+        echo "  ✓ required-clean ${storyboard_id}"
+      else
+        status="✗"
+        if [ -n "${failed_floor}" ]; then
+          failed_floor="${failed_floor}; required-clean ${storyboard_id} did not pass"
+        else
+          failed_floor="required-clean ${storyboard_id} did not pass"
+        fi
+      fi
+    done
+  fi
+
+  if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "creative-builder" ]; then
+    for storyboard_id in "${REQUIRED_CLEAN_CURRENT_CREATIVE_BUILDER[@]}"; do
+      if storyboard_passed "${storyboard_id}" "${log}"; then
         echo "  ✓ required-clean ${storyboard_id}"
       else
         status="✗"

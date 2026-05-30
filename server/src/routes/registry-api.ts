@@ -6,7 +6,7 @@
  */
 
 import { Router } from "express";
-import type { RequestHandler } from "express";
+import type { Request, RequestHandler } from "express";
 import { z } from "zod";
 import escapeHtml from "escape-html";
 import { findOwnerOrgForUser } from "../services/agent-ownership.js";
@@ -21,6 +21,14 @@ import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
 import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
 import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
+import {
+  hostedComplianceTarget,
+  hostedComplianceOptions,
+  hostedCapabilitiesForCompliance,
+  withHostedStoryboardRunOptions,
+  withHostedTestOptions,
+  badgeEligibleVersionsForHostedComplianceTarget,
+} from "../services/hosted-compliance-version.js";
 import {
   comply,
   complianceResultToDbInput,
@@ -99,7 +107,7 @@ import { adaptAuthForSdk, type SdkAuth } from "../services/sdk-auth-adapter.js";
 import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credentials-input.js";
 import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
 import { AgentContextDatabase, validateAuthTokenChars } from "../db/agent-context-db.js";
-import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
+import { getRequestLog, getRequestCount, logOutboundRequest } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
 import { isWebUserAAOAdmin } from "../addie/admin-status-lookup.js";
@@ -114,16 +122,54 @@ import {
   parseEvidenceParam,
   parseIncludeParam,
 } from "../db/authorization-snapshot-db.js";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { createGzip, constants as zlibConstants } from "zlib";
+import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
 
 const logger = createLogger("registry-api");
+const complianceTarget = hostedComplianceTarget();
+const complianceOptions = hostedComplianceOptions(complianceTarget);
+const badgeEligibleAdcpVersions = [...badgeEligibleVersionsForHostedComplianceTarget(complianceTarget)];
+const badgeEligibilityMetadata = (eligible: boolean) => ({
+  badge_eligible: eligible,
+  badge_eligible_adcp_versions: eligible ? badgeEligibleAdcpVersions : [],
+});
 const propertyCheckService = new PropertyCheckService();
 const propertyCheckDb = new PropertyCheckDatabase();
 const bulkCheckService = new BulkPropertyCheckService();
 const complianceDb = new ComplianceDatabase();
 const agentSnapshotDb = new AgentSnapshotDatabase();
 const agentContextDb = new AgentContextDatabase();
+
+function isUndefinedTableError(err: unknown): boolean {
+  return typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "42P01";
+}
+
+interface PublicComplianceObservation {
+  category: string;
+  severity: string;
+  message: string;
+}
+
+function toPublicComplianceObservation(obs: unknown): PublicComplianceObservation | null {
+  if (!obs || typeof obs !== "object") return null;
+  const record = obs as Record<string, unknown>;
+  if (
+    typeof record.category !== "string" ||
+    typeof record.severity !== "string" ||
+    typeof record.message !== "string"
+  ) {
+    return null;
+  }
+  return {
+    category: record.category,
+    severity: record.severity,
+    message: record.message,
+  };
+}
 
 /** Strip protocol, path, query, and fragment from a URL to extract the domain. */
 function extractDomain(raw: string): string {
@@ -1922,7 +1968,7 @@ registry.registerPath({
   operationId: "getAgentStoryboardStatus",
   summary: "Get agent storyboard status",
   description:
-    "Returns per-storyboard test results for an agent. Includes title, category, track, pass/fail status, and step counts.\n\n**Members only** — requires authentication and an active membership.",
+    "Returns per-storyboard test results for an agent. Includes title, category, track, pass/fail status, and step counts.\n\n**Members only** — requires authentication and an active membership. Static admin API key callers may read this for support/debugging.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -1957,7 +2003,7 @@ registry.registerPath({
   operationId: "bulkAgentStoryboardStatus",
   summary: "Bulk storyboard status",
   description:
-    "Returns per-storyboard test results for multiple agents in a single request.\n\n**Members only** — requires authentication and an active membership. Maximum 100 agent URLs per request.",
+    "Returns per-storyboard test results for multiple agents in a single request.\n\n**Members only** — requires authentication and an active membership. Static admin API key callers may read this for support/debugging. Maximum 100 agent URLs per request.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -2186,7 +2232,7 @@ registry.registerPath({
   operationId: "requeueAgentForHeartbeat",
   summary: "Requeue agent for compliance heartbeat",
   description:
-    "Clears the agent's last_checked_at timestamp so it is picked up on the next heartbeat cycle (within ~1 hour). Requires authentication and ownership.",
+    "Clears the agent's last_checked_at timestamp so it is picked up on the next heartbeat cycle (within ~1 hour). This is queued-async; it does not run the compliance suite synchronously or change the current verdict until the heartbeat completes. Requires authentication and ownership.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -2210,7 +2256,7 @@ registry.registerPath({
   operationId: "getAgentComplianceStepDiagnostics",
   summary: "Get per-step diagnostics for a compliance run",
   description:
-    "Returns the exact request and response payloads the runner captured for failing storyboard steps on a single compliance run.\n\nLets agent owners diff what the runner sent against their own probes without re-running the storyboard. Owner-only — payloads echo seller-side account/brand identifiers and may carry sensitive descriptive fields. If `run_id` is omitted, resolves to the latest run for the agent.",
+    "Returns the exact request and response payloads the runner captured for failing storyboard steps on a single compliance run.\n\nLets agent owners diff what the runner sent against their own probes without re-running the storyboard. Owner-only, with static admin API key access for support/debugging — payloads echo seller-side account/brand identifiers and may carry sensitive descriptive fields. If `run_id` is omitted, resolves to the latest run for the agent.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -2249,7 +2295,7 @@ registry.registerPath({
   operationId: "getAgentMonitoringRequests",
   summary: "Get outbound request log",
   description:
-    "Returns the outbound request log for an agent (compliance checks, health probes, etc.). Requires authentication and ownership.",
+    "Returns the outbound request log for an agent (compliance checks, health probes, etc.). Requires authentication and ownership, or the static admin API key for support/debugging.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -2288,7 +2334,7 @@ registry.registerPath({
   operationId: "refreshAgent",
   summary: "Refresh agent snapshot",
   description:
-    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~12h).\n\n**Compliance re-run:** when the caller owns the agent and the capability probe succeeds, the full storyboard suite runs (~30–90s) and `agent_storyboard_status` is updated under `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent or AAO admin.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
+    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite runs (~30–90s) with a fresh test session and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -2312,9 +2358,17 @@ registry.registerPath({
             error: z.string().optional(),
             compliance: z.object({
               ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed." }),
+              run_id: z.string().optional().openapi({ description: "Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence." }),
+              test_session_id: z.string().optional().openapi({ description: "Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh." }),
+              requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Present when `ran` is true." }),
+              adcp_version: z.string().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12 or 3.1.0-beta.7. Present when `ran` is true." }),
+              badge_eligible: z.boolean().optional().openapi({ description: "True when this run can update public badge state." }),
+              badge_eligible_adcp_versions: z.array(z.string()).optional().openapi({ description: "Public badge versions this run can issue, e.g. ['3.0']." }),
               overall_status: z.string().optional().openapi({ description: "Aggregate verdict from the run (passing / failing / partial / unknown). Only present when `ran` is true." }),
               storyboards_passing: z.number().int().optional().openapi({ description: "Number of storyboards passing on this run." }),
               storyboards_total: z.number().int().optional().openapi({ description: "Number of storyboards evaluated on this run." }),
+              observations_count: z.number().int().optional().openapi({ description: "Number of advisory observations emitted by this run." }),
+              notices_count: z.number().int().optional().openapi({ description: "Number of run-summary notices emitted by this run." }),
               error: z.string().optional().openapi({ description: "Reason compliance didn't run when `ran` is false." }),
             }).openapi({ description: "Compliance re-run summary. The capability/health portion of the response is independent of this block — a failed compliance run still returns the rest of the snapshot." }),
           }),
@@ -2530,6 +2584,8 @@ registry.registerPath({
         "application/json": {
           schema: z.object({
             agent_url: z.string(),
+            requested_compliance_target: z.string(),
+            adcp_version: z.string(),
             agent_name: z.string(),
             supported_protocols: z.array(z.string()),
             specialisms: z.array(z.string()),
@@ -2553,14 +2609,21 @@ registry.registerPath({
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
     422: {
-      description: "Agent requires authentication, or declares a specialism not in the local compliance cache",
+      description: "Agent requires authentication, or declared capabilities cannot be resolved for the selected compliance target",
       content: {
         "application/json": {
           schema: z.object({
             error: z.string(),
+            error_kind: z.enum(["specialism_parent_protocol_missing", "unknown_specialism", "unsupported_adcp_version"]).optional(),
             needs_auth: z.boolean().optional(),
             unknown_specialism: z.boolean().optional(),
+            specialism_parent_protocol_missing: z.boolean().optional(),
+            specialism: z.string().optional(),
+            parent_protocol: z.string().optional(),
+            compliance_version: z.string().optional(),
+            supported_versions: z.string().optional(),
             declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared, for unknown-specialism errors" }),
+            declared_protocols: z.array(z.string()).optional().openapi({ description: "Protocols the agent declared, for capability-resolution errors" }),
             known_specialisms: z.array(z.string()).optional().openapi({ description: "Specialism ids present in this server's local compliance cache" }),
           }),
         },
@@ -2602,6 +2665,8 @@ registry.registerPath({
       content: {
         "application/json": {
           schema: z.object({
+            adcp_version: z.string(),
+            requested_compliance_target: z.string(),
             storyboards: z.array(StoryboardSummarySchema),
             count: z.number().int(),
           }),
@@ -2631,6 +2696,8 @@ registry.registerPath({
       content: {
         "application/json": {
           schema: z.object({
+            adcp_version: z.string(),
+            requested_compliance_target: z.string(),
             storyboard: StoryboardDetailSchema,
             test_kit: z.any().nullable(),
           }),
@@ -2845,7 +2912,17 @@ registry.registerPath({
     },
   },
   responses: {
-    200: { description: "Step execution result", content: { "application/json": { schema: z.any() } } },
+    200: {
+      description: "Step execution result",
+      content: {
+        "application/json": {
+          schema: z.object({
+            adcp_version: z.string(),
+            requested_compliance_target: z.string(),
+          }).passthrough(),
+        },
+      },
+    },
     400: { description: "Invalid parameters", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
@@ -2873,6 +2950,8 @@ registry.registerPath({
       content: {
         "application/json": {
           schema: z.object({
+            adcp_version: z.string(),
+            requested_compliance_target: z.string(),
             storyboard: z.object({ id: z.string(), title: z.string() }),
             step: z.any(),
           }),
@@ -2915,6 +2994,10 @@ registry.registerPath({
               url: z.string(),
               profile: z.any(),
             }),
+            adcp_version: z.string(),
+            requested_compliance_target: z.string(),
+            badge_eligible: z.boolean(),
+            badge_eligible_adcp_versions: z.array(z.string()),
             phases: z.any(),
             summary: z.any(),
             observations: z.any(),
@@ -2956,6 +3039,10 @@ registry.registerPath({
             storyboard: z.object({ id: z.string(), title: z.string(), category: z.string() }),
             user_agent: z.object({ url: z.string(), profile: z.any(), summary: z.any() }),
             reference_agent: z.object({ url: z.string(), name: z.string(), profile: z.any(), summary: z.any() }),
+            adcp_version: z.string(),
+            requested_compliance_target: z.string(),
+            badge_eligible: z.boolean(),
+            badge_eligible_adcp_versions: z.array(z.string()),
             phases: z.any(),
             total_duration_ms: z.number(),
           }),
@@ -4412,6 +4499,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               const uniqueRoles = Array.from(new Set(agentBadges.map(b => b.role)));
               enrichedAgent.compliance = {
                 status: cs.status,
+                requested_compliance_target: cs.requested_compliance_target ?? null,
+                adcp_version: cs.adcp_version ?? null,
                 lifecycle_stage: cs.lifecycle_stage,
                 tracks: cs.tracks_summary_json || {},
                 streak_days: cs.streak_days,
@@ -4444,8 +4533,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       if (!validateAgentUrlParam(agentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
-      const status = await complianceDb.getComplianceStatus(agentUrl);
       const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+      let statusWithCounts: Awaited<ReturnType<typeof complianceDb.getComplianceStatusWithStoryboardCounts>> = null;
+      try {
+        statusWithCounts = await complianceDb.getComplianceStatusWithStoryboardCounts(agentUrl);
+      } catch (err) {
+        if (!isUndefinedTableError(err)) throw err;
+        logger.warn({ err, agentUrl }, "Storyboard status query skipped because table is missing");
+        const fallbackStatus = await complianceDb.getComplianceStatus(agentUrl);
+        statusWithCounts = fallbackStatus
+          ? { status: fallbackStatus, storyboardCounts: { passing: 0, total: 0 } }
+          : null;
+      }
+      const status = statusWithCounts?.status ?? null;
 
       // If opted out, return minimal response (no ownership check needed —
       // the opt-out preference is enforced uniformly for public endpoints)
@@ -4473,14 +4573,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         });
       }
 
-      // Storyboard counts are supplementary — don't fail the whole response
-      // if the table hasn't been migrated yet
-      let sbCounts = { passing: 0, total: 0 };
-      try {
-        sbCounts = await complianceDb.getStoryboardStatusCounts(agentUrl);
-      } catch (err) {
-        logger.warn({ err, agentUrl }, "Storyboard status query failed");
-      }
+      const sbCounts = statusWithCounts?.storyboardCounts ?? { passing: 0, total: 0 };
 
       // Verification badges — supplementary, don't fail the response
       let badges: Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>> = [];
@@ -4512,28 +4605,44 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         logger.warn({ err, agentUrl }, "Notices query failed (column may not exist yet)");
       }
 
+      // Advisory observations from the latest run — these are per-run runner
+      // observations (best-practice warnings, suggestions, etc.). Do not merge
+      // observations across runs; a fixed field on the wire must clear the
+      // advisory as soon as the latest run stops emitting it.
+      let observations: PublicComplianceObservation[] = [];
+      try {
+        observations = (await complianceDb.getLatestObservations(agentUrl))
+          .map(toPublicComplianceObservation)
+          .filter((obs): obs is PublicComplianceObservation => obs !== null);
+      } catch (err) {
+        logger.warn({ err, agentUrl }, "Latest observations query failed");
+      }
+
       // Per-specialism status — the dashboard renders pass/fail/untested
       // dots so the developer can see which declared specialism is the
       // cause of an overall `failing` status without cross-referencing
       // the storyboard track pills.
       let specialismStatus: Record<string, string> = {};
+      let storyboardStatuses: Awaited<ReturnType<typeof complianceDb.getStoryboardStatuses>> = [];
+      try {
+        storyboardStatuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForLatestRun: true });
+      } catch (err) {
+        if (!isUndefinedTableError(err)) throw err;
+        logger.warn({ err, agentUrl }, "Storyboard status query skipped because table is missing");
+      }
       if (declaredSpecialisms.length > 0) {
-        try {
-          const sbStatuses = await complianceDb.getStoryboardStatuses(agentUrl);
-          specialismStatus = computeSpecialismStatus(
-            declaredSpecialisms,
-            sbStatuses.map(s => ({
-              storyboard_id: s.storyboard_id,
-              // Cast is bounded by the `valid_storyboard_status` CHECK
-              // constraint in agent_storyboard_status (migration 390).
-              status: s.status as 'passing' | 'failing' | 'partial' | 'untested',
-              steps_passed: s.steps_passed,
-              steps_total: s.steps_total,
-            })),
-          );
-        } catch (err) {
-          logger.warn({ err, agentUrl }, "Per-specialism status query failed");
-        }
+        specialismStatus = computeSpecialismStatus(
+          declaredSpecialisms,
+          storyboardStatuses.map(s => ({
+            storyboard_id: s.storyboard_id,
+            adcp_version: s.adcp_version ?? null,
+            // Cast is bounded by the `valid_storyboard_status` CHECK
+            // constraint in agent_storyboard_status (migration 390).
+            status: s.status as 'passing' | 'failing' | 'partial' | 'untested',
+            steps_passed: s.steps_passed,
+            steps_total: s.steps_total,
+          })),
+        );
       }
 
       // Owner-only diagnostic: surface the agent owner's membership tier so
@@ -4560,6 +4669,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       } catch (err) {
         logger.warn({ err, agentUrl, userId }, "Owner membership lookup failed");
         ownerMembership = {
+          is_owner: false,
           membership_tier: null,
           membership_tier_label: null,
           subscription_status: null,
@@ -4568,9 +4678,29 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
 
       const encodedUrl = encodeURIComponent(agentUrl);
+      const storyboardStatusesForOwner = ownerMembership.is_owner
+        ? storyboardStatuses.map(s => {
+          const sb = getStoryboard(s.storyboard_id);
+          return {
+            storyboard_id: s.storyboard_id,
+            requested_compliance_target: s.requested_compliance_target ?? null,
+            adcp_version: s.adcp_version ?? null,
+            title: sb?.title || s.storyboard_id,
+            category: sb?.category || null,
+            track: sb?.track || null,
+            status: s.status,
+            steps_passed: s.steps_passed,
+            steps_total: s.steps_total,
+            last_tested_at: s.last_tested_at?.toISOString() || null,
+            last_passed_at: s.last_passed_at?.toISOString() || null,
+          };
+        })
+        : [];
 
       res.json({
         agent_url: agentUrl,
+        requested_compliance_target: status.requested_compliance_target ?? null,
+        adcp_version: status.adcp_version ?? null,
         status: status.status,
         lifecycle_stage: metadata?.lifecycle_stage || "production",
         compliance_opt_out: metadata?.compliance_opt_out ?? false,
@@ -4586,9 +4716,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         check_interval_hours: metadata?.check_interval_hours ?? 12,
         declared_specialisms: declaredSpecialisms,
         specialism_status: specialismStatus,
+        // Owner-scoped: failing storyboard names and step counts for the
+        // dashboard hover states. Non-owners get an empty array so public
+        // registry consumers keep the same response shape without receiving
+        // implementation-level diagnostics.
+        storyboard_statuses: storyboardStatusesForOwner,
         // Advisory notices from the latest run. Forward-compat: unknown codes
         // and severities are passed through verbatim (runner-output-contract.yaml).
         notices,
+        observations,
         // Owner-scoped: content is null/false for anonymous and cross-org
         // viewers, populated only when the authenticated viewer owns the
         // agent. Keys are always present so non-owners can't detect
@@ -4652,12 +4788,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
 
       const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
-      const history = await complianceDb.getComplianceHistory(agentUrl, limit);
+      const history = await complianceDb.getComplianceHistory(agentUrl, limit, { includeDryRuns: false });
 
       res.json({
         agent_url: agentUrl,
         runs: history.map(run => ({
           id: run.id,
+          requested_compliance_target: run.requested_compliance_target ?? null,
+          adcp_version: run.adcp_version ?? null,
           overall_status: run.overall_status,
           headline: run.headline,
           tracks_passed: run.tracks_passed,
@@ -4936,9 +5074,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  // ── Storyboard Status (members-only) ─────────────────────────────
+  // ── Storyboard Status (members-only; static-admin debug read) ────
 
   const memberReadMiddleware = authMiddleware ? [authMiddleware] : [];
+
+  function isStaticAdminRequest(req: Request): boolean {
+    return (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
+  }
 
   router.get(
     "/registry/agents/:encodedUrl/storyboard-status",
@@ -4954,8 +5096,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(401).json({ error: "Authentication required. Storyboard detail is available to members." });
         }
 
-        await enrichUserWithMembership(req.user as any);
-        if (!(req.user as any).isMember) {
+        if (!isStaticAdminRequest(req)) {
+          await enrichUserWithMembership(req.user as any);
+        }
+        if (!isStaticAdminRequest(req) && !(req.user as any).isMember) {
           return res.status(403).json({
             error: "Storyboard compliance detail is available to members only",
             members_only: true,
@@ -4969,15 +5113,18 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
         let statuses: Awaited<ReturnType<typeof complianceDb.getStoryboardStatuses>> = [];
         try {
-          statuses = await complianceDb.getStoryboardStatuses(agentUrl);
+          statuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForLatestRun: true });
         } catch (err) {
-          logger.warn({ err, agentUrl }, "Storyboard status query failed (table may not exist)");
+          if (!isUndefinedTableError(err)) throw err;
+          logger.warn({ err, agentUrl }, "Storyboard status query skipped because table is missing");
         }
 
         const enriched = statuses.map(s => {
           const sb = getStoryboard(s.storyboard_id);
           return {
             storyboard_id: s.storyboard_id,
+            requested_compliance_target: s.requested_compliance_target ?? null,
+            adcp_version: s.adcp_version ?? null,
             title: sb?.title || s.storyboard_id,
             category: sb?.category || null,
             track: sb?.track || null,
@@ -5012,8 +5159,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        await enrichUserWithMembership(req.user as any);
-        if (!(req.user as any).isMember) {
+        if (!isStaticAdminRequest(req)) {
+          await enrichUserWithMembership(req.user as any);
+        }
+        if (!isStaticAdminRequest(req) && !(req.user as any).isMember) {
           return res.status(403).json({
             error: "Batch storyboard status is available to members only",
             members_only: true,
@@ -5038,7 +5187,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         try {
           statusMap = await complianceDb.bulkGetStoryboardStatuses(nonOptedOut);
         } catch (err) {
-          logger.warn({ err }, "Bulk storyboard status query failed (table may not exist)");
+          if (!isUndefinedTableError(err)) throw err;
+          logger.warn({ err }, "Bulk storyboard status query skipped because table is missing");
         }
 
         const results: Record<string, any> = {};
@@ -5052,6 +5202,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             const sb = getStoryboard(s.storyboard_id);
             return {
               storyboard_id: s.storyboard_id,
+              requested_compliance_target: s.requested_compliance_target ?? null,
+              adcp_version: s.adcp_version ?? null,
               title: sb?.title || s.storyboard_id,
               category: sb?.category || null,
               track: sb?.track || null,
@@ -5085,6 +5237,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   async function verifyAgentOwnership(userId: string, agentUrl: string): Promise<boolean> {
     return (await resolveAgentOwnerOrg(userId, agentUrl)) !== null;
+  }
+
+  async function canViewAgentDebugData(req: Request, agentUrl: string): Promise<boolean> {
+    if (isStaticAdminRequest(req)) return true;
+    if (!req.user) return false;
+    return verifyAgentOwnership(req.user.id, agentUrl);
   }
 
   // Shared SSRF-resistant URL validator lives in utils/url-security.ts so the
@@ -5344,14 +5502,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // Dev-admin fallback is gated behind `isDevModeEnabled()` to match
       // `requireAdmin`'s pattern in middleware/auth.ts — in production
       // (no DEV_USER_EMAIL/DEV_USER_ID) this branch never fires.
+      const isStaticAdmin = isStaticAdminRequest(req);
       const [isOwner, isAaoAdmin] = await Promise.all([
         verifyAgentOwnership(req.user.id, agentUrl),
         isWebUserAAOAdmin(req.user.id),
       ]);
       const isDevAdmin = isDevModeEnabled() && getDevUser(req)?.isAdmin === true;
-      if (!isOwner && !isAaoAdmin && !isDevAdmin) {
+      if (!isOwner && !isAaoAdmin && !isDevAdmin && !isStaticAdmin) {
         return res.status(403).json({ error: "You do not have permission to refresh this agent" });
       }
+      const canRunCompliance = isOwner || isAaoAdmin || isDevAdmin || isStaticAdmin;
 
       const now = Date.now();
 
@@ -5414,17 +5574,37 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // partially-working agent still moves the snapshot forward.
       let complianceSummary: {
         ran: boolean;
+        requested_compliance_target?: string;
+        adcp_version?: string;
+        badge_eligible?: boolean;
+        badge_eligible_adcp_versions?: string[];
         overall_status?: string;
         storyboards_passing?: number;
         storyboards_total?: number;
+        run_id?: string;
+        test_session_id?: string;
+        observations_count?: number;
+        notices_count?: number;
         error?: string;
       } = { ran: false };
 
-      if (ownerOrgId && !probeResult.error && !probeResult.oauth_required) {
+      if (canRunCompliance && !probeResult.error && !probeResult.oauth_required) {
+        const complianceStart = Date.now();
         try {
+          const testSessionId = `owner-refresh-${Date.now()}-${randomUUID()}`;
+          const triggeredBy = ownerOrgId ? 'owner_test' : 'manual';
           const complyResult = await comply(agentUrl, {
+            test_session_id: testSessionId,
             timeout_ms: 90_000,
+            userAgent: AAO_UA_COMPLIANCE,
             ...(resolvedAuth && { auth: resolvedAuth }),
+          }, complianceTarget);
+          logOutboundRequest({
+            agent_url: agentUrl,
+            request_type: 'compliance',
+            user_agent: AAO_UA_COMPLIANCE,
+            response_time_ms: Date.now() - complianceStart,
+            success: true,
           });
           if (complyResult.overall_status === 'auth_required') {
             complianceSummary = { ran: false, error: 'Agent requires OAuth authorization' };
@@ -5434,27 +5614,37 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               complyResult,
               agentUrl,
               metadata?.lifecycle_stage || 'production',
-              'manual',
+              triggeredBy,
             );
             dbInput.dry_run = false;
-            const { storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+            dbInput.triggered_org_id = ownerOrgId;
+            const { run, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
             const passing = storyboardStatuses.filter(s => s.status === 'passing').length;
             complianceSummary = {
               ran: true,
+              run_id: run.id,
+              test_session_id: testSessionId,
+              requested_compliance_target: complianceTarget.requested,
+              adcp_version: complyResult.adcp_version,
+              ...badgeEligibilityMetadata(badgeEligibleAdcpVersions.length > 0),
               overall_status: dbInput.overall_status,
               storyboards_passing: passing,
               storyboards_total: storyboardStatuses.length,
+              observations_count: Array.isArray(dbInput.observations_json) ? dbInput.observations_json.length : 0,
+              notices_count: Array.isArray(dbInput.notices_json) ? dbInput.notices_json.length : 0,
             };
 
             // Fan out badge issuance so verification badges reflect the new
             // verdict immediately. Matches the per-storyboard owner-test path.
             const declaredSpecialisms = complyResult.agent_profile?.specialisms ?? [];
-            if (declaredSpecialisms.length > 0) {
+            if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0) {
               try {
                 await runBadgeFanOut({
                   complianceDb,
                   agentUrl,
                   declaredSpecialisms,
+                  runId: run.id,
+                  adcpVersions: badgeEligibleAdcpVersions,
                 });
               } catch (badgeError) {
                 logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after manual refresh');
@@ -5463,7 +5653,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           }
         } catch (complyErr) {
           const msg = complyErr instanceof Error ? complyErr.message : 'compliance run failed';
-          logger.warn({ agentUrl, err: complyErr }, 'Compliance re-run failed during manual refresh');
+          logOutboundRequest({
+            agent_url: agentUrl,
+            request_type: 'compliance',
+            user_agent: AAO_UA_COMPLIANCE,
+            response_time_ms: Date.now() - complianceStart,
+            success: false,
+            error_message: msg,
+          });
+          logger.warn({ agentUrl, err: complyErr }, 'Compliance re-run failed during owner refresh');
           complianceSummary = { ran: false, error: msg };
         }
       }
@@ -5475,13 +5673,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  // ── Per-step compliance diagnostics (owner-only, adcp#4738) ──────
+  // ── Per-step compliance diagnostics (owner/static-admin, adcp#4738) ─
   //
   // Returns the exact request/response payloads the runner captured for
   // failing storyboard steps on a single compliance run. Lets owners diff
   // what the runner sent against their own probes without re-running.
-  // Owner-only because payloads echo seller-side account/brand identifiers
-  // and may contain sensitive descriptive fields.
+  // Owner-only, with static-admin debug read, because payloads echo
+  // seller-side account/brand identifiers and may contain sensitive
+  // descriptive fields.
   router.get(
     "/registry/agents/:encodedUrl/compliance/diagnostics",
     ...complianceWriteMiddleware,
@@ -5494,8 +5693,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
         }
-        const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-        if (!isOwner) {
+        const canView = await canViewAgentDebugData(req, agentUrl);
+        if (!canView) {
           return res.status(403).json({ error: "You do not have permission to view this agent" });
         }
 
@@ -5537,8 +5736,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
-      if (!isOwner) {
+      const canView = await canViewAgentDebugData(req, agentUrl);
+      if (!canView) {
         return res.status(403).json({ error: "You do not have permission to view this agent" });
       }
 
@@ -5875,7 +6074,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     try {
       const category = typeof req.query.category === "string" ? req.query.category : undefined;
       const results = listStoryboards(category);
-      res.json({ storyboards: results, count: results.length });
+      res.json({
+        requested_compliance_target: complianceTarget.requested,
+        adcp_version: complianceTarget.version,
+        storyboards: results,
+        count: results.length,
+      });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to list storyboards");
       res.status(500).json({ error: "Failed to list storyboards" });
@@ -5890,7 +6094,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
 
       const testKit = getTestKitForStoryboard(req.params.id);
-      res.json({ storyboard, test_kit: testKit || null });
+      res.json({
+        requested_compliance_target: complianceTarget.requested,
+        adcp_version: complianceTarget.version,
+        storyboard,
+        test_kit: testKit || null,
+      });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to get storyboard");
       res.status(500).json({ error: "Failed to get storyboard" });
@@ -5918,7 +6127,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       let profile;
       try {
-        const caps = await testCapabilityDiscovery(agentUrl, { ...(sdkAuth && { auth: sdkAuth }) });
+        const caps = await testCapabilityDiscovery(
+          agentUrl,
+          withHostedTestOptions({ ...(sdkAuth && { auth: sdkAuth }) }, complianceTarget),
+        );
         profile = caps.profile;
 
         // The SDK swallows the agent's 401 into steps[0].error; surface it as
@@ -5948,10 +6160,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       let resolved;
       try {
-        resolved = resolveStoryboardsForCapabilities({
+        const caps = hostedCapabilitiesForCompliance({
           supported_protocols: supportedProtocols,
           specialisms,
-        });
+          major_versions: profile?.adcp_major_versions,
+          supported_versions: profile?.adcp_supported_versions,
+        }, complianceTarget);
+        resolved = resolveStoryboardsForCapabilities(caps, complianceOptions);
       } catch (resolveErr) {
         // Fail-closed: agent capabilities are malformed. Distinguish the two
         // concrete cases the resolver throws for — parent-protocol-missing vs
@@ -5960,7 +6175,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         const capsError = classifyCapabilityResolutionError(resolveErr);
         let knownSpecialisms: string[] = [];
         try {
-          knownSpecialisms = loadComplianceIndex().specialisms.map(s => s.id).sort();
+          knownSpecialisms = loadComplianceIndex(complianceOptions).specialisms.map(s => s.id).sort();
         } catch (indexErr) {
           logger.warn({ err: indexErr }, "Failed to load compliance index for 422 response");
         }
@@ -5974,7 +6189,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           const legacyFlag =
             capsError.kind === 'specialism_parent_protocol_missing'
               ? { specialism_parent_protocol_missing: true }
-              : { unknown_specialism: true };
+              : capsError.kind === 'unknown_specialism'
+                ? { unknown_specialism: true }
+                : {};
           return res.status(422).json({
             error: presentation.headline,
             ...presentation.restBody,
@@ -6013,6 +6230,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         agent_name: profile?.name || "Unknown",
         supported_protocols: supportedProtocols,
         specialisms,
+        requested_compliance_target: complianceTarget.requested,
+        adcp_version: complianceTarget.version,
         bundles,
         total_storyboards: bundles.reduce((n, b) => n + b.storyboards.length, 0),
       };
@@ -6061,7 +6280,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
 
-        const storyboard = getComplianceStoryboardById(req.params.storyboardId);
+        const storyboard = getComplianceStoryboardById(req.params.storyboardId, complianceOptions);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
@@ -6076,21 +6295,27 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(400).json({ error: "context too large" });
         }
 
-        const result = await runStoryboardStep(agentUrl, storyboard, req.params.stepId, {
+        const result = await runStoryboardStep(agentUrl, storyboard, req.params.stepId, withHostedStoryboardRunOptions({
           ...(auth && { auth }),
           ...(context && { context }),
-        });
+        }, complianceTarget));
 
         if (!result.passed && isOAuthRequiredErrorMessage(result.error)) {
           const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
           return res.json({
+            requested_compliance_target: complianceTarget.requested,
+            adcp_version: complianceTarget.version,
             ...result,
             needs_oauth: true,
             ...(agentContextId && { agent_context_id: agentContextId }),
           });
         }
 
-        res.json(result);
+        res.json({
+          requested_compliance_target: complianceTarget.requested,
+          adcp_version: complianceTarget.version,
+          ...result,
+        });
       } catch (error) {
         logger.error({ err: error, path: req.path }, "Failed to run storyboard step");
         res.status(500).json({ error: "Failed to run storyboard step" });
@@ -6103,7 +6328,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     "/storyboards/:storyboardId/first-step",
     async (req, res) => {
       try {
-        const storyboard = getComplianceStoryboardById(req.params.storyboardId);
+        const storyboard = getComplianceStoryboardById(req.params.storyboardId, complianceOptions);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
@@ -6113,7 +6338,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(404).json({ error: "Storyboard has no steps" });
         }
 
-        res.json({ storyboard: { id: storyboard.id, title: storyboard.title }, step: preview });
+        res.json({
+          requested_compliance_target: complianceTarget.requested,
+          adcp_version: complianceTarget.version,
+          storyboard: { id: storyboard.id, title: storyboard.title },
+          step: preview,
+        });
       } catch (error) {
         logger.error({ err: error, path: req.path }, "Failed to get first step preview");
         res.status(500).json({ error: "Failed to get first step preview" });
@@ -6153,7 +6383,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           timeout_ms: 90_000,
           storyboards: [req.params.storyboardId],
           ...(sdkAuth && { auth: sdkAuth }),
-        });
+        }, complianceTarget);
 
         if (complyResult.overall_status === 'auth_required') {
           const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
@@ -6188,6 +6418,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               complianceDb,
               agentUrl,
               declaredSpecialisms,
+              adcpVersions: badgeEligibleAdcpVersions,
             });
           } catch (badgeError) {
             logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after storyboard-run');
@@ -6232,6 +6463,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             url: agentUrl,
             profile: complyResult.agent_profile,
           },
+          requested_compliance_target: complianceTarget.requested,
+          adcp_version: complyResult.adcp_version,
+          ...badgeEligibilityMetadata(badgeEligibleAdcpVersions.length > 0),
           phases: annotatedPhases,
           summary: complyResult.summary,
           observations: complyResult.observations,
@@ -6279,12 +6513,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             timeout_ms: 90_000,
             storyboards: storyboardIds,
             ...(sdkAuth && { auth: sdkAuth }),
-          }),
+          }, complianceTarget),
           comply(PUBLIC_TEST_AGENT.url, {
             timeout_ms: 90_000,
             storyboards: storyboardIds,
             auth: { type: "bearer", token: PUBLIC_TEST_AGENT.token },
-          }),
+          }, complianceTarget),
         ]);
 
         if (userResult.overall_status === 'auth_required') {
@@ -6341,6 +6575,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             profile: referenceResult.agent_profile,
             summary: referenceResult.summary,
           },
+          requested_compliance_target: complianceTarget.requested,
+          adcp_version: userResult.adcp_version,
+          ...badgeEligibilityMetadata(false),
           phases: comparisonPhases,
           total_duration_ms: Math.max(userResult.total_duration_ms, referenceResult.total_duration_ms),
         });

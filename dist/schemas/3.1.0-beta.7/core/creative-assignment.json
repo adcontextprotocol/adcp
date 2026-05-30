@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.7/core/creative-assignment.json",
+  "title": "Creative Assignment",
+  "description": "Assignment of a creative asset to a package with optional creative routing by placement. Used in create_media_buy and update_media_buy requests. Buyers identify the stored creative with `creative_id` only. A generic `id` alias, if present due to adapter-internal payload reuse, is not an AdCP identifier and sellers MUST ignore it on input. Note: sync_creatives does not support placement_refs or placement_ids - use create/update_media_buy for placement-level creative routing.",
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "description": "Unique identifier for the creative",
+      "x-entity": "creative"
+    },
+    "weight": {
+      "type": "number",
+      "description": "Relative delivery weight for this creative (0–100). When multiple creatives are assigned to the same package, weights determine impression distribution proportionally — a creative with weight 2 gets twice the delivery of weight 1. When omitted, the creative receives equal rotation with other unweighted creatives. A weight of 0 means the creative is assigned but paused (receives no delivery).",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "placement_refs": {
+      "type": "array",
+      "description": "Optional array of structured placement references where this creative should run within the already-purchased package inventory. New senders SHOULD use this field for placement-level creative routing because placement IDs are publisher-scoped. This field does not narrow the purchased package inventory by itself; use product refinement or seller-supported package targeting to buy only one placement. When omitted, the creative runs on all buyer-targetable placements in the package. References entries from the product's `placements[]` array by `{ publisher_domain, placement_id }`; if `publisher_domain` is omitted in the ref, receivers MAY interpret it relative to the seller agent's own publisher domain in legacy single-publisher contexts. If both `placement_refs` and legacy `placement_ids` are present, `placement_refs` wins and receivers MUST ignore `placement_ids`.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.7/core/placement-ref.json"
+      },
+      "minItems": 1
+    },
+    "placement_ids": {
+      "type": "array",
+      "description": "Legacy shorthand array of placement IDs where this creative should run within the already-purchased package inventory. New senders SHOULD use `placement_refs` because placement IDs are publisher-scoped and strings are ambiguous in multi-publisher products. This field does not narrow the purchased package inventory by itself; use product refinement or seller-supported package targeting to buy only one placement. When omitted, the creative runs on all buyer-targetable placements in the package. Receivers MAY interpret string IDs relative to the seller agent's own publisher domain in legacy single-publisher contexts. If `placement_refs` is also present, receivers MUST ignore this field.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "creative_id"
+  ],
+  "additionalProperties": true
+}

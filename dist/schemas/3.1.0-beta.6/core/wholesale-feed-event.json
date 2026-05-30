@@ -1,0 +1,623 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.6/core/wholesale-feed-event.json",
+  "title": "Wholesale Feed Event",
+  "description": "A single change event emitted by an AdCP agent's wholesale product feed or wholesale signals feed and delivered inside wholesale-feed-webhook payloads. Events are denormalized — the payload carries the post-change state of a buyable product or signal so consumers can update local state without a follow-up get_products / get_signals call. This is distinct from buyer-provided feeds managed by sync_catalogs. The discriminator is `event_type`; each branch defines the payload shape. See specs/wholesale-feed-webhooks.md for webhook delivery and reconciliation semantics.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "event_type"
+  },
+  "required": [
+    "event_id",
+    "event_type",
+    "entity_type",
+    "entity_id",
+    "payload",
+    "created_at"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Stable logical event identifier for this wholesale feed change. MUST equal the enclosing webhook `notification_id`. UUID v7 is RECOMMENDED so receivers can detect obvious out-of-order delivery, but there is no durable cursor or event-polling API; missed or distrusted pushes are repaired through get_products / get_signals."
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "product.created",
+        "product.updated",
+        "product.priced",
+        "product.removed",
+        "signal.created",
+        "signal.updated",
+        "signal.priced",
+        "signal.removed",
+        "wholesale_feed.bulk_change"
+      ],
+      "description": "Discriminator. Determines the shape of `payload`."
+    },
+    "entity_type": {
+      "type": "string",
+      "enum": [
+        "product",
+        "signal",
+        "feed"
+      ],
+      "description": "Entity class. 'product' for product.* events, 'signal' for signal.* events, 'feed' for wholesale_feed.bulk_change."
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "Entity identifier. For product.* events, the product_id. For signal.* events, the signal_agent_segment_id. For wholesale_feed.bulk_change, an agent-defined operation id."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the agent emitted the event. Advisory — consumers MUST order by event_id (UUID v7), not by created_at, to avoid clock-skew artifacts."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-type-specific payload. Shape is determined by event_type per the oneOf below."
+    }
+  },
+  "oneOf": [
+    {
+      "description": "product.created — a new product was added to the agent's wholesale product feed.",
+      "properties": {
+        "event_type": {
+          "const": "product.created"
+        },
+        "entity_type": {
+          "const": "product"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "product_id",
+            "product",
+            "applies_to"
+          ],
+          "properties": {
+            "product_id": {
+              "type": "string"
+            },
+            "product": {
+              "$ref": "/schemas/3.1.0-beta.6/core/product.json",
+              "description": "Full post-change Product object."
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo",
+              "description": "REQUIRED. Sellers MUST declare the cache layer explicitly on every *.created event. When introducing an entity that exists only in an account overlay (e.g., a custom product for a single account), the seller MUST emit { scope: 'account', account_ids: [...] } to prevent the entity from leaking into every consumer's public-layer cache. For public-layer additions, declare { scope: 'public' } explicitly rather than relying on a default — schema-required declaration prevents the quiet-failure path where a forgotten applies_to leaks an account-only entity to all consumers."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "product.updated — product metadata changed (name, description, formats, properties, targeting capabilities, measurement terms). Use changed_fields for fine-grained re-render, but be prepared to handle a full replacement.",
+      "properties": {
+        "event_type": {
+          "const": "product.updated"
+        },
+        "entity_type": {
+          "const": "product"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "product_id",
+            "product",
+            "applies_to"
+          ],
+          "properties": {
+            "product_id": {
+              "type": "string"
+            },
+            "product": {
+              "$ref": "/schemas/3.1.0-beta.6/core/product.json",
+              "description": "Full post-change Product object. Consumers replace the prior product mirror entry with this object."
+            },
+            "changed_fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Advisory list of changed top-level field names (e.g., ['format_ids', 'performance_standards']). Consumers MAY use for fine-grained re-render, but the product object is the source of truth for this webhook payload."
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "product.priced — pricing options changed (new option, removed option, price/floor change). Existing media buys unaffected; composition layer must re-price.",
+      "properties": {
+        "event_type": {
+          "const": "product.priced"
+        },
+        "entity_type": {
+          "const": "product"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "product_id",
+            "pricing_options",
+            "applies_to"
+          ],
+          "properties": {
+            "product_id": {
+              "type": "string"
+            },
+            "pricing_options": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "/schemas/3.1.0-beta.6/core/pricing-option.json"
+              },
+              "description": "Full post-change pricing_options array. NOT a delta — consumers replace the prior options with this list."
+            },
+            "previous_pricing_option_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional. Lets consumers detect which pricing_option_ids were retired."
+            },
+            "effective_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the price change takes effect. A value in the future is a pre-announcement: consumers MAY warm caches but MUST NOT bind decisions until the effective time has passed. See specs/wholesale-feed-webhooks.md §`effective_at` and pre-announce."
+            },
+            "retracts_event_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Optional. When this event retracts a prior pre-announced *.priced (per the §`effective_at` and pre-announce rules), set this to the event_id of the announcement being retracted. Lets consumers detect retraction deterministically by event_id lookup rather than maintaining per-entity 'latest-event' state. When present, the retraction MUST carry effective_at <= the retracted event's effective_at."
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "product.removed — product no longer available. In-flight buys honor existing cancellation policy regardless of removal_reason; storefront UX differs by reason.",
+      "properties": {
+        "event_type": {
+          "const": "product.removed"
+        },
+        "entity_type": {
+          "const": "product"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "product_id",
+            "applies_to"
+          ],
+          "properties": {
+            "product_id": {
+              "type": "string"
+            },
+            "removal_reason": {
+              "$ref": "#/$defs/removalReason"
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "signal.created — a new signal was added to the agent's wholesale signals feed.",
+      "properties": {
+        "event_type": {
+          "const": "signal.created"
+        },
+        "entity_type": {
+          "const": "signal"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "signal_agent_segment_id",
+            "signal",
+            "applies_to"
+          ],
+          "properties": {
+            "signal_agent_segment_id": {
+              "type": "string"
+            },
+            "signal_ref": {
+              "$ref": "/schemas/3.1.0-beta.6/core/signal-ref.json"
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo",
+              "description": "REQUIRED. Agents MUST declare the cache layer explicitly on every *.created event. When introducing a signal that exists only in an account overlay (e.g., a custom segment for a single account), the agent MUST emit { scope: 'account', account_ids: [...] } to prevent leak into every consumer's public-layer cache. For public-layer additions, declare { scope: 'public' } explicitly rather than relying on a default — schema-required declaration prevents the quiet-failure path."
+            },
+            "signal": {
+              "$ref": "#/$defs/signal",
+              "description": "Full post-change signal object."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "signal.updated — signal metadata changed (description, coverage, deployments).",
+      "properties": {
+        "event_type": {
+          "const": "signal.updated"
+        },
+        "entity_type": {
+          "const": "signal"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "signal_agent_segment_id",
+            "signal",
+            "applies_to"
+          ],
+          "properties": {
+            "signal_agent_segment_id": {
+              "type": "string"
+            },
+            "signal_ref": {
+              "$ref": "/schemas/3.1.0-beta.6/core/signal-ref.json"
+            },
+            "changed_fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Advisory list of changed top-level field names. Consumers MAY use for fine-grained re-render, but the signal object is the source of truth for this webhook payload."
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            },
+            "signal": {
+              "$ref": "#/$defs/signal",
+              "description": "Full post-change signal object. Consumers replace the prior signal mirror entry with this object."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "signal.priced — signal pricing options changed.",
+      "properties": {
+        "event_type": {
+          "const": "signal.priced"
+        },
+        "entity_type": {
+          "const": "signal"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "signal_agent_segment_id",
+            "pricing_options",
+            "applies_to"
+          ],
+          "properties": {
+            "signal_agent_segment_id": {
+              "type": "string"
+            },
+            "signal_ref": {
+              "$ref": "/schemas/3.1.0-beta.6/core/signal-ref.json"
+            },
+            "pricing_options": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "/schemas/3.1.0-beta.6/core/vendor-pricing-option.json"
+              },
+              "description": "Full post-change pricing_options array. NOT a delta."
+            },
+            "previous_pricing_option_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "effective_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the price change takes effect. A value in the future is a pre-announcement: consumers MAY warm caches but MUST NOT bind decisions until the effective time has passed. See specs/wholesale-feed-webhooks.md §`effective_at` and pre-announce."
+            },
+            "retracts_event_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Optional. When this event retracts a prior pre-announced *.priced, set this to the event_id of the announcement being retracted. See product.priced for the full retraction contract."
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "signal.removed — signal no longer available.",
+      "properties": {
+        "event_type": {
+          "const": "signal.removed"
+        },
+        "entity_type": {
+          "const": "signal"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "signal_agent_segment_id",
+            "applies_to"
+          ],
+          "properties": {
+            "signal_agent_segment_id": {
+              "type": "string"
+            },
+            "signal_ref": {
+              "$ref": "/schemas/3.1.0-beta.6/core/signal-ref.json"
+            },
+            "removal_reason": {
+              "$ref": "#/$defs/removalReason"
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "wholesale_feed.bulk_change — fast-forward event emitted when a single operation affects many entities in one feed. Consumers SHOULD repair by re-reading the affected wholesale feed named by affected_entity_type via get_products or get_signals.",
+      "properties": {
+        "event_type": {
+          "const": "wholesale_feed.bulk_change"
+        },
+        "entity_type": {
+          "const": "feed"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "summary",
+            "affected_entity_type",
+            "affected_count",
+            "applies_to"
+          ],
+          "properties": {
+            "summary": {
+              "type": "string",
+              "description": "Human-readable description of the bulk operation (e.g., 'Q3 2026 rate card refresh')."
+            },
+            "affected_count": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Approximate count of affected entities."
+            },
+            "recommendation": {
+              "type": "string",
+              "enum": [
+                "wholesale_resync"
+              ],
+              "description": "Advisory recommendation. Consumers SHOULD repair by re-reading the affected feed named by affected_entity_type; the recommendation is not a synchronized trigger. Modeled as a single-value enum (not a boolean) so future minor versions can extend the recommendation vocabulary without a breaking shape change. Consumers MUST be prepared to ignore unknown recommendation values."
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            },
+            "affected_entity_type": {
+              "type": "string",
+              "enum": [
+                "product",
+                "signal"
+              ],
+              "description": "Which wholesale feed this bulk operation touched. A bulk operation that changes both products and signals MUST emit one webhook per feed so each envelope carries the correct post-change wholesale_feed_version."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    }
+  ],
+  "$defs": {
+    "appliesTo": {
+      "type": "object",
+      "title": "Cache layer scope",
+      "description": "Declares which cache layer this event invalidates. See specs/wholesale-feed-webhooks.md §Cache layering and event scoping.",
+      "discriminator": {
+        "propertyName": "scope"
+      },
+      "oneOf": [
+        {
+          "description": "Public layer — invalidate the public-layer cache for the entity; all account overlays referencing that public version are also stale.",
+          "properties": {
+            "scope": {
+              "const": "public"
+            }
+          },
+          "required": [
+            "scope"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "Account overlay — invalidate the named account overlays only; public layer unaffected. The seller MAY omit account_ids when the affected set is competitively sensitive, but MUST ensure account-scoped webhook fan-out only delivers changes to subscribers authorized for the affected account overlays.",
+          "properties": {
+            "scope": {
+              "const": "account"
+            },
+            "account_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "description": "Optional. When present, names the accounts whose overlays are affected. When omitted, subscribers infer that their own principal's overlay is affected (they received the event because the per-subscriber scope filter routed it to them)."
+            }
+          },
+          "required": [
+            "scope"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "removalReason": {
+      "type": "string",
+      "enum": [
+        "withdrawn",
+        "cancellation",
+        "expired",
+        "depublication",
+        "policy_takedown"
+      ],
+      "description": "Why the entity was removed. 'withdrawn': seller-initiated, no resubmit path. 'cancellation': resource cancelled, may return. 'expired': time-bounded availability ended (flight ended, seasonal product retired). 'depublication': underlying property depublished (see publisher.adagents_changed in the registry feed). 'policy_takedown': governance-driven removal (AdCP governance agent OR external regulator/legal takedown). In-flight buys honor existing cancellation policy regardless of reason; storefront UX differs."
+    },
+    "signal": {
+      "type": "object",
+      "title": "Wholesale signal object",
+      "description": "One signal entry using the same wire shape as an item in get_signals.signals[].",
+      "allOf": [
+        {
+          "$ref": "/schemas/3.1.0-beta.6/core/signal-listing.json"
+        }
+      ],
+      "properties": {
+        "signal_ref": {
+          "$ref": "/schemas/3.1.0-beta.6/core/signal-ref.json",
+          "description": "Canonical signal reference for this wholesale signal. New events SHOULD use signal_ref."
+        },
+        "signal_id": {
+          "$ref": "/schemas/3.1.0-beta.6/core/signal-id.json",
+          "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older clients.",
+          "deprecated": true
+        },
+        "signal_agent_segment_id": {
+          "type": "string",
+          "description": "Opaque activation handle returned by the signals agent.",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable signal name",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed signal description",
+          "minLength": 1
+        },
+        "value_type": {
+          "$ref": "/schemas/3.1.0-beta.6/enums/signal-value-type.json"
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "range": {
+          "type": "object",
+          "properties": {
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "min",
+            "max"
+          ],
+          "additionalProperties": false
+        },
+        "signal_type": {
+          "$ref": "/schemas/3.1.0-beta.6/enums/signal-catalog-type.json"
+        },
+        "data_provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "coverage_percentage": {
+          "type": "number",
+          "description": "DEPRECATED for detailed planning. Optional legacy scalar percentage of audience coverage retained only as a fallback for clients that do not consume coverage_forecast. When coverage_forecast is present, coverage_forecast is authoritative for signal-level discovery and coverage_percentage is fallback-only.",
+          "minimum": 0,
+          "maximum": 100,
+          "deprecated": true
+        },
+        "coverage_forecast": {
+          "$ref": "/schemas/3.1.0-beta.6/core/signal-coverage-forecast.json",
+          "description": "Optional forecast-shaped signal availability guidance using the same wire shape as get_signals.signals[].coverage_forecast. When present, this is authoritative for signal-level discovery coverage."
+        },
+        "deployments": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/3.1.0-beta.6/core/deployment.json"
+          },
+          "minItems": 1
+        },
+        "pricing_options": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/3.1.0-beta.6/core/vendor-pricing-option.json"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "signal_agent_segment_id",
+        "name",
+        "description",
+        "signal_type",
+        "deployments"
+      ],
+      "anyOf": [
+        { "required": ["signal_ref"] },
+        { "required": ["signal_id"] }
+      ],
+      "additionalProperties": true
+    }
+  }
+}

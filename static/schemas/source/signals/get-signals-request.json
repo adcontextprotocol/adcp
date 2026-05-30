@@ -91,6 +91,47 @@
     "filters": {
       "$ref": "/schemas/core/signal-filters.json"
     },
+    "fields": {
+      "type": "array",
+      "description": "Specific signal fields to include in the response, aligned with get_products.fields. Required identity and activation fields such as signal_ref or signal_id, signal_agent_segment_id, name, description, signal_type, coverage_percentage, and deployments are always included when required by the response schema. Use for progressive disclosure of rich signal-definition metadata: request fields such as taxonomy, data_sources, methodology, segmentation_criteria, criteria_url, refresh_cadence, lookback_window, onboarder, modeling, audience_expansion, device_expansion, countries, consent_basis, restricted_attributes, policy_categories, art9_basis, and data_subject_rights when the buyer needs them inline. Omit for the agent's default discovery projection. Agents SHOULD honor requested fields for exact lookup, refinement, and small custom-signal result sets when available. For broad discovery and wholesale pages, agents MAY return compact pointers instead of inlining large resources, especially when provider-published definitions can be resolved from signal_ref, taxonomy.ref, criteria_url, disclosure_url, and validators such as taxonomy.etag.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "signal_ref",
+          "signal_id",
+          "signal_agent_segment_id",
+          "name",
+          "description",
+          "value_type",
+          "categories",
+          "range",
+          "signal_type",
+          "data_provider",
+          "coverage_percentage",
+          "deployments",
+          "pricing_options",
+          "taxonomy",
+          "data_sources",
+          "methodology",
+          "segmentation_criteria",
+          "criteria_url",
+          "refresh_cadence",
+          "lookback_window",
+          "onboarder",
+          "modeling",
+          "audience_expansion",
+          "device_expansion",
+          "countries",
+          "consent_basis",
+          "restricted_attributes",
+          "policy_categories",
+          "art9_basis",
+          "data_subject_rights"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "max_results": {
       "type": "integer",
       "description": "DEPRECATED: Use pagination.max_results instead. When both fields are present, agents MUST honor pagination.max_results. When only this field is present without a pagination envelope, agents SHOULD treat it as the page size subject to a maximum of 100 results. This field will be removed in AdCP 4.0.",

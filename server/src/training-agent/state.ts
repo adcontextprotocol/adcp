@@ -178,6 +178,8 @@ function createSession(): SessionState {
       seededProducts: new Map(),
       seededPricingOptions: new Map(),
       seededCreativeFormats: new Map(),
+      seededMeasurementCatalogs: new Map(),
+      provenanceAuditObservations: new Map(),
     },
     createdAt: now,
     lastAccessedAt: now,
@@ -389,6 +391,8 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
       seededProducts: asMap(hydratedComply.seededProducts, fresh.complyExtensions.seededProducts),
       seededPricingOptions: asMap(hydratedComply.seededPricingOptions, fresh.complyExtensions.seededPricingOptions),
       seededCreativeFormats: asMap(hydratedComply.seededCreativeFormats, fresh.complyExtensions.seededCreativeFormats),
+      seededMeasurementCatalogs: asMap(hydratedComply.seededMeasurementCatalogs, fresh.complyExtensions.seededMeasurementCatalogs),
+      provenanceAuditObservations: asMap(hydratedComply.provenanceAuditObservations, fresh.complyExtensions.provenanceAuditObservations),
       forcedCreateMediaBuyArm: hydratedComply.forcedCreateMediaBuyArm,
     },
     lastGetProductsContext: (hydrated.lastGetProductsContext as SessionState['lastGetProductsContext']) ?? undefined,
@@ -477,7 +481,7 @@ function safeKey(value: string | undefined, max: number, pattern: RegExp): strin
  * the spec's `account` invariant on every step).
  */
 export function sessionKeyFromArgs(
-  args: { account?: AccountRef; brand?: BrandRef; plans?: unknown },
+  args: { account?: AccountRef; brand?: BrandRef; plans?: unknown; accounts?: unknown },
   mode: 'open' | 'training',
   userId?: string,
   moduleId?: string,
@@ -508,6 +512,15 @@ export function sessionKeyFromArgs(
     if (safePlanDomain) return `open:${safePlanDomain.toLowerCase()}`;
     if (planDomain && !safePlanDomain) {
       logger.debug({ domain: planDomain }, 'Rejected plans[0].brand.domain as session key; falling back');
+    }
+  }
+  if (Array.isArray(args.accounts) && args.accounts.length > 0) {
+    const first = args.accounts[0] as { brand?: BrandRef; account?: AccountRef } | undefined;
+    const accountDomain = first?.brand?.domain ?? first?.account?.brand?.domain;
+    const safeAccountDomain = safeKey(accountDomain, MAX_DOMAIN_LEN, SAFE_DOMAIN_RE);
+    if (safeAccountDomain) return `open:${safeAccountDomain.toLowerCase()}`;
+    if (accountDomain && !safeAccountDomain) {
+      logger.debug({ domain: accountDomain }, 'Rejected accounts[0].brand.domain as session key; falling back');
     }
   }
   return 'open:default';
@@ -610,4 +623,3 @@ export async function clearSessions(): Promise<void> {
   }
   // Other AdcpStateStore implementations: no-op. Tests should inject a known store.
 }
-

@@ -115,6 +115,7 @@ console.log(`Created media buy ${created.media_buy_id}`);
 const updateResult = await testAgent.updateMediaBuy({
   account: { brand: { domain: 'acmecorp.com' }, operator: 'acmecorp.com' },
   media_buy_id: created.media_buy_id,
+  revision: created.revision,
   paused: true
 });
 
@@ -169,6 +170,7 @@ async def create_and_pause_campaign():
     update_result = await test_agent.simple.update_media_buy(
         account={'brand': {'domain': 'acmecorp.com'}, 'operator': 'acmecorp.com'},
         media_buy_id=create_result.media_buy_id,
+        revision=create_result.revision,
         paused=True
     )
 
@@ -202,6 +204,12 @@ asyncio.run(create_and_pause_campaign())
 | `push_notification_config` | object | No | Webhook for async operation notifications |
 
 `account` and `media_buy_id` are always required.
+
+### Optimistic concurrency
+
+`revision` is the expected current media-buy revision. Some implementations call this value `expected_revision` internally; on the AdCP wire the field is `revision`. The field is optional for backward compatibility. When it is present, sellers MUST check it atomically with the write that applies a mutating update; reading the current value in application code, comparing it, then writing later can race another writer and lose an update. If the stored revision differs from the request's `revision`, the seller rejects with `CONFLICT` and applies no changes.
+
+Every mutating update increments `revision` and returns the new value in the success response. Validation-only requests, reads, and exact idempotency replays do not increment it; exact replays return the prior revision. Clients SHOULD pass the latest observed revision on every update intended to change state, then reload with `get_media_buys` and retry with a fresh `idempotency_key` when they receive `CONFLICT`.
 
 ### Reporting Webhook Object
 
@@ -252,7 +260,7 @@ Configure automated delivery reporting for this media buy:
 | `media_buy_id` | Media buy identifier |
 | `media_buy_status` | Media buy lifecycle status after the update (present when status changes, e.g., cancellation). Canonical 3.1 field. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status). |
 | `status` | **Deprecated in 3.1, removed in 3.2** ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)). Use `media_buy_status` instead. Top-level `status` collides with the envelope task-status on flat-serialized MCP wire. |
-| `revision` | Revision number after this update. Use in subsequent requests for optimistic concurrency. |
+| `revision` | Revision number after this update. Use in subsequent requests intended to change state for optimistic concurrency. Exact idempotency replays return the prior revision. |
 | `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
 | `invoice_recipient` | Updated invoice recipient, echoed from request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
 | `valid_actions` | Flat-vocabulary actions the buyer can perform after this update. Saves a round-trip to `get_media_buys`. Deprecated in favor of `available_actions[]` and removed in 4.0. |
@@ -712,7 +720,7 @@ Cancel a single package while the media buy remains active:
 - Package ID
 - Product ID
 - Pricing option ID
-- Format IDs (creatives must match existing formats)
+- Format selectors: `format_ids`, `format_option_refs`, `format_kind`, and `params` (creatives must match existing formats)
 
 ⚠️ **Append-only on update:**
 - `committed_metrics` — sellers accept new entries (mid-flight metric additions, each with its own `committed_at` timestamp) but MUST reject attempts to modify or remove existing entries with `validation_error` (code `IMMUTABLE_FIELD`). Runtime enforcement; the append-only semantics aren't expressible in the schema's `not` clause.
@@ -723,8 +731,8 @@ Common errors and resolutions:
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id |
-| `PACKAGE_NOT_FOUND` | Package doesn't exist | Verify package_id |
+| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify `media_buy_id`; for legacy correlation use `get_media_buys` + `context.internal_campaign_id` |
+| `PACKAGE_NOT_FOUND` | Package doesn't exist | Verify `package_id`; for legacy package correlation use `get_media_buys` + package `context.buyer_ref` |
 | `UPDATE_NOT_ALLOWED` | Field cannot be changed | See "What Can Be Updated" above |
 | `BUDGET_INSUFFICIENT` | New budget below minimum | Increase budget amount |
 | `POLICY_VIOLATION` | Update violates content policy | Review policy requirements |

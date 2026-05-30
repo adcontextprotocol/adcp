@@ -88,6 +88,26 @@ Signal definitions MAY include `restricted_attributes` and `policy_categories` f
 
 See [Declaring governance metadata](/docs/signals/data-providers#declaring-governance-metadata) for implementation details.
 
+### Enrichment and progressive disclosure
+
+Rich definition fields such as `taxonomy.values[]`, `taxonomy.value_mappings[]`, `segmentation_criteria`, `onboarder`, and `modeling.disclosure.jurisdictions[]` describe the authoritative signal definition. They are not required to be repeated in every discovery listing.
+
+Signal agents SHOULD treat `get_signals` as a discovery and availability surface. For broad search results and wholesale feed pages, agents SHOULD return compact listings with stable identity, display metadata, pricing, deployment status, and cache validators or disclosure pointers when available. Large taxonomies, long segmentation criteria, and jurisdiction-specific disclosure text SHOULD be fetched from the provider's authoritative `adagents.json` signal definition or from declared URLs such as `taxonomy.ref`, `criteria_url`, and `modeling.disclosure.jurisdictions[].disclosure_url`.
+
+When a response includes `taxonomy.etag` or another provider-supplied validator, orchestrators SHOULD cache the dereferenced definition or taxonomy under that validator and refresh it only when the validator changes. Agents MAY include inline excerpts for review, ranking, or lookup-by-reference flows, but SHOULD avoid duplicating full external resources across every item in a large `get_signals` response.
+
+Orchestrators that need richer metadata inline MAY set `fields` on `get_signals`, using the same response-projection pattern as `get_products.fields`, to request specific listing or definition fields such as `taxonomy`, `data_sources`, `methodology`, `modeling`, `countries`, `consent_basis`, or `data_subject_rights`. Agents SHOULD honor requested fields for exact lookup, refinement, and small custom-signal result sets when available. For broad discovery and wholesale pages, agents MAY still return compact pointers instead of inlining large definition resources.
+
+### Definition enrichment fields
+
+Signal definitions MAY carry additional fields for transparency, governance, and review:
+
+- **Taxonomy metadata**: `taxonomy.ref`, `taxonomy.values[]`, `taxonomy.value_mappings[]`, and `taxonomy.parent_match_behavior` describe how the signal maps to an external or provider-owned taxonomy. These fields do not change package targeting grammar.
+- **Source and methodology disclosure**: `data_sources`, `methodology`, `segmentation_criteria`, `criteria_url`, `refresh_cadence`, `lookback_window`, and `onboarder` describe how the segment was compiled. Offline and public-record source categories require `onboarder`.
+- **Modeling disclosure**: `modeling` is required when `methodology` is `modeled` or `audience_expansion` is `true`. Required modeling disclosures must name the jurisdictions where the disclosure applies.
+- **Jurisdiction and privacy metadata**: `countries`, GDPR-scoped `consent_basis`, `restricted_attributes`, `policy_categories`, and `art9_basis` let governance agents evaluate use constraints structurally.
+- **Data-subject-rights routing**: `data_subject_rights.channels[]` declares where access, erasure, objection, portability, or rectification requests route for this signal. At least one channel must support access, erasure, or objection.
+
 ## Tasks
 
 The Signals Protocol defines two tasks. See task reference pages for complete request/response schemas and examples.
@@ -167,7 +187,7 @@ A conformant Signals Protocol orchestrator MUST:
 3. Handle async activation responses
 4. Use `activation_key` for external deployment targeting, and use package-level `signal_targeting_groups` for seller-offered signal selection on sales-agent media buys
 
-When a seller-offered signal should be applied only to specific packages on a sales-agent buy, orchestrators SHOULD carry that selection in `create_media_buy.packages[].targeting_overlay.signal_targeting_groups`, including the selected signal `pricing_option_id` when required and the selected `signal_ref`. `get_signals` is the broad wholesale discovery surface, while the selected product's `signal_targeting_allowed`, optional inline `signal_targeting_options`, and `signal_targeting_rules` govern buy-time eligibility and pricing. `included_signals` is descriptive only: it identifies signals already bundled into or planned into the product, but does not make them selectable. If a wholesale product allows signal targeting but omits inline options, buyers use `get_signals` as the selectable signal feed. If the product option or `get_signals` result exposes a separate `signal_agent_segment_id` required by the seller, buyers echo it as an execution handle; otherwise `signal_ref` is sufficient. This is the package-level binding; `audience_include` and `audience_exclude` remain scoped to buyer-managed audiences from `sync_audiences`.
+When a seller-offered signal should be applied only to specific packages on a sales-agent buy, orchestrators SHOULD carry that selection in `create_media_buy.packages[].targeting_overlay.signal_targeting_groups`, including the selected signal `pricing_option_id` when required and the selected `signal_ref`. `get_signals` is the broader discovery surface, while the selected product's inline `signal_targeting_options` when present and `signal_targeting_rules` govern buy-time eligibility and pricing; wholesale products can omit inline options and rely on `get_signals` for candidate discovery. `included_signals` is descriptive only: it identifies signals already bundled into or planned into the product, but does not make them selectable. If the product option or `get_signals` result exposes a separate `signal_agent_segment_id` required by the seller, buyers echo it as an execution handle; otherwise `signal_ref` is sufficient. This is the package-level binding; `audience_include` and `audience_exclude` remain scoped to buyer-managed audiences from `sync_audiences`.
 
 ## Implementation Notes
 

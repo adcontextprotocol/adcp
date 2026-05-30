@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/compliance/comply-test-controller-request.json",
   "title": "Comply Test Controller Request",
-  "description": "Request payload for the comply_test_controller tool. Triggers seller-side state transitions for compliance testing. Sandbox only — sellers MUST NOT expose this tool in production. Naturally idempotent: the `scenario` enum is either a lookup (`list_scenarios`) or a state-forcing operation whose target state is carried in the payload (`force_*_status`, `simulate_*`), so replays converge to the same observable state without needing an idempotency_key. The compliance harness drives this tool deterministically and does not rely on the seller's at-most-once replay cache.",
+  "description": "Request payload for the comply_test_controller tool. Triggers seller-side state transitions for compliance testing. Sandbox only — sellers MUST NOT expose this tool in production. Naturally idempotent: each known `scenario` is either a lookup (`list_scenarios`) or a state-forcing operation whose target state is carried in the payload (`force_*_status`, `simulate_*`), so replays converge to the same observable state without needing an idempotency_key. The compliance harness drives this tool deterministically and does not rely on the seller's at-most-once replay cache.",
   "type": "object",
   "allOf": [
     {
@@ -31,6 +31,27 @@
                 "$ref": "/schemas/enums/creative-status.json"
               }
             }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "force_creative_purge"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "creative_id"
+            ]
           }
         }
       }
@@ -364,6 +385,28 @@
       "if": {
         "properties": {
           "scenario": {
+            "const": "seed_measurement_catalog"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "vendor",
+              "metrics"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
             "const": "query_upstream_traffic"
           }
         }
@@ -417,6 +460,27 @@
       "if": {
         "properties": {
           "scenario": {
+            "const": "query_provenance_audit_observations"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "creative_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
             "const": "force_upstream_unavailable"
           }
         }
@@ -439,26 +503,7 @@
   "properties": {
     "scenario": {
       "type": "string",
-      "enum": [
-        "list_scenarios",
-        "force_creative_status",
-        "force_account_status",
-        "force_media_buy_status",
-        "force_create_media_buy_arm",
-        "force_task_completion",
-        "force_session_status",
-        "simulate_delivery",
-        "simulate_budget_spend",
-        "seed_product",
-        "seed_pricing_option",
-        "seed_creative",
-        "seed_plan",
-        "seed_media_buy",
-        "seed_creative_format",
-        "query_upstream_traffic",
-        "force_upstream_unavailable"
-      ],
-      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'seed_*' scenarios pre-populate fixtures (product, pricing option, creative, plan, media buy, creative format) so storyboards can reference them by stable ID without the implementer having to guess which IDs the conformance suite expects. 'query_upstream_traffic' returns outbound HTTP calls the agent has made since session start (or since a caller-supplied timestamp), so storyboard runners can assert upstream side-effects via `check: upstream_traffic`. 'force_upstream_unavailable' marks a named upstream dependency as unreachable for the duration of the compliance session (or until the seller resets it), so storyboards can exercise stale-cache fallback paths — see the `stale_response_advisory` universal storyboard. The contract raises the bar against unintentional façades — adapters that satisfy AdCP schema requirements with synthetic placeholders. It is NOT an adversarial integrity check: adopters self-report their own traffic. Adopters MUST scope the response to traffic caused by the requesting principal's session/auth context — cross-caller traffic MUST NOT be returned, regardless of the supplied since_timestamp. Multi-tenant sandboxes MUST key the recording buffer on the comply_test_controller invocation's auth principal."
+      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'force_creative_purge' destroys or tombstones a sandbox creative so account-level `creative.purged` webhooks can be observed where the seller supports the lifecycle surface. 'seed_*' scenarios pre-populate fixtures (product, pricing option, creative, plan, media buy, creative format, measurement catalog) so storyboards can reference fixture IDs and external-catalog facts without implementers guessing which fixtures the conformance suite expects. 'query_upstream_traffic' returns outbound HTTP calls the agent has made since session start (or since a caller-supplied timestamp), so storyboard runners can assert upstream side-effects via `check: upstream_traffic`. 'query_provenance_audit_observations' returns sandbox-only audit observations recorded for a submitted creative so storyboards can assert non-blocking governance observations without exposing an internal audit log on public seller responses. 'force_upstream_unavailable' marks a named upstream dependency as unreachable for the duration of the compliance session (or until the seller resets it), so storyboards can exercise stale-cache fallback paths — see the `stale_response_advisory` universal storyboard. The contract raises the bar against unintentional façades — adapters that satisfy AdCP schema requirements with synthetic placeholders. It is NOT an adversarial integrity check: adopters self-report their own traffic. Adopters MUST scope the response to traffic caused by the requesting principal's session/auth context — cross-caller traffic MUST NOT be returned, regardless of the supplied since_timestamp. Multi-tenant sandboxes MUST key the recording buffer on the comply_test_controller invocation's auth principal. Runners and sellers MUST accept unknown scenario strings — new scenarios may be added in additive releases."
     },
     "params": {
       "type": "object",
@@ -504,6 +549,22 @@
         "rejection_reason": {
           "type": "string",
           "description": "Reason for rejection. Used by force_creative_status and force_media_buy_status when status = rejected."
+        },
+        "purge_kind": {
+          "type": "string",
+          "enum": [
+            "soft",
+            "hard"
+          ],
+          "description": "Purge mode for force_creative_purge. soft retains a list_creatives tombstone; hard removes the creative entirely."
+        },
+        "reason_code": {
+          "$ref": "/schemas/enums/creative-event-reason-code.json",
+          "description": "Creative lifecycle reason code for force_creative_purge."
+        },
+        "reason_detail": {
+          "type": "string",
+          "description": "Human-readable detail for force_creative_purge."
         },
         "termination_reason": {
           "type": "string",
@@ -603,7 +664,7 @@
         },
         "viewability": {
           "type": "object",
-          "description": "Viewability metrics to inject into the simulated delivery row. Used by simulate_delivery. When present, sellers MUST surface these values inside `viewability` on the next get_media_buy_delivery response. Mirrors the `viewability` block in delivery-metrics.json: measurable_impressions is the shared denominator for viewable_rate and viewed_seconds.",
+          "description": "Viewability metrics to inject into the simulated delivery row. Used by simulate_delivery. When present, sellers MUST surface these values inside `viewability` on the next get_media_buy_delivery response. Mirrors the `viewability` block in delivery-metrics.json: measurable_impressions is the shared denominator for viewable_rate and viewed_seconds. Sellers SHOULD include standard whenever measured values are present.",
           "properties": {
             "measurable_impressions": {
               "type": "number",
@@ -661,6 +722,28 @@
         "format_id": {
           "type": "string",
           "description": "Creative format ID to seed. Used by seed_creative_format. The seller MUST expose this format ID in list_creative_formats responses for the duration of the compliance session."
+        },
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Measurement vendor whose catalog is being seeded. Used by seed_measurement_catalog. The seller MUST treat `metrics[]` as this vendor's `get_adcp_capabilities.measurement.metrics[]` snapshot for the duration of the compliance session."
+        },
+        "metrics": {
+          "type": "array",
+          "description": "Measurement catalog entries to seed for the vendor. Used by seed_measurement_catalog. Shape mirrors `get_adcp_capabilities.measurement.metrics[]`; each metric_id is unique within the seeded vendor catalog.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "required": [
+              "metric_id"
+            ],
+            "properties": {
+              "metric_id": {
+                "$ref": "/schemas/core/vendor-metric-id.json"
+              }
+            },
+            "additionalProperties": true
+          }
         },
         "tool": {
           "type": "string",

@@ -12,7 +12,8 @@
     },
     "placement_id": {
       "type": "string",
-      "description": "Placement identifier in the publisher namespace. When `publisher_domain` is present, this matches a placement ID in that publisher's adagents.json catalog or a seller-defined inline placement in that publisher namespace. Buyers use this with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `creative_assignments[].placement_ids` strings are only unambiguous in single-publisher contexts."
+      "description": "Placement identifier in the publisher namespace. When `publisher_domain` is present, this matches a placement ID in that publisher's adagents.json catalog or a seller-defined inline placement in that publisher namespace. Buyers use this with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `creative_assignments[].placement_ids` strings are only unambiguous in single-publisher contexts.",
+      "x-entity": "placement"
     },
     "publisher_domain": {
       "type": "string",
@@ -54,6 +55,15 @@
       "items": {
         "$ref": "/schemas/core/product-format-declaration.json"
       },
+      "minItems": 1
+    },
+    "video_placement_types": {
+      "type": "array",
+      "description": "Declared video placement types for this product placement, using IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions with AdCP-native names. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "/schemas/enums/video-placement-type.json"
+      },
+      "uniqueItems": true,
       "minItems": 1
     }
   },

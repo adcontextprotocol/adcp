@@ -12,7 +12,8 @@
     },
     "placement_id": {
       "type": "string",
-      "description": "Placement ID from the publisher's adagents.json placement catalog, or an inline seller-defined placement ID interpreted within the same publisher namespace."
+      "description": "Placement ID from the publisher's adagents.json placement catalog, or an inline seller-defined placement ID interpreted within the same publisher namespace.",
+      "x-entity": "placement"
     }
   },
   "required": [

@@ -80,7 +80,7 @@ Fields available on both `creative.totals` and each `variant` entry. Commonly-us
 | `by_event_type` | Conversions by event type — array of `{ event_type, count, value?, event_source_id? }` |
 | `by_action_source` | Conversions by action source (website, app, in_store) — array of `{ action_source, count, value?, event_source_id? }` |
 | `dooh_metrics` | DOOH-specific data — object with `loop_plays`, `screens_used`, `screen_time_seconds`, `sov_achieved`, `venue_breakdown` |
-| `viewability` | Viewability data — object with `vendor`, `measurable_impressions`, `viewable_impressions`, `viewable_rate`, `viewed_seconds` (average in-view duration per measurable impression — pairs with the `viewed_seconds` optimization goal), and `standard` |
+| `viewability` | Viewability data — object with `vendor`, `measurable_impressions`, `viewable_impressions`, `viewable_rate`, `viewed_seconds` (average in-view duration per measurable impression — pairs with the `viewed_seconds` optimization goal), and `standard`. `standard` SHOULD be present whenever measured viewability values are reported |
 | `engagements` | Total ad engagements beyond viewing (platform-specific) |
 | `follows` | New followers or subscriptions attributed to delivery |
 | `saves` | Saves, bookmarks, or pins attributed to delivery |

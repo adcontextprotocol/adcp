@@ -190,6 +190,7 @@
           "description",
           "publisher_properties",
           "channels",
+          "video_placement_types",
           "format_ids",
           "format_options",
           "placements",

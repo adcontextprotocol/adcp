@@ -1,22 +1,30 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createWebhookFetch, SsrfRefusedError } from '../../src/training-agent/webhook-fetch.js';
 
+const undiciFetchMock = vi.hoisted(() => vi.fn());
+
+vi.mock('undici', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('undici')>();
+  return {
+    ...actual,
+    fetch: undiciFetchMock,
+  };
+});
+
 describe('createWebhookFetch — SSRF guard', () => {
-  let originalFetch: typeof globalThis.fetch;
   let calls: Array<{ url: string; init: RequestInit | undefined }>;
 
   beforeEach(() => {
-    originalFetch = globalThis.fetch;
     calls = [];
-    globalThis.fetch = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    undiciFetchMock.mockImplementation(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
       const url = typeof input === 'string' || input instanceof URL ? input.toString() : input.url;
       calls.push({ url, init });
       return new Response('', { status: 200 });
-    }) as typeof fetch;
+    });
   });
 
   afterEach(() => {
-    globalThis.fetch = originalFetch;
+    undiciFetchMock.mockReset();
   });
 
   /** Convenience: pull the recorded URLs without dragging out the init plumbing. */

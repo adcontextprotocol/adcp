@@ -113,6 +113,10 @@
     "has_variables": {
       "type": "boolean",
       "description": "When true, return only creatives with dynamic variables (DCO). When false, return only static creatives."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json",
+      "description": "Vendor-namespaced extension parameters for seller- or platform-specific creative filter criteria not covered by standard fields. Keys MUST be namespaced under a vendor or platform key (e.g., ext.gam, ext.platform_x). Sellers MUST treat all values as untrusted buyer input; avoid unbounded logging or labels, and do not interpolate values into caller-visible error strings, LLM prompts, SQL queries, or system commands without sanitization. Persistent use of an extension key across multiple buyers is a signal to propose standardization."
     }
   },
   "additionalProperties": true

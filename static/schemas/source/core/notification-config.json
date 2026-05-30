@@ -45,8 +45,7 @@
         }
       },
       "required": [
-        "schemes",
-        "credentials"
+        "schemes"
       ],
       "additionalProperties": false
     },

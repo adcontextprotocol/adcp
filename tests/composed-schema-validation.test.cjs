@@ -275,39 +275,112 @@ async function runTests() {
 
   // Test 4: Get Media Buy Delivery Response (allOf with delivery-metrics.json)
   log('Get Media Buy Delivery Response Schema (allOf with delivery-metrics.json):', 'info');
-  await testSchemaValidation(
-    '/schemas/media-buy/get-media-buy-delivery-response.json',
-    {
-      status: 'completed',
-      reporting_period: {
-        start: '2024-06-01T00:00:00Z',
-        end: '2024-06-15T23:59:59Z'
-      },
-      currency: 'USD',
-      media_buy_deliveries: [
-        {
-          media_buy_id: 'mb_123',
-          status: 'active',
-          totals: {
+  const deliveryResponseWithBreakdowns = {
+    status: 'completed',
+    reporting_period: {
+      start: '2024-06-01T00:00:00Z',
+      end: '2024-06-15T23:59:59Z'
+    },
+    currency: 'USD',
+    media_buy_deliveries: [
+      {
+        media_buy_id: 'mb_123',
+        status: 'active',
+        totals: {
+          spend: 25000,
+          impressions: 1000000,
+          effective_rate: 25.0
+        },
+        by_package: [
+          {
+            package_id: 'pkg_1',
             spend: 25000,
             impressions: 1000000,
-            effective_rate: 25.0
-          },
-          by_package: [
-            {
-              package_id: 'pkg_1',
-              spend: 25000,
-              impressions: 1000000,
-              pacing_index: 1.05,
-              pricing_model: 'cpm',
-              rate: 25.0,
-              currency: 'USD'
-            }
-          ]
-        }
-      ]
-    },
+            pacing_index: 1.05,
+            pricing_model: 'cpm',
+            rate: 25.0,
+            currency: 'USD',
+            missing_metrics: [
+              {
+                scope: 'standard',
+                metric_id: 'completed_views'
+              },
+              {
+                scope: 'vendor',
+                vendor: {
+                  domain: 'attentionvendor.example'
+                },
+                metric_id: 'attention_units'
+              }
+            ],
+            by_catalog_item: [
+              {
+                content_id: 'sku-123',
+                content_id_type: 'sku',
+                spend: 1200,
+                impressions: 48000
+              }
+            ],
+            by_creative: [
+              {
+                creative_id: 'cr_123',
+                spend: 14000,
+                impressions: 560000,
+                weight: 56
+              }
+            ],
+            by_keyword: [
+              {
+                keyword: 'trail running shoes',
+                match_type: 'phrase',
+                spend: 900,
+                impressions: 36000
+              }
+            ],
+            by_geo: [
+              {
+                geo_level: 'region',
+                geo_code: 'US-CA',
+                geo_name: 'California',
+                spend: 6500,
+                impressions: 260000
+              }
+            ],
+            by_geo_truncated: false
+          }
+        ]
+      }
+    ]
+  };
+
+  await testSchemaValidation(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    deliveryResponseWithBreakdowns,
     'Delivery response with aggregate metrics (allOf composition)'
+  );
+
+  const missingVendorMetricResponse = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));
+  delete missingVendorMetricResponse.media_buy_deliveries[0].by_package[0].missing_metrics[1].vendor;
+  await testSchemaRejection(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    missingVendorMetricResponse,
+    'Delivery response rejects vendor missing_metric without vendor'
+  );
+
+  const missingKeywordMatchTypeResponse = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));
+  delete missingKeywordMatchTypeResponse.media_buy_deliveries[0].by_package[0].by_keyword[0].match_type;
+  await testSchemaRejection(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    missingKeywordMatchTypeResponse,
+    'Delivery response rejects keyword metrics without match_type'
+  );
+
+  const missingGeoCodeResponse = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));
+  delete missingGeoCodeResponse.media_buy_deliveries[0].by_package[0].by_geo[0].geo_code;
+  await testSchemaRejection(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    missingGeoCodeResponse,
+    'Delivery response rejects geo metrics without geo_code'
   );
 
   log('');
@@ -651,7 +724,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/signal-ref.json',
     { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'auto_intenders' },
-    'SignalRef data_provider scope accepts provider catalog signal'
+    'SignalRef data_provider scope accepts provider-published signal'
   );
   await testSchemaRejection(
     '/schemas/core/signal-ref.json',
@@ -727,6 +800,38 @@ async function runTests() {
     coverage_percentage: 12,
     deployments: [
       { type: 'platform', platform: 'example_dsp', is_live: true }
+    ]
+  };
+  const signalListingCoreWithoutLegacyCoverage = { ...signalListingCore };
+  delete signalListingCoreWithoutLegacyCoverage.coverage_percentage;
+  const signalCoverageForecast = {
+    method: 'estimate',
+    forecast_range_unit: 'availability',
+    scope: {
+      kind: 'inventory',
+      label: 'network price-priority inventory'
+    },
+    bucket_semantics: 'exclusive',
+    bucket_completeness: 'partial',
+    points: [
+      {
+        label: 'auto intent present',
+        dimensions: [
+          {
+            kind: 'signal',
+            signal_ref: {
+              scope: 'data_provider',
+              data_provider_domain: 'pinnacle-data.example',
+              signal_id: 'auto_intenders'
+            },
+            presence: 'present'
+          }
+        ],
+        metrics: {
+          impressions: { mid: 120000 },
+          coverage_rate: { mid: 0.12 }
+        }
+      }
     ]
   };
 
@@ -906,11 +1011,199 @@ async function runTests() {
         applies_to: { scope: 'public' },
         signal: {
           signal_id: legacySignalId,
-          ...signalListingCore
+          ...signalListingCoreWithoutLegacyCoverage,
+          coverage_forecast: signalCoverageForecast
         }
       }
     },
-    'Wholesale signal event accepts deprecated signal_id and relaxed data_provider/pricing_options'
+    'Wholesale signal event accepts deprecated signal_id, optional legacy coverage_percentage, relaxed data_provider/pricing_options, and coverage_forecast'
+  );
+
+  log('Registry change feed schemas:', 'info');
+  await testSchemaValidation(
+    '/schemas/core/registry-feed-response.json',
+    {
+      events: [
+        {
+          event_id: '019539a0-1234-7000-8000-000000000001',
+          event_type: 'property.created',
+          entity_type: 'property',
+          entity_id: '019539a0-b1c2-7000-8000-000000000002',
+          payload: {
+            property_rid: '019539a0-b1c2-7000-8000-000000000002',
+            classification: 'property',
+            source: 'contributed',
+            identifiers: [{ type: 'domain', value: 'streamer.example.com' }]
+          },
+          actor: 'pipeline:crawler',
+          created_at: '2026-03-31T10:00:00.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000003',
+          event_type: 'authorization.granted',
+          entity_type: 'authorization',
+          entity_id: 'https://ads.agency.example.com:streamer.example.com',
+          payload: {
+            agent_url: 'https://ads.agency.example.com',
+            publisher_domain: 'streamer.example.com',
+            authorization_type: 'property_ids',
+            property_ids: ['primetime_ctv'],
+            placement_ids: ['pre_roll_30s'],
+            countries: ['US', 'CA'],
+            delegation_type: 'direct',
+            exclusive: false,
+            signing_keys: [{ kid: 'pub-2026-04', kty: 'OKP', alg: 'EdDSA', crv: 'Ed25519', x: 'abc123' }]
+          },
+          actor: 'pipeline:crawler',
+          created_at: '2026-03-31T10:01:00.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000007',
+          event_type: 'agent.discovered',
+          entity_type: 'agent',
+          entity_id: 'https://new-agent.example.com',
+          payload: {
+            agent_url: 'https://new-agent.example.com',
+            channels: [],
+            property_types: [],
+            markets: [],
+            categories: [],
+            tags: [],
+            delivery_types: [],
+            property_count: 0,
+            publisher_count: 0,
+            has_tmp: false
+          },
+          actor: 'pipeline:crawler',
+          created_at: '2026-03-31T10:01:30.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000004',
+          event_type: 'agent.compliance_changed',
+          entity_type: 'agent',
+          entity_id: 'https://ads.agency.example.com',
+          payload: {
+            agent_url: 'https://ads.agency.example.com',
+            previous_status: 'passing',
+            current_status: 'degraded',
+            headline: 'media_buy track failing: 2 scenarios down',
+            tracks: { core: 'pass', media_buy: 'partial', creative: 'skip', governance: 'silent' },
+            storyboards_passing: 24,
+            storyboards_total: 27,
+            storyboards: [
+              { storyboard_id: 'media_buy_seller', status: 'failing', steps_passed: 4, steps_total: 7 },
+              { storyboard_id: 'optional_controller', status: 'untested' },
+              { storyboard_id: 'mixed_flow', status: 'partial', steps_passed: 3, steps_total: 5 }
+            ]
+          },
+          actor: 'pipeline:compliance-heartbeat',
+          created_at: '2026-03-31T10:02:00.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000008',
+          event_type: 'agent.verification_earned',
+          entity_type: 'agent',
+          entity_id: 'https://ads.agency.example.com',
+          payload: {
+            agent_url: 'https://ads.agency.example.com',
+            role: 'media-buy',
+            verified_specialisms: ['sales-catalog-driven'],
+            adcp_version: '3.1.0-beta.5'
+          },
+          actor: 'pipeline:compliance-heartbeat',
+          created_at: '2026-03-31T10:02:30.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000009',
+          event_type: 'agent.verification_lost',
+          entity_type: 'agent',
+          entity_id: 'https://ads.agency.example.com',
+          payload: {
+            agent_url: 'https://ads.agency.example.com',
+            role: 'media-buy',
+            reason: 'media_buy track failing'
+          },
+          actor: 'pipeline:compliance-heartbeat',
+          created_at: '2026-03-31T10:02:45.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000010',
+          event_type: 'publisher.adagents_discovered',
+          entity_type: 'publisher',
+          entity_id: 'streamer.example.com',
+          payload: {
+            publisher_domain: 'streamer.example.com',
+            agent_count: 2,
+            property_count: 4,
+            source: 'catalog_crawl',
+            discovery_method: 'direct',
+            manager_domain: null
+          },
+          actor: 'pipeline:catalog_crawl',
+          created_at: '2026-03-31T10:03:00.000Z'
+        }
+      ],
+      cursor: '019539a0-1234-7000-8000-000000000010',
+      has_more: false
+    },
+    'Registry feed response validates typed property, authorization, and compliance events'
+  );
+  await testSchemaRejection(
+    '/schemas/core/registry-event.json',
+    {
+      event_id: '019539a0-1234-7000-8000-000000000005',
+      event_type: 'authorization.granted',
+      entity_type: 'authorization',
+      entity_id: 'https://ads.agency.example.com:streamer.example.com',
+      payload: {
+        agent_url: 'https://ads.agency.example.com'
+      },
+      actor: 'pipeline:crawler',
+      created_at: '2026-03-31T10:03:00.000Z'
+    },
+    'Registry authorization events reject missing publisher_domain'
+  );
+  await testSchemaRejection(
+    '/schemas/core/registry-event.json',
+    {
+      event_id: '019539a0-1234-7000-8000-000000000006',
+      event_type: 'agent.compliance_changed',
+      entity_type: 'publisher',
+      entity_id: 'https://ads.agency.example.com',
+      payload: {
+        agent_url: 'https://ads.agency.example.com',
+        previous_status: 'passing',
+        current_status: 'degraded',
+        tracks: { core: 'pass' },
+        storyboards_passing: 1,
+        storyboards_total: 2
+      },
+      actor: 'pipeline:compliance-heartbeat',
+      created_at: '2026-03-31T10:04:00.000Z'
+    },
+    'Registry event discriminator rejects mismatched entity_type'
+  );
+  await testSchemaValidation(
+    '/schemas/signals/get-signals-request.json',
+    {
+      signal_refs: [
+        {
+          scope: 'data_provider',
+          data_provider_domain: 'signals.example.com',
+          signal_id: 'likely_ev_buyers'
+        }
+      ],
+      fields: ['taxonomy', 'modeling', 'data_subject_rights']
+    },
+    'get_signals request accepts requested inline signal fields'
+  );
+  await testSchemaRejection(
+    '/schemas/signals/get-signals-request.json',
+    {
+      signal_spec: 'EV intenders',
+      fields: ['everything']
+    },
+    'get_signals request rejects unknown signal fields'
   );
   log('');
 
@@ -997,6 +1290,253 @@ async function runTests() {
   );
   log('');
 
+  // Signal definition enrichment: taxonomy is metadata on the signal
+  // definition, not a fourth value_type or package-targeting expression branch.
+  log('Signal Definition enrichment:', 'info');
+  await testSchemaValidation(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'likely_ev_buyers',
+      name: 'Likely EV buyers',
+      description: 'Modeled audience for likely electric-vehicle purchase intent.',
+      value_type: 'binary',
+      taxonomy: {
+        ref: 'https://taxonomy.example.com/audience/v1',
+        version: '1.0',
+        values: [
+          { id: 'auto.ev_intenders', path: 'Automotive > EV intenders' }
+        ],
+        parent_match_behavior: 'descendants_supported'
+      },
+      data_sources: ['web_usage', 'online_ecommerce'],
+      methodology: 'modeled',
+      audience_expansion: true,
+      countries: ['US'],
+      consent_basis: ['consent'],
+      modeling: {
+        method: 'lookalike',
+        seed_source: {
+          type: 'first_party_crm',
+          provider_signed: true
+        },
+        training_data_jurisdictions: ['US'],
+        ai_act_risk_class: 'limited',
+        disclosure: {
+          required: true,
+          jurisdictions: [
+            {
+              country: 'US',
+              region: 'CA',
+              regulation: 'state_ai_disclosure',
+              disclosure_text: 'Modeled audience segment.',
+              audience: 'buyer'
+            }
+          ]
+        }
+      },
+      data_subject_rights: {
+        upstream_source_domain: 'signals.example.com',
+        channels: [
+          {
+            rights: ['access', 'erasure', 'objection'],
+            url: 'https://privacy.signals.example.com/requests',
+            languages: ['en-US'],
+            countries: ['US']
+          }
+        ],
+        response_sla_days: 30,
+        gpc_honored: true,
+        ccpa_opt_out_url: 'https://privacy.signals.example.com/opt-out'
+      }
+    },
+    'Binary signal accepts taxonomy metadata, modeling disclosure, and channel-based DSR routing'
+  );
+  await testSchemaValidation(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'panel_derived_households',
+      name: 'Panel-derived households',
+      description: 'Panel-derived TV audience signal where panel recruitment is part of the measurement methodology.',
+      value_type: 'binary',
+      data_sources: ['panel', 'tv_ott_or_stb_device'],
+      methodology: 'derived',
+      subject_type: 'household',
+      resolution_method: 'mixed'
+    },
+    'Panel-derived signal accepts panel as a data source'
+  );
+  await testSchemaValidation(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'legacy_categorical_without_values',
+      name: 'Legacy categorical without values',
+      value_type: 'categorical'
+    },
+    'Categorical signal can omit allowed_values for backwards-compatible minor release'
+  );
+  await testSchemaValidation(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'legacy_numeric_without_range',
+      name: 'Legacy numeric without range',
+      value_type: 'numeric'
+    },
+    'Numeric signal can omit range for backwards-compatible minor release'
+  );
+  await testSchemaValidation(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'vehicle_ownership',
+      name: 'Current vehicle ownership',
+      value_type: 'categorical',
+      allowed_values: ['luxury_ev', 'luxury_non_ev', 'mid_range', 'economy', 'none'],
+      taxonomy: {
+        ref: 'https://taxonomy.example.com/audience/v1',
+        version: '1.0',
+        values: [
+          { id: 'auto.vehicle_ownership', path: 'Automotive > Vehicle ownership' }
+        ],
+        value_mappings: [
+          {
+            value: 'luxury_ev',
+            taxonomy_value_id: 'auto.vehicle_ownership.luxury_ev',
+            path: 'Automotive > Vehicle ownership > Luxury EV'
+          },
+          {
+            value: 'luxury_non_ev',
+            taxonomy_value_id: 'auto.vehicle_ownership.luxury_non_ev',
+            path: 'Automotive > Vehicle ownership > Luxury non-EV'
+          }
+        ],
+        parent_match_behavior: 'exact_only'
+      }
+    },
+    'Categorical signal accepts taxonomy value mappings for allowed_values'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'taxonomy_as_type_rejected',
+      name: 'Taxonomy as value type rejected',
+      value_type: 'taxonomy',
+      taxonomy: {
+        ref: 'https://taxonomy.example.com/audience/v1',
+        values: [{ id: 'auto' }]
+      }
+    },
+    'Rejects taxonomy as value_type; taxonomy belongs in signal-definition metadata'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'modeled_missing_block',
+      name: 'Modeled missing block',
+      value_type: 'binary',
+      methodology: 'modeled'
+    },
+    'Rejects modeled methodology without modeling block'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'modeled_empty_training_jurisdictions',
+      name: 'Modeled empty training jurisdictions',
+      value_type: 'binary',
+      methodology: 'modeled',
+      modeling: {
+        method: 'lookalike',
+        seed_source: {
+          type: 'first_party_crm',
+          provider_signed: true
+        },
+        training_data_jurisdictions: [],
+        ai_act_risk_class: 'limited'
+      }
+    },
+    'Rejects modeled signal with empty training_data_jurisdictions'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'modeled_disclosure_missing_jurisdictions',
+      name: 'Modeled disclosure missing jurisdictions',
+      value_type: 'binary',
+      methodology: 'modeled',
+      modeling: {
+        method: 'lookalike',
+        seed_source: {
+          type: 'first_party_crm',
+          provider_signed: true
+        },
+        training_data_jurisdictions: ['US'],
+        ai_act_risk_class: 'limited',
+        disclosure: {
+          required: true
+        }
+      }
+    },
+    'Rejects required modeling disclosure without jurisdictions'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'categorical_taxonomy_missing_mapping',
+      name: 'Categorical taxonomy missing mapping',
+      value_type: 'categorical',
+      allowed_values: ['luxury_ev'],
+      taxonomy: {
+        ref: 'https://taxonomy.example.com/audience/v1',
+        values: [{ id: 'auto.vehicle_ownership' }]
+      }
+    },
+    'Rejects categorical taxonomy metadata without value_mappings'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'offline_missing_onboarder',
+      name: 'Offline missing onboarder',
+      value_type: 'binary',
+      data_sources: ['offline_transaction']
+    },
+    'Rejects offline/public-record data source without onboarder disclosure'
+  );
+  await testSchemaValidation(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'dsr_email_access_channel',
+      name: 'DSR email access channel',
+      value_type: 'binary',
+      data_subject_rights: {
+        channels: [
+          {
+            rights: ['access'],
+            email: 'privacy@example.com'
+          }
+        ]
+      }
+    },
+    'Accepts DSR routing with an email-only access channel'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-definition.json',
+    {
+      id: 'dsr_no_core_right',
+      name: 'DSR without core right',
+      value_type: 'binary',
+      data_subject_rights: {
+        channels: [
+          {
+            rights: ['portability'],
+            email: 'privacy@example.com'
+          }
+        ]
+      }
+    },
+    'Rejects DSR routing that declares no access, erasure, or objection channel'
+  );
+  log('');
+
   // Test 6: Bundled schemas (no $ref resolution needed)
   // Only test against latest/ — versioned dirs in dist/ may be from a prior release
   // and are not updated on every source change.
@@ -1049,6 +1589,8 @@ async function runTests() {
 
       // Every bundled schema must be self-contained and compile standalone.
       await testAllBundledSchemasCompile(bundledPath);
+
+      await testBundledDeliveryMetricSchemaTitles(BUNDLED_DIR);
 
       // Test a response schema to verify nested refs are resolved
       await testBundledSchemaValidation(
@@ -1180,6 +1722,64 @@ async function testBundledSchemaCompile(schemaPath, description) {
     return true;
   } catch (error) {
     log(`  \u2717 ${description}: ${error.message}`, 'error');
+    failedTests++;
+    return false;
+  }
+}
+
+async function testBundledDeliveryMetricSchemaTitles(bundledDir) {
+  totalTests++;
+  try {
+    const latestDir = path.join(bundledDir, 'latest');
+    const coreSchemas = [
+      ['core/missing-metric.json', 'Missing Metric'],
+      ['core/catalog-item-delivery-metrics.json', 'Catalog Item Delivery Metrics'],
+      ['core/creative-delivery-metrics.json', 'Creative Delivery Metrics'],
+      ['core/keyword-delivery-metrics.json', 'Keyword Delivery Metrics'],
+      ['core/geo-delivery-metrics.json', 'Geo Delivery Metrics']
+    ];
+
+    const missing = [];
+    for (const [relPath, expectedTitle] of coreSchemas) {
+      const schemaPath = path.join(latestDir, relPath);
+      const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+      if (schema.title !== expectedTitle) {
+        missing.push(`${relPath} title=${JSON.stringify(schema.title)} expected ${JSON.stringify(expectedTitle)}`);
+      }
+    }
+
+    const deliverySchema = JSON.parse(fs.readFileSync(
+      path.join(latestDir, 'bundled/media-buy/get-media-buy-delivery-response.json'),
+      'utf8'
+    ));
+    const packageItems = deliverySchema.properties.media_buy_deliveries.items.properties.by_package.items;
+    const packageBreakdowns = packageItems.allOf[1].properties;
+    const bundledTitles = [
+      [packageBreakdowns.missing_metrics.items, 'Missing Metric', 'by_package.missing_metrics.items'],
+      [packageBreakdowns.by_catalog_item.items, 'Catalog Item Delivery Metrics', 'by_package.by_catalog_item.items'],
+      [packageBreakdowns.by_creative.items, 'Creative Delivery Metrics', 'by_package.by_creative.items'],
+      [packageBreakdowns.by_keyword.items, 'Keyword Delivery Metrics', 'by_package.by_keyword.items'],
+      [packageBreakdowns.by_geo.items, 'Geo Delivery Metrics', 'by_package.by_geo.items']
+    ];
+
+    for (const [schema, expectedTitle, label] of bundledTitles) {
+      if (!schema || schema.title !== expectedTitle) {
+        missing.push(`${label} title=${JSON.stringify(schema && schema.title)} expected ${JSON.stringify(expectedTitle)}`);
+      }
+    }
+
+    if (missing.length === 0) {
+      log(`  \u2713 Bundled delivery metric schemas preserve named titles`, 'success');
+      passedTests++;
+      return true;
+    }
+
+    log(`  \u2717 Bundled delivery metric schemas preserve named titles`, 'error');
+    for (const issue of missing) log(`      ${issue}`, 'error');
+    failedTests++;
+    return false;
+  } catch (error) {
+    log(`  \u2717 Bundled delivery metric schemas preserve named titles: ${error.message}`, 'error');
     failedTests++;
     return false;
   }

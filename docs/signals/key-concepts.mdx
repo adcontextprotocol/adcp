@@ -73,13 +73,13 @@ Signals use `signal_ref.scope` as the identity discriminator:
 
 | Scope | Fields | Verification |
 |--------|--------|--------------|
-| `data_provider` | `data_provider_domain` + `signal_id` | Verifiable via the publisher domain's adagents.json signal catalog |
+| `data_provider` | `data_provider_domain` + `signal_id` | Verifiable via the publisher domain's adagents.json `signals[]` |
 | `signal_source` | `signal_source_url` + `signal_id` | Trust-based — buyer trusts the issuing signal source |
 | `product` | `signal_id` | Product-local; meaningful only in the selected product/package context |
 
-**Data-provider catalog signals** come from external data providers who publish their offerings at `/.well-known/adagents.json`. Buyers can independently verify that a seller or signal source is authorized to resell them.
+**Data-provider signals** come from external data providers who publish their offerings at `/.well-known/adagents.json`. Buyers can independently verify that a seller or signal source is authorized to resell them.
 
-**Signal-source signals** are proprietary to a signal source and use `scope: "signal_source"` with that source's `signal_source_url` when they are not published in an adagents.json signal catalog.
+**Signal-source signals** are proprietary to a signal source and use `scope: "signal_source"` with that source's `signal_source_url` when they are not published in adagents.json `signals[]`.
 
 The legacy `signal_id.source` object is deprecated. New `get_signals`, product targeting, and buy-time references use `signal_ref`.
 
@@ -92,7 +92,7 @@ The legacy `signal_id.source` object is deprecated. New `get_signals`, product t
 
 ### Discovery with get_signals
 
-Buyers describe what they need in natural language. The signal agent searches across all its data providers' catalogs and its own proprietary signals:
+Buyers describe what they need in natural language. The signal agent searches across its authorized data-provider signals and its own proprietary signals:
 
 ```json
 {
@@ -145,7 +145,7 @@ Buyers can verify authorization by fetching the data provider's `adagents.json` 
 
 ## Go deeper
 
-- [Data provider guide](/docs/signals/data-providers) — how to publish a signal catalog
+- [Data provider guide](/docs/signals/data-providers) — how to publish signal definitions
 - [Signals ecosystem](/docs/signals/ecosystem) — how each type of company participates
 - [Protocol specification](/docs/signals/specification) — formal conformance requirements
 - [get_signals task reference](/docs/signals/tasks/get_signals) — discovery API details

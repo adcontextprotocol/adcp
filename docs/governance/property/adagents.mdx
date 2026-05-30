@@ -31,9 +31,11 @@ The `adagents.json` file provides a standardized way for publishers to declare t
 }
 ```
 
-This combined model is common for publishers with first-party data — the same domain authorizes sales agents (via `properties`) and declares signal catalogs (via `signals`). The two namespaces are independent: authorization for property sales does not grant signal access, and signal registration does not imply property authorization.
+This combined model is common for publishers with first-party data — the same domain authorizes sales agents (via `properties`) and declares published signal definitions (via `signals`). The two namespaces are independent: authorization for property sales does not grant signal access, and signal registration does not imply property authorization.
 
 See [Signal data providers](/docs/signals/data-providers) for the signals-side documentation.
+
+For the sell-side decision tree that pairs publisher authorization with operator `brand.json` identity and signing-key discovery, see [seller setup](/docs/brand-protocol/seller-setup).
 
 <Tip>
 **[AdAgents.json Builder](https://agenticadvertising.org/adagents/builder)** - Validate existing files or create new ones with guided validation
@@ -66,17 +68,17 @@ For the higher-level framing and a side-by-side example, see [Why adagents.json 
 
 ### Where does sellers.json fit?
 
-In programmatic, `sellers.json` is hosted by the seller/exchange and declares which publishers they represent. AdCP handles this through `brand.json` instead of a separate file. An operator declares properties in their [`brand.json`](/docs/brand-protocol/brand-json) using the `relationship` field, which uses the same values as `delegation_type`: `direct`, `delegated`, or `ad_network`. This creates the same bilateral verification pattern:
+In programmatic, `sellers.json` is hosted by the seller/exchange and declares which publishers they represent. AdCP handles this through `brand.json` instead of a separate file. An operator declares properties in their [`brand.json`](/docs/brand-protocol/brand-json) using the `relationship` field. For first-party inventory, the operator can use `relationship: "owned"`. For delegated or network sell-side paths, `relationship` uses the same values as `delegation_type`: `direct`, `delegated`, or `ad_network`. This creates the same bilateral verification pattern:
 
 | Programmatic | AdCP equivalent | Purpose |
 |---|---|---|
 | `ads.txt` (publisher) | `adagents.json` with `delegation_type` (publisher) | "These agents are authorized, here's the relationship" |
 | `sellers.json` (seller) | `brand.json` properties with `relationship` (operator) | "I sell for these publishers, here's how" |
 
-Both sides must agree — and the `delegation_type` and `relationship` values should match. See [ad networks](/docs/sponsored-intelligence/networks) for how this works in practice.
+For delegated or network paths, both sides must agree — the `delegation_type` and `relationship` values should match. For first-party inventory, `relationship: "owned"` is an inline ownership declaration and has no matching `delegation_type` value. See [ad networks](/docs/sponsored-intelligence/networks) for how this works in practice.
 
 <Note>
-The field is called `delegation_type` in adagents.json and `relationship` in brand.json. The names differ because they describe the same commercial arrangement from different perspectives — the publisher delegates authority (`delegation_type`), the operator declares its relationship to the property (`relationship`). The values are the same: `direct`, `delegated`, `ad_network`.
+The field is called `delegation_type` in adagents.json and `relationship` in brand.json. The names differ because they describe the same commercial arrangement from different perspectives — the publisher delegates authority (`delegation_type`), the operator declares its relationship to the property (`relationship`). Delegated/network values match (`direct`, `delegated`, `ad_network`); `owned` is only a brand.json relationship value.
 </Note>
 
 ## File Location
@@ -170,7 +172,7 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 
 The `placements[]` array is the publisher's public placement catalog. It defines stable, semantic placement IDs that products and authorization rules can reference. A buyer should not have to interpret a raw ad-server ad unit path, delivery placement ID, video-ad-server zone, or other seller-internal delivery identifier to understand what a product offers.
 
-Publishers that expose placement, format, collection, property, or signal catalogs should publish `catalog_etag` and update it whenever those catalog entries change. This lets buyer SDKs cache catalog lookups without silently resolving the same `{publisher_domain, placement_id}` or `{publisher_domain, format_option_id}` to different metadata after a publisher deployment.
+Publishers that expose placement, format, collection, or property catalogs, or published `signals[]` definitions, should publish `catalog_etag` and update it whenever those entries change. This lets buyer SDKs cache catalog lookups without silently resolving the same `{publisher_domain, placement_id}` or `{publisher_domain, format_option_id}` to different metadata after a publisher deployment.
 
 At minimum, a public placement should describe:
 
@@ -318,7 +320,7 @@ For managed-network deployments in AdCP, the normative delegation pattern remain
 `/.well-known/adagents.json` pointer file. New deployments SHOULD use that pattern.
 </Warning>
 
-When `https://{publisher}/.well-known/adagents.json` returns `404`, validators MAY attempt a compatibility fallback via `https://{publisher}/ads.txt`:
+When `https://{publisher}/.well-known/adagents.json` returns `404`, or returns an S3/CloudFront-style `403` `AccessDenied` XML response, validators MAY attempt a compatibility fallback via `https://{publisher}/ads.txt`:
 
 1. Read `ads.txt` and parse `managerdomain` entries.
    - Accepted form: `MANAGERDOMAIN=example.com` (IAB directive form only).
@@ -331,6 +333,7 @@ When `https://{publisher}/.well-known/adagents.json` returns `404`, validators M
 - **One hop only**: maximum depth is exactly one (`publisher -> managerdomain`). Do not chain managerdomain lookups.
 - **Cycle detection required**: if `managerdomain` points to a visited domain, ignore it.
 - **`#noagents` opt-out**: if a managerdomain line has a trailing comment containing the token `noagents` (case-insensitive), clients MUST ignore that managerdomain for adagents discovery. Example: `MANAGERDOMAIN=example.com #NOAGENTS`.
+- **Trigger statuses are narrow**: validators SHOULD only attempt this fallback when the publisher's direct `adagents.json` fetch returns `404` or an S3/CloudFront-style `403` `AccessDenied` XML response. Other statuses and failures — generic `403` denial, `500`, timeout, malformed JSON, content-type mismatch, or schema validation failure — do not trigger `managerdomain`.
 - **Explicit publisher scoping required**: a manager-hosted `adagents.json` MUST positively name the source publisher domain in a `publisher_domain` field that is reachable from at least one `authorized_agents[]` entry. "Reachable" means one of the following paths resolves to the source domain:
 
   1. **Per-agent paths.** The agent entry directly carries the publisher domain under `publisher_properties[].publisher_domain`, inside `publisher_properties[].publisher_domains[]` (the compact managed-network form), or under `collections[].publisher_domain`.

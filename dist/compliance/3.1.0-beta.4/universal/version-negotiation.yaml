@@ -1,0 +1,130 @@
+id: version_negotiation
+version: "1.0.0"
+title: "Release-precision version negotiation"
+category: version_negotiation
+summary: "Sellers advertise supported releases on capabilities and echo the served release on every response."
+track: core
+required_tools: []  # protocol-level: get_adcp_capabilities is mandatory for all agents
+
+narrative: |
+  AdCP 3.1 introduces release-precision (VERSION.RELEASE, e.g. "3.1") version
+  negotiation alongside the legacy major-precision (`adcp_major_version` integer)
+  carried since 3.0. Both directions of the negotiation are SHOULD-level through
+  3.x and graduate to MUST at 4.0 — this storyboard exercises both halves so
+  sellers can discover gaps before the 3.2 grader cutover flips advisory results
+  to blocking failures.
+
+  Two checks ride on a single get_adcp_capabilities call:
+
+  1. **Seller advertises** `adcp.supported_versions` — an array of release-precision
+     strings the seller speaks. Authoritative for buyer-side pinning; the legacy
+     `adcp.major_versions` integer array remains required through 3.x for
+     backwards compatibility.
+
+  2. **Seller echoes** `adcp_version` at the envelope root — the release the seller
+     actually served. Buyers SHOULD validate the response against the echoed
+     release's schema, not against their own pin. Legacy 3.0 sellers that don't
+     read the field omit the echo (`additionalProperties: true` makes the field
+     invisible to them) — buyers fall back to their constructor pin.
+
+  Per the [migration table](/docs/reference/versioning#migration-timeline), both
+  surfaces are advisory at 3.1 and become blocking failure at 3.2. The advisory
+  marker on each validation makes that promotion a single-PR change at 3.2 cut
+  rather than a per-adopter compliance break at the boundary.
+
+  Scope: protocol envelope and capabilities advertisement only. The
+  `VERSION_UNSUPPORTED` error path (buyer pins a release outside the seller's
+  `supported_versions`) is exercised separately by error_compliance — running it
+  here requires the runner to send a deliberately-mismatched pin and is left to
+  follow-up.
+
+agent:
+  interaction_model: "*"  # applies to every agent regardless of protocol or specialism
+  examples:
+    - "Any AdCP agent (seller, signals, creative, retail media, SI, governance)"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    No test-kit credentials required. get_adcp_capabilities is a public operation
+    that every AdCP agent must expose without authentication.
+
+phases:
+  - id: capabilities_advertise_and_echo
+    title: "Capabilities advertise supported_versions; response echoes adcp_version"
+    narrative: |
+      Call get_adcp_capabilities. The single response carries both halves of the
+      negotiation contract — `adcp.supported_versions` in the body (seller's
+      advertisement) and `adcp_version` on the envelope (seller's echo of what
+      it served). Sellers SHOULD populate both at 3.1; the grader reports
+      missing entries as advisory findings without failing certification.
+
+    steps:
+      - id: get_capabilities_with_version
+        title: "Verify seller advertises supported_versions and echoes adcp_version"
+        narrative: |
+          The runner emits `adcp_version` on the request envelope based on its
+          configured pin (the SDK's release-precision constructor option). The
+          seller honors the pin within the resolution algorithm in
+          docs/reference/versioning.mdx, echoes the served release on the response
+          envelope, and lists every release it speaks under
+          `adcp.supported_versions` in the response body.
+
+          A seller serving only 3.0 (no awareness of the new fields) passes the
+          request schema unchanged — `adcp_version` rides on the envelope and is
+          invisible to readers that don't look for it. The advisory checks below
+          will report missing `supported_versions` advertisement and missing
+          envelope echo without failing the step.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: version_negotiation
+        stateful: false
+        expected: |
+          Response carries both halves of the negotiation contract:
+          - Body: adcp.supported_versions (array of release-precision strings, e.g.
+            ["3.0", "3.1"]) declaring every release the seller speaks. Authoritative
+            for buyer-side pinning. SHOULD at 3.1, MUST at 4.0.
+          - Envelope: adcp_version (release-precision string) echoing the release
+            the seller actually served. SHOULD at 3.1, MUST at 4.0. Buyers SHOULD
+            validate the response against the echoed release's schema.
+
+          Legacy `adcp.major_versions` (integer array) remains required through 3.x.
+
+        sample_request:
+          context:
+            correlation_id: "version_negotiation--get_capabilities_with_version"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+
+          - check: field_present
+            path: "adcp.major_versions"
+            description: "Legacy major-precision advertisement present (required through 3.x)"
+
+          - check: field_present
+            path: "adcp.supported_versions"
+            severity: advisory
+            permanent_advisory:
+              reason: "Per docs/reference/versioning.mdx > Migration timeline, sellers SHOULD declare supported_versions at 3.1 and the compliance grader reports presence as advisory. At 3.2 the storyboard cut promotes this validation to required (manual flip — not gated on runner_capability_version because the 3.2 boundary is a protocol-spec cutover, not a runner-capability cutover). 4.0 promotes to MUST per the spec. Marking permanent_advisory here is a deliberate use of the field to defer promotion to the 3.2 storyboard PR rather than relying on the expires_after_version semver gate."
+            description: "Seller advertises release-precision supported_versions (advisory at 3.1, required at 3.2)"
+
+          - check: field_present
+            path: "adcp_version"
+            severity: advisory
+            permanent_advisory:
+              reason: "Per docs/reference/versioning.mdx > Migration timeline, sellers SHOULD echo adcp_version at 3.1 and the compliance grader reports presence as advisory. At 3.2 the storyboard cut promotes this validation to required (manual flip — see the supported_versions check above for the same rationale). 4.0 promotes to MUST per the spec."
+            description: "Seller echoes adcp_version on the response envelope (advisory at 3.1, required at 3.2)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "version_negotiation--get_capabilities_with_version"
+            description: "Context correlation_id returned unchanged"

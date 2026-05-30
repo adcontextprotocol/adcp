@@ -1,23 +1,25 @@
 ---
-title: Canonical Formats (preview)
-description: "Canonical formats live on AdCP; sellers' products narrow them inline. Phase 1 + Phase 2 preview against RFC #3305."
+title: Canonical Formats
+description: "Canonical formats live in AdCP 3.1; sellers' products narrow them inline, with experimental flags on immature canonicals and product declarations."
 "og:title": "AdCP — Canonical Formats"
 testable: true
 ---
 
-# Canonical Formats (preview)
+# Canonical Formats
 
 > **TL;DR for adopters reading cold:**
-> - **7 of 12 canonical formats ship `stable` at 3.1 GA** (`image`, `display_tag`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `native_in_feed` — all re-encodings of IAB / VAST / DAAST / IAB OpenRTB Native 1.2). 5 stay `preview` past GA (`html5`, `image_carousel`, `sponsored_placement`, `responsive_creative`, `agent_placement`).
+> - **9 of 12 canonical formats ship non-experimental at 3.1 GA** (`image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `native_in_feed`). 3 canonicals stay experimental past GA (`sponsored_placement`, `responsive_creative`, `agent_placement`), and the `custom` escape-hatch `format_kind` is inherently experimental until a shape is promoted.
 > - **v1 named formats stay first-class** through 4.x with a 5.0 sunset floor. Dual-emission is the migration mode; SDKs translate either direction. Realistic v2-only buyer-agent timing is 4.x at the earliest.
 > - **15 v1→v2 mapping registry entries at GA, 71+ of audited v1 formats are v1-only** out of the gate (need seller `canonical` field or registry PR to project to v2). v2-aware buyers see meaningfully thinner inventory than v1-aware ones through 3.x. Dual-read codepath realistic through 3.3.
-> - **Phase 4 (SDK codegen) is the gating dependency for adopter consumption.** Schemas are shippable today; the typed-tagged-union ergonomics this design earns land fully only with codegen. The runtime Ajv validator is the load-bearing gate — generated TS/Pydantic types lose `if/then` narrowing on `format_kind: "custom"` and `result_kind`.
+> - **SDK codegen is the gating dependency for ergonomic adopter consumption.** Schemas are shippable today; the typed-tagged-union ergonomics this design earns land fully only with codegen. The runtime Ajv validator is the load-bearing gate — generated TS/Pydantic types lose `if/then` narrowing on `format_kind: "custom"` and `result_kind`.
 
-> **Status:** Preview track. The canonical-formats surface is being designed in flight against [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) and the [#3307 implementation branch](https://github.com/adcontextprotocol/adcp/pull/3307).
+> **Status:** 3.1 surface in release-candidate preparation. The canonical-formats framework ships with 3.1; until GA, adopters should use exact prerelease pins advertised by `supported_versions` (for example `"3.1-beta.7"` today and `"3.1-rc.1"` once an RC artifact exists). Three canonicals plus `custom` remain marked `experimental` until adopter evidence supports promotion. Historical design context lives in [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) and [#3307](https://github.com/adcontextprotocol/adcp/pull/3307).
 >
 > *Naming note*: This work was originally drafted as "creative formats v2" — the v1↔v2 contrast describes the two format-authoring models (legacy named-format registry vs new canonical formats on products). To avoid collision with AdCP-the-protocol's own version numbering (currently 3.x), file paths, identifiers, and the body of this doc use **canonical formats** terminology. The v1↔v2 contrast is reserved as schema-description shorthand where it disambiguates the two authoring paths on `Product.format_ids` vs `Product.format_options`.
 
 Canonical formats collapse today's separate format registry into product-bound declarations. AdCP defines a small set of **canonical formats** (universal building blocks); sellers' products carry inline `ProductFormatDeclaration`s that narrow canonicals with platform-specific parameters. Creative agents become transformation services declaring `build_creative` capabilities targeting canonical formats. Most existing concepts (CTAs, destinations, tracking, brand identity) are reused or stay in their current homes — canonical formats don't create a new vocabulary layer for those.
+
+For hands-on authoring practice, use the [S2 creative specialist module](/docs/learning/specialist/creative), which links to this reference instead of duplicating it.
 
 ## Glossary
 
@@ -41,7 +43,7 @@ Canonical formats collapse today's separate format registry into product-bound d
 | **`provenance_required`** | When true, the product rejects unsigned synthesized assets. Builders attach C2PA-compatible provenance manifests. |
 | **`platform_extensions`** | URI+digest references to platform-specific extensions narrowing the canonical (pixel ID shapes, conversion event taxonomies). |
 | **`asset_source`** | Production-source declaration: who renders the asset bytes. Single shared 5-value enum across `image` / `video_hosted` / `audio_hosted`. `item_production_model` on `sponsored_placement` covers the same axis with a 4-value subset (drops `publisher_host_recorded`, which is audio-specific). |
-| **`status` on canonicals** | Spec-maturity axis (`stable` / `preview` / `deprecated`). All canonicals are `preview` while v2 itself is in preview; per-canonical promotion to `stable` happens at 3.1 GA based on adopter evidence. |
+| **Canonical maturity** | 3.1 uses the `experimental` boolean instead of a separate `stable` / `preview` status axis. Non-experimental canonicals are the default production path; experimental canonicals and `custom` require extra validation before routing budget. |
 | **`since_version` / `migration_target_version`** | Release-precision lifecycle metadata on canonicals — when introduced, when stabilization or breaking revision is expected. |
 | **`validate_input`** | Spec-defined dry-run primitive — buyers verify a manifest against canonicals/products without committing to a render. |
 | **`build_creative`** | Creative-agent surface that produces a manifest from inputs (brief, video_brief, brand). Sales agents do NOT expose `build_creative`. |
@@ -88,9 +90,9 @@ Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model
 
 A canonical (or a seller's specific product declaration) carries a single `experimental: boolean` flag. Same semantics as `experimental` on protocols: 'this is shipping but may break, evolve, or fail.' Buyers reading `experimental: true` SHOULD have a v1 fallback ready and SHOULD validate via `validate_input` or a sandbox before routing production budget. This replaces the earlier two-axis design (`status` + `runtime_status` enums) — collapsed because what buyers actually care about is binary: do I treat this as production-stable, or as use-at-your-own-risk.
 
-`experimental: true` is set at 3.1 GA on four canonicals:
+`experimental: true` is set at 3.1 GA on three canonicals plus the `custom` escape hatch:
 
-| Canonical | Why experimental | Promotion gated on |
+| Format kind | Why experimental | Promotion gated on |
 |---|---|---|
 | `sponsored_placement` | Four meaningfully different retail-media adapter contracts (Amazon SP, Criteo SP / CitrusAd SP, Pinterest Collection, generative-per-SKU) under one canonical — see [Sponsored Placement adapter contracts](/docs/creative/sponsored-placement-adapter-contracts) | Two adopters with `format_schema` evidence |
 | `responsive_creative` | Algorithmic composition (surface picks combinations); no clean v1-translatable equivalent | Adopter evidence + per-surface conformance |
@@ -958,13 +960,35 @@ When NOT to use `validate_input`:
 
 | Tool | Who calls | What it does | Side effects |
 |---|---|---|---|
-| `validate_input` | Buyer | Dry-run validation against canonicals and/or products. Returns per-target `ok` + violations. | None (no creative registered, no synthesis triggered). |
+| `validate_input` | Buyer | Dry-run validation against canonicals and/or products. Returns per-target `validated_pass`, `validated_fail`, or `unvalidatable_nondeterministic`. | None (no creative registered, no synthesis triggered). |
 | `build_creative` | Buyer (calling a creative agent) | Produces a creative manifest from inputs (brief, video_brief, brand). For deterministic flows: one round-trip. For nondeterministic flows: returns task with QA-loop semantics. | Synthesis happens; output manifest is returned. May register a creative on the creative agent's library if the agent supports `has_creative_library`. Does NOT register on the seller. |
 | `sync_creatives` | Buyer (calling a seller) | Submits a manifest to the sales agent for the seller to register against a product. | Validates against canonical + product narrowing; registers creative on the seller's library on success; returns violations on failure. |
 
 For the third-party creative-agent flow: `validate_input` first (cheap pre-flight) → `build_creative` on the creative agent → `sync_creatives` on the sales agent. For the in-house pre-rendered flow: skip `build_creative`; `validate_input` then `sync_creatives`. For the seller-renders-from-brief flow (universalads-class): skip `build_creative` (the seller does the rendering at `sync_creatives` time); `validate_input` then `sync_creatives` directly.
 
 See [`build_creative` task reference](/docs/creative/task-reference/build_creative) for the full request/response shape.
+
+### Format matching vs product satisfaction
+
+Sellers and SDKs MUST normalize legacy named formats before comparing them to canonical declarations. A legacy `format_id` such as `{ "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }` resolves through the explicit `canonical` annotation, `v1_format_ref`, or the canonical mapping registry to a canonical declaration such as `format_kind: "image"` with `params.width: 300` and `params.height: 250`. After that projection, implementations compare the canonical shape and parameters, not the raw `(agent_url, id)` pair.
+
+Two related checks use different directionality:
+
+- **Equivalence matching** answers whether two declarations identify the same underlying creative shape after normalization. `display_300x250` and `format_kind: "image"` with `width: 300` and `height: 250` are equivalent even though their wire identifiers differ.
+- **Product satisfaction** answers whether a submitted or requested creative is specific enough for a product's accepted format declaration. When the product declares a fixed `width`, `height`, `duration_ms_exact`, or equivalent duration range, the requested creative or package selector MUST declare and match that constraint. An under-specified request is not a wildcard for product gating.
+
+Range constraints use containment, not overlap. A range-based request satisfies a product only when every value the request permits falls within the product's accepted range; overlap alone is insufficient. An exact value, such as `duration_ms_exact`, satisfies a range when that exact value falls inside the accepted range.
+
+Concrete examples:
+
+| Product declaration | Buyer request / creative | Result |
+|---|---|---|
+| `image`, `width: 300`, `height: 250` | legacy `display_300x250`, projected to `image` 300x250 | Match |
+| `image`, `width: 300`, `height: 250` | `image` with no width/height | Reject for this product — request is under-specified |
+| `image` with no width/height constraint | `image` 300x250 | Match — a broad product can accept a specific creative |
+| `video_hosted`, `duration_ms_exact: 30000` | `video_hosted` with no duration | Reject for this product — duration is under-specified |
+
+This asymmetry prevents two failure modes: exact-ID comparison rejecting compatible legacy/canonical pairs, and overly-broad matching allowing an under-specified request to satisfy a fixed-size or fixed-duration product.
 
 ### Discovery + validation at scale
 
@@ -1271,6 +1295,7 @@ The SDK side's v1→v2 projection (validated in [adcp-client #1815](https://gith
 
 ## Related
 
+- [S2 creative specialist module](/docs/learning/specialist/creative) — training lab for reading product `format_options[]`, selecting `format_kind`, and mapping `asset_source`
 - [v1 → canonical-formats migration guide](/docs/creative/canonical-formats-migration) — concrete migration paths for sellers, creative agents, buyers, and publisher-direct integrations
 - [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) — v2 architecture decisions and rationale
 - [PR #3307](https://github.com/adcontextprotocol/adcp/pull/3307) — Phase 1 + Phase 2 implementation, on hold pending 3.1.0 beta cycle

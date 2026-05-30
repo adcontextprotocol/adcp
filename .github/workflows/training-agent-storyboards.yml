@@ -12,8 +12,11 @@ on:
       - 'scripts/overlay-compliance-cache.sh'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
+      - 'scripts/stage-sdk-schema-bundle.sh'
+      - 'static/schemas/source/**'
       - 'static/compliance/source/**'
       - 'dist/compliance/**'
+      - 'dist/schemas/**'
       - '.github/workflows/training-agent-storyboards.yml'
   push:
     branches: [main, '3.0.x']
@@ -26,8 +29,11 @@ on:
       - 'scripts/overlay-compliance-cache.sh'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
+      - 'scripts/stage-sdk-schema-bundle.sh'
+      - 'static/schemas/source/**'
       - 'static/compliance/source/**'
       - 'dist/compliance/**'
+      - 'dist/schemas/**'
       - '.github/workflows/training-agent-storyboards.yml'
 
 concurrency:
@@ -117,7 +123,7 @@ jobs:
             min_clean_storyboards: 65
             min_passing_steps: 80
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
 
@@ -197,14 +203,28 @@ jobs:
           )
           TMP_DIR="$(mktemp -d)"
           git archive "origin/${RELEASE_BASE_REF}" "dist/compliance/${VERSION}" | tar -x -C "${TMP_DIR}"
+          git archive "origin/${RELEASE_BASE_REF}" "dist/schemas/${VERSION}" | tar -x -C "${TMP_DIR}"
+          mkdir -p "${TMP_DIR}/schemas/cache"
+          cp -R "${TMP_DIR}/dist/schemas/${VERSION}" "${TMP_DIR}/schemas/cache/${VERSION}"
           DIR="${TMP_DIR}/dist/compliance/${VERSION}"
           if [ ! -f "${DIR}/index.json" ]; then
             echo "::error::Compliance bundle not found at ${DIR}"
             exit 1
           fi
+          git archive "origin/${RELEASE_BASE_REF}" "dist/schemas/${VERSION}" | tar -x -C "${TMP_DIR}"
+          SCHEMA_DIR="${TMP_DIR}/dist/schemas/${VERSION}"
+          if [ ! -f "${SCHEMA_DIR}/index.json" ]; then
+            echo "::error::Schema bundle not found at ${SCHEMA_DIR}"
+            exit 1
+          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "dir=${DIR}" >> "$GITHUB_OUTPUT"
+          echo "schema_dir=${SCHEMA_DIR}" >> "$GITHUB_OUTPUT"
           echo "Using ${DIR}"
+
+      - name: Stage latest released 3.0.x schema bundle
+        if: matrix.surface == '3.0-compat'
+        run: bash scripts/stage-sdk-schema-bundle.sh "${{ steps.compat-bundle.outputs.schema_dir }}" "${{ steps.compat-bundle.outputs.version }}"
 
       - name: Run storyboards against /${{ matrix.tenant }}
         id: run
@@ -285,13 +305,79 @@ jobs:
         run: |
           set -euo pipefail
           required_clean=(
+            "media_buy_seller/billing_finality_delivery"
             "media_buy_seller/canonical_formats"
+            "media_buy_seller/vendor_metric_catalog_precondition"
+            "canonical_format_validate_input"
+            "notification_config_event_scope"
+            "notification_config_lifecycle"
+            "notification_config_rejections"
+            "wholesale_feed_products"
+            "wholesale_feed_product_webhooks"
+            "wholesale_feed_bulk_webhooks"
           )
           for storyboard_id in "${required_clean[@]}"; do
             if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
               echo "Required-clean storyboard passed: ${storyboard_id}"
             else
               echo "::error::Required-clean storyboard did not pass on /sales current surface: ${storyboard_id}"
+              echo "Last matching log lines:"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
+
+      - name: Enforce signals required-clean storyboards
+        if: matrix.surface == 'current' && matrix.tenant == 'signals'
+        run: |
+          set -euo pipefail
+          required_clean=(
+            "wholesale_feed_signals"
+            "wholesale_feed_signal_webhooks"
+            "wholesale_feed_bulk_webhooks"
+          )
+          for storyboard_id in "${required_clean[@]}"; do
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
+              echo "Required-clean storyboard passed: ${storyboard_id}"
+            else
+              echo "::error::Required-clean storyboard did not pass on /signals current surface: ${storyboard_id}"
+              echo "Last matching log lines:"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
+
+      - name: Enforce creative required-clean storyboards
+        if: matrix.surface == 'current' && matrix.tenant == 'creative'
+        run: |
+          set -euo pipefail
+          required_clean=(
+            "canonical_format_validate_input"
+            "creative/billing_out_of_band"
+          )
+          for storyboard_id in "${required_clean[@]}"; do
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
+              echo "Required-clean storyboard passed: ${storyboard_id}"
+            else
+              echo "::error::Required-clean storyboard did not pass on /creative current surface: ${storyboard_id}"
+              echo "Last matching log lines:"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
+
+      - name: Enforce creative-builder required-clean storyboards
+        if: matrix.surface == 'current' && matrix.tenant == 'creative-builder'
+        run: |
+          set -euo pipefail
+          required_clean=(
+            "canonical_format_validate_input"
+          )
+          for storyboard_id in "${required_clean[@]}"; do
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
+              echo "Required-clean storyboard passed: ${storyboard_id}"
+            else
+              echo "::error::Required-clean storyboard did not pass on /creative-builder current surface: ${storyboard_id}"
               echo "Last matching log lines:"
               grep -F "${storyboard_id}" /tmp/storyboards.log || true
               exit 1

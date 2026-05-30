@@ -1,13 +1,13 @@
 ---
 title: Data Provider Guide
 sidebarTitle: Data Providers
-description: "Publish a signal catalog as a data provider using adagents.json. Define signal value types, authorize signal agents, and enable AI-driven audience discovery and verification through AdCP."
+description: "Publish signal definitions as a data provider using adagents.json. Define signal value types, authorize signal agents, and enable AI-driven audience discovery and verification through AdCP."
 "og:title": "AdCP — Data Provider Guide"
 ---
 
 # Data Provider Guide
 
-This guide explains how data providers publish signal catalogs via `adagents.json`, enabling AI agents to discover, verify authorization, and activate signals for advertising campaigns.
+This guide explains how data providers publish signal definitions via `adagents.json` `signals[]`, enabling AI agents to discover, verify authorization, and activate signals for advertising campaigns.
 
 ## The Problem
 
@@ -23,16 +23,16 @@ Data providers (Pinnacle Data, Meridian Analytics, Apex Segments, etc.) own valu
 
 ## The Solution
 
-Signal Catalogs solve these problems by letting data providers publish a machine-readable catalog of their signals at a well-known URL. This enables:
+Published signal definitions solve these problems by letting data providers publish machine-readable descriptions of their signals at a well-known URL. This enables:
 
 - **Discovery**: AI agents can find signals via natural language ("find automotive purchase intent signals") or structured lookup
 - **Authorization verification**: Buyers can verify authorization by checking the data provider's domain directly
 - **Typed targeting**: Signal definitions include value types (binary, categorical, numeric) so agents can construct correct targeting expressions
-- **Scalable partnerships**: Authorize agents once in your catalog; as you add signals, authorized agents automatically have access
+- **Scalable partnerships**: Authorize agents once in `adagents.json`; as you add signals, authorized agents automatically have access
 
 ## Overview
 
-Data providers own audience and contextual data (purchase intent, demographics, behavioral segments). The Signal Catalog feature lets you publish your signals in a standardized format that:
+Data providers own audience and contextual data (purchase intent, demographics, behavioral segments). The `signals[]` publishing model lets you publish your signals in a standardized format that:
 
 - Enables discovery via natural language queries
 - Provides authorization verification for agents
@@ -54,7 +54,7 @@ Both use `/.well-known/adagents.json` as the publishing mechanism. A single `ada
 
 ## File Location
 
-Data providers host their signal catalog at:
+Data providers host their published signal definitions at:
 
 ```
 https://your-domain.com/.well-known/adagents.json
@@ -107,13 +107,13 @@ Following [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) well-known U
 
 Each signal in the `signals` array describes a targetable segment:
 
-The signal definition is not itself a `signal_ref`. In `adagents.json`, the hosting domain supplies the namespace, so the definition only needs its local `id`. A media-buy product that makes this catalog signal selectable points back to it with `signal_ref: { "scope": "data_provider", "data_provider_domain": "<this adagents.json domain>", "signal_id": "<signals[].id>" }`. If a seller publishes its own signal catalog, the seller can be the data-provider domain for these references; `scope: "data_provider"` means catalog-resolved, not necessarily third-party.
+The signal definition is not itself a `signal_ref`. In `adagents.json`, the hosting domain supplies the namespace, so the definition only needs its local `id`. A media-buy product that makes this provider-published signal selectable points back to it with `signal_ref: { "scope": "data_provider", "data_provider_domain": "<this adagents.json domain>", "signal_id": "<signals[].id>" }`. If a seller publishes its own `signals[]`, the seller can be the data-provider domain for these references; `scope: "data_provider"` means adagents.json-resolved, not necessarily third-party.
 
 ### Required Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | string | Unique identifier within your catalog. Pattern: `^[a-zA-Z0-9_-]+$` |
+| `id` | string | Unique identifier within your published `signals[]`. Pattern: `^[a-zA-Z0-9_-]+$` |
 | `name` | string | Human-readable signal name |
 | `value_type` | enum | Data type: `binary`, `categorical`, or `numeric` |
 
@@ -127,6 +127,79 @@ The signal definition is not itself a `signal_ref`. In `adagents.json`, the host
 | `range` | object | For numeric signals: `{ min, max, unit }` |
 | `restricted_attributes` | array | Restricted attribute categories this signal touches (e.g., `["health_data"]`). Enables structural governance matching. |
 | `policy_categories` | array | Policy categories this signal is sensitive for (e.g., `["children_directed"]`). Enables structural governance matching. |
+| `taxonomy` | object | External taxonomy metadata for discovery, review, and translation. Does not change `value_type` or package targeting grammar. |
+| `data_sources` | array | IAB Data Transparency Standard-aligned source categories used to compile the signal. |
+| `methodology` | enum | How membership or attribute values were determined: `observed`, `declared`, `derived`, `inferred`, or `modeled`. |
+| `modeling` | object | Required when `methodology` is `modeled` or `audience_expansion` is `true`. Includes seed source, training jurisdictions, AI risk class, and disclosure notes. |
+| `countries` | array | ISO 3166-1 alpha-2 countries where the signal is applicable. |
+| `consent_basis` | array | GDPR Article 6 lawful basis or consent basis for processing this signal's data. Use `countries`, `policy_categories`, and disclosure fields for non-GDPR obligations. |
+| `data_subject_rights` | object | Per-signal rights-routing channels for access, erasure, objection, and related requests. |
+
+### Definition Enrichment
+
+Use enrichment fields when buyers, sellers, governance agents, or regulators need more than a name and value type:
+
+| Purpose | Fields | When to use |
+|---------|--------|-------------|
+| Discovery and taxonomy | `taxonomy`, `taxonomy.values`, `taxonomy.value_mappings`, `taxonomy.parent_match_behavior` | The signal maps to an external audience, content, retail-media, or provider-owned taxonomy. For categorical signals, `value_mappings` maps each package-targeting `allowed_values[]` string to a stable taxonomy node; each mapping value should match an `allowed_values[]` entry. |
+| Source and methodology | `data_sources`, `methodology`, `segmentation_criteria`, `criteria_url`, `refresh_cadence`, `lookback_window`, `onboarder` | The provider wants DTS-style transparency. `onboarder` is required for offline or public-record sources. |
+| Modeling and disclosure | `modeling`, `audience_expansion`, `device_expansion` | Required when `methodology` is `modeled` or `audience_expansion` is `true`. `device_expansion` is for deterministic cross-device expansion; probabilistic cross-device inference should use modeling. `modeling.training_data_jurisdictions` must be non-empty. If `modeling.disclosure.required` is `true`, `modeling.disclosure.jurisdictions` is required. |
+| Privacy and governance | `countries`, `consent_basis`, `restricted_attributes`, `policy_categories`, `art9_basis` | The signal may be jurisdictionally limited, policy-sensitive, or subject to special-category review. |
+| Rights routing | `data_subject_rights` | Rights requests route differently by signal or upstream source. Each routing block must include a channel supporting at least one of access, erasure, or objection. |
+
+```json
+{
+  "id": "vehicle_ownership",
+  "name": "Current vehicle ownership",
+  "description": "Declared or inferred current household vehicle ownership.",
+  "value_type": "categorical",
+  "allowed_values": ["luxury_ev", "luxury_non_ev", "mid_range", "economy", "none"],
+  "taxonomy": {
+    "ref": "https://taxonomy.example.com/audience/v1",
+    "version": "1.0",
+    "values": [
+      { "id": "auto.vehicle_ownership", "path": "Automotive > Vehicle ownership" }
+    ],
+    "value_mappings": [
+      {
+        "value": "luxury_ev",
+        "taxonomy_value_id": "auto.vehicle_ownership.luxury_ev",
+        "path": "Automotive > Vehicle ownership > Luxury EV"
+      }
+    ],
+    "parent_match_behavior": "exact_only"
+  },
+  "data_sources": ["online_survey", "transaction"],
+  "methodology": "derived",
+  "subject_type": "household",
+  "resolution_method": "mixed",
+  "countries": ["US"],
+  "consent_basis": ["consent"],
+  "data_subject_rights": {
+    "channels": [
+      {
+        "rights": ["access", "erasure", "objection"],
+        "url": "https://privacy.pinnacle-data.example/requests",
+        "countries": ["US"]
+      }
+    ],
+    "response_sla_days": 30
+  }
+}
+```
+
+Taxonomy parent nodes do not imply targeting expansion by themselves. If `parent_match_behavior` is `descendants_supported`, the seller may expand known, version-pinned parent nodes internally, typically by ORing children in its execution system. Package targeting still uses the signal's declared `value_type`.
+
+### Publishing large definition resources
+
+Provider-published `adagents.json` is the authoritative definition surface, but
+large external resources do not need to be duplicated in every `get_signals`
+listing. For large taxonomies, long segmentation criteria, or
+jurisdiction-specific disclosure text, publish stable pointers such as `taxonomy.ref`,
+`criteria_url`, and `modeling.disclosure.jurisdictions[].disclosure_url`; use
+`taxonomy.etag` when the taxonomy has its own freshness validator. Signal
+agents can then return compact discovery listings while buyers fetch and cache
+the full definition only when they need the deeper review context.
 
 ## Signal Value Types
 
@@ -210,7 +283,7 @@ Authorize all signals with certain tags:
 {
   "authorized_agents": [
     {
-      "url": "https://full-catalog-agent.example.com",
+      "url": "https://full-signal-agent.example.com",
       "authorized_for": "All automotive signals",
       "authorization_type": "signal_tags",
       "signal_tags": ["automotive"]
@@ -219,7 +292,7 @@ Authorize all signals with certain tags:
 }
 ```
 
-**Best for**: Large catalogs. As you add signals with the tag, agents automatically get access.
+**Best for**: Large signal sets. As you add signals with the tag, agents automatically get access.
 
 ## Signal Tags
 
@@ -241,15 +314,15 @@ The `signal_tags` object provides metadata for tags used in signals:
 ```
 
 **Why define tags?**
-- Human-readable context for buyers exploring your catalog
+- Human-readable context for buyers exploring your signal definitions
 - Enables efficient authorization ("all premium signals")
 - Groups related signals for easier discovery
 
-## How Buyers Use Your Catalog
+## How Buyers Use Your Signal Definitions
 
 ### 1. Discovery
 
-Buyers call `get_signals` on a signals agent. The agent may use your catalog for:
+Buyers call `get_signals` on a signals agent. The agent may use your published definitions for:
 - Natural language matching ("find automotive purchase intent signals")
 - Structured lookup by `signal_ref`
 
@@ -301,15 +374,15 @@ Based on `value_type`, buyers construct targeting expressions:
 
 ## Local and External Signal References
 
-Not all signals come from third-party data provider catalogs. Sellers and publishers can also define their own signals - custom models, first-party data, or composite segments - the same way they define other named resources in `adagents.json`. When those signals are meant to be portable and externally referenceable, publish them in the `signals` array and reference them from products with `scope: "data_provider"` using the seller's own catalog domain. When they are only meaningful within one product/package context, expose them only as product-local `signal_targeting_options` with `scope: "product"`.
+Not all signals come from third-party data providers. Sellers and publishers can also define their own signals - custom models, first-party data, or composite segments - the same way they define other named resources in `adagents.json`. When those signals are meant to be portable and externally referenceable, publish them in the `signals` array and reference them from products with `scope: "data_provider"` using the seller's own publishing domain. When they are only meaningful within one product/package context, expose them only as product-local `signal_targeting_options` with `scope: "product"`.
 
 Use `signal_ref` for `get_signals`, media-buy product targeting, and package-level buy-time targeting:
 
 | Reference | Meaning |
 |--------|--------|
 | `{ "scope": "product", "signal_id": "high_intent_shoppers" }` | Product-local signal option, meaningful inside the selected product/package context |
-| `{ "scope": "data_provider", "data_provider_domain": "pinnacle-data.example", "signal_id": "auto_intenders" }` | Signal defined by a data provider's published adagents.json signal catalog |
-| `{ "scope": "signal_source", "signal_source_url": "https://signals.example/.well-known/adcp/signals", "signal_id": "custom_model_run_123" }` | Source-native signal not published in an upstream adagents.json signal catalog |
+| `{ "scope": "data_provider", "data_provider_domain": "pinnacle-data.example", "signal_id": "auto_intenders" }` | Signal defined in a data provider's published adagents.json `signals[]` |
+| `{ "scope": "signal_source", "signal_source_url": "https://signals.example/.well-known/adcp/signals", "signal_id": "custom_model_run_123" }` | Source-native signal not published in upstream adagents.json `signals[]` |
 
 ```json
 {
@@ -335,7 +408,7 @@ The older `signal_id.source` shape is deprecated and retained only for backwards
 
 ## Complete Example
 
-A full signal catalog for an automotive data provider:
+A full `adagents.json` signal definition set for an automotive data provider:
 
 ```json
 {
@@ -400,7 +473,7 @@ A full signal catalog for an automotive data provider:
 
 ## Location data provider example
 
-A geo/mobility provider's signal catalog uses the same structure but with location-specific signals. Here's the `signals` array for a provider publishing foot traffic and mobility data:
+A geo/mobility provider's published signal definitions use the same structure but with location-specific signals. Here's the `signals` array for a provider publishing foot traffic and mobility data:
 
 ```json
 {
@@ -436,7 +509,7 @@ Note how the three value types map to different geo concepts: `binary` for yes/n
 
 ## Identity / demographic provider example
 
-An identity company's signal catalog publishes consumer segments derived from financial records, surveys, and public data. Note: these are **targeting segments**, not raw data. Credit-derived signals may carry regulatory obligations (FCRA) — consult your compliance team before publishing.
+An identity company's published signal definitions can include consumer segments derived from financial records, surveys, and public data. Note: these are **targeting segments**, not raw data. Credit-derived signals may carry regulatory obligations (FCRA) — consult your compliance team before publishing.
 
 ```json
 {
@@ -508,7 +581,7 @@ Retail signals are especially valuable because they're deterministic — based o
 
 ## Validation
 
-Use the [AdAgents.json Builder](https://agenticadvertising.org/adagents/builder) to validate your signal catalog, or validate programmatically:
+Use the [AdAgents.json Builder](https://agenticadvertising.org/adagents/builder) to validate your published signal definitions, or validate programmatically:
 
 ```bash
 curl -X POST https://adcontextprotocol.org/api/adagents/validate \
@@ -542,7 +615,7 @@ Include `description` so buyers understand what each signal represents.
 
 ### 3. Use Tags for Scalability
 
-As your catalog grows, tags enable efficient authorization without listing every signal ID.
+As your signal set grows, tags enable efficient authorization without listing every signal ID.
 
 ### 4. Document Value Types Clearly
 
@@ -629,11 +702,11 @@ Signal agents advertise available data providers via `get_adcp_capabilities`:
 }
 ```
 
-This tells buyers which data providers' catalogs the agent can access.
+This tells buyers which data providers' published signal definitions the agent can access.
 
 ## Next Steps
 
-1. **Create your adagents.json** with your signal catalog
+1. **Create your adagents.json** with your published signal definitions
 2. **Host at** `/.well-known/adagents.json` on your domain
 3. **Validate** using the AdAgents.json Builder
 4. **Partner with signals agents** who will resell your data

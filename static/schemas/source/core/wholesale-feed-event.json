@@ -582,8 +582,14 @@
         },
         "coverage_percentage": {
           "type": "number",
+          "description": "DEPRECATED for detailed planning. Optional legacy scalar percentage of audience coverage retained only as a fallback for clients that do not consume coverage_forecast. When coverage_forecast is present, coverage_forecast is authoritative for signal-level discovery and coverage_percentage is fallback-only.",
           "minimum": 0,
-          "maximum": 100
+          "maximum": 100,
+          "deprecated": true
+        },
+        "coverage_forecast": {
+          "$ref": "/schemas/core/signal-coverage-forecast.json",
+          "description": "Optional forecast-shaped signal availability guidance using the same wire shape as get_signals.signals[].coverage_forecast. When present, this is authoritative for signal-level discovery coverage."
         },
         "deployments": {
           "type": "array",
@@ -605,7 +611,6 @@
         "name",
         "description",
         "signal_type",
-        "coverage_percentage",
         "deployments"
       ],
       "anyOf": [

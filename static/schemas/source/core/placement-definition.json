@@ -85,6 +85,15 @@
       },
       "minItems": 1
     },
+    "video_placement_types": {
+      "type": "array",
+      "description": "Declared video placement types for this publisher placement, using IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions with AdCP-native names. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. Product-level placement declarations may narrow this set but SHOULD NOT broaden it. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "/schemas/enums/video-placement-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

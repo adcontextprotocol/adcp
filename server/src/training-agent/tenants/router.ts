@@ -9,17 +9,87 @@
  * mounted at the parent training-agent router level, not here.
  */
 
+import { createHash } from 'node:crypto';
 import { Router, type Request, type Response, type RequestHandler } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
 import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type RegistryHolder } from './registry.js';
 import { buildSignedRevocationList } from '../governance-revocations.js';
-import { getTenantResponseSigningMaterial } from './signing.js';
-import { wrapResponseForSigning } from '../response-signing.js';
+import { salesCapabilityProjection } from '../v6-sales-platform.js';
+import { handleComplyTestController } from '../comply-test-controller.js';
+import { adcpError, resolveServedAdcpVersion } from '../task-handlers.js';
 import type { TrainingContext } from '../types.js';
+import { getAgentUrl } from '../config.js';
 
 const logger = createLogger('training-agent-tenant-router');
+const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
+const SIGNAL_WHOLESALE_EVENTS = ['signal.created', 'signal.updated', 'signal.priced', 'signal.removed'] as const;
+
+const SALES_LEGACY_CAPABILITY_SCENARIOS = [
+  'force_creative_status',
+  'force_media_buy_status',
+  'simulate_delivery',
+  'simulate_budget_spend',
+] as const;
+
+const SALES_CURRENT_SCENARIOS = [
+  ...SALES_LEGACY_CAPABILITY_SCENARIOS,
+  'force_create_media_buy_arm',
+  'force_task_completion',
+  'force_creative_purge',
+  'seed_product',
+  'seed_pricing_option',
+  'seed_creative',
+  'seed_media_buy',
+  'seed_creative_format',
+  'seed_measurement_catalog',
+  'query_provenance_audit_observations',
+] as const;
+
+const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7'] as const;
+const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
+
+function bearerToken(req: Request): string | undefined {
+  const auth = req.headers.authorization;
+  if (typeof auth === 'string') {
+    const scheme = 'bearer';
+    if (
+      auth.length > scheme.length
+      && auth.slice(0, scheme.length).toLowerCase() === scheme
+      && (auth[scheme.length] === ' ' || auth[scheme.length] === '\t')
+    ) {
+      const token = auth.slice(scheme.length + 1).trim();
+      if (token.length > 0) return token;
+    }
+  }
+  const legacy = req.headers['x-adcp-auth'];
+  return typeof legacy === 'string' && legacy.length > 0 ? legacy : undefined;
+}
+
+function apiKeyCredential(req: Request, principal: string): { kind: 'api_key'; key_id: string } {
+  // Mirror @adcp/sdk's verifyApiKey key_id shape: SHA-256(token), truncated
+  // to 32 hex chars. The tenant router uses custom Express middleware, so it
+  // must bridge the credential field that serve().attachAuthInfo would have
+  // stamped for the SDK's buyer-agent registry.
+  const token = bearerToken(req) ?? principal;
+  return {
+    kind: 'api_key',
+    key_id: createHash('sha256').update(token).digest('hex').slice(0, 32),
+  };
+}
+
+function salesComplyScenarios(storyboardCompat?: TrainingContext['storyboardCompat']): string[] {
+  return storyboardCompat?.version === '3.0'
+    ? [...SALES_LEGACY_CAPABILITY_SCENARIOS]
+    : [...SALES_CURRENT_SCENARIOS];
+}
+
+function salesCapabilityScenarios(storyboardCompat?: TrainingContext['storyboardCompat']): string[] {
+  return storyboardCompat?.version === '3.0'
+    ? [...SALES_LEGACY_CAPABILITY_SCENARIOS]
+    : [...SALES_CURRENT_SCENARIOS];
+}
 
 /**
  * Per-tenant connect-handle-close serializer.
@@ -87,17 +157,12 @@ function setCORSHeaders(res: Response): void {
  * (`test-agent.adcontextprotocol.org/sales/mcp`) and the local mount
  * (`/api/training-agent/sales/mcp`).
  */
-function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
+function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCompat?: TrainingContext['storyboardCompat']) {
   return async (req: Request, res: Response): Promise<void> => {
     setCORSHeaders(res);
 
-    // Wrap res with the response-signing middleware. Buffers writes from
-    // the MCP transport, signs the buffered body with the tenant's
-    // response-signing key, and writes back with RFC 9421 Signature /
-    // Signature-Input / Content-Digest headers. Non-2xx and non-JSON
-    // responses pass through unsigned.
-    const responseSigner = getTenantResponseSigningMaterial(tenantId);
-    wrapResponseForSigning(req, res, responseSigner.signerKey, tenantId);
+    wrapTenantToolDiscoveryProjection(req, res, storyboardCompat);
+    wrapSalesCapabilitiesProjection(req, res, tenantId, storyboardCompat);
 
     // Bridge `res.locals.trainingPrincipal` (set by the upstream
     // `requireAuth` middleware) onto `req.auth` so the framework's MCP
@@ -118,10 +183,24 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
       // `token: ''` matches the framework's no-token path verbatim, so any
       // future shape-check that asserts field presence holds against this
       // bridged value the same as against the framework's own.
-      (req as { auth: { token: string; clientId: string; scopes: string[] } }).auth = {
+      const demoToken = principal.startsWith('static:demo:')
+        ? principal.slice('static:demo:'.length)
+        : undefined;
+      (req as {
+        auth: {
+          token: string;
+          clientId: string;
+          scopes: string[];
+          extra: Record<string, unknown>;
+        };
+      }).auth = {
         token: '',
         clientId: principal,
         scopes: [],
+        extra: {
+          ...(demoToken !== undefined && { demo_token: demoToken }),
+          credential: apiKeyCredential(req, principal),
+        },
       };
     }
 
@@ -195,6 +274,20 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
     // Serialize the connect/handle/close window per tenant — see
     // `withTenantLock` above for the race this prevents (adcp#4084).
     await withTenantLock(resolved.tenantId, async () => {
+      if (
+        principal
+        && req.body?.method === 'tools/call'
+        && req.body?.params?.name === 'comply_test_controller'
+        && req.body.params.arguments
+        && typeof req.body.params.arguments === 'object'
+      ) {
+        req.body.params.arguments.__training_principal = principal;
+      }
+
+      if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat)) {
+        return;
+      }
+
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
@@ -222,6 +315,342 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
         await resolved.server.close().catch(() => {});
       }
     });
+  };
+}
+
+async function tryHandleLocalComplyScenario(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  principal: string | undefined,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): Promise<boolean> {
+  if (tenantId !== 'sales') return false;
+  if (req.body?.method !== 'tools/call') return false;
+  if (req.body?.params?.name !== 'comply_test_controller') return false;
+
+  const rawArgs = (req.body.params.arguments ?? {}) as Record<string, unknown>;
+  const isThreeZeroCompat = storyboardCompat?.version === '3.0';
+  if (
+    rawArgs.scenario !== 'seed_measurement_catalog'
+    && rawArgs.scenario !== 'force_creative_purge'
+    && rawArgs.scenario !== 'query_provenance_audit_observations'
+    && rawArgs.scenario !== 'list_scenarios'
+  ) return false;
+  if (
+    isThreeZeroCompat
+    && (
+      rawArgs.scenario === 'seed_measurement_catalog'
+      || rawArgs.scenario === 'force_creative_purge'
+      || rawArgs.scenario === 'query_provenance_audit_observations'
+    )
+  ) return false;
+
+  const { context, ...handlerArgs } = rawArgs;
+  const versionResolution = resolveServedAdcpVersion(handlerArgs);
+  if (!versionResolution.ok) {
+    res.json({
+      jsonrpc: '2.0',
+      id: req.body.id ?? null,
+      result: adcpError('VERSION_UNSUPPORTED', {
+        message: versionResolution.message,
+        details: versionResolution.details,
+        field: versionResolution.field,
+      }, context),
+    });
+    return true;
+  }
+
+  const result = await runWithSessionContext(async () => {
+    const body = rawArgs.scenario === 'list_scenarios'
+      ? {
+          success: true,
+          scenarios: salesComplyScenarios(storyboardCompat),
+        }
+      : await handleComplyTestController(handlerArgs, {
+          mode: 'open',
+          principal: principal ?? 'anonymous',
+        });
+    await flushDirtySessions();
+    return body as Record<string, unknown>;
+  });
+  const structuredContent = {
+    status: 'completed',
+    adcp_version: versionResolution.servedVersion,
+    ...result,
+    ...(context !== undefined && { context }),
+  };
+  res.json({
+    jsonrpc: '2.0',
+    id: req.body.id ?? null,
+    result: {
+      content: [{ type: 'text', text: JSON.stringify(structuredContent) }],
+      structuredContent,
+    },
+  });
+  return true;
+}
+
+function wrapSalesCapabilitiesProjection(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): void {
+  if (req.body?.method !== 'tools/call') return;
+  if (req.body?.params?.name !== 'get_adcp_capabilities') return;
+
+  const origEnd = res.end.bind(res);
+  const chunks: Buffer[] = [];
+  stripContentLengthOnWriteHead(res);
+
+  (res as unknown as { write: (...args: unknown[]) => boolean }).write = (chunk: unknown, ...rest: unknown[]) => {
+    if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
+    const cb = rest.find(arg => typeof arg === 'function') as (() => void) | undefined;
+    if (cb) queueMicrotask(cb);
+    return true;
+  };
+
+  (res as unknown as { end: (...args: unknown[]) => Response }).end = (chunk?: unknown, ...rest: unknown[]) => {
+    if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
+    const body = Buffer.concat(chunks);
+    const patched = projectSalesCapabilities(body, tenantId, storyboardCompat);
+    if (patched !== body && !res.headersSent) {
+      res.setHeader('content-length', String(patched.length));
+    }
+    return origEnd(patched, ...rest as []);
+  };
+}
+
+function wrapTenantToolDiscoveryProjection(
+  req: Request,
+  res: Response,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): void {
+  if (req.body?.method !== 'tools/list') return;
+
+  const origEnd = res.end.bind(res);
+  const chunks: Buffer[] = [];
+  stripContentLengthOnWriteHead(res);
+
+  (res as unknown as { write: (...args: unknown[]) => boolean }).write = (chunk: unknown, ...rest: unknown[]) => {
+    if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
+    const cb = rest.find(arg => typeof arg === 'function') as (() => void) | undefined;
+    if (cb) queueMicrotask(cb);
+    return true;
+  };
+
+  (res as unknown as { end: (...args: unknown[]) => Response }).end = (chunk?: unknown, ...rest: unknown[]) => {
+    if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
+    const body = Buffer.concat(chunks);
+    const patched = projectTenantToolDiscovery(body, storyboardCompat);
+    if (patched !== body && !res.headersSent) {
+      res.setHeader('content-length', String(patched.length));
+    }
+    return origEnd(patched, ...rest as []);
+  };
+}
+
+function projectTenantToolDiscovery(
+  body: Buffer,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): Buffer {
+  try {
+    const parsed = JSON.parse(body.toString('utf8')) as {
+      result?: {
+        tools?: Array<{ name?: string }>;
+      };
+    };
+    const tools = parsed.result?.tools;
+    if (!Array.isArray(tools)) return body;
+    if (storyboardCompat?.version !== '3.0') return body;
+    parsed.result!.tools = tools.filter(tool => tool.name !== 'validate_input');
+    return Buffer.from(JSON.stringify(parsed), 'utf8');
+  } catch {
+    return body;
+  }
+}
+
+function toBuffer(chunk: unknown): Buffer {
+  if (Buffer.isBuffer(chunk)) return chunk;
+  if (typeof chunk === 'string') return Buffer.from(chunk, 'utf8');
+  if (chunk instanceof Uint8Array) return Buffer.from(chunk);
+  return Buffer.from(String(chunk), 'utf8');
+}
+
+function stripContentLengthOnWriteHead(res: Response): void {
+  const original = res.writeHead.bind(res) as unknown as (...args: unknown[]) => Response;
+  (res as unknown as { writeHead: (...args: unknown[]) => Response }).writeHead = (...args: unknown[]) => {
+    if (!res.headersSent) {
+      res.removeHeader('content-length');
+    }
+    const next = [...args];
+    for (let i = 1; i < next.length; i += 1) {
+      const value = next[i];
+      if (Array.isArray(value)) {
+        next[i] = value.filter((entry, index, array) => {
+          if (index % 2 === 1) return String(array[index - 1]).toLowerCase() !== 'content-length';
+          return String(entry).toLowerCase() !== 'content-length';
+        });
+      } else if (value && typeof value === 'object') {
+        const headers = { ...(value as Record<string, unknown>) };
+        for (const key of Object.keys(headers)) {
+          if (key.toLowerCase() === 'content-length') delete headers[key];
+        }
+        next[i] = headers;
+      }
+    }
+    return original(...next);
+  };
+}
+
+function projectSalesCapabilities(
+  body: Buffer,
+  tenantId: string,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): Buffer {
+  try {
+    const parsed = JSON.parse(body.toString('utf8')) as {
+      result?: {
+        content?: Array<{ type?: string; text?: string }>;
+        structuredContent?: {
+          adcp_version?: unknown;
+          adcp?: Record<string, unknown>;
+          supported_protocols?: unknown;
+          creative?: Record<string, unknown>;
+          media_buy?: Record<string, unknown>;
+          signals?: Record<string, unknown>;
+          wholesale_feed_versioning?: Record<string, unknown>;
+          wholesale_feed_webhooks?: Record<string, unknown>;
+          webhook_signing?: Record<string, unknown>;
+          identity?: Record<string, unknown>;
+          compliance_testing?: Record<string, unknown>;
+        };
+      };
+    };
+    const structured = parsed.result?.structuredContent;
+    if (!structured || typeof structured !== 'object') return body;
+    const servedVersion = typeof structured.adcp_version === 'string'
+      ? structured.adcp_version
+      : TRAINING_AGENT_DEFAULT_ADCP_VERSION;
+    structured.adcp_version = servedVersion;
+    const adcp = structured.adcp && typeof structured.adcp === 'object'
+      ? structured.adcp
+      : {};
+    structured.adcp = {
+      ...adcp,
+      supported_versions: Array.isArray(adcp.supported_versions)
+        ? adcp.supported_versions
+        : [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
+    };
+    if (tenantId === 'creative' && storyboardCompat?.version !== '3.0') {
+      const creative = structured.creative && typeof structured.creative === 'object'
+        ? structured.creative
+        : {};
+      structured.creative = {
+        ...creative,
+        bills_through_adcp: false,
+      };
+    }
+    if (tenantId === 'sales') {
+      const mediaBuy = structured.media_buy && typeof structured.media_buy === 'object'
+        ? structured.media_buy
+        : {};
+      structured.media_buy = {
+        ...mediaBuy,
+        ...salesCapabilityProjection(),
+      };
+      const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
+        ? structured.compliance_testing
+        : {};
+      const scenarios = new Set(
+        Array.isArray((complianceTesting as { scenarios?: unknown }).scenarios)
+          ? (complianceTesting as { scenarios: unknown[] }).scenarios.filter((s): s is string => typeof s === 'string')
+          : [],
+      );
+      for (const scenario of salesCapabilityScenarios(storyboardCompat)) {
+        scenarios.add(scenario);
+      }
+      structured.compliance_testing = {
+        ...complianceTesting,
+        scenarios: [...scenarios],
+      };
+    }
+    projectWholesaleCapabilities(structured, tenantId, storyboardCompat);
+    const firstText = parsed.result?.content?.[0];
+    if (firstText?.type === 'text') {
+      firstText.text = JSON.stringify(structured);
+    }
+    return Buffer.from(JSON.stringify(parsed), 'utf8');
+  } catch {
+    return body;
+  }
+}
+
+function projectWholesaleCapabilities(
+  structured: {
+    media_buy?: Record<string, unknown>;
+    signals?: Record<string, unknown>;
+    wholesale_feed_versioning?: Record<string, unknown>;
+    wholesale_feed_webhooks?: Record<string, unknown>;
+    webhook_signing?: Record<string, unknown>;
+    identity?: Record<string, unknown>;
+  },
+  tenantId: string,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): void {
+  if (storyboardCompat?.version === '3.0') {
+    delete structured.wholesale_feed_versioning;
+    delete structured.wholesale_feed_webhooks;
+    return;
+  }
+
+  const productWholesale = tenantId === 'sales';
+  const signalWholesale = tenantId === 'signals';
+  if (!productWholesale && !signalWholesale) {
+    delete structured.wholesale_feed_versioning;
+    delete structured.wholesale_feed_webhooks;
+    return;
+  }
+
+  if (productWholesale) {
+    const mediaBuy = structured.media_buy && typeof structured.media_buy === 'object' ? structured.media_buy : {};
+    structured.media_buy = { ...mediaBuy, buying_modes: ['brief', 'wholesale', 'refine'] };
+    delete structured.signals;
+  }
+
+  if (signalWholesale) {
+    const signals = structured.signals && typeof structured.signals === 'object' ? structured.signals : {};
+    const features = signals.features && typeof signals.features === 'object' ? signals.features as Record<string, unknown> : {};
+    structured.signals = {
+      ...signals,
+      discovery_modes: ['brief', 'wholesale'],
+      features: { ...features, catalog_signals: true },
+    };
+  }
+
+  structured.wholesale_feed_versioning = {
+    supported: true,
+    pricing_version_separate: true,
+    cache_scope_account: true,
+  };
+  structured.wholesale_feed_webhooks = {
+    supported: true,
+    event_types: [
+      ...(productWholesale ? PRODUCT_WHOLESALE_EVENTS : []),
+      ...(signalWholesale ? SIGNAL_WHOLESALE_EVENTS : []),
+      'wholesale_feed.bulk_change',
+    ],
+  };
+  structured.webhook_signing = {
+    supported: true,
+    profile: 'adcp/webhook-signing/v1',
+    algorithms: ['ed25519'],
+    legacy_hmac_fallback: true,
+  };
+  structured.identity = {
+    ...(structured.identity ?? {}),
+    brand_json_url: `${getAgentUrl()}/.well-known/brand.json`,
   };
 }
 
@@ -279,7 +708,7 @@ export function mountTenantRoutes(
       setCORSHeaders(res);
       res.status(204).end();
     });
-    parent.post(`/${tenantId}/mcp`, ...mw, tenantMcpHandler(holder, tenantId));
+    parent.post(`/${tenantId}/mcp`, ...mw, tenantMcpHandler(holder, tenantId, middleware.storyboardCompat));
     parent.get(`/${tenantId}/mcp`, (_req, res) => {
       setCORSHeaders(res);
       res.setHeader('Allow', 'POST, OPTIONS');

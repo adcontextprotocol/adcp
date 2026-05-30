@@ -11,9 +11,9 @@ sidebarTitle: Workflow
 
 ## Set up account
 
-Start by checking the seller's capabilities to understand the account model. First-party AI platforms typically require explicit accounts (each advertiser authenticates via OAuth), while [ad networks](/docs/sponsored-intelligence/networks) may use implicit accounts (the agent declares brands via `sync_accounts`).
+Start by checking the seller's capabilities to understand the account model. First-party AI platforms typically use account-id namespaces: each advertiser authenticates via OAuth or another operator credential, then the buyer resolves an explicit `account_id` through `list_accounts` before account-scoped calls. [Ad networks](/docs/sponsored-intelligence/networks) may use buyer-declared accounts, where the agent declares brands via `sync_accounts`.
 
-**Example: first-party AI platform (explicit accounts)**
+**Example: first-party AI platform (account-id namespace)**
 
 ```json
 {
@@ -36,7 +36,7 @@ Key signals:
 
 An ad network that aggregates across multiple platforms would more likely declare `require_operator_auth: false` with `supported_billing: ["operator", "agent"]` — the agent is trusted and declares accounts via `sync_accounts`.
 
-For explicit accounts, after OAuth authentication discover available accounts via `list_accounts`:
+For account-id namespaces, after OAuth authentication resolve available accounts via `list_accounts`:
 
 ```json
 {

@@ -3,6 +3,21 @@ import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 import { safeFetchAxiosLike, classifySafeFetchError } from './utils/url-security.js';
 import { canonicalizePublisherDomain } from './services/publisher-domain.js';
 
+function isManagerdomainFallbackEligibleResponse(status: number, data: unknown): boolean {
+  if (status === 404) return true;
+  if (status !== 403) return false;
+
+  // safeFetchAxiosLike returns Buffer data, but keep the string branch so
+  // unit fixtures can exercise the response-shape predicate directly.
+  const text = Buffer.isBuffer(data)
+    ? data.toString('utf-8')
+    : typeof data === 'string'
+      ? data
+      : '';
+
+  return /<Code>\s*AccessDenied\s*<\/Code>/i.test(text);
+}
+
 export interface ValidationError {
   field: string;
   message: string;
@@ -232,9 +247,13 @@ export class AdAgentsManager {
       // Check HTTP status
       if (response.status !== 200) {
         // Fallback for publisher-manager patterns: if the publisher does not
-        // serve /.well-known/adagents.json but does serve ads.txt with a
-        // managerdomain declaration, attempt discovery on the manager domain.
-        if (response.status === 404) {
+        // serve a directly usable /.well-known/adagents.json but does serve
+        // ads.txt with a managerdomain declaration, attempt discovery on the
+        // manager domain. S3/CloudFront commonly returns a 403 AccessDenied
+        // XML body instead of 404 for missing or inaccessible objects, so
+        // that shape is included but still must pass the manager-side
+        // explicit-scope gate.
+        if (isManagerdomainFallbackEligibleResponse(response.status, response.data)) {
           const managerDomains = await this.tryResolveManagerDomains(normalizedDomain);
           const isHopAllowed = managerFallbackDepth < 1;
           if (managerDomains.length > 0 && isHopAllowed) {
@@ -272,7 +291,7 @@ export class AdAgentsManager {
                     ...managerResult.warnings,
                     {
                       field: 'managerdomain',
-                      message: `No adagents.json at ${url}; used ads.txt managerdomain ${managerDomain}`,
+                      message: `No directly usable adagents.json at ${url}; used ads.txt managerdomain ${managerDomain}`,
                     },
                   ],
                 };
@@ -316,9 +335,6 @@ export class AdAgentsManager {
         return result;
       }
 
-      // Only include raw data for successful responses
-      result.raw_data = adagentsData;
-
       // Check if this is a URL reference
       let wasUrlReference = false;
       if (this.isUrlReference(adagentsData)) {
@@ -336,6 +352,11 @@ export class AdAgentsManager {
           return result;
         }
       }
+
+      // Surface the canonical (post-pointer) manifest so downstream
+      // callers like validate_adagents count agents/properties from the
+      // authoritative file rather than the pointer stub (#5093).
+      result.raw_data = adagentsData;
 
       this.validateStructure(adagentsData, result);
       this.validateContent(adagentsData, result);

@@ -12,8 +12,8 @@
  *
  * Synthetic fixtures use a temp-dir layout that mirrors the real one:
  *   <tmp>/source/universal/{slug}.yaml
- *   <tmp>/repo/docs/building/conformance.mdx
- *   <tmp>/repo/docs/building/compliance-catalog.mdx
+ *   <tmp>/repo/docs/building/verification/conformance.mdx
+ *   <tmp>/repo/docs/building/verification/compliance-catalog.mdx
  */
 
 'use strict';
@@ -41,7 +41,7 @@ function makeFixture() {
   const sourceDir = path.join(root, 'source');
   const repoRoot = path.join(root, 'repo');
   fs.mkdirSync(path.join(sourceDir, 'universal'), { recursive: true });
-  fs.mkdirSync(path.join(repoRoot, 'docs/building'), { recursive: true });
+  fs.mkdirSync(path.join(repoRoot, 'docs/building/verification'), { recursive: true });
   return { root, sourceDir, repoRoot };
 }
 
@@ -57,7 +57,7 @@ function writeConformance(repoRoot, rows) {
     .map(([slug, purpose]) => `| [\`${slug}\`](https://example.com/${slug}) | ${purpose} |`)
     .join('\n');
   fs.writeFileSync(
-    path.join(repoRoot, 'docs/building/conformance.mdx'),
+    path.join(repoRoot, 'docs/building/verification/conformance.mdx'),
     `# Conformance\n\n## Universal conformance\n\n| Storyboard | What |\n|------------|------|\n${table}\n\n## Next section\n\nUnrelated content.\n`,
   );
 }
@@ -67,7 +67,7 @@ function writeCatalog(repoRoot, rows) {
     .map(([slug, purpose]) => `| \`${slug}\` | ${purpose} |`)
     .join('\n');
   fs.writeFileSync(
-    path.join(repoRoot, 'docs/building/compliance-catalog.mdx'),
+    path.join(repoRoot, 'docs/building/verification/compliance-catalog.mdx'),
     `# Catalog\n\n## Universal storyboards\n\n| Storyboard | Purpose |\n|-----------|---------|\n${table}\n\n## Protocols\n\nUnrelated.\n`,
   );
 }
@@ -163,7 +163,7 @@ test('missing expected heading produces a specific error', () => {
   writeStoryboard(sourceDir, 'capability-discovery');
   // Catalog file exists but lacks the expected heading.
   fs.writeFileSync(
-    path.join(repoRoot, 'docs/building/compliance-catalog.mdx'),
+    path.join(repoRoot, 'docs/building/verification/compliance-catalog.mdx'),
     '# Catalog\n\nNo universal section here yet.\n',
   );
   writeConformance(repoRoot, [['capability_discovery', 'shape']]);

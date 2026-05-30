@@ -1,0 +1,182 @@
+---
+title: Billing Authority
+sidebarTitle: Billing Authority
+description: "How AdCP names the authoritative counter of a media buy's billing metric, marks numbers as final, and reconciles between buyer and seller views when those views disagree."
+"og:title": "AdCP — Billing Authority"
+---
+
+## Overview
+
+For a media buy to invoice deterministically, two questions must have machine-readable answers:
+
+1. **Whose number is authoritative?** Different deals name different parties — the seller's ad server, a buyer's third-party ad server, or a named measurement vendor like Nielsen or IAS.
+2. **Has that number stopped moving?** Telemetry settles over hours, days, or weeks (broadcast C3 → C7 DVR accumulation, digital post-IVT scrubbing, podcast 30-day downloads, conversion dedup). Final numbers are billable; provisional numbers are not.
+
+AdCP answers both with structured terms already on the wire: `measurement_terms.billing_measurement` (negotiated at `create_media_buy`) names authority; `is_final` / `final` flags with `finalized_at` timestamps (on `get_media_buy_delivery` and `report_usage`) mark closure.
+
+This page ties those pieces together.
+
+## Naming authority
+
+`measurement_terms.billing_measurement` carries:
+
+| Field | Meaning |
+|---|---|
+| `vendor` (required, [BrandRef](/dist/docs/3.1.0-beta.7/brand-protocol/brand-json)) | The party whose count of the billing metric governs invoicing. Same field shape covers seller's ad server, buyer's 3PAS, or a third-party vendor — the BrandRef domain disambiguates. |
+| `max_variance_percent` | Tolerance above which the seller's and authoritative party's counts trigger resolution under `makegood_policy`. IAB default is 10%; broadcast/CTV often 5%. |
+| `measurement_window` | Which maturation stage of the data is the reconciliation point (`c7`, `post_sivt`, `downloads_30d`, etc.) — references a `window_id` from the product's `reporting_capabilities.measurement_windows`. |
+| `finalization_deadline_hours` | Maximum hours by which the authoritative party MUST publish a final record. When `measurement_window` is set, hours are counted from the window's close (not from `reporting_period.end`); when absent, from `reporting_period.end`. The deadline applies symmetrically to whichever party is named in `vendor`. On miss, the counterparty MAY fall back to its own attestation; the breach is handled under `makegood_policy`. |
+
+Absence is informative: when `billing_measurement` is absent the default is seller-attested, with no contractual finalization deadline.
+
+## Marking numbers as final
+
+Final means **settled for the named measurement window** — not "final forever." A broadcast row marked `is_final: true` for `measurement_window: "c3"` is final for C3; a later `c7` row supersedes it with its own provisional → final lifecycle. Disputes (when AdCP 3.2 adds them) join on `(media_buy_id, reporting_period, measurement_window)`.
+
+### On `get_media_buy_delivery`
+
+Each row in `media_buy_deliveries[]` carries:
+
+- `is_final: boolean` — row-level finality, equivalent to all packages in the row being final for the same window.
+- `finalized_at: string (date-time)` — present iff `is_final: true`. Anchors any deadline declared in `billing_measurement.finalization_deadline_hours`.
+- Per-package: `by_package[*].is_final`, `by_package[*].finalized_at`, `by_package[*].measurement_window`, `by_package[*].supersedes_window`.
+
+### On `report_usage`
+
+Each usage record carries:
+
+- `final: boolean` — **absent means unknown.** Set `true` only when the reporter has actually settled the numbers (e.g., post-SIVT month-end close). Set `false` for preliminary records (daily pacing pushes, intra-period progress). When `measurement_terms.billing_measurement` names this reporter as authoritative, the receiver MUST NOT invoice on `final: false` or absent — request a final record first. For 3.0-style usage with no `billing_measurement` and for non-media-buy variants (signals, governance, creative, brand — domains with no provisional state concept), receivers MAY treat absent as final, preserving existing behavior.
+- `finalized_at: string (date-time)` — present iff `final: true`.
+- `measurement_window: string` — SHOULD be set when the buy's `billing_measurement.measurement_window` is set, so the receiver reconciles against the correct stage.
+
+When the same `(account, media_buy_id, reporting_period)` is later reported with `final: true`, that record supersedes any prior records for the period.
+
+### Distinguishing webhook finality from row finality
+
+`get_media_buy_delivery` webhooks carry a top-level `notification_type` enum that includes `"final"` — this signals **"this is the last scheduled notification for the campaign,"** not that contained rows are final for invoicing. The two axes are independent: a webhook with `notification_type: "final"` may still contain rows where `is_final: false` (e.g., a campaign-end notification before C7 settles). Always check the per-row `is_final` for billing decisions.
+
+## How a seller produces an invoice
+
+### Seller-attested (default)
+
+```
+billing_measurement absent, or vendor names seller's own ad server
+```
+
+Seller invoices off `get_media_buy_delivery` rows where `is_final: true` for the contracted `measurement_window`. No `report_usage` from the buyer is required.
+
+### Buyer-attested (3PAS)
+
+```
+billing_measurement.vendor.domain = "campaignmanager.google.com" (buyer's CM360)
+billing_measurement.max_variance_percent = 10
+billing_measurement.measurement_window = "post_sivt"
+billing_measurement.finalization_deadline_hours = 240   // 10 days after post_sivt close
+```
+
+Sequence:
+
+1. Buyer's CM360 settles post-SIVT for the period.
+2. The buyer's operator — in practice a holdco platform (e.g., Choreograph, Annalect, Acxiom) or an in-house agency engineering team that wraps the CM360 export — calls `report_usage` with the media-buy record: `media_buy_id`, `impressions`, `vendor_cost`, `currency`, `final: true`, `finalized_at`, `measurement_window: "post_sivt"`. Daily pacing pushes (if used) set `final: false`; only the settled file sets `final: true`.
+3. Seller compares against its own post-SIVT row from `get_media_buy_delivery` (`is_final: true`, same `measurement_window`). If `|seller - buyer| / max ≤ max_variance_percent`, the seller invoices on the buyer's numbers.
+4. If variance exceeds threshold, the seller proposes a remedy from `makegood_policy.available_remedies`.
+5. If the buyer doesn't publish a final record within `finalization_deadline_hours`, the seller MAY invoice off its own seller-attested numbers and treat the late finalization as a breach under `makegood_policy`.
+
+> **Today's reality:** monthly 3PAS reconciliation is mostly handled out-of-band via CSV/PDF emailed to the seller's AR team. This flow is the wire-format upgrade — the first adopters are likely holdco operators with the engineering to wrap CM360 / Flashtalking / Innovid exports in `report_usage`, working with sympathetic direct publishers rather than RTB SSPs.
+
+### Vendor-attested (named third party)
+
+```
+billing_measurement.vendor.domain = "nielsen.com"
+billing_measurement.max_variance_percent = 5
+billing_measurement.measurement_window = "c7"
+billing_measurement.finalization_deadline_hours = 528   // 22 days after c7 close
+```
+
+Two operational patterns, depending on who holds the vendor relationship:
+
+- **Seller holds the vendor relationship (the common CTV pattern).** The seller pulls C7 numbers from Nielsen (NPower, etc.) on its own schedule and publishes them on `get_media_buy_delivery` as a row with `measurement_window: "c7"`, `is_final: true`, and `finalized_at` set when the C7 window closes plus its internal processing. No `report_usage` push from the buyer is needed; reconciliation happens against the seller's row.
+- **Buyer holds the vendor relationship.** The buyer (or its operator) fetches the vendor's authoritative numbers — e.g., an agency's iSpot subscription, an in-house IAS dashboard export — and pushes them via `report_usage` against the buy's account with `final: true`, `finalized_at`, and `measurement_window: "c7"`. The vendor itself does not call AdCP.
+
+The `vendor.domain` BrandRef identifies who the contract names, not who calls the API. The vendor's own integration (NPower feed, IAS API, DV pinnacle) is out of AdCP scope.
+
+> **Today's reality:** SSPs running RTB will keep being seller-attested for the foreseeable future — their billing systems were never designed for buyer-attested invoice basis and `max_variance_percent` plus `makegood_policy` is not enough commercial cover for them to retrofit it. The first real adopters here are CTV direct sellers (e.g., Disney, NBCU, Paramount) whose Nielsen-backed guarantees already invoice on a measurement vendor's count — for them this PR just describes existing practice in structured terms.
+
+## Resolving disagreements today
+
+When numbers disagree beyond `max_variance_percent`, AdCP 3.0–3.1 expects out-of-band resolution between counterparties, backed by:
+
+- The buy's `makegood_policy.available_remedies` — the menu of remedies (additional delivery, credit, invoice adjustment) the seller has pre-committed to.
+- Final records on both sides with `finalized_at` timestamps — a full audit trail of who said what was final, when.
+- The original `committed_metrics` and `measurement_terms` captured at `create_media_buy` — what the parties signed up for.
+
+A structured dispute task — opening a dispute on the wire, transitioning it through `under_review` / `seller_proposed_adjustment` / `buyer_accepted` / `unresolved_arbitration`, and recording resolution in the audit log — is targeted for AdCP 3.2. The data shape needed to dispute (final records, attestation, measurement window, makegood menu) is already on the wire in 3.1.
+
+## Worked example: buyer-attested 3PAS reconciliation
+
+```json title="create_media_buy excerpt — measurement terms"
+{
+  "measurement_terms": {
+    "billing_measurement": {
+      "vendor": { "domain": "campaignmanager.google.com" },
+      "max_variance_percent": 10,
+      "measurement_window": "post_sivt",
+      "finalization_deadline_hours": 240
+    },
+    "makegood_policy": {
+      "available_remedies": ["additional_delivery", "credit", "invoice_adjustment"]
+    }
+  }
+}
+```
+
+```json title="get_media_buy_delivery — seller's final post-SIVT row"
+{
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_q1_2026",
+      "is_final": true,
+      "finalized_at": "2026-04-08T18:00:00Z",
+      "by_package": [
+        {
+          "package_id": "pkg_001",
+          "is_final": true,
+          "finalized_at": "2026-04-08T18:00:00Z",
+          "measurement_window": "post_sivt",
+          "impressions": 5120000,
+          "spend": 51200
+        }
+      ]
+    }
+  ]
+}
+```
+
+```json title="report_usage — buyer's final 3PAS push"
+{
+  "idempotency_key": "f9b3...e2a1",
+  "reporting_period": { "start": "2026-03-01T00:00:00Z", "end": "2026-03-31T23:59:59Z" },
+  "usage": [
+    {
+      "account": { "account_id": "acct_acme_seller" },
+      "media_buy_id": "mb_q1_2026",
+      "currency": "USD",
+      "impressions": 5040000,
+      "vendor_cost": 50400,
+      "final": true,
+      "finalized_at": "2026-04-09T14:32:00Z",
+      "measurement_window": "post_sivt"
+    }
+  ]
+}
+```
+
+Variance: `|5120000 - 5040000| / 5120000 = 1.56%` — well under the 10% threshold. Seller invoices on the buyer's 5.04M impressions × the agreed rate. Both sides retain audit-traceable final records.
+
+## Related
+
+- [`measurement-terms`](https://adcontextprotocol.org/schemas/3.1.0-beta.7/core/measurement-terms.json) — schema
+- [`get_media_buy_delivery`](/dist/docs/3.1.0-beta.7/media-buy/task-reference/get_media_buy_delivery) — seller-side finality flags
+- [`report_usage`](/dist/docs/3.1.0-beta.7/accounts/tasks/report_usage) — buyer-side / third-party finality flags
+- [Accountability](/dist/docs/3.1.0-beta.7/media-buy/advanced-topics/accountability) — performance standards, makegood remedies, cancellation
+- [Reporting capabilities and measurement windows](/dist/docs/3.1.0-beta.7/media-buy/media-buys/optimization-reporting)

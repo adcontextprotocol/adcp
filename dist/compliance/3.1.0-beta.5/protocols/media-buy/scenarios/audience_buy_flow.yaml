@@ -1,0 +1,380 @@
+id: media_buy_seller/audience_buy_flow
+version: "1.0.0"
+title: "Seller fulfills a media buy with audience targeting from a synced CRM audience"
+category: media_buy_seller
+summary: "Verifies that a seller advertising audience_targeting can ingest a CRM audience via sync_audiences, accept a media buy whose targeting_overlay references the bound audience_id, reject malformed audience references, and report delivery for the audience-targeted buy. Sibling to media_buy_seller/performance_buy_flow on the audience side: the unbound-id rejection is the discriminating assertion."
+track: media_buy
+
+# Gate: scenario runs only when the seller declares audience_targeting.
+# Sellers without it (broadcast TV, signal-only, pure brand-suitability) grade
+# `not_applicable`, not failing. Audience targeting and the audience-sync
+# specialism are separate concerns — a seller can support audience_include /
+# audience_exclude on a buy without claiming the full audience-sync lifecycle
+# (e.g., a DSP that accepts buyer-uploaded CRM lists but doesn't expose
+# discovery/deletion semantics). Requires runner support for the `present:`
+# matcher (adcp-client >= 7.6.0).
+requires_capability:
+  path: media_buy.audience_targeting
+  present: true
+
+required_tools:
+  - get_products
+  - sync_audiences
+  - create_media_buy
+  - get_media_buy_delivery
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  An "audience buy" is a media buy whose packages restrict delivery to
+  members of a first-party CRM audience. The buyer pushes hashed
+  identifiers to the seller via sync_audiences, the seller matches them
+  against its user graph, and the buyer references the resulting
+  audience_id in targeting_overlay.audience_include[] or audience_exclude[]
+  on a create_media_buy.
+
+  This scenario is a buy-mode contract test, not a parent specialism. A DSP
+  may run audience buys AND performance buys against the same agent; this
+  scenario certifies that the audience path connects end-to-end when the
+  seller advertises audience_targeting. The full audience lifecycle
+  (discovery, deletion, status polling) lives on the audience-sync
+  specialism — what this scenario asserts is the buy-side wiring.
+
+  Discriminating behaviors this scenario verifies:
+  1. sync_audiences returns an audience_id that is then valid as the
+     binding target on targeting_overlay.audience_include[].
+  2. create_media_buy with a package whose targeting_overlay references the
+     registered audience is accepted.
+  3. create_media_buy with targeting_overlay.audience_include referencing
+     an unregistered audience_id is rejected (INVALID_REQUEST with
+     error.field set to the offending audience_include[k] path) — silent
+     acceptance would mean the seller cannot actually restrict delivery to
+     the buyer's intended audience.
+  4. get_media_buy_delivery returns standard delivery totals for the
+     audience-targeted buy. Per-audience delivery breakdown
+     (impressions / spend split per audience_id) is deliberately NOT
+     asserted here — it isn't a first-class field in
+     get-media-buy-delivery-response.json today. A follow-up scenario gated
+     on a sub-capability bit will land per-audience attribution.
+
+  Audience suppression via audience_exclude follows the same binding
+  contract (rejected if the audience_id wasn't registered) but is not
+  exercised twice here — one positive + one negative on audience_include is
+  the discriminating signal.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - audience_targeting
+  examples:
+    - "DSPs accepting buyer-uploaded CRM audiences"
+    - "Retail-media networks matching first-party identifiers"
+    - "Social platforms (Meta / TikTok / Snap audience-targeted buying)"
+    - "CTV platforms with audience overlay support"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller must implement comply_test_controller with simulate_delivery
+    (already required for delivery_reporting). simulate_delivery injects
+    impressions and spend so get_media_buy_delivery has something to return
+    for the audience-targeted buy.
+
+    The buyer fixture supplies a brand, an operator, and a small CRM
+    audience definition with hashed_email identifiers sufficient to
+    exercise the audience binding contract.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "audience_display_q2"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "audience_display_q2"
+      pricing_option_id: "auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.00
+
+phases:
+
+  - id: setup
+    title: "Establish account and discover products"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#audience_buy_flow_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: get_products_for_audience
+        title: "Discover products that support audience targeting"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return at least one product whose audience_targeting capabilities
+          indicate audience_include / audience_exclude overlays are accepted.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display inventory, US adults 25-54, restricted to a first-party CRM audience. Q2 flight, ~$15K budget."
+          required_capabilities:
+            - "audience_targeting"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains products"
+
+  - id: audience_binding
+    title: "Register the CRM audience"
+    narrative: |
+      The audience-targeted buy cannot be created without a registered
+      audience_id. This phase exercises the binding — sync_audiences returns
+      an audience_id (echoing the buyer's submitted id) that subsequent
+      create_media_buy calls reference in targeting_overlay.
+
+    steps:
+      - id: sync_audience
+        title: "Push a CRM audience with hashed email identifiers"
+        task: sync_audiences
+        schema_ref: "media-buy/sync-audiences-request.json"
+        response_schema_ref: "media-buy/sync-audiences-response.json"
+        doc_ref: "/media-buy/task-reference/sync_audiences"
+        stateful: true
+        expected: |
+          Accept the audience and return:
+          - audience_id: matches the submitted ID
+          - action: created (first sync) or updated (re-sync)
+          - status: processing, ready, or too_small per match outcome
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          audiences:
+            - audience_id: "acmeoutdoor-loyal-customers"
+              name: "Acme Outdoor loyal customers"
+              audience_type: "crm"
+              add:
+                - external_id: "acme-cust-0001"
+                  hashed_email: "a000000000000000000000000000000000000000000000000000000000000001"
+                - external_id: "acme-cust-0002"
+                  hashed_email: "a000000000000000000000000000000000000000000000000000000000000002"
+                - external_id: "acme-cust-0003"
+                  hashed_email: "a000000000000000000000000000000000000000000000000000000000000003"
+          idempotency_key: "$generate:uuid_v4#audience_buy_flow_audience_binding_sync_audiences"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-audiences-response.json schema"
+          - check: field_present
+            path: "audiences[0].audience_id"
+            description: "Audience has an audience_id (echo of the buyer's submitted id)"
+          - check: field_present
+            path: "audiences[0].action"
+            description: "Audience has an action (created or updated)"
+          # Anti-façade: an adapter that returns a shape-valid sync_audiences
+          # response without forwarding the hashed identifiers to its upstream
+          # user-graph fails this check. Adopters who don't advertise
+          # query_upstream_traffic in list_scenarios grade not_applicable.
+          - check: upstream_traffic
+            description: "sync_audiences caused upstream traffic carrying the supplied hashed identifiers"
+            min_count: 1
+            endpoint_pattern: "POST *"
+            identifier_paths:
+              - "audiences[*].add[*].hashed_email"
+              - "audiences[*].add[*].external_id"
+
+  - id: create_buy_with_audience
+    title: "Create a buy whose targeting binds to the registered audience"
+    narrative: |
+      The buyer creates a media buy whose package targeting_overlay carries
+      audience_include referencing the registered audience_id. The seller
+      should accept and return a media_buy_id used for subsequent delivery
+      checks.
+
+    steps:
+      - id: create_media_buy_with_audience
+        title: "Create media buy with audience_include in targeting_overlay"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Create the media buy. Response carries a media_buy_id used for
+          subsequent get_media_buy_delivery calls.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "audience_display_q2"
+              budget: 15000
+              pricing_option_id: "auction_cpm"
+              targeting_overlay:
+                audience_include:
+                  - "acmeoutdoor-loyal-customers"
+          idempotency_key: "$generate:uuid_v4#audience_buy_flow_create_buy_with_audience_create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Media buy has a platform-assigned ID"
+
+  - id: rejection_unbound_audience
+    title: "Reject a buy referencing an unregistered audience"
+    narrative: |
+      Silent acceptance of an unregistered audience_id is a façade — the
+      seller cannot restrict delivery to an audience it doesn't know about.
+      The seller MUST reject with INVALID_REQUEST and set error.field to the
+      offending audience_include path. Sibling contract to the
+      event_source_id binding asserted in performance_buy_flow.
+
+    steps:
+      - id: create_media_buy_with_phantom_audience
+        title: "Submit a buy whose targeting_overlay references a non-existent audience_id"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject with INVALID_REQUEST. error.field points at the offending
+          audience_include[k] path. media_buy_id is not allocated.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "audience_display_q2"
+              budget: 5000
+              pricing_option_id: "auction_cpm"
+              targeting_overlay:
+                audience_include:
+                  - "does_not_exist_phantom_audience"
+          idempotency_key: "$generate:uuid_v4#audience_buy_flow_rejection_unbound_audience"
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST"]
+            description: "Seller rejects the unbound audience_id with INVALID_REQUEST"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.audience_include[0]"
+            description: "Error.field points at the offending audience_include[0] path (core/error.json defines field as deterministic JSONPath-lite — literal equality)"
+
+  - id: delivery_check
+    title: "Delivery reporting for the audience-targeted buy"
+    narrative: |
+      The discriminating assertion of the audience buy mode is the binding
+      contract proven above. Delivery reporting here verifies the
+      audience-targeted buy is a real, observable buy in the seller's
+      system — totals.impressions surfaces under standard delivery shape.
+
+      Per-audience delivery breakdown (impressions / spend split per
+      audience_id within media_buy_deliveries[].totals) is deliberately
+      NOT asserted: that field isn't first-class in delivery-metrics.json
+      today. A follow-up scenario gated on a sub-capability bit will land
+      per-audience attribution once the breakdown shape is in spec.
+
+    steps:
+      - id: simulate_audience_delivery
+        title: "Inject impressions + spend for the audience-targeted buy"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller acknowledges the simulated delivery.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 80000
+            clicks: 1200
+            reported_spend:
+              amount: 1800.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation succeeds"
+
+      - id: get_audience_delivery
+        title: "Get delivery and verify totals for the audience-targeted buy"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Delivery response includes totals.impressions for the audience-
+          targeted buy. Per-audience attribution is not asserted (see
+          phase narrative).
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.impressions"
+            description: "Impression count surfaced at the buy level"

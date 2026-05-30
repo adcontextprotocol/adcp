@@ -40,7 +40,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v6.0.2
       with:
         # Ensure we get latest changes including synced docs
         ref: ${{ github.event.workflow_run.head_branch || github.ref }}

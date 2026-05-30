@@ -1,13 +1,13 @@
 ---
 title: sync_accounts
-description: "sync_accounts provisions or links advertiser accounts with an AdCP seller agent for one or more brand/operator pairs. Supports explicit and implicit account models with sandbox mode."
+description: "sync_accounts provisions buyer-declared accounts or updates settings on existing accounts with an AdCP seller agent."
 "og:title": "AdCP — sync_accounts"
 testable: false
 ---
 
-Sync advertiser accounts with a seller for one or more brand/operator pairs. The seller provisions or links accounts, returning per-account status and any setup instructions. Brands are identified by a `brand` object containing `domain` + optional `brand_id`, resolved via `/.well-known/brand.json`.
+Sync advertiser accounts with a seller for one or more brand/operator pairs, or update settings on existing accounts when the seller exposes that mode. Brands are identified by a `brand` object containing `domain` + optional `brand_id`, resolved via `/.well-known/brand.json`.
 
-`sync_accounts` is used across all seller protocols: media buy agents, signals agents, governance agents, and creative agents. It declares the buyer's intent — the seller provisions or links accounts internally. For implicit accounts (`require_operator_auth: false`), use natural keys (`brand` + `operator`) on subsequent requests. For explicit accounts (`require_operator_auth: true`), discover seller-assigned account IDs via [`list_accounts`](/docs/accounts/tasks/list_accounts). For sandbox on implicit accounts, include `sandbox: true` in the account entry — the seller provisions a test account with no real spend. For explicit accounts, sandbox accounts are pre-existing test accounts discovered via [`list_accounts`](/docs/accounts/tasks/list_accounts).
+`sync_accounts` is used across all seller protocols: media buy agents, signals agents, governance agents, and creative agents. In provisioning mode it declares the buyer's intent — the seller provisions or links accounts internally. Use provisioning mode for buyer-declared accounts (`require_operator_auth: false`) and use natural keys (`brand` + `operator`) on subsequent requests. Sellers MAY echo an `account_id` as an internal handle, but they MUST continue accepting the natural-key `AccountRef` for accounts provisioned this way. For account-id namespaces, discover seller-assigned account IDs via [`list_accounts`](/docs/accounts/tasks/list_accounts) or out-of-band onboarding; `sync_accounts` provisioning for account-id namespaces is out of scope unless a future explicit capability declares that mode. If such a seller exposes `sync_accounts` today, use only settings-update mode keyed by `account_id`.
 
 **Response Time**: ~1s. Account provisioning is synchronous; credit and legal review may require human action (indicated by `status: "pending_approval"` with a `setup.url`).
 
@@ -98,7 +98,7 @@ asyncio.run(main())
 | `billing` | string | Yes | Who should be invoiced: `operator`, `agent`, or `advertiser`. Check `get_adcp_capabilities` for `supported_billing` to see what the seller accepts at the capability level. The seller must either accept this billing model or reject the request. Sellers MAY additionally reject a value the seller-wide capability accepts when the calling buyer agent's commercial relationship does not permit it — e.g., a buyer agent onboarded as passthrough-only (no payments relationship — only the operator can be invoiced). The two gates use distinct error codes — `BILLING_NOT_SUPPORTED` for the seller-wide capability gate, `BILLING_NOT_PERMITTED_FOR_AGENT` for the per-buyer-agent gate — so agents can dispatch on autonomous-retry vs human-onboarding without parsing prose. See [Buyer-agent identity](/docs/building/integration/accounts-and-agents#buyer-agent-identity) and [Billing and Account Setup](/docs/building/implementation/error-handling#billing-and-account-setup). |
 | `billing_entity` | object | No | Structured business entity details for the party responsible for payment. Contains `legal_name` (required), plus optional `vat_id`, `tax_id`, `registration_number`, `address`, `contacts`, and `bank`. Bank details are write-only — included in requests but never echoed in responses. See [billing entity and invoice recipient](/docs/building/integration/accounts-and-agents#billing-entity-and-invoice-recipient). |
 | `payment_terms` | string | No | Payment terms for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. The seller must either accept these terms or reject the account — terms are never silently remapped. When omitted, the seller applies its default terms. |
-| `sandbox` | boolean | No | When true, set up a sandbox account with no real platform calls or billing. Only applicable to implicit accounts (`require_operator_auth: false`). For explicit accounts, sandbox accounts are pre-existing test accounts discovered via `list_accounts`. |
+| `sandbox` | boolean | No | When true, set up a sandbox account with no real platform calls or billing. Only applicable to buyer-declared accounts (`require_operator_auth: false`). For account-id namespaces, sandbox accounts are pre-existing test accounts discovered via `list_accounts` or supplied out-of-band. |
 | `notification_configs` | array | No | Account-level webhook subscribers for events that outlive any single media buy: creative lifecycle notifications and wholesale feed change webhooks. Omit to leave existing subscribers unchanged; send `[]` to remove all subscribers; send a full array to replace. Entries are keyed by account-scoped `subscriber_id`; an existing `subscriber_id` is upserted, and persisted IDs absent from the sent array are removed. |
 
 **Natural key**: The tuple `(brand, operator, sandbox)` uniquely identifies an account relationship. `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (via agency). Adding `sandbox: true` provisions a sandbox account for the same brand/operator pair — no real platform calls or billing.
@@ -126,14 +126,14 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 | `status` | Current state of the account (see [Account status](#account-status)). |
 | `billing` | Billing model applied. Matches the requested value. |
 | `billing_entity` | Business entity details for the invoiced party, echoed from the request. Sellers may add fields the agent omitted (e.g., `registration_number` from a credit check) but must not return data from a different entity. Bank details are omitted (write-only). |
-| `account_scope` | How the seller scoped this account: `operator` (shared across brands for this operator), `brand` (shared across operators for this brand), `operator_brand` (dedicated to this operator+brand pair), or `agent` (the agent's default account). See [account scope](/docs/building/integration/accounts-and-agents#account-scope). |
+| `account_scope` | How the seller scoped this account: `operator` (shared across brands for this operator), `brand` (shared across operators for this brand), `operator_brand` (dedicated to this operator+brand pair), or `agent` (agent-scoped account shared across declared brand/operator pairs). See [account scope](/docs/building/integration/accounts-and-agents#account-scope). |
 | `setup` | Present when `status: "pending_approval"`. Contains `url` for completing credit or legal setup, `message` explaining what's needed, and optional `expires_at`. |
 | `rate_card` | Seller-assigned rate card identifier (when applicable). |
 | `payment_terms` | Payment terms agreed for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. When the account is active, these are the binding terms for all invoices. |
 | `credit_limit` | Maximum outstanding balance as `{amount, currency}`. |
 | `errors` | Per-account errors (only present when `action: "failed"`). |
 | `warnings` | Non-fatal notices. |
-| `sandbox` | Whether this is a sandbox account, echoed from the request. Only present for implicit accounts. |
+| `sandbox` | Whether this is a sandbox account, echoed from the request. Only present for buyer-declared accounts. |
 | `notification_configs` | Optional. Current persisted account-level webhook subscribers after applying the request. Present on `created`, `updated`, and `unchanged` results when the request included `notification_configs` or the account already has persisted subscribers. Each entry carries `subscriber_id`, `url`, `event_types[]`, and `active`; `authentication.credentials` is omitted (write-only). |
 | `authorization` | Optional. The calling agent's scope grant for this account — `allowed_tasks`, `field_scopes`, `scope_name`, `read_only`. Applies to every vendor agent type (media-buy, signals, governance, creative, brand) — the Accounts Protocol surface is shared. Present on `created`, `updated`, and `unchanged` results; omitted on `failed` results. Vendor agents that support scope introspection SHOULD populate this; media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Absence means the vendor agent does not advertise introspectable scope; callers MUST NOT infer access from absence. See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape. |
 
@@ -152,7 +152,7 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 
 When `push_notification_config` is provided and the seller returns `pending_approval`, the seller sends a webhook notification when the account status changes (e.g., approved → `active`, declined → `rejected`).
 
-The notification payload includes the `(brand, operator)` natural key so the buyer can correlate it to the original sync request. For explicit accounts (`require_operator_auth: true`), the notification also includes the seller-assigned `account_id` once provisioned.
+For provisioning requests, the notification payload includes the `(brand, operator)` natural key so the buyer can correlate it to the original sync request. When the seller also returns a seller-assigned `account_id`, the notification includes it as a convenience handle; buyers still follow the seller's declared account-reference model for subsequent calls.
 
 ```json
 {
@@ -169,10 +169,10 @@ If the buyer did not provide `push_notification_config`, poll [`list_accounts`](
 
 Each per-account entry uses one of two key shapes, never both:
 
-- **Provisioning mode** — flat `brand` + `operator` + `billing` at the entry root. The seller provisions or upserts accounts. Used for implicit accounts (`require_operator_auth: false`). This is the shape AdCP 3.0 shipped with.
-- **Settings-update mode** — `account` (an [AccountRef](/docs/building/integration/accounts-and-agents#account-references)) at the entry root, with `brand`/`operator`/`billing` absent. The seller updates the account's settable state — no provisioning side effects. Used for explicit accounts (`require_operator_auth: true`) where accounts are pre-provisioned and discovered via `list_accounts`. Implicit-account sellers MAY also accept this mode for settings updates against accounts they previously provisioned.
+- **Provisioning mode** — flat `brand` + `operator` + `billing` at the entry root. The seller provisions or upserts accounts. Used for buyer-declared accounts (`require_operator_auth: false`). This is the shape AdCP 3.0 shipped with. Sellers MAY echo an `account_id`, but the natural-key `AccountRef` remains valid for subsequent calls.
+- **Settings-update mode** — `account` (an [AccountRef](/docs/building/integration/accounts-and-agents#account-references)) at the entry root, with `brand`/`operator`/`billing` absent. The seller updates the account's settable state — no provisioning side effects. Used for account-id namespaces only when the seller exposes settings updates through this task; upstream-managed accounts are discovered via `list_accounts`, while seller-defined account IDs may be supplied out-of-band. Buyer-declared account sellers MAY also accept this mode for settings updates against accounts they previously provisioned.
 
-Schema enforces the exclusivity via `oneOf` — sending both shapes on the same entry is a validation error. Sellers that don't implement settings-update mode reject `account`-keyed entries with `UNSUPPORTED_PROVISIONING`; sellers that don't provision (most explicit-account platforms) reject natural-key entries with the same code.
+Schema enforces the exclusivity via `oneOf` — sending both shapes on the same entry is a validation error. Sellers that don't implement settings-update mode reject `account`-keyed entries with `UNSUPPORTED_PROVISIONING`; sellers that don't provision through `sync_accounts`, including account-id namespaces, reject natural-key provisioning entries with the same code.
 
 ## Account-level webhook subscriptions
 
@@ -236,7 +236,7 @@ The challenge value MUST be cryptographically random, single-use, and scoped to 
 
 On proof failure, the seller returns a per-account failure with `action: "failed"`, `errors[].code: "VALIDATION_ERROR"` (or `INVALID_REQUEST` for malformed URLs), and `error.field` pointing at `accounts[i].notification_configs[j].url`. The previous persisted subscriber set remains unchanged. `dry_run: true` MUST NOT send network challenges; it can only report structural validation and what would require proof.
 
-Example — register a buyer-side endpoint plus an audit bus on an explicit account:
+Example — register a buyer-side endpoint plus an audit bus on an account-id namespace account:
 
 ```json
 {

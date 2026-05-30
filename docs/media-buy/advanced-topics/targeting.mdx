@@ -20,7 +20,7 @@ The primary way to specify targeting in AdCP is through campaign briefs. Instead
 
 Publishers then return products that include the targeting capabilities to reach this audience, with targeting costs built into the media pricing.
 
-When the buyer wants package-level control over specific selectable signals that the seller offers, use `targeting_overlay.signal_targeting_groups` on the package. Buy-time eligibility comes from the selected product's signal targeting contract: `signal_targeting_allowed`, inline `Product.signal_targeting_options` when present, the seller's `get_signals` feed for wholesale products that omit inline options, and `signal_targeting_rules`. Signals are named targetable dimensions, referenced with `signal_ref`: `scope: "product"` for product-local signal options, `scope: "data_provider"` with `data_provider_domain` for signals defined by a data provider's published adagents.json signal catalog, or `scope: "signal_source"` with `signal_source_url` for source-native signals that are not catalog-published. `signal_ref.scope` is the buy-time resolution path, not provenance, and authoritative enrichment lives on the seller, data provider, or source signal definition. Do not overload `audience_include` or `audience_exclude` for this purpose; those fields are only for first-party audiences registered through `sync_audiences`.
+When the buyer wants package-level control over specific selectable signals that the seller offers, use `targeting_overlay.signal_targeting_groups` on the package. Buy-time eligibility comes from the selected product's signal targeting contract: `signal_targeting_allowed`, inline `Product.signal_targeting_options` when present, the seller's `get_signals` feed for wholesale products that omit inline options, and `signal_targeting_rules`. Signals are named targetable dimensions, referenced with `signal_ref`: `scope: "product"` for product-local signal options, `scope: "data_provider"` with `data_provider_domain` for signals defined in a data provider's published adagents.json `signals[]`, or `scope: "signal_source"` with `signal_source_url` for source-native signals that are not published in adagents.json `signals[]`. `signal_ref.scope` is the buy-time resolution path, not provenance, and authoritative enrichment lives on the seller, data provider, or source signal definition. Do not overload `audience_include` or `audience_exclude` for this purpose; those fields are only for first-party audiences registered through `sync_audiences`.
 
 Products can also expose `included_signals` for signals already bundled into or planned into the product. Those signals are descriptive product metadata, not package-level targeting controls, and buyers do not echo them in `signal_targeting_groups`.
 
@@ -134,15 +134,73 @@ When publishers return products, they include targeting information buyers need:
 
 ```json
 {
-  "product_id": "premium_millennial_mobile",
-  "name": "Premium Millennial Mobile Package",
-  "description": "Mobile display inventory targeting millennials (25-40) across lifestyle and entertainment apps in top 25 US markets",
-  "targeting_description": "Ages 25-40, household income $50K+, interests in lifestyle/entertainment, mobile apps only, top 25 US metro areas",
-  "audience_size": "~2.5M monthly unique users",
-  "pricing": {
-    "cpm": 8.50,
-    "targeting_included": true
-  }
+  "$schema": "/schemas/media-buy/get-products-response.json",
+  "status": "completed",
+  "cache_scope": "public",
+  "products": [
+    {
+      "product_id": "premium_millennial_mobile",
+      "name": "Premium Millennial Mobile Package",
+      "description": "Mobile display inventory reaching adults 25-40 across lifestyle and entertainment apps in the top 25 US metro areas.",
+      "publisher_properties": [
+        {
+          "publisher_domain": "pinnacle-media.example",
+          "selection_type": "by_tag",
+          "property_tags": ["lifestyle", "entertainment", "mobile_app"]
+        }
+      ],
+      "channels": ["display"],
+      "delivery_type": "guaranteed",
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250_image"
+        }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "premium_mobile_cpm",
+          "pricing_model": "cpm",
+          "currency": "USD",
+          "fixed_price": 8.50
+        }
+      ],
+      "forecast": {
+        "forecast_range_unit": "availability",
+        "method": "modeled",
+        "currency": "USD",
+        "reach_unit": "individuals",
+        "points": [
+          {
+            "metrics": {
+              "audience_size": { "mid": 2500000 },
+              "impressions": { "mid": 12000000 }
+            }
+          }
+        ]
+      },
+      "included_signals": [
+        {
+          "signal_ref": {
+            "scope": "product",
+            "signal_id": "lifestyle_entertainment_interest"
+          },
+          "name": "Lifestyle and entertainment interest",
+          "value_type": "binary",
+          "description": "Seller-modeled users with recent lifestyle or entertainment content engagement."
+        }
+      ],
+      "reporting_capabilities": {
+        "available_reporting_frequencies": ["daily"],
+        "expected_delay_minutes": 240,
+        "timezone": "America/New_York",
+        "supports_webhooks": false,
+        "available_metrics": ["impressions", "clicks", "spend", "ctr"],
+        "date_range_support": "date_range"
+      },
+      "brief_relevance": "Matches the requested millennial audience, mobile app environment, lifestyle/entertainment context, and major US metro coverage."
+    }
+  ]
 }
 ```
 
@@ -531,15 +589,15 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Resolution model**: `signal_targeting_rules.resolution_model` tells buyers how the seller applies selected signals to inventory. `direct_targeting` means selected signals behave like package targeting predicates. `seller_planned` means selected signals are inputs to seller-managed planning against product-specific inventory, timing, availability, reach, or pacing constraints; buyers should not attempt to decompose the selected audience into lower-level inventory or schedule decisions.
 - **Selection groups**: When the product declares `signal_targeting_rules.selection_group_rules`, each child group MUST contain signals from exactly one `selection_group` and one targeting mode, and buyers MUST send at most one child group for each `(selection_group, targeting_mode)` pair. Sellers MUST reject duplicate, mixed, or collapsed child groups that combine distinct selection-group rules into the same `any` or `none` group. `selection_group` is a product-defined composability bucket, not a backend identity type: for example, a GAM-backed seller may expose both audience segments and key-values as ordinary `signal_ref` options, using one `selection_group` when they are freely OR-combinable and separate `selection_group`s when they must be trafficked as separate ANDed clauses.
 - **Pricing**: Include `pricing_option_id` when the selected product's `signal_targeting_options` entry has `pricing_options`; omit only when the signal is bundled into the product price or has no incremental cost. Product-scoped pricing in `signal_targeting_options` is authoritative for that product. If the product option has no product-specific price, sellers MAY use the default pricing exposed in `get_signals`.
-- **Signal reference**: Use `signal_ref: { "scope": "product", "signal_id": "..." }` for a product-local signal option. Use `signal_ref: { "scope": "data_provider", "data_provider_domain": "...", "signal_id": "..." }` for a signal defined by a data provider's published adagents.json signal catalog. If the product option exposes a separate `signal_agent_segment_id`, echo it on the package entry; otherwise `signal_ref` is the stable buy-time reference. If the product option has `activation_status: "requires_activation"`, it MUST include `signal_agent_segment_id`; activate the signal first, then include `activation_key` if the seller requires it.
-- **Data-provider catalog signals**: For a provider-published signal, `signal_ref.data_provider_domain` identifies the upstream data provider and `signal_ref.signal_id` identifies the public signal definition. Buyers can verify the seller's right to offer the signal by checking the provider's `adagents.json` `authorized_agents` entry for the seller.
+- **Signal reference**: Use `signal_ref: { "scope": "product", "signal_id": "..." }` for a product-local signal option. Use `signal_ref: { "scope": "data_provider", "data_provider_domain": "...", "signal_id": "..." }` for a signal defined in a data provider's published adagents.json `signals[]`. If the product option exposes a separate `signal_agent_segment_id`, echo it on the package entry; otherwise `signal_ref` is the stable buy-time reference. If the product option has `activation_status: "requires_activation"`, it MUST include `signal_agent_segment_id`; activate the signal first, then include `activation_key` if the seller requires it.
+- **Provider-published signals**: For a provider-published signal, `signal_ref.data_provider_domain` identifies the upstream data provider and `signal_ref.signal_id` identifies the public signal definition. Buyers can verify the seller's right to offer the signal by checking the provider's `adagents.json` `authorized_agents` entry for the seller.
 - **Product gating**: Sellers SHOULD reject a signal entry when the product does not advertise that signal inline or through `get_signals`, `signal_targeting_allowed` is false for package-level selection, the signal violates the product's `signal_targeting_rules`, the signal's `allowed_targeting_modes` does not allow the requested child group operator, the signal is not active for the account, or the requested value is outside the signal definition. `allowed_targeting_modes: ["include"]` maps to `any` groups; `["exclude"]` maps to `none` groups. Binary package signal entries use `value: true`; use the parent `none` group for exclusion, not `value: false`. Signal targeting limits are product-scoped, not declared in seller-wide `get_adcp_capabilities`, because products may be backed by different ad servers or platforms. If `selection_mode` is `fixed`, buyers SHOULD omit edits to `signal_targeting_groups`; sellers apply the fixed/default selections and MUST echo them on the resulting package state.
 - **Updates**: Because `targeting_overlay` is shared by `create_media_buy` and `update_media_buy`, sellers MAY reject mid-flight signal group changes with `REQUOTE_REQUIRED` when the selected signal, group expression, or `pricing_option_id` changes the priced envelope.
 - **Not for first-party audiences**: Use `audience_include` / `audience_exclude` for buyer-uploaded audiences from `sync_audiences`.
 
 The backend targeting primitive is intentionally hidden behind `signal_ref`. Buyers should not need a separate identity system for "audience segment" versus "key-value"; the selected product's `signal_targeting_rules` describe whether those options can be composed together. If a product exposes both a `gam_audience_segments` group and a `gam_key_values` group with `targeting_mode: "include"`, the buyer composes two `any` child groups under the top-level `all`, not one collapsed mixed group.
 
-For products where inventory and audience planning are inseparable, such as linear broadcast schedules, sellers use `resolution_model: "seller_planned"`. Mandatory audience selection still lives in `selection_mode: "required"` or a required `selection_group_rules` entry; cross-product audience consistency comes from a shared `scope: "data_provider"` signal catalog, even when the seller is also the data provider.
+For products where inventory and audience planning are inseparable, such as linear broadcast schedules, sellers use `resolution_model: "seller_planned"`. Mandatory audience selection still lives in `selection_mode: "required"` or a required `selection_group_rules` entry; cross-product audience consistency comes from a shared `scope: "data_provider"` signal definition, even when the seller is also the data provider.
 
 ```json
 {

@@ -2169,7 +2169,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
       const dnsRecordName = result.verification_prefix
         ? `${result.verification_prefix}.${result.domain}`
-        : null;
+        : result.domain;
       const requestedOrgId = typeof req.query.org === 'string' && req.query.org.length > 0
         ? req.query.org
         : null;
@@ -2188,7 +2188,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           ? `Domain is already verified. Run POST ${verifyPath} to sync the brand registry, or call PUT /brand-identity directly.`
           : dnsRecordName
             ? `Publish a DNS TXT record at ${dnsRecordName} with the value ${result.verification_token}, then call POST ${verifyPath}.`
-            : `Publish a DNS TXT record at <verification_prefix>.<domain> with the value <verification_token>, then call POST ${verifyPath}.`,
+            : `Publish a DNS TXT record at ${result.domain} with the value <verification_token>, then call POST ${verifyPath}.`,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to issue brand claim challenge');
@@ -2232,6 +2232,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             message: result.message,
             domain: canonical,
             state: result.state,
+            ...(result.dns_record_name !== undefined ? { dns_record_name: result.dns_record_name } : {}),
             ...(result.retry_after_seconds !== undefined ? { retry_after_seconds: result.retry_after_seconds } : {}),
           });
         }

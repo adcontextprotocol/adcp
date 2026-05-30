@@ -31,7 +31,7 @@
           },
           "signal_ref": {
             "$ref": "/schemas/core/signal-ref.json",
-            "description": "Canonical signal reference for discovery, activation, and media-buy targeting. Data-provider catalog signals use scope 'data_provider'. Source-native custom signals that are not catalog-published use scope 'signal_source'. Product-local refs are only meaningful when the response is explicitly scoped to a product context."
+            "description": "Canonical signal reference for discovery, activation, and media-buy targeting. Provider-published signals use scope 'data_provider'. Source-native custom signals that are not published in adagents.json signals[] use scope 'signal_source'. Product-local refs are only meaningful when the response is explicitly scoped to a product context."
           },
           "signal_agent_segment_id": {
             "type": "string",
@@ -86,9 +86,14 @@
           },
           "coverage_percentage": {
             "type": "number",
-            "description": "Percentage of audience coverage",
+            "description": "DEPRECATED for detailed planning. Optional legacy scalar percentage of audience coverage retained only as a fallback for clients that do not consume coverage_forecast. When coverage_forecast is present, coverage_forecast is authoritative for signal-level discovery and coverage_percentage is fallback-only. If coverage_forecast includes an absent bucket over the same denominator, coverage_percentage SHOULD align with 100 * (1 - absent coverage_rate.mid).",
             "minimum": 0,
-            "maximum": 100
+            "maximum": 100,
+            "deprecated": true
+          },
+          "coverage_forecast": {
+            "$ref": "/schemas/core/signal-coverage-forecast.json",
+            "description": "Optional forecast-shaped signal availability guidance. When present, this is authoritative for signal-level discovery coverage. Use this to disclose the denominator, bucket semantics, not-present bucket, aggregate present bucket, and per-value coverage distribution for the signal."
           },
           "deployments": {
             "type": "array",
@@ -111,7 +116,6 @@
           "name",
           "description",
           "signal_type",
-          "coverage_percentage",
           "deployments"
         ],
         "anyOf": [

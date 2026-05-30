@@ -1,0 +1,584 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.1/core/product.json",
+  "title": "Product",
+  "description": "Represents available advertising inventory",
+  "type": "object",
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "description": "Unique identifier for the product",
+      "x-entity": "product"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable product name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the product and its inventory"
+    },
+    "publisher_properties": {
+      "type": "array",
+      "description": "SDK implementers MUST enforce singular-only at runtime: each entry uses the singular `publisher_domain` form; the compact `publisher_domains[]` form is rejected on products. Codegen toolchains (json-schema-to-typescript, quicktype, datamodel-code-generator, openapi-typescript-codegen) often flatten the `allOf + $ref + not.required` restriction below poorly and may drop the rejection constraint silently, emitting an unrestricted type — runtime enforcement is the safety net. Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization. Selection patterns mirror the authorization patterns in adagents.json for consistency. The compact `publisher_domains[]` form is reserved for adagents.json `authorized_agents[].publisher_properties[]` so that buy-side traffic-and-pricing flatteners can always treat each entry as exactly one publisher.",
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/3.1.0-rc.1/core/publisher-property-selector.json" },
+          { "not": { "required": ["publisher_domains"] } }
+        ]
+      },
+      "minItems": 1
+    },
+    "channels": {
+      "type": "array",
+      "description": "Advertising channels this product is sold as. Products inherit from their properties' supported_channels but may narrow the scope. For example, a product covering YouTube properties might be sold as ['ctv'] even though those properties support ['olv', 'social', 'ctv'].",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.1/enums/channels.json"
+      },
+      "uniqueItems": true
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Legacy named-format path: array of supported creative format IDs (structured format_id objects with agent_url and id). Products MUST carry `format_ids`, `format_options`, or BOTH; at least one is required. Named formats predate 3.1 and remain supported through the deprecation calendar (2027-Q4 floor / 2029-Q1 ceiling).\n\n**Dual emission**: A product MAY carry both `format_ids` and `format_options` simultaneously during the migration window. This is the recommended seller pattern — author once, SDK projects to both wire shapes via the [canonical mapping registry](/schemas/registries/v1-canonical-mapping.json), every buyer reads what it knows. When both are present, the two MUST refer to the SAME underlying format declaration (the `format_options[i]` narrows the canonical that the named format in `format_ids[i]` resolves to via the registry / explicit `canonical` field). SDKs that derive both shapes from one source guarantee this invariant; SDKs that don't MUST treat divergence as a build error and refuse to emit. **Buyer rule**: when both are present, prefer `format_options`; treat `format_ids` as fallback for legacy-format buyers. **Non-projectable formats**: when a named format has no clean 3.1+ format-option projection (no registry entry, no explicit `canonical` declaration on the named format, no structural match), SDKs MUST NOT emit `format_options` for that product — only `format_ids` ships, and the product remains legacy-format-only until the seller adds an explicit `canonical` field or files a registry entry.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.1/core/format-id.json"
+      }
+    },
+    "format_options": {
+      "type": "array",
+      "minItems": 1,
+      "description": "3.1+ format-option path: one or more inline format declarations the product accepts. Each element narrows a canonical format with parameters, slots, and platform_extensions. The 90% case is a single-element array (one canonical narrowed for the product). Multi-element use cases: a product that accepts EITHER a third-party-hosted creative (for example, externally served `html5`) OR an internal `display_tag`; a video product that accepts a hosted `video_hosted` upload OR a `video_vast` tag. Buyers pick which option they're shipping at `sync_creatives` time by aligning their manifest to the matching declaration's `format_kind` and slots.\n\nProducts MUST carry `format_ids`, `format_options`, or BOTH; at least one is required. See `format_ids` description for the dual-emission contract (same underlying declaration when both are present; SDK derives one from the other; buyers prefer `format_options` when both are present).\n\nWhen `placements[]` also declare `format_ids` or `format_options`, product-level formats are the upper bound for the sellable product. Placement-level formats narrow the product-wide accepted set for that placement; they MUST NOT introduce a format the product does not accept. Buyers compute the effective accepted set for a placement as the intersection of product-level and placement-level declarations. For format options, match publisher-declared options by `{ publisher_domain, format_option_id }`, match product-local options by `format_option_id` when `publisher_domain` is omitted, and otherwise match declarations with the same `format_kind` whose placement parameters narrow the product declaration. If a placement has no format declaration, it inherits the product-level formats.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.1/core/product-format-declaration.json"
+      }
+    },
+    "placements": {
+      "type": "array",
+      "description": "Optional array of specific public placements within this product. Placement IDs are scoped by publisher domain. Product placements declare `kind` to distinguish publisher-referenced placements (`publisher_ref`) from seller-defined inline placements (`seller_inline`). Publisher-referenced placements carry `publisher_domain` plus `placement_id` and may omit `name` because buyers resolve the name from the publisher's adagents.json placement declarations. Seller-inline placements carry buyer-facing `name` directly; when `publisher_domain` is omitted, buyers MAY interpret the placement ID relative to the seller agent's own publisher domain only during the legacy single-publisher transition. Community-maintained fallback files are resolver/source metadata, not a distinct placement kind. Each placement MUST declare `mode: 'targetable'` (buyer may select the placement by PlacementRef, for example in creative assignments) or `mode: 'included'` (part of the public product composition but not buyer-selectable). Placement-level format declarations narrow the product-level creative contract and MUST NOT broaden it. Seller-private delivery objects, source/origin details, and ad-server mappings MUST NOT be exposed here.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.1/core/placement.json"
+      },
+      "minItems": 1
+    },
+    "video_placement_types": {
+      "type": "array",
+      "description": "Declared video placement types that may be included in this product, using IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions with AdCP-native names. Use on OLV, CTV, and other video products when buyers need to distinguish instream, accompanying-content, interstitial, and standalone/no-content inventory. Aggregate products and ad-network products MAY declare multiple values. When `placements[]` also carry `video_placement_types`, this product-level array SHOULD be the union of the placement-level declarations the seller may deliver under the product. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.1/enums/video-placement-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "delivery_type": {
+      "$ref": "/schemas/3.1.0-rc.1/enums/delivery-type.json"
+    },
+    "exclusivity": {
+      "$ref": "/schemas/3.1.0-rc.1/enums/exclusivity.json",
+      "description": "Whether this product offers exclusive access to its inventory. Defaults to 'none' when absent. Most relevant for guaranteed products tied to specific collections or placements."
+    },
+    "pricing_options": {
+      "type": "array",
+      "description": "Available pricing models for this product",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.1/core/pricing-option.json"
+      },
+      "minItems": 1
+    },
+    "forecast": {
+      "$ref": "/schemas/3.1.0-rc.1/core/delivery-forecast.json",
+      "description": "Forecasted delivery metrics for this product. Gives buyers an estimate of expected performance before requesting a proposal."
+    },
+    "outcome_measurement": {
+      "$ref": "/schemas/3.1.0-rc.1/core/outcome-measurement.json",
+      "description": "**Deprecated as of this minor.** Outcome capabilities (incremental sales lift, brand lift, foot traffic, etc.) are now declared via `reporting_capabilities.available_metrics` (the same path used for impressions, conversions, ROAS) with `qualifier.attribution_methodology` and `qualifier.attribution_window` carrying the methodology and window on commit. New implementations SHOULD use the unified pattern; this field is retained for one-minor backwards compatibility and removed at the next major. See `outcome-measurement.json` description for migration guidance."
+    },
+    "delivery_measurement": {
+      "type": "object",
+      "description": "Measurement vendors and methodology for delivery metrics. The buyer accepts the declared vendors as the source of truth for the buy. When absent, buyers should apply their own measurement defaults. Senders SHOULD populate `vendors` (structured BrandRef array) for new implementations; the legacy `provider` string field is deprecated and retained for one-minor backwards compatibility.",
+      "properties": {
+        "vendors": {
+          "type": "array",
+          "description": "Measurement vendors used for this product, as structured `BrandRef` identities. Multiple entries when multiple vendors play different roles (e.g., the ad server plus a separate viewability vendor like IAS or DV; or a retail-media seller plus a third-party retail measurement vendor like Circana or NielsenIQ). Each vendor's `brand.json` `agents[type='measurement']` is the discovery anchor; metric definitions live on the agent's `get_adcp_capabilities.measurement.metrics[]` block. Distinct from `performance_standards[].vendor` which carries vendor identity for *committed* metrics with thresholds — this field carries vendor identity for the overall measurement story, including non-committed-but-reported metrics.",
+          "items": {
+            "$ref": "/schemas/3.1.0-rc.1/core/brand-ref.json"
+          },
+          "minItems": 1
+        },
+        "provider": {
+          "type": "string",
+          "description": "**Deprecated as of this minor.** Free-form measurement provider description (e.g., 'Google Ad Manager with IAS viewability', 'Nielsen DAR', 'Geopath for DOOH impressions'). New implementations SHOULD use the structured `vendors` field instead. Retained for one-minor backwards compatibility; removed at the next major. When both `vendors` and `provider` are present, consumers MUST use `vendors` for vendor identity and treat `provider` as informational text."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional details about measurement methodology in plain language (e.g., 'MRC-accredited viewability. 50% in-view for 1s display / 2s video', 'Panel-based demographic measurement updated monthly'). Free-form prose for context that doesn't fit the structured `vendors` field."
+        }
+      }
+    },
+    "measurement_terms": {
+      "$ref": "/schemas/3.1.0-rc.1/core/measurement-terms.json",
+      "description": "Seller's default billing measurement and makegood terms. Declares who counts the billing metric and what remedies apply when thresholds are breached. Buyers may propose different terms at media buy creation — sellers accept, reject (TERMS_REJECTED), or adjust per their policy."
+    },
+    "performance_standards": {
+      "type": "array",
+      "description": "Seller's default performance standards for this product: viewability, IVT, completion rate, brand safety, attention score. Buyers may propose different standards at media buy creation. When absent, no structured performance standards apply.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.1/core/performance-standard.json"
+      },
+      "minItems": 1
+    },
+    "cancellation_policy": {
+      "$ref": "/schemas/3.1.0-rc.1/core/cancellation-policy.json",
+      "description": "Cancellation terms for this product. Declares the minimum notice period required before cancellation takes effect and any penalties for insufficient notice. Relevant for guaranteed delivery products. Buyers accept these terms by creating a media buy against the product."
+    },
+    "allowed_actions": {
+      "type": "array",
+      "description": "Actions buyers may perform on buys created against this product, scoped to statuses and modes. Advisory template — the authoritative per-buy capability is `available_actions[]` on the buy response, which resolves modes against current buy state, account tier, and negotiated terms. Buyers SHOULD use this for pre-flight product selection (\"which products let me self-serve cancel within 72hr?\") and read `available_actions[]` for runtime decisions. The array is uniquely keyed by `action` — sellers MUST NOT emit two entries with the same `action` value. Absence means the seller has not declared a structured action surface for this product — buyers fall back to `valid_actions[]` on buy responses for the flat string vocabulary.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.1/core/product-allowed-action.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "reporting_capabilities": {
+      "$ref": "/schemas/3.1.0-rc.1/core/reporting-capabilities.json"
+    },
+    "creative_policy": {
+      "$ref": "/schemas/3.1.0-rc.1/core/creative-policy.json"
+    },
+    "is_custom": {
+      "type": "boolean",
+      "description": "Whether this is a custom product"
+    },
+    "property_targeting_allowed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether buyers can filter this product to a subset of its publisher_properties. When false (default), the product is 'all or nothing' - buyers must accept all properties or the product is excluded from property_list filtering results."
+    },
+    "data_provider_signals": {
+      "type": "array",
+      "description": "Deprecated. Legacy/non-selectable metadata for data-provider signals already bundled into or associated with this product. This field does not provide buyer-selectable options, prices, or seller activation handles. Use included_signals for non-selectable product signal metadata, or signal_targeting_options for selectable package-level signal groups.",
+      "deprecated": true,
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.1/core/data-provider-signal-selector.json"
+      }
+    },
+    "included_signals": {
+      "type": "array",
+      "description": "Non-selectable signal metadata for signals already included in, bundled with, or planned into this product. These signals describe what the product is; buyers do not select them in packages[].targeting_overlay.signal_targeting_groups and this field does not imply package-level signal targeting. Use signal_ref scope 'data_provider' or 'signal_source' to reference externally defined signals without redefining their name or value_type. Use signal_ref scope 'product' with name and value_type when the included signal is defined only by this product.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.1/core/signal-listing.json"
+      },
+      "minItems": 1
+    },
+    "signal_targeting_options": {
+      "type": "array",
+      "description": "Inline seller-offered signals that may be applied to packages for this product at create_media_buy time. Each entry references a named signal definition with signal_ref scope 'product' for a product-local signal option, scope 'data_provider' for an external signal definition published in adagents.json signals[] that the seller is authorized to apply, or scope 'signal_source' for a source-native signal. Product-local options define name and value_type inline; data-provider and signal-source options may omit those fields when the referenced definition or source is authoritative. Use this field when the selectable menu is product-specific, has product-specific pricing or activation handles, is the relevant subset for a brief/refine result, or should be rendered without an additional get_signals call. Wholesale products may omit this field and rely on get_signals for the selectable signal feed. Buyers select eligible signals through packages[].targeting_overlay.signal_targeting_groups when signal_targeting_rules allow; fixed/default entries are applied by the seller and echoed on the package state. Sellers MUST set signal_targeting_allowed to true whenever this field is present. Bundled, non-selectable signal metadata belongs in included_signals; legacy data_provider_signals may appear only for backwards compatibility.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.1/core/product-signal-targeting-option.json"
+      },
+      "minItems": 1
+    },
+    "signal_targeting_rules": {
+      "$ref": "/schemas/3.1.0-rc.1/core/signal-targeting-rules.json",
+      "description": "Composition rules for selecting signals on this product. The selectable signal menu may come from inline signal_targeting_options or from get_signals when a wholesale product omits inline options. This is product-scoped because products may be backed by different ad servers with different Boolean targeting support and group limits."
+    },
+    "signal_targeting_allowed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this product has a package-level signal_targeting_groups surface. When false (default), signals are bundled into the product terms and cannot be selected or explicitly echoed as package signal groups. When true, eligible signals from inline signal_targeting_options or from get_signals may be buyer-selected or seller-applied according to signal_targeting_rules and are represented through packages[].targeting_overlay.signal_targeting_groups. Editability is controlled by signal_targeting_rules; fixed/default-only products still set this to true when applied signal groups are echoed."
+    },
+    "catalog_types": {
+      "type": "array",
+      "description": "Catalog types this product supports for catalog-driven campaigns. A sponsored product listing declares [\"product\"], a job board declares [\"job\", \"offering\"]. Buyers match synced catalogs to products via this field.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.1/enums/catalog-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "metric_optimization": {
+      "type": "object",
+      "description": "Metric optimization capabilities for this product. Presence indicates the product supports optimization_goals with kind: 'metric'. No event source or conversion tracking setup required — the seller tracks these metrics natively.",
+      "properties": {
+        "supported_metrics": {
+          "type": "array",
+          "description": "Metric kinds this product can optimize for. Buyers should only request metric goals for kinds listed here. **DEPRECATED values** (slated for removal at next major): `attention_seconds` and `attention_score` — declare vendor-attested attention/quality metrics via `vendor_metric_optimization.supported_metrics[]` with an explicit vendor binding instead. Sellers MAY reject the deprecated values with `TERMS_REJECTED` and a suggestion to use the `vendor_metric` kind.",
+          "items": {
+            "type": "string",
+            "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"]
+          },
+          "minItems": 1
+        },
+        "supported_reach_units": {
+          "type": "array",
+          "description": "Reach units this product can optimize for. Required when supported_metrics includes 'reach'. Buyers must set reach_unit to a value in this list on reach optimization goals — sellers reject unsupported values.",
+          "items": {
+            "$ref": "/schemas/3.1.0-rc.1/enums/reach-unit.json"
+          },
+          "minItems": 1
+        },
+        "supported_view_durations": {
+          "type": "array",
+          "description": "Video view duration thresholds (in seconds) this product supports for completed_views goals. Only relevant when supported_metrics includes 'completed_views'. When absent, the seller uses their platform default. Buyers must set view_duration_seconds to a value in this list — sellers reject unsupported values.",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "supported_targets": {
+          "type": "array",
+          "description": "Target kinds available for metric goals on this product. Values match target.kind on the optimization goal. Only these target kinds are accepted — goals with unlisted target kinds will be rejected. When omitted, buyers can set target-less metric goals (maximize volume within budget) but cannot set specific targets.",
+          "items": {
+            "type": "string",
+            "enum": ["cost_per", "threshold_rate"]
+          }
+        }
+      },
+      "required": ["supported_metrics"],
+      "additionalProperties": true
+    },
+    "vendor_metric_optimization": {
+      "$ref": "/schemas/3.1.0-rc.1/core/vendor-metric-optimization.json",
+      "description": "Vendor-attested metric optimization capabilities for this product. Presence indicates the product supports `optimization_goals` with `kind: 'vendor_metric'` — the seller's bidding stack can steer delivery toward a specific vendor's measurement (e.g., DV/IAS/Adelaide attention, Scope3 emissions, Kantar brand lift, retail-media partner metrics). Distinct from `metric_optimization` (seller-native metrics with no vendor binding) and from `reporting_capabilities.vendor_metrics` (which declares what the product can *report* rather than what it can *optimize against*). A product may report a vendor metric without being able to optimize for it. Buyers MUST verify the goal's `(vendor, metric_id)` is in `supported_metrics` AND that the package's `committed_metrics[]` includes a matching `{ scope: 'vendor', vendor, metric_id }` entry — optimization without committed reporting is unverifiable and is rejected at the wire level."
+    },
+    "max_optimization_goals": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of optimization_goals this product accepts on a package. When absent, no limit is declared. Most social platforms accept only 1 goal — buyers sending arrays longer than this value should expect the seller to use only the highest-priority (lowest priority number) goal."
+    },
+    "measurement_readiness": {
+      "$ref": "/schemas/3.1.0-rc.1/core/measurement-readiness.json",
+      "description": "Assessment of whether the buyer's event source setup is sufficient for this product to optimize effectively. Only present when the seller can evaluate the buyer's account context. Buyers should check this before creating media buys with event-based optimization goals."
+    },
+    "conversion_tracking": {
+      "type": "object",
+      "description": "Conversion event tracking for this product. Presence indicates the product supports optimization_goals with kind: 'event'. Seller-level capabilities (supported event types, UID types, attribution windows) are declared in get_adcp_capabilities.",
+      "properties": {
+        "action_sources": {
+          "type": "array",
+          "description": "Action sources relevant to this product (e.g. a retail media product might have 'in_store' and 'website', while a display product might only have 'website')",
+          "items": {
+            "$ref": "/schemas/3.1.0-rc.1/enums/action-source.json"
+          },
+          "minItems": 1
+        },
+        "supported_targets": {
+          "type": "array",
+          "description": "Target kinds available for event goals on this product. Values match target.kind on the optimization goal. cost_per: target cost per conversion event. per_ad_spend: target return on ad spend (requires value_field on event sources). maximize_value: maximize total conversion value without a specific ratio target (requires value_field). Only these target kinds are accepted — goals with unlisted target kinds will be rejected. A goal without a target implicitly maximizes conversion count within budget — no declaration needed for that mode. When omitted, buyers can still set target-less event goals.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "cost_per",
+              "per_ad_spend",
+              "maximize_value"
+            ]
+          },
+          "minItems": 1
+        },
+        "platform_managed": {
+          "type": "boolean",
+          "description": "Whether the seller provides its own always-on measurement (e.g. Amazon sales attribution for Amazon advertisers). When true, sync_event_sources response will include seller-managed event sources with managed_by='seller'."
+        }
+      },
+      "additionalProperties": true
+    },
+    "catalog_match": {
+      "type": "object",
+      "description": "When the buyer provides a catalog on get_products, indicates which catalog items are eligible for this product. Only present for products where catalog matching is relevant (e.g., sponsored product listings, job boards, hotel ads).",
+      "properties": {
+        "matched_gtins": {
+          "type": "array",
+          "description": "GTINs from the buyer's catalog that are eligible on this product's inventory. Standard GTIN formats (GTIN-8 through GTIN-14). Only present for product-type catalogs with GTIN matching.",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9]{8,14}$"
+          }
+        },
+        "matched_ids": {
+          "type": "array",
+          "description": "Item IDs from the buyer's catalog that matched this product's inventory. The ID type depends on the catalog type and content_id_type (e.g., SKUs for product catalogs, job_ids for job catalogs, offering_ids for offering catalogs).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "matched_count": {
+          "type": "integer",
+          "description": "Number of catalog items that matched this product's inventory.",
+          "minimum": 0
+        },
+        "submitted_count": {
+          "type": "integer",
+          "description": "Total catalog items evaluated from the buyer's catalog.",
+          "minimum": 0
+        }
+      },
+      "required": ["submitted_count"]
+    },
+    "brief_relevance": {
+      "type": "string",
+      "description": "Explanation of why this product matches the brief (only included when brief is provided)"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Expiration timestamp. After this time, the product may no longer be available for purchase and create_media_buy may reject packages referencing it."
+    },
+    "product_card": {
+      "type": "object",
+      "description": "Optional standard visual card for displaying this product in user interfaces (catalog browsers, dashboards, agent UIs). Distinct from `format` — product_card describes the UI rendering of the product itself, not the ad creative the product accepts. Typed inline; no format_id indirection. Receivers render the card directly from these fields.",
+      "properties": {
+        "image": {
+          "$ref": "/schemas/3.1.0-rc.1/core/assets/image-asset.json",
+          "description": "Hero image for the card. Recommended ~300x400 (4:3 portrait) for the standard card layout; receivers may scale."
+        },
+        "title": {
+          "type": "string",
+          "description": "Card title (typically the product name).",
+          "maxLength": 60
+        },
+        "description": {
+          "type": "string",
+          "description": "Short descriptive blurb shown below the title.",
+          "maxLength": 200
+        },
+        "price_label": {
+          "type": "string",
+          "description": "Formatted price or pricing summary (e.g., 'From $5 CPM', 'Auction floor $0.50 CPC'). Free-text — receivers render verbatim.",
+          "maxLength": 30
+        },
+        "cta_label": {
+          "type": "string",
+          "description": "Call-to-action button label (e.g., 'View details', 'Get proposal').",
+          "maxLength": 25
+        }
+      },
+      "additionalProperties": true
+    },
+    "product_card_detailed": {
+      "type": "object",
+      "description": "Optional detailed card with hero + carousel + structured specifications, for rich product presentation (media-kit-style pages, full product detail views). Distinct from `format` — describes the UI rendering of the product itself, not the ad creative the product accepts. Typed inline; no format_id indirection.",
+      "properties": {
+        "hero_image": {
+          "$ref": "/schemas/3.1.0-rc.1/core/assets/image-asset.json",
+          "description": "Primary hero image at the top of the detailed view."
+        },
+        "carousel_images": {
+          "type": "array",
+          "description": "Additional images for a swipeable carousel below the hero.",
+          "items": { "$ref": "/schemas/3.1.0-rc.1/core/assets/image-asset.json" }
+        },
+        "title": {
+          "type": "string",
+          "description": "Page title (typically the product name)."
+        },
+        "description": {
+          "type": "string",
+          "description": "Full descriptive copy. Markdown allowed in client renderers that support it; otherwise treat as plain text."
+        },
+        "specifications": {
+          "type": "array",
+          "description": "Structured key/value specifications (e.g., 'Aspect ratio: 9:16', 'Duration: 30s'). Each item is a labeled fact about the product.",
+          "items": {
+            "type": "object",
+            "required": ["label", "value"],
+            "properties": {
+              "label": { "type": "string", "maxLength": 60 },
+              "value": { "type": "string", "maxLength": 200 }
+            },
+            "additionalProperties": true
+          }
+        },
+        "price_label": {
+          "type": "string",
+          "description": "Formatted price or pricing summary."
+        },
+        "cta_label": {
+          "type": "string",
+          "description": "Call-to-action button label."
+        }
+      },
+      "additionalProperties": true
+    },
+    "collections": {
+      "type": "array",
+      "description": "Collections available in this product. Each entry references collections declared in an adagents.json by domain and collection ID. Buyers resolve full collection objects from the referenced adagents.json.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.1/core/collection-selector.json"
+      },
+      "minItems": 1
+    },
+    "collection_targeting_allowed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether buyers can target a subset of this product's collections. When false (default), the product is a bundle — buyers get all listed collections. When true, buyers can select specific collections in the media buy."
+    },
+    "installments": {
+      "type": "array",
+      "description": "Specific installments included in this product. Each installment references its parent collection via collection_id when the product spans multiple collections. When absent with collections present, the product covers the collections broadly (run-of-collection).",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.1/core/installment.json"
+      }
+    },
+    "enforced_policies": {
+      "type": "array",
+      "description": "Registry policy IDs the seller enforces for this product. Enforcement level comes from the policy registry. Buyers can filter products by required policies.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "trusted_match": {
+      "type": "object",
+      "description": "Trusted Match Protocol capabilities for this product. When present, the product supports real-time contextual and/or identity matching via TMP. Buyers use this to determine what response types the publisher can accept and whether brands can be selected dynamically at match time.",
+      "properties": {
+        "context_match": {
+          "type": "boolean",
+          "description": "Whether this product supports Context Match requests. When true, the publisher's TMP router will send context match requests to registered providers for this product's inventory.",
+          "default": true
+        },
+        "identity_match": {
+          "type": "boolean",
+          "description": "Whether this product supports Identity Match requests. When true, the publisher's TMP router will send identity match requests to evaluate user eligibility.",
+          "default": false
+        },
+        "response_types": {
+          "type": "array",
+          "description": "What the publisher can accept back from context match.",
+          "items": {
+            "$ref": "/schemas/3.1.0-rc.1/enums/response-type.json"
+          },
+          "minItems": 1,
+          "default": ["activation"]
+        },
+        "dynamic_brands": {
+          "type": "boolean",
+          "description": "Whether the buyer can select a brand at match time. When false (default), the brand must be specified on the media buy/package. When true, the buyer's offer can include any brand — the publisher applies approval rules at match time. Enables multi-brand agreements where the holding company or buyer agent selects brand based on context.",
+          "default": false
+        },
+        "providers": {
+          "type": "array",
+          "description": "TMP providers integrated with this product's inventory. Each entry identifies a provider by agent_url (from the registry) and declares what match types it supports for this product. The product-level context_match and identity_match booleans declare what the product supports overall; the per-provider booleans declare which provider handles each match type. Enables buyer discovery: 'find products where a specific provider does context matching.'",
+          "items": {
+            "type": "object",
+            "properties": {
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Provider's agent URL from the registry. Canonical identifier for this TMP provider."
+              },
+              "context_match": {
+                "type": "boolean",
+                "description": "Whether this provider handles context match for this product.",
+                "default": false
+              },
+              "identity_match": {
+                "type": "boolean",
+                "description": "Whether this provider handles identity match for this product.",
+                "default": false
+              },
+              "countries": {
+                "type": "array",
+                "description": "ISO 3166-1 alpha-2 country codes this provider serves for identity match. The router uses this to select the correct regional provider based on the request's country field. Required when identity_match is true.",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{2}$"
+                },
+                "minItems": 1
+              },
+              "uid_types": {
+                "type": "array",
+                "description": "Identity types this regional provider can resolve. The router filters providers whose uid_types includes the request's uid_type. Required when identity_match is true.",
+                "items": {
+                  "$ref": "/schemas/3.1.0-rc.1/enums/uid-type.json"
+                },
+                "minItems": 1
+              }
+            },
+            "required": ["agent_url"],
+            "if": {
+              "properties": { "identity_match": { "const": true } },
+              "required": ["identity_match"]
+            },
+            "then": {
+              "required": ["agent_url", "countries", "uid_types"]
+            },
+            "additionalProperties": true
+          },
+          "minItems": 1
+        }
+      },
+      "required": ["context_match"],
+      "additionalProperties": true
+    },
+    "material_submission": {
+      "type": "object",
+      "description": "Instructions for submitting physical creative materials (print, static OOH, cinema). Present only for products requiring physical delivery outside the digital creative assignment flow. Buyer agents MUST validate url and email domains against the seller's known domains (from adagents.json) before submitting materials. Never auto-submit without human confirmation.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL for uploading or submitting physical creative materials"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address for creative material submission"
+        },
+        "instructions": {
+          "type": "string",
+          "description": "Human-readable instructions for material submission (file naming conventions, shipping address, etc.)",
+          "maxLength": 2000
+        },
+        "ext": {
+          "$ref": "/schemas/3.1.0-rc.1/core/ext.json"
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": true
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-rc.1/core/ext.json"
+    }
+  },
+  "required": [
+    "product_id",
+    "name",
+    "description",
+    "publisher_properties",
+    "delivery_type",
+    "pricing_options",
+    "reporting_capabilities"
+  ],
+  "allOf": [
+    {
+      "description": "Products with package-level signal targeting options or rules MUST declare the signal targeting surface explicitly.",
+      "if": {
+        "anyOf": [
+          { "required": ["signal_targeting_options"] },
+          { "required": ["signal_targeting_rules"] }
+        ]
+      },
+      "then": {
+        "properties": {
+          "signal_targeting_allowed": {
+            "const": true
+          }
+        },
+        "required": ["signal_targeting_allowed"]
+      }
+    }
+  ],
+  "anyOf": [
+    {
+      "title": "Legacy Product (named-format reference)",
+      "description": "Product references one or more named formats by structured format_id ({ agent_url, id }). This is the legacy named-format path; it remains supported through 4.x.",
+      "required": ["format_ids"]
+    },
+    {
+      "title": "3.1+ Product (format-option declarations)",
+      "description": "Product carries one or more inline ProductFormatDeclarations, each narrowing a canonical format. This is the 3.1+ format-option path introduced by RFC #3305. A single-element `format_options` array is the 90% case; multi-element arrays declare that the product accepts any of the listed format options.",
+      "required": ["format_options"]
+    }
+  ],
+  "additionalProperties": true
+}

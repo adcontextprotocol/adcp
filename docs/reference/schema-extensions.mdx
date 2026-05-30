@@ -87,6 +87,31 @@ Already enforced natively by JSON Schema and excluded from migration:
 
 Migration history tracked at [adcontextprotocol/adcp#3827](https://github.com/adcontextprotocol/adcp/issues/3827).
 
+## `x-adcp-open-payload`
+
+Classifies fields that look open-ended to SDK generators. The annotation is documentary and non-validating; the field's JSON Schema still controls wire validation.
+
+Allowed authoring values:
+
+| Value | Meaning for schema authors and generators |
+|---|---|
+| `true` | The field intentionally carries free-form payload data. Generators MAY model the object/decoded-JSON arm as `Record<string, unknown>` or another generic JSON container without warning. |
+| Omitted | Unclassified. Generators and schema lint rules SHOULD NOT infer either `true` or `false`; they MAY warn on unannotated `additionalProperties: true` object fields during review. |
+
+`false` is reserved for a future structured-but-extension-tolerant marker. Source schemas MUST NOT set `x-adcp-open-payload: false` until the repository defines at least one canonical use site and the generator contract for that value.
+
+For mixed fields, the annotation applies only to the object or decoded-JSON payload arm. Scalar arms still follow their declared schema. For example, an upstream recorded body may be a decoded JSON object when the content type is JSON-shaped and a string otherwise; `x-adcp-open-payload: true` marks the decoded JSON payload as intentionally open, not the string arm as an object model.
+
+```jsonc
+"breakdown": {
+  "type": "object",
+  "x-adcp-open-payload": true,
+  "additionalProperties": true
+}
+```
+
+Use omission for legacy or not-yet-classified fields; do not use omission to mean "closed".
+
 ## `x-adcp-hoist`
 
 Build-time directive that marks a source schema as a canonically shared type. The schema bundler hoists every inline occurrence into a single root `$defs` entry and replaces inline copies with `$ref` pointers; the directive itself is stripped from bundled output. Wire-irrelevant — validators MUST ignore it (draft-07 §6 unknown-keyword semantics) and conforming consumers SHOULD NOT observe it on bundled artifacts.

@@ -22,7 +22,7 @@
         { "asset_group_id": "images_square", "asset_type": "image", "required": false, "min": 1, "max": 20 },
         { "asset_group_id": "images_vertical", "asset_type": "image", "required": false, "min": 1, "max": 20 },
         { "asset_group_id": "video", "asset_type": "video", "required": false, "min": 0, "max": 5 },
-        { "asset_group_id": "logo", "asset_type": "image", "required": true, "min": 1, "max": 5 },
+        { "asset_group_id": "logo", "asset_type": "image", "required": true, "min": 1, "max": 5, "logo_slots": ["logo_card_light", "logo_card_dark", "marketplace_listing", "ad_end_card"], "required_logo_slots": ["logo_card_light", "logo_card_dark"] },
         { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true, "min": 1, "max": 1 }
       ]
     },

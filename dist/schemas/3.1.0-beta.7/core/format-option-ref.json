@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.7/core/format-option-ref.json",
+  "title": "Format Option Reference",
+  "description": "Discriminated reference to a product format option. The global canonical shape is still named by `format_kind`; this reference selects one concrete product `format_options[]` entry. `scope: \"publisher\"` identifies a publisher-declared catalog option by `{ publisher_domain, format_option_id }`. `scope: \"product\"` identifies a product-local option by `format_option_id`; the enclosing package/product context supplies the namespace.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "scope"
+  },
+  "oneOf": [
+    {
+      "title": "Publisher Catalog Format Option Reference",
+      "description": "Selects a publisher-catalog-backed product format option by publisher domain and format option ID.",
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "publisher",
+          "description": "Reference resolves against the named publisher's adagents.json top-level `formats[]` catalog."
+        },
+        "publisher_domain": {
+          "type": "string",
+          "description": "Publisher domain where the adagents.json declaring this format option is hosted.",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "format_option_id": {
+          "type": "string",
+          "description": "Stable format option ID from the publisher's adagents.json top-level `formats[]`, matching a publisher-catalog-backed entry in the target product's `format_options[]`."
+        }
+      },
+      "required": [
+        "scope",
+        "publisher_domain",
+        "format_option_id"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "title": "Product-Local Format Option Reference",
+      "description": "Selects a product-local format option by ID within the enclosing package/product context. This branch deliberately forbids `publisher_domain` (`publisher_domain: false` in the schema) because product-local references are namespaced by the enclosing product only; include `scope: \"publisher\"` when the selector must cross into a publisher catalog.",
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "product",
+          "description": "Reference resolves only against the target product's inline `format_options[]`."
+        },
+        "format_option_id": {
+          "type": "string",
+          "description": "Stable format option ID from the target product's inline `format_options[]`."
+        },
+        "publisher_domain": false
+      },
+      "required": [
+        "scope",
+        "format_option_id"
+      ],
+      "additionalProperties": true
+    }
+  ],
+  "additionalProperties": true
+}

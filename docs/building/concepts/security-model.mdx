@@ -256,7 +256,7 @@ The identity, governance, and pointer-file layers above all rest on the same hid
 
 - **RFC 9421 buyer keys** — JWKS fetched from the buyer agent's own domain or `.well-known` path.
 - **Governance JWS keys** — JWKS fetched from the governance agent's own domain.
-- **Agent signing keys** — publisher-attested in `brand.json` `agents[].signing_keys[]`, fetched from the publisher's own `/.well-known`.
+- **Agent signing keys** — operator-attested through `brand.json` `agents[].jwks_uri`, with publisher `adagents.json` `authorized_agents[].signing_keys[]` pins for mutating seller authorizations.
 - **`adagents.json` authoritative pointers** — fetched from the publisher's own `/.well-known`, with the pointer-swap threat documented in [managed-networks security](/docs/governance/property/managed-networks#security-considerations).
 
 Every one of those steps trusts the counterparty's own infrastructure as the root of trust. TLS does not close this — the certificate is issued to the hostname the attacker has compromised, so it verifies clean. An attacker who controls a counterparty's CDN, DNS, or `/.well-known` path can therefore serve attacker-controlled keys, and every signature made with those keys will verify against them.
@@ -284,7 +284,7 @@ The permanent fix is a centralized registry analogous in spirit to Certificate T
 4. **Governance-neutral operation.** The registry is operated by an industry body with published governance, documented key-ceremony transparency for the registry's own signing keys, and a succession plan independent of any single vendor.
 5. **Backwards-compatible wire format.** Keys in the registry surface through the same JWKS format that verifiers already consume. A 3.x verifier's switch to registry-anchored trust is a configuration change (point JWKS discovery at the registry-index URL), not a new protocol surface.
 
-This is **explicitly not a 3.x requirement.** It is logged as a 4.0 track so implementers who build the in-protocol attestation surfaces today — `brand.json` `agents[].signing_keys[]`, `authoritative_location`, signed governance JWS — can shape their data so a later registry lookup can anchor it without protocol breakage. Specifically, implementers SHOULD keep key declarations at stable single-purpose URIs, SHOULD carry key fingerprints alongside full key material (the registry can only anchor what it can unambiguously identify), and SHOULD NOT conflate signing keys with transport keys.
+This is **explicitly not a 3.x requirement.** It is logged as a 4.0 track so implementers who build the in-protocol attestation surfaces today — `brand.json` `agents[].jwks_uri`, publisher `adagents.json` `authorized_agents[].signing_keys[]`, `authoritative_location`, signed governance JWS — can shape their data so a later registry lookup can anchor it without protocol breakage. Specifically, implementers SHOULD keep key declarations at stable single-purpose URIs, SHOULD carry key fingerprints alongside full key material (the registry can only anchor what it can unambiguously identify), and SHOULD NOT conflate signing keys with transport keys.
 
 Until the registry exists, the multi-source controls above are the 3.x normative baseline. They are the difference between "an attacker who compromises one counterparty origin gets silent authority" and "the compromise produces a detectable signal within a bounded window." 3.x promises the second; it does not promise the first.
 
