@@ -31,7 +31,7 @@ vi.mock('../../src/logger.js', () => ({
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
 const { stopSessionCleanup, clearSessions } = await import('../../src/training-agent/state.js');
 const { clearAccountStore } = await import('../../src/training-agent/account-handlers.js');
-const { resetWebhookSigning, getPublicJwks } = await import('../../src/training-agent/webhooks.js');
+const { resetWebhookSigning, getPublicJwks, emitFrameworkTaskWebhook } = await import('../../src/training-agent/webhooks.js');
 
 const AUTH = 'Bearer test-token-webhook';
 const BILLABLE_AUTH = 'Bearer demo-billing-agent-billable-v1';
@@ -163,6 +163,108 @@ describe('Training Agent webhook emission', () => {
         replayStore: new InMemoryReplayStore(),
         revocationStore: new InMemoryRevocationStore(),
       })).resolves.toMatchObject({ keyid: expect.any(String) });
+    } finally {
+      if (srv) {
+        srv.closeAllConnections?.();
+        await new Promise<void>(r => srv!.close(() => r()));
+      }
+    }
+  }, 15000);
+
+  it('falls back to task_id when the buyer omits webhook operation_id', async () => {
+    const deliveries: CapturedDelivery[] = [];
+    let srv: http.Server | undefined;
+    try {
+      const done = new Promise<void>(resolve => {
+        startReceiver((d, res) => {
+          deliveries.push(d);
+          res.writeHead(200); res.end();
+          resolve();
+        }).then(s => {
+          srv = s;
+          const addr = s.address() as AddressInfo;
+          const webhookUrl = `http://127.0.0.1:${addr.port}/hook/create_media_buy/no-operation-id`;
+          const catalog = buildCatalog();
+          const product = catalog[0].product as { product_id: string; pricing_options: Array<{ pricing_option_id: string }> };
+          return request(app)
+            .post('/api/training-agent/sales/mcp')
+            .set('Authorization', BILLABLE_AUTH)
+            .set('Content-Type', 'application/json')
+            .set('Accept', 'application/json, text/event-stream')
+            .send({
+              jsonrpc: '2.0',
+              id: 2,
+              method: 'tools/call',
+              params: {
+                name: 'create_media_buy',
+                arguments: {
+                  idempotency_key: randomUUID(),
+                  adcp_major_version: 3,
+                  account: { brand: { domain: 'webhook-task-id-fallback.example' }, operator: 'webhook-task-id-fallback.example' },
+                  brand: { domain: 'webhook-task-id-fallback.example' },
+                  start_time: '2027-06-01T00:00:00Z',
+                  end_time: '2027-07-01T00:00:00Z',
+                  packages: [{
+                    product_id: product.product_id,
+                    pricing_option_id: product.pricing_options[0].pricing_option_id,
+                    budget: 50000,
+                    start_time: '2027-06-01T00:00:00Z',
+                    end_time: '2027-07-01T00:00:00Z',
+                  }],
+                  push_notification_config: { url: webhookUrl },
+                },
+              },
+            });
+        });
+      });
+
+      await Promise.race([
+        done,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('webhook never arrived')), 5000)),
+      ]);
+
+      expect(deliveries.length).toBe(1);
+      const body = JSON.parse(deliveries[0].body) as Record<string, unknown>;
+      expect(body.task_id).toEqual(expect.any(String));
+      expect(body.operation_id).toEqual(expect.any(String));
+      expect(body.operation_id).toContain(body.task_id as string);
+      expect(body.operation_id).not.toContain('demo-billing-agent-billable-v1');
+      expect(body.operation_id).not.toContain('static:demo:');
+    } finally {
+      if (srv) {
+        srv.closeAllConnections?.();
+        await new Promise<void>(r => srv!.close(() => r()));
+      }
+    }
+  }, 15000);
+
+  it('does not copy the framework idempotency scope into webhook operation_id', async () => {
+    const deliveries: CapturedDelivery[] = [];
+    let srv: http.Server | undefined;
+    try {
+      srv = await startReceiver((d, res) => {
+        deliveries.push(d);
+        res.writeHead(200); res.end();
+      });
+      const addr = srv.address() as AddressInfo;
+      const unsafeScope = 'static:demo:demo-billing-agent-billable-v1|create_media_buy.mb_secret';
+
+      await emitFrameworkTaskWebhook({
+        url: `http://127.0.0.1:${addr.port}/hook/framework-fallback`,
+        operation_id: unsafeScope,
+        payload: {
+          task_id: 'tsk_framework_fallback',
+          task_type: 'create_media_buy',
+          status: 'completed',
+        },
+      });
+
+      expect(deliveries.length).toBe(1);
+      const body = JSON.parse(deliveries[0].body) as Record<string, unknown>;
+      expect(body.operation_id).toBe('tsk_framework_fallback');
+      expect(body.operation_id).not.toBe(unsafeScope);
+      expect(body.operation_id).not.toContain('demo-billing-agent-billable-v1');
+      expect(body.operation_id).not.toContain('static:demo:');
     } finally {
       if (srv) {
         srv.closeAllConnections?.();

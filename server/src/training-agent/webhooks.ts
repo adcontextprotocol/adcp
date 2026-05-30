@@ -387,11 +387,12 @@ export function getWebhookEmitter(): WebhookEmitter {
 }
 
 export async function emitFrameworkTaskWebhook(params: WebhookEmitParams): Promise<WebhookEmitResult> {
+  const taskId = typeof params.payload.task_id === 'string' ? params.payload.task_id : undefined;
   return getWebhookEmitter().emit({
     ...params,
     payload: {
       ...params.payload,
-      operation_id: params.payload.operation_id ?? params.operation_id,
+      operation_id: params.payload.operation_id ?? taskId,
     },
   });
 }
