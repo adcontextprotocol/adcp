@@ -34,10 +34,12 @@ import {
   type TenantRegistry,
   type TaskRegistry,
   type CreateAdcpServerFromPlatformOptions,
+  type WebhookEmitParams,
+  type WebhookEmitResult,
 } from '@adcp/sdk/server';
 import { getPool } from '../../db/client.js';
 import { getIdempotencyStore, scopedPrincipal } from '../idempotency.js';
-import { getWebhookSigningMaterial } from '../webhooks.js';
+import { getWebhookEmitter, getWebhookSigningMaterial } from '../webhooks.js';
 import { buildSignalsTenantConfig } from './signals.js';
 import { buildSalesTenantConfig } from './sales.js';
 import { buildGovernanceTenantConfig } from './governance.js';
@@ -191,6 +193,16 @@ function pickStateStore(): AdcpStateStore {
   return new PostgresStateStore(lazyPool);
 }
 
+export async function emitFrameworkTaskWebhook(params: WebhookEmitParams): Promise<WebhookEmitResult> {
+  return getWebhookEmitter().emit({
+    ...params,
+    payload: {
+      ...params.payload,
+      operation_id: params.payload.operation_id ?? params.operation_id,
+    },
+  });
+}
+
 function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboardCompat']): CreateAdcpServerFromPlatformOptions {
   return {
     name: 'adcp-training-agent',
@@ -198,6 +210,7 @@ function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboar
     ...(storyboardCompat?.version === '3.0' && { adcpVersion: '3.0' }),
     idempotency: getIdempotencyStore(),
     webhooks: getWebhookSigningMaterial(),
+    taskWebhookEmitter: { emit: emitFrameworkTaskWebhook },
     taskRegistry: pickTaskRegistry(),
     stateStore: pickStateStore(),
     mergeSeam: 'log-once',

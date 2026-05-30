@@ -346,7 +346,11 @@ function isApplicable(sb: Storyboard): boolean {
  */
 interface LoadedTestKit {
   brand?: { house?: { domain?: string }; brand_id?: string };
-  auth?: { api_key?: string; probe_task?: string };
+  auth?: {
+    api_key?: string;
+    basic?: { username?: string; password?: string; credentials?: string };
+    probe_task?: string;
+  };
 }
 
 function loadTestKit(sb: Storyboard): LoadedTestKit | undefined {
@@ -389,15 +393,16 @@ const PROBE_TASK_BY_TENANT: Record<string, string> = {
  */
 function testKitOptionsFromKit(kit: LoadedTestKit | undefined): StoryboardRunOptions['test_kit'] | undefined {
   const auth = kit?.auth;
-  if (!auth?.api_key && !auth?.probe_task) return undefined;
+  if (!auth?.api_key && !auth?.basic && !auth?.probe_task) return undefined;
   if (!auth.probe_task) {
-    throw new Error('test kit declares auth.api_key without auth.probe_task — required by runner');
+    throw new Error('test kit declares auth credentials without auth.probe_task — required by runner');
   }
   const tenantPath = process.env.TENANT_PATH;
   const probeTask = (tenantPath && PROBE_TASK_BY_TENANT[tenantPath]) ?? auth.probe_task;
   return {
     auth: {
       ...(auth.api_key !== undefined && { api_key: auth.api_key }),
+      ...(auth.basic !== undefined && { basic: auth.basic }),
       probe_task: probeTask,
     },
   };

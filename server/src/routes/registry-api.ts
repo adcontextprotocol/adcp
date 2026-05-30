@@ -24,6 +24,7 @@ import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../serv
 import {
   hostedComplianceTarget,
   hostedComplianceOptions,
+  hostedAuthProbeTaskForProfile,
   hostedCapabilitiesForCompliance,
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
@@ -6286,6 +6287,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         }
 
         const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
+        const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `run-storyboard-step:${agentUrl}` });
+        let authProbeTask: string | undefined;
+        if (sdkAuth?.type === 'bearer' || sdkAuth?.type === 'basic') {
+          try {
+            const caps = await testCapabilityDiscovery(agentUrl, withHostedTestOptions({ auth: sdkAuth }, complianceTarget));
+            authProbeTask = hostedAuthProbeTaskForProfile(caps.profile);
+          } catch (err) {
+            logger.warn({ err, agentUrl }, "Could not infer hosted auth probe task for storyboard step; using default");
+          }
+        }
 
         const { context, dry_run } = req.body;
         if (context && (typeof context !== "object" || Array.isArray(context))) {
@@ -6296,9 +6307,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         }
 
         const result = await runStoryboardStep(agentUrl, storyboard, req.params.stepId, withHostedStoryboardRunOptions({
-          ...(auth && { auth }),
+          ...(sdkAuth && { auth: sdkAuth }),
           ...(context && { context }),
-        }, complianceTarget));
+        }, complianceTarget, authProbeTask));
 
         if (!result.passed && isOAuthRequiredErrorMessage(result.error)) {
           const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);

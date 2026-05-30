@@ -60,6 +60,7 @@ import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import {
   hostedComplianceTarget,
   hostedComplianceOptions,
+  hostedAuthProbeTaskForProfile,
   hostedCapabilitiesForCompliance,
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
@@ -437,6 +438,22 @@ export function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; 
   }
 
   return { type: 'bearer', token: resolved.authToken };
+}
+
+async function inferHostedAuthProbeTask(
+  agentUrl: string,
+  auth: ReturnType<typeof buildAuthOption>,
+  runTarget: ReturnType<typeof hostedComplianceTarget>,
+): Promise<string | undefined> {
+  if (!auth) return undefined;
+
+  try {
+    const caps = await testCapabilityDiscovery(agentUrl, withHostedTestOptions({ auth }, runTarget));
+    return hostedAuthProbeTaskForProfile(caps.profile);
+  } catch (error) {
+    logger.warn({ error, agentUrl }, 'Addie: could not infer hosted auth probe task; using default');
+    return undefined;
+  }
 }
 
 /**
@@ -4450,9 +4467,10 @@ export function createMemberToolHandlers(
 
     try {
       const authOption = buildAuthOption(resolved);
+      const authProbeTask = await inferHostedAuthProbeTask(resolved.resolvedUrl, authOption, runTarget);
       const result = await runStoryboard(resolved.resolvedUrl, sb, withHostedStoryboardRunOptions({
         ...(authOption && { auth: authOption }),
-      }, runTarget));
+      }, runTarget, authProbeTask));
 
       // runStoryboard catches its own throws and surfaces them as step
       // errors. Detect OAuth on the first failing step before rendering a
@@ -4637,10 +4655,11 @@ export function createMemberToolHandlers(
 
     try {
       const authOption = buildAuthOption(resolved);
+      const authProbeTask = await inferHostedAuthProbeTask(resolved.resolvedUrl, authOption, runTarget);
       const result: StoryboardStepResult = await runStoryboardStep(resolved.resolvedUrl, sb, resolvedStepId, withHostedStoryboardRunOptions({
         context,
         ...(authOption && { auth: authOption }),
-      }, runTarget));
+      }, runTarget, authProbeTask));
 
       // runStoryboardStep catches its own throws and surfaces them as
       // result.error strings. Detect OAuth before rendering.
