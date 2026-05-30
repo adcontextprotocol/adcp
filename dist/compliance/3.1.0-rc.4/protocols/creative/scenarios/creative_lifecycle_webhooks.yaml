@@ -1,0 +1,389 @@
+id: creative/creative_lifecycle_webhooks
+version: "1.0.0"
+introduced_in: "3.1"
+title: "Creative lifecycle webhooks"
+category: creative
+summary: "Registers account-level creative lifecycle notifications, forces a seller-side status transition, observes creative.status_changed, and verifies list_creatives snapshot repair plus optional creative.purged coverage."
+track: creative
+required_tools:
+  - sync_accounts
+  - sync_creatives
+  - list_creatives
+  - comply_test_controller
+
+narrative: |
+  A buyer registers an account-level webhook subscriber through
+  sync_accounts.accounts[].notification_configs[] for creative lifecycle
+  events. The runner then pushes a creative, forces a seller-side lifecycle
+  transition with comply_test_controller, observes the account-anchored
+  creative.status_changed event, and re-reads list_creatives as the repair
+  path after a missed or distrusted webhook.
+
+  This storyboard is deliberately separate from media-buy impairment coverage:
+  creative.status_changed and creative.purged are account-anchored lifecycle
+  events, while impairment webhooks are media-buy anchored state-event logs.
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - has_creative_library
+    - emits_account_lifecycle_webhooks
+  examples:
+    - "Creative management platforms"
+    - "Ad servers with account-scoped creative libraries"
+    - "Media sellers that host buyer-supplied creative assets"
+
+caller:
+  role: compliance_runner
+  example: "AdCP Verified runner with webhook receiver capability"
+
+prerequisites:
+  description: |
+    The runner MUST host the webhook receiver contract so the account-level
+    notification_configs[] URL can point at a per-step receiver. This
+    storyboard is intended for sellers that expose account-level creative
+    lifecycle notifications; sellers that do not support notification_configs[]
+    should omit this scenario from their claimed coverage.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: register_account_lifecycle_subscriber
+    title: "Register account-level creative lifecycle notifications"
+    narrative: |
+      The buyer provisions a sandbox account and declares a webhook subscriber
+      interested in account-anchored creative.status_changed and
+      creative.purged events. The subscriber URL is owned by the runner.
+
+    steps:
+      - id: sync_accounts_with_lifecycle_notifications
+        title: "Register notification_configs[] for creative lifecycle events"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Seller accepts the sandbox account relationship and persists the
+          account-level subscriber:
+          - action: created or updated
+          - status: active
+          - notification_configs[0].subscriber_id: buyer-primary
+          - notification_configs[0].event_types includes creative.status_changed
+            and creative.purged
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              sandbox: true
+              notification_configs:
+                - subscriber_id: "buyer-primary"
+                  url: "{{runner.webhook_url:creative_lifecycle_events}}"
+                  event_types:
+                    - "creative.status_changed"
+                    - "creative.purged"
+                  active: true
+          idempotency_key: "$generate:uuid_v4#creative_lifecycle_webhooks_sync_accounts"
+          context:
+            correlation_id: "creative_lifecycle_webhooks--sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json"
+          - check: field_value
+            path: "accounts[0].action"
+            allowed_values: ["created", "updated", "unchanged"]
+            description: "Account sync succeeded"
+          - check: field_value
+            path: "accounts[0].status"
+            allowed_values: ["active"]
+            description: "Sandbox account is active"
+          - check: field_value
+            path: "accounts[0].notification_configs[0].subscriber_id"
+            value: "buyer-primary"
+            description: "Seller echoes the account-level subscriber id"
+          - check: field_present
+            path: "accounts[0].notification_configs[0].event_types"
+            description: "Seller echoes the account-level creative lifecycle event filter array"
+
+  - id: seed_creative
+    title: "Create a sandbox creative"
+    narrative: |
+      The buyer syncs a creative into the account-scoped library. The creative
+      starts from a known approved baseline before the runner forces a
+      seller-side status transition.
+
+    steps:
+      - id: sync_creative
+        title: "Sync a display creative into the account library"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        stateful: true
+        expected: |
+          Creative is created or updated and can be addressed by creative_id
+          in later list_creatives and comply_test_controller calls.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          creatives:
+            - creative_id: "acme_lifecycle_banner_001"
+              name: "Trail Pro lifecycle webhook banner"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-300x250.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+          idempotency_key: "$generate:uuid_v4#creative_lifecycle_webhooks_sync_creative"
+          context:
+            correlation_id: "creative_lifecycle_webhooks--sync_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "acme_lifecycle_banner_001"
+            description: "Creative id is echoed"
+          - check: field_value
+            path: "creatives[0].action"
+            allowed_values: ["created", "updated"]
+            description: "Creative was stored"
+
+      - id: force_creative_approved
+        title: "Force approved baseline"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        stateful: true
+        expected: |
+          success: true. The creative is approved before the status-changed
+          event phase begins.
+        sample_request:
+          account:
+            sandbox: true
+          brand:
+            domain: "acmeoutdoor.example"
+          scenario: "force_creative_status"
+          params:
+            creative_id: "acme_lifecycle_banner_001"
+            status: "approved"
+          context:
+            correlation_id: "creative_lifecycle_webhooks--force_approved"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller accepted the approved baseline"
+
+  - id: status_changed_event
+    title: "Observe creative.status_changed"
+    narrative: |
+      The controller forces an approved → rejected seller-side transition. The
+      seller emits creative.status_changed to the registered account-level
+      subscriber, and the buyer re-reads the creative snapshot to repair state
+      after any missed webhook.
+
+    steps:
+      - id: force_creative_rejected
+        title: "Force approved → rejected"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        stateful: true
+        expected: |
+          success: true. Seller observed a seller-initiated creative lifecycle
+          transition and must notify account-level lifecycle subscribers.
+        sample_request:
+          account:
+            sandbox: true
+          brand:
+            domain: "acmeoutdoor.example"
+          scenario: "force_creative_status"
+          params:
+            creative_id: "acme_lifecycle_banner_001"
+            status: "rejected"
+            rejection_reason: "Lifecycle webhook storyboard: forced revocation for account-level notification coverage."
+          context:
+            correlation_id: "creative_lifecycle_webhooks--force_rejected"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller accepted the rejected transition"
+
+      - id: expect_status_changed_webhook
+        title: "Assert creative.status_changed webhook payload"
+        task: expect_webhook
+        triggered_by: force_creative_rejected
+        filter:
+          notification_type: "creative.status_changed"
+          creative_id: "acme_lifecycle_banner_001"
+          subscriber_id: "buyer-primary"
+        timeout_seconds: 30
+        expect_idempotency_key: true
+        webhook_payload_schema_ref: "creative/creative-status-changed-webhook.json"
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        expected: |
+          A webhook arrives at the account-level subscriber URL. Payload
+          validates against creative-status-changed-webhook.json and carries:
+          notification_type: creative.status_changed, subscriber_id:
+          buyer-primary, creative_id: acme_lifecycle_banner_001,
+          transition.from: approved, transition.to: rejected, notification_id,
+          and idempotency_key.
+
+      - id: list_creatives_after_status_change
+        title: "Repair from list_creatives after the status webhook"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        stateful: true
+        expected: |
+          Snapshot repair shows the creative's current rejected status and the
+          recent creative.status_changed activity record, keyed by the same
+          creative_id as the webhook payload.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          creative_ids:
+            - "acme_lifecycle_banner_001"
+          include_webhook_activity: true
+          context:
+            correlation_id: "creative_lifecycle_webhooks--list_after_status_change"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "acme_lifecycle_banner_001"
+            description: "Snapshot returns the transitioned creative"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "rejected"
+            description: "Snapshot repair reflects the current rejected status"
+          - check: field_value
+            path: "creatives[0].webhook_activity[0].notification_type"
+            value: "creative.status_changed"
+            description: "Snapshot exposes recent status-changed webhook activity"
+          - check: field_present
+            path: "creatives[0].webhook_activity[0].idempotency_key"
+            description: "Activity record carries the delivery idempotency key"
+
+  - id: purged_event_optional
+    title: "Optional creative.purged coverage"
+    optional: true
+    narrative: |
+      Sellers that advertise force_creative_purge can deterministically destroy
+      the sandbox creative and emit creative.purged. This phase is optional;
+      the required status_changed and snapshot-repair coverage above still
+      stands when a seller does not implement the purge primitive.
+
+    steps:
+      - id: force_creative_purged
+        title: "Force a soft purge"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        stateful: true
+        expected: |
+          success: true when the seller supports force_creative_purge. The
+          creative is soft-purged so list_creatives can expose a tombstone.
+        sample_request:
+          account:
+            sandbox: true
+          brand:
+            domain: "acmeoutdoor.example"
+          scenario: "force_creative_purge"
+          params:
+            creative_id: "acme_lifecycle_banner_001"
+            purge_kind: "soft"
+            reason_code: "retention_expired"
+            reason_detail: "Lifecycle webhook storyboard: soft purge for account-level notification coverage."
+          context:
+            correlation_id: "creative_lifecycle_webhooks--force_purged"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+
+      - id: expect_purged_webhook
+        title: "Assert creative.purged webhook payload"
+        task: expect_webhook
+        triggered_by: force_creative_purged
+        filter:
+          notification_type: "creative.purged"
+          creative_id: "acme_lifecycle_banner_001"
+          subscriber_id: "buyer-primary"
+        timeout_seconds: 30
+        expect_idempotency_key: true
+        webhook_payload_schema_ref: "creative/creative-purged-webhook.json"
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        expected: |
+          A creative.purged webhook arrives for the same account-level
+          subscriber. Payload validates against creative-purged-webhook.json
+          and carries creative_id, notification_id, idempotency_key,
+          purge_kind: soft, and reason_code.
+
+      - id: list_creatives_after_purge
+        title: "Repair from list_creatives tombstone"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        stateful: true
+        expected: |
+          With include_purged and include_webhook_activity, snapshot repair
+          surfaces the soft-purged tombstone and the recent creative.purged
+          activity record.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          creative_ids:
+            - "acme_lifecycle_banner_001"
+          include_purged: true
+          include_webhook_activity: true
+          context:
+            correlation_id: "creative_lifecycle_webhooks--list_after_purge"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "acme_lifecycle_banner_001"
+            description: "Tombstone retains the creative id"
+          - check: field_value
+            path: "creatives[0].purge.kind"
+            value: "soft"
+            description: "Soft-purged creative remains visible as a tombstone"
+          - check: field_value
+            path: "creatives[0].webhook_activity[0].notification_type"
+            value: "creative.purged"
+            description: "Snapshot exposes recent purged webhook activity"

@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.4/core/account-ref.json",
+  "title": "Account Reference",
+  "description": "Reference to an account by seller-assigned ID or natural key. Use account_id when the seller or upstream platform owns the canonical account namespace: either a seller-defined account supplied out-of-band, or an upstream-managed namespace discovered with list_accounts before account-scoped calls. If a credential may access more than one account, the seller MUST expose list_accounts; if a credential is bound to exactly one account, the seller SHOULD expose list_accounts returning that singleton and MAY omit it only when the same explicit account_id is provided through another declared path or out-of-band onboarding. Use the natural key (brand + operator) when brand + operator (+ sandbox) is the durable protocol key for buyer-declared accounts provisioned through sync_accounts (require_operator_auth: false). For sandbox: account_id namespaces use pre-existing test accounts discovered via list_accounts or supplied out-of-band; buyer-declared accounts use the natural key with sandbox: true.",
+  "type": "object",
+  "oneOf": [
+    {
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "description": "Seller-assigned account identifier. For upstream-managed account namespaces, this value comes from list_accounts; for seller-defined namespaces without a list_accounts surface, it is supplied out-of-band. Buyer-declared account sellers MAY echo account_id from sync_accounts as an internal handle, but they MUST continue accepting the natural-key AccountRef for that account on subsequent calls.",
+          "x-entity": "account"
+        }
+      },
+      "required": ["account_id"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "brand": {
+          "$ref": "/schemas/3.1.0-rc.4/core/brand-ref.json",
+          "description": "Brand reference identifying the advertiser"
+        },
+        "operator": {
+          "type": "string",
+          "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "x-entity": "operator"
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, references the sandbox account for this brand/operator pair. Defaults to false (production account).",
+          "default": false
+        }
+      },
+      "required": ["brand", "operator"],
+      "additionalProperties": false
+    }
+  ],
+  "examples": [
+    { "account_id": "acc_acme_001" },
+    { "brand": { "domain": "acme-corp.com" }, "operator": "acme-corp.com" },
+    { "brand": { "domain": "nova-brands.com", "brand_id": "spark" }, "operator": "pinnacle-media.com" },
+    { "brand": { "domain": "acme-corp.com" }, "operator": "acme-corp.com", "sandbox": true }
+  ]
+}
