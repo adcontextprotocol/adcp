@@ -7,7 +7,7 @@ import { Router } from "express";
 import { WorkOS } from "@workos-inc/node";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin, requireGlobalAdmin } from "../../middleware/auth.js";
 import { OrganizationDatabase } from "../../db/organization-db.js";
 import { getPendingInvoices } from "../../billing/stripe-client.js";
 import {
@@ -1081,8 +1081,7 @@ export function setupOrganizationRoutes(
   // Used by Domain Health to move users from personal workspaces to company orgs
   apiRouter.post(
     "/organizations/:orgId/add-users",
-    requireAuth,
-    requireAdmin,
+    ...requireGlobalAdmin,
     async (req, res) => {
       try {
         const { orgId } = req.params;
@@ -1132,7 +1131,10 @@ export function setupOrganizationRoutes(
         for (const userId of user_ids) {
           try {
             // Validate user ID format
-            if (typeof userId !== "string" || !/^[\w-]+$/.test(userId)) {
+            if (
+              typeof userId !== "string" ||
+              !/^user_[0-9a-hjkmnp-tv-z]{26}$/i.test(userId)
+            ) {
               errors.push(`Invalid user ID format`);
               continue;
             }

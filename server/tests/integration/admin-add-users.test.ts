@@ -1,5 +1,6 @@
 import express from "express";
 import request from "supertest";
+import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { initializeDatabase, closeDatabase } from "../../src/db/client.js";
 import { runMigrations } from "../../src/db/migrate.js";
@@ -16,11 +17,13 @@ vi.mock("../../src/middleware/auth.js", async (importOriginal) => {
     next();
   };
   const requireAdmin = (_req: any, _res: any, next: any) => next();
+  const passThrough = (_req: any, _res: any, next: any) => next();
 
   return {
     ...(await importOriginal<typeof import("../../src/middleware/auth.js")>()),
     requireAuth,
     requireAdmin,
+    requireGlobalAdmin: [requireAuth, passThrough, requireAdmin],
   };
 });
 
@@ -119,6 +122,19 @@ describe("admin add-users", () => {
       [USER_ID, SOURCE_ORG_ID]
     );
   }
+
+  it("mounts add-users behind the global-admin chain", () => {
+    const source = readFileSync(
+      new URL("../../src/routes/admin/organizations.ts", import.meta.url),
+      "utf8"
+    );
+    const addUsersRoute = source.match(
+      /apiRouter\.post\(\s*"\/organizations\/:orgId\/add-users"[\s\S]*?async \(req, res\)/
+    )?.[0];
+
+    expect(addUsersRoute).toContain("...requireGlobalAdmin");
+    expect(addUsersRoute).not.toContain("requireAdmin");
+  });
 
   it("mirrors successful WorkOS adds through the shared membership upsert", async () => {
     const response = await request(app)
@@ -233,6 +249,18 @@ describe("admin add-users", () => {
       [USER_ID, TARGET_ORG_ID]
     );
     expect(row.rowCount).toBe(0);
+    await expectStagingRows(0);
+  });
+
+  it("rejects malformed WorkOS user ids before calling WorkOS", async () => {
+    const response = await request(app)
+      .post(`/api/admin/organizations/${TARGET_ORG_ID}/add-users`)
+      .send({ user_ids: ["user_does_not_exist"] })
+      .expect(200);
+
+    expect(response.body.added_count).toBe(0);
+    expect(response.body.errors).toEqual(["Invalid user ID format"]);
+    expect(createOrganizationMembership).not.toHaveBeenCalled();
     await expectStagingRows(0);
   });
 
