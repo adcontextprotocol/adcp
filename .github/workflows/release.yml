@@ -85,19 +85,53 @@ jobs:
 
       - name: Detect committed release artifacts
         id: release-artifacts
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           changed_files="$(git show --format= --name-only --no-renames "${GITHUB_SHA}")"
           if printf '%s\n' "${changed_files}" | grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]"; then
             echo "has_release_artifacts=true" >> "$GITHUB_OUTPUT"
             echo "Detected committed release artifacts for ${VERSION}."
+          elif [ -f "dist/protocol/${VERSION}.tgz" ] && [ -f "dist/protocol/${VERSION}.tgz.sha256" ] && gh release view "${TAG}" >/dev/null 2>&1; then
+            missing_assets=0
+            for asset in "${VERSION}.tgz" "${VERSION}.tgz.sha256" "${VERSION}.tgz.sig" "${VERSION}.tgz.crt"; do
+              if ! gh release view "${TAG}" --json assets --jq '.assets[].name' | grep -Fxq "${asset}"; then
+                missing_assets=1
+                break
+              fi
+            done
+            if [ "${missing_assets}" -eq 1 ]; then
+              echo "has_release_artifacts=true" >> "$GITHUB_OUTPUT"
+              echo "Detected missing protocol release assets for ${VERSION}; repairing from the current tree."
+            else
+              echo "has_release_artifacts=false" >> "$GITHUB_OUTPUT"
+              echo "No committed release artifacts detected for ${VERSION}."
+            fi
           else
             echo "has_release_artifacts=false" >> "$GITHUB_OUTPUT"
             echo "No committed release artifacts detected for ${VERSION}."
           fi
+
+      - name: Sign local protocol tarball if needed
+        if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.release-artifacts.outputs.version }}"
+          TARBALL="dist/protocol/${VERSION}.tgz"
+          if [ ! -f "${TARBALL}" ]; then
+            echo "::error::Tarball not found at ${TARBALL}. Did npm run version fail upstream?"
+            exit 1
+          fi
+          if [ ! -f "${TARBALL}.sig" ] || [ ! -f "${TARBALL}.crt" ]; then
+            npm run sign:protocol-tarball
+          fi
+          test -f "${TARBALL}.sig"
+          test -f "${TARBALL}.crt"
 
       - name: Verify local protocol tarball before publication
         if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'
