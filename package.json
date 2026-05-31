@@ -126,7 +126,7 @@
     "@contentauth/c2pa-node": "^0.5.4",
     "@google-cloud/kms": "^5.5.0",
     "@google/generative-ai": "^0.24.1",
-    "@googleapis/calendar": "^14.3.0",
+    "@googleapis/calendar": "^15.0.0",
     "@modelcontextprotocol/sdk": "^1.28.0",
     "@mozilla/readability": "^0.6.0",
     "@opentelemetry/api-logs": "^0.218.0",
