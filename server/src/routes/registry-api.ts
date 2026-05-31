@@ -11,7 +11,7 @@ import { z } from "zod";
 import escapeHtml from "escape-html";
 import { findOwnerOrgForUser } from "../services/agent-ownership.js";
 import { CreativeAgentClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
-import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex } from "@adcp/sdk/testing";
+import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
@@ -27,7 +27,7 @@ import {
   hostedAuthProbeTaskForProfile,
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
-  badgeEligibleVersionsForHostedComplianceTarget,
+  selectHostedComplianceTargetForProfile,
 } from "../services/hosted-compliance-version.js";
 import {
   comply,
@@ -35,10 +35,13 @@ import {
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
   computeSpecialismStatus,
+  badgeEligibleVersionsForTargetSelection,
+  selectComplianceTargetForAgent,
+  selectComplianceTargetForAgentSelection,
 } from "../addie/services/compliance-testing.js";
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
-import { runBadgeFanOut } from "../services/badge-issuance.js";
+import { revokeUnsupportedPublicBadges, runBadgeFanOut } from "../services/badge-issuance.js";
 import { resolveOwnerMembership, tierLabel } from "../services/membership-tiers.js";
 import { inferDiagnosticAgentType } from "../lib/diagnostic-agent-type-inference.js";
 import { isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
@@ -129,11 +132,44 @@ import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
 const logger = createLogger("registry-api");
 const complianceTarget = hostedComplianceTarget();
 const complianceOptions = hostedComplianceOptions(complianceTarget);
-const badgeEligibleAdcpVersions = [...badgeEligibleVersionsForHostedComplianceTarget(complianceTarget)];
-const badgeEligibilityMetadata = (eligible: boolean) => ({
-  badge_eligible: eligible,
-  badge_eligible_adcp_versions: eligible ? badgeEligibleAdcpVersions : [],
+const badgeEligibilityMetadata = (eligibleVersions: readonly string[]) => ({
+  badge_eligible: eligibleVersions.length > 0,
+  badge_eligible_adcp_versions: [...eligibleVersions],
 });
+const INVALID_COMPLIANCE_TARGET_MESSAGE =
+  "Invalid compliance_target. Use 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.";
+
+class InvalidComplianceTargetError extends Error {}
+
+function targetFromRequestValue(value: unknown): ReturnType<typeof hostedComplianceTarget> {
+  const requested = typeof value === "string" ? value.trim() : "";
+  if (!requested) return complianceTarget;
+  try {
+    return hostedComplianceTarget(requested);
+  } catch {
+    throw new InvalidComplianceTargetError(INVALID_COMPLIANCE_TARGET_MESSAGE);
+  }
+}
+
+function summarizeStoryboardsForTarget(
+  target: ReturnType<typeof hostedComplianceTarget>,
+  category?: string,
+) {
+  const all = listAllComplianceStoryboards(hostedComplianceOptions(target));
+  const filtered = category ? all.filter((sb) => sb.category === category) : all;
+
+  return filtered.map((sb) => ({
+    id: sb.id,
+    title: sb.title,
+    category: sb.category,
+    summary: sb.summary,
+    interaction_model: sb.agent.interaction_model,
+    examples: sb.agent.examples || [],
+    phase_count: sb.phases.length,
+    step_count: sb.phases.reduce((sum, phase) => sum + phase.steps.length, 0),
+  }));
+}
+
 const propertyCheckService = new PropertyCheckService();
 const propertyCheckDb = new PropertyCheckDatabase();
 const bulkCheckService = new BulkPropertyCheckService();
@@ -2360,7 +2396,7 @@ registry.registerPath({
               ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed." }),
               run_id: z.string().optional().openapi({ description: "Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence." }),
               test_session_id: z.string().optional().openapi({ description: "Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh." }),
-              requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Present when `ran` is true." }),
+              requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0, 3.1-rc, or 3.1-beta. Present when `ran` is true." }),
               adcp_version: z.string().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12 or 3.1.0-beta.7. Present when `ran` is true." }),
               badge_eligible: z.boolean().optional().openapi({ description: "True when this run can update public badge state." }),
               badge_eligible_adcp_versions: z.array(z.string()).optional().openapi({ description: "Public badge versions this run can issue, e.g. ['3.0']." }),
@@ -2657,6 +2693,7 @@ registry.registerPath({
   request: {
     query: z.object({
       category: z.string().optional().openapi({ description: "Filter by storyboard category" }),
+      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta" }),
     }),
   },
   responses: {
@@ -2688,6 +2725,9 @@ registry.registerPath({
   request: {
     params: z.object({
       id: z.string().openapi({ description: "Storyboard ID" }),
+    }),
+    query: z.object({
+      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta" }),
     }),
   },
   responses: {
@@ -2942,6 +2982,9 @@ registry.registerPath({
   request: {
     params: z.object({
       storyboardId: z.string(),
+    }),
+    query: z.object({
+      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta" }),
     }),
   },
   responses: {
@@ -5593,12 +5636,23 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         try {
           const testSessionId = `owner-refresh-${Date.now()}-${randomUUID()}`;
           const triggeredBy = ownerOrgId ? 'owner_test' : 'manual';
-          const complyResult = await comply(agentUrl, {
+          const complyOptions = {
             test_session_id: testSessionId,
             timeout_ms: 90_000,
             userAgent: AAO_UA_COMPLIANCE,
             ...(resolvedAuth && { auth: resolvedAuth }),
-          }, complianceTarget);
+          };
+          const runTargetSelection = await selectComplianceTargetForAgentSelection(
+            agentUrl,
+            complyOptions,
+            complianceTarget,
+            'canonical',
+          );
+          const runTarget = runTargetSelection.target;
+          const complyResult = await comply(agentUrl, complyOptions, runTarget);
+          const runBadgeEligibleVersions = [
+            ...badgeEligibleVersionsForTargetSelection(runTargetSelection, complyResult.agent_profile),
+          ];
           logOutboundRequest({
             agent_url: agentUrl,
             request_type: 'compliance',
@@ -5624,9 +5678,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               ran: true,
               run_id: run.id,
               test_session_id: testSessionId,
-              requested_compliance_target: complianceTarget.requested,
+              requested_compliance_target: runTarget.requested,
               adcp_version: complyResult.adcp_version,
-              ...badgeEligibilityMetadata(badgeEligibleAdcpVersions.length > 0),
+              ...badgeEligibilityMetadata(runBadgeEligibleVersions),
               overall_status: dbInput.overall_status,
               storyboards_passing: passing,
               storyboards_total: storyboardStatuses.length,
@@ -5637,17 +5691,27 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             // Fan out badge issuance so verification badges reflect the new
             // verdict immediately. Matches the per-storyboard owner-test path.
             const declaredSpecialisms = complyResult.agent_profile?.specialisms ?? [];
-            if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0) {
+            if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0 && runBadgeEligibleVersions.length > 0) {
               try {
                 await runBadgeFanOut({
                   complianceDb,
                   agentUrl,
                   declaredSpecialisms,
                   runId: run.id,
-                  adcpVersions: badgeEligibleAdcpVersions,
+                  adcpVersions: runBadgeEligibleVersions,
                 });
               } catch (badgeError) {
                 logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after manual refresh');
+              }
+            } else {
+              try {
+                await revokeUnsupportedPublicBadges({
+                  complianceDb,
+                  agentUrl,
+                  supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+                });
+              } catch (badgeError) {
+                logger.warn({ err: badgeError, agentUrl }, 'Unsupported public badge revocation failed after manual refresh');
               }
             }
           }
@@ -6073,14 +6137,20 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   router.get("/storyboards", async (req, res) => {
     try {
       const category = typeof req.query.category === "string" ? req.query.category : undefined;
-      const results = listStoryboards(category);
+      const runTarget = targetFromRequestValue(req.query.compliance_target);
+      const results = runTarget === complianceTarget
+        ? listStoryboards(category)
+        : summarizeStoryboardsForTarget(runTarget, category);
       res.json({
-        requested_compliance_target: complianceTarget.requested,
-        adcp_version: complianceTarget.version,
+        requested_compliance_target: runTarget.requested,
+        adcp_version: runTarget.version,
         storyboards: results,
         count: results.length,
       });
     } catch (error) {
+      if (error instanceof InvalidComplianceTargetError) {
+        return res.status(400).json({ error: INVALID_COMPLIANCE_TARGET_MESSAGE });
+      }
       logger.error({ err: error, path: req.path }, "Failed to list storyboards");
       res.status(500).json({ error: "Failed to list storyboards" });
     }
@@ -6088,19 +6158,25 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.get("/storyboards/:id", async (req, res) => {
     try {
-      const storyboard = getStoryboard(req.params.id);
+      const runTarget = targetFromRequestValue(req.query.compliance_target);
+      const storyboard = runTarget === complianceTarget
+        ? getStoryboard(req.params.id)
+        : getComplianceStoryboardById(req.params.id, hostedComplianceOptions(runTarget));
       if (!storyboard) {
         return res.status(404).json({ error: "Storyboard not found" });
       }
 
       const testKit = getTestKitForStoryboard(req.params.id);
       res.json({
-        requested_compliance_target: complianceTarget.requested,
-        adcp_version: complianceTarget.version,
+        requested_compliance_target: runTarget.requested,
+        adcp_version: runTarget.version,
         storyboard,
         test_kit: testKit || null,
       });
     } catch (error) {
+      if (error instanceof InvalidComplianceTargetError) {
+        return res.status(400).json({ error: INVALID_COMPLIANCE_TARGET_MESSAGE });
+      }
       logger.error({ err: error, path: req.path }, "Failed to get storyboard");
       res.status(500).json({ error: "Failed to get storyboard" });
     }
@@ -6129,7 +6205,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       try {
         const caps = await testCapabilityDiscovery(
           agentUrl,
-          withHostedTestOptions({ ...(sdkAuth && { auth: sdkAuth }) }, complianceTarget),
+          { ...(sdkAuth && { auth: sdkAuth }) },
         );
         profile = caps.profile;
 
@@ -6157,6 +6233,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       const supportedProtocols = profile?.supported_protocols ?? [];
       const specialisms = profile?.specialisms ?? [];
+      const runTarget = selectHostedComplianceTargetForProfile(profile, complianceTarget);
+      const runOptions = hostedComplianceOptions(runTarget);
 
       let resolved;
       try {
@@ -6166,7 +6244,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           major_versions: profile?.adcp_major_versions,
           supported_versions: profile?.adcp_supported_versions,
         };
-        resolved = resolveStoryboardsForCapabilities(caps, complianceOptions);
+        resolved = resolveStoryboardsForCapabilities(caps, runOptions);
       } catch (resolveErr) {
         // Fail-closed: agent capabilities are malformed. Distinguish the two
         // concrete cases the resolver throws for — parent-protocol-missing vs
@@ -6175,7 +6253,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         const capsError = classifyCapabilityResolutionError(resolveErr);
         let knownSpecialisms: string[] = [];
         try {
-          knownSpecialisms = loadComplianceIndex(complianceOptions).specialisms.map(s => s.id).sort();
+          knownSpecialisms = loadComplianceIndex(runOptions).specialisms.map(s => s.id).sort();
         } catch (indexErr) {
           logger.warn({ err: indexErr }, "Failed to load compliance index for 422 response");
         }
@@ -6230,8 +6308,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         agent_name: profile?.name || "Unknown",
         supported_protocols: supportedProtocols,
         specialisms,
-        requested_compliance_target: complianceTarget.requested,
-        adcp_version: complianceTarget.version,
+        requested_compliance_target: runTarget.requested,
+        adcp_version: runTarget.version,
         bundles,
         total_storyboards: bundles.reduce((n, b) => n + b.storyboards.length, 0),
       };
@@ -6280,17 +6358,26 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
 
-        const storyboard = getComplianceStoryboardById(req.params.storyboardId, complianceOptions);
+        const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
+        const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `run-storyboard-step:${agentUrl}` });
+        const runTarget = await selectComplianceTargetForAgent(
+          agentUrl,
+          {
+            timeout_ms: 90_000,
+            ...(sdkAuth && { auth: sdkAuth }),
+          },
+          complianceTarget,
+        );
+        const runOptions = hostedComplianceOptions(runTarget);
+        const storyboard = getComplianceStoryboardById(req.params.storyboardId, runOptions);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
-        const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `run-storyboard-step:${agentUrl}` });
         let authProbeTask: string | undefined;
         if (sdkAuth?.type === 'bearer' || sdkAuth?.type === 'basic') {
           try {
-            const caps = await testCapabilityDiscovery(agentUrl, withHostedTestOptions({ auth: sdkAuth }, complianceTarget));
+            const caps = await testCapabilityDiscovery(agentUrl, withHostedTestOptions({ auth: sdkAuth }, runTarget));
             authProbeTask = hostedAuthProbeTaskForProfile(caps.profile);
           } catch (err) {
             logger.warn({ err, agentUrl }, "Could not infer hosted auth probe task for storyboard step; using default");
@@ -6308,13 +6395,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         const result = await runStoryboardStep(agentUrl, storyboard, req.params.stepId, withHostedStoryboardRunOptions({
           ...(sdkAuth && { auth: sdkAuth }),
           ...(context && { context }),
-        }, complianceTarget, authProbeTask));
+        }, runTarget, authProbeTask));
 
         if (!result.passed && isOAuthRequiredErrorMessage(result.error)) {
           const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
           return res.json({
-            requested_compliance_target: complianceTarget.requested,
-            adcp_version: complianceTarget.version,
+            requested_compliance_target: runTarget.requested,
+            adcp_version: runTarget.version,
             ...result,
             needs_oauth: true,
             ...(agentContextId && { agent_context_id: agentContextId }),
@@ -6322,8 +6409,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         }
 
         res.json({
-          requested_compliance_target: complianceTarget.requested,
-          adcp_version: complianceTarget.version,
+          requested_compliance_target: runTarget.requested,
+          adcp_version: runTarget.version,
           ...result,
         });
       } catch (error) {
@@ -6338,7 +6425,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     "/storyboards/:storyboardId/first-step",
     async (req, res) => {
       try {
-        const storyboard = getComplianceStoryboardById(req.params.storyboardId, complianceOptions);
+        const runTarget = targetFromRequestValue(req.query.compliance_target);
+        const storyboard = getComplianceStoryboardById(
+          req.params.storyboardId,
+          runTarget === complianceTarget ? complianceOptions : hostedComplianceOptions(runTarget),
+        );
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
@@ -6349,12 +6440,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         }
 
         res.json({
-          requested_compliance_target: complianceTarget.requested,
-          adcp_version: complianceTarget.version,
+          requested_compliance_target: runTarget.requested,
+          adcp_version: runTarget.version,
           storyboard: { id: storyboard.id, title: storyboard.title },
           step: preview,
         });
       } catch (error) {
+        if (error instanceof InvalidComplianceTargetError) {
+          return res.status(400).json({ error: INVALID_COMPLIANCE_TARGET_MESSAGE });
+        }
         logger.error({ err: error, path: req.path }, "Failed to get first step preview");
         res.status(500).json({ error: "Failed to get first step preview" });
       }
@@ -6381,19 +6475,30 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
 
-        const storyboard = getStoryboard(req.params.storyboardId);
+        const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
+        const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `run-storyboard:${agentUrl}` });
+
+        const complyOptions = {
+          timeout_ms: 90_000,
+          storyboards: [req.params.storyboardId],
+          ...(sdkAuth && { auth: sdkAuth }),
+        };
+        const runTargetSelection = await selectComplianceTargetForAgentSelection(
+          agentUrl,
+          complyOptions,
+          complianceTarget,
+          'canonical',
+        );
+        const runTarget = runTargetSelection.target;
+        const storyboard = getComplianceStoryboardById(req.params.storyboardId, hostedComplianceOptions(runTarget));
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
-        const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `run-storyboard:${agentUrl}` });
-
-        const complyResult = await comply(agentUrl, {
-          timeout_ms: 90_000,
-          storyboards: [req.params.storyboardId],
-          ...(sdkAuth && { auth: sdkAuth }),
-        }, complianceTarget);
+        const complyResult = await comply(agentUrl, complyOptions, runTarget);
+        const runBadgeEligibleVersions = [
+          ...badgeEligibleVersionsForTargetSelection(runTargetSelection, complyResult.agent_profile),
+        ];
 
         if (complyResult.overall_status === 'auth_required') {
           const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
@@ -6422,16 +6527,26 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // badges for storyboards it didn't touch. No notification — the
         // owner already sees the result in the HTTP response.
         const declaredSpecialisms = complyResult.agent_profile?.specialisms ?? [];
-        if (declaredSpecialisms.length > 0) {
+        if (declaredSpecialisms.length > 0 && runBadgeEligibleVersions.length > 0) {
           try {
             await runBadgeFanOut({
               complianceDb,
               agentUrl,
               declaredSpecialisms,
-              adcpVersions: badgeEligibleAdcpVersions,
+              adcpVersions: runBadgeEligibleVersions,
             });
           } catch (badgeError) {
             logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after storyboard-run');
+          }
+        } else {
+          try {
+            await revokeUnsupportedPublicBadges({
+              complianceDb,
+              agentUrl,
+              supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+            });
+          } catch (badgeError) {
+            logger.warn({ err: badgeError, agentUrl }, 'Unsupported public badge revocation failed after storyboard-run');
           }
         }
 
@@ -6473,9 +6588,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             url: agentUrl,
             profile: complyResult.agent_profile,
           },
-          requested_compliance_target: complianceTarget.requested,
+          requested_compliance_target: runTarget.requested,
           adcp_version: complyResult.adcp_version,
-          ...badgeEligibilityMetadata(badgeEligibleAdcpVersions.length > 0),
+          ...badgeEligibilityMetadata(runBadgeEligibleVersions),
           phases: annotatedPhases,
           summary: complyResult.summary,
           observations: complyResult.observations,
@@ -6509,26 +6624,27 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
 
-        const storyboard = getStoryboard(req.params.storyboardId);
+        const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
+        const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `run-storyboard-compare:${agentUrl}` });
+        const storyboardIds = [req.params.storyboardId];
+        const userComplyOptions = {
+          timeout_ms: 90_000,
+          storyboards: storyboardIds,
+          ...(sdkAuth && { auth: sdkAuth }),
+        };
+        const runTarget = await selectComplianceTargetForAgent(agentUrl, userComplyOptions, complianceTarget);
+        const storyboard = getComplianceStoryboardById(req.params.storyboardId, hostedComplianceOptions(runTarget));
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
 
-        const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
-        const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `run-storyboard-compare:${agentUrl}` });
-        const storyboardIds = [req.params.storyboardId];
-
         const [userResult, referenceResult] = await Promise.all([
-          comply(agentUrl, {
-            timeout_ms: 90_000,
-            storyboards: storyboardIds,
-            ...(sdkAuth && { auth: sdkAuth }),
-          }, complianceTarget),
+          comply(agentUrl, userComplyOptions, runTarget),
           comply(PUBLIC_TEST_AGENT.url, {
             timeout_ms: 90_000,
             storyboards: storyboardIds,
             auth: { type: "bearer", token: PUBLIC_TEST_AGENT.token },
-          }, complianceTarget),
+          }, runTarget),
         ]);
 
         if (userResult.overall_status === 'auth_required') {
@@ -6585,9 +6701,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             profile: referenceResult.agent_profile,
             summary: referenceResult.summary,
           },
-          requested_compliance_target: complianceTarget.requested,
+          requested_compliance_target: runTarget.requested,
           adcp_version: userResult.adcp_version,
-          ...badgeEligibilityMetadata(false),
+          ...badgeEligibilityMetadata([]),
           phases: comparisonPhases,
           total_duration_ms: Math.max(userResult.total_duration_ms, referenceResult.total_duration_ms),
         });
