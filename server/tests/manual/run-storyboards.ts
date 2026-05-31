@@ -221,9 +221,28 @@ function skipThreeZeroSignedVectorsExcept(allowed: string[]): string[] {
     .filter(id => !allowedSet.has(id));
 }
 
+function normalizeThreeZeroCompatFlightDates(value: unknown): void {
+  if (!value || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    for (const item of value) normalizeThreeZeroCompatFlightDates(item);
+    return;
+  }
+
+  const obj = value as Record<string, unknown>;
+  if (
+    obj.start_time === '2026-05-01T00:00:00Z'
+    && obj.end_time === '2026-05-31T23:59:59Z'
+  ) {
+    obj.start_time = 'asap';
+    obj.end_time = '2099-05-31T23:59:59Z';
+  }
+  for (const child of Object.values(obj)) normalizeThreeZeroCompatFlightDates(child);
+}
+
 function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
   if (!isThreeZeroCompatRun) return sb;
   const patched = structuredClone(sb) as Storyboard;
+  normalizeThreeZeroCompatFlightDates(patched);
   if (sb.id === 'media_buy_seller/pending_creatives_to_start') {
     for (const phase of patched.phases ?? []) {
       for (const step of phase.steps ?? []) {

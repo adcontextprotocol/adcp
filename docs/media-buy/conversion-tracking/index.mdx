@@ -64,10 +64,9 @@ Configure event sources with [`sync_event_sources`](/docs/media-buy/task-referen
 
 To discover all sources on an account (including seller-managed), call `sync_event_sources` without an `event_sources` array:
 
-{/* Using latest because EventSurface and creator engagement event types are not in a released schema bundle yet. */}
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/sync-event-sources-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-request.json",
   "idempotency_key": "c9f3d6a7-5678-48e4-5678-9012345abcde",
   "account": { "account_id": "acct_12345" }
 }
@@ -79,10 +78,9 @@ An event represents a user action — a purchase, lead submission, page view, ap
 
 Send events with [`log_event`](/docs/media-buy/task-reference/log_event):
 
-{/* Using latest because EventSurface and creator engagement event types are not in a released schema bundle yet. */}
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/event.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/event.json",
   "event_id": "evt_purchase_12345",
   "event_type": "purchase",
   "event_time": "2026-01-15T14:30:00Z",
@@ -154,7 +152,7 @@ Event-specific data for attribution and reporting. For purchase events, always i
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/event-custom-data.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/event-custom-data.json",
   "value": 149.99,
   "currency": "USD",
   "order_id": "order_98765",
@@ -242,10 +240,9 @@ Where the conversion event originated:
 
 `action_source` stays intentionally flat for compatibility. Use `surface` when the optimization-relevant source needs more structure, especially for creator and content engagement on owned platform properties.
 
-{/* Using latest because EventSurface is not in a released schema bundle yet. */}
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/event-surface.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/event-surface.json",
   "category": "owned_property",
   "property_type": "channel",
   "namespace": "video_platform",
