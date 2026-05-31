@@ -6,6 +6,11 @@
       "target_version": "3.1",
       "note": "build_creative spend controls — emitted when a per-call max_spend ceiling stops production early (advisory on a partial BuildCreativeVariantSuccess, or terminal when even the first leaf exceeds the cap). New 3.1 creative-transformer surface; wire change — held for 3.1."
     },
+    "UNPRICEABLE_OUTPUT": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Creative transformers per-output pricing (transformer.pricing_options applies_to_output_format_ids) — emitted when a build targets an output no pricing option covers and none is unscoped. New 3.1 creative-transformer surface; wire change — held for 3.1."
+    },
     "ACTION_NOT_ALLOWED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",

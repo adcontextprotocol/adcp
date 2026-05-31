@@ -410,6 +410,11 @@
           "pattern": "^[A-Z]{3}$",
           "description": "ISO 4217 currency code for the aggregate vendor_cost."
         },
+        "keep_mode_applied": {
+          "type": "string",
+          "enum": ["keep_all", "keep_one", "keep_some"],
+          "description": "Echoes the `keep_mode` the agent applied (mirrors the request hint). Present when the request set `keep_mode`. `keep_mode` is advisory — it does not change what is produced or billed (you pay for every leaf in `variants[]`) — so this echo is the buyer's confirmation that the hint was received, the audit paper trail for a 'I asked for keep_one but was billed for N' dispute. Whether the agent acted on it shows in the `recommended`/`rank` it set on the leaves."
+        },
         "budget_status": {
           "type": "string",
           "enum": ["complete", "capped"],
