@@ -314,6 +314,11 @@
                       "x-entity": "build_variant",
                       "description": "Build-time handle for this produced variant — the leaf-level lineage anchor for the creative. Minted per produced variant. Its OWN namespace — MUST NOT reuse a `preview_id` (preview renders) or a served `variant_id` (delivery). Lineage and joins (refinement parentage, build→delivery learning, QA re-rolls) anchor on this leaf id, NOT on the call-level `build_creative_id`. A leaf lazily earns a durable `creative_id` only when trafficked / added to the library; that `creative_id` is what flows into `report_usage`. An untrafficked leaf has no `report_usage` key — it is billed via the inline per-leaf `vendor_cost` only, and `report_usage` reconciliation applies once the leaf earns a `creative_id`."
                     },
+                    "parent_build_variant_id": {
+                      "type": "string",
+                      "x-entity": "build_variant",
+                      "description": "When this variant was produced by refining a prior build (request `refine_from_build_variant_id`), the source leaf's `build_variant_id` — establishing refinement lineage (a leaf may itself be refined, forming a chain). Absent for first-generation builds. AI-derivative attribution rides the manifest's existing `provenance`; this field carries only the lineage edge."
+                    },
                     "creative_manifest": {
                       "$ref": "/schemas/core/creative-manifest.json",
                       "description": "The generated creative for this variant. Carries its own format_id."

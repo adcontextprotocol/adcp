@@ -1096,6 +1096,11 @@
           "description": "When true, this agent exposes account-scoped creative transformers via list_transformers (the creative analog of media-buy products) and accepts transformer_id + config on build_creative. Buyers SHOULD call list_transformers to discover available transformers, their typed config params (and account-scoped enumerable option values via expand_params), and pricing. When false or absent, the agent does not offer the transformer surface.",
           "default": false
         },
+        "supports_refinement": {
+          "type": "boolean",
+          "description": "When true, this agent retains produced build_variant leaves for an agent-defined retention window and can re-build from one via build_creative's refine_from_build_variant_id — applying a natural-language instruction in message plus an optional config delta, returning new lineage-linked variants. A build-time agent capability independent of generation/transformation. When false or absent, refine_from_build_variant_id is rejected with UNSUPPORTED_FEATURE; buyers refine instead via the transform path (creative_manifest + message).",
+          "default": false
+        },
         "supported_formats": {
           "type": "array",
           "description": "Canonical-formats path: format declarations describing which canonical formats this creative agent can produce via `build_creative`. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]` — `format_kind` discriminator + `params` (canonical's parameter schema including `slots`, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions). Replaces the v1 `list_creative_formats` discovery surface for creative agents.",

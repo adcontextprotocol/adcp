@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-request.json",
   "title": "Build Creative Request",
-  "description": "Request to transform, generate, or retrieve a creative manifest. Supports three modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) retrieval from a creative library by creative_id. Produces target manifest(s) in the specified format(s). Provide either target_format_id for a single format or target_format_ids for multiple formats.",
+  "description": "Request to transform, generate, refine, or retrieve a creative manifest. Supports four modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) refinement of a prior produced variant via refine_from_build_variant_id (re-build with a natural-language message + config delta), (4) retrieval from a creative library by creative_id. Produces target manifest(s) in the specified format(s). Provide either target_format_id for a single format or target_format_ids for multiple formats.",
   "type": "object",
   "allOf": [
     {
@@ -57,13 +57,18 @@
     },
     "config": {
       "type": "object",
-      "description": "Typed render configuration for the selected transformer, keyed by each param's `field` (from the transformer's params[] in list_transformers). Example: { \"voice\": \"isaac\", \"speaking_rate\": 1.1, \"mastering_preset\": \"podcast\" }. The agent MUST validate `config` against the transformer's live params for this account and reject unrecognized keys and out-of-range / non-enumerated values with a field-attributed error (e.g. `config.voice`) rather than silently ignoring them — config drives a paid render. Genuinely vendor-specific or experimental knobs not declared as params belong in `ext`, not here. (The schema leaves this object open because legal keys are dynamic per transformer; strict validation is a normative agent obligation.)",
+      "description": "Typed render configuration for the selected transformer, keyed by each param's `field` (from the transformer's params[] in list_transformers). Example: { \"voice\": \"isaac\", \"speaking_rate\": 1.1, \"mastering_preset\": \"podcast\" }. The agent MUST validate `config` against the transformer's live params for this account and reject unrecognized keys and out-of-range / non-enumerated values with a field-attributed error (e.g. `config.voice`) rather than silently ignoring them — config drives a paid render. Genuinely vendor-specific or experimental knobs not declared as params belong in `ext`, not here. (The schema leaves this object open because legal keys are dynamic per transformer; strict validation is a normative agent obligation.) When `refine_from_build_variant_id` is set, `config` is applied as a DELTA over the parent leaf's config.",
       "additionalProperties": true
+    },
+    "refine_from_build_variant_id": {
+      "type": "string",
+      "x-entity": "build_variant",
+      "description": "Refine a previously produced variant: re-build from the referenced `build_variant_id`, applying the natural-language instruction in `message` and any `config` delta, and return NEW lineage-linked variant(s) — each with `parent_build_variant_id` set to this id. A refinement is never a mutation; the parent leaf is unchanged. The `transformer_id` and target format(s) are inherited from the parent and need not be repeated; passing a `transformer_id` or `target_format_id`/`target_format_ids` that differs from the parent's is rejected with `INVALID_REQUEST`. Composes with `max_variants` / `variant_axis` (produces N refined alternatives), but is mutually exclusive with `max_creatives` / catalog fan-out (you refine one prior creative, not a catalog). Requires the agent to advertise `creative.supports_refinement: true` in get_adcp_capabilities; agents that do not retain prior builds reject with `UNSUPPORTED_FEATURE`. A ref that is unknown or no longer retained (agents retain produced leaves for an agent-defined window) is rejected with `REFERENCE_NOT_FOUND`, with `error.field` set to `refine_from_build_variant_id`. To refine a buyer-held manifest when the agent retains nothing, use the transform path instead (`creative_manifest` + `message`)."
     },
     "max_creatives": {
       "type": "integer",
       "minimum": 1,
-      "description": "Caps how many DISTINCT creatives to produce along the catalog/item fan-out axis — one creative per catalog item. Use it to sample a large catalog (e.g. send 150 job openings, set max_creatives: 5 to preview five). Distinct from item_limit, which caps how many catalog items a SINGLE creative consumes (DCO-style). Omitted with a catalog input means one creative per item up to the catalog/format bound; omitted without a catalog collapses to a single creative. Large fan-outs may return asynchronously."
+      "description": "Caps how many DISTINCT creatives to produce along the catalog/item fan-out axis — one creative per catalog item. Use it to sample a large catalog (e.g. send 150 job openings, set max_creatives: 5 to preview five). Distinct from item_limit, which caps how many catalog items a SINGLE creative consumes (DCO-style). Omitted with a catalog input means one creative per item up to the catalog/format bound; omitted without a catalog collapses to a single creative. Large fan-outs may return asynchronously. Mutually exclusive with `refine_from_build_variant_id` (refinement targets one prior creative, not a catalog fan-out)."
     },
     "max_variants": {
       "type": "integer",

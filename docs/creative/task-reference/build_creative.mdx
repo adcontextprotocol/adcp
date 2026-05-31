@@ -32,10 +32,11 @@ For information about legacy format IDs and how to reference formats, see [Creat
 | `item_limit` | integer | No | Maximum number of catalog items to use **within one creative**. Caps generation cost for catalog-driven formats (e.g. a 6-card carousel built from a 1,000-product catalog). Distinct from `max_creatives`, which fans out across items. |
 | `transformer_id` | string | No | Select one transformer (discovered via [`list_transformers`](/docs/creative/task-reference/list_transformers)) to perform the build. The requested target format(s) MUST be a subset of that transformer's `output_format_ids`. The transformer's `per_unit` rate is the pricing source for the build. |
 | `config` | object | No | Typed configuration bag keyed to the selected transformer's `params[].field` (e.g. `{ "voice": "isaac", "speaking_rate": 1.1 }`). The creative agent MUST reject unknown keys and out-of-range values with field-attributed errors (strict validation) — vendor-specific knobs that are not declared params go in `ext`. Only meaningful with `transformer_id`. |
-| `max_creatives` | integer | No | Catalog fan-out axis: produce up to N **distinct creatives, one per catalog item** (a sample — e.g. 5 of 150). Distinct from `item_limit`, which caps items used *within* a single creative. Triggers the `BuildCreativeVariantSuccess` response shape. |
+| `max_creatives` | integer | No | Catalog fan-out axis: produce up to N **distinct creatives, one per catalog item** (a sample — e.g. 5 of 150). Distinct from `item_limit`, which caps items used *within* a single creative. Mutually exclusive with `refine_from_build_variant_id`. Triggers the `BuildCreativeVariantSuccess` response shape. |
 | `max_variants` | integer | No | Number of alternative renders to produce **per creative** (best-of-N). Default `1`. You pay for every produced variant; keeping one or more is a separate trafficking step. |
 | `variant_axis` | object | No | Describes the dimension along which variants differ. Object with `dimension` (`voice` \| `theme` \| `best_of_n` \| `transformer_config` \| `custom`), optional `values[]` (explicit values to enumerate along the axis), optional `field` (the `config` param to sweep — required when `dimension` is `transformer_config`), and optional `label`. |
 | `keep_mode` | string | No | Advisory hint to the agent on how many variants you intend to keep: `"keep_all"`, `"keep_one"`, or `"keep_some"`. Default `"keep_all"`. Advisory only — you are billed for all produced variants regardless. |
+| `refine_from_build_variant_id` | string | No | Refine a prior produced variant: re-build from its `build_variant_id` applying the NL instruction in `message` plus any `config` delta, returning **new** lineage-linked variants (never a mutation). `transformer_id` and target format(s) are inherited from the parent. Composes with `max_variants`/`variant_axis`; mutually exclusive with `max_creatives`. Requires `creative.supports_refinement` — otherwise `UNSUPPORTED_FEATURE`; an unknown/no-longer-retained ref is `REFERENCE_NOT_FOUND` (`error.field` = `refine_from_build_variant_id`). See [Refinement](#refinement). |
 | `include_preview` | boolean | No | When true, requests preview renders alongside the manifest. Agents that support this return a `preview` object in the response. Agents that don't simply omit it. |
 | `preview_inputs` | array | No | Input sets for preview generation when `include_preview` is true. Each entry has `name` (required), optional `macros`, and optional `context_description`. If omitted, the agent generates a single default preview. Only supported with `target_format_id` (single-format) — ignored for multi-format requests. |
 | `preview_quality` | string | No | Render quality for inline previews: `"draft"` or `"production"`. Independent of the build `quality` — you can build at draft and preview at production, or vice versa. Only used when `include_preview` is true. |
@@ -567,7 +568,8 @@ When the request fans out across catalog items (`max_creatives`) or produces alt
 - **creatives[].catalog_item_ref**: Present on catalog fan-out — an object identifying the source catalog item via `item_id` (plus optional `catalog_type`).
 - **creatives[].errors[]**: Present only on a *failed* catalog item — catalog fan-out is non-atomic, so a failed item is returned as a `creatives[]` entry carrying `errors[]` and no `variants[]`, without failing the batch.
 - **creatives[].variants[]**: The alternatives produced for this creative. Length is at most `max_variants`. Each variant carries its own complete `creative_manifest`.
-- **variants[].build_variant_id**: Identifies a single variant. This is its **own namespace** — never reuse a `preview_id` (a `preview_creative` render) or a served `variant_id` (a delivery-time identifier) here. You traffic a chosen build by passing its `build_variant_id`.
+- **variants[].build_variant_id**: Identifies a single variant — the leaf-level **lineage anchor**. This is its **own namespace** — never reuse a `preview_id` (a `preview_creative` render) or a served `variant_id` (a delivery-time identifier) here. You traffic a chosen build by passing its `build_variant_id`.
+- **variants[].parent_build_variant_id**: Present only on a refined variant ([Refinement](#refinement)) — the `build_variant_id` of the source it was refined from. Absent for first-generation builds.
 - **variants[].variant_axis_value**: The value of the `variant_axis` dimension this variant represents (e.g. a voice, a theme).
 - **variants[].recommended** / **variants[].rank**: Best-of-N signals — `recommended` flags the agent's top pick; `rank` orders the variants. These plus `variant_axis` and `keep_mode` are how best-of-N is expressed.
 - **variants[] pricing receipt**: Each variant carries a per-leaf receipt (`pricing_option_id`, `vendor_cost`, `currency`, `consumption`) for the work that produced it.
@@ -585,6 +587,28 @@ You pay for **every produced variant** (`per_unit` × N), not just the ones you 
 
 **Resolutions and quality tiers are not variants.** Multiple sizes or quality levels belong on the format axis — pass them as `target_format_ids` (or `quality`), not as `variant_axis` values. Variants are alternatives *for the same format* (different voice, theme, or best-of-N take).
 </Note>
+
+### Refinement
+
+Conversational refinement re-builds a prior variant with free-form direction — "make it warmer", "tighten the CTA". The typed `config` surface is closed by design, so free-form intent rides the **open** surface that already exists: the `message` field (whose description is already *"For refinement, this describes the desired changes"*). Refinement is therefore not a new task — it's `build_creative` with one extra input:
+
+- Pass `refine_from_build_variant_id` (a prior leaf's `build_variant_id`) plus your instruction in `message` and any `config` delta.
+- The agent re-builds from that leaf and returns **new** variants, each with `parent_build_variant_id` set to the source. A refinement is **never a mutation** — the parent leaf is unchanged, and the new leaf earns its own `build_variant_id` (and, on trafficking, its own `creative_id`).
+- `transformer_id` and the target format(s) are **inherited** from the parent; you don't repeat them. Passing a `transformer_id` or target format that differs from the parent's is an `INVALID_REQUEST`. `config` is applied as a **delta** over the parent's config.
+- Composes with `max_variants` / `variant_axis` (e.g. "three warmer takes" → three refined leaves), but **not** with `max_creatives` / catalog fan-out — you refine one produced creative, not a catalog.
+- Requires the agent to advertise `creative.supports_refinement: true` (it retains produced leaves for an agent-defined window). Agents that retain nothing return `UNSUPPORTED_FEATURE`; refine a buyer-held manifest instead via the transform path (`creative_manifest` + `message`). An unknown or no-longer-retained ref returns `REFERENCE_NOT_FOUND` with `error.field` set to `refine_from_build_variant_id`.
+
+AI-derivative attribution rides the manifest's existing `provenance`; `parent_build_variant_id` carries only the lineage edge (refinements chain into a tree).
+
+```json test=false
+{
+  "refine_from_build_variant_id": "bv_card01_a",
+  "message": "Warmer lighting, and move the logo to the lower-right.",
+  "max_variants": 3,
+  "account": { "account_id": "acct_acme" },
+  "idempotency_key": "7f2a1b3c-4d5e-6f70-8192-a3b4c5d6e7f8"
+}
+```
 
 ### Field descriptions
 
