@@ -143,7 +143,7 @@
     "@slack/bolt": "^4.7.3",
     "@slack/web-api": "^7.15.1",
     "@types/jsonwebtoken": "^9.0.10",
-    "@workos-inc/node": "^9.3.1",
+    "@workos-inc/node": "^10.0.0",
     "@workos-inc/widgets": "^1.14.0",
     "axios": "^1.16.1",
     "canonicalize": "3.0.0",
