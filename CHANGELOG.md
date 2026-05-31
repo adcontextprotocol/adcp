@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.0.15
+
+### Patch Changes
+
+- f78f37c: Patch the 3.0.x compliance fixtures for the reported AgenticAdvertising.org
+  compliance suite failures: `media_buy_state_machine` and
+  `measurement_terms_rejected` now use forward-looking Q3 2026 windows, the
+  universal idempotency missing-key vector no longer depends on a same-day May
+  flight, the state-machine fixture keeps the existing 3.0.x `status` response
+  assertions, and the compliance build rejects stable or duplicate generated
+  idempotency keys on mutating storyboard steps.
+- 6e4dfdd: Match the 3.1 line's upcoming-event day calculation in member context prompts
+  so events exactly five days out do not intermittently render as four days.
+
 ## 3.0.14
 
 ### Patch Changes
