@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative/list-transformers-request.json",
+  "title": "List Transformers Request (Creative Agent)",
+  "description": "Request parameters for discovering account-scoped creative transformers offered by this creative agent. Brief-filterable and paginated. Transformers are the creative analog of media-buy products: agent-offered, account-scoped, selectable units of build capability. Use `expand_params` to additionally return account-scoped option VALUES (e.g. the buyer's configured voices) for named enumerable params.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" },
+    {
+      "if": {
+        "properties": { "include_pricing": { "const": true } },
+        "required": ["include_pricing"]
+      },
+      "then": { "required": ["account"] }
+    }
+  ],
+  "properties": {
+    "transformer_ids": {
+      "type": "array",
+      "description": "Return only these specific transformer IDs.",
+      "items": { "type": "string", "x-entity": "transformer" },
+      "minItems": 1
+    },
+    "input_format_ids": {
+      "type": "array",
+      "description": "Filter to transformers that accept any of these formats as input.",
+      "items": { "$ref": "/schemas/core/format-id.json" },
+      "minItems": 1
+    },
+    "output_format_ids": {
+      "type": "array",
+      "description": "Filter to transformers that can produce any of these output formats.",
+      "items": { "$ref": "/schemas/core/format-id.json" },
+      "minItems": 1
+    },
+    "name_search": {
+      "type": "string",
+      "description": "Search transformers by name (case-insensitive partial match)."
+    },
+    "brief": {
+      "type": "string",
+      "description": "Natural-language brief used to rank and filter transformers (and their enumerable option values when expanded) — e.g. 'warm female Spanish-language voiceover'. Curates to intent rather than returning the full set, the way get_products curates inventory."
+    },
+    "expand_params": {
+      "type": "array",
+      "description": "Param `field` names for which to return account-scoped option VALUES inline on each transformer's `params[].options[]`. Omit to return param descriptors without enumerated values (the lean default). Paginated per-param via `options_cursor`.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "include_pricing": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include `pricing_options` on each transformer. Requires `account`."
+    },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account reference. Transformers are account-scoped — the returned set, the enumerable option values, and (with include_pricing) the rate card are all resolved for this credential."
+    },
+    "pagination": { "$ref": "/schemas/core/pagination-request.json" },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "additionalProperties": true
+}

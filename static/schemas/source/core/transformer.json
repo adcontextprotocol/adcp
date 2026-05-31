@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/transformer.json",
+  "title": "Transformer",
+  "description": "An agent-offered, account-scoped, selectable unit of creative build capability — the creative analog of a media-buy product. A transformer maps input formats to output formats and exposes typed configuration `params[]`. Discovered via list_transformers and selected by `transformer_id` in build_creative. The agent chooses granularity: a distinct voice or model may be its own transformer, or a single transformer may expose `voice`/`model` as an enumerable param. Whether something is a distinct transformer vs. a param is the agent's call — surface separately-priced or capability-distinct alternatives as transformers; keep scalar dials as params.",
+  "type": "object",
+  "properties": {
+    "transformer_id": {
+      "type": "string",
+      "x-entity": "transformer",
+      "description": "Stable identifier for this transformer within the agent. Pass to build_creative `transformer_id` to select it."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable transformer name (e.g. 'Voiceover — Isaac', 'Veo 3 text-to-video')."
+    },
+    "description": {
+      "type": "string",
+      "description": "Plain-text explanation of what this transformer produces and how."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Transformer-specific attributes a buyer can filter or display (e.g. provider, modality, language).",
+      "additionalProperties": true
+    },
+    "input_format_ids": {
+      "type": "array",
+      "description": "Formats this transformer accepts as input. Empty or omitted means it builds from a brief / raw assets (pure generation) rather than transforming an existing creative.",
+      "items": { "$ref": "/schemas/core/format-id.json" }
+    },
+    "output_format_ids": {
+      "type": "array",
+      "description": "Formats this transformer can produce. A build_creative request's target format(s) MUST be a subset of these.",
+      "items": { "$ref": "/schemas/core/format-id.json" },
+      "minItems": 1
+    },
+    "params": {
+      "type": "array",
+      "description": "Configuration knobs this transformer exposes. The buyer supplies values in build_creative `config`, keyed by each param's `field`. Enumerable param values (e.g. account-specific voices) are returned only when requested via list_transformers `expand_params`.",
+      "items": { "$ref": "/schemas/core/transformer-param.json" }
+    },
+    "pricing_options": {
+      "type": "array",
+      "description": "Per-account rate-card options for using this transformer. Present when the list_transformers request set include_pricing=true with an account. The applied option is echoed back per-leaf on the build_creative response and reconciled via report_usage.",
+      "items": { "$ref": "/schemas/core/vendor-pricing-option.json" },
+      "minItems": 1
+    }
+  },
+  "required": ["transformer_id", "name", "output_format_ids"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "transformer_id": "audiostack_voiceover",
+      "name": "Voiceover",
+      "description": "Script-to-audio voiceover with account-configured voices.",
+      "metadata": { "provider": "audiostack", "modality": "audio" },
+      "input_format_ids": [{ "agent_url": "https://creative.audiostack.example", "id": "script" }],
+      "output_format_ids": [{ "agent_url": "https://creative.audiostack.example", "id": "audio_vo" }],
+      "params": [
+        { "field": "voice", "type": "string", "value_source": "enumerable", "default": "sara", "description": "Narration voice, incl. custom voices." },
+        { "field": "mastering_preset", "type": "string", "value_source": "inline", "allowed_values": ["broadcast", "podcast", "music"], "default": "broadcast" },
+        { "field": "speaking_rate", "type": "number", "value_source": "range", "minimum": 0.5, "maximum": 2.0, "default": 1.0 }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "vo_per_second_standard",
+          "model": "per_unit",
+          "unit": "second",
+          "unit_price": 0.05,
+          "currency": "USD"
+        }
+      ]
+    }
+  ]
+}

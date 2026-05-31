@@ -48,8 +48,8 @@ See [list_creative_formats (Sales Agent)](/docs/creative/task-reference/list_cre
 | `wcag_level` | string | No | Filter to formats meeting at least this WCAG level: `A`, `AA`, `AAA`. See [Accessibility](/docs/creative/accessibility). |
 | `disclosure_positions` | string[] | No | Filter to formats that support all of these disclosure positions. Matches against `disclosure_capabilities` when present, otherwise falls back to `supported_disclosure_positions`. |
 | `disclosure_persistence` | string[] | No | Filter to formats whose `disclosure_capabilities` include all of these persistence modes on at least one position. Values: `continuous`, `initial`, `flexible`. |
-| `output_format_ids` | FormatID[] | No | Filter to formats whose `output_format_ids` includes any of these. Returns formats that can produce these outputs — inspect their `input_format_ids` to see what inputs they accept. |
-| `input_format_ids` | FormatID[] | No | Filter to formats whose `input_format_ids` includes any of these. Returns formats that accept these creatives as input — inspect their `output_format_ids` to see what they can produce. |
+| `output_format_ids` | FormatID[] | No | *(deprecated in 3.1)* Filter to formats whose `output_format_ids` includes any of these. Returns formats that can produce these outputs — inspect their `input_format_ids` to see what inputs they accept. Use [`list_transformers`](/docs/creative/task-reference/list_transformers) for build-capability discovery instead. |
+| `input_format_ids` | FormatID[] | No | *(deprecated in 3.1)* Filter to formats whose `input_format_ids` includes any of these. Returns formats that accept these creatives as input — inspect their `output_format_ids` to see what they can produce. Use [`list_transformers`](/docs/creative/task-reference/list_transformers) for build-capability discovery instead. |
 | `pagination` | object | No | Pagination: `max_results` (1-100, default 50) and `cursor` (opaque cursor from previous response) |
 
 ### Multi-Render Dimension Filtering
@@ -451,6 +451,10 @@ asyncio.run(main())
 
 ### Discover Build Capabilities
 
+<Note>
+**Deprecated in 3.1.** Build-capability discovery has moved to [`list_transformers`](/docs/creative/task-reference/list_transformers). A transformer is the account-scoped, agent-offered unit of build capability and carries its own `input_format_ids`, `output_format_ids`, and `pricing_options`. The `input_format_ids` and `output_format_ids` filters on this task — and the matching fields on the [Format object](https://adcontextprotocol.org/schemas/v3/core/format.json) — still work during 3.1–3.x but will be removed in 4.0. Query `list_transformers` to discover what an agent can build and what it costs.
+</Note>
+
 Some formats declare the output formats they can produce via `output_format_ids`. A creative builder (like a multi-publisher template tool) may accept one asset group and produce many publisher-specific formats. A format transformer may accept an existing creative and reformat it.
 
 The format schema expresses both sides of the relationship:
@@ -579,8 +583,8 @@ Each format includes:
 | `type` | *(deprecated)* Format type (audio, video, display, dooh). Use `asset_types` filter instead. |
 | `assets` | Array of all assets with `required` boolean indicating mandatory vs optional |
 | `renders` | Array of rendered output pieces (dimensions, role) |
-| `input_format_ids` | Creative formats this format accepts as input manifests (omitted for formats that work from raw assets) |
-| `output_format_ids` | Output formats this format can produce (omitted for formats that produce a single fixed output) |
+| `input_format_ids` | *(deprecated in 3.1)* Creative formats this format accepts as input manifests (omitted for formats that work from raw assets). Carried on the transformer instead — see [`list_transformers`](/docs/creative/task-reference/list_transformers). |
+| `output_format_ids` | *(deprecated in 3.1)* Output formats this format can produce (omitted for formats that produce a single fixed output). Carried on the transformer instead — see [`list_transformers`](/docs/creative/task-reference/list_transformers). |
 
 ### Asset Roles
 

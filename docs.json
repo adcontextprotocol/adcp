@@ -359,6 +359,7 @@
                           "docs/creative/task-reference/preview_creative",
                           "docs/creative/task-reference/preview_creative-advanced",
                           "docs/creative/task-reference/list_creative_formats",
+                          "docs/creative/task-reference/list_transformers",
                           "docs/creative/task-reference/list_creatives",
                           "docs/creative/task-reference/sync_creatives",
                           "docs/creative/task-reference/get_creative_delivery"
@@ -1556,6 +1557,7 @@
                       "docs/creative/task-reference/preview_creative",
                       "docs/creative/task-reference/preview_creative-advanced",
                       "docs/creative/task-reference/list_creative_formats",
+                      "docs/creative/task-reference/list_transformers",
                       "docs/creative/task-reference/list_creatives",
                       "docs/creative/task-reference/sync_creatives",
                       "docs/creative/task-reference/get_creative_delivery"

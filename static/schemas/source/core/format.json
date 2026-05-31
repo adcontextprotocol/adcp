@@ -554,14 +554,16 @@
     },
     "input_format_ids": {
       "type": "array",
-      "description": "Array of format IDs this format accepts as input creative manifests. When present, indicates this format can take existing creatives in these formats as input. Omit for formats that work from raw assets (images, text, etc.) rather than existing creatives.",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.1. Removed at 4.0.** Use `list_transformers` instead — a transformer declares its own `input_format_ids`/`output_format_ids`, so build capability is a property of the transformer (the unit you select and that carries pricing), not a relationship hung on a format. Discover build capability via `list_transformers` (optionally filtered by `input_format_ids`/`output_format_ids`).\n\nMigration: sellers that expressed transform capability by hanging `input_format_ids` on a format SHOULD declare a transformer via `list_transformers` instead. Buyers SHOULD discover build capability via `list_transformers` rather than filtering formats.\n\n*Legacy behavior, retained for 3.1–3.x backward compatibility:* array of format IDs this format accepts as input creative manifests; when present, indicates this format can take existing creatives in these formats as input. SDKs reading 3.1 catalogs MUST continue to honor this field when present; 4.0+ SDKs MAY reject it. New code SHOULD NOT emit this field.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }
     },
     "output_format_ids": {
       "type": "array",
-      "description": "Array of format IDs that this format can produce as output. When present, indicates this format can build creatives in these output formats (e.g., a multi-publisher template format might produce standard display formats across many publishers). Omit for formats that produce a single fixed output (the format itself).",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.1. Removed at 4.0.** Use `list_transformers` instead — a transformer declares its own `output_format_ids`, so what a builder can produce is a property of the transformer, not a relationship hung on a format. Discover via `list_transformers`.\n\nMigration: sellers that expressed multi-output build capability (e.g. a multi-publisher template) by hanging `output_format_ids` on a format SHOULD declare a transformer via `list_transformers` instead.\n\n*Legacy behavior, retained for 3.1–3.x backward compatibility:* array of format IDs this format can produce as output; when present, indicates this format can build creatives in these output formats. SDKs reading 3.1 catalogs MUST continue to honor this field when present; 4.0+ SDKs MAY reject it. New code SHOULD NOT emit this field.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }
@@ -666,7 +668,8 @@
     },
     "pricing_options": {
       "type": "array",
-      "description": "Pricing options for this format. Used by transformation and generation agents that charge per format adapted, per image generated, or per unit of work. Present when the request included include_pricing=true and account. Ad servers and library-based agents expose pricing on list_creatives instead.",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.1. Removed at 4.0.** Use `transformer.pricing_options` (via `list_transformers`) instead — pricing belongs on the transformer (the unit selected and billed), exactly as it belongs on a media-buy product. Once formats only describe output shape, format-level pricing is vestigial.\n\nMigration: transformation/generation agents that charged via `format.pricing_options` SHOULD move the same `vendor-pricing-option` entries onto the corresponding transformer. The applied option is echoed per-leaf on the build_creative response and reconciled via report_usage, unchanged.\n\n*Legacy behavior, retained for 3.1–3.x backward compatibility:* pricing options for this format, used by transformation/generation agents that charge per format adapted, per image generated, or per unit of work; present when the request included include_pricing=true and account. SDKs reading 3.1 catalogs MUST continue to honor this field when present; 4.0+ SDKs MAY reject it. New code SHOULD NOT emit this field.",
       "items": {
         "$ref": "/schemas/core/vendor-pricing-option.json"
       },

@@ -275,6 +275,18 @@ Discover creative formats and their specifications.
 - Creative agents MAY include references to other creative agents providing additional formats
 - When filtering by `format_ids`, creative agents MUST return only the requested formats
 
+### list_transformers
+
+**Reference**: [`list_transformers` task](/docs/creative/task-reference/list_transformers)
+
+Discover the account-scoped transformers a creative agent offers — the creative analog of media-buy products: agent-offered, selectable units of build capability (voices, models, styles) that you select with `transformer_id` in `build_creative`. Offered only by agents that declare `creative.supports_transformers: true` in `get_adcp_capabilities`.
+
+**Requirements:**
+- Creative agents that set `creative.supports_transformers: true` MUST implement `list_transformers`
+- Creative agents MUST resolve transformers, their enumerable option values, and pricing for the calling account — including custom values configured for that account (e.g. cloned voices)
+- Creative agents MUST return account-scoped option values inline on `params[].options[]` for each `field` named in `expand_params`, and SHOULD omit them otherwise
+- When `include_pricing` is true, creative agents that charge MUST include `pricing_options` (the `per_unit` model) on each transformer
+
 ### build_creative
 
 **Reference**: [`build_creative` task](/docs/creative/task-reference/build_creative)
