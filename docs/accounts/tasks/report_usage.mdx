@@ -35,7 +35,7 @@ Each record requires `account`, `vendor_cost`, and `currency`. Additional fields
 | `impressions` | number | Signals: Yes | Impressions delivered |
 | `media_spend` | number | percent_of_media: Yes | Media spend for percent-of-media cost verification |
 | `signal_agent_segment_id` | string | Signals: Yes | Signal identifier from `get_signals` |
-| `creative_id` | string | Creative: Yes | Creative identifier from `build_creative` or `list_creatives`. Links usage to a specific creative for billing verification. |
+| `creative_id` | string | Creative: Yes | Creative identifier from `build_creative` or `list_creatives`. Links usage to a specific creative for billing verification. A `build_creative` variant leaf earns a `creative_id` only when trafficked/added to the library — discarded best-of-N or fan-out variants are never reported here; their charge is the inline per-leaf `vendor_cost` on the `build_creative` response (the authoritative record for untrafficked leaves). |
 | `property_list_id` | string | Property lists: Yes | Property list identifier from `list_property_lists`. Links usage to a specific property list for billing verification. |
 
 ## Response

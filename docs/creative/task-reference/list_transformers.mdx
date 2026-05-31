@@ -128,8 +128,8 @@ Pass the chosen `transformer_id` and a typed `config` (keyed by each param's `fi
 
 | Code | Meaning | Recovery |
 |------|---------|----------|
-| `AUTHENTICATION_REQUIRED` | `include_pricing` requested without a resolvable account | Supply `account` / authenticate |
-| `INVALID_INPUT` | Malformed filter or pagination cursor | Correct the request |
+| `AUTH_MISSING` | `include_pricing` requested without a resolvable account | Supply `account` / authenticate |
+| `INVALID_REQUEST` | Malformed filter or pagination cursor | Correct the request |
 
 Unknown `expand_params` (a `field` no transformer exposes) are ignored, not an error — the param simply returns no `options`.
 
