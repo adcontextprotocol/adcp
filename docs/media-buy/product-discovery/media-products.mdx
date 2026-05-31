@@ -994,7 +994,7 @@ Each forecast contains a `points` array of one or more ForecastPoints. For spend
 
 Metric keys come from two vocabularies:
 - **Delivery/engagement**: `forecastable-metric` enum values (impressions, reach, clicks, spend, views, completed_views, grps, etc.)
-- **Outcomes**: `event-type` enum values (purchase, lead, app_install, add_to_cart, subscribe, etc.)
+- **Outcomes**: `event-type` enum values (`purchase`, `lead`, `app_install`, `add_to_cart`, `subscribe` for paid subscriptions, `follow` for free durable opt-ins, etc.)
 
 This lets sellers forecast both delivery ("1.2M impressions") and outcomes ("1,800 purchases") in a single forecast. Each forecast declares its method:
 

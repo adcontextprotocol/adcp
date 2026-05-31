@@ -522,6 +522,10 @@
           "$ref": "/schemas/core/event-custom-data.json",
           "description": "Event-specific data for attribution and reporting"
         },
+        "event-surface": {
+          "$ref": "/schemas/core/event-surface.json",
+          "description": "Structured context for the surface where an event source or logged event originated"
+        },
         "attribution-window": {
           "$ref": "/schemas/core/attribution-window.json",
           "description": "Attribution methodology and lookback windows for conversion measurement"

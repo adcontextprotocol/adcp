@@ -1,17 +1,18 @@
 ---
 title: sync_event_sources
-description: "sync_event_sources task — configure website pixels, mobile SDKs, and server-to-server event sources on AdCP seller accounts for conversion tracking and attribution."
+description: "sync_event_sources task — configure website pixels, mobile SDKs, server-to-server integrations, and seller- or platform-native event sources on AdCP seller accounts for conversion tracking and attribution."
 "og:title": "AdCP — sync_event_sources"
 testable: false
 ---
 
 
-Configure event sources on a seller account for conversion tracking. Supports upsert semantics, seller-managed sources, and setup instructions.
+Configure event sources on a seller account for conversion tracking. Sources can be buyer-managed integrations such as website pixels, mobile SDKs, server-to-server feeds, and CRM imports, or seller- and platform-native owned properties such as channels, profiles, feeds, podcasts, and newsletter lists. Supports upsert semantics, seller-managed sources, and setup instructions.
 
 **Response Time**: ~1s (synchronous configuration)
 
-**Request Schema**: [`/schemas/v3/media-buy/sync-event-sources-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-request.json)
-**Response Schema**: [`/schemas/v3/media-buy/sync-event-sources-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-response.json)
+{/* Using latest because EventSurface and creator engagement event types are not in a released schema bundle yet. */}
+**Request Schema**: [`/schemas/latest/media-buy/sync-event-sources-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-event-sources-request.json)
+**Response Schema**: [`/schemas/latest/media-buy/sync-event-sources-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-event-sources-response.json)
 
 ## Quick Start
 
@@ -101,7 +102,9 @@ asyncio.run(main())
 | `event_source_id` | string | Yes | Unique identifier for this event source |
 | `name` | string | No | Human-readable name |
 | `event_types` | [EventType](/docs/media-buy/conversion-tracking/#event-types)[] | No | Event types this source handles. If omitted, accepts all event types. |
+| `action_source` | [ActionSource](/docs/media-buy/conversion-tracking/#action-sources) | No | Flat source category for compatibility (`website`, `app`, `system_generated`, etc.). Pair with `surface` when the flat value is too coarse. |
 | `allowed_domains` | string[] | No | Domains authorized to send events for this source |
+| `surface` | [EventSurface](/docs/media-buy/conversion-tracking/#event-surfaces) | No | Structured surface this source represents, such as an owned channel, profile, feed, podcast, newsletter list, website, app, or store |
 
 ## Response
 
@@ -121,12 +124,14 @@ asyncio.run(main())
 - `seller_id` - Seller-assigned identifier for this event source
 - `action` - What happened: `created`, `updated`, `unchanged`, `deleted`, `failed`
 - `action_source` - Type of event source (website pixel, app SDK, etc.)
+- `surface` - Structured surface this source represents, when the flat `action_source` is too coarse
 - `managed_by` - Who manages this source: `buyer` or `seller`
 - `setup` - Implementation details (snippet, instructions)
 - `health` - Event source health assessment (when seller supports health scoring)
 - `errors` - Per-source errors (only when `action: "failed"`)
+- `ext` - Per-source extension metadata, such as platform-native conversion IDs, attribution-window handles, or raw origin strings
 
-**See schema for complete field list**: [sync-event-sources-response.json](https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-response.json)
+**See schema for complete field list**: [sync-event-sources-response.json](https://adcontextprotocol.org/schemas/latest/media-buy/sync-event-sources-response.json)
 
 ### Event Source Health
 
@@ -337,6 +342,39 @@ Sellers may provide always-on event sources (e.g. Amazon sales attribution). The
 ```
 
 Products with `conversion_tracking.platform_managed: true` indicate the seller provides these sources.
+
+### Creator and Owned-Property Sources
+
+Seller-managed creator or owned-property sources use the same `event_sources` array, with a flat `action_source` for compatibility and `surface` for structured context:
+
+```json test=false
+{
+  "event_sources": [
+    {
+      "event_source_id": "creator_channel",
+      "name": "Creator Channel Events",
+      "seller_id": "creator_attr_001",
+      "event_types": ["follow", "content_view", "watch_milestone"],
+      "action_source": "system_generated",
+      "surface": {
+        "category": "owned_property",
+        "property_type": "channel",
+        "namespace": "video_platform",
+        "property_id": "channel_123"
+      },
+      "managed_by": "seller",
+      "action": "unchanged",
+      "ext": {
+        "video_platform": {
+          "native_origin": "owned_channel"
+        }
+      }
+    }
+  ]
+}
+```
+
+Use `follow` for free durable opt-ins to a channel, profile, feed, list, or podcast. Use `subscribe` only for paid subscriptions or paid memberships.
 
 ### Clean Sync with delete_missing
 

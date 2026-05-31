@@ -32,6 +32,10 @@
       "$ref": "/schemas/enums/action-source.json",
       "description": "Where the event originated"
     },
+    "surface": {
+      "$ref": "/schemas/core/event-surface.json",
+      "description": "Optional structured surface context for the event, such as an owned channel, profile, feed, podcast, newsletter list, website, app, or store. Complements `action_source`; use it when optimization-relevant meaning would otherwise live only in platform-specific `ext` metadata."
+    },
     "event_source_url": {
       "type": "string",
       "format": "uri",
@@ -45,6 +49,40 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "watch_milestone"
+          }
+        },
+        "required": ["event_type"]
+      },
+      "then": {
+        "required": ["custom_data"],
+        "properties": {
+          "custom_data": {
+            "allOf": [
+              {
+                "$ref": "/schemas/core/event-custom-data.json"
+              },
+              {
+                "anyOf": [
+                  {
+                    "required": ["progress_percent"]
+                  },
+                  {
+                    "required": ["progress_seconds"]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
   "required": ["event_id", "event_type", "event_time"],
   "additionalProperties": true
 }

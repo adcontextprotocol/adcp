@@ -43,16 +43,17 @@ This shows the recommended order. In practice, media buys can be created before 
 
 ## Event source
 
-An event source represents a channel through which conversion events are collected — a website pixel, mobile SDK, server-to-server integration, or CRM import.
+An event source represents a channel through which conversion or marketing events are collected — a website pixel, mobile SDK, server-to-server integration, CRM import, or seller- or platform-native owned property such as a channel, profile, feed, podcast, or newsletter list.
 
-Configure event sources with [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources). You provide an `event_source_id`, optional `name`, `event_types`, and `allowed_domains`. The response includes additional fields for each source:
+Configure event sources with [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources). You provide an `event_source_id`, optional `name`, `event_types`, `action_source`, `surface`, and `allowed_domains`. The response includes additional fields for each source:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `seller_id` | string | Seller-assigned identifier in their ad platform |
 | `action` | string | What happened: `created`, `updated`, `unchanged`, `deleted`, `failed` |
 | `managed_by` | string | `buyer` (you configured it) or `seller` (always-on, seller-managed) |
-| `action_source` | [ActionSource](#action-sources) | Type of event source (website pixel, app SDK, etc.) |
+| `action_source` | [ActionSource](#action-sources) | Flat source type for legacy and broad compatibility (website pixel, app SDK, in-store, etc.) |
+| `surface` | [EventSurface](#event-surfaces) | Optional structured surface, such as an owned channel, profile, feed, podcast, newsletter list, website, app, or store |
 | `setup` | object | Implementation details — snippet code, snippet type, instructions |
 
 ### Buyer-managed vs seller-managed
@@ -63,9 +64,10 @@ Configure event sources with [`sync_event_sources`](/docs/media-buy/task-referen
 
 To discover all sources on an account (including seller-managed), call `sync_event_sources` without an `event_sources` array:
 
+{/* Using latest because EventSurface and creator engagement event types are not in a released schema bundle yet. */}
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/sync-event-sources-request.json",
   "idempotency_key": "c9f3d6a7-5678-48e4-5678-9012345abcde",
   "account": { "account_id": "acct_12345" }
 }
@@ -77,9 +79,10 @@ An event represents a user action — a purchase, lead submission, page view, ap
 
 Send events with [`log_event`](/docs/media-buy/task-reference/log_event):
 
+{/* Using latest because EventSurface and creator engagement event types are not in a released schema bundle yet. */}
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/core/event.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/event.json",
   "event_id": "evt_purchase_12345",
   "event_type": "purchase",
   "event_time": "2026-01-15T14:30:00Z",
@@ -107,6 +110,7 @@ Send events with [`log_event`](/docs/media-buy/task-reference/log_event):
 | `user_match` | [UserMatch](#user-match) | No | User identifiers for attribution matching |
 | `custom_data` | [CustomData](#custom-data) | No | Event-specific data (value, currency, items) |
 | `action_source` | [ActionSource](#action-sources) | No | Where the event occurred |
+| `surface` | [EventSurface](#event-surfaces) | No | Structured surface context for the event, such as an owned channel, profile, feed, podcast, newsletter list, website, app, or store |
 | `event_source_url` | uri | No | URL where the event occurred (required when action_source is `website`) |
 | `custom_event_name` | string | No | Name for custom events (when event_type is `custom`) |
 
@@ -150,7 +154,7 @@ Event-specific data for attribution and reporting. For purchase events, always i
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/core/event-custom-data.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/event-custom-data.json",
   "value": 149.99,
   "currency": "USD",
   "order_id": "order_98765",
@@ -174,6 +178,8 @@ Event-specific data for attribution and reporting. For purchase events, always i
 | `content_category` | string | Category of the product or content |
 | `num_items` | integer | Number of items in the event |
 | `search_string` | string | Search query (for search events) |
+| `progress_percent` | number | Content progress percentage reached, primarily for `watch_milestone` events |
+| `progress_seconds` | number | Content progress duration reached in seconds, primarily for time-based `watch_milestone` events |
 | `contents` | Content[] | Per-item details: `id` (required), `quantity`, `price`, `brand` |
 
 ## Event types
@@ -201,7 +207,10 @@ Standard marketing event types, aligned with IAB ECAPI:
 | `close_convert_lead` | Lead converted to a customer or closed deal |
 | `disqualify_lead` | Lead disqualified or marked as not viable |
 | `complete_registration` | User completed account registration |
-| `subscribe` | User subscribed to a service or newsletter |
+| `subscribe` | User started a paid subscription or paid membership |
+| `follow` | User made a free, durable opt-in to an account, channel, feed, list, podcast, or similar owned property |
+| `content_view` | User meaningfully consumed a content unit, such as a watch, listen, stream, episode play, or read |
+| `watch_milestone` | User reached a content progress threshold, such as 25%, 50%, 75%, 100%, or a seconds-viewed milestone |
 | `start_trial` | User started a free trial |
 | `app_install` | User installed an application |
 | `app_launch` | User launched an application |
@@ -210,6 +219,8 @@ Standard marketing event types, aligned with IAB ECAPI:
 | `donate` | User made a donation |
 | `submit_application` | User submitted an application (loan, job, etc.) |
 | `custom` | Custom event type (specify in `custom_event_name`) |
+
+Use `view_content` for a product, article, or page content view where the view is mostly context for a lower-funnel goal. Use `content_view` when meaningful consumption of the content unit is itself the event being optimized or attributed. For `watch_milestone`, put the threshold in `custom_data.progress_percent` or `custom_data.progress_seconds`; reserve `custom_data.value` for monetary event value.
 
 ## Action sources
 
@@ -226,6 +237,32 @@ Where the conversion event originated:
 | `in_store` | Event occurred at a physical retail location |
 | `system_generated` | Event generated by an automated system |
 | `other` | Other source (specify in `ext`) |
+
+## Event surfaces
+
+`action_source` stays intentionally flat for compatibility. Use `surface` when the optimization-relevant source needs more structure, especially for creator and content engagement on owned platform properties.
+
+{/* Using latest because EventSurface is not in a released schema bundle yet. */}
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/event-surface.json",
+  "category": "owned_property",
+  "property_type": "channel",
+  "namespace": "video_platform",
+  "property_id": "channel_123"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `category` | enum | Closed generic category: `owned_property`, `website`, `app`, `offline`, `phone_call`, `chat`, `email`, `in_store`, `system_generated`, or `other` |
+| `property_type` | string | Open vocabulary for the property kind, such as `channel`, `profile`, `feed`, `list`, `podcast`, `playlist`, or `newsletter` |
+| `namespace` | string | Free-form platform, publisher, or system namespace, such as `video_platform`, `short_video_app`, or `audio_service`; this is not an enum |
+| `property_id` | string | Optional identifier for the property within `namespace` |
+
+For `owned_property`, set both `property_type` and `namespace`, and include `property_id` whenever the platform exposes a stable property identifier.
+
+When `surface.category` matches an `action_source` value, producers should set `action_source` to the same value. For `owned_property`, keep the closest compatible flat value for older consumers, commonly `system_generated` for platform-native events or `other` when no closer value applies. Platform-native details such as a raw conversion origin can still ride in `ext`, but shared optimization meaning belongs in `event_type`, `action_source`, and `surface`.
 
 ## Event source health
 
@@ -500,7 +537,7 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 | `attention_seconds` | seconds/impression | — | **Deprecated** — has no industry-graduated definition. Use `kind: "vendor_metric"` with `vendor` + `metric_id: "attention_seconds"` instead. |
 | `attention_score` | score/impression | — | **Deprecated** — has no industry-graduated definition. Use `kind: "vendor_metric"` with `vendor` + `metric_id: "attention_score"` instead. |
 | `engagements` | count/impression | — | Direct interaction beyond viewing — social reactions/comments/shares, story/unit opens, interactive overlay taps on CTV, companion banner interactions on audio |
-| `follows` | count/impression | — | New followers, page likes, artist/podcast/channel subscribes |
+| `follows` | count/impression | — | New followers, page likes, artist/podcast/channel follows, or free channel/feed subscribes |
 | `saves` | count/impression | — | Saves, bookmarks, playlist adds, pins — signals of intent to return |
 | `profile_visits` | count/impression | — | Visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks (use `clicks` for that). |
 | `reach` | unique entities/window | — | Unique audience reach within a frequency window. Requires `reach_unit` (e.g., `households`, `individuals`). Use `target_frequency` to set the frequency band for optimization. |
@@ -571,7 +608,7 @@ All target kinds across the three goal kinds:
 | Target VCR | Minimum video completion rate | `kind: "metric"`, `metric: "completed_views"` + `target: { kind: "threshold_rate", value: 0.85 }` |
 | Completed views with duration | Video views with specific duration threshold | `kind: "metric"`, `metric: "completed_views"` + `view_duration_seconds: 6` |
 | Max engagements | Maximize social interactions within budget | `kind: "metric"`, `metric: "engagements"`, no target |
-| Max follows | Maximize new followers/subscribers | `kind: "metric"`, `metric: "follows"`, no target |
+| Max follows | Maximize new followers, page likes, or free channel/feed subscribes | `kind: "metric"`, `metric: "follows"`, no target |
 | Max saves | Maximize saves/bookmarks/playlist adds | `kind: "metric"`, `metric: "saves"`, no target |
 | Max profile visits | Drive traffic to brand page/profile | `kind: "metric"`, `metric: "profile_visits"`, no target |
 | Max unique reach | Maximize unique audience within budget | `kind: "metric"`, `metric: "reach"` + `reach_unit: "households"`, no target |
@@ -632,7 +669,7 @@ Most event types are positive signals — a purchase, lead, or install is someth
 
 | Polarity | Event types | Notes |
 |----------|-------------|-------|
-| Positive | `purchase`, `lead`, `qualify_lead`, `close_convert_lead`, `app_install`, `complete_registration`, `subscribe`, `start_trial`, `contact`, `schedule`, `donate`, `submit_application` | Safe as standalone optimization targets |
+| Positive | `purchase`, `lead`, `qualify_lead`, `close_convert_lead`, `app_install`, `complete_registration`, `subscribe`, `follow`, `content_view`, `watch_milestone`, `start_trial`, `contact`, `schedule`, `donate`, `submit_application` | Safe as standalone optimization targets when the event has enough volume and is the buyer's desired outcome |
 | Upper funnel | `page_view`, `view_content`, `select_content`, `select_item`, `search`, `add_to_cart`, `viewed_cart`, `add_to_wishlist`, `initiate_checkout`, `add_payment_info`, `share`, `app_launch` | Valid optimization targets but typically used as proxy signals (`priority: 2`) when lower-funnel data is sparse |
 | Observation | `refund`, `remove_from_cart`, `disqualify_lead` | Include in `event_sources` for attribution accuracy and ROAS adjustment, not as standalone optimization targets |
 

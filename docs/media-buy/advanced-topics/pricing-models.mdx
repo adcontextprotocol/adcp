@@ -349,7 +349,7 @@ Buyers should verify the measurement provider meets their campaign requirements 
 **Billing**: Charged a fixed price when the specified `event_type` fires. The pricing option declares what event triggers billing — this is independent of `optimization_goals`, which controls delivery optimization.
 
 **Parameters**:
-- `event_type` (required): The conversion event that triggers billing. Uses the standard event type enum (e.g., `purchase`, `lead`, `app_install`, `add_to_cart`, `subscribe`).
+- `event_type` (required): The conversion event that triggers billing. Uses the standard event type enum (e.g., `purchase`, `lead`, `app_install`, `add_to_cart`, `subscribe` for paid subscriptions, `follow` for free durable opt-ins).
 - `event_source_id` (optional): When present, only events from this specific source count toward billing. Must match an event source configured via `sync_event_sources`. When omitted, any event of the specified `event_type` counts.
 
 **Example** (different rates by event source):
