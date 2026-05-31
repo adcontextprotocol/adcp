@@ -32,6 +32,7 @@
     "GOVERNANCE_DENIED",
     "BUDGET_EXHAUSTED",
     "BUDGET_EXCEEDED",
+    "BUDGET_CAP_REACHED",
     "CONFLICT",
     "IDEMPOTENCY_CONFLICT",
     "IDEMPOTENCY_EXPIRED",
@@ -116,6 +117,7 @@
     "GOVERNANCE_DENIED": "A registered governance agent denied the transaction. Sellers MUST place the denial in the task's structured rejection arm when one exists (e.g., `acquire_rights` → `AcquireRightsRejected`, `creative_approval` → `CreativeRejected`); otherwise in `errors[]` + `adcp_error`. Buyers MUST dispatch on the response's discriminated `status` first and fall back to `errors[].code` / `adcp_error.code` only when no rejection arm exists for that task. The buyer may restructure the buy (e.g., reduce budget, split into smaller transactions), escalate to human spending authority, or contact the governance agent for details. Recovery: correctable.\n\nWire placement (full guidance). Governance denial is a structured business outcome, not a system error — the governance call SUCCEEDED and the agent returned a denial verdict. Two cases:\n\n1. Task response defines a structured rejection arm. The arm IS the canonical denial shape. The seller populates `reason` (human-readable, propagating governance findings) and `suggestions` (optional) and does NOT additionally emit `GOVERNANCE_DENIED` in `errors[]` or `adcp_error`. The rejection arms enforce this at the schema layer: e.g., `AcquireRightsRejected` and `CreativeRejected` both declare `not: { required: [errors] }`, so dual-emission is already a schema violation. The code does not appear on the wire when the rejection arm is used. Transport-level success markers MUST NOT be flipped (HTTP 200, MCP `isError: false`, A2A `succeeded`) — the task ran successfully and produced a structured response.\n\n2. Task response has no rejection arm (e.g., `create_media_buy` returns Success / Error / Submitted arms only). The seller populates `errors[].code: GOVERNANCE_DENIED` in the payload AND `adcp_error.code: GOVERNANCE_DENIED` on the envelope per the two-layer model in `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`. Transport-level failure markers DO flip in this case (HTTP 4xx, MCP `isError: true`, A2A `failed`) — the task could not produce a success artifact.\n\nThe rule generalizes to any current or future task whose response defines a discriminated rejection arm. In either placement, sellers SHOULD propagate governance findings verbatim — buyers' recovery decisions depend on what specifically was rejected. `GOVERNANCE_DENIED` is reserved for verdicts received from a reachable governance agent; if the governance call itself failed (timeout, network, config error), use `GOVERNANCE_UNAVAILABLE` instead.",
     "BUDGET_EXHAUSTED": "Account or campaign budget has been fully spent. Distinct from BUDGET_TOO_LOW (rejected at submission). Recovery: terminal (buyer must add funds or increase budget cap).",
     "BUDGET_EXCEEDED": "Operation would exceed the allocated budget for the media buy or package. Distinct from BUDGET_EXHAUSTED (already spent) and BUDGET_TOO_LOW (below minimum). Recovery: correctable (reduce requested amount or increase budget allocation).",
+    "BUDGET_CAP_REACHED": "build_creative stopped producing early because the next leaf would exceed the request's max_spend ceiling. Normally a SUCCESSFUL partial build (BuildCreativeVariantSuccess with budget_status: 'capped' and an advisory BUDGET_CAP_REACHED entry — every returned leaf is real and billed); returned as a terminal error only when even the first leaf would exceed the cap (no partial possible). Distinct from BUDGET_EXCEEDED (would exceed a media-buy/package allocation — a rejection) and BUDGET_EXHAUSTED (already spent). Recovery: correctable (raise max_spend, or reduce max_creatives/max_variants).",
     "CREATIVE_DEADLINE_EXCEEDED": "Creative change submitted after the package's creative_deadline. Distinct from CREATIVE_REJECTED (content policy failure). Recovery: correctable (check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller).",
     "CONFLICT": "Concurrent modification detected. The resource was modified by another request between read and write. Recovery: transient (re-read the resource and retry with current state).",
     "IDEMPOTENCY_CONFLICT": "An earlier request with the same idempotency_key was processed with a different canonical payload within the seller's replay window. Distinct from CONFLICT (concurrent write) — this indicates the client reused a key across semantically different requests. Recovery: correctable (use a fresh UUID v4 for the new request, or resend the exact original payload to get the cached response).",
@@ -281,6 +283,10 @@
     "BUDGET_EXCEEDED": {
       "recovery": "correctable",
       "suggestion": "reduce requested amount or increase budget allocation"
+    },
+    "BUDGET_CAP_REACHED": {
+      "recovery": "correctable",
+      "suggestion": "raise max_spend, or reduce max_creatives/max_variants, to produce the remaining items"
     },
     "CONFLICT": {
       "recovery": "transient",

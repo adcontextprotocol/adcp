@@ -37,6 +37,8 @@ For information about legacy format IDs and how to reference formats, see [Creat
 | `variant_axis` | object | No | Describes the dimension along which variants differ. Object with `dimension` (`voice` \| `theme` \| `best_of_n` \| `transformer_config` \| `custom`), optional `values[]` (explicit values to enumerate along the axis), optional `field` (the `config` param to sweep — required when `dimension` is `transformer_config`), and optional `label`. |
 | `keep_mode` | string | No | Advisory hint to the agent on how many variants you intend to keep: `"keep_all"`, `"keep_one"`, or `"keep_some"`. Default `"keep_all"`. Advisory only — you are billed for all produced variants regardless. |
 | `refine_from_build_variant_id` | string | No | Refine a prior produced variant: re-build from its `build_variant_id` applying the NL instruction in `message` plus any `config` delta, returning **new** lineage-linked variants (never a mutation). `transformer_id` and target format(s) are inherited from the parent. Composes with `max_variants`/`variant_axis`; mutually exclusive with `max_creatives`. Requires `creative.supports_refinement` — otherwise `UNSUPPORTED_FEATURE`; an unknown/no-longer-retained ref is `REFERENCE_NOT_FOUND` (`error.field` = `refine_from_build_variant_id`). See [Refinement](#refinement). |
+| `mode` | string | No | `"execute"` (default) produces and bills. `"estimate"` is a **dry run** — produces and bills nothing, returns a `BuildCreativeEstimate` cost band (`cost_low`/`cost_high`) computed against this request's inputs. Requires `creative.supports_spend_controls`. See [Spend controls](#spend-controls). |
+| `max_spend` | object | No | Hard per-call spend ceiling `{ amount, currency }`. The agent produces leaves until the next would exceed `amount`, then stops and returns the partial result with `budget_status: "capped"`. Requires `creative.supports_spend_controls`. Caps one call — bound refinement loops buyer-side. See [Spend controls](#spend-controls). |
 | `include_preview` | boolean | No | When true, requests preview renders alongside the manifest. Agents that support this return a `preview` object in the response. Agents that don't simply omit it. |
 | `preview_inputs` | array | No | Input sets for preview generation when `include_preview` is true. Each entry has `name` (required), optional `macros`, and optional `context_description`. If omitted, the agent generates a single default preview. Only supported with `target_format_id` (single-format) — ignored for multi-format requests. |
 | `preview_quality` | string | No | Render quality for inline previews: `"draft"` or `"production"`. Independent of the build `quality` — you can build at draft and preview at production, or vice versa. Only used when `include_preview` is true. |
@@ -615,6 +617,19 @@ AI-derivative attribution rides the manifest's existing `provenance`; `parent_bu
   "idempotency_key": "7f2a1b3c-4d5e-6f70-8192-a3b4c5d6e7f8"
 }
 ```
+
+### Spend controls
+
+Fan-out and refinement can produce many independently-billed leaves (`max_creatives` × `max_variants`), and `per_unit` pricing gives a *rate* but not the *unit count* in advance (a 6-second voiceover and a 60-second one cost 10× at the same rate). Two opt-in controls, both gated by `creative.supports_spend_controls`:
+
+- **Estimate first (`mode: "estimate"`).** A dry run: the agent produces and bills nothing and returns a `BuildCreativeEstimate` with a `cost_low`/`cost_high` band (and `basis`: `fixed` = exact, `estimated_units` = generative projection, `cpm_deferred` = cost accrues at serve). The band is the load-bearing piece — the seller derives it from your actual inputs, so you don't have to guess unit counts.
+- **Cap the call (`max_spend: { amount, currency }`).** A hard stop: the agent produces leaves until the next would push aggregate `vendor_cost` over `amount`, then returns the partial `BuildCreativeVariantSuccess` with `budget_status: "capped"` and an advisory `BUDGET_CAP_REACHED` in `errors[]` — every returned leaf is real and billed, nothing produced is discarded, `items_returned` < `items_total` shows the shortfall. If even the first leaf would exceed the cap, the call fails with a terminal `BUDGET_CAP_REACHED`. `currency` must match the rate card (no FX) or the request is rejected `INVALID_REQUEST` (`error.field: max_spend.currency`).
+
+They compose: estimate to get `cost_high`, then execute with `max_spend` = `cost_high` × a safety margin. `max_spend` caps a **single call**; to bound an autonomous **refinement loop**, track aggregate `vendor_cost` across calls and stop issuing them (a buyer responsibility in this revision — a protocol-level session budget is deferred to the working group).
+
+<Warning>
+`max_spend` and `mode: "estimate"` require the agent to advertise `creative.supports_spend_controls`; otherwise they're rejected with `UNSUPPORTED_FEATURE`. They're only meaningful with `bills_through_adcp: true` (an out-of-band biller has no AdCP cost to cap against).
+</Warning>
 
 ### Field descriptions
 

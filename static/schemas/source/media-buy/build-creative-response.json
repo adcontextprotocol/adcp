@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-response.json",
   "title": "Build Creative Response",
-  "description": "Response payload for build_creative. Exactly one of five shapes: (1) synchronous single-format success — creative_manifest issued in-line (target_format_id request); (2) synchronous multi-format success — creative_manifests issued in-line (target_format_ids request); (3) multiplicity success — creatives[] each carrying variants[], returned when the request used transformer_id with item (max_creatives) and/or variant (max_variants) fan-out; (4) terminal failure — an errors array; (5) submitted task envelope — status 'submitted' with task_id when the build is queued (e.g., slow generative or multi-minute LLM pipeline). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These five shapes are mutually exclusive — a response has exactly one.",
+  "description": "Response payload for build_creative. Exactly one of six shapes: (1) synchronous single-format success — creative_manifest issued in-line (target_format_id request); (2) synchronous multi-format success — creative_manifests issued in-line (target_format_ids request); (3) multiplicity success — creatives[] each carrying variants[], returned when the request used item (max_creatives) and/or variant (max_variants) fan-out; (4) dry-run estimate — mode 'estimate' returns a BuildCreativeEstimate cost band and produces/bills nothing; (5) terminal failure — an errors array; (6) submitted task envelope — status 'submitted' with task_id when the build is queued (e.g., slow generative or multi-minute LLM pipeline). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These six shapes are mutually exclusive — a response has exactly one.",
   "type": "object",
   "allOf": [
     {
@@ -400,6 +400,17 @@
           "pattern": "^[A-Z]{3}$",
           "description": "ISO 4217 currency code for the aggregate vendor_cost."
         },
+        "budget_status": {
+          "type": "string",
+          "enum": ["complete", "capped"],
+          "default": "complete",
+          "description": "`complete` (default; absent == complete for back-compat) means the agent produced everything requested. `capped` means a `max_spend` ceiling stopped production early — `items_returned` < `items_total` shows the shortfall, every returned leaf is real/billed, and an advisory `BUDGET_CAP_REACHED` entry appears in `errors[]`. This is a successful partial build, not a failure."
+        },
+        "errors": {
+          "type": "array",
+          "description": "Advisory (non-terminal) entries on an otherwise-successful build — e.g. a `BUDGET_CAP_REACHED` notice when `budget_status` is `capped`. Terminal failures use the BuildCreativeError shape, not this field.",
+          "items": { "$ref": "/schemas/core/error.json" }
+        },
         "sandbox": {
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
@@ -418,6 +429,71 @@
       },
       "required": [
         "creatives"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "title": "BuildCreativeEstimate",
+      "description": "Dry-run estimate. Returned when the request set mode:\"estimate\". The agent produced NOTHING and billed NOTHING; it returns a projected cost band computed against this request's actual inputs (script length, brief, catalog size, max_creatives × max_variants) — the band the buyer cannot derive itself because per_unit gives the rate but not the unit count. Advisory and non-binding in this revision. Mutually exclusive with the success/error/submitted shapes (discriminated by mode:\"estimate\" + the estimate object).",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "estimate",
+          "description": "Echoes the request mode; discriminates this dry-run envelope from the producing shapes."
+        },
+        "estimate": {
+          "type": "object",
+          "description": "Projected cost for what mode:\"execute\" would have produced.",
+          "properties": {
+            "items_total": { "type": "integer", "minimum": 0, "description": "Catalog items eligible (before max_creatives sampling)." },
+            "items_to_produce": { "type": "integer", "minimum": 0, "description": "Distinct creatives that would be produced (after max_creatives)." },
+            "variants_per_item": { "type": "integer", "minimum": 1, "description": "Alternatives per creative (max_variants)." },
+            "leaves_total": { "type": "integer", "minimum": 0, "description": "Total billable leaves = items_to_produce × variants_per_item." },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 currency for the cost band." },
+            "cost_low": { "type": "number", "minimum": 0, "description": "Low end of the projected aggregate vendor_cost." },
+            "cost_high": { "type": "number", "minimum": 0, "description": "High end. For basis \"fixed\" this equals cost_low (exact)." },
+            "cost_expected": { "type": "number", "minimum": 0, "description": "Optional point estimate within the band." },
+            "basis": {
+              "type": "string",
+              "enum": ["fixed", "estimated_units", "cpm_deferred"],
+              "description": "`fixed` = per-format flat pricing (cost_low == cost_high, exact). `estimated_units` = generative per_unit where the seller projects a unit range (band reflects the uncertainty in seconds/images/tokens). `cpm_deferred` = CPM-priced; build-time cost is 0 and cost accrues at serve time (mirrors the vendor_cost:0 CPM convention)."
+            },
+            "per_leaf": {
+              "type": "array",
+              "description": "Optional per-leaf breakdown of the estimate.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "catalog_item_ref": { "type": "object", "additionalProperties": true },
+                  "variant_axis_value": {},
+                  "pricing_option_id": { "type": "string", "x-entity": "vendor_pricing_option" },
+                  "cost_low": { "type": "number", "minimum": 0 },
+                  "cost_high": { "type": "number", "minimum": 0 },
+                  "consumption_estimate": { "$ref": "/schemas/core/creative-consumption.json" }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "required": ["currency", "cost_low", "cost_high", "basis"],
+          "additionalProperties": true
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp after which this estimate's inputs/prices may no longer hold."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "mode",
+        "estimate"
       ],
       "additionalProperties": true
     },
@@ -460,6 +536,11 @@
           {
             "required": [
               "creatives"
+            ]
+          },
+          {
+            "required": [
+              "estimate"
             ]
           },
           {
@@ -529,6 +610,11 @@
           {
             "required": [
               "creatives"
+            ]
+          },
+          {
+            "required": [
+              "estimate"
             ]
           }
         ]

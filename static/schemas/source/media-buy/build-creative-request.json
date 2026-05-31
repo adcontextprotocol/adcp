@@ -73,10 +73,26 @@
       "x-entity": "build_variant",
       "description": "Refine a previously produced variant: re-build from the referenced `build_variant_id`, applying the natural-language instruction in `message` and any `config` delta, and return NEW lineage-linked variant(s) — each with `parent_build_variant_id` set to this id. A refinement is never a mutation; the parent leaf is unchanged. The `transformer_id` and target format(s) are inherited from the parent and need not be repeated; passing a `transformer_id` or `target_format_id`/`target_format_ids` that differs from the parent's is rejected with `INVALID_REQUEST`. Composes with `max_variants` / `variant_axis` (produces N refined alternatives), but is mutually exclusive with `max_creatives` / catalog fan-out (you refine one prior creative, not a catalog). Requires the agent to advertise `creative.supports_refinement: true` in get_adcp_capabilities; agents that do not retain prior builds reject with `UNSUPPORTED_FEATURE`. A ref that is unknown or no longer retained (agents retain produced leaves for an agent-defined window) is rejected with `REFERENCE_NOT_FOUND`, with `error.field` set to `refine_from_build_variant_id`. To refine a buyer-held manifest when the agent retains nothing, use the transform path instead (`creative_manifest` + `message`)."
     },
+    "mode": {
+      "type": "string",
+      "enum": ["execute", "estimate"],
+      "default": "execute",
+      "description": "`execute` (default) produces and bills the creative(s). `estimate` is a DRY RUN: the agent produces nothing and bills nothing, and returns a BuildCreativeEstimate with a projected cost band (cost_low/cost_high) computed against THIS request's actual inputs (script length, brief, catalog size, max_creatives × max_variants) — the band the buyer cannot derive itself, since per_unit gives the rate but not the unit count. Requires the agent to advertise `creative.supports_spend_controls`; otherwise rejected with `UNSUPPORTED_FEATURE`."
+    },
+    "max_spend": {
+      "type": "object",
+      "description": "Hard per-call spend ceiling. The agent produces leaves until the NEXT leaf would push the run's aggregate vendor_cost over `amount`, then STOPS and returns the partial BuildCreativeVariantSuccess produced so far with `budget_status: \"capped\"` (every returned leaf is real, trafficable, and billed — nothing produced is discarded). If even the first leaf would exceed the cap, the call fails with BUDGET_CAP_REACHED. `currency` MUST match the rate card's currency (the agent does not FX-convert) or the request is rejected with INVALID_REQUEST (error.field `max_spend.currency`). Requires `creative.supports_spend_controls`. Caps a SINGLE call — to bound a refinement loop, track aggregate vendor_cost across calls and stop issuing them (buyer responsibility in v1).",
+      "properties": {
+        "amount": { "type": "number", "minimum": 0, "description": "Maximum aggregate vendor_cost to incur on this call, in `currency`." },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 currency; MUST match the rate card." }
+      },
+      "required": ["amount", "currency"],
+      "additionalProperties": true
+    },
     "max_creatives": {
       "type": "integer",
       "minimum": 1,
-      "description": "Caps how many DISTINCT creatives to produce along the catalog/item fan-out axis — one creative per catalog item. Use it to sample a large catalog (e.g. send 150 job openings, set max_creatives: 5 to preview five). Distinct from item_limit, which caps how many catalog items a SINGLE creative consumes (DCO-style). Omitted with a catalog input means one creative per item up to the catalog/format bound; omitted without a catalog collapses to a single creative. Large fan-outs may return asynchronously. Mutually exclusive with `refine_from_build_variant_id` (refinement targets one prior creative, not a catalog fan-out)."
+      "description": "Caps how many DISTINCT creatives to produce along the catalog/item fan-out axis — one creative per catalog item. Use it to sample a large catalog (e.g. send 150 job openings, set max_creatives: 5 to preview five). Distinct from item_limit, which caps how many catalog items a SINGLE creative consumes (DCO-style). Omitted with a catalog input means one creative per item up to the catalog/format bound; omitted without a catalog collapses to a single creative. Large fan-outs may return asynchronously. Mutually exclusive with `refine_from_build_variant_id` (refinement targets one prior creative, not a catalog fan-out). Supported only when the agent advertises `creative.multiplicity.supports_catalog_fanout`; values above `max_creatives_limit` are clamped. Pair with `max_spend` to bound the bill of a large fan-out."
     },
     "max_variants": {
       "type": "integer",

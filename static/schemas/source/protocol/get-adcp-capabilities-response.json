@@ -1101,6 +1101,11 @@
           "description": "When true, this agent retains produced build_variant leaves for an agent-defined retention window and can re-build from one via build_creative's refine_from_build_variant_id — applying a natural-language instruction in message plus an optional config delta, returning new lineage-linked variants. A build-time agent capability independent of generation/transformation. When false or absent, refine_from_build_variant_id is rejected with UNSUPPORTED_FEATURE; buyers refine instead via the transform path (creative_manifest + message).",
           "default": false
         },
+        "supports_spend_controls": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, build_creative honors a per-call `max_spend` ceiling (producing partial paid results and returning budget_status:\"capped\" + a BUDGET_CAP_REACHED advisory rather than overspending) AND supports mode:\"estimate\" dry-runs (a projected cost band, producing/billing nothing). When false or absent, max_spend / mode:estimate are rejected with UNSUPPORTED_FEATURE. Out-of-band billers (bills_through_adcp:false) have no AdCP cost truth to cap against, so this is meaningful only alongside bills_through_adcp:true."
+        },
         "refinable_retention_seconds": {
           "type": "integer",
           "minimum": 0,
