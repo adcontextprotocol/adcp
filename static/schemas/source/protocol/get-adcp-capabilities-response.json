@@ -1101,6 +1101,47 @@
           "description": "When true, this agent retains produced build_variant leaves for an agent-defined retention window and can re-build from one via build_creative's refine_from_build_variant_id — applying a natural-language instruction in message plus an optional config delta, returning new lineage-linked variants. A build-time agent capability independent of generation/transformation. When false or absent, refine_from_build_variant_id is rejected with UNSUPPORTED_FEATURE; buyers refine instead via the transform path (creative_manifest + message).",
           "default": false
         },
+        "refinable_retention_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "When supports_refinement is true, the GUARANTEED-MINIMUM window (a floor, not a ceiling) during which a produced build_variant_id remains refinable via refine_from_build_variant_id: a ref within this window from production SHOULD resolve; the agent MAY retain longer. Omit when the retention window is agent-defined and not advertised — buyers then treat refinability as best-effort and handle REFERENCE_NOT_FOUND."
+        },
+        "multiplicity": {
+          "type": "object",
+          "description": "Pre-call discriminators for build_creative fan-out, so a buyer knows BEFORE sending max_creatives / max_variants whether this agent supports them and the ceilings. Over-limit requests are CLAMPED to these ceilings (the agent produces up to the limit and signals the shortfall via items_returned < items_total on BuildCreativeVariantSuccess), not rejected — consistent with item_limit's 'use the lesser' rule. Absent means no fan-out: build_creative produces a single creative and max_creatives/max_variants>1 are not supported.",
+          "properties": {
+            "supports_catalog_fanout": {
+              "type": "boolean",
+              "default": false,
+              "description": "When true, build_creative accepts max_creatives (one distinct creative per catalog item)."
+            },
+            "max_creatives_limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Ceiling on max_creatives. Omitted means no advertised ceiling."
+            },
+            "supports_variants": {
+              "type": "boolean",
+              "default": false,
+              "description": "When true, build_creative accepts max_variants > 1 / variant_axis (alternatives per creative)."
+            },
+            "max_variants_limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Ceiling on max_variants. Omitted means no advertised ceiling."
+            },
+            "variant_dimensions": {
+              "type": "array",
+              "description": "Which variant_axis.dimension values this agent supports.",
+              "items": {
+                "type": "string",
+                "enum": ["voice", "theme", "best_of_n", "transformer_config", "custom"]
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
         "supported_formats": {
           "type": "array",
           "description": "Canonical-formats path: format declarations describing which canonical formats this creative agent can produce via `build_creative`. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]` — `format_kind` discriminator + `params` (canonical's parameter schema including `slots`, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions). Replaces the v1 `list_creative_formats` discovery surface for creative agents.",

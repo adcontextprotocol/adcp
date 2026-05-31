@@ -44,6 +44,23 @@
       "description": "Per-account rate-card options for using this transformer. Present when the list_transformers request set include_pricing=true with an account. The applied option is echoed back per-leaf on the build_creative response and reconciled via report_usage.",
       "items": { "$ref": "/schemas/core/vendor-pricing-option.json" },
       "minItems": 1
+    },
+    "multiplicity": {
+      "type": "object",
+      "description": "Optional per-transformer fan-out limits that NARROW the agent-level get_adcp_capabilities `creative.multiplicity`. Same shape as the agent-level object. When present, this transformer's authoritative; its ceilings (max_creatives_limit / max_variants_limit) MUST NOT exceed the agent ceilings, and its variant_dimensions MUST be a subset of the agent's. Omit to inherit the agent-level capability unchanged.",
+      "properties": {
+        "supports_catalog_fanout": { "type": "boolean", "default": false, "description": "Whether this transformer accepts max_creatives." },
+        "max_creatives_limit": { "type": "integer", "minimum": 1, "description": "Per-transformer ceiling on max_creatives (≤ the agent ceiling)." },
+        "supports_variants": { "type": "boolean", "default": false, "description": "Whether this transformer accepts max_variants > 1 / variant_axis." },
+        "max_variants_limit": { "type": "integer", "minimum": 1, "description": "Per-transformer ceiling on max_variants (≤ the agent ceiling)." },
+        "variant_dimensions": {
+          "type": "array",
+          "description": "Variant axis dimensions this transformer supports (⊆ the agent's).",
+          "items": { "type": "string", "enum": ["voice", "theme", "best_of_n", "transformer_config", "custom"] },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": true
     }
   },
   "required": ["transformer_id", "name", "output_format_ids"],
