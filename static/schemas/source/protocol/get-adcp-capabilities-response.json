@@ -1091,6 +1091,11 @@
           "description": "When true, this agent can transform or resize existing manifests via build_creative. The buyer provides a creative_manifest and a target_format_id, and the agent adapts the creative to the new format.",
           "default": false
         },
+        "supports_transformers": {
+          "type": "boolean",
+          "description": "When true, this agent exposes account-scoped creative transformers via list_transformers (the creative analog of media-buy products) and accepts transformer_id + config on build_creative. Buyers SHOULD call list_transformers to discover available transformers, their typed config params (and account-scoped enumerable option values via expand_params), and pricing. When false or absent, the agent does not offer the transformer surface.",
+          "default": false
+        },
         "supported_formats": {
           "type": "array",
           "description": "Canonical-formats path: format declarations describing which canonical formats this creative agent can produce via `build_creative`. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]` — `format_kind` discriminator + `params` (canonical's parameter schema including `slots`, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions). Replaces the v1 `list_creative_formats` discovery surface for creative agents.",

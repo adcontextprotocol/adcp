@@ -66,6 +66,7 @@ Orchestrators are not MCP/A2A servers — they call sales agent tasks. Conforman
 | Task | Requirement | Notes |
 |------|------------|-------|
 | `list_creative_formats` | Required | Format discovery with technical specs |
+| `list_transformers` | Conditional | Required when the agent advertises `creative.supports_transformers: true` |
 | `build_creative` | Optional | Generation, transformation, or library retrieval |
 | `preview_creative` | Optional | Preview rendering |
 | `list_creatives` | Conditional | Required when `has_creative_library: true` |

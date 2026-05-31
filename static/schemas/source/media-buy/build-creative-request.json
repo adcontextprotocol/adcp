@@ -50,6 +50,60 @@
       "minItems": 1,
       "description": "Array of format IDs to generate in a single call. Mutually exclusive with target_format_id. The creative agent produces one manifest per format. Each format definition specifies its own required input assets and output structure."
     },
+    "transformer_id": {
+      "type": "string",
+      "x-entity": "transformer",
+      "description": "Selects an account-scoped transformer (discovered via list_transformers) to perform the build. One transformer per call. When present, the build uses this transformer and target_format_id/target_format_ids select which of its outputs to produce — they MUST be a subset of the transformer's output_format_ids. Render configuration goes in `config`."
+    },
+    "config": {
+      "type": "object",
+      "description": "Typed render configuration for the selected transformer, keyed by each param's `field` (from the transformer's params[] in list_transformers). Example: { \"voice\": \"isaac\", \"speaking_rate\": 1.1, \"mastering_preset\": \"podcast\" }. The agent MUST validate `config` against the transformer's live params for this account and reject unrecognized keys and out-of-range / non-enumerated values with a field-attributed error (e.g. `config.voice`) rather than silently ignoring them — config drives a paid render. Genuinely vendor-specific or experimental knobs not declared as params belong in `ext`, not here. (The schema leaves this object open because legal keys are dynamic per transformer; strict validation is a normative agent obligation.)",
+      "additionalProperties": true
+    },
+    "max_creatives": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Caps how many DISTINCT creatives to produce along the catalog/item fan-out axis — one creative per catalog item. Use it to sample a large catalog (e.g. send 150 job openings, set max_creatives: 5 to preview five). Distinct from item_limit, which caps how many catalog items a SINGLE creative consumes (DCO-style). Omitted with a catalog input means one creative per item up to the catalog/format bound; omitted without a catalog collapses to a single creative. Large fan-outs may return asynchronously."
+    },
+    "max_variants": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "description": "Caps how many ALTERNATIVES to produce per creative (different voices, themes, best-of-N, etc.). Default 1 preserves single-output behavior. Each variant is a real, independently-billed build (you pay for all produced); the buyer keeps one or many. When variant_axis.values[] is provided, its length is authoritative over max_variants. Resolutions/quality tiers are NOT variants — request them as additional target formats."
+    },
+    "variant_axis": {
+      "type": "object",
+      "description": "Declares the dimension along which variants differ. When `values` is provided, the agent produces exactly one variant per value (e.g. an A/B of two voices). When only `dimension` is provided, the agent chooses up to max_variants variants along that dimension (e.g. best-of-N, themes).",
+      "properties": {
+        "dimension": {
+          "type": "string",
+          "enum": ["voice", "theme", "best_of_n", "transformer_config", "custom"],
+          "description": "What varies across variants. `transformer_config` varies a named config param (name it in `field`); `best_of_n` lets the agent explore and rank; `custom` is agent-defined (describe in `label`)."
+        },
+        "field": {
+          "type": "string",
+          "description": "The transformer `config` param `field` this axis sweeps. REQUIRED when `dimension` is `transformer_config`; `values[]` are then interpreted as values for `config[field]`. Omit for other dimensions."
+        },
+        "values": {
+          "type": "array",
+          "description": "Caller-fixed set of values for the axis (e.g. [\"isaac\", \"sara\"] for dimension `voice`). When present, len(values) is the variant count and is authoritative over max_variants.",
+          "items": {},
+          "minItems": 1
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable description of the axis, especially for `custom`."
+        }
+      },
+      "required": ["dimension"],
+      "additionalProperties": true
+    },
+    "keep_mode": {
+      "type": "string",
+      "enum": ["keep_all", "keep_one", "keep_some"],
+      "default": "keep_all",
+      "description": "Advisory hint for how the buyer intends to use the variants. `keep_one` (best-of-N) and `keep_some` signal the agent to set `recommended`/`rank` on returned variants. Advisory only — it does not change what is returned or billed; every produced variant is returned and charged. Keeping is a client act of trafficking the chosen build_variant_id(s)."
+    },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
       "description": "Account reference for pricing and billing. When present, the creative agent applies account-specific pricing from the rate card, records the build against the account for billing, and can enforce account-level quotas or entitlements. Required by creative agents that charge for their services."
@@ -65,7 +119,7 @@
     "item_limit": {
       "type": "integer",
       "minimum": 1,
-      "description": "Maximum number of catalog items to use when generating. When a catalog asset contains more items than this limit, the creative agent selects the top items based on relevance or catalog ordering. When item_limit exceeds the format's max_items, the creative agent SHOULD use the lesser of the two. Ignored when the manifest contains no catalog assets."
+      "description": "Maximum number of catalog items a SINGLE creative consumes when generating (DCO-style — e.g. how many items fill one carousel/feed creative). When a catalog asset contains more items than this limit, the creative agent selects the top items based on relevance or catalog ordering. When item_limit exceeds the format's max_items, the creative agent SHOULD use the lesser of the two. Ignored when the manifest contains no catalog assets. Distinct from `max_creatives`, which fans OUT across catalog items to produce one distinct creative per item."
     },
     "include_preview": {
       "type": "boolean",
