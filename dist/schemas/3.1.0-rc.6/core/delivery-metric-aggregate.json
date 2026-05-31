@@ -1,0 +1,202 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.6/core/delivery-metric-aggregate.json",
+  "title": "Delivery Metric Aggregate",
+  "description": "One cross-buy delivery aggregate partitioned by metric scope and qualifier. Row-symmetric with `package.committed_metrics` and delivery `missing_metrics` so buyers can reconcile by `(scope, metric_id, qualifier)`.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "scope"
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "standard",
+          "description": "Standard metric from the closed `available-metric.json` enum."
+        },
+        "metric_id": {
+          "$ref": "/schemas/3.1.0-rc.6/enums/available-metric.json",
+          "description": "Identifier for the standard metric."
+        },
+        "qualifier": {
+          "type": "object",
+          "description": "Qualifier keys disambiguating this row from sibling rows under the same `metric_id`. Symmetric with `committed_metrics.qualifier` today; expected to diverge in future minors as transparency disclosures buyers don't commit to ship delivery-only. Closed (`additionalProperties: false`) — new qualifier keys ship explicitly.",
+          "properties": {
+            "viewability_standard": {
+              "$ref": "/schemas/3.1.0-rc.6/enums/viewability-standard.json",
+              "description": "Viewability standard under which this row was measured. MRC and GroupM define materially different thresholds; never sum across standards."
+            },
+            "completion_source": {
+              "$ref": "/schemas/3.1.0-rc.6/enums/completion-source.json",
+              "description": "Source of `completion_rate` attestation for this row — `seller_attested` from player/ad server, `vendor_attested` from a third-party measurement vendor. The two paths can yield different rates; never sum across sources."
+            },
+            "attribution_methodology": {
+              "$ref": "/schemas/3.1.0-rc.6/enums/attribution-methodology.json",
+              "description": "Attribution methodology under which this outcome row was computed (`deterministic_purchase`, `probabilistic`, `panel_based`, `modeled`). Outcome metrics measured under different methodologies represent materially different numbers; never sum across methodologies."
+            },
+            "attribution_window": {
+              "$ref": "/schemas/3.1.0-rc.6/core/duration.json",
+              "description": "Attribution window for this outcome row. Object-valued duration (`{interval, unit}`), not a shorthand string. Outcome metrics measured over different windows represent the same metric over different time periods; the partition keeps them as separate rows so buyers don't accidentally aggregate."
+            },
+            "lift_dimension": {
+              "$ref": "/schemas/3.1.0-rc.6/enums/lift-dimension.json",
+              "description": "Brand-lift dimension this row represents (awareness, consideration, favorability, purchase intent, or ad recall). Required when `metric_id` is `brand_lift`. Each dimension is a separate surveyed outcome with its own sample size and confidence interval; never sum across dimensions."
+            }
+          },
+          "additionalProperties": false
+        },
+        "value": {
+          "type": "number",
+          "description": "Aggregated metric value for this `(metric_id, qualifier)` partition. Heterogeneous by `metric_id` — rate metrics (`viewable_rate`, `completion_rate`) are 0.0–1.0; cost-per metrics (`cost_per_acquisition`, `cost_per_completed_view`) are currency amounts; count metrics (`impressions`, `clicks`) are non-negative integers as numbers; ratio metrics (`roas`) are non-negative numbers. Buyer agents MUST inspect `metric_id` before doing arithmetic — same dispatch convention as `committed_metrics`."
+        },
+        "measurable_impressions": {
+          "type": "number",
+          "description": "Coverage denominator for verification metrics (e.g., `viewable_rate`). Buyers compute coverage as `measurable_impressions / impressions` from the partition.",
+          "minimum": 0
+        },
+        "viewable_impressions": {
+          "type": "number",
+          "description": "Component for `viewable_rate` (numerator).",
+          "minimum": 0
+        },
+        "impressions": {
+          "type": "number",
+          "description": "Component for rate metrics whose denominator is total impressions (e.g., `completion_rate`, `engagement_rate`).",
+          "minimum": 0
+        },
+        "completed_views": {
+          "type": "number",
+          "description": "Component for `completion_rate` (numerator).",
+          "minimum": 0
+        },
+        "spend": {
+          "type": "number",
+          "description": "Component for cost-per metrics (denominator-ish; the cost half of the ratio).",
+          "minimum": 0
+        },
+        "conversions": {
+          "type": "number",
+          "description": "Component for `cost_per_acquisition` and ROAS-family metrics.",
+          "minimum": 0
+        },
+        "conversion_value": {
+          "type": "number",
+          "description": "Component for `roas` (numerator).",
+          "minimum": 0
+        },
+        "clicks": {
+          "type": "number",
+          "description": "Component for `cost_per_click` and click-rate metrics.",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "scope",
+        "metric_id",
+        "value"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "metric_id": {
+                "const": "viewable_rate"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "measurable_impressions",
+              "viewable_impressions"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metric_id": {
+                "const": "completion_rate"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "impressions",
+              "completed_views"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metric_id": {
+                "const": "cost_per_acquisition"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "spend",
+              "conversions"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metric_id": {
+                "const": "roas"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "spend",
+              "conversion_value"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "vendor",
+          "description": "Vendor-defined metric, identified by the tuple `(vendor, metric_id)`."
+        },
+        "vendor": {
+          "$ref": "/schemas/3.1.0-rc.6/core/brand-ref.json",
+          "description": "Vendor that defines and computes this metric. The vendor's `brand.json` `agents[type='measurement']` is the canonical anchor; metric definitions live on `get_adcp_capabilities.measurement.metrics[]`."
+        },
+        "metric_id": {
+          "$ref": "/schemas/3.1.0-rc.6/core/vendor-metric-id.json",
+          "description": "Identifier for the metric within the vendor's vocabulary."
+        },
+        "qualifier": {
+          "type": "object",
+          "description": "Optional qualifier keys for vendor metrics that need disambiguation (rare today — most vendor methodologies are intrinsic to the metric definition).",
+          "additionalProperties": false
+        },
+        "value": {
+          "type": "number",
+          "description": "Aggregated vendor-attested value. Unit semantics defined by the vendor — see the vendor's measurement-agent metric definition."
+        },
+        "measurable_impressions": {
+          "type": "number",
+          "description": "Coverage denominator — vendor measurement is rarely 100% of delivery (only impressions where the vendor's SDK fired or panel matched). Buyers compute coverage as `measurable_impressions / impressions`. Same convention as `vendor_metric_value.measurable_impressions`.",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "scope",
+        "vendor",
+        "metric_id",
+        "value"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

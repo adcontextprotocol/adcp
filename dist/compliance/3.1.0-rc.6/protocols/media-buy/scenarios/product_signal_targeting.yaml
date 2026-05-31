@@ -1,0 +1,379 @@
+id: media_buy_seller/product_signal_targeting
+version: "1.0.0"
+title: "Seller exposes wholesale signal options and honors package-level signal_targeting_groups"
+category: media_buy_seller
+summary: "Verifies that a seller with wholesale products and wholesale get_signals can expose signal targeting eligibility, accept package-level signal_targeting_groups with pricing, reject unknown signals, and echo the applied grouped expression on readback."
+track: media_buy
+
+# Gate: this scenario is for sellers that expose the selectable signal menu
+# through the wholesale signals feed. Product-specific inline menus are covered
+# by schema and product-discovery checks; this storyboard exercises the
+# cross-surface wholesale composition path.
+requires_capability:
+  path: signals.discovery_modes
+  present: true
+
+required_tools:
+  - get_products
+  - get_signals
+  - create_media_buy
+  - get_media_buys
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  Product-scoped signal targeting connects three surfaces:
+
+    1. get_products declares whether the selected product has a package-level
+       signal targeting surface through signal_targeting_allowed and optional
+       signal_targeting_rules.
+    2. get_signals returns the selectable wholesale signal feed when the
+       wholesale product omits inline signal_targeting_options.
+    3. create_media_buy binds the selected signals to the package through
+       targeting_overlay.signal_targeting_groups, including the selected
+       signal pricing_option_id when the signal has incremental pricing.
+
+  This scenario verifies the wholesale path: the seller returns a product with
+  signal_targeting_allowed: true, returns targetable signals from get_signals,
+  accepts a buy with a grouped signal expression, rejects an unknown signal_ref,
+  and echoes the applied signal_targeting_groups on get_media_buys so the buyer
+  can audit what was actually booked.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - wholesale_signal_targeting
+  examples:
+    - "Programmatic sellers exposing audience and key-value targeting as seller-offered signals"
+    - "Retail media networks that let buyers apply shopper intent signals to a product"
+    - "Audio or video sellers that expose a wholesale signal feed for package composition"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller must implement comply_test_controller seeding for products and
+    pricing, and must expose a get_signals wholesale feed with at least two
+    selectable signals. The seeded product intentionally omits inline
+    signal_targeting_options, so the buyer uses get_signals as the selectable
+    signal menu.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "signal_targeted_display_q2"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+      signal_targeting_allowed: true
+      signal_targeting_rules:
+        resolution_model: "direct_targeting"
+        selection_mode: "optional"
+        max_signal_targeting_groups: 2
+        max_signals_per_targeting_group: 3
+  pricing_options:
+    - product_id: "signal_targeted_display_q2"
+      pricing_option_id: "auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 3.00
+
+phases:
+  - id: discover_wholesale_product
+    title: "Discover a wholesale product that allows signal targeting"
+    narrative: |
+      The buyer starts from wholesale product discovery. The product does not
+      need to duplicate the full signal menu inline; signal_targeting_allowed
+      tells the buyer that package-level signal_targeting_groups are valid and
+      signal_targeting_rules tells the buyer how to compose them.
+    steps:
+      - id: get_products_wholesale
+        title: "Enumerate wholesale products"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        expected: |
+          Return a product with signal_targeting_allowed: true and product-scoped
+          signal_targeting_rules. Inline signal_targeting_options may be omitted
+          because this scenario uses get_signals as the selectable signal feed.
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            is_fixed_price: false
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "product_signal_targeting--get_products_wholesale"
+        context_outputs:
+          - key: "product_id"
+            path: "products[0].product_id"
+          - key: "pricing_option_id"
+            path: "products[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].signal_targeting_allowed"
+            allowed_values: [true]
+            description: "Product declares package-level signal targeting"
+          - check: field_present
+            path: "products[0].signal_targeting_rules"
+            description: "Product declares signal targeting composition rules"
+          - check: field_present
+            path: "products[0].pricing_options[0].floor_price"
+            description: "The captured pricing option accepts bid_price for auction-priced package creation"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "product_signal_targeting--get_products_wholesale"
+            description: "Context correlation_id returned unchanged"
+
+  - id: discover_wholesale_signals
+    title: "Read the selectable signal feed"
+    narrative: |
+      Because the product did not inline a signal menu, the buyer calls
+      get_signals in wholesale mode. The returned signal_ref is the buy-time
+      identity, and pricing_options supplies the pricing_option_id used in
+      package signal targeting groups.
+    steps:
+      - id: get_signals_wholesale
+        title: "Enumerate wholesale signals"
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        stateful: false
+        expected: |
+          Return at least two schema-valid signal entries with signal_ref,
+          signal_agent_segment_id, value_type, and pricing_options. The buyer
+          will include the first signal and exclude the second.
+        sample_request:
+          discovery_mode: "wholesale"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          destinations:
+            - type: "agent"
+              agent_url: "https://wonderstruck.salesagents.example"
+          countries: ["US"]
+          context:
+            correlation_id: "product_signal_targeting--get_signals_wholesale"
+        context_outputs:
+          - key: "include_signal_ref"
+            path: "signals[0].signal_ref"
+          - key: "include_signal_pricing_option_id"
+            path: "signals[0].pricing_options[0].pricing_option_id"
+          - key: "include_signal_agent_segment_id"
+            path: "signals[0].signal_agent_segment_id"
+          - key: "exclude_signal_ref"
+            path: "signals[1].signal_ref"
+          - key: "exclude_signal_pricing_option_id"
+            path: "signals[1].pricing_options[0].pricing_option_id"
+          - key: "exclude_signal_agent_segment_id"
+            path: "signals[1].signal_agent_segment_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-signals-response.json schema"
+          - check: field_present
+            path: "signals[0].signal_ref.scope"
+            description: "First signal carries canonical signal_ref identity"
+          - check: field_present
+            path: "signals[0].pricing_options[0].pricing_option_id"
+            description: "First signal carries a selectable pricing option"
+          - check: field_present
+            path: "signals[1].signal_ref.scope"
+            description: "Second signal carries canonical signal_ref identity for exclusion"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "product_signal_targeting--get_signals_wholesale"
+            description: "Context correlation_id returned unchanged"
+
+  - id: create_with_signal_groups
+    title: "Create a media buy with include and exclude signal groups"
+    narrative: |
+      The buyer selects one signal for inclusion and one for exclusion. The
+      top-level operator is always all; child any groups include users matching
+      at least one signal, and child none groups exclude users matching any
+      listed signal. Binary signal entries use value: true in both groups.
+    steps:
+      - id: create_media_buy_with_signal_groups
+        title: "Create media buy with signal_targeting_groups"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Create the buy and persist the grouped signal targeting expression.
+          The selected signal pricing_option_id values are available for billing
+          verification.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "2026-07-01T00:00:00Z"
+          end_time: "2026-07-31T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              bid_price: 4.25
+              budget: 12000
+              targeting_overlay:
+                signal_targeting_groups:
+                  operator: "all"
+                  groups:
+                    - operator: "any"
+                      signals:
+                        - signal_ref: "$context.include_signal_ref"
+                          signal_agent_segment_id: "$context.include_signal_agent_segment_id"
+                          pricing_option_id: "$context.include_signal_pricing_option_id"
+                          value_type: "binary"
+                          value: true
+                    - operator: "none"
+                      signals:
+                        - signal_ref: "$context.exclude_signal_ref"
+                          signal_agent_segment_id: "$context.exclude_signal_agent_segment_id"
+                          pricing_option_id: "$context.exclude_signal_pricing_option_id"
+                          value_type: "binary"
+                          value: true
+          idempotency_key: "$generate:uuid_v4#product_signal_targeting_create_media_buy"
+          context:
+            correlation_id: "product_signal_targeting--create_media_buy_with_signal_groups"
+        context_outputs:
+          - key: "media_buy_id"
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller assigns a media_buy_id"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+
+  - id: verify_signal_groups_echo
+    title: "Verify the applied grouped signal expression is readable"
+    narrative: |
+      The seller must echo applied signal_targeting_groups on package state so
+      the buyer can audit the booked include/exclude expression and selected
+      signal pricing options.
+    steps:
+      - id: get_after_create
+        title: "Read back the buy and confirm signal_targeting_groups"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        expected: |
+          Return the media buy with the package targeting_overlay carrying the
+          same signal_targeting_groups operator structure sent on create.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids:
+            - "$context.media_buy_id"
+          context:
+            correlation_id: "product_signal_targeting--get_after_create"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.operator"
+            value: "all"
+            description: "Top-level signal targeting operator is all"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[0].operator"
+            value: "any"
+            description: "Include group is represented as an any group"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[1].operator"
+            value: "none"
+            description: "Exclude group is represented as a none group"
+          - check: field_present
+            path: "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[0].signals[0].pricing_option_id"
+            description: "Selected signal pricing_option_id is persisted for billing audit"
+
+  - id: reject_unknown_signal
+    title: "Reject a buy that references an unknown signal"
+    narrative: |
+      Silent acceptance of a signal the seller did not advertise is a facade:
+      the seller cannot prove the package was targeted to the buyer's intended
+      signal. The seller must reject unknown or ineligible signal_ref values.
+    steps:
+      - id: create_media_buy_with_unknown_signal
+        title: "Submit a buy with an unadvertised product-local signal"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject with INVALID_REQUEST. error.field points at the offending
+          signal_ref path inside signal_targeting_groups.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "2026-07-01T00:00:00Z"
+          end_time: "2026-07-31T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              bid_price: 4.25
+              budget: 5000
+              targeting_overlay:
+                signal_targeting_groups:
+                  operator: "all"
+                  groups:
+                    - operator: "any"
+                      signals:
+                        - signal_ref:
+                            scope: "product"
+                            signal_id: "phantom_signal_not_advertised"
+                          value_type: "binary"
+                          value: true
+          idempotency_key: "$generate:uuid_v4#product_signal_targeting_unknown_signal"
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST"]
+            description: "Seller rejects the unadvertised signal_ref with INVALID_REQUEST"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.signal_targeting_groups.groups[0].signals[0].signal_ref"
+            description: "Error.field points at the offending signal_ref path"

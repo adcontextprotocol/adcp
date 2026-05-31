@@ -225,7 +225,7 @@ describe('wrapper contract', () => {
 
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.7']).requested).toBe('3.1-beta');
-    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.4']).requested).toBe('3.1-rc');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.4']).requested).toBe('3.1-rc.4');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.1-beta.5']).requested).toBe('3.1-beta.5');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.1-beta.5']).version).toBe('3.1.0-beta.5');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.5']).requested).toBe('3.1-beta.5');
@@ -234,7 +234,7 @@ describe('wrapper contract', () => {
     expect(selectHostedComplianceTargetForSupportedVersions(undefined).requested).toBe('3.0');
 
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.4']).requested).toBe('3.0');
-    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1-rc.4']).requested).toBe('3.1-rc');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1-rc.4']).requested).toBe('3.1-rc.4');
   });
 
   it('does not treat an unconfirmed fallback target as badge eligible', () => {

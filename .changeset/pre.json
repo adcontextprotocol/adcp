@@ -621,6 +621,7 @@
     "heredoc-jq-sweep-workflow",
     "homepage-member-count-empty",
     "hosted-compliance-stable-line-prerelease",
+    "hosted-compliance-target-recovery",
     "hosted-property-fed-index-sync",
     "hostname-verify-bulk-perf",
     "idempotency-in-flight-max-seconds",
