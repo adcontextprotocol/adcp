@@ -3176,6 +3176,258 @@ export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingCo
   };
 }
 
+// ── Transformers (list_transformers + build_creative transformer path) ──────
+//
+// A transformer is the creative analog of a media-buy product: an
+// agent-offered, account-scoped, selectable unit of build capability
+// (a voice, a model, a style) with a typed config surface. The reference
+// agent exposes one static transformer; real agents resolve account-scoped
+// option values (e.g. cloned voices) per credential. Enumerable option VALUES
+// are returned only when the param's field is named in expand_params.
+
+interface TransformerParamOption {
+  value: unknown;
+  label?: string;
+  metadata?: Record<string, unknown>;
+}
+
+interface TransformerParam {
+  field: string;
+  type: 'string' | 'number' | 'integer' | 'boolean';
+  value_source: 'inline' | 'range' | 'enumerable' | 'free_text';
+  allowed_values?: unknown[];
+  minimum?: number;
+  maximum?: number;
+  max_length?: number;
+  default?: unknown;
+  required?: boolean;
+  description?: string;
+}
+
+interface TrainingTransformer {
+  transformer_id: string;
+  name: string;
+  description?: string;
+  metadata?: Record<string, unknown>;
+  input_format_ids?: FormatID[];
+  output_format_ids: FormatID[];
+  params: TransformerParam[];
+  pricing_options?: Array<Record<string, unknown>>;
+  multiplicity?: Record<string, unknown>;
+  // Full account-scoped option pool for enumerable params, surfaced on
+  // params[].options[] only when expand_params names the field.
+  enumerableOptions?: Record<string, TransformerParamOption[]>;
+}
+
+// The agent advertises this as multiplicity.max_variants_limit and enforces it
+// on build_creative — a variant request above it is clamped (not rejected),
+// signalling the shortfall via leaves_returned < leaves_total.
+const TRANSFORMER_MAX_VARIANTS_LIMIT = 10;
+
+function getTransformers(): TrainingTransformer[] {
+  const agentUrl = getAgentUrl();
+  return [
+    {
+      transformer_id: 'audiostack_voiceover',
+      name: 'Voiceover',
+      description: 'Script-to-audio voiceover with account-configured voices.',
+      metadata: { provider: 'audiostack', modality: 'audio' },
+      input_format_ids: [{ agent_url: agentUrl, id: 'script' }],
+      output_format_ids: [{ agent_url: agentUrl, id: 'audio_vo' }],
+      params: [
+        { field: 'voice', type: 'string', value_source: 'enumerable', default: 'sara', description: 'Narration voice, incl. account-specific custom/cloned voices.' },
+        { field: 'mastering_preset', type: 'string', value_source: 'inline', allowed_values: ['broadcast', 'podcast', 'music'], default: 'broadcast', description: 'Audio mastering profile applied to the final mix.' },
+        { field: 'speaking_rate', type: 'number', value_source: 'range', minimum: 0.5, maximum: 2.0, default: 1.0, description: 'Narration speed multiplier.' },
+        { field: 'pronunciation_note', type: 'string', value_source: 'free_text', max_length: 280, description: 'Optional free-text pronunciation/style guidance.' },
+      ],
+      pricing_options: [
+        { pricing_option_id: 'vo_per_second_standard', model: 'per_unit', unit: 'second', unit_price: 0.05, currency: 'USD' },
+      ],
+      multiplicity: { supports_catalog_fanout: false, supports_variants: true, max_variants_limit: TRANSFORMER_MAX_VARIANTS_LIMIT, variant_dimensions: ['voice', 'best_of_n', 'transformer_config'] },
+      enumerableOptions: {
+        voice: [
+          { value: 'sara', label: 'Sara', metadata: { language: 'en-US', gender: 'female', provider: 'audiostack' } },
+          { value: 'isaac', label: 'Isaac', metadata: { language: 'en-US', gender: 'male', provider: 'audiostack' } },
+          { value: 'mateo', label: 'Mateo', metadata: { language: 'es-ES', gender: 'male', provider: 'audiostack' } },
+          { value: 'ceo_clone_2026', label: 'CEO (custom)', metadata: { language: 'en-US', custom: true } },
+        ],
+      },
+    },
+  ];
+}
+
+interface ListTransformersArgs {
+  transformer_ids?: string[];
+  input_format_ids?: FormatID[];
+  output_format_ids?: FormatID[];
+  name_search?: string;
+  brief?: string;
+  expand_params?: string[];
+  expand_pagination?: Array<{ transformer_id?: string; field?: string; options_cursor?: string }>;
+  include_pricing?: boolean;
+  account?: unknown;
+  pagination?: { max_results?: number; cursor?: string };
+}
+
+export async function handleListTransformers(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
+  const req = args as unknown as ListTransformersArgs;
+
+  // Pricing is account-scoped — the request schema makes account conditionally
+  // required when include_pricing is true.
+  if (req.include_pricing) {
+    const account = req.account as { account_id?: string; brand?: { domain?: string } } | undefined;
+    const hasAccount = !!(account && (account.account_id || account.brand?.domain));
+    if (!hasAccount) {
+      return { errors: [{ code: 'INVALID_REQUEST', message: 'account is required when include_pricing is true.', field: 'account', recovery: 'correctable' }] };
+    }
+  }
+
+  let transformers = getTransformers();
+  if (req.transformer_ids?.length) {
+    const want = new Set(req.transformer_ids);
+    transformers = transformers.filter(t => want.has(t.transformer_id));
+  }
+  if (req.output_format_ids?.length) {
+    const want = new Set(req.output_format_ids.map(f => f.id));
+    transformers = transformers.filter(t => t.output_format_ids.some(f => want.has(f.id)));
+  }
+  if (req.input_format_ids?.length) {
+    const want = new Set(req.input_format_ids.map(f => f.id));
+    transformers = transformers.filter(t => (t.input_format_ids ?? []).some(f => want.has(f.id)));
+  }
+  if (req.name_search) {
+    const needle = req.name_search.toLowerCase();
+    transformers = transformers.filter(t => t.name.toLowerCase().includes(needle));
+  }
+
+  // expand_params surfaces the FIRST page of a field's option values;
+  // expand_pagination fetches the NEXT page of a specific (transformer, field)
+  // via its options_cursor (from a prior response).
+  const OPTION_PAGE_SIZE = 25;
+  const expand = new Set(req.expand_params ?? []);
+  const optionCursorByKey = new Map<string, string>();
+  for (const ep of req.expand_pagination ?? []) {
+    if (!ep.field) continue;
+    expand.add(ep.field);
+    if (ep.options_cursor !== undefined) {
+      // Reject a malformed/foreign option cursor rather than silently restart at page 1.
+      if (decodeTransformerOptionCursor(ep.options_cursor) === null) {
+        return { errors: [{ code: 'INVALID_REQUEST', message: 'expand_pagination.options_cursor is malformed', field: 'expand_pagination', recovery: 'correctable' }] };
+      }
+      optionCursorByKey.set(`${ep.transformer_id ?? ''}::${ep.field}`, ep.options_cursor);
+    }
+  }
+  const briefNeedle = req.brief?.toLowerCase();
+
+  const shaped = transformers.map(t => {
+    const params = t.params.map(p => {
+      if (p.value_source === 'enumerable' && expand.has(p.field)) {
+        let options = t.enumerableOptions?.[p.field] ?? [];
+        // Brief-filter enumerable values (e.g. "spanish" narrows a voice catalog).
+        if (briefNeedle) {
+          const filtered = options.filter(o => JSON.stringify(o).toLowerCase().includes(briefNeedle));
+          if (filtered.length > 0) options = filtered;
+        }
+        // Page the (filtered) option set per (transformer, field).
+        const cursor = optionCursorByKey.get(`${t.transformer_id}::${p.field}`) ?? optionCursorByKey.get(`::${p.field}`);
+        const optOffset = cursor ? (decodeTransformerOptionCursor(cursor) ?? 0) : 0;
+        const optEnd = Math.min(optOffset + OPTION_PAGE_SIZE, options.length);
+        const moreOptions = optEnd < options.length;
+        return {
+          ...p,
+          options: options.slice(optOffset, optEnd),
+          ...(moreOptions && { options_cursor: encodeTransformerOptionCursor(optEnd) }),
+        };
+      }
+      return p;
+    });
+    return {
+      transformer_id: t.transformer_id,
+      name: t.name,
+      ...(t.description && { description: t.description }),
+      ...(t.metadata && { metadata: t.metadata }),
+      ...(t.input_format_ids && { input_format_ids: t.input_format_ids }),
+      output_format_ids: t.output_format_ids,
+      params,
+      ...(t.multiplicity && { multiplicity: t.multiplicity }),
+      ...(req.include_pricing && t.pricing_options && { pricing_options: t.pricing_options }),
+    };
+  });
+
+  const requestedMax = req.pagination?.max_results;
+  const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
+  const offset = decodeTransformerCursor(req.pagination?.cursor);
+  if (offset === null) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed', field: 'pagination.cursor', recovery: 'correctable' }] };
+  }
+  const pageEnd = Math.min(offset + maxResults, shaped.length);
+  const page = shaped.slice(offset, pageEnd);
+  const hasMore = pageEnd < shaped.length;
+
+  return {
+    transformers: page,
+    pagination: {
+      has_more: hasMore,
+      total_count: shaped.length,
+      ...(hasMore && { cursor: encodeTransformerCursor(pageEnd) }),
+    },
+  };
+}
+
+/**
+ * Strict-validate a build_creative `config` against the selected transformer's
+ * params. The request schema leaves config open (legal keys are dynamic per
+ * transformer), so rejecting unknown keys / out-of-range values is a normative
+ * AGENT obligation, not schema validation. Returns the first violation, or null.
+ */
+function validateTransformerConfig(
+  transformer: TrainingTransformer,
+  config: Record<string, unknown> | undefined,
+): { code: string; message: string; field: string; recovery: 'correctable' } | null {
+  if (!config || typeof config !== 'object') return null;
+  const byField = new Map(transformer.params.map(p => [p.field, p] as const));
+  for (const [key, value] of Object.entries(config)) {
+    const param = byField.get(key);
+    if (!param) {
+      return { code: 'INVALID_REQUEST', message: `Unknown config key "${key}" for transformer "${transformer.transformer_id}". Vendor-specific knobs belong in ext.`, field: `config.${key}`, recovery: 'correctable' };
+    }
+    if (param.value_source === 'inline') {
+      if (!Array.isArray(param.allowed_values) || !param.allowed_values.includes(value)) {
+        return { code: 'INVALID_REQUEST', message: `config.${key} must be one of: ${(param.allowed_values ?? []).join(', ')}.`, field: `config.${key}`, recovery: 'correctable' };
+      }
+    } else if (param.value_source === 'range') {
+      const n = typeof value === 'number' ? value : Number.NaN;
+      if (Number.isNaN(n) || (typeof param.minimum === 'number' && n < param.minimum) || (typeof param.maximum === 'number' && n > param.maximum)) {
+        return { code: 'INVALID_REQUEST', message: `config.${key} must be a number in [${param.minimum}, ${param.maximum}].`, field: `config.${key}`, recovery: 'correctable' };
+      }
+    } else if (param.value_source === 'enumerable') {
+      const opts = transformer.enumerableOptions?.[key] ?? [];
+      if (opts.length > 0 && !opts.some(o => o.value === value)) {
+        return { code: 'INVALID_REQUEST', message: `config.${key} "${String(value)}" is not an available value for this account.`, field: `config.${key}`, recovery: 'correctable' };
+      }
+    } else if (param.value_source === 'free_text') {
+      // No closed/enumerable set, but max_length (when declared) is enforced.
+      if (typeof param.max_length === 'number' && typeof value === 'string' && value.length > param.max_length) {
+        return { code: 'INVALID_REQUEST', message: `config.${key} exceeds the maximum length of ${param.max_length} characters.`, field: `config.${key}`, recovery: 'correctable' };
+      }
+    }
+  }
+  // Required params the buyer omitted (no default chosen by the caller).
+  for (const param of transformer.params) {
+    if (param.required && !(param.field in config)) {
+      return { code: 'INVALID_REQUEST', message: `config.${param.field} is required for transformer "${transformer.transformer_id}".`, field: `config.${param.field}`, recovery: 'correctable' };
+    }
+  }
+  return null;
+}
+
+function transformerManifest(target: FormatID, label: string): AdcpCreativeManifest {
+  return {
+    format_id: { agent_url: target.agent_url ?? getAgentUrl(), id: target.id },
+    assets: buildHtmlAssets(label),
+  } as AdcpCreativeManifest;
+}
+
 function defaultTargetsForManifest(manifest: ValidateInputArgs['manifest']): ValidateInputTarget[] {
   if (typeof manifest?.format_kind === 'string') {
     return [{ kind: 'canonical', id: manifest.format_kind }];
@@ -5214,6 +5466,22 @@ function decodeCreativeCursor(cursor: string | undefined): number | null {
   return decodeOffsetCursor('creatives', cursor);
 }
 
+// Transformer list + per-param option cursors get their own kinds so a cursor
+// minted by one endpoint can't be replayed onto another (the kind prefix is
+// the cross-endpoint guard — see pagination.ts).
+function encodeTransformerCursor(offset: number): string {
+  return encodeOffsetCursor('transformers', offset);
+}
+function decodeTransformerCursor(cursor: string | undefined): number | null {
+  return decodeOffsetCursor('transformers', cursor);
+}
+function encodeTransformerOptionCursor(offset: number): string {
+  return encodeOffsetCursor('transformer_options', offset);
+}
+function decodeTransformerOptionCursor(cursor: string | undefined): number | null {
+  return decodeOffsetCursor('transformer_options', cursor);
+}
+
 /** Sandbox rate card: returns CPM pricing based on account and creative format. */
 function getCreativePricing(account: { account_id?: string }, creative: import('./types.js').CreativeState) {
   // Two sandbox rate cards: "premium" accounts get lower CPM
@@ -5658,9 +5926,20 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       supports_transformation: true,
       supports_compliance: false,
       has_creative_library: true,
-      bills_through_adcp: creativeBillsThroughAdcp(ctx),
-      supported_formats: supportedCanonicalFormatsCapability(),
-      canonical_catalog_version: '3.1',
+      ...(includeThreeOneFields(ctx) ? {
+        bills_through_adcp: creativeBillsThroughAdcp(ctx),
+        supported_formats: supportedCanonicalFormatsCapability(),
+        canonical_catalog_version: '3.1',
+        supports_transformers: true,
+        supports_refinement: true,
+        refinable_retention_seconds: 3600,
+        multiplicity: {
+          supports_catalog_fanout: false,
+          supports_variants: true,
+          max_variants_limit: TRANSFORMER_MAX_VARIANTS_LIMIT,
+          variant_dimensions: ['voice', 'theme', 'best_of_n', 'transformer_config', 'custom'],
+        },
+      } : {}),
     },
     account: {
       require_operator_auth: false,
@@ -6240,6 +6519,14 @@ interface BuildCreativeArgs {
   package_id?: string;
   quality?: 'draft' | 'production';
   message?: string;
+  transformer_id?: string;
+  config?: Record<string, unknown>;
+  max_creatives?: number;
+  max_variants?: number;
+  variant_axis?: { dimension?: string; field?: string; values?: unknown[]; label?: string };
+  keep_mode?: 'keep_all' | 'keep_one' | 'keep_some';
+  refine_from_build_variant_id?: string;
+  idempotency_key?: string;
 }
 
 type ResolvedBuildTarget = {
@@ -6354,6 +6641,110 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     : req.target_format_id
       ? [req.target_format_id]
       : [];
+
+  // Transformer / multiplicity / refinement path. Engaged whenever the request
+  // selects a transformer or asks for the variant shape (max_variants > 1,
+  // variant_axis, or refine_from_build_variant_id). Bypasses the format-catalog
+  // gate: a transformer's target is one of ITS output_format_ids, echoed into
+  // the produced manifest rather than resolved against the static catalog.
+  const wantsVariantShape = (typeof req.max_variants === 'number' && req.max_variants > 1)
+    || !!req.variant_axis
+    || !!req.refine_from_build_variant_id;
+  if (req.transformer_id || wantsVariantShape) {
+    const idemSeed = (typeof req.idempotency_key === 'string' ? req.idempotency_key : 'build')
+      .replace(/[^A-Za-z0-9]/g, '').slice(0, 12) || 'build';
+
+    let transformer: TrainingTransformer | undefined;
+    if (req.transformer_id) {
+      transformer = getTransformers().find(t => t.transformer_id === req.transformer_id);
+      if (!transformer) {
+        return buildCreativeCompleted({ errors: [{ code: 'INVALID_REQUEST', message: `Unknown transformer_id "${req.transformer_id}". Discover transformers via list_transformers.`, field: 'transformer_id', recovery: 'correctable' }] });
+      }
+      const configError = validateTransformerConfig(transformer, req.config);
+      if (configError) {
+        return buildCreativeCompleted({ errors: [configError] });
+      }
+      // A build_creative target MUST be a subset of the transformer's outputs.
+      if (req.target_format_id && !transformer.output_format_ids.some(f => f.id === req.target_format_id!.id)) {
+        return buildCreativeCompleted({ errors: [{ code: 'INVALID_REQUEST', message: `target_format_id "${req.target_format_id.id}" is not an output format of transformer "${req.transformer_id}".`, field: 'target_format_id', recovery: 'correctable' }] });
+      }
+    }
+
+    // Refinement requires the agent to advertise supports_refinement (3.1 surface).
+    if (req.refine_from_build_variant_id && !canonicalBuildsEnabled) {
+      return buildCreativeCompleted({ errors: [{ code: 'UNSUPPORTED_FEATURE', message: 'This agent does not retain prior builds for refinement. Drop refine_from_build_variant_id and resend, or use the transform path (creative_manifest + message).', field: 'refine_from_build_variant_id', recovery: 'correctable' }] });
+    }
+
+    const target: FormatID = req.target_format_id
+      ?? transformer?.output_format_ids?.[0]
+      ?? { agent_url: agentUrl, id: 'audio_vo' };
+
+    // Single-format, non-variant transformer build → BuildCreativeSuccess,
+    // carrying a build_variant_id so the result is itself refinable.
+    if (!wantsVariantShape && req.transformer_id) {
+      return buildCreativeCompleted({
+        creative_manifest: transformerManifest(target, `<!-- AdCP Training Agent transformer ${escapeHtmlAttr(req.transformer_id)} -->`),
+        build_variant_id: `bv_${idemSeed}_0`,
+        ...(governanceContext && { governance_context: governanceContext }),
+      });
+    }
+
+    // Variant shape (max_variants / variant_axis / refinement) →
+    // BuildCreativeVariantSuccess. variant_axis.values length is authoritative
+    // over max_variants when present.
+    const axisValues = req.variant_axis?.values;
+    const requestedVariantCount = Array.isArray(axisValues) && axisValues.length > 0
+      ? axisValues.length
+      : (typeof req.max_variants === 'number' && req.max_variants > 1 ? req.max_variants : 1);
+    // Clamp to the advertised ceiling (never allocate an unbounded fan-out from
+    // caller input); the shortfall shows as leaves_returned < leaves_total.
+    const variantCount = Math.min(Math.max(requestedVariantCount, 1), TRANSFORMER_MAX_VARIANTS_LIMIT);
+    const isRefine = !!req.refine_from_build_variant_id;
+    const keepMode = req.keep_mode;
+
+    const variants = Array.from({ length: variantCount }, (_unused, i) => {
+      const leaf: Record<string, unknown> = {
+        build_variant_id: `bv_${idemSeed}_${i}`,
+        creative_manifest: transformerManifest(target, `<!-- AdCP Training Agent variant ${i} -->`),
+      };
+      if (Array.isArray(axisValues) && axisValues[i] !== undefined) {
+        leaf.variant_axis_value = axisValues[i];
+      }
+      if (isRefine) {
+        leaf.parent_build_variant_id = req.refine_from_build_variant_id;
+      }
+      // keep_one/keep_some are advisory: flag the agent's pick(s) via
+      // recommended/rank without changing what is produced or billed.
+      if (keepMode === 'keep_one' || keepMode === 'keep_some') {
+        leaf.rank = i + 1;
+        if (i === 0) leaf.recommended = true;
+      }
+      return leaf;
+    });
+
+    const variantResponse = buildCreativeCompleted({
+      creatives: [{ build_creative_id: `bc_${idemSeed}`, variants }],
+      items_total: 1,
+      items_returned: 1,
+      leaves_total: requestedVariantCount,
+      leaves_returned: variantCount,
+      ...(keepMode && { keep_mode_applied: keepMode }),
+      budget_status: 'complete',
+      ...(governanceContext && { governance_context: governanceContext }),
+    });
+    // BuildCreativeVariantSuccess (creatives[].variants[]) is in the wire
+    // schema (build-creative-response.json) ahead of the SDK's published
+    // BuildCreativeResponse union type. Responses are not framework-validated
+    // (registry.ts validation.responses:'off'), so emit the wire shape; the
+    // storyboard response_schema check is the guard.
+    return variantResponse as unknown as BuildCreativeResponse & {
+      pricing_option_id?: string;
+      vendor_cost?: number;
+      currency?: string;
+      consumption?: Record<string, unknown>;
+      governance_context?: string;
+    };
+  }
 
   // Mode 1: Library retrieval (creative_id)
   if (req.creative_id) {

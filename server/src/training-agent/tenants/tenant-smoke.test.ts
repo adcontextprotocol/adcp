@@ -526,13 +526,19 @@ describe('tenant routing smoke', () => {
       const capabilitiesBody = await callTenantTool(url, 2, 'get_adcp_capabilities', {}) as {
         result?: { structuredContent?: { creative?: Record<string, unknown> } };
       };
-      expect(capabilitiesBody.result?.structuredContent?.creative ?? {}).not.toHaveProperty('bills_through_adcp');
+      const creative = capabilitiesBody.result?.structuredContent?.creative ?? {};
+      expect(creative).not.toHaveProperty('bills_through_adcp');
+      // The transformer capability flags ride the same 3.0 gate and must also be absent.
+      expect(creative).not.toHaveProperty('supports_transformers');
+      expect(creative).not.toHaveProperty('supports_refinement');
+      expect(creative).not.toHaveProperty('refinable_retention_seconds');
+      expect(creative).not.toHaveProperty('multiplicity');
     } finally {
       await close();
     }
   }, 15000);
 
-  it('advertises creative billing discriminator on the current creative tenant', async () => {
+  it('advertises creative billing + transformer discriminators on the current creative tenant', async () => {
     const { baseUrl, close } = await bootServer();
     try {
       const url = `${baseUrl}/creative/mcp`;
@@ -540,7 +546,11 @@ describe('tenant routing smoke', () => {
       const capabilitiesBody = await callTenantTool(url, 2, 'get_adcp_capabilities', {}) as {
         result?: { structuredContent?: { creative?: Record<string, unknown> } };
       };
-      expect(capabilitiesBody.result?.structuredContent?.creative?.bills_through_adcp).toBe(false);
+      const creative = capabilitiesBody.result?.structuredContent?.creative ?? {};
+      expect(creative.bills_through_adcp).toBe(false);
+      expect(creative.supports_transformers).toBe(true);
+      expect(creative.supports_refinement).toBe(true);
+      expect((creative.multiplicity as { supports_variants?: boolean } | undefined)?.supports_variants).toBe(true);
     } finally {
       await close();
     }
