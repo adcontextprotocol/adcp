@@ -23,6 +23,10 @@ import {
 import {
   hostedComplianceTarget,
   hostedAuthProbeTaskForProfile,
+  agentAdvertisesBadgeEligibleHostedComplianceTarget,
+  badgeEligibleVersionsForHostedComplianceTarget,
+  selectCanonicalHostedComplianceTargetForProfile,
+  selectHostedComplianceTargetForProfile,
   withHostedComplianceRunOptions,
   type HostedComplianceTarget,
 } from '../../services/hosted-compliance-version.js';
@@ -39,6 +43,37 @@ import type {
 } from '../../db/compliance-db.js';
 
 const logger = createLogger('addie-compliance-testing');
+const DEFAULT_TARGET_DISCOVERY_TIMEOUT_MS = 10_000;
+
+export interface ComplianceTargetSelection {
+  target: HostedComplianceTarget;
+  confirmed: boolean;
+  supportedVersions?: readonly string[];
+}
+
+function complianceTargetDiscoveryTimeoutMs(options: ComplyOptions): number {
+  const requested = options.timeout_ms;
+  if (typeof requested !== 'number' || !Number.isFinite(requested)) {
+    return DEFAULT_TARGET_DISCOVERY_TIMEOUT_MS;
+  }
+  return Math.max(1_000, Math.min(requested, DEFAULT_TARGET_DISCOVERY_TIMEOUT_MS));
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 // ── Re-exports ────────────────────────────────────────────────────
 
@@ -88,6 +123,53 @@ export function loadComplianceIndex(target: HostedComplianceTarget, options: Com
 
 export function defaultComplianceTarget(): HostedComplianceTarget {
   return hostedComplianceTarget();
+}
+
+export async function selectComplianceTargetForAgentSelection(
+  agentUrl: string,
+  options: ComplyOptions,
+  fallback: HostedComplianceTarget = defaultComplianceTarget(),
+  mode: 'preferred' | 'canonical' = 'preferred',
+): Promise<ComplianceTargetSelection> {
+  try {
+    const discovery = await withTimeout(
+      testCapabilityDiscovery(agentUrl, options),
+      complianceTargetDiscoveryTimeoutMs(options),
+      'Hosted compliance target pre-discovery',
+    );
+    const target = mode === 'canonical'
+      ? selectCanonicalHostedComplianceTargetForProfile(discovery.profile, fallback)
+      : selectHostedComplianceTargetForProfile(discovery.profile, fallback);
+    return { target, confirmed: true, supportedVersions: discovery.profile?.adcp_supported_versions };
+  } catch (err) {
+    logger.warn({ err, agentUrl }, 'Could not pre-discover hosted compliance target; using fallback');
+    return { target: fallback, confirmed: false };
+  }
+}
+
+export async function selectComplianceTargetForAgent(
+  agentUrl: string,
+  options: ComplyOptions,
+  fallback: HostedComplianceTarget = defaultComplianceTarget(),
+  mode: 'preferred' | 'canonical' = 'preferred',
+): Promise<HostedComplianceTarget> {
+  const selection = await selectComplianceTargetForAgentSelection(agentUrl, options, fallback, mode);
+  return selection.target;
+}
+
+export function badgeEligibleVersionsForTargetSelection(
+  selection: ComplianceTargetSelection,
+  profile?: { adcp_supported_versions?: readonly string[] },
+): readonly string[] {
+  const versions = badgeEligibleVersionsForHostedComplianceTarget(selection.target);
+  if (versions.length === 0) return [];
+  if (selection.confirmed) return versions;
+  return agentAdvertisesBadgeEligibleHostedComplianceTarget(
+    profile?.adcp_supported_versions ?? selection.supportedVersions,
+    selection.target,
+  )
+    ? versions
+    : [];
 }
 
 // ── Capability-resolution error classification ───────────────────

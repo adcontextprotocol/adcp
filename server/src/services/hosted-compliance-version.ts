@@ -6,9 +6,15 @@ import type {
   StoryboardRunOptions,
   TestOptions,
 } from '@adcp/sdk/testing';
+import { isComplianceVersionSupported } from '@adcp/sdk/testing';
 import { SUPPORTED_BADGE_VERSIONS } from './adcp-taxonomy.js';
 
 export const DEFAULT_HOSTED_COMPLIANCE_LINE = '3.0';
+export const HOSTED_COMPLIANCE_TARGET_PREFERENCE = [
+  '3.1-rc',
+  '3.1-beta',
+  DEFAULT_HOSTED_COMPLIANCE_LINE,
+] as const;
 
 export interface HostedComplianceTarget {
   requested: string;
@@ -30,6 +36,9 @@ type RuntimeTestKit = Omit<NonNullable<TestOptions['test_kit']>, 'auth'> & {
 type HostedAuthProbeProfile = {
   tools?: readonly string[];
   supported_protocols?: readonly string[];
+};
+type HostedComplianceProfile = {
+  adcp_supported_versions?: readonly string[];
 };
 
 const DEFAULT_HOSTED_AUTH_PROBE_TASK = 'list_creatives';
@@ -62,15 +71,21 @@ function escapeRegex(input: string): string {
 }
 
 function versionSortKey(version: string): number[] {
-  const match = version.match(/^([1-9][0-9]*)\.([0-9]+)\.([0-9]+)(?:-beta\.([0-9]+))?$/);
-  if (!match) return [0, 0, 0, -1];
+  const match = version.match(/^([1-9][0-9]*)\.([0-9]+)\.([0-9]+)(?:-(beta|rc)\.([0-9]+))?$/);
+  if (!match) return [0, 0, 0, -1, -1];
 
-  const [, major, minor, patch, beta] = match;
+  const [, major, minor, patch, prereleaseLabel, prereleaseNumber] = match;
+  const prereleaseRank = prereleaseLabel === 'beta'
+    ? 0
+    : prereleaseLabel === 'rc'
+      ? 1
+      : Number.MAX_SAFE_INTEGER;
   return [
     Number.parseInt(major, 10),
     Number.parseInt(minor, 10),
     Number.parseInt(patch, 10),
-    beta === undefined ? Number.MAX_SAFE_INTEGER : Number.parseInt(beta, 10),
+    prereleaseRank,
+    prereleaseNumber === undefined ? Number.MAX_SAFE_INTEGER : Number.parseInt(prereleaseNumber, 10),
   ];
 }
 
@@ -128,20 +143,28 @@ function latestStableComplianceVersionForLine(line: string): string {
   return latest;
 }
 
-function latestBetaComplianceVersionForLine(line: string): string {
+function latestPrereleaseComplianceVersionForLine(line: string, label: 'beta' | 'rc'): string {
   const complianceRoot = repoPath('dist', 'compliance');
-  const betaRe = new RegExp(`^${escapeRegex(line)}\\.0-beta\\.\\d+$`);
+  const prereleaseRe = new RegExp(`^${escapeRegex(line)}\\.0-${label}\\.\\d+$`);
   const versions = complianceVersions()
-    .filter(name => betaRe.test(name))
+    .filter(name => prereleaseRe.test(name))
     .sort(compareVersions);
 
   const latest = versions.at(-1);
   if (!latest) {
     throw new Error(
-      `No checked-in AdCP ${line}-beta compliance cache found at ${complianceRoot}. Run npm run build:compliance.`,
+      `No checked-in AdCP ${line}-${label} compliance cache found at ${complianceRoot}. Run npm run build:compliance.`,
     );
   }
   return latest;
+}
+
+function latestBetaComplianceVersionForLine(line: string): string {
+  return latestPrereleaseComplianceVersionForLine(line, 'beta');
+}
+
+function latestRcComplianceVersionForLine(line: string): string {
+  return latestPrereleaseComplianceVersionForLine(line, 'rc');
 }
 
 function latestBadgeEligibleComplianceVersionForLine(line: string): string {
@@ -182,11 +205,19 @@ export function resolveHostedComplianceVersion(target: string = DEFAULT_HOSTED_C
   if (betaMatch) {
     return latestBetaComplianceVersionForLine(betaMatch[1]);
   }
-  if (/^[1-9][0-9]*\.[0-9]+\.[0-9]+(?:-beta\.[0-9]+)?$/.test(target)) {
+  const rcMatch = target.match(/^([1-9][0-9]*\.[0-9]+)-rc$/);
+  if (rcMatch) {
+    return latestRcComplianceVersionForLine(rcMatch[1]);
+  }
+  const wirePrereleaseMatch = target.match(/^([1-9][0-9]*\.[0-9]+)-(beta|rc)\.([0-9]+)$/);
+  if (wirePrereleaseMatch) {
+    return `${wirePrereleaseMatch[1]}.0-${wirePrereleaseMatch[2]}.${wirePrereleaseMatch[3]}`;
+  }
+  if (/^[1-9][0-9]*\.[0-9]+\.[0-9]+(?:-(?:beta|rc)\.[0-9]+)?$/.test(target)) {
     return target;
   }
   throw new Error(
-    `Unsupported AdCP compliance target "${target}". Use a line alias like 3.0, a beta alias like 3.1-beta, or an exact bundled version like 3.0.12.`,
+    `Unsupported AdCP compliance target "${target}". Use a line alias like 3.0, a prerelease alias like 3.1-rc or 3.1-beta, or an exact bundled version like 3.0.12.`,
   );
 }
 
@@ -208,7 +239,7 @@ export function isDefaultHostedComplianceTarget(target: HostedComplianceTarget):
 export function badgeEligibleVersionsForHostedComplianceTarget(
   target: HostedComplianceTarget,
 ): readonly string[] {
-  if (target.requested.endsWith('-beta') || target.version.includes('-beta.')) {
+  if (target.requested.includes('-') || target.version.includes('-')) {
     return [];
   }
 
@@ -216,6 +247,111 @@ export function badgeEligibleVersionsForHostedComplianceTarget(
   if (!line || target.requested !== line) return [];
 
   return (SUPPORTED_BADGE_VERSIONS as readonly string[]).includes(line) ? [line] : [];
+}
+
+export function hostedComplianceTargetPreference(): HostedComplianceTarget[] {
+  return HOSTED_COMPLIANCE_TARGET_PREFERENCE.flatMap(requested => {
+    try {
+      return [hostedComplianceTarget(requested)];
+    } catch {
+      return [];
+    }
+  });
+}
+
+function hostedComplianceTargetForBundledVersion(version: string): HostedComplianceTarget {
+  const stableLine = complianceReleaseLine(version);
+  if (stableLine === DEFAULT_HOSTED_COMPLIANCE_LINE && !version.includes('-')) {
+    return hostedComplianceTarget(DEFAULT_HOSTED_COMPLIANCE_LINE);
+  }
+
+  const prerelease = version.match(/^([1-9][0-9]*\.[0-9]+)\.0-(beta|rc)\.([0-9]+)$/);
+  if (prerelease) {
+    return hostedComplianceTarget(`${prerelease[1]}-${prerelease[2]}.${prerelease[3]}`);
+  }
+
+  return hostedComplianceTarget(version);
+}
+
+function hostedComplianceTargetCandidates(): HostedComplianceTarget[] {
+  const byVersion = new Map<string, HostedComplianceTarget>();
+
+  function add(target: HostedComplianceTarget) {
+    if (!byVersion.has(target.version)) {
+      byVersion.set(target.version, target);
+    }
+  }
+
+  function addRequested(requested: string) {
+    try {
+      add(hostedComplianceTarget(requested));
+    } catch {
+      // Optional prerelease aliases may be absent on older release branches.
+    }
+  }
+
+  const bundledVersions = complianceVersions().sort(compareVersions).reverse();
+  addRequested('3.1-rc');
+  for (const version of bundledVersions.filter(v => /^3\.1\.0-rc\.\d+$/.test(v))) {
+    add(hostedComplianceTargetForBundledVersion(version));
+  }
+  addRequested('3.1-beta');
+  for (const version of bundledVersions.filter(v => /^3\.1\.0-beta\.\d+$/.test(v))) {
+    add(hostedComplianceTargetForBundledVersion(version));
+  }
+  addRequested(DEFAULT_HOSTED_COMPLIANCE_LINE);
+
+  for (const version of bundledVersions) {
+    if (version === 'latest') continue;
+    const target = hostedComplianceTargetForBundledVersion(version);
+    add(target);
+  }
+  return [...byVersion.values()];
+}
+
+export function selectHostedComplianceTargetForSupportedVersions(
+  supportedVersions: readonly string[] | undefined,
+  fallback: HostedComplianceTarget = hostedComplianceTarget(),
+): HostedComplianceTarget {
+  if (!supportedVersions?.length) return fallback;
+
+  for (const target of hostedComplianceTargetCandidates()) {
+    const hostedStableLineAlias = hostedStableLineAliasForVersion(target, target.version);
+    if (isComplianceVersionSupported(target.version, supportedVersions, { hostedStableLineAlias })) {
+      return target;
+    }
+  }
+
+  return fallback;
+}
+
+export function selectCanonicalHostedComplianceTargetForSupportedVersions(
+  supportedVersions: readonly string[] | undefined,
+  fallback: HostedComplianceTarget = hostedComplianceTarget(),
+): HostedComplianceTarget {
+  if (!supportedVersions?.length) return fallback;
+
+  const stableTarget = hostedComplianceTarget(DEFAULT_HOSTED_COMPLIANCE_LINE);
+  const hostedStableLineAlias = hostedStableLineAliasForVersion(stableTarget, stableTarget.version);
+  if (isComplianceVersionSupported(stableTarget.version, supportedVersions, { hostedStableLineAlias })) {
+    return stableTarget;
+  }
+
+  return selectHostedComplianceTargetForSupportedVersions(supportedVersions, fallback);
+}
+
+export function selectHostedComplianceTargetForProfile(
+  profile: HostedComplianceProfile | undefined,
+  fallback: HostedComplianceTarget = hostedComplianceTarget(),
+): HostedComplianceTarget {
+  return selectHostedComplianceTargetForSupportedVersions(profile?.adcp_supported_versions, fallback);
+}
+
+export function selectCanonicalHostedComplianceTargetForProfile(
+  profile: HostedComplianceProfile | undefined,
+  fallback: HostedComplianceTarget = hostedComplianceTarget(),
+): HostedComplianceTarget {
+  return selectCanonicalHostedComplianceTargetForSupportedVersions(profile?.adcp_supported_versions, fallback);
 }
 
 export function agentAdvertisesBadgeEligibleHostedComplianceTarget(

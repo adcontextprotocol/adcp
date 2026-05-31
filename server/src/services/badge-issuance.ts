@@ -25,6 +25,46 @@ export interface BadgeIssuanceResult {
   unchanged: Array<{ role: BadgeRole; adcp_version: string }>;
 }
 
+function advertisesPublicBadgeVersion(
+  supportedVersions: readonly string[] | undefined,
+  adcpVersion: string,
+): boolean {
+  if (!supportedVersions?.length) return false;
+  return supportedVersions.some(version => {
+    if (version.includes('-')) return false;
+    const match = version.match(/^([1-9][0-9]*\.[0-9]+)(?:\.|$)/);
+    return match?.[1] === adcpVersion;
+  });
+}
+
+export async function revokeUnsupportedPublicBadges(params: {
+  complianceDb: ComplianceDatabase;
+  agentUrl: string;
+  supportedVersions: readonly string[] | undefined;
+}): Promise<BadgeIssuanceResult> {
+  const { complianceDb, agentUrl, supportedVersions } = params;
+  const result: BadgeIssuanceResult = { issued: [], revoked: [], degraded: [], unchanged: [] };
+  if (!supportedVersions?.length) return result;
+
+  const publicBadgeVersions = new Set<string>(SUPPORTED_BADGE_VERSIONS);
+  const existingBadges = await complianceDb.getBadgesForAgent(agentUrl);
+
+  for (const badge of existingBadges) {
+    if (!publicBadgeVersions.has(badge.adcp_version)) continue;
+    if (advertisesPublicBadgeVersion(supportedVersions, badge.adcp_version)) continue;
+
+    const reason = `Agent no longer advertises AdCP ${badge.adcp_version} support`;
+    await complianceDb.revokeBadge(agentUrl, badge.role, badge.adcp_version, reason);
+    result.revoked.push({ role: badge.role, reason, adcp_version: badge.adcp_version });
+    logger.info(
+      { agentUrl, role: badge.role, adcpVersion: badge.adcp_version },
+      'Badge revoked — agent no longer advertises public badge version',
+    );
+  }
+
+  return result;
+}
+
 /**
  * Check and update badge status for an agent after a compliance run.
  *

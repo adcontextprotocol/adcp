@@ -6973,7 +6973,7 @@ paths:
                         description: Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh.
                       requested_compliance_target:
                         type: string
-                        description: Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Present when `ran` is true.
+                        description: Requested compliance target before alias resolution, e.g. 3.0, 3.1-rc, or 3.1-beta. Present when `ran` is true.
                       adcp_version:
                         type: string
                         description: Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12 or 3.1.0-beta.7. Present when `ran` is true.
@@ -7588,6 +7588,13 @@ paths:
           description: Filter by storyboard category
           name: category
           in: query
+        - schema:
+            type: string
+            description: Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta
+          required: false
+          description: Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta
+          name: compliance_target
+          in: query
       responses:
         "200":
           description: Storyboard catalog
@@ -7632,6 +7639,13 @@ paths:
           description: Storyboard ID
           name: id
           in: path
+        - schema:
+            type: string
+            description: Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta
+          required: false
+          description: Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta
+          name: compliance_target
+          in: query
       responses:
         "200":
           description: Storyboard detail
@@ -8091,6 +8105,13 @@ paths:
           required: true
           name: storyboardId
           in: path
+        - schema:
+            type: string
+            description: Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta
+          required: false
+          description: Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta
+          name: compliance_target
+          in: query
       responses:
         "200":
           description: First step preview

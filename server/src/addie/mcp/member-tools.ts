@@ -39,7 +39,11 @@ import {
   presentCapabilityResolutionError,
   complianceResultToDbInput,
   loadComplianceIndex,
+  badgeEligibleVersionsForTargetSelection,
+  selectComplianceTargetForAgent,
+  selectComplianceTargetForAgentSelection,
   type ComplyOptions,
+  type ComplianceTargetSelection,
   type ComplianceTrack,
 } from '../services/compliance-testing.js';
 import {
@@ -63,9 +67,8 @@ import {
   hostedAuthProbeTaskForProfile,
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
-  isDefaultHostedComplianceTarget,
   badgeEligibleVersionsForHostedComplianceTarget,
-  agentAdvertisesBadgeEligibleHostedComplianceTarget,
+  selectHostedComplianceTargetForProfile,
 } from '../../services/hosted-compliance-version.js';
 import { AgentContextDatabase, validateAuthTokenChars, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
@@ -82,7 +85,7 @@ import { canonicalizeBrandDomain } from '../../services/identifier-normalization
 import { isOrgOwnerOfAgent } from '../../services/agent-ownership.js';
 import { getBrandPrimaryDomain } from '../../services/brand-domain-resolver.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
-import { runBadgeFanOut } from '../../services/badge-issuance.js';
+import { revokeUnsupportedPublicBadges, runBadgeFanOut } from '../../services/badge-issuance.js';
 import { AgentSnapshotDatabase } from '../../db/agent-snapshot-db.js';
 import { AgentValidator } from '../../validator.js';
 import {
@@ -125,6 +128,11 @@ import { canonicalizeAgentUrl } from '../../db/publisher-db.js';
 
 const logger = createLogger('addie-member-tools');
 const complianceTarget = hostedComplianceTarget();
+function hasExplicitComplianceTarget(input: Record<string, unknown>): boolean {
+  const requested = input.compliance_target;
+  return typeof requested === 'string' && requested.trim().length > 0;
+}
+
 function targetFromInput(input: Record<string, unknown>): ReturnType<typeof hostedComplianceTarget> {
   const requested = input.compliance_target;
   try {
@@ -132,7 +140,7 @@ function targetFromInput(input: Record<string, unknown>): ReturnType<typeof host
       ? hostedComplianceTarget(requested.trim())
       : complianceTarget;
   } catch {
-    throw new ToolError('Invalid compliance_target. Use 3.0, 3.1-beta, or an exact bundled version.');
+    throw new ToolError('Invalid compliance_target. Use 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.');
   }
 }
 
@@ -1178,7 +1186,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to evaluate' },
         tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable, driven by the agent\'s get_adcp_capabilities response)' },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" for a badge-eligible stable line or "3.1-beta" for an explicit beta diagnostic run. Defaults to 3.0.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" for a badge-eligible stable line or "3.1-rc"/"3.1-beta" for explicit prerelease diagnostics. Defaults to the canonical badge-eligible target when advertised.' },
       },
       required: ['agent_url'],
     },
@@ -1285,7 +1293,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to discover and recommend storyboards for' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the best hosted target advertised by the agent.' },
       },
       required: ['agent_url'],
     },
@@ -1299,7 +1307,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         storyboard_id: { type: 'string', description: 'Storyboard ID (from recommend_storyboards)' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0" or "3.1-beta". Defaults to 3.0.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to 3.0.' },
       },
       required: ['storyboard_id'],
     },
@@ -1315,7 +1323,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL to test' },
         storyboard_id: { type: 'string', description: 'Storyboard ID to run' },
         dry_run: { type: 'boolean', description: 'If true (default), use test data that won\'t affect production state', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" or "3.1-beta". Defaults to 3.0. Explicit non-default targets are diagnostic-only.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the best hosted target advertised by the agent. Explicit non-default targets are diagnostic-only.' },
       },
       required: ['agent_url', 'storyboard_id'],
     },
@@ -1333,7 +1341,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         step_id: { type: 'string', description: 'Step ID to run (from storyboard detail or previous step\'s next.step_id)' },
         context: { type: 'object', description: 'Accumulated context from previous step (pass the context field from the previous run_storyboard_step result)', additionalProperties: true },
         dry_run: { type: 'boolean', description: 'If true (default), use test data', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" or "3.1-beta". Defaults to 3.0. Explicit non-default targets are diagnostic-only.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the best hosted target advertised by the agent. Explicit non-default targets are diagnostic-only.' },
       },
       required: ['agent_url', 'storyboard_id', 'step_id'],
     },
@@ -3765,7 +3773,11 @@ export function createMemberToolHandlers(
   handlers.set('evaluate_agent_quality', async (input) => {
     const agentUrl = input.agent_url as string;
     const tracks = input.tracks as ComplianceTrack[] | undefined;
-    const runTarget = targetFromInput(input);
+    let runTarget = targetFromInput(input);
+    let runTargetSelection: ComplianceTargetSelection = {
+      target: runTarget,
+      confirmed: false,
+    };
     let skippedCanonicalWriteReason: 'target' | 'tracks' | null = null;
 
     const urlError = validateAgentUrl(agentUrl);
@@ -3785,20 +3797,30 @@ export function createMemberToolHandlers(
 
     const organizationId = memberContext?.organization?.workos_organization_id;
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
+    const authOption = buildAuthOption(resolved);
+
+    if (!hasExplicitComplianceTarget(input)) {
+      runTargetSelection = await selectComplianceTargetForAgentSelection(
+        resolved.resolvedUrl,
+        { auth: authOption },
+        complianceTarget,
+        'canonical',
+      );
+      runTarget = runTargetSelection.target;
+    }
 
     const complyOptions: ComplyOptions = {
       test_session_id: `quality-eval-${Date.now()}`,
-      auth: buildAuthOption(resolved),
+      auth: authOption,
     };
     if (tracks) complyOptions.tracks = tracks;
 
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions, runTarget);
-      const writesCanonicalComplianceState = isDefaultHostedComplianceTarget(runTarget) ||
-        agentAdvertisesBadgeEligibleHostedComplianceTarget(
-          result.agent_profile.adcp_supported_versions,
-          runTarget,
-        );
+      const badgeEligibleAdcpVersions = [
+        ...badgeEligibleVersionsForTargetSelection(runTargetSelection, result.agent_profile),
+      ];
+      const writesCanonicalComplianceState = badgeEligibleAdcpVersions.length > 0;
 
       // Surface OAuth-required short-circuit. comply() doesn't throw on auth
       // failures — it pushes a `category: 'auth'` observation and runs a
@@ -3896,10 +3918,20 @@ export function createMemberToolHandlers(
                     agentUrl: resolved.resolvedUrl,
                     declaredSpecialisms,
                     runId: tracks ? null : run.id,
-                    adcpVersions: badgeEligibleVersionsForHostedComplianceTarget(runTarget),
+                    adcpVersions: badgeEligibleAdcpVersions,
                   });
                 } catch (badgeError) {
                   logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Badge fan-out failed after owner_test run');
+                }
+              } else {
+                try {
+                  await revokeUnsupportedPublicBadges({
+                    complianceDb,
+                    agentUrl: resolved.resolvedUrl,
+                    supportedVersions: result.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+                  });
+                } catch (badgeError) {
+                  logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Unsupported public badge revocation failed after owner_test run');
                 }
               }
             }
@@ -3910,6 +3942,15 @@ export function createMemberToolHandlers(
           skippedCanonicalWriteReason = 'tracks';
         } else if (isAgentOwner) {
           skippedCanonicalWriteReason = 'target';
+          try {
+            await revokeUnsupportedPublicBadges({
+              complianceDb,
+              agentUrl: resolved.resolvedUrl,
+              supportedVersions: result.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+            });
+          } catch (badgeError) {
+            logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Unsupported public badge revocation failed after owner_test run');
+          }
         }
 
         // Legacy write to agent_contexts + agent_test_history. Retained ONLY
@@ -4119,8 +4160,8 @@ export function createMemberToolHandlers(
 
   handlers.set('recommend_storyboards', async (input) => {
     const agentUrl = input.agent_url as string;
-    const runTarget = targetFromInput(input);
-    const runOptions = hostedComplianceOptions(runTarget);
+    let runTarget = targetFromInput(input);
+    let runOptions = hostedComplianceOptions(runTarget);
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
@@ -4134,10 +4175,14 @@ export function createMemberToolHandlers(
     const authOption = buildAuthOption(resolved);
     let profile: AgentProfile | undefined;
     try {
-      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, withHostedTestOptions({
+      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, {
         ...(authOption && { auth: authOption }),
-      }, runTarget));
+      });
       profile = caps.profile;
+      if (!hasExplicitComplianceTarget(input)) {
+        runTarget = selectHostedComplianceTargetForProfile(profile, complianceTarget);
+        runOptions = hostedComplianceOptions(runTarget);
+      }
 
       // testCapabilityDiscovery catches its own throws and surfaces them as
       // step errors / capabilities_probe_error strings — the catch below
@@ -4379,6 +4424,9 @@ export function createMemberToolHandlers(
     output += `1. Run the full suite — \`evaluate_agent_quality\`\n`;
     output += `2. Walk one storyboard step-by-step for debugging — \`run_storyboard_step\`\n`;
     output += `3. Inspect a storyboard before running it — \`get_storyboard_detail\`\n`;
+    if (runTarget.requested !== complianceTarget.requested) {
+      output += `\nUse \`compliance_target: "${runTarget.requested}"\` on follow-up storyboard tools so they inspect the same catalog.`;
+    }
 
     // Activation hinge: if this is a member with an org and the agent isn't
     // saved yet, offer to save. Converts drive-by testing into an ongoing
@@ -4412,6 +4460,7 @@ export function createMemberToolHandlers(
 
     let output = `## ${sb.title}\n\n`;
     output += `**ID:** \`${sb.id}\`\n`;
+    output += `**Compliance target:** ${formatComplianceTarget(runTarget)}\n`;
     output += `**Track:** ${sb.track || 'general'}\n`;
     output += `**Summary:** ${sb.summary}\n\n`;
     if (sb.narrative) {
@@ -4452,20 +4501,28 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const storyboardId = input.storyboard_id as string;
     const dryRun = input.dry_run !== false;
-    const runTarget = targetFromInput(input);
-    const runOptions = hostedComplianceOptions(runTarget);
+    let runTarget = targetFromInput(input);
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
+    const organizationId = memberContext?.organization?.workos_organization_id;
+    const resolved = await resolveAgentAuth(agentUrl, organizationId);
+    const authOption = buildAuthOption(resolved);
+
+    if (!hasExplicitComplianceTarget(input)) {
+      runTarget = await selectComplianceTargetForAgent(
+        resolved.resolvedUrl,
+        { auth: authOption },
+        complianceTarget,
+      );
+    }
+
+    const runOptions = hostedComplianceOptions(runTarget);
     const sb = getComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) return `Storyboard "${storyboardId}" not found. Use \`recommend_storyboards\` to see applicable storyboards.`;
 
-    const organizationId = memberContext?.organization?.workos_organization_id;
-    const resolved = await resolveAgentAuth(agentUrl, organizationId);
-
     try {
-      const authOption = buildAuthOption(resolved);
       const authProbeTask = await inferHostedAuthProbeTask(resolved.resolvedUrl, authOption, runTarget);
       const result = await runStoryboard(resolved.resolvedUrl, sb, withHostedStoryboardRunOptions({
         ...(authOption && { auth: authOption }),
@@ -4612,12 +4669,24 @@ export function createMemberToolHandlers(
     const stepId = input.step_id as string;
     const context = (input.context as StoryboardContext) || {};
     const dryRun = input.dry_run !== false;
-    const runTarget = targetFromInput(input);
-    const runOptions = hostedComplianceOptions(runTarget);
+    let runTarget = targetFromInput(input);
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
+    const organizationId = memberContext?.organization?.workos_organization_id;
+    const resolved = await resolveAgentAuth(agentUrl, organizationId);
+    const authOption = buildAuthOption(resolved);
+
+    if (!hasExplicitComplianceTarget(input)) {
+      runTarget = await selectComplianceTargetForAgent(
+        resolved.resolvedUrl,
+        { auth: authOption },
+        complianceTarget,
+      );
+    }
+
+    const runOptions = hostedComplianceOptions(runTarget);
     const sb = getComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) return `Storyboard "${storyboardId}" not found.`;
 
@@ -4649,11 +4718,7 @@ export function createMemberToolHandlers(
       }
     }
 
-    const organizationId = memberContext?.organization?.workos_organization_id;
-    const resolved = await resolveAgentAuth(agentUrl, organizationId);
-
     try {
-      const authOption = buildAuthOption(resolved);
       const authProbeTask = await inferHostedAuthProbeTask(resolved.resolvedUrl, authOption, runTarget);
       const result: StoryboardStepResult = await runStoryboardStep(resolved.resolvedUrl, sb, resolvedStepId, withHostedStoryboardRunOptions({
         context,
