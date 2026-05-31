@@ -17,9 +17,12 @@ import {
   badgeEligibleVersionsForHostedComplianceTarget,
   hostedAuthProbeTaskForProfile,
   hostedComplianceOptions,
+  hostedComplianceTargetPreference,
   hostedComplianceTarget,
   isDefaultHostedComplianceTarget,
   agentAdvertisesBadgeEligibleHostedComplianceTarget,
+  selectCanonicalHostedComplianceTargetForSupportedVersions,
+  selectHostedComplianceTargetForSupportedVersions,
   withHostedAuthTestKit,
   withHostedComplianceOptions,
 } from '../../src/services/hosted-compliance-version.js';
@@ -28,6 +31,9 @@ import {
   loadComplianceIndex,
   resolveStoryboardsForCapabilities,
 } from '@adcp/sdk/testing';
+import {
+  badgeEligibleVersionsForTargetSelection,
+} from '../../src/addie/services/compliance-testing.js';
 
 /**
  * These tests cover the wrapper in services/storyboards.ts. Catalog content
@@ -177,6 +183,14 @@ describe('wrapper contract', () => {
     const beta = hostedComplianceTarget('3.1-beta');
     expect(beta.requested).toBe('3.1-beta');
     expect(beta.version).toMatch(/^3\.1\.0-beta\.\d+$/);
+
+    const rc = hostedComplianceTarget('3.1-rc');
+    expect(rc.requested).toBe('3.1-rc');
+    expect(rc.version).toMatch(/^3\.1\.0-rc\.\d+$/);
+
+    const wireRc = hostedComplianceTarget('3.1-rc.4');
+    expect(wireRc.requested).toBe('3.1-rc.4');
+    expect(wireRc.version).toBe('3.1.0-rc.4');
   });
 
   it('keeps explicit beta targets diagnostic-only', () => {
@@ -200,6 +214,38 @@ describe('wrapper contract', () => {
     expect(isDefaultHostedComplianceTarget(exactHistoricalCache)).toBe(false);
     expect(badgeEligibleVersionsForHostedComplianceTarget(exactHistoricalCache)).toEqual([]);
     expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.0.5'], exactHistoricalCache)).toBe(false);
+  });
+
+  it('selects the highest hosted target advertised by the agent', () => {
+    expect(hostedComplianceTargetPreference().map(t => t.requested)).toEqual([
+      '3.1-rc',
+      '3.1-beta',
+      '3.0',
+    ]);
+
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.7']).requested).toBe('3.1-beta');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.4']).requested).toBe('3.1-rc');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.1-beta.5']).requested).toBe('3.1-beta.5');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.1-beta.5']).version).toBe('3.1.0-beta.5');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.5']).requested).toBe('3.1-beta.5');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.3']).requested).toBe('3.1-rc.3');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.1']).requested).toBe('3.0');
+    expect(selectHostedComplianceTargetForSupportedVersions(undefined).requested).toBe('3.0');
+
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.4']).requested).toBe('3.0');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1-rc.4']).requested).toBe('3.1-rc');
+  });
+
+  it('does not treat an unconfirmed fallback target as badge eligible', () => {
+    const stable = hostedComplianceTarget('3.0');
+
+    expect(badgeEligibleVersionsForTargetSelection({ target: stable, confirmed: false })).toEqual([]);
+    expect(badgeEligibleVersionsForTargetSelection(
+      { target: stable, confirmed: false },
+      { adcp_supported_versions: ['3.0'] },
+    )).toEqual(['3.0']);
+    expect(badgeEligibleVersionsForTargetSelection({ target: stable, confirmed: true })).toEqual(['3.0']);
   });
 
   it('rejects unsupported compliance targets before path resolution', () => {
