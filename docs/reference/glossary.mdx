@@ -26,7 +26,7 @@ Plan-level include/exclude rules that structurally prevent prohibited targeting 
 A discriminated union describing one targeting criterion - either a `signal_ref` or a natural language description. Audience selectors appear in plan audience constraints and `planned_delivery.audience_targeting`.
 
 **Action Source**
-Where an event physically occurred: `website`, `app`, `in_store`, `phone_call`, `chat`, `email`, `offline`, `system_generated`, or `other`. Set on each event in `log_event` and declared at the product level in `conversion_tracking.action_sources`.
+Where an event physically occurred: `website`, `app`, `in_store`, `phone_call`, `chat`, `email`, `offline`, `system_generated`, or `other`. Set on each event in `log_event` and declared at the product level in `conversion_tracking.action_sources`. Use `surface` on events and event sources when this flat value needs structured context such as an owned channel, profile, feed, podcast, or newsletter list.
 
 **Activation**
 The process of making a signal available for targeting on a specific platform and seat.
@@ -118,13 +118,13 @@ A type of decisioning platform that allows advertisers to buy advertising invent
 ## E
 
 **Event**
-A marketing event logged via `log_event` for attribution and optimization. Covers the full funnel from engagement (`page_view`, `view_content`, `search`) through intent (`add_to_cart`, `initiate_checkout`) to conversion (`purchase`, `lead`, `complete_registration`). Each event has an `event_id` (for deduplication), `event_type`, `event_time`, and optional `user_match` and `custom_data`. Defined in the `event.json` schema.
+A marketing event logged via `log_event` for attribution and optimization. Covers the full funnel from engagement (`page_view`, `view_content`, `content_view`, `follow`, `watch_milestone`, `search`) through intent (`add_to_cart`, `initiate_checkout`) to conversion (`purchase`, `lead`, `complete_registration`, `subscribe`). Each event has an `event_id` (for deduplication), `event_type`, `event_time`, and optional `user_match`, `custom_data`, `action_source`, and `surface`. Defined in the `event.json` schema.
 
 **Event Source**
 A configured data channel that receives conversion or marketing events from a buyer. Event sources are set up on a seller account via `sync_event_sources` and referenced by `event_source_id` when logging events or setting optimization goals. Can be managed by the buyer (e.g. a website pixel) or by the seller (e.g. Amazon sales attribution).
 
 **Event Type**
-A standardized classification for marketing events (e.g. `purchase`, `lead`, `add_to_cart`, `page_view`, `refund`). Covers the full lifecycle: engagement (`select_content`, `share`), e-commerce (`add_to_cart`, `remove_from_cart`, `viewed_cart`, `purchase`, `refund`), lead management (`lead`, `qualify_lead`, `close_convert_lead`, `disqualify_lead`), and app events. Used to categorize events logged via `log_event` and to specify optimization goals on packages. Aligned with IAB ECAPI.
+A standardized classification for marketing events (e.g. `purchase`, `lead`, `add_to_cart`, `page_view`, `follow`, `content_view`, `watch_milestone`, `refund`). Covers the full lifecycle: engagement (`select_content`, `share`, `follow`, `content_view`, `watch_milestone`), e-commerce (`add_to_cart`, `remove_from_cart`, `viewed_cart`, `purchase`, `refund`), lead management (`lead`, `qualify_lead`, `close_convert_lead`, `disqualify_lead`), paid subscriptions (`subscribe`), and app events. Used to categorize events logged via `log_event` and to specify optimization goals on packages. Aligned with IAB ECAPI.
 
 **Estimated Activation Time**
 Predicted timeframe for signal deployment, typically 24-48 hours for new activations.
