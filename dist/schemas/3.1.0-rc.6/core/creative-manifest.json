@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.6/core/creative-manifest.json",
+  "title": "Creative Manifest",
+  "description": "Complete specification of a creative: format identification + assets. A manifest carries EITHER a legacy `format_id` (structured `{agent_url, id}` reference to a named format) OR a 3.1+ `format_kind` (the canonical format name the manifest targets, paired with optional `format_option_ref` for routing when a product's `format_options` contains multiple declarations sharing the same `format_kind`). Mutually exclusive — see the `oneOf` at the schema root. Everything the creative needs — images, text, briefs, catalogs — lives in the assets map, declared by the matching format declaration. Each asset is typed according to its asset_type from the format specification.",
+  "type": "object",
+  "properties": {
+    "format_id": {
+      "$ref": "/schemas/3.1.0-rc.6/core/format-id.json",
+      "description": "Legacy named-format path. Always a structured object {agent_url, id} — never a plain string. Format identifier this manifest is for. Can be a template format (id only) or a deterministic format (id + dimensions/duration). For dimension-specific creatives, include width/height in the format_id to create a unique identifier (e.g., {id: 'display_static', width: 300, height: 250}). Mutually exclusive with `format_kind`."
+    },
+    "format_kind": {
+      "$ref": "/schemas/3.1.0-rc.6/core/canonical-format-kind.json",
+      "description": "3.1+ canonical-format path. The canonical format name this manifest targets (e.g., `image`, `video_hosted`, `audio_daast`, `sponsored_placement`). Selects which canonical the seller validates the manifest's assets against. Mutually exclusive with `format_id`."
+    },
+    "format_option_ref": {
+      "$ref": "/schemas/3.1.0-rc.6/core/format-option-ref.json",
+      "description": "3.1+ format-option path, optional. Structured format option reference matching one of the target product's `format_options[]` declarations. Publisher-catalog-backed options match by `{ scope: \"publisher\", publisher_domain, format_option_id }`; product-local options match by `{ scope: \"product\", format_option_id }`. Required when the target product carries multiple `format_options` entries sharing the same `format_kind`; optional when `format_kind` alone routes the manifest to a single declaration. Product-scoped refs require an enclosing target product/package context."
+    },
+    "assets": {
+      "type": "object",
+      "description": "Map of slot keys to actual asset content. Legacy named-format path: each key matches an `asset_id` from the format's `assets` array (e.g., 'banner_image', 'clickthrough_url', 'video_file', 'vast_tag'). 3.1+ canonical-format path: each key matches an `asset_group_id` from the format's `slots` declaration drawn from the canonical vocabulary registry (e.g., 'images_landscape', 'video', 'landing_page_url', 'vast_tag', 'script', 'creative_brief'). Either path produces the same envelope shape; only the slot-key vocabulary differs.\n\nEach slot value is **either** a single asset object (most slots — image, video, vast_tag, landing_page_url, etc.) **or** an array of asset objects (slots with `min`/`max` counts on the format declaration — `cards` on `image_carousel`, `headlines` / `descriptions` / `images_landscape` on `responsive_creative`, etc.). Single-vs-array shape is governed by the format's `slots[].min` and `slots[].max` parameters: when `max > 1` (or when the slot is conceptually a pool), the value MUST be an array; when the slot is single-valued, the value MUST be a single object. Each asset value (single or array element) carries an `asset_type` discriminator (image, video, audio, vast, daast, text, markdown, url, html, css, webhook, javascript, brief, catalog, zip, card) that selects the matching asset schema. Validators with OpenAPI-style discriminator support use `asset_type` to report errors against only the selected branch instead of all branches.",
+      "patternProperties": {
+        "^[a-z0-9_]+$": {
+          "oneOf": [
+            { "$ref": "/schemas/3.1.0-rc.6/core/assets/asset-union.json" },
+            {
+              "type": "array",
+              "items": { "$ref": "/schemas/3.1.0-rc.6/core/assets/asset-union.json" },
+              "minItems": 1
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "brand": {
+      "$ref": "/schemas/3.1.0-rc.6/core/brand-ref.json",
+      "description": "Brand identity reference (BrandRef — `domain` plus optional `brand_id` for house-of-brands; plus optional inline `brand_kit_override` for per-creative tweaks where brand.json is missing/stale). When present, the seller pulls brand context (logos, colors, voice, taglines) from the brand's brand.json automatically; any `brand_kit_override` fields on the BrandRef take precedence. v2 formats no longer redeclare brand_logo / brand_colors / brand_voice as explicit slots — brand identity is implicit context."
+    },
+    "rights": {
+      "type": "array",
+      "description": "Rights constraints attached to this creative. Each entry represents constraints from a single rights holder. A creative may combine multiple rights constraints (e.g., talent likeness + music license). For v1, rights constraints are informational metadata — the buyer/orchestrator manages creative lifecycle against these terms.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.6/core/rights-constraint.json"
+      }
+    },
+    "industry_identifiers": {
+      "type": "array",
+      "description": "Industry-standard identifiers for this specific manifest (e.g., Ad-ID, ISCI, Clearcast clock number). When present, overrides creative-level identifiers. Use when different format versions of the same source creative have distinct Ad-IDs (e.g., the :15 and :30 cuts).",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.6/core/industry-identifier.json"
+      },
+      "uniqueItems": true
+    },
+    "provenance": {
+      "$ref": "/schemas/3.1.0-rc.6/core/provenance.json",
+      "description": "Provenance metadata for this creative manifest. Serves as the default provenance for all assets in this manifest. An asset with its own provenance replaces this object entirely (no field-level merging)."
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-rc.6/core/ext.json"
+    }
+  },
+  "required": [
+    "assets"
+  ],
+  "not": {
+    "anyOf": [
+      { "required": ["capability_id"] },
+      { "required": ["capability_ref"] }
+    ]
+  },
+  "oneOf": [
+    {
+      "title": "Legacy manifest (named-format reference)",
+      "description": "Manifest references a named format via the structured `format_id` object. The legacy named-format path remains supported through 4.x.",
+      "required": ["format_id"],
+      "not": { "required": ["format_kind"] }
+    },
+    {
+      "title": "3.1+ manifest (canonical format kind)",
+      "description": "Manifest declares which canonical format it targets via `format_kind` (e.g., `image`). This 3.1+ canonical-format path was introduced by RFC #3305.",
+      "required": ["format_kind"],
+      "not": { "required": ["format_id"] }
+    }
+  ],
+  "additionalProperties": true
+}

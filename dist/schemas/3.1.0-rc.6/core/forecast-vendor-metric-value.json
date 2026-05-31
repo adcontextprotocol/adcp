@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.6/core/forecast-vendor-metric-value.json",
+  "title": "Forecast Vendor Metric Value",
+  "description": "A forecasted value for a vendor-defined metric, emitted on ForecastPoint.vendor_metric_values parallel to delivery-metrics vendor_metric_values. The envelope mirrors VendorMetricValue but uses ForecastRange for value and measurable_impressions because forecasts may carry low/mid/high bounds instead of actual delivered values.",
+  "type": "object",
+  "properties": {
+    "vendor": {
+      "$ref": "/schemas/3.1.0-rc.6/core/brand-ref.json",
+      "description": "Vendor that defines and forecasts this metric. Matches a reporting_capabilities.vendor_metrics declaration on the product."
+    },
+    "metric_id": {
+      "$ref": "/schemas/3.1.0-rc.6/core/vendor-metric-id.json",
+      "description": "Identifier for the metric within the vendor's vocabulary. Matches a vendor_metrics[].metric_id declaration on the product."
+    },
+    "value": {
+      "$ref": "/schemas/3.1.0-rc.6/core/forecast-range.json",
+      "description": "Forecasted vendor metric value. Unit semantics are vendor-defined; see unit and the vendor's measurement-agent metric definition."
+    },
+    "unit": {
+      "type": "string",
+      "description": "Unit of the value. Free-form to accommodate heterogeneous vendor metrics (e.g., 'score', 'seconds', 'persons', 'gCO2e', 'USD', 'lift_percent', 'index'). When populated inline, SHOULD match the vendor's published unit.",
+      "examples": ["score", "seconds", "persons", "gCO2e", "USD", "lift_percent", "index"]
+    },
+    "measurable_impressions": {
+      "$ref": "/schemas/3.1.0-rc.6/core/forecast-range.json",
+      "description": "Forecasted number of impressions the vendor expects to be able to measure. Coverage denominator for the vendor metric; buyers compute estimated coverage as measurable_impressions / impressions when both are present."
+    },
+    "breakdown": {
+      "type": "object",
+      "description": "Optional structured payload for vendor metrics that do not fit a single scalar. Forecast rows SHOULD use ForecastRange values inside breakdown when sub-values are numeric forecasts. Buyers MUST treat this object as opaque without consulting the vendor's documentation.",
+      "additionalProperties": true
+    }
+  },
+  "required": ["vendor", "metric_id", "value"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "vendor": { "domain": "attentionvendor.example" },
+      "metric_id": "attention_units",
+      "value": { "low": 3.8, "mid": 4.2, "high": 4.6 },
+      "unit": "score",
+      "measurable_impressions": { "mid": 800000 }
+    }
+  ]
+}
