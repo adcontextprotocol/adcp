@@ -16,8 +16,13 @@
     },
     "value_source": {
       "type": "string",
-      "enum": ["inline", "range", "enumerable"],
-      "description": "Where the legal values come from. `inline` — a small closed set listed in `allowed_values` (e.g. mastering_preset). `range` — a numeric interval bounded by `minimum`/`maximum` (e.g. speaking_rate). `enumerable` — an account-scoped, dynamic set (e.g. voices, including custom/cloned ones) resolved per-credential; values appear in `options[]` only when expanded."
+      "enum": ["inline", "range", "enumerable", "free_text"],
+      "description": "Where the legal values come from. `inline` — a small closed set listed in `allowed_values` (e.g. mastering_preset). `range` — a numeric interval bounded by `minimum`/`maximum` (e.g. speaking_rate). `enumerable` — an account-scoped, dynamic set (e.g. voices, including custom/cloned ones) resolved per-credential; values appear in `options[]` only when expanded. `free_text` — an open buyer-authored string with no closed/enumerable set (e.g. a negative_prompt or style note for a generative agent); `type` MUST be `string` and `allowed_values`/`minimum`/`maximum`/`options`/`options_cursor` MUST be absent. NOTE: a transformer-param MUST NOT be a generation-count knob (sample_count/n/num_images/count) — output count is owned by `max_variants`/`max_creatives`, never config."
+    },
+    "max_length": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Optional maximum character length for a `free_text` param. Omit for no declared limit."
     },
     "allowed_values": {
       "type": "array",
