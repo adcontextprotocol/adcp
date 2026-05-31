@@ -32,14 +32,15 @@ The agent chooses granularity: a distinct voice or model may be its own transfor
 | `output_format_ids` | FormatID[] | No | Filter to transformers that can produce any of these output formats |
 | `name_search` | string | No | Search transformers by name (case-insensitive partial match) |
 | `brief` | string | No | Natural-language brief to rank/filter transformers and their option values (e.g. "warm female Spanish-language voiceover"). Curates to intent rather than returning the full set. |
-| `expand_params` | string[] | No | Param `field` names for which to return account-scoped option **values** inline on `params[].options[]`. Omit for the lean default (descriptors only). |
+| `expand_params` | string[] | No | Param `field` names for which to return the **first page** of account-scoped option **values** inline on `params[].options[]`. Omit for the lean default (descriptors only). |
+| `expand_pagination` | object[] | No | Fetch the **next page** of a specific param's options, scoped per `{ transformer_id, field, options_cursor }` (cursor from a prior response's `params[].options_cursor`). Use once you hold a cursor, instead of `expand_params`. |
 | `include_pricing` | boolean | No | Include `pricing_options` on each transformer. Requires `account`. |
 | `account` | AccountRef | Conditional | Required when `include_pricing` is true. Transformers are account-scoped regardless. |
 | `pagination` | object | No | `max_results` and `cursor` (opaque cursor from previous response) |
 
 ### The `expand` mode
 
-By default the response returns each transformer's param **schemas** with small closed enums inlined (e.g. `mastering_preset`). To get the **values** of an account-scoped enumerable param (e.g. your voices), name it in `expand_params`. Values are brief-filtered and paginated per param via `options_cursor` — so "warm Spanish female voice" narrows a 300-voice catalog to a handful instead of dumping all of them. There is no separate options endpoint; value enumeration is a mode of this one tool.
+By default the response returns each transformer's param **schemas** with small closed enums inlined (e.g. `mastering_preset`). To get the **values** of an account-scoped enumerable param (e.g. your voices), name it in `expand_params` — that returns the **first page** on `params[].options[]`. When a param's values are truncated, its `params[].options_cursor` is set; fetch the next page by passing `{ transformer_id, field, options_cursor }` in **`expand_pagination`** (each `(transformer, param)` pages independently). Values are brief-filtered — "warm Spanish female voice" narrows a 300-voice catalog to a handful instead of dumping all of them. There is no separate options endpoint; value enumeration (and its pagination) is a mode of this one tool.
 
 ## Response
 

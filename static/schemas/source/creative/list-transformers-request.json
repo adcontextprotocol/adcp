@@ -43,8 +43,23 @@
     },
     "expand_params": {
       "type": "array",
-      "description": "Param `field` names for which to return account-scoped option VALUES inline on each transformer's `params[].options[]`. Omit to return param descriptors without enumerated values (the lean default). Paginated per-param via `options_cursor`.",
+      "description": "Param `field` names for which to return the FIRST page of account-scoped option VALUES inline on each transformer's `params[].options[]`. Omit to return param descriptors without enumerated values (the lean default). When a param's options are truncated, its `params[].options_cursor` is set — fetch the next page via `expand_pagination` (below).",
       "items": { "type": "string" },
+      "minItems": 1
+    },
+    "expand_pagination": {
+      "type": "array",
+      "description": "Fetch the NEXT page of a specific param's account-scoped options, using the `options_cursor` a prior response returned for that `(transformer, param)`. Scoped per `(transformer_id, field)` so multiple params can be paged independently. Use this instead of `expand_params` once you hold a cursor.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "transformer_id": { "type": "string", "x-entity": "transformer", "description": "The transformer whose param options to page." },
+          "field": { "type": "string", "description": "The param `field` to page." },
+          "options_cursor": { "type": "string", "description": "Opaque cursor from that param's prior `params[].options_cursor`." }
+        },
+        "required": ["transformer_id", "field", "options_cursor"],
+        "additionalProperties": true
+      },
       "minItems": 1
     },
     "include_pricing": {
