@@ -1,5 +1,33 @@
 # Changelog
 
+## 3.1.0-rc.5
+
+### Minor Changes
+
+- 431cc86: Reconcile creator and engagement conversion events with the existing metric vocabulary by adding `follow`, `content_view`, and `watch_milestone` event types, clarifying `subscribe` as paid, adding structured event surfaces and progress fields, and allowing per-source `ext` metadata on `sync_event_sources` results.
+
+### Patch Changes
+
+- 9ce1a6a: Clarify pre-GA 3.1 RC cleanup notes for removed signal-level GPC and proposal action-mode fields.
+
+  Adds pre-GA adopter guidance for cached `requires_proposal` action-mode values, reinforces that `data_subject_rights.gpc_honored` is not part of signal definitions, and documents that projected `consent_basis` / `art9_basis` values on `get_signals` response rows remain provider-declared signal-definition posture rather than seller-substituted basis.
+
+- a007806: Bump `@adcp/sdk` to `8.1.0-beta.18` so local and CI storyboard runs enforce
+  `field_pattern` / `envelope_field_pattern` validations and include required
+  task webhook `operation_id` payloads, then teach the training agent to accept
+  the current `3.1-rc.4` wire release pin emitted by that runner.
+- 5f34101: Bump `@adcp/sdk` to `8.1.0-beta.19` to pick up the storyboard request-builder fix
+  (adcp-client #2144, closing #2143): `create_media_buy` flight windows are now
+  resolved as a pair, so a frozen-compliance-bundle fixture with a past `start_time`
+  and a same-day `end_time` no longer defaults the start forward into
+  `start_time > end_time`. Fixes the one-day `Storyboards (3.0-compat /sales)`
+  regression where `measurement_terms_rejected` and `media_buy_state_machine` failed
+  on the flight's end date (dropping clean storyboards below the floor) on every PR
+  and `main` run that landed on that calendar day.
+- a2b814d: Add storyboard coverage for task webhook `operation_id` echo semantics. The webhook-emission universal now sends an explicit `push_notification_config.operation_id` that differs from the runner's URL capture token, validates inbound task webhook payloads against `core/mcp-webhook-payload.json`, and asserts sellers echo the explicit operation id rather than deriving correlation from the opaque receiver URL.
+
+  Clarifies the webhook receiver runner contract and webhook documentation so URL path routing remains a buyer/runner implementation detail while the payload `operation_id` is the wire-level correlation field.
+
 ## 3.1.0-rc.4
 
 ### Minor Changes
