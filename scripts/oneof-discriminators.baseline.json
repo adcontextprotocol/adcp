@@ -84,7 +84,7 @@
     "brand/verify-brand-claim-response.json##/oneOf": {
       "kind": "narrowable",
       "variants": 2,
-      "note": "0:[claim_type,verification_status] | 1:[errors]"
+      "note": "0:[claim_type,verification_status,signed_response] | 1:[errors]"
     },
     "brand/verify-brand-claims-response.json##/definitions/result_entry/oneOf": {
       "kind": "narrowable",
@@ -94,7 +94,7 @@
     "brand/verify-brand-claims-response.json##/oneOf": {
       "kind": "narrowable",
       "variants": 2,
-      "note": "0:[results] | 1:[errors]"
+      "note": "0:[results,signed_response] | 1:[errors]"
     },
     "compliance/comply-test-controller-response.json##/oneOf": {
       "kind": "dangerous",
@@ -253,13 +253,13 @@
     },
     "media-buy/build-creative-response.json##/oneOf": {
       "kind": "narrowable",
-      "variants": 4,
-      "note": "0:[creative_manifest] | 1:[creative_manifests] | 2:[errors] | 3:[status,task_id]"
+      "variants": 6,
+      "note": "0:[creative_manifest] | 1:[creative_manifests] | 2:[creatives] | 3:[mode,estimate] | 4:[errors] | 5:[status,task_id]"
     },
     "media-buy/create-media-buy-response.json##/oneOf": {
       "kind": "narrowable",
       "variants": 3,
-      "note": "0:[media_buy_id,packages] | 1:[errors] | 2:[status,task_id]"
+      "note": "0:[media_buy_id,confirmed_at,revision,packages] | 1:[errors] | 2:[status,task_id]"
     },
     "media-buy/get-media-buy-delivery-request.json##/properties/reporting_dimensions/properties/geo/properties/system/oneOf": {
       "kind": "dangerous",
@@ -309,7 +309,7 @@
     "media-buy/update-media-buy-response.json##/oneOf": {
       "kind": "narrowable",
       "variants": 3,
-      "note": "0:[media_buy_id] | 1:[errors] | 2:[status,task_id]"
+      "note": "0:[media_buy_id,revision] | 1:[errors] | 2:[status,task_id]"
     },
     "pricing-options/cpv-option.json##/properties/parameters/properties/view_threshold/oneOf": {
       "kind": "dangerous",

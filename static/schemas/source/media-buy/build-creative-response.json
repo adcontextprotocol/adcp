@@ -390,6 +390,16 @@
           "minimum": 0,
           "description": "Number of creatives returned in creatives[] (after max_creatives sampling)."
         },
+        "leaves_total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total leaves the request would have produced (≈ items_to_produce × variants_per_item). Present when a max_spend cap may have stopped production short. Counts LEAVES, not catalog items — so it expresses a shortfall even for a variant-only fan-out with no catalog."
+        },
+        "leaves_returned": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of leaves actually produced and billed across creatives[].variants[]. When budget_status is 'capped', leaves_returned < leaves_total is the leaf-granular shortfall signal (items_returned/items_total are catalog-item counts and do not capture a mid-item or variant-only cap)."
+        },
         "vendor_cost": {
           "type": "number",
           "minimum": 0,
@@ -404,7 +414,7 @@
           "type": "string",
           "enum": ["complete", "capped"],
           "default": "complete",
-          "description": "`complete` (default; absent == complete for back-compat) means the agent produced everything requested. `capped` means a `max_spend` ceiling stopped production early — `items_returned` < `items_total` shows the shortfall, every returned leaf is real/billed, and an advisory `BUDGET_CAP_REACHED` entry appears in `errors[]`. This is a successful partial build, not a failure."
+          "description": "`complete` (default; absent == complete for back-compat) means the agent produced everything requested. `capped` means a `max_spend` ceiling stopped production early: every returned leaf is real/billed, and an advisory `BUDGET_CAP_REACHED` entry in `errors[]` is the authoritative cap signal. The leaf-granular shortfall is `leaves_returned` < `leaves_total` (do NOT rely on items_returned < items_total — that is also the normal max_creatives-sampling signal and does not capture a mid-item or variant-only cap). This is a successful partial build, not a failure."
         },
         "errors": {
           "type": "array",
