@@ -311,7 +311,8 @@
                   "properties": {
                     "build_variant_id": {
                       "type": "string",
-                      "description": "Build-time handle for this variant. Its OWN namespace — MUST NOT reuse a preview_id (preview renders) or a served variant_id (delivery). Reference it to traffic/keep this variant; on first trafficking it earns a library creative_id, which is what flows into report_usage."
+                      "x-entity": "build_variant",
+                      "description": "Build-time handle for this produced variant — the leaf-level lineage anchor for the creative. Minted per produced variant. Its OWN namespace — MUST NOT reuse a `preview_id` (preview renders) or a served `variant_id` (delivery). Lineage and joins (refinement parentage, build→delivery learning, QA re-rolls) anchor on this leaf id, NOT on the call-level `build_creative_id`. A leaf lazily earns a durable `creative_id` only when trafficked / added to the library; that `creative_id` is what flows into `report_usage`. An untrafficked leaf has no `report_usage` key — it is billed via the inline per-leaf `vendor_cost` only, and `report_usage` reconciliation applies once the leaf earns a `creative_id`."
                     },
                     "creative_manifest": {
                       "$ref": "/schemas/core/creative-manifest.json",
