@@ -7,6 +7,14 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$comment": "target_format_id and target_format_ids are mutually exclusive (single vs multi).",
+      "not": { "required": ["target_format_id", "target_format_ids"] }
+    },
+    {
+      "$comment": "Refinement targets one prior creative, not a catalog fan-out.",
+      "not": { "required": ["refine_from_build_variant_id", "max_creatives"] }
     }
   ],
   "x-mutates-state": true,

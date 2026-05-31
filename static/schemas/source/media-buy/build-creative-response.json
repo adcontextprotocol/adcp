@@ -15,12 +15,17 @@
   "oneOf": [
     {
       "title": "BuildCreativeSuccess",
-      "description": "Single-format success response. Returned when the request used target_format_id.",
+      "description": "Single-format success response. Returned when the request used target_format_id (without fan-out). Carries an optional build_variant_id so a single build is refinable; multi-format builds that need per-output refinable leaves should request the variant shape (max_variants).",
       "type": "object",
       "properties": {
         "creative_manifest": {
           "$ref": "/schemas/core/creative-manifest.json",
           "description": "The generated or transformed creative manifest"
+        },
+        "build_variant_id": {
+          "type": "string",
+          "x-entity": "build_variant",
+          "description": "Leaf handle for this produced creative — present when the agent supports refinement (creative.supports_refinement). Pass it as refine_from_build_variant_id to refine this build. Same namespace as BuildCreativeVariantSuccess leaves; distinct from served variant_id / preview_id. Lazily earns a creative_id on trafficking."
         },
         "sandbox": {
           "type": "boolean",
@@ -274,7 +279,7 @@
     },
     {
       "title": "BuildCreativeVariantSuccess",
-      "description": "Multiplicity success response. Returned when the request used item fan-out (max_creatives) and/or variant fan-out (max_variants / variant_axis), with or without a transformer_id. Carries creatives[] — one entry per produced creative (per catalog item when fanning out) — each holding variants[] alternatives. Every produced variant is a real, independently-billed build (you pay for all produced); the buyer keeps one or many by trafficking the chosen build_variant_id(s). Mutually exclusive with the other success/error/submitted shapes. Per-FORMAT remains atomic within a (creative) group; per-ITEM (catalog fan-out) is non-atomic — a failed item is reported via that creative's errors[] and does not fail the batch.",
+      "description": "Multiplicity success response. Returned WHENEVER the request used max_creatives, max_variants > 1, variant_axis, or refine_from_build_variant_id — with or without a transformer_id. **There is no fallback to the single/multi-format shapes: a client that sends any of those inputs MUST handle this `creatives[]` shape; it will not receive `creative_manifest`/`creative_manifests`.** Carries creatives[] — one entry per produced creative (per catalog item when fanning out) — each holding variants[] alternatives. Every produced variant is a real, independently-billed build (you pay for all produced); the buyer keeps one or many by trafficking the chosen build_variant_id(s). Mutually exclusive with the other success/error/submitted shapes. Per-FORMAT remains atomic within a (creative) group; per-ITEM (catalog fan-out) is non-atomic — a failed item is reported via that creative's errors[] and does not fail the batch.",
       "type": "object",
       "properties": {
         "creatives": {

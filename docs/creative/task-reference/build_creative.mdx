@@ -520,7 +520,11 @@ When the request uses `target_format_ids`, the response contains an array of cre
 
 ### Variant response
 
-When the request fans out across catalog items (`max_creatives`) or produces alternatives per creative (`max_variants` > 1), the agent returns the `BuildCreativeVariantSuccess` shape. This is a fifth success member alongside the single- and multi-format responses; the `creative_manifest` / `creative_manifests` shapes above are unchanged and still used when you build a single creative with one variant.
+When the request uses `max_creatives`, `max_variants` > 1, `variant_axis`, or `refine_from_build_variant_id`, the agent returns the `BuildCreativeVariantSuccess` shape. This is a fifth success member alongside the single- and multi-format responses; the `creative_manifest` / `creative_manifests` shapes are unchanged and still used when you build one creative with one variant.
+
+<Warning>
+**No fallback.** If you send any of `max_creatives`, `max_variants > 1`, `variant_axis`, or `refine_from_build_variant_id`, you **must** handle `creatives[]` — you will not get `creative_manifest`/`creative_manifests` back. There is no automatic downgrade to the single/multi shapes.
+</Warning>
 
 ```json
 {
@@ -597,6 +601,8 @@ Conversational refinement re-builds a prior variant with free-form direction —
 - `transformer_id` and the target format(s) are **inherited** from the parent; you don't repeat them. Passing a `transformer_id` or target format that differs from the parent's is an `INVALID_REQUEST`. `config` is applied as a **delta** over the parent's config.
 - Composes with `max_variants` / `variant_axis` (e.g. "three warmer takes" → three refined leaves), but **not** with `max_creatives` / catalog fan-out — you refine one produced creative, not a catalog.
 - Requires the agent to advertise `creative.supports_refinement: true` (it retains produced leaves for an agent-defined window). Agents that retain nothing return `UNSUPPORTED_FEATURE`; refine a buyer-held manifest instead via the transform path (`creative_manifest` + `message`). An unknown or no-longer-retained ref returns `REFERENCE_NOT_FOUND` with `error.field` set to `refine_from_build_variant_id`.
+
+Any build can be refined, not just variant builds: a single-format `BuildCreativeSuccess` carries an optional `build_variant_id` (present when the agent supports refinement) that you pass as `refine_from_build_variant_id`. Multi-format builds that need per-output refinable leaves should request the variant shape (`max_variants`), since the bare `creative_manifests[]` array carries no leaf ids.
 
 AI-derivative attribution rides the manifest's existing `provenance`; `parent_build_variant_id` carries only the lineage edge (refinements chain into a tree).
 
