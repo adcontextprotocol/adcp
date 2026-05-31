@@ -592,7 +592,7 @@ asyncio.run(main())
 | **Reach Window** | Window semantics for reported reach/frequency: `cumulative` (uniques since campaign start), `period` (uniques within a single non-overlapping reporting period — e.g., daily snapshot), or `rolling` (uniques within a trailing window — e.g., trailing-7-day). Never sum across rows. Optional but strongly recommended when reach is present. |
 | **Frequency** | Average ad exposures per reach unit, measured over `reach_window` |
 | **Viewability** | Object with `vendor`, `measurable_impressions` (denominator), `viewable_impressions`, `viewable_rate`, `viewed_seconds` (average in-view duration per measurable impression — pairs with the `viewed_seconds` optimization goal), and `standard` |
-| **Follows** | New followers, subscribes, or page likes attributed to delivery |
+| **Follows** | New followers, page likes, or free channel/feed subscribes attributed to delivery |
 | **Pacing Index** | Actual vs. expected delivery rate (1.0 = on track, &lt;1.0 = behind, &gt;1.0 = ahead) |
 | **CPM** | Cost per thousand impressions (spend/impressions * 1000) |
 

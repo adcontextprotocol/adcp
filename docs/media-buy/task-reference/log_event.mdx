@@ -123,6 +123,7 @@ asyncio.run(main())
 | `user_match` | [UserMatch](/docs/media-buy/conversion-tracking/#user-match) | No | User identifiers for attribution matching |
 | `custom_data` | [CustomData](/docs/media-buy/conversion-tracking/#custom-data) | No | Event-specific data (value, currency, items) |
 | `action_source` | [ActionSource](/docs/media-buy/conversion-tracking/#action-sources) | No | Where the event occurred (`website`, `app`, `in_store`, etc.) |
+| `surface` | [EventSurface](/docs/media-buy/conversion-tracking/#event-surfaces) | No | Structured surface context for the event, such as an owned channel, profile, feed, podcast, newsletter list, website, app, or store |
 | `event_source_url` | uri | No | URL where the event occurred (required when action_source is `website`) |
 | `custom_event_name` | string | No | Name for custom events (used when event_type is `custom`) |
 
@@ -152,6 +153,8 @@ At least one of `uids`, `hashed_email`, `hashed_phone`, `click_id`, or `client_i
 | `content_ids` | string[] | Product or content identifiers. For catalog-driven campaigns, these match the catalog's `content_id_type` (e.g., SKUs, GTINs, job IDs). See [catalog-item attribution](/docs/media-buy/conversion-tracking#catalog-item-attribution). |
 | `content_type` | string | Category of content (product, service, etc.) |
 | `num_items` | integer | Number of items in the event |
+| `progress_percent` | number | Content progress percentage reached, primarily for `watch_milestone` events |
+| `progress_seconds` | number | Content progress duration reached in seconds, primarily for time-based `watch_milestone` events |
 | `contents` | Content[] | Per-item details (id, quantity, price, brand) |
 
 ## Response
@@ -171,6 +174,39 @@ At least one of `uids`, `hashed_email`, `hashed_phone`, `click_id`, or `client_i
 **Note:** Responses use discriminated unions - you get either success fields OR errors, never both. Partial failures are reported per-event within the success response.
 
 ## Common Scenarios
+
+### Creator Engagement Events
+
+Log creator or content engagement events against the configured owned-property source. Use `surface` to identify the property and put watch thresholds in `custom_data.progress_percent` or `custom_data.progress_seconds`.
+
+```json test=false
+{
+  "event_source_id": "creator_channel",
+  "events": [
+    {
+      "event_id": "evt_watch_001",
+      "event_type": "watch_milestone",
+      "event_time": "2026-01-16T11:05:00Z",
+      "action_source": "system_generated",
+      "surface": {
+        "category": "owned_property",
+        "property_type": "channel",
+        "namespace": "video_platform",
+        "property_id": "channel_123"
+      },
+      "user_match": {
+        "uids": [{ "type": "uid2", "value": "CreatorViewer456" }]
+      },
+      "custom_data": {
+        "content_ids": ["episode_001"],
+        "progress_percent": 75
+      }
+    }
+  ]
+}
+```
+
+For free durable opt-ins, use `event_type: "follow"`. Reserve `event_type: "subscribe"` for paid subscriptions or paid memberships.
 
 ### Batch Events
 

@@ -322,12 +322,26 @@ async function runTests() {
           "event_source_id": "website_pixel",
           "name": "Main Website Pixel",
           "event_types": ["purchase", "lead", "add_to_cart", "page_view"],
+          "action_source": "website",
           "allowed_domains": ["www.example.com", "shop.example.com"]
         },
         {
           "event_source_id": "crm_import",
           "name": "CRM Offline Events",
-          "event_types": ["purchase", "qualify_lead", "close_convert_lead"]
+          "event_types": ["purchase", "qualify_lead", "close_convert_lead"],
+          "action_source": "offline"
+        },
+        {
+          "event_source_id": "creator_channel",
+          "name": "Creator Channel Events",
+          "event_types": ["follow", "content_view", "watch_milestone"],
+          "action_source": "system_generated",
+          "surface": {
+            "category": "owned_property",
+            "property_type": "channel",
+            "namespace": "video_platform",
+            "property_id": "channel_123"
+          }
         }
       ]
     },
@@ -358,6 +372,26 @@ async function runTests() {
           "seller_id": "amz_attr_001",
           "managed_by": "seller",
           "action": "unchanged"
+        },
+        {
+          "event_source_id": "creator_channel",
+          "name": "Creator Channel Events",
+          "seller_id": "creator_attr_001",
+          "event_types": ["follow", "content_view", "watch_milestone"],
+          "action_source": "system_generated",
+          "surface": {
+            "category": "owned_property",
+            "property_type": "channel",
+            "namespace": "video_platform",
+            "property_id": "channel_123"
+          },
+          "managed_by": "seller",
+          "action": "unchanged",
+          "ext": {
+            "video_platform": {
+              "native_origin": "owned_channel"
+            }
+          }
         }
       ]
     },
@@ -425,11 +459,70 @@ async function runTests() {
             "currency": "USD",
             "order_id": "order_98765"
           }
+        },
+        {
+          "event_id": "evt_follow_001",
+          "event_type": "follow",
+          "event_time": "2026-01-16T11:00:00Z",
+          "action_source": "system_generated",
+          "surface": {
+            "category": "owned_property",
+            "property_type": "channel",
+            "namespace": "video_platform",
+            "property_id": "channel_123"
+          },
+          "user_match": {
+            "uids": [{ "type": "uid2", "value": "CreatorFollower123" }]
+          }
+        },
+        {
+          "event_id": "evt_watch_001",
+          "event_type": "watch_milestone",
+          "event_time": "2026-01-16T11:05:00Z",
+          "action_source": "system_generated",
+          "surface": {
+            "category": "owned_property",
+            "property_type": "channel",
+            "namespace": "video_platform",
+            "property_id": "channel_123"
+          },
+          "user_match": {
+            "uids": [{ "type": "uid2", "value": "CreatorViewer456" }]
+          },
+          "custom_data": {
+            "content_ids": ["episode_001"],
+            "progress_percent": 75
+          }
         }
       ]
     },
     '/schemas/media-buy/log-event-request.json',
-    'log_event request (batch with purchase, lead, refund)'
+    'log_event request (batch with purchase, lead, refund, creator follow, watch milestone)'
+  );
+
+  await expectInvalid(
+    {
+      "event_id": "evt_watch_missing_threshold",
+      "event_type": "watch_milestone",
+      "event_time": "2026-01-16T11:05:00Z"
+    },
+    '/schemas/core/event.json',
+    'watch_milestone requires custom_data with a progress threshold',
+    ['custom_data']
+  );
+
+  await expectInvalid(
+    {
+      "event_id": "evt_watch_missing_progress",
+      "event_type": "watch_milestone",
+      "event_time": "2026-01-16T11:05:00Z",
+      "custom_data": {
+        "content_ids": ["episode_001"]
+      }
+    },
+    '/schemas/core/event.json',
+    'watch_milestone custom_data requires progress_percent or progress_seconds',
+    ['progress_percent', 'progress_seconds']
   );
 
   await validateExample(

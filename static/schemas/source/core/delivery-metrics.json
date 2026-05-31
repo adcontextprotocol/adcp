@@ -324,7 +324,7 @@
     },
     "follows": {
       "type": "number",
-      "description": "New followers, page likes, artist/podcast/channel subscribes attributed to this delivery.",
+      "description": "New followers, page likes, artist/podcast/channel follows, or free channel/feed subscribes attributed to this delivery. Paid subscriptions are conversion events with `event_type: subscribe`, not `follows`.",
       "minimum": 0
     },
     "saves": {
