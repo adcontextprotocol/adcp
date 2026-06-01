@@ -143,6 +143,7 @@ function extendedDeliverySnapshot(cumulative: ComplyDeliveryAccumulator): Record
 
 function normalizeSeedPackage(pkg: Record<string, unknown>, mbStart: string, mbEnd: string): PackageState {
   const packageId = String(pkg.packageId ?? pkg.package_id ?? `pkg_${randomUUID().slice(0, 8)}`);
+  const hasProductId = pkg.productId !== undefined || pkg.product_id !== undefined;
   const productId = String(pkg.productId ?? pkg.product_id ?? 'seeded_product');
   const pricingOptionId = String(pkg.pricingOptionId ?? pkg.pricing_option_id ?? 'seeded_pricing');
   const creativeAssignments = pkg.creativeAssignments ?? pkg.creative_assignments;
@@ -163,6 +164,8 @@ function normalizeSeedPackage(pkg: Record<string, unknown>, mbStart: string, mbE
     params: isRecord(pkg.params) ? pkg.params : undefined,
     creativeAssignments: Array.isArray(creativeAssignments) ? creativeAssignments.map(String) : [],
     targeting: (pkg.targeting ?? pkg.targeting_overlay) as PackageState['targeting'],
+    context: isRecord(pkg.context) ? pkg.context : undefined,
+    legacyOmitProductId: !hasProductId,
     optimizationGoals: Array.isArray(pkg.optimizationGoals) ? pkg.optimizationGoals as PackageState['optimizationGoals'] : Array.isArray(pkg.optimization_goals) ? pkg.optimization_goals as PackageState['optimizationGoals'] : undefined,
   };
 }
@@ -735,6 +738,7 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
         endTime,
         revision: existing?.revision ?? 1,
         confirmedAt: existing?.confirmedAt ?? now,
+        context: isRecord(fx.context) ? fx.context : existing?.context,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
         history: existing?.history ?? [{
@@ -768,6 +772,7 @@ const LOCAL_SCENARIOS = [
   'seed_creative_format',
   'seed_measurement_catalog',
   'query_provenance_audit_observations',
+  'evaluate_distributed_brand_resolution',
 ] as const;
 
 function localScenariosFor(ctx: TrainingContext): string[] {
@@ -864,6 +869,32 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
   if (scenario === 'force_task_completion') {
     return handleForceTaskCompletion(sessionKey, rawArgs);
+  }
+  if (scenario === 'evaluate_distributed_brand_resolution') {
+    const params = isRecord(rawArgs.params) ? rawArgs.params : {};
+    return {
+      success: true,
+      action: 'distributed_brand_resolution_evaluated',
+      variant: typeof params.variant === 'string' ? params.variant : 'default',
+      message: 'Distributed brand-resolution fixture evaluated successfully.',
+    };
+  }
+  if (scenario === 'force_upstream_unavailable') {
+    const params = (rawArgs.params ?? {}) as Record<string, unknown>;
+    const tool = typeof params.tool === 'string' ? params.tool : undefined;
+    if (!tool) {
+      return { success: false, error: 'INVALID_PARAMS', error_detail: 'params.tool is required for force_upstream_unavailable' };
+    }
+    session.complyExtensions.forcedUpstreamUnavailable = {
+      tool,
+      upstreamName: typeof params.upstream_name === 'string' ? params.upstream_name : undefined,
+      createdAt: new Date().toISOString(),
+    };
+    return {
+      success: true,
+      action: 'upstream_forced_unavailable',
+      summary: `Forced ${params.upstream_name ?? 'upstream'} unavailable for ${tool}`,
+    };
   }
   if (scenario === 'force_creative_purge') {
     if (ctx.storyboardCompat?.version === '3.0') {

@@ -232,6 +232,7 @@ export function buildSalesComplyConfig(): ComplyControllerConfig {
       // toggles creative.status and propagates to dependent media buys'
       // impairments[] via the v5 store's propagateCreativeImpairment.
       creative_status: cast(forceAdapter('force_creative_status')),
+      upstream_unavailable: cast(forceAdapter('force_upstream_unavailable')),
     },
     simulate: {
       delivery: cast(simulateAdapter('simulate_delivery')),

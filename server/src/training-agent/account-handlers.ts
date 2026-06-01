@@ -155,6 +155,20 @@ function accountsForPrincipal(principal?: string): AccountState[] {
   return accounts;
 }
 
+function accountMapsForPrincipal(sessionKey: string, principal?: string): Map<string, AccountState>[] {
+  const scopedKey = scopedStoreKey(sessionKey, principal);
+  const maps: Map<string, AccountState>[] = [];
+  const primary = accountStore.get(scopedKey);
+  if (primary) maps.push(primary);
+
+  const prefix = `${principalScope(principal)}\u001F`;
+  for (const [key, scopedAccounts] of accountStore) {
+    if (key === scopedKey || !key.startsWith(prefix)) continue;
+    maps.push(scopedAccounts);
+  }
+  return maps;
+}
+
 function accountStateFromWire(wire: AccountWireShape, now: string): AccountState {
   return {
     accountId: wire.account_id,
@@ -399,23 +413,30 @@ export function getAccountNotificationSubscribers(
   accountId?: string,
   accountRef?: AccountRef,
 ): AccountNotificationSubscriber[] {
-  const accounts = accountStore.get(scopedStoreKey(sessionKey, principal));
-  if (!accounts) return [];
+  const accountMaps = accountMapsForPrincipal(sessionKey, principal);
+  if (accountMaps.length === 0) return [];
   const canUseNaturalKey = Boolean(accountRef?.brand?.domain && accountRef.operator);
-  if (!accountId && !canUseNaturalKey && accounts.size !== 1) return [];
+  const totalAccounts = accountMaps.reduce((count, accounts) => count + accounts.size, 0);
+  if (!accountId && !canUseNaturalKey && totalAccounts !== 1) return [];
   const out: AccountNotificationSubscriber[] = [];
-  for (const account of accounts.values()) {
-    if (accountId && account.accountId !== accountId) continue;
-    if (!accountId && canUseNaturalKey && accountKey(accountRef!.brand!, accountRef!.operator!) !== accountKey(account.brand, account.operator)) continue;
-    for (const config of account.notificationConfigs) {
-      if (!config.active || !config.eventTypes.includes(notificationType)) continue;
-      out.push({
-        accountId: account.accountId,
-        subscriberId: config.subscriberId,
-        url: config.url,
-        eventTypes: [...config.eventTypes],
-        authentication: config.authentication,
-      });
+  const seen = new Set<string>();
+  for (const accounts of accountMaps) {
+    for (const account of accounts.values()) {
+      if (accountId && account.accountId !== accountId) continue;
+      if (!accountId && canUseNaturalKey && accountKey(accountRef!.brand!, accountRef!.operator!) !== accountKey(account.brand, account.operator)) continue;
+      for (const config of account.notificationConfigs) {
+        if (!config.active || !config.eventTypes.includes(notificationType)) continue;
+        const subscriberKey = `${account.accountId}\u001F${config.subscriberId}\u001F${notificationType}`;
+        if (seen.has(subscriberKey)) continue;
+        seen.add(subscriberKey);
+        out.push({
+          accountId: account.accountId,
+          subscriberId: config.subscriberId,
+          url: config.url,
+          eventTypes: [...config.eventTypes],
+          authentication: config.authentication,
+        });
+      }
     }
   }
   return out;
@@ -1019,6 +1040,21 @@ function wireAccountMatchesRef(account: AccountWireShape, ref: AccountRef): bool
   return true;
 }
 
+function hasExactAccountFilter(ref: AccountRef | undefined): ref is AccountRef {
+  return Boolean(ref?.account_id);
+}
+
+function mergeAccountFixtures(accounts: AccountWireShape[], fixtures: AccountWireShape[]): AccountWireShape[] {
+  const seen = new Set(accounts.map(account => account.account_id));
+  const merged = [...accounts];
+  for (const fixture of fixtures) {
+    if (seen.has(fixture.account_id)) continue;
+    merged.push(fixture);
+    seen.add(fixture.account_id);
+  }
+  return merged;
+}
+
 export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object {
   const req = args as unknown as ListAccountsRequest;
   const identityError = durableAccountIdentityError(ctx);
@@ -1026,7 +1062,9 @@ export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object
   const sessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
   const accountMap = getAccountMap(sessionKey, ctx.principal);
   const preferFixtureAccounts = ctx.storyboardCompat?.version === '3.0';
-  const scopedAccounts = req.account && !preferFixtureAccounts ? accountsForPrincipal(ctx.principal) : [];
+  const exactAccountFilter = hasExactAccountFilter(req.account)
+    && (req.sandbox !== true || Boolean(req.account?.account_id));
+  const scopedAccounts = !preferFixtureAccounts ? accountsForPrincipal(ctx.principal) : [];
 
   let accounts: AccountWireShape[] = preferFixtureAccounts
     ? getComplianceAccounts()
@@ -1036,7 +1074,10 @@ export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object
         ? Array.from(accountMap.values()).map(accountStateToWire)
         : getComplianceAccounts();
 
-  if (!preferFixtureAccounts && req.account) {
+  if (!preferFixtureAccounts && req.sandbox === true && !exactAccountFilter) {
+    accounts = mergeAccountFixtures(accounts, getComplianceAccounts());
+  }
+  if (!preferFixtureAccounts && exactAccountFilter) {
     accounts = accounts.filter(a => wireAccountMatchesRef(a, req.account!));
   }
   if (!preferFixtureAccounts && req.status) {

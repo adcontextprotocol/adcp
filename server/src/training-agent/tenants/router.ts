@@ -18,7 +18,7 @@ import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type Registr
 import { buildSignedRevocationList } from '../governance-revocations.js';
 import { salesCapabilityProjection } from '../v6-sales-platform.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
-import { adcpError, resolveServedAdcpVersion } from '../task-handlers.js';
+import { adcpError, resolveServedAdcpVersion, supportedCanonicalFormatsCapability } from '../task-handlers.js';
 import type { TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 
@@ -38,6 +38,7 @@ const SALES_CURRENT_SCENARIOS = [
   'force_create_media_buy_arm',
   'force_task_completion',
   'force_creative_purge',
+  'force_upstream_unavailable',
   'seed_product',
   'seed_pricing_option',
   'seed_creative',
@@ -45,6 +46,7 @@ const SALES_CURRENT_SCENARIOS = [
   'seed_creative_format',
   'seed_measurement_catalog',
   'query_provenance_audit_observations',
+  'evaluate_distributed_brand_resolution',
 ] as const;
 
 const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4'] as const;
@@ -335,6 +337,7 @@ async function tryHandleLocalComplyScenario(
     rawArgs.scenario !== 'seed_measurement_catalog'
     && rawArgs.scenario !== 'force_creative_purge'
     && rawArgs.scenario !== 'query_provenance_audit_observations'
+    && rawArgs.scenario !== 'evaluate_distributed_brand_resolution'
     && rawArgs.scenario !== 'list_scenarios'
   ) return false;
   if (
@@ -343,6 +346,7 @@ async function tryHandleLocalComplyScenario(
       rawArgs.scenario === 'seed_measurement_catalog'
       || rawArgs.scenario === 'force_creative_purge'
       || rawArgs.scenario === 'query_provenance_audit_observations'
+      || rawArgs.scenario === 'evaluate_distributed_brand_resolution'
     )
   ) return false;
 
@@ -559,6 +563,15 @@ function projectSalesCapabilities(
       structured.media_buy = {
         ...mediaBuy,
         ...salesCapabilityProjection(),
+      };
+      const creative = structured.creative && typeof structured.creative === 'object'
+        ? structured.creative
+        : {};
+      structured.creative = {
+        ...creative,
+        bills_through_adcp: false,
+        supported_formats: supportedCanonicalFormatsCapability(),
+        canonical_catalog_version: '3.1',
       };
       const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
         ? structured.compliance_testing
