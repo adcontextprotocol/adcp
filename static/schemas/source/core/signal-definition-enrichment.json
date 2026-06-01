@@ -315,6 +315,11 @@
       "required": ["channels"],
       "additionalProperties": false
     },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this definition record was last updated. This indicates freshness of the definition record, not an attestation that the underlying data or model was refreshed at that time."
+    },
     "dts_compliant_version": {
       "type": "string"
     }
