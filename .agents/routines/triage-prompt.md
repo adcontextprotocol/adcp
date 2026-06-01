@@ -1234,12 +1234,27 @@ body is in `<<<UNTRUSTED_ISSUE_BODY>>>`.
    trail. (Workflow filters most self-loops; also self-check via the
    `Triaged by Claude Code` footer.) Never reply to bot authors.
 
-**PR conversations are out of scope here.** The workflow filters
-`issue_comment` events where `issue.pull_request != null`. PR
-review feedback is the **auto-fix** feature's job, not the
-triage routine's. If a comment route to triage looks like PR
-feedback (filter slipped), no-op silently and surface the
-filter gap in the run summary.
+**PR comments ARE in scope — `MODE: PR-feedback`.** The bridge
+workflow (`.github/workflows/claude-issue-triage.yml`) routes
+`issue_comment` events on **both issues and PRs** to this routine; a
+PR comment arrives with `is_pr: true` and a `MODE: PR-feedback`
+line in the payload. (Code-fix pushing on CI failures is a separate
+concern handled by the **auto-fix** feature; this routine's job on a
+PR comment is the human reply.) In PR-feedback mode:
+
+- **Fix request** → apply it as a follow-up commit on the PR head
+  branch; never open a new PR.
+- **Question / design challenge** → answer in **one** reply comment.
+  This is where the routine has misfired (PR #5219): it invented a
+  precedence rule for a compose/defer question and posted an answer
+  followed by a self-retraction. **All of Step 5's
+  "Design-question discipline" and Step 6's "Finalize before you
+  comment — one comment per run" apply here verbatim.** Converge
+  before you post; lean compose/defer over inventing
+  precedence/MUST/SHOULD rules; if you must revise a posted answer,
+  **edit it** (rule 6), never stack a correction.
+- **Conversational, no action** → short acknowledgement or silence;
+  apply the "Anti-patterns — never post these" list above.
 
 ## Failure handling
 
