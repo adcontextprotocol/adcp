@@ -7581,21 +7581,22 @@ describe('get_adcp_capabilities handler', () => {
 
   // request_signing — wire shape splits AdCP operation names from JSON-RPC
   // protocol method names per adcp#4318. The default sandbox route advertises
-  // an empty required_for; the strict route advertises both buckets so a
-  // buyer that signs `create_media_buy` but forgets `tasks/cancel` gets a
-  // 401 instead of silent acceptance (adcp#4314).
-  it('default route emits empty required_for and no protocol_methods buckets', async () => {
+  // no operation-level signing expectations; the strict route advertises both
+  // buckets so a buyer that signs `create_media_buy` but forgets `tasks/cancel`
+  // gets a 401 instead of silent acceptance (adcp#4314).
+  it('default route emits no operation-level signing expectations', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
     const rs = result.request_signing as Record<string, unknown>;
-    expect(rs.supported).toBe(true);
+    expect(rs.supported).toBe(false);
     expect(rs.required_for).toEqual([]);
     expect(rs.protocol_methods_required_for).toBeUndefined();
     expect(rs.protocol_methods_supported_for).toBeUndefined();
-    // supported_for advertises every mutating tool; none should be a JSON-RPC method.
+    // Do not advertise mutating tools on the public sandbox. SDKs may
+    // auto-sign supported_for operations, which forces public JWKS discovery
+    // and breaks localhost storefront tests before they reach protocol flow.
     const supportedFor = rs.supported_for as string[];
-    expect(supportedFor.length).toBeGreaterThan(0);
-    expect(supportedFor.every(op => !op.includes('/'))).toBe(true);
+    expect(supportedFor).toEqual([]);
   });
 
   it('strict route emits AdCP names in required_for and JSON-RPC methods in protocol_methods_required_for', async () => {

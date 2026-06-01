@@ -28,8 +28,8 @@ export interface TrainingContext {
   principal?: string;
   /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises
    *  `required_for: ['create_media_buy']` in capabilities and enforces
-   *  presence-gated signing at the auth layer. Default `/mcp` leaves
-   *  `required_for` empty so unsigned bearer callers keep working. */
+   *  presence-gated signing at the auth layer. Default `/mcp` does not
+   *  advertise request signing, so unsigned bearer callers keep working. */
   strict?: boolean;
   /** Local storyboard-runner compatibility shims. Never set in deployed routes. */
   storyboardCompat?: { version: '3.0' };

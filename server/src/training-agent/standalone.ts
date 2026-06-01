@@ -22,7 +22,7 @@ app.use(express.json());
 app.use((_req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id, Signature, Signature-Input, Content-Digest');
   res.setHeader('Access-Control-Expose-Headers', 'Content-Type');
   next();
 });

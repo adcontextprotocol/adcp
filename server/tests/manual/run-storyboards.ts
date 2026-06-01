@@ -274,6 +274,23 @@ function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
     return patched;
   }
 
+  if (sb.id === 'idempotency') {
+    for (const phase of patched.phases ?? []) {
+      for (const step of phase.steps ?? []) {
+        if (step.id !== 'create_media_buy_initial' && step.id !== 'create_media_buy_replay') continue;
+        const sample = step.sample_request as Record<string, unknown> | undefined;
+        if (sample) {
+          sample.start_time = '2099-06-01T00:00:00Z';
+          sample.end_time = '2099-06-30T23:59:59Z';
+        }
+        const pushConfig = sample?.push_notification_config as Record<string, unknown> | undefined;
+        if (!pushConfig || pushConfig.operation_id !== undefined) continue;
+        pushConfig.operation_id = 'op_idempotency_replay_initial';
+      }
+    }
+    return patched;
+  }
+
   if (sb.id !== 'media_buy_seller/proposal_finalize') return patched;
   for (const phase of patched.phases ?? []) {
     for (const step of phase.steps ?? []) {
@@ -640,10 +657,10 @@ async function main() {
       }
     } else {
       try {
-        // The default `/mcp` route is the public sandbox (bearer OR signed,
-        // no `required_for` enforcement). Every storyboard other than
-        // `signed_requests` stays on `/mcp` so bearer-authed unsigned calls
-        // keep working.
+        // The default `/mcp` route is the public bearer-authenticated sandbox
+        // with no request-signing advertisement or enforcement. Every storyboard
+        // other than `signed_requests` stays on `/mcp` so bearer-authed unsigned
+        // calls keep working.
         const result = await runStoryboard(agentUrl, storyboard, {
           ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
           auth: { type: 'bearer', token: AUTH_TOKEN },

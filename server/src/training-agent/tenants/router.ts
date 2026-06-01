@@ -144,7 +144,7 @@ async function withTenantLock<T>(tenantId: string, fn: () => Promise<T>): Promis
 function setCORSHeaders(res: Response): void {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id, Signature, Signature-Input, Content-Digest');
   res.setHeader('Access-Control-Expose-Headers', 'Content-Type');
 }
 
