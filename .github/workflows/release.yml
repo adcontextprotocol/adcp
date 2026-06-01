@@ -51,27 +51,60 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Detect release-relevant push
+        id: release-relevance
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          changed_files="$(git show --format= --name-only --no-renames "${GITHUB_SHA}")"
+          if printf '%s\n' "${changed_files}" | grep -Eq '^(\.changeset/|package(-lock)?[.]json$|dist/(schemas|compliance|protocol)/|static/(schemas|compliance)/source/|server/src/training-agent/|scripts/(build-schemas[.]cjs|build-compliance[.]cjs|build-protocol-tarball[.]cjs|sign-protocol-tarball[.]sh|run-storyboards-[^/]+[.]sh|run-storyboards-matrix[.]sh|stage-sdk-schema-bundle[.]sh|overlay-compliance-cache[.]sh)|[.]github/workflows/training-agent-storyboards[.]yml$)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            echo "Release-relevant files changed."
+            exit 0
+          fi
+
+          if [ -f "dist/protocol/${VERSION}.tgz" ] && [ -f "dist/protocol/${VERSION}.tgz.sha256" ] && gh release view "${TAG}" >/dev/null 2>&1; then
+            for asset in "${VERSION}.tgz" "${VERSION}.tgz.sha256" "${VERSION}.tgz.sig" "${VERSION}.tgz.crt"; do
+              if ! gh release view "${TAG}" --json assets --jq '.assets[].name' | grep -Fxq "${asset}"; then
+                echo "relevant=true" >> "$GITHUB_OUTPUT"
+                echo "Release ${TAG} is missing ${asset}; running repair path."
+                exit 0
+              fi
+            done
+          fi
+
+          echo "relevant=false" >> "$GITHUB_OUTPUT"
+          echo "No release-relevant changes or missing release assets detected; skipping release job body."
+
       - name: Install cosign
+        if: steps.release-relevance.outputs.relevant == 'true'
         uses: sigstore/cosign-installer@v3
         with:
           cosign-release: 'v2.4.1'
 
       - name: Install Dependencies
+        if: steps.release-relevance.outputs.relevant == 'true'
         run: npm ci
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
       - name: Verify current storyboard coverage
-        if: github.ref_name == 'main'
+        if: steps.release-relevance.outputs.relevant == 'true' && github.ref_name == 'main'
         run: npm run test:storyboards
 
       - name: Verify 3.0 storyboard compatibility
-        if: github.ref_name == 'main' || github.ref_name == '3.0.x'
+        if: steps.release-relevance.outputs.relevant == 'true' && (github.ref_name == 'main' || github.ref_name == '3.0.x')
         run: npm run test:storyboards:3.0-compat
         env:
           ADCP_RELEASE_BASE_REF: 3.0.x
 
       - name: Create Release Pull Request or Tag Release
+        if: steps.release-relevance.outputs.relevant == 'true'
         id: changesets
         uses: changesets/action@v1
         with:
@@ -84,6 +117,7 @@ jobs:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Detect committed release artifacts
+        if: steps.release-relevance.outputs.relevant == 'true'
         id: release-artifacts
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
