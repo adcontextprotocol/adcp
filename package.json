@@ -53,6 +53,7 @@
     "test:storyboard-advisory-expiry": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-advisory-expiry.test.cjs",
     "test:storyboard-raw-mode-required": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-raw-mode-required.test.cjs",
     "test:storyboard-doc-parity": "node --test --test-force-exit --test-timeout=30000 tests/lint-universal-storyboard-doc-parity.test.cjs",
+    "test:compliance-source-authority": "node --test --test-force-exit --test-timeout=30000 tests/lint-compliance-source-authority.test.cjs",
     "test:pagination-invariant": "node --test --test-force-exit --test-timeout=30000 tests/lint-pagination-invariant.test.cjs",
     "test:version-envelope": "node --test --test-force-exit --test-timeout=30000 tests/lint-version-envelope.test.cjs",
     "test:test-dynamic-imports": "node --test --test-force-exit --test-timeout=30000 tests/lint-test-dynamic-imports.test.cjs",
@@ -76,7 +77,7 @@
     "audit:oneof": "node scripts/audit-oneof.mjs",
     "test:schema-utf8": "node scripts/normalize-schema-utf8.mjs --check",
     "fix:schema-utf8": "node scripts/normalize-schema-utf8.mjs",
-    "test": "npm run test:docs-nav && npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:extension-schemas && npm run test:error-handling && npm run test:json-schema && npm run test:composed && npm run test:rejection-arm-mutex && npm run test:migrations && npm run test:hmac-vectors && npm run test:hmac-signer-conformance && npm run test:transport-errors && npm run test:targeting-overlay-vectors && npm run test:storyboard-scoping && npm run test:storyboard-branch-sets && npm run test:storyboard-provides-state-for && npm run test:storyboard-contradictions && npm run test:storyboard-context-entity && npm run test:storyboard-auth-shape && npm run test:storyboard-test-kits && npm run test:storyboard-sample-request-schema && npm run test:storyboard-response-schema && npm run test:storyboard-context-output-paths && npm run test:storyboard-validations-paths && npm run test:storyboard-check-enum && npm run test:storyboard-advisory-expiry && npm run test:storyboard-raw-mode-required && npm run test:storyboard-doc-parity && npm run test:pagination-invariant && npm run test:version-envelope && npm run test:test-dynamic-imports && npm run test:callapi-state-change && npm run test:build-schemas-hoist-enums && npm run test:build-schemas-hoist-marked && npm run test:error-codes && npm run test:substitution-vector-names && npm run test:platform-agnostic && npm run test:oneof-discriminators && npm run test:schema-utf8 && npm run test:unit && npm run test:server-unit && npm run test:openapi && npm run typecheck",
+    "test": "npm run test:docs-nav && npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:extension-schemas && npm run test:error-handling && npm run test:json-schema && npm run test:composed && npm run test:rejection-arm-mutex && npm run test:migrations && npm run test:hmac-vectors && npm run test:hmac-signer-conformance && npm run test:transport-errors && npm run test:targeting-overlay-vectors && npm run test:storyboard-scoping && npm run test:storyboard-branch-sets && npm run test:storyboard-provides-state-for && npm run test:storyboard-contradictions && npm run test:storyboard-context-entity && npm run test:storyboard-auth-shape && npm run test:storyboard-test-kits && npm run test:storyboard-sample-request-schema && npm run test:storyboard-response-schema && npm run test:storyboard-context-output-paths && npm run test:storyboard-validations-paths && npm run test:storyboard-check-enum && npm run test:storyboard-advisory-expiry && npm run test:storyboard-raw-mode-required && npm run test:storyboard-doc-parity && npm run test:compliance-source-authority && npm run test:pagination-invariant && npm run test:version-envelope && npm run test:test-dynamic-imports && npm run test:callapi-state-change && npm run test:build-schemas-hoist-enums && npm run test:build-schemas-hoist-marked && npm run test:error-codes && npm run test:substitution-vector-names && npm run test:platform-agnostic && npm run test:oneof-discriminators && npm run test:schema-utf8 && npm run test:unit && npm run test:server-unit && npm run test:openapi && npm run typecheck",
     "test:all": "npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:error-handling && npm run test:snippets && npm run typecheck",
     "precommit": "bash scripts/with-timeout.sh 60 npm run test:unit && npm run test:test-dynamic-imports && npm run test:callapi-state-change && npm run typecheck",
     "test:storyboards": "bash scripts/run-storyboards-matrix.sh",
@@ -98,7 +99,7 @@
     "dev:docs": "node scripts/dev-docs.mjs"
   },
   "dependencies": {
-    "@adcp/sdk": "^7.11.0",
+    "@adcp/sdk": "^8.1.0-beta.19",
     "@anthropic-ai/sdk": "^0.98.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.5.4",

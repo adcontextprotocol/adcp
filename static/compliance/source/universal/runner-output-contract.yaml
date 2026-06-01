@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.2.0"
+version: "2.5.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -43,7 +43,10 @@ authored_check_kinds:
   - response_schema
   - field_present
   - field_absent
+  - field_pattern
   - envelope_field_present
+  - envelope_field_absent
+  - envelope_field_pattern
   - field_value
   - field_value_or_absent
   - status_code
@@ -59,6 +62,7 @@ authored_check_kinds:
   - field_less_than
   - field_equals_context
   - upstream_traffic
+  - canonical_format_satisfaction
 
 # Cross-response check kinds — applied across the response set of a
 # step that dispatches multiple requests under a runner contract that
@@ -96,7 +100,9 @@ step_result:
   description: |
     Runners MUST emit one step result per executed step. Skipped steps MUST
     include a skip result block. Failed steps MUST include at least one
-    validation result with passed: false.
+    validation result with passed: false. Not-selected steps are not step
+    results; they are reported in run_summary.not_selected with
+    selection_result records.
   required_fields:
     - storyboard_id           # e.g. "capability_discovery"
     - phase_id                # e.g. "protocol_discovery"
@@ -108,6 +114,7 @@ step_result:
     - extraction              # transport extraction record (see below)
   optional_fields:
     - skip                    # skip_result block when the step was not run
+                              # after being selected for this run
     - error                   # transport-level error (no validations attempted)
     - request                 # exact request the runner sent (see request block)
     - response                # exact response observed (see response block)
@@ -132,7 +139,7 @@ validation_result:
     coverage gap (e.g., "runner does not implement check type
     'upstream_traffic' — graded as not_applicable to preserve forward
     compatibility"). The result MUST contribute to a per-step `not_applicable`
-    counter the runner exposes alongside steps_passed/failed/skipped, so
+    counter the runner exposes alongside steps_passed/failed/skipped/not_selected, so
     consumers can distinguish "runner is older than the storyboard" from
     "storyboard validations passed cleanly." Runners MUST NOT fail steps
     on unrecognized check values — additive check-type extensions are
@@ -141,12 +148,16 @@ validation_result:
     - check                   # Validation kind. For storyboard-authored checks,
                               # mirrors the storyboard's step.validations[].check:
                               # response_schema | field_present |
-                              # envelope_field_present | field_value |
+                              # field_absent | field_pattern |
+                              # envelope_field_present |
+                              # envelope_field_absent |
+                              # envelope_field_pattern | field_value |
                               # field_value_or_absent | status_code | http_status |
                               # http_status_in | error_code | on_401_require_header |
                               # resource_equals_agent_url | any_of | refs_resolve |
                               # a2a_submitted_artifact | field_less_than |
                               # field_equals_context | upstream_traffic |
+                              # canonical_format_satisfaction |
                               # cross_response_field_equal |
                               # cross_response_count_distinct (the last two are
                               # cross-response checks; see cross_response_check_kinds
@@ -198,8 +209,16 @@ validation_result:
                               #   field_value_or_absent → value or allowed_values array
                               #                          from the storyboard validation
                               #   field_present        → the path that should resolve
+                              #   field_absent         → null (the field must not be present)
+                              #   field_pattern        → object { pattern } where pattern is
+                              #                          the JavaScript regular expression
+                              #                          source the observed string MUST match
                               #   envelope_field_present → the path that should resolve
                               #                          in the protocol envelope
+                              #   envelope_field_absent → null (the envelope field must
+                              #                          not be present)
+                              #   envelope_field_pattern → object { pattern } scoped to the
+                              #                          protocol/version envelope
                               #   status_code          → expected status
                               #   error_code           → expected error code
                               #   any_of               → array of acceptable forms
@@ -227,6 +246,13 @@ validation_result:
                               #                          identifier_paths, purpose_filter,
                               #                          since, attestation_mode_required } —
                               #                          whichever fields the storyboard set.
+                              #   canonical_format_satisfaction
+                              #                       → object { accepted, local_satisfied }
+                              #                          where accepted is the boolean value
+                              #                          from the storyboard validation and
+                              #                          local_satisfied mirrors the expected
+                              #                          local package/product satisfaction
+                              #                          verdict.
                               #   cross_response_field_equal
                               #                       → object { path } — the JSON path
                               #                          asserted equal across every
@@ -251,9 +277,20 @@ validation_result:
                               #   field_present        → null (the field was missing)
                               #                          or the observed non-object
                               #                          value
+                              #   field_absent         → observed value at path (any JSON
+                              #                          type); emitted only on failure
+                              #   field_pattern        → observed value at path (any JSON
+                              #                          type); null when the field was
+                              #                          missing
                               #   envelope_field_present → null (the field was missing)
                               #                          or the observed non-object
                               #                          value (scoped to envelope)
+                              #   envelope_field_absent → observed value at path (any JSON
+                              #                          type); emitted only on failure
+	                              #                          and scoped to envelope
+                              #   envelope_field_pattern → observed envelope value at path
+                              #                          (any JSON type); null when the field
+                              #                          was missing
                               #   field_less_than      → the observed value at `path`
                               #                          (number when resolvable, null
                               #                          when the field was missing).
@@ -278,6 +315,14 @@ validation_result:
                               #                          missing_identifier_values }.
                               #                          The full recorded_calls array
                               #                          lives in `response.payload`;
+                              #   canonical_format_satisfaction
+                              #                       → object { accepted, local_satisfied,
+                              #                          rejection? } where accepted is the
+                              #                          observed task success boolean,
+                              #                          local_satisfied is the runner's
+                              #                          package/product satisfaction verdict,
+                              #                          and rejection summarizes format-related
+                              #                          rejection evidence when the task failed.
                               #   cross_response_field_equal
                               #                       → object { observed_values: [...] } —
                               #                          the values observed at `path` on
@@ -294,12 +339,14 @@ validation_result:
     - schema_id               # $id of the response schema applied. Required
                               # when check == response_schema, null otherwise.
                               # MUST be null for capture_path_not_resolvable,
-                              # unresolved_substitution, and upstream_traffic.
+                              # unresolved_substitution, upstream_traffic, and
+                              # canonical_format_satisfaction.
     - schema_url              # Resolvable URL the implementor can fetch to
                               # validate locally. Required when
                               # check == response_schema, null otherwise.
                               # MUST be null for capture_path_not_resolvable,
-                              # unresolved_substitution, and upstream_traffic.
+                              # unresolved_substitution, upstream_traffic, and
+                              # canonical_format_satisfaction.
   notes:
     synthesized_checks: |
       capture_path_not_resolvable and unresolved_substitution are emitted by
@@ -386,6 +433,12 @@ validation_result:
       comply-test-controller-response.json > UpstreamTrafficSuccess >
       recorded_calls > DigestAttestation) swap raw payload introspection
       for digest-based echo verification:
+        - `recorded_calls[].payload_length` MUST be the byte length of the
+          exact payload bytes covered by `payload_digest_sha256`: RFC 8785
+          (JCS) canonical bytes for JSON-shaped content after redaction, or
+          post-redaction raw body bytes for non-JSON content. It is not the
+          original outbound body length before JSON parsing, redaction, or
+          canonicalization.
         - The runner verifies `identifier_paths` by computing SHA-256 of each
           resolved identifier value, sending the digests in the controller
           query's `params.identifier_value_digests`, and reading the
@@ -401,6 +454,16 @@ validation_result:
           recorded_calls returned in raw mode, so a mixed-mode response
           (some calls raw, some digest) produces partial coverage rather
           than blanket not_applicable.
+        - If the controller cannot produce a digest-mode upstream_traffic
+          response because the parsed JSON-like value tree contains a
+          non-finite numeric value (`NaN`, `+Infinity`, or `-Infinity`),
+          it MUST NOT coerce that value to `null`, a string, or any other
+          placeholder for digest computation; it returns ControllerError
+          with error code `JCS_NON_FINITE_NUMBER`. The runner emits the affected
+          upstream_traffic validation_result with `passed: true` and a
+          `note` citing the RFC 8785/JCS non-finite-number constraint,
+          contributing to `validations_not_applicable` on run_summary
+          (NOT steps_failed).
         - `min_count` and `endpoint_pattern` are unchanged — count and URL
           matching work identically in both modes.
       Storyboards that strictly require raw introspection set
@@ -698,6 +761,14 @@ skip_result:
     the skip is informative (the agent did not claim the protocol) or
     masking (the runner could not apply the storyboard even though the
     agent claimed the protocol).
+
+    Selection is separate from skipping. If the caller asks for a narrower
+    suite or run mode (for example, "Sandbox only") and the runner excludes
+    live-only storyboards before execution, those items are `not_selected`,
+    not `skipped`. A `skip_result` is emitted only after an item was selected
+    for this run and the runner could not execute it because an applicability
+    gate, required tool, test controller, prerequisite, or harness contract
+    was unavailable.
   required_fields:
     - reason                  # not_applicable | no_phases |
                               # prerequisite_failed | missing_tool |
@@ -710,9 +781,17 @@ skip_result:
                               # prerequisite step id, or contract key.
   reasons:
     not_applicable: |
-      The agent did not declare the protocol or specialism this storyboard
-      targets. detail MUST cite the agent's declared supported_protocols
-      and specialisms.
+      The item was selected for this run, but an applicability gate evaluated
+      false. Examples: the agent did not declare the protocol or specialism
+      this storyboard targets, or a scenario's requires_capability check found
+      an optional capability set to false. detail MUST cite the failed gate
+      and the agent's relevant declared supported_protocols, specialisms, or
+      capability value.
+
+      When the runner excludes an item before execution because it is outside
+      the caller's requested suite, run mode, AdCP version, or verification
+      profile, use selection_result instead. Do not report run-mode exclusions
+      as not_applicable skips.
 
       Branch-set grading uses `peer_branch_taken` (see below), not this
       reason — keeping the two distinct lets dashboards filter coverage
@@ -808,6 +887,7 @@ skip_result:
       `requires:` legacy value, or the prefixed `missing_required_tool_family:
       …` shape). Example multi-gate aggregation:
       `controller; missing_required_tool_family: needs list_accounts or sync_accounts (AdCP 3.0.9 §accounts/overview)`.
+
       Automated consumers SHOULD parse only the first sub-reason from
       aggregated `detail` (everything up to the first "; ") and surface
       multi-gate state through a separate UI affordance rather than
@@ -845,6 +925,45 @@ skip_result:
       consumers still see the specific cause. See
       DETAILED_SKIP_TO_CANONICAL in the conforming implementation for a
       concrete mapping.
+
+selection_result:
+  description: |
+    When a track, storyboard, phase, or step is outside the run the caller
+    requested, runners MUST report it as not_selected rather than skipped.
+    Not-selected items are not attempted, do not imply an agent capability
+    gap, and MUST NOT contribute to steps_skipped or any skip-by-reason
+    counter.
+
+    This distinction is load-bearing for Sandbox verification and buyer
+    dashboards. "Sandbox only" means live-only probes are excluded by the
+    selected suite; it does not mean the seller skipped or failed those
+    probes. By contrast, a selected storyboard that cannot run because the
+    seller did not advertise an optional capability, omitted
+    comply_test_controller, or lacks a required tool remains a skip_result
+    with its own reason.
+  required_fields:
+    - reason                  # run_mode_excluded | explicit_scope_excluded |
+                              # version_excluded | profile_excluded
+    - detail                  # human-readable explanation citing the
+                              # selected run mode, explicit storyboard scope,
+                              # AdCP version, or verification profile rule
+                              # that excluded the item.
+  reasons:
+    run_mode_excluded: |
+      The item is incompatible with the selected run mode. Example:
+      a live-only probe is outside a Sandbox-only run. detail MUST cite
+      both the selected mode and the excluded mode requirement.
+    explicit_scope_excluded: |
+      The caller supplied an explicit storyboard, track, protocol, or
+      specialism scope that does not include this item. detail MUST cite
+      the selected scope.
+    version_excluded: |
+      The item is not applicable to the AdCP version selected for this run.
+      detail MUST cite the selected AdCP version and the item's
+      introduced_in or removed_in bound when known.
+    profile_excluded: |
+      A named verification profile intentionally excludes this item before
+      execution. detail MUST cite the profile name and profile rule.
 
 notice:
   description: |
@@ -1071,6 +1190,10 @@ run_summary:
     - steps_passed
     - steps_failed
     - steps_skipped
+    - steps_not_selected       # count of steps excluded before execution by
+                              # suite selection, run mode, AdCP version, or
+                              # verification profile. MUST NOT be included
+                              # in steps_skipped.
     - tracks                  # per-track status with the skip distinctions above
     - schemas_used            # array of { schema_id, schema_url } so an
                               # implementor can re-validate locally against
@@ -1096,6 +1219,21 @@ run_summary:
                               # SHOULD select the highest-capability runner
                               # for conformance grading.
   optional_fields:
+    - not_selected             # array of selection_result objects, or
+                              # implementation-specific objects carrying at
+                              # least selection_result.reason/detail plus the
+                              # storyboard/phase/step identity. Required for
+                              # human-facing reports that mention a
+                              # not-selected count; otherwise the count is not
+                              # actionable.
+    - not_selected_by_reason   # object mapping selection_result.reason values
+                              # to counts. Recommended for dashboards and
+                              # buyer profile evaluators.
+    - skipped_by_reason        # object mapping skip_result.reason values to
+                              # counts. Recommended whenever steps_skipped > 0
+                              # so consumers can distinguish optional
+                              # capability skips from missing required
+                              # surfaces without parsing prose detail strings.
     - validations_not_applicable  # count of validation_result entries graded
                                   # not_applicable due to forward-compat
                                   # (runner does not implement the storyboard's

@@ -19,6 +19,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const yaml = require('js-yaml');
 
 const {
   lint,
@@ -30,6 +33,8 @@ const {
   findArmByDiscriminator,
   findErrorArm,
 } = require('../scripts/lint-storyboard-context-output-paths.cjs');
+
+const REPO_ROOT = path.resolve(__dirname, '..');
 
 test('source tree passes the context-output path lint', () => {
   const violations = lint();
@@ -102,7 +107,7 @@ test('pathResolves descends oneOf variants — captures from a discriminated arm
   const schema = loadSchema('brand/acquire-rights-response.json');
   assert.ok(schema, 'fixture schema loads');
   assert.equal(pathResolves(schema, parsePath('rights_id')), true);
-  assert.equal(pathResolves(schema, parsePath('status')), true);
+  assert.equal(pathResolves(schema, parsePath('rights_status')), true);
   assert.equal(pathResolves(schema, parsePath('reason')), true);
 });
 
@@ -183,6 +188,31 @@ test('allowlist suppresses violations for documented exceptions', () => {
 
   const violations = lintDoc(doc, filePath, allowlist);
   assert.deepEqual(violations, []);
+});
+
+test('allowlist entries still reproduce unresolved path drift without the allowlist', () => {
+  const allowlist = loadAllowlist();
+  const stale = [];
+
+  for (const entry of allowlist) {
+    const filePath = path.join(REPO_ROOT, entry.file);
+    const doc = yaml.load(fs.readFileSync(filePath, 'utf8'));
+    const violations = lintDoc(doc, filePath, []);
+    const stillViolates = violations.some(
+      (violation) =>
+        violation.stepId === entry.step &&
+        violation.contextPath === entry.path &&
+        violation.rule === 'path_not_in_schema',
+    );
+    if (!stillViolates) stale.push(`${entry.file}:${entry.step} — ${entry.path}`);
+  }
+
+  assert.deepEqual(
+    stale,
+    [],
+    'context-output path allowlist entries are stale; remove entries whose paths now resolve:\n' +
+      stale.map((entry) => `  ${entry}`).join('\n'),
+  );
 });
 
 test('expected_arm: "acquired" restricts capture path resolution', () => {

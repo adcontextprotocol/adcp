@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
-# Overlay in-repo compliance source onto @adcp/sdk's bundled cache so the
+# Mirror in-repo compliance source onto @adcp/sdk's bundled cache so the
 # storyboard runner sees current-PR fixtures instead of the SDK-published
 # snapshot. Used by both .github/workflows/training-agent-storyboards.yml
 # and scripts/run-storyboards-matrix.sh — keep them calling the same
 # script so local pre-push and CI grade against the same overlay.
 #
-# Caveat: this overlay does NOT regenerate the SDK's cache index (e.g.,
-# index.json bundles enumerated at build time). New files under existing
-# protocols are picked up via directory walk, but adding a brand-new
-# top-level bundle (a new specialism / universal file) may need a
-# sync-schemas cycle on the SDK side before the runner enumerates it.
-# New files under existing scenarios/ dirs are the common case and
-# work fine.
+# This is intentionally a mirror, not a copy-only overlay: stale files in
+# the SDK cache would otherwise continue to run after a source storyboard is
+# removed from static/compliance/source/. The generated index.json remains
+# the SDK snapshot until SDK sync/publish; domains/ is regenerated locally
+# from protocols/ as the legacy alias.
 
-set -uo pipefail
+set -euo pipefail
 
 SRC="${SRC:-static/compliance/source}"
 # SDK 5.13 moved the cache dir from `latest` to the AdCP version string
@@ -40,7 +38,7 @@ else
   DST=$(find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null \
     | grep -v '\.previous$' \
     | sort \
-    | head -1)
+    | head -1 || true)
 fi
 
 if [ -z "$DST" ] || [ ! -d "$DST" ]; then
@@ -48,10 +46,46 @@ if [ -z "$DST" ] || [ ! -d "$DST" ]; then
   exit 0
 fi
 
-echo "Overlaying $SRC onto $DST"
-(cd "$SRC" && find . -type f) | while read -r rel; do
-  target="$DST/${rel#./}"
-  mkdir -p "$(dirname "$target")"
-  cp "$SRC/${rel#./}" "$target"
+echo "Mirroring $SRC onto $DST"
+SOURCE_ENTRIES=(
+  "protocols"
+  "specialisms"
+  "test-kits"
+  "test-vectors"
+  "universal"
+)
+
+for entry in "${SOURCE_ENTRIES[@]}"; do
+  if [ ! -e "$SRC/$entry" ]; then
+    continue
+  fi
+  rm -rf "$DST/$entry"
+  mkdir -p "$DST"
+  cp -R "$SRC/$entry" "$DST/$entry"
 done
-echo "Overlay complete."
+
+if [ -d "$DST/protocols" ]; then
+  rm -rf "$DST/domains"
+  cp -R "$DST/protocols" "$DST/domains"
+fi
+
+node - "$SRC" "$DST" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+const { generateIndex } = require('./scripts/build-compliance.cjs');
+
+const sourceDir = path.resolve(process.argv[2]);
+const targetDir = path.resolve(process.argv[3]);
+let version = path.basename(targetDir);
+try {
+  const prior = JSON.parse(fs.readFileSync(path.join(targetDir, 'index.json'), 'utf8'));
+  version = prior.published_version || prior.adcp_version || version;
+} catch {
+  // Fall back to the target directory name when the SDK cache has no index yet.
+}
+const index = generateIndex(version, sourceDir);
+fs.writeFileSync(path.join(targetDir, 'index.json'), JSON.stringify(index, null, 2) + '\n');
+NODE
+
+node scripts/lint-compliance-source-authority.cjs --source "$SRC" --target "$DST"
+echo "Mirror complete."

@@ -14,6 +14,8 @@ requires_scenarios:
   - media_buy_seller/pending_creatives_to_start
   - media_buy_seller/inventory_list_targeting
   - media_buy_seller/inventory_list_no_match
+  - media_buy_seller/product_signal_targeting
+  - media_buy_seller/available_actions
   - media_buy_seller/invalid_transitions
   - media_buy_seller/creative_fate_after_cancellation
   - media_buy_seller/create_media_buy_async
@@ -256,8 +258,9 @@ phases:
         title: "Send a brief"
         narrative: |
           The buyer describes what they want in natural language. Your platform returns
-          products that match the brief, including pricing options, delivery forecasts,
-          and creative format requirements.
+          up to five representative products that match the brief, including pricing
+          options, delivery forecasts, and creative format requirements. Exhaustive
+          catalog enumeration is not required for this compliance step.
 
           This call may take up to 60 seconds — your platform is running AI inference
           against your inventory catalog. If the brief is ambiguous, you can return
@@ -269,7 +272,7 @@ phases:
         comply_scenario: full_sales_flow
         stateful: false
         expected: |
-          Return products matching the brief. Each product should include:
+          Return up to five products matching the brief. Each product should include:
           - product_id: unique identifier
           - name and description
           - delivery_type: guaranteed or non_guaranteed
@@ -286,6 +289,8 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Premium video inventory on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US and Canada."
+          pagination:
+            max_results: 5
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -442,9 +447,10 @@ phases:
 
           Synchronous (completed):
           - media_buy_id: your platform's identifier
-          - status: active or pending_creatives
+          - media_buy_status: active, pending_start, or pending_creatives (deprecated top-level status may mirror this during the 3.1 migration window)
           - packages: line items with pricing
-          - confirmed_at: timestamp
+          - confirmed_at: seller commitment timestamp, or null only for a provisional buy that already exists and is retrievable
+          - revision: optimistic concurrency token
           - valid_actions: what the buyer can do next
 
           Asynchronous (working):
@@ -454,7 +460,7 @@ phases:
           Async with human approval (submitted):
           - task_id / taskId: handle the buyer polls or receives webhooks on
           - message (optional): explanation of what the seller is waiting on (e.g., "Awaiting IO signature from sales team; typical turnaround 2–4 hours")
-          - No media_buy_id yet — it is issued on task completion
+          - No media_buy_id yet — it is issued on task completion. If you allocate media_buy_id before commitment, return synchronous success with confirmed_at: null instead, and make the provisional buy retrievable via get_media_buys.
           - Seller-side IO signing is modelled here (task stays submitted until signed). Do not emit a "pending_approval" media buy status — that value is not in MediaBuy.status
 
           Needs input (input-required):
@@ -557,6 +563,14 @@ phases:
             path: "context.correlation_id"
             value: "media_buy_seller--check_buy_status"
             description: "Context correlation_id returned unchanged"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "media_buy_id"
+            description: "get_media_buys returns the media_buy_id created earlier"
+          - check: field_value
+            path: "media_buys[0].context.correlation_id"
+            value: "media_buy_seller--create_media_buy"
+            description: "get_media_buys includes persisted media-buy context from create_media_buy"
 
   - id: creative_sync
     title: "Creative sync"
@@ -578,9 +592,10 @@ phases:
       - id: list_formats
         title: "Check creative format requirements"
         narrative: |
-          The buyer confirms what creative formats the confirmed packages require.
-          Your platform returns format specs with asset requirements, dimensions,
-          and constraints.
+          The buyer confirms the first creative format referenced by the discovered
+          product. Your platform returns that format spec with asset requirements,
+          dimensions, and constraints. This is a bounded integrity check, not a
+          full format-catalog dump.
         task: list_creative_formats
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
@@ -588,12 +603,16 @@ phases:
         comply_scenario: creative_lifecycle
         stateful: false
         expected: |
-          Return creative formats your platform accepts. Each format should define:
+          Return the creative format referenced by the discovered product. The format should define:
           - format_id with your agent_url and unique id
           - Asset requirements (dimensions, file sizes, mime types)
           - Render dimensions
 
         sample_request:
+          format_ids:
+            - "$context.product_format_id"
+          pagination:
+            max_results: 1
           context:
             correlation_id: "media_buy_seller--list_formats"
 
@@ -618,8 +637,8 @@ phases:
             description: "Context correlation_id returned unchanged"
           - check: refs_resolve
             description: |
-              Every format_id returned on products resolves to a format in this
-              agent's list_creative_formats. Broken references here surface as a
+              The captured format_id returned on the first product resolves to a
+              format in this agent's list_creative_formats. Broken references here surface as a
               grading failure instead of a silent mismatch that only breaks at
               sync_creatives time, after the buy is committed. Third-party
               format_ids (agent_url pointing at a different creative agent)
@@ -627,7 +646,7 @@ phases:
               observations rather than failures.
             source:
               from: context
-              path: "products[*].format_ids[*]"
+              path: "product_format_id"
             target:
               from: current_step
               path: "formats[*].format_id"

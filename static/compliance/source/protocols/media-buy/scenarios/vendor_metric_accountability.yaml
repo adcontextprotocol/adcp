@@ -132,6 +132,7 @@ phases:
           brief: "Display inventory with attention measurement from attentionvendor."
           filters:
             channels: ["display"]
+            is_fixed_price: true
             required_vendor_metrics:
               - vendor:
                   domain: "attentionvendor.example"
@@ -159,6 +160,9 @@ phases:
           - check: field_present
             path: "products[0].reporting_capabilities.vendor_metrics[0].metric_id"
             description: "Each declared vendor metric entry carries a metric_id"
+          - check: field_present
+            path: "products[0].pricing_options[0].fixed_price"
+            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
 
   - id: create_media_buy
     title: "Commit the media buy on the matched product"

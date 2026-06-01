@@ -4,6 +4,15 @@ title: "Creative sync unblocks pending_creatives → pending_start"
 category: media_buy_seller
 summary: "Verifies that a media buy created without creatives sits in pending_creatives until sync_creatives completes, then transitions to pending_start."
 track: media_buy
+
+# This scenario requires an explicit auto-approval declaration. Sellers that
+# declare `require_human`, or omit the field because approval behavior is
+# legacy-unspecified, grade not_applicable rather than false-failing on a
+# manual-review workflow.
+requires_capability:
+  path: media_buy.creative_approval_mode
+  equals: auto_approve
+
 required_tools:
   - get_products
   - create_media_buy
@@ -20,6 +29,8 @@ narrative: |
   sync a creative, and confirm the status advances to pending_start. The transition
   proves that the creative pipeline and the buy state machine are wired together — a
   common integration gap when creative and media buy systems live on different backends.
+  Sellers with manual creative review declare media_buy.creative_approval_mode:
+  require_human and skip this auto-approval-dependent scenario as not_applicable.
 
 agent:
   interaction_model: media_buy_seller
@@ -56,6 +67,8 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content. Q3 flight."
+          filters:
+            is_fixed_price: true
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -73,6 +86,9 @@ phases:
           - check: field_present
             path: "products[0].format_ids[0].id"
             description: "Product declares a format_id for creative sync"
+          - check: field_present
+            path: "products[0].pricing_options[0].fixed_price"
+            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
 
   - id: create_without_creatives
     title: "Create media buy without creative_assignments"
@@ -110,6 +126,8 @@ phases:
             - product_id: "$context.product_id"
               budget: 10000
               pricing_option_id: "$context.pricing_option_id"
+              context:
+                buyer_ref: "pending-creatives-line-001"
 
           context:
             correlation_id: "pending_creatives_to_start--create_buy_no_creatives"
@@ -139,6 +157,14 @@ phases:
             path: "context.correlation_id"
             value: "pending_creatives_to_start--create_buy_no_creatives"
             description: "Context correlation_id returned unchanged"
+          - check: field_equals_context
+            path: "packages[0].product_id"
+            context_key: "product_id"
+            description: "Created package echoes the requested product_id for package-to-product correlation"
+          - check: field_value
+            path: "packages[0].context.buyer_ref"
+            value: "pending-creatives-line-001"
+            description: "Created package echoes package-level context for legacy package correlation"
 
   - id: supply_creatives
     title: "Supply creatives and assign to the package"
@@ -256,3 +282,11 @@ phases:
             path: "media_buys[0].status"
             allowed_values: ["pending_start", "active"]
             description: "Persisted status is past pending_creatives"
+          - check: field_equals_context
+            path: "media_buys[0].packages[0].product_id"
+            context_key: "product_id"
+            description: "Read package retains the product_id from the explicit create request"
+          - check: field_value
+            path: "media_buys[0].packages[0].context.buyer_ref"
+            value: "pending-creatives-line-001"
+            description: "Read package includes persisted package context for legacy package correlation"

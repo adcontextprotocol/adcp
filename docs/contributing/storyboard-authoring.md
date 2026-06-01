@@ -6,7 +6,9 @@ description: "How to author AdCP compliance storyboards: the canonical account s
 
 # Storyboard authoring — scoping rules
 
-Compliance storyboards live under `static/compliance/source/`. Each step that invokes a training-agent task that scopes session state by tenant **must** carry brand or account identity in `sample_request`. Otherwise the call lands in `open:default`, and a follow-up step that *does* carry identity writes to `open:<brand>` — giving you `MEDIA_BUY_NOT_FOUND` against your own just-created media buy.
+Compliance storyboards live under `static/compliance/source/`, the canonical authored source for the compliance bundle. Do not add generated cache artifacts such as `domains/` or `index.json` there; `scripts/build-compliance.cjs` creates them in `dist/compliance/latest/` during development and stamps `dist/compliance/{version}/` on release.
+
+Each step that invokes a training-agent task that scopes session state by tenant **must** carry brand or account identity in `sample_request`. Otherwise the call lands in `open:default`, and a follow-up step that *does* carry identity writes to `open:<brand>` — giving you `MEDIA_BUY_NOT_FOUND` against your own just-created media buy.
 
 This rule is enforced at build time by `scripts/lint-storyboard-scoping.cjs`, which runs as part of `npm run build:compliance`.
 

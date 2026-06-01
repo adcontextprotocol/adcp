@@ -147,6 +147,8 @@ phases:
         sample_request:
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content. Q2 flight."
+          filters:
+            is_fixed_price: true
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -162,6 +164,9 @@ phases:
           - check: field_present
             path: "products"
             description: "Response contains products"
+          - check: field_present
+            path: "products[0].pricing_options[0].fixed_price"
+            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
 
       - id: create_media_buy_denied
         title: "Attempt $50K buy — denied"

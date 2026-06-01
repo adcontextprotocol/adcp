@@ -691,7 +691,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     && (sdkResponse as { success?: boolean }).success === true
     && Array.isArray((sdkResponse as { scenarios?: unknown }).scenarios)
   ) {
-    const r = sdkResponse as { success: true; scenarios: string[] } & Record<string, unknown>;
+    const r = sdkResponse as unknown as { success: true; scenarios: string[] } & Record<string, unknown>;
     return { ...r, scenarios: Array.from(new Set([...r.scenarios, ...LOCAL_SCENARIOS])) };
   }
 

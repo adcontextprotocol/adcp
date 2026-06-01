@@ -314,7 +314,7 @@
 #
 # agent:
 #   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller | marketplace_catalog | owned_signals | si_platform | brand_rights_holder | governance_agent)
-#   capabilities: string[] (AdCP capability flags: supports_transformation, has_creative_library, supports_generation, sells_media, accepts_briefs, supports_guaranteed, supports_non_guaranteed, catalog_signals)
+#   capabilities: string[] (legacy descriptive capability labels; bundle selection is driven by get_adcp_capabilities.supported_protocols and specialisms)
 #   examples: string[] (real-world examples: "Celtra", "Innovid")
 #
 # caller:
@@ -356,8 +356,12 @@
 #           status: "active"
 #   Each top-level key maps to a seed_* scenario (products → seed_product,
 #   pricing_options → seed_pricing_option, creatives → seed_creative,
-#   plans → seed_plan, media_buys → seed_media_buy). Foreign-key dependency DAG
-#   the runner MUST honor when auto-seeding:
+#   plans → seed_plan, media_buys → seed_media_buy). Storyboards that need an
+#   external measurement vendor catalog SHOULD add an explicit
+#   comply_test_controller step with scenario: seed_measurement_catalog. Product
+#   fixtures may carry `measurement_catalogs[]` entries only as a compatibility
+#   fallback when a storyboard needs to keep that snapshot beside the product
+#   contract. Foreign-key dependency DAG the runner MUST honor when auto-seeding:
 #
 #     product ──┬─→ pricing_option
 #               ├─→ plan
@@ -390,8 +394,17 @@
 #     id                 string (short identifier)
 #     auth.api_key       string (`demo-<kit>-v1` pattern; the demo Bearer the
 #                        runner sends on positive api-key probes)
+#       OR
+#     auth.basic         object (the demo HTTP Basic credential the runner sends
+#                        on positive Basic probes). Shape is either:
+#                          username: string
+#                          password: string
+#                        or:
+#                          credentials: string
+#                        where `credentials` is the unencoded `username:password`
+#                        pair used to build the Authorization header.
 #     auth.probe_task    string (the protected read the runner calls under
-#                        `auth: none` and with a random-invalid key)
+#                        `auth: none` and with random-invalid credentials)
 #     brand              object (house + brand_id + names + logos + colors +
 #                        fonts + tone — full brand.json payload)
 #     + optional products, creatives, pricing_options, destinations, etc.
@@ -419,9 +432,10 @@
 #   "no credentials" property is temporal, not structural.
 #
 # Enforcement. `scripts/lint-storyboard-test-kits.cjs` fails the build if a
-# kit under `test-kits/` declares neither `auth.api_key` nor `applies_to` —
-# that's the bimodal partition this section describes. The lint tolerates
-# kits that declare both (the future-branded-runner case above).
+# kit under `test-kits/` declares none of `auth.api_key`, `auth.basic`, or
+# `applies_to` — that's the bimodal partition this section describes. The lint
+# tolerates kits that declare both a credential marker and `applies_to` (the
+# future-branded-runner case above).
 #
 # Composition. Storyboards that need BOTH a brand identity AND a harness
 # contract declare the brand kit in `prerequisites.test_kit` and opt into the
@@ -443,9 +457,9 @@
 # docs).
 #
 # `test_kit=<path>` in the contradiction-lint fingerprint disambiguates the
-# two flavors — `auth=kit_default` resolves to the kit's api_key for brand
-# kits and to no-credential for runner contracts, but the two never collide
-# because the `test_kit=` component separates them.
+# two flavors — `auth=kit_default` resolves to the kit's static credential for
+# brand kits and to no-credential for runner contracts, but the two never
+# collide because the `test_kit=` component separates them.
 #
 # Future: if a storyboard ever needs to compose TWO runner contracts
 # simultaneously (e.g., signed-requests + substitution-observer), the step-
@@ -567,6 +581,10 @@
 #   auth: { type: api_key, value_strategy: random_invalid }
 #                                                         → use a per-run random bogus API key (for invalid-key probes).
 #                                                           Runner generates `invalid-<32 random bytes>` per run.
+#   auth: { type: basic, from_test_kit: "auth.basic" }   → use the Basic credential at `auth.basic` in the test kit
+#   auth: { type: basic, value_strategy: random_invalid }
+#                                                         → use a per-run random bogus Basic credential (for invalid-Basic probes).
+#                                                           Runner generates random username/password bytes per run.
 #   auth: { type: oauth_bearer, value_strategy: random_invalid_jwt }
 #                                                         → use a per-run random JWT-shaped bogus Bearer token.
 #                                                           Runner generates `<base64url random>.<base64url random>.<base64url random>` per run.
@@ -577,12 +595,14 @@
 # `lint-storyboard-auth-shape.cjs` (rule `literal_value`) fails the build on this
 # shape. Use `from_test_kit` or `value_strategy` instead. See #2720.
 #
-# omit_idempotency_key: boolean (optional — when true on a mutating-task step,
-#   the runner skips `applyIdempotencyInvariant` and signals the SDK client via
+# omit_idempotency_key: boolean (optional — when true on a task step, the runner
+#   skips `applyIdempotencyInvariant` and signals the SDK client via
 #   `skipIdempotencyAutoInject` so the request reaches the agent WITHOUT an
 #   `idempotency_key`. Use for missing-key rejection vectors — without this flag
-#   the SDK auto-injects a key and the agent never sees the missing-key path.
-#   Applies only to mutating tasks (create/update/cancel); ignored on reads.)
+#   the SDK may auto-inject a key and the agent never sees the missing-key path.
+#   3.0 used this only for mutating tasks. 3.1 extends `idempotency_key` to every
+#   request, so read-tool omission probes SHOULD also set this flag to prevent
+#   current or future runner/client auto-injection from masking the vector.)
 #
 # contributes_to: string (optional — marks this step as contributing a named flag
 #                         that a later assert_contribution step can require)
@@ -1043,8 +1063,15 @@
 # enum AND document semantics here in the same PR.
 #
 # check: string (what to validate: "response_schema", "field_present",
-#                "envelope_field_present" (walks protocol-envelope.json instead of
-#                response_schema_ref — use for top-level envelope fields like `status`),
+#                "field_pattern" (path MUST resolve to a string matching
+#                `pattern`, a JavaScript regular expression source),
+#                "envelope_field_present" / "envelope_field_absent" (walks
+#                protocol-envelope.json instead of response_schema_ref — use for
+#                top-level envelope fields like `status`, `task_status`, and
+#                `response_status`),
+#                "envelope_field_pattern" (same as field_pattern, but scoped to
+#                protocol-envelope.json / version-envelope.json instead of
+#                response_schema_ref),
 #                "field_value",
 #                "field_value_or_absent", "status_code", "http_status", "http_status_in",
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",
@@ -1053,7 +1080,10 @@
 #                step's response against a value captured by a prior step — see
 #                "Cross-step comparison" section below),
 #                "upstream_traffic" (asserts side-effects via comply_test_controller's
-#                query_upstream_traffic scenario — see "upstream_traffic" section below))
+#                query_upstream_traffic scenario — see "upstream_traffic" section below),
+#                "canonical_format_satisfaction" (asserts create_media_buy package
+#                selectors against prior get_products format_options[] context — see
+#                "Canonical format satisfaction" section below))
 # severity: string (optional, default "required"): "required" | "advisory".
 #                A "required" validation failure fails the step and contributes
 #                to steps_failed; this is the default. An "advisory" failure
@@ -1205,6 +1235,33 @@
 #   MUST NOT assert on them (that couples the conformance suite to a specific
 #   vendor's taxonomy). When a test needs to accept multiple possible codes,
 #   use `allowed_values: [...]` rather than a single-code `value:` assertion.
+#
+# Canonical format satisfaction — use `check: canonical_format_satisfaction`:
+#   Applies only to create_media_buy steps. The runner compares each package's
+#   format selector against the target product captured from prior get_products
+#   context. When multiple get_products responses exist, the runner MUST use
+#   the most recent prior get_products response containing the package's
+#   product_id; if no such response exists, the check fails as an authoring or
+#   setup error. `value: true` means the request should be accepted; `value:
+#   false` means the request should be rejected for a format-selector cause.
+#
+#   The check normalizes legacy `format_ids[]` through `v1_format_ref[]` and the
+#   v1-to-canonical registry, resolves `format_option_refs[]`, and applies
+#   directional product gating for fixed dimensions, duration declarations,
+#   canonical params, and range containment. Negative cases only pass when the
+#   observed rejection is attributable to formats, so unrelated auth or tenant
+#   failures do not mask selector bugs.
+#
+#   Fields:
+#     check: canonical_format_satisfaction
+#     value: boolean                # true = expected accepted; false = expected rejected.
+#     path: string                  # optional; selects one package object or package array.
+#                                   # default is the request payload's packages[] array.
+#
+#   Example:
+#     - check: canonical_format_satisfaction
+#       value: false
+#       description: "Bare image selector lacks the dimensions required by the fixed product"
 #
 # Cross-step integrity — use `check: refs_resolve`:
 #   `refs_resolve` asserts every ref in a source set resolves to a member of a
@@ -1396,6 +1453,34 @@
 #   recorded calls during the assertion window grade as failed (the
 #   "controller present and observed nothing" path is the façade signal).
 #
+#   Runner attestation-mode selection (normative):
+#     Conforming runners MUST choose params.attestation_mode for
+#     comply_test_controller query_upstream_traffic calls in a way that
+#     preserves assertion coverage:
+#       1. If any upstream_traffic validation in the current step sets
+#          attestation_mode_required: "raw", request "raw".
+#       2. Else if any upstream_traffic validation in the current step declares
+#          payload_must_contain, request "raw"; arbitrary payload-path
+#          assertions cannot be evaluated from digest attestations.
+#       3. Else if every upstream_traffic validation in the current step can
+#          be evaluated from count/endpoint/purpose plus identifier_paths, and
+#          the runner can supply params.identifier_value_digests for all
+#          resolved identifier values, the runner SHOULD request "digest" when
+#          it knows the matching upstream calls are JSON-shaped
+#          (`application/json` or `*/*+json`). If the runner does not know the
+#          matching calls are JSON-shaped, request "raw"; digest-mode
+#          identifier_match_proofs are intentionally unavailable for non-JSON
+#          payloads, so an unconditional digest request can turn an otherwise
+#          evaluable identifier_paths assertion into not_applicable.
+#       4. Otherwise, request "raw".
+#     Controllers MAY still return digest-mode attestations for a raw request
+#     when local policy forbids raw payload disclosure; raw-required and
+#     payload_must_contain assertions then grade not_applicable as described
+#     below.
+#     Storyboard authors SHOULD NOT invent non-schema attestation-mode hints.
+#     Use attestation_mode_required: "raw" only for hard raw requirements;
+#     otherwise rely on this runner selection rule.
+#
 #   Fields:
 #     min_count: integer (default: 1)
 #                              # Minimum number of recorded calls that match
@@ -1421,16 +1506,21 @@
 #     payload_must_contain: array of MatchSpec (optional)
 #                              # Each entry asserts a path/value pair that MUST
 #                              # appear in at least one matching call's payload.
-#                              # Path syntax: positional dotted path with `[*]`
-#                              # array wildcards. Examples:
+#                              # Path syntax: JSONPath-lite positional path
+#                              # with `[*]` array wildcards. Shared storyboards
+#                              # SHOULD use the bare dotted form. Examples:
 #                              #   "users[*].hashed_email"
 #                              #   "data.audience.members[*].id"
-#                              # The `[*]` wildcard flattens over arrays and
-#                              # passes if any element matches. RFC 9535
-#                              # JSONPath descendant syntax (`$..foo`) is NOT
+#                              # The literal `[*]` wildcard flattens over arrays
+#                              # and passes if any element matches. The runner
+#                              # also tolerates optional `$` / `$.` prefixes and
+#                              # standalone numeric index tokens for SDK
+#                              # compatibility (for example `items.[0].id`);
+#                              # shared storyboards should avoid indexes unless
+#                              # a position-specific assertion is intentional.
+#                              # RFC 9535 JSONPath descendant syntax (`$..foo`) is NOT
 #                              # supported — the runner uses
-#                              # parsePathWithWildcards from @adcp/sdk, which
-#                              # recognizes `[*]` only. Path matching only
+#                              # JSONPath-lite matching from @adcp/sdk. Path matching only
 #                              # applies when recorded_calls[].content_type is
 #                              # JSON-shaped — defined as `application/json`
 #                              # or any structured-syntax-suffix `*/*+json`
@@ -1476,11 +1566,28 @@
 #                              # it by fabricating a constant placeholder hash,
 #                              # because the placeholder will not match the
 #                              # storyboard's supplied value.
-#                              # Path syntax: same dotted-with-[*] form as
-#                              # `payload_must_contain.path`. Each path MAY
-#                              # resolve to a single value or an array; all
-#                              # resolved values MUST be present in the
-#                              # recorded payload. Replaces the earlier
+#                              # Portable path grammar (normative):
+#                              # request-payload-relative dotted paths where
+#                              # each segment is an identifier key optionally
+#                              # followed by one `[*]` array wildcard. Example:
+#                              #   "audiences[*].add[*].hashed_email"
+#                              # Supported segment form:
+#                              #   [A-Za-z_][A-Za-z0-9_-]* or
+#                              #   [A-Za-z_][A-Za-z0-9_-]*[*]
+#                              # Unsupported forms MUST be rejected at
+#                              # storyboard load/lint time rather than treated
+#                              # as paths that resolve to zero values:
+#                              # bracket-quoted keys (`foo["bar"]`), numeric
+#                              # indexes (`items[0]`), recursive descent
+#                              # (`$..foo`), absolute roots (`$.foo`), empty
+#                              # segments, and reserved roots (`request.*`,
+#                              # `response.*`, `context.*`). The path is
+#                              # already relative to the storyboard step's
+#                              # sample_request; adding an explicit root makes
+#                              # the same storyboard ambiguous across runners.
+#                              # Each path MAY resolve to a single value or an
+#                              # array; all resolved values MUST be present in
+#                              # the recorded payload. Replaces the earlier
 #                              # `buyer_identifier_echo: boolean` shorthand
 #                              # (which left "what counts as an identifier" to
 #                              # convention) with an explicit enumeration.
@@ -1562,6 +1669,19 @@
 #       - `payload_must_contain` arbitrary path assertions: NOT supported in
 #         digest mode. Each entry grades `not_applicable` per affected call,
 #         with a note explaining the mode constraint.
+#       - JCS non-finite numbers: when a digest-mode upstream_traffic response
+#         cannot be produced because the parsed JSON-like value tree contains
+#         a non-finite numeric value (`NaN`, `+Infinity`, or `-Infinity`), the
+#         controller MUST NOT coerce that value to `null`, a string, or any
+#         other placeholder for digest computation; it returns ControllerError
+#         with error code `JCS_NON_FINITE_NUMBER`; the runner grades the
+#         affected validation `not_applicable`, not failed, with a note citing
+#         the RFC 8785/JCS constraint.
+#       - `payload_length`: MUST equal the exact byte length covered by
+#         `payload_digest_sha256` — RFC 8785 (JCS) canonical bytes for
+#         JSON-shaped content after redaction, or post-redaction raw body bytes
+#         for non-JSON content. It is not the original outbound body length
+#         before JSON parsing, redaction, or canonicalization.
 #       - `identifier_paths` echo verification: supported via the controller's
 #         `identifier_match_proofs[]`. The runner computes SHA-256 of each
 #         resolved identifier value, sends the digests in

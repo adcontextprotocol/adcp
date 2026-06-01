@@ -2,10 +2,22 @@
   "$comment": "Per-storyboard exceptions for lint-storyboard-context-output-paths.cjs. Each entry MUST carry a `reason` explaining why the lint can't statically verify the path against the response schema. Re-review during spec changes — if the polymorphism the lint can't follow gets first-class schema treatment, remove the entry.",
   "allowlist": [
     {
-      "file": "static/compliance/source/universal/idempotency.yaml",
-      "step": "create_media_buy_initial",
-      "path": "idempotency_key",
-      "reason": "Captures the seller's echo of the request `idempotency_key` for replay-comparison in the next step. Response schemas have `oneOf` arms (so the root is not a pure extension point) and the arms don't list `idempotency_key` explicitly — the echo is a runtime convention the storyboard depends on, not a spec requirement. Idempotency-replay testing inherently asserts on the echo; removing the convention would require redesigning how the runner threads request-side values into downstream comparisons, or speccing `idempotency_key` as an optional response field."
+      "file": "static/compliance/source/protocols/media-buy/scenarios/product_signal_targeting.yaml",
+      "step": "get_signals_wholesale",
+      "path": "signals[0].signal_ref",
+      "reason": "Forward schema drift from the @adcp/sdk@8.1.0-beta.19 storyboard mirror (#5016). Remove when the matching 3.1.0-rc.4 schema changes land in static/schemas/source."
+    },
+    {
+      "file": "static/compliance/source/protocols/media-buy/scenarios/product_signal_targeting.yaml",
+      "step": "get_signals_wholesale",
+      "path": "signals[1].signal_ref",
+      "reason": "Forward schema drift from the @adcp/sdk@8.1.0-beta.19 storyboard mirror (#5016). Remove when the matching 3.1.0-rc.4 schema changes land in static/schemas/source."
+    },
+    {
+      "file": "static/compliance/source/specialisms/sales-guaranteed/index.yaml",
+      "step": "create_media_buy",
+      "path": "task_completion.media_buy_id",
+      "reason": "Forward schema drift from the @adcp/sdk@8.1.0-beta.19 storyboard mirror (#5016). Remove when the matching 3.1.0-rc.4 schema changes land in static/schemas/source."
     }
   ]
 }

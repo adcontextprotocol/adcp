@@ -106,6 +106,7 @@ interface CreativeAssignmentInput {
 const MAX_URL_LEN = 2048;
 const MAX_ID_LEN = 256;
 const MAX_TOKEN_LEN = 4096;
+const PRODUCT_WHOLESALE_FEED_VERSION = 'training-products-v1';
 
 function validateListRef(ref: unknown, pathLabel: string): { ref?: ListReference; error?: TaskError } {
   if (ref === undefined || ref === null) return {};
@@ -1387,6 +1388,29 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const contextEcho = req.context ? { context: req.context } : {};
+  const wholesaleFields = buyingMode === 'wholesale'
+    ? { wholesale_feed_version: PRODUCT_WHOLESALE_FEED_VERSION }
+    : {};
+
+  if ((req as unknown as { if_pricing_version?: unknown }).if_pricing_version !== undefined && !req.if_wholesale_feed_version) {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'if_pricing_version requires if_wholesale_feed_version for product feed probes.',
+      }],
+      ...contextEcho,
+    };
+  }
+
+  if (buyingMode === 'wholesale' && req.if_wholesale_feed_version === PRODUCT_WHOLESALE_FEED_VERSION) {
+    return {
+      unchanged: true,
+      cache_scope: 'public',
+      ...wholesaleFields,
+      ...contextEcho,
+    };
+  }
 
   let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
 
@@ -1411,6 +1435,45 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     const deliveryTypeFilter = req.filters.delivery_type;
     if (deliveryTypeFilter) {
       products = products.filter(p => p.delivery_type === deliveryTypeFilter);
+    }
+    const wantsFixedPrice = (req.filters as { is_fixed_price?: unknown }).is_fixed_price;
+    if (wantsFixedPrice === true) {
+      products = products
+        .map(p => ({
+          ...p,
+          pricing_options: [...p.pricing_options].sort((a, b) =>
+            Number((b as { fixed_price?: unknown }).fixed_price !== undefined) -
+            Number((a as { fixed_price?: unknown }).fixed_price !== undefined),
+          ),
+        }))
+        .filter(p => p.pricing_options.some(option => (option as { fixed_price?: unknown }).fixed_price !== undefined));
+    }
+    const pricingCurrencies = (req.filters as { pricing_currencies?: unknown }).pricing_currencies;
+    if (Array.isArray(pricingCurrencies) && pricingCurrencies.every(c => typeof c === 'string')) {
+      const acceptedCurrencies = new Set(pricingCurrencies);
+      const seededProductIds = new Set<string>(session.complyExtensions.seededProducts.keys());
+      for (const key of session.complyExtensions.seededPricingOptions.keys()) {
+        const sep = key.indexOf(':');
+        seededProductIds.add(sep > 0 ? key.slice(0, sep) : key);
+      }
+      products = products
+        .filter(p => seededProductIds.size === 0 || seededProductIds.has(p.product_id))
+        .map(p => ({
+          ...p,
+          pricing_options: p.pricing_options.filter(option => acceptedCurrencies.has(option.currency)),
+        }))
+        .filter(p => {
+          if (p.pricing_options.length === 0) return false;
+          const rules = (p as { signal_targeting_rules?: { selection_mode?: string } }).signal_targeting_rules;
+          const signalOptions = (p as { signal_targeting_options?: Array<{ default_selected?: boolean; pricing_options?: Array<{ currency?: string }> }> }).signal_targeting_options;
+          if (rules?.selection_mode !== 'fixed' || !Array.isArray(signalOptions)) return true;
+          return signalOptions.every(option => {
+            if (option.default_selected === false || !Array.isArray(option.pricing_options) || option.pricing_options.length === 0) {
+              return true;
+            }
+            return option.pricing_options.some(price => typeof price.currency === 'string' && acceptedCurrencies.has(price.currency));
+          });
+        });
     }
     const requiredVendorMetrics = (req.filters as { required_vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> }).required_vendor_metrics;
     if (requiredVendorMetrics?.length) {
@@ -1620,18 +1683,23 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     ? session.lastGetProductsContext.proposals
     : getProposals();
 
-  const proposals = sourceProposals.filter(proposal =>
-    proposal.allocations.every(a => productIds.has(a.product_id)) &&
-    !proposalOmitIds.has(proposal.proposal_id),
-  );
+  const proposals = buyingMode === 'wholesale'
+    ? []
+    : sourceProposals.filter(proposal =>
+        proposal.allocations.every(a => productIds.has(a.product_id)) &&
+        !proposalOmitIds.has(proposal.proposal_id),
+      );
 
   // Store context for refine
   session.lastGetProductsContext = { products, proposals };
 
   return {
     products,
+    cache_scope: 'public',
+    ...wholesaleFields,
     ...(proposals.length > 0 && { proposals }),
     ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
+    ...contextEcho,
   };
 }
 
@@ -3797,6 +3865,8 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
+  const completedStatus = { status: 'completed' as const };
+  const failedStatus = { status: 'failed' as const };
 
   // Determine target formats (cap at 50 to prevent response amplification)
   const MAX_TARGET_FORMATS = 50;
@@ -3811,6 +3881,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     const creative = session.creatives.get(req.creative_id) ?? getComplianceCreative(req.creative_id);
     if (!creative) {
       return {
+        ...failedStatus,
         errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative "${req.creative_id}" not found. Use sync_creatives to upload or list_creatives to browse.` }],
       };
     }
@@ -3820,6 +3891,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     const { w, h } = getDimensions(format);
 
     const base = {
+      ...completedStatus,
       creative_manifest: {
         format_id: { agent_url: agentUrl, id: formatId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
@@ -3866,7 +3938,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
         };
       });
 
-      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }) };
+      return { ...completedStatus, creative_manifests, ...(governanceContext && { governance_context: governanceContext }) };
     }
 
     // Single format response
@@ -3875,6 +3947,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     const { w, h } = getDimensions(format);
 
     return {
+      ...completedStatus,
       creative_manifest: {
         format_id: { agent_url: agentUrl, id: fmtId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent tag -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" data-input-assets="${inputAssetCount}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Built: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
@@ -3894,7 +3967,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
           assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
         };
       });
-      return { creative_manifests, ...(governanceContext && { governance_context: governanceContext }) };
+      return { ...completedStatus, creative_manifests, ...(governanceContext && { governance_context: governanceContext }) };
     }
 
     const fmtId = targetIds[0];
@@ -3902,6 +3975,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     const { w, h } = getDimensions(format);
 
     return {
+      ...completedStatus,
       creative_manifest: {
         format_id: { agent_url: agentUrl, id: fmtId.id },
         assets: buildHtmlAssets(`<!-- AdCP Training Agent generated -->\n<div data-adcp-format="${escapeHtmlAttr(fmtId.id)}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#047857,#0d9488);display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;color:#fff;border-radius:4px;">Generated: ${escapeHtmlAttr(fmtId.id)} (${w}x${h})</div>`),
@@ -3911,6 +3985,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
   }
 
   return {
+    ...failedStatus,
     errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_id (library mode), creative_manifest (transformation mode), or target_format_id (generative mode).' }],
   };
 }

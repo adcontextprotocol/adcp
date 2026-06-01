@@ -9,10 +9,9 @@ required_tools:
 
 narrative: |
   Every AdCP agent must return responses that match the published JSON schemas.
-  For signals agents, this means get_signals responses must carry the required
-  fields on every signal: signal_id, signal_agent_segment_id, name, description,
-  signal_type, data_provider, coverage_percentage, deployments, and
-  pricing_options.
+  For signals agents, this means get_signals responses must carry the schema-required
+  fields on every signal: signal identity, signal_agent_segment_id, name, description,
+  signal_type, and deployments.
 
   This storyboard validates schema compliance on get_signals responses —
   confirming that each signal contains the fields buyers need to proceed to
@@ -95,16 +94,16 @@ phases:
         comply_scenario: schema_compliance
         stateful: false
         expected: |
-          Return signals matching the spec. Each signal must have all required fields:
+          Return signals matching the spec. Each signal must have all schema-required fields:
           - signal_id: reference to the data provider's catalog
           - signal_agent_segment_id: opaque identifier used for activation
           - name: human-readable signal name
           - description: detailed signal description
           - signal_type: marketplace, custom, or owned
-          - data_provider: human-readable name of the data provider
-          - coverage_percentage: audience coverage percentage (0–100)
           - deployments: array of deployment targets
-          - pricing_options: array (minItems: 1) with pricing_option_id
+
+          Optional fields such as data_provider, pricing_options, coverage_forecast,
+          and deprecated coverage_percentage must still match the schema when present.
 
           Responses missing any of these fields fail schema validation.
 

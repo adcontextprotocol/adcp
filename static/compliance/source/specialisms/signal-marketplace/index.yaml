@@ -3,10 +3,11 @@ version: "1.0.0"
 title: "Marketplace signal agent"
 protocol: signals
 category: signal_marketplace
-summary: "Signal agent that resells third-party data provider signals with verifiable catalog provenance."
+summary: "Signal agent that resells third-party data provider signals with verifiable provider-published provenance."
 track: signals
 required_tools:
   - get_signals
+  - activate_signal
 requires_scenarios:
   - signal_marketplace/governance_denied
 
@@ -15,10 +16,10 @@ narrative: |
   multiple third-party providers and makes it available to buyers through a single interface.
   Think LiveRamp Data Marketplace, Oracle Data Cloud, or Lotame.
 
-  Your agent searches across catalogs published by data providers in their adagents.json
-  files. Buyers discover signals through natural language queries, verify provenance by
-  checking the data provider's catalog directly, and activate signals on DSPs or sales
-  agents for campaign targeting.
+  Your agent searches across signal definitions published by data providers in their
+  adagents.json files. Buyers discover signals through natural language queries, verify
+  provenance by checking the data provider's published definitions directly, and
+  activate signals on DSPs or sales agents for campaign targeting.
 
   The key property of marketplace signals: provenance is independently verifiable. Each
   signal traces back to a data_provider_domain whose adagents.json lists your agent as
@@ -36,8 +37,7 @@ narrative: |
 
 agent:
   interaction_model: marketplace_catalog
-  capabilities:
-    - catalog_signals
+  capabilities: []
   examples:
     - "LiveRamp Data Marketplace"
     - "Oracle Data Cloud"
@@ -95,7 +95,7 @@ phases:
     title: "Signal discovery"
     narrative: |
       The buyer describes what they need in natural language. Your agent searches
-      across all authorized data provider catalogs and returns matching signals with
+      across all authorized data provider signal definitions and returns matching signals with
       pricing, coverage estimates, and value types.
 
       This is where marketplace agents earn their keep — the buyer doesn't need to
@@ -106,7 +106,7 @@ phases:
         title: "Discover signals from a campaign brief"
         narrative: |
           The buyer's platform translates a campaign brief into a get_signals call.
-          Your agent searches catalogs from every authorized data provider and returns
+          Your agent searches definitions from every authorized data provider and returns
           what matches — automotive intent from one provider, geo data from another,
           retail purchase history from a third.
         task: get_signals
@@ -118,9 +118,9 @@ phases:
         expected: |
           Return matching signals from multiple data providers. Each signal must include:
           - signal_agent_segment_id for activation
-          - signal_id with source, data_provider_domain, and id
+          - legacy signal_id with source, data_provider_domain, and id
           - name, description, and value_type (binary, categorical, or numeric)
-          - coverage_percentage (audience reach estimate)
+          - coverage_forecast when detailed availability is disclosed; deprecated coverage_percentage may be present as a legacy scalar fallback
           - pricing_options with at least one pricing model
           - signal_type: "marketplace"
 
@@ -156,10 +156,6 @@ phases:
             path: "signals[0].pricing_options"
             description: "Each signal has pricing options"
           - check: field_present
-            path: "signals[0].coverage_percentage"
-            description: "Each signal has a coverage estimate"
-
-          - check: field_present
             path: "context"
             description: "Response echoes back the context object"
           - check: field_value
@@ -168,7 +164,7 @@ phases:
             description: "Context correlation_id returned unchanged"
           - check: field_present
             path: "signals[0].signal_id.source"
-            description: "Signal ID includes source discriminator"
+            description: "Legacy Signal ID includes source discriminator"
           - check: field_present
             path: "signals[0].signal_id.data_provider_domain"
             description: "Signal ID includes data_provider_domain for provenance"
@@ -212,7 +208,7 @@ phases:
             value: "signal_marketplace--search_by_ids"
             description: "Context correlation_id returned unchanged"
   - id: verification
-    title: "Catalog verification"
+    title: "Provider verification"
     narrative: |
       Before activating third-party data, the buyer verifies provenance. They fetch
       the data provider's adagents.json directly and confirm the signal exists and
@@ -220,8 +216,9 @@ phases:
       but your agent must return the metadata that makes it possible.
 
       This phase tests that your get_signals responses include verifiable provenance
-      data: signal_id.source is "catalog" and signal_id.data_provider_domain points
-      to a real domain whose adagents.json the buyer can fetch independently.
+      data: the legacy signal_id.source value is "catalog" and
+      signal_id.data_provider_domain points to a real domain whose adagents.json the
+      buyer can fetch independently.
 
     steps:
       - id: verify_provenance_metadata
@@ -229,7 +226,7 @@ phases:
         narrative: |
           The buyer looks up a specific signal by ID (discovered earlier) and checks
           that the response includes the metadata needed for independent verification —
-          source is "catalog" and data_provider_domain points to a fetchable adagents.json.
+          the legacy source value is "catalog" and data_provider_domain points to a fetchable adagents.json.
           The actual HTTP fetch of adagents.json is the buyer's responsibility, but
           your agent must provide the domain to fetch from.
         task: get_signals
@@ -240,7 +237,7 @@ phases:
         stateful: true
         expected: |
           Return the requested signal with verifiable provenance metadata:
-          - signal_id.source is "catalog"
+          - legacy signal_id.source is "catalog"
           - signal_id.data_provider_domain matches a real domain
           The buyer will independently fetch that domain's adagents.json to confirm
           your agent is listed in authorized_agents.
@@ -259,7 +256,7 @@ phases:
           - check: field_value
             path: "signals[0].signal_id.source"
             value: "catalog"
-            description: "Signal source is 'catalog' (verifiable via adagents.json)"
+            description: "Legacy signal source is 'catalog' (verifiable via adagents.json)"
           - check: field_present
             path: "signals[0].signal_id.data_provider_domain"
             description: "Data provider domain is present for independent verification"

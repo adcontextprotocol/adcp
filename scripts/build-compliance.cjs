@@ -385,6 +385,29 @@ function verifyEnumParity(specialisms, protocols) {
 }
 
 const { lint: lintUniversalDocParity } = require('./lint-universal-storyboard-doc-parity.cjs');
+const {
+  formatViolation: formatComplianceSourceAuthorityViolation,
+  lintBuiltMirror: lintComplianceBuiltMirror,
+  lintSourceAuthority: lintComplianceSourceAuthority,
+} = require('./lint-compliance-source-authority.cjs');
+
+function assertComplianceSourceAuthority(sourceDir) {
+  const violations = lintComplianceSourceAuthority({ sourceDir });
+  if (violations.length === 0) return;
+  throw new Error(
+    'Compliance source authority drift:\n  - ' +
+    violations.map(formatComplianceSourceAuthorityViolation).join('\n  - ')
+  );
+}
+
+function assertComplianceBuiltMirror(sourceDir, targetDir) {
+  const violations = lintComplianceBuiltMirror({ sourceDir, targetDir });
+  if (violations.length === 0) return;
+  throw new Error(
+    `Compliance build mirror drift in ${targetDir}:\n  - ` +
+    violations.map(formatComplianceSourceAuthorityViolation).join('\n  - ')
+  );
+}
 
 function generateIndex(version, sourceDir) {
   const specialisms = discoverSpecialisms(sourceDir);
@@ -461,6 +484,7 @@ function buildTo(targetDir, version, sourceDir) {
     path.join(targetDir, 'index.json'),
     JSON.stringify(index, null, 2) + '\n'
   );
+  assertComplianceBuiltMirror(sourceDir, targetDir);
   return index;
 }
 
@@ -469,6 +493,13 @@ function main() {
 
   if (!fs.existsSync(SOURCE_DIR)) {
     console.error(`❌ Source directory not found: ${SOURCE_DIR}`);
+    process.exit(1);
+  }
+
+  try {
+    assertComplianceSourceAuthority(SOURCE_DIR);
+  } catch (err) {
+    console.error(err.message || err);
     process.exit(1);
   }
 
@@ -672,4 +703,11 @@ function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  buildTo,
+  generateIndex,
+};

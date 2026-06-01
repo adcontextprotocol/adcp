@@ -6,11 +6,14 @@ category: sales_social
 summary: "Social media platform that accepts audience segments, native creatives, and conversion events from buyer agents."
 track: audiences
 required_tools:
+  - sync_governance
   - sync_audiences
   - sync_catalogs
   - sync_creatives
   - sync_event_sources
   - preview_creative
+requires_scenarios:
+  - governance_aware_seller/governance_multi_agent_rejected
 
 # Cross-step assertion (adcp#2664). status.monotonic rejects resource
 # status transitions observed across steps that aren't on the spec
@@ -32,6 +35,9 @@ narrative: |
   This storyboard covers the social platform integration from the buyer's perspective:
   account setup, audience activation, native creative push, event tracking, and financial
   monitoring.
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
 agent:
   interaction_model: media_buy_seller
@@ -180,6 +186,51 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "sales_social--list_accounts"
+            description: "Context correlation_id returned unchanged"
+      - id: sync_governance
+        title: "Register governance agent"
+        narrative: |
+          The buyer registers the configured governance agent on the advertiser
+          account before pushing audiences, creatives, catalogs, or conversion
+          events that can affect spend.
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: |
+          Acknowledge governance registration for the account:
+          - status: synced
+          - governance_agents[0].url echoes the configured governance agent
+
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+          idempotency_key: "$generate:uuid_v4#sales_social_account_setup_sync_governance"
+          context:
+            correlation_id: "sales_social--sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "synced"
+            description: "Governance agent is registered on the advertiser account"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_social--sync_governance"
             description: "Context correlation_id returned unchanged"
   - id: audience_sync
     title: "Audience activation"
@@ -470,7 +521,7 @@ phases:
       its tracker URLs, then call `preview_creative` to render the bound
       preview. The substitution-observer runner inspects `preview_html` from
       the response and asserts each substituted `{SKU}` value is encoded per
-      the fixture at `static/test-vectors/catalog-macro-substitution.json`.
+      the fixture at `test-vectors/catalog-macro-substitution.json`.
 
       Scope note: this phase validates substitution on the PREVIEW surface
       only. Social platforms with divergent preview vs impression-time

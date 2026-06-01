@@ -15,7 +15,7 @@ set -uo pipefail
 # this, edits under static/compliance/source/ would silently no-op
 # locally and only surface in CI.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-bash "${SCRIPT_DIR}/overlay-compliance-cache.sh" || true
+bash "${SCRIPT_DIR}/overlay-compliance-cache.sh"
 
 # tenant:min_clean:min_passed — kept in sync with the matrix.include block in
 # .github/workflows/training-agent-storyboards.yml.

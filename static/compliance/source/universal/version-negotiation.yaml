@@ -121,6 +121,14 @@ phases:
               reason: "Per docs/reference/versioning.mdx > Migration timeline, sellers SHOULD echo adcp_version at 3.1 and the compliance grader reports presence as advisory. At 3.2 the storyboard cut promotes this validation to required (manual flip — see the supported_versions check above for the same rationale). 4.0 promotes to MUST per the spec."
             description: "Seller echoes adcp_version on the response envelope (advisory at 3.1, required at 3.2)"
 
+          - check: envelope_field_pattern
+            path: "adcp_version"
+            pattern: "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$"
+            severity: advisory
+            permanent_advisory:
+              reason: "Per docs/reference/versioning.mdx > Version format, adcp_version is release-precision (MAJOR.MINOR, optionally with a prerelease suffix during RC windows). 3.1 reports shape mismatches as advisory while runners adopt envelope-field pattern validation; the 3.2 storyboard cut can promote this validation with the presence check."
+            description: "Seller echoes a release-precision adcp_version string on the response envelope"
+
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"

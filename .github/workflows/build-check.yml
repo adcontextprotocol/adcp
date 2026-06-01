@@ -35,6 +35,14 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Storyboard lint tests
+        run: >
+          npm run test:storyboard-sample-request-schema &&
+          npm run test:storyboard-response-schema &&
+          npm run test:storyboard-context-output-paths &&
+          npm run test:storyboard-validations-paths &&
+          npm run test:compliance-source-authority
+
       - name: Assert dist/ contains every server/src runtime asset
         # PR #4769 root cause: ui-element-formats.json was added to source
         # and `require()`d by task-handlers.ts, but the build script didn't
