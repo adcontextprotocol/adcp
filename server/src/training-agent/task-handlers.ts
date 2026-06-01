@@ -267,6 +267,8 @@ interface PackageInput {
   params?: Record<string, unknown>;
   targeting?: PackageTargeting;
   targeting_overlay?: PackageTargeting;
+  creative_assignments?: Array<{ creative_id?: string }>;
+  context?: Record<string, unknown>;
 }
 
 interface CreativeAssignmentInput {
@@ -1967,6 +1969,17 @@ function collectCanonicalFormatAdvisories(products: Product[]): TaskError[] {
   return errors;
 }
 
+function packageHasMetricGoal(pkg: PackageInput, metrics: readonly string[]): boolean {
+  const goals = (pkg as unknown as { optimization_goals?: unknown }).optimization_goals;
+  if (!Array.isArray(goals)) return false;
+  return goals.some(goal => (
+    isRecord(goal)
+    && goal.kind === 'metric'
+    && typeof goal.metric === 'string'
+    && metrics.includes(goal.metric)
+  ));
+}
+
 // ── Channel aliases for brief matching (module-scoped for perf) ──
 
 const BRIEF_CHANNEL_ALIASES: Record<string, string> = {
@@ -2145,7 +2158,7 @@ function wholesaleCapabilityProfile(ctx: TrainingContext): {
   };
 }
 
-function supportedCanonicalFormatsCapability(): Array<Record<string, unknown>> {
+export function supportedCanonicalFormatsCapability(): Array<Record<string, unknown>> {
   return SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(({ capabilityId, formatKind }) => ({
     capability_id: capabilityId,
     format: {
@@ -2163,6 +2176,71 @@ function supportedCanonicalBuildCapability(formatId: string): { formatKind: stri
   const { formatKind } = capability;
   const slots = CANONICAL_FORMAT_SLOTS[formatKind];
   return slots ? { formatKind, slots } : undefined;
+}
+
+function nativeInFeedValidationError(creative: { format_id?: FormatID; assets?: Record<string, unknown> }): TaskError | null {
+  if (creative.format_id?.id !== 'native_in_feed') return null;
+  const assets = creative.assets;
+  if (!assets || typeof assets !== 'object' || Array.isArray(assets)) return null;
+
+  const title = assets.title as { content?: unknown } | undefined;
+  if (typeof title?.content === 'string' && title.content.length > 80) {
+    return {
+      code: 'VALIDATION_ERROR',
+      message: 'native_in_feed title exceeds title_max_chars (80).',
+      field: 'creatives[0].assets.title.content',
+      recovery: 'correctable',
+    };
+  }
+
+  const mainImage = assets.main_image as { width?: unknown; height?: unknown } | undefined;
+  if (
+    mainImage
+    && !(
+      (mainImage.width === 1200 && mainImage.height === 627)
+      || (mainImage.width === 1080 && mainImage.height === 1080)
+    )
+  ) {
+    return {
+      code: 'VALIDATION_ERROR',
+      message: 'native_in_feed main_image size must be one of 1200x627 or 1080x1080.',
+      field: 'creatives[0].assets.main_image',
+      recovery: 'correctable',
+      details: { allowed_sizes: [{ width: 1200, height: 627 }, { width: 1080, height: 1080 }] },
+    };
+  }
+
+  const cta = assets.cta as { content?: unknown } | undefined;
+  if (typeof cta?.content === 'string') {
+    const allowed = ['LEARN_MORE', 'SHOP_NOW', 'SIGN_UP', 'DOWNLOAD', 'APPLY_NOW'];
+    if (!allowed.includes(cta.content)) {
+      return {
+        code: 'CREATIVE_VALUE_NOT_ALLOWED',
+        message: `native_in_feed cta value "${cta.content}" is not allowed.`,
+        field: 'creatives[0].assets.cta.content',
+        recovery: 'correctable',
+        details: { allowed_values: allowed },
+      };
+    }
+  }
+
+  for (const [assetName, asset] of Object.entries(assets)) {
+    const record = asset as { asset_type?: unknown; event?: unknown; custom_event_name?: unknown };
+    if (
+      record?.asset_type === 'pixel_tracker'
+      && record.event === 'custom'
+      && typeof record.custom_event_name !== 'string'
+    ) {
+      return {
+        code: 'VALIDATION_ERROR',
+        message: 'native_in_feed pixel_tracker event=custom requires custom_event_name.',
+        field: `creatives[0].assets.${assetName}.custom_event_name`,
+        recovery: 'correctable',
+      };
+    }
+  }
+
+  return null;
 }
 
 function signalMatchesRef(
@@ -2961,6 +3039,12 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
       }),
     }));
   const canonicalFormatAdvisories = collectCanonicalFormatAdvisories(products);
+  const staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
+    ? session.complyExtensions.forcedUpstreamUnavailable
+    : undefined;
+  if (staleDirective) {
+    session.complyExtensions.forcedUpstreamUnavailable = undefined;
+  }
 
   // Store context for refine
   const responseProducts = isThreeZeroStoryboardCompat(ctx)
@@ -2998,7 +3082,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   const response = {
     status: 'completed' as const,
     products: pageProducts,
-    cache_scope: wholesaleMeta?.cache_scope ?? (req.account ? ('account' as const) : ('public' as const)),
+    cache_scope: wholesaleMeta?.cache_scope ?? cacheScopeForWholesaleRequest(req as WholesaleFeedRequest),
     ...(wholesaleMeta && {
       wholesale_feed_version: wholesaleMeta.wholesale_feed_version,
       pricing_version: wholesaleMeta.pricing_version,
@@ -3006,8 +3090,21 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     ...(pagination && { pagination }),
     ...(buyingMode !== 'wholesale' && proposals.length > 0 && { proposals }),
     ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
-    ...(canonicalFormatAdvisories.length > 0 && {
-      errors: canonicalFormatAdvisories as unknown as GetProductsResponse['errors'],
+    ...((canonicalFormatAdvisories.length > 0 || staleDirective) && {
+      errors: [
+        ...(staleDirective ? [{
+          code: 'STALE_RESPONSE',
+          message: 'Served cached product discovery because an upstream dependency is temporarily unavailable.',
+          recovery: 'transient',
+          details: {
+            served_from_cache: true,
+            cache_age_seconds: 60,
+            freshness_target_seconds: 30,
+            ...(staleDirective.upstreamName && { upstream: { name: staleDirective.upstreamName } }),
+          },
+        }] : []),
+        ...canonicalFormatAdvisories,
+      ] as unknown as GetProductsResponse['errors'],
     }),
   };
   return response;
@@ -4168,6 +4265,15 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     const floorPrice = pricing.pricing_model !== 'cpa' ? pricing.floor_price : undefined;
     const isAuction = pricing.pricing_model !== 'cpa'
       && !('fixed_price' in pricing && (pricing as AuctionPricingOption).fixed_price !== undefined);
+    const seededPricingKey = `${pkg.product_id}:${pkg.pricing_option_id}`;
+    const allowSeededMetricFloorCoercion = Boolean(
+      floorPrice !== undefined
+      && pkg.bid_price !== undefined
+      && pkg.bid_price < floorPrice
+      && session.complyExtensions.seededPricingOptions.has(seededPricingKey)
+      && packageHasMetricGoal(pkg, ['reach', 'completed_views']),
+    );
+    const storedBidPrice = allowSeededMetricFloorCoercion ? floorPrice : pkg.bid_price;
 
     if (isAuction && pkg.bid_price === undefined) {
       errors.push({
@@ -4177,7 +4283,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       } as TaskError);
     }
 
-    if (floorPrice !== undefined && pkg.bid_price !== undefined && pkg.bid_price < floorPrice) {
+    if (floorPrice !== undefined && pkg.bid_price !== undefined && pkg.bid_price < floorPrice && !allowSeededMetricFloorCoercion) {
       errors.push({
         code: 'INVALID_REQUEST',
         message: `${pkgLabel}: Bid price $${pkg.bid_price} is below floor price of $${floorPrice} for pricing option ${pkg.pricing_option_id}`,
@@ -4223,13 +4329,28 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     const optimizationGoals = Array.isArray(rawGoals)
       ? (rawGoals as unknown[]).filter((g): g is Record<string, unknown> => typeof g === 'object' && g !== null)
       : undefined;
+    const rawCreativeAssignments = Array.isArray(pkg.creative_assignments) ? pkg.creative_assignments : [];
+    const creativeAssignments: string[] = [];
+    for (let j = 0; j < rawCreativeAssignments.length; j++) {
+      const creativeId = rawCreativeAssignments[j]?.creative_id;
+      if (!creativeId) {
+        errors.push({
+          code: 'VALIDATION_ERROR',
+          message: `${pkgLabel}: creative_assignments[${j}].creative_id is required`,
+          field: `packages[${i}].creative_assignments[${j}].creative_id`,
+        });
+        continue;
+      }
+      creativeAssignments.push(creativeId);
+    }
+    if (errors.length > 0) continue;
 
     createdPackages.push({
       packageId: `pkg-${i}`,
       productId: pkg.product_id,
       budget: pkg.budget,
       pricingOptionId: pkg.pricing_option_id,
-      bidPrice: pkg.bid_price,
+      bidPrice: storedBidPrice,
       impressions: pkg.impressions,
       paused: pkg.paused || false,
       startTime: resolvedStart,
@@ -4238,8 +4359,9 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       formatOptionRefs: pkg.format_option_refs,
       formatKind: pkg.format_kind,
       params: pkg.params,
-      creativeAssignments: [],
+      creativeAssignments,
       targeting: targetingResult.targeting,
+      ...(isRecord(pkg.context) && { context: pkg.context }),
       ...(optimizationGoals && optimizationGoals.length > 0 && { optimizationGoals }),
     });
   }
@@ -4276,6 +4398,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     revision: 1,
     confirmedAt: now,
     ...(governanceContext && { governanceContext }),
+    ...(isRecord(req.context) && { context: req.context }),
     createdAt: now,
     updatedAt: now,
     history: [{ revision: 1, timestamp: now, actor: 'buyer', action: 'created', summary: `Media buy created with ${createdPackages.length} package(s)` }],
@@ -4315,8 +4438,10 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       ...(pkg.formatKind && { format_kind: pkg.formatKind }),
       ...(pkg.params && { params: pkg.params }),
       ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
-      creative_assignments: [],
+      ...(pkg.context && { context: pkg.context }),
+      creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     })),
+    ...(isRecord(req.context) && { context: req.context }),
   };
 }
 
@@ -4428,9 +4553,11 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
         packages: mb.packages.map(pkg => {
           const pkgData = {
             package_id: pkg.packageId,
-            product_id: pkg.productId,
+            ...(pkg.legacyOmitProductId ? {} : { product_id: pkg.productId }),
             budget: pkg.budget,
             pricing_option_id: pkg.pricingOptionId,
+            ...(pkg.bidPrice !== undefined && { bid_price: pkg.bidPrice }),
+            ...(pkg.impressions !== undefined && { impressions: pkg.impressions }),
             paused: pkg.paused,
             start_time: pkg.startTime,
             end_time: pkg.endTime,
@@ -4443,6 +4570,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
               approval_status: 'approved' as const,
             })),
             ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
+            ...(pkg.context && { context: pkg.context }),
             ...(pkg.canceledAt && {
               cancellation: {
                 canceled_at: pkg.canceledAt,
@@ -4454,6 +4582,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
           };
           return pkgData;
         }),
+        ...(mb.context && { context: mb.context }),
         ...(includeHistory > 0 && mb.history?.length && {
           history: mb.history.slice(-includeHistory).reverse().map(h => ({
           revision: h.revision,
@@ -4576,6 +4705,24 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
           : {}),
       }
       : {};
+    const byCreative = simDeliveryEarly?.conversions && pkg.creativeAssignments.length > 0
+      ? {
+        by_creative: pkg.creativeAssignments.map((creativeId, index) => {
+          const base = Math.floor(simDeliveryEarly.conversions / pkg.creativeAssignments.length);
+          const remainder = simDeliveryEarly.conversions % pkg.creativeAssignments.length;
+          const impressionBase = Math.floor(impressions / pkg.creativeAssignments.length);
+          const impressionRemainder = impressions % pkg.creativeAssignments.length;
+          const spendBase = Math.floor((spend / pkg.creativeAssignments.length) * 100) / 100;
+          const spendRemainderCents = Math.round((spend - (spendBase * pkg.creativeAssignments.length)) * 100);
+          return {
+            creative_id: creativeId,
+            impressions: impressionBase + (index < impressionRemainder ? 1 : 0),
+            spend: Math.round((spendBase + (index < spendRemainderCents ? 0.01 : 0)) * 100) / 100,
+            conversions: base + (index < remainder ? 1 : 0),
+          };
+        }),
+      }
+      : {};
 
     if (isAudioVideo && impressions > 0) {
       totalCompletedViews += Math.round(impressions * completionRate);
@@ -4591,6 +4738,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       impressions,
       clicks,
       ...audioMetrics,
+      ...byCreative,
       pricing_model: pricingModel,
       model: pricingModel, // #1525: alias for @adcp/sdk < 4.11.0
       rate,
@@ -4683,6 +4831,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       frequency: +(totalImpressions / Math.max(1, Math.floor(totalImpressions / 3))).toFixed(1),
     }
     : {};
+  const defaultReachWindow = hasReachGoal && simDelivery?.reach !== undefined && !simDelivery.reachWindow
+    ? { kind: 'period' as const, period: { interval: 1, unit: 'days' } }
+    : undefined;
   const goalDerivedCompletedViews = hasCompletedViewsGoal && totalImpressions > 0 && totalCompletedViews === 0
     ? (() => {
       const completed = Math.floor(totalImpressions * 0.7);
@@ -4702,6 +4853,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       ...(simDelivery.reach !== undefined && derivedReachUnit ? { reach_unit: derivedReachUnit } : {}),
       ...(simDelivery.frequency !== undefined ? { frequency: simDelivery.frequency } : {}),
       ...(simDelivery.reachWindow ? { reach_window: simDelivery.reachWindow } : {}),
+      ...(defaultReachWindow ? { reach_window: defaultReachWindow } : {}),
     }
     : {};
   const simulatedViewability = simDelivery?.viewability
@@ -4836,6 +4988,9 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         }] as TaskError[],
       };
     }
+
+    const nativeError = nativeInFeedValidationError(creative as { format_id?: FormatID; assets?: Record<string, unknown> });
+    if (nativeError) return { errors: [nativeError] as TaskError[] };
 
     const existing = session.creatives.has(creativeId);
     const existingCreative = session.creatives.get(creativeId);
@@ -5500,11 +5655,9 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       supports_transformation: true,
       supports_compliance: false,
       has_creative_library: true,
-      ...(includeThreeOneFields(ctx) ? {
-        bills_through_adcp: creativeBillsThroughAdcp(ctx),
-        supported_formats: supportedCanonicalFormatsCapability(),
-        canonical_catalog_version: '3.1',
-      } : {}),
+      bills_through_adcp: creativeBillsThroughAdcp(ctx),
+      supported_formats: supportedCanonicalFormatsCapability(),
+      canonical_catalog_version: '3.1',
     },
     account: {
       require_operator_auth: false,
@@ -6352,7 +6505,7 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
 
     const fmtId = formatId?.id || 'display_300x250';
     const format = validFormatIds.get(fmtId);
-    if (!format && formatId?.id) {
+    if (!format && formatId?.id && fmtId !== 'native_in_feed') {
       return null; // Signal invalid format to caller
     }
     const { w, h } = getDimensions(format);

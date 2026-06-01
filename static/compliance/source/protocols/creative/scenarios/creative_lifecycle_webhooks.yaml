@@ -232,11 +232,11 @@ phases:
       - id: expect_status_changed_webhook
         title: "Assert creative.status_changed webhook payload"
         task: expect_webhook
-        triggered_by: force_creative_rejected
         filter:
-          notification_type: "creative.status_changed"
-          creative_id: "acme_lifecycle_banner_001"
-          subscriber_id: "buyer-primary"
+          body:
+            notification_type: "creative.status_changed"
+            creative_id: "acme_lifecycle_banner_001"
+            subscriber_id: "buyer-primary"
         timeout_seconds: 30
         expect_idempotency_key: true
         webhook_payload_schema_ref: "creative/creative-status-changed-webhook.json"
@@ -332,11 +332,11 @@ phases:
       - id: expect_purged_webhook
         title: "Assert creative.purged webhook payload"
         task: expect_webhook
-        triggered_by: force_creative_purged
         filter:
-          notification_type: "creative.purged"
-          creative_id: "acme_lifecycle_banner_001"
-          subscriber_id: "buyer-primary"
+          body:
+            notification_type: "creative.purged"
+            creative_id: "acme_lifecycle_banner_001"
+            subscriber_id: "buyer-primary"
         timeout_seconds: 30
         expect_idempotency_key: true
         webhook_payload_schema_ref: "creative/creative-purged-webhook.json"

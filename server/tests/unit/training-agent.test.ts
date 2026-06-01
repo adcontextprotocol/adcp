@@ -1303,6 +1303,46 @@ describe('get_products handler', () => {
     expect(overlay.cache_scope).toBe('account');
   });
 
+  it('returns cache scope on brief and refine responses using account overlay rules', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const ordinaryAccount = {
+      brand: { domain: 'acmeoutdoor.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    const overlayAccount = {
+      brand: { domain: 'account-overlay.example' },
+      operator: 'pinnacle-agency.example',
+    };
+
+    const { result: publicBrief } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'video sports streaming',
+    });
+    const { result: ordinaryBrief } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'video sports streaming',
+      account: ordinaryAccount,
+    });
+    const { result: overlayBrief } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'video sports streaming',
+      account: overlayAccount,
+    });
+
+    expect(publicBrief.cache_scope).toBe('public');
+    expect(ordinaryBrief.cache_scope).toBe('public');
+    expect(overlayBrief.cache_scope).toBe('account');
+
+    const firstProductId = ((ordinaryBrief.products as Array<Record<string, unknown>>)[0].product_id) as string;
+    const { result: ordinaryRefine } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      account: ordinaryAccount,
+      refine: [{ scope: 'product', product_id: firstProductId }],
+    });
+
+    expect(ordinaryRefine.cache_scope).toBe('public');
+  });
+
   it('keeps product feed versions stable across paginated wholesale pages', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: first } = await simulateCallTool(server, 'get_products', {
