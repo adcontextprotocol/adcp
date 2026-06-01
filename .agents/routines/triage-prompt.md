@@ -36,9 +36,12 @@ trigger fired:
   re-filed). The user message has `<<<UNTRUSTED_ISSUE_BODY>>>` only.
   Act on that one issue with full triage.
 - **`comment.created`:** a non-bot, non-`/triage`, non-self comment
-  landed on an open issue (the workflow filters out PR comments,
-  `/triage` slash-commands, and the routine's own previous comments
-  to prevent loops). The user message has *both* a
+  landed on an open issue **or PR** (the workflow filters out `/triage`
+  slash-commands and the routine's own previous comments to prevent
+  loops, but routes **both** issue and PR comments here). A PR comment
+  arrives with `is_pr: true` and a `MODE: PR-feedback` line — handle it
+  per the **`MODE: PR-feedback`** rules under Comment engagement, not as
+  issue triage. The user message has *both* a
   `<<<UNTRUSTED_NEW_COMMENT_BODY>>>` block (the new comment) AND a
   `<<<UNTRUSTED_ISSUE_BODY>>>` block (the original issue). Read the
   full thread on GitHub before deciding (`gh api repos/.../issues/N/comments`).
