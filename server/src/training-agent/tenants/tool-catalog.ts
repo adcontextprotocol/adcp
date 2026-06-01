@@ -55,8 +55,8 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   validate_input: ['sales', 'creative', 'creative-builder'],
   list_creatives: ['sales', 'creative'],
   sync_creatives: ['sales', 'creative', 'creative-builder'],
-  build_creative: ['creative', 'creative-builder'],
-  preview_creative: ['creative', 'creative-builder'],
+  build_creative: ['sales', 'creative', 'creative-builder'],
+  preview_creative: ['sales', 'creative', 'creative-builder'],
   get_creative_delivery: ['creative'],
 
   // signals — sync_governance rides customTools (governance-aware-seller pattern)

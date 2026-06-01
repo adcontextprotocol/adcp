@@ -1041,7 +1041,7 @@ function wireAccountMatchesRef(account: AccountWireShape, ref: AccountRef): bool
 }
 
 function hasExactAccountFilter(ref: AccountRef | undefined): ref is AccountRef {
-  return Boolean(ref?.account_id);
+  return Boolean(ref?.account_id || (ref?.brand?.domain && ref.operator));
 }
 
 function mergeAccountFixtures(accounts: AccountWireShape[], fixtures: AccountWireShape[]): AccountWireShape[] {

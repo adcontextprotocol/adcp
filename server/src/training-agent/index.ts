@@ -631,7 +631,6 @@ export function createTrainingAgentRouter(options: { storyboardCompat?: Training
     res.json({
       $schema: '/schemas/brand.json',
       version: '1.0',
-      agents,
       house: {
         domain: 'adcontextprotocol.org',
         name: 'Ad Context Protocol',
