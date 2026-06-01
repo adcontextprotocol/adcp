@@ -55,10 +55,9 @@ Each entry in `available_actions[]` carries a singular `mode` (resolved against 
 |------|---------|
 | `self_serve` | Seller honors the request synchronously |
 | `conditional_self_serve` | Auto-approves within tolerances, escalates outside them (programmatic guaranteed pattern) |
-| `requires_proposal` | Routes through `create_proposal` / `finalize_proposal`; buyer SDK expects a proposal task back |
 | `requires_approval` | Human-in-the-loop, async, no proposal artifact; buyer SDK polls or awaits webhook |
 
-Buyer SDKs MUST branch on `mode` to decide whether to expect a synchronous response, a proposal task, or an asynchronous approval callback.
+Buyer SDKs MUST branch on `mode` to decide whether to expect a synchronous response, conditional handling, or an asynchronous approval callback. Requotes are not modeled as an action mode in 3.1; sellers return `REQUOTE_REQUIRED` when a requested update exceeds the current quoted envelope.
 
 **PATCH Semantics**: Only specified fields are updated; omitted fields remain unchanged.
 
@@ -115,6 +114,7 @@ console.log(`Created media buy ${created.media_buy_id}`);
 const updateResult = await testAgent.updateMediaBuy({
   account: { brand: { domain: 'acmecorp.com' }, operator: 'acmecorp.com' },
   media_buy_id: created.media_buy_id,
+  revision: created.revision,
   paused: true
 });
 
@@ -169,6 +169,7 @@ async def create_and_pause_campaign():
     update_result = await test_agent.simple.update_media_buy(
         account={'brand': {'domain': 'acmecorp.com'}, 'operator': 'acmecorp.com'},
         media_buy_id=create_result.media_buy_id,
+        revision=create_result.revision,
         paused=True
     )
 
@@ -203,6 +204,12 @@ asyncio.run(create_and_pause_campaign())
 
 `account` and `media_buy_id` are always required.
 
+### Optimistic concurrency
+
+`revision` is the expected current media-buy revision. Some implementations call this value `expected_revision` internally; on the AdCP wire the field is `revision`. The field is optional for backward compatibility. When it is present, sellers MUST check it atomically with the write that applies a mutating update; reading the current value in application code, comparing it, then writing later can race another writer and lose an update. If the stored revision differs from the request's `revision`, the seller rejects with `CONFLICT` and applies no changes.
+
+Every mutating update increments `revision` and returns the new value in the success response. Validation-only requests, reads, and exact idempotency replays do not increment it; exact replays return the prior revision. Clients SHOULD pass the latest observed revision on every update intended to change state, then reload with `get_media_buys` and retry with a fresh `idempotency_key` when they receive `CONFLICT`.
+
 ### Reporting Webhook Object
 
 Configure automated delivery reporting for this media buy:
@@ -232,7 +239,7 @@ Configure automated delivery reporting for this media buy:
 | `pacing` | string | Updated pacing strategy |
 | `bid_price` | number | Updated bid price (auction products only). This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
 | `optimization_goals` | OptimizationGoal[] | Replace all optimization goals for this package. Uses replacement semantics — omit to leave goals unchanged. |
-| `targeting_overlay` | TargetingOverlay | Updated targeting restrictions |
+| `targeting_overlay` | TargetingOverlay | Updated targeting restrictions. Uses replacement semantics; changing `signal_targeting_groups` can alter priced signal selection, so sellers MAY reject with `REQUOTE_REQUIRED` when the selected signal, group expression, or signal `pricing_option_id` falls outside the original quote. Sellers SHOULD reject attempts to change fixed signal selections and MUST echo applied fixed/default signal groups on the resulting package state. |
 | `catalogs` | Catalog[] | Replace the catalogs this package promotes. Uses replacement semantics — omit to leave unchanged. |
 | `keyword_targets_add` | KeywordTarget[] | Keyword targets to add or upsert by (keyword, match_type) identity. On create, these are set as `keyword_targets` inside `targeting_overlay`. |
 | `keyword_targets_remove` | KeywordTarget[] | Keyword targets to remove by (keyword, match_type) identity. |
@@ -252,7 +259,7 @@ Configure automated delivery reporting for this media buy:
 | `media_buy_id` | Media buy identifier |
 | `media_buy_status` | Media buy lifecycle status after the update (present when status changes, e.g., cancellation). Canonical 3.1 field. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status). |
 | `status` | **Deprecated in 3.1, removed in 3.2** ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)). Use `media_buy_status` instead. Top-level `status` collides with the envelope task-status on flat-serialized MCP wire. |
-| `revision` | Revision number after this update. Use in subsequent requests for optimistic concurrency. |
+| `revision` | Revision number after this update. Use in subsequent requests intended to change state for optimistic concurrency. Exact idempotency replays return the prior revision. |
 | `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
 | `invoice_recipient` | Updated invoice recipient, echoed from request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
 | `valid_actions` | Flat-vocabulary actions the buyer can perform after this update. Saves a round-trip to `get_media_buys`. Deprecated in favor of `available_actions[]` and removed in 4.0. |
@@ -653,12 +660,11 @@ The body-level `media_buy_status` is the canonical 3.1 field for the buy's lifec
 {
   "errors": [{
     "code": "REQUOTE_REQUIRED",
-    "message": "Doubling budget and extending end_time into Q4 changes the pricing basis of proposal prop_abc123",
+    "message": "Doubling budget and extending end_time into Q4 changes the pricing basis of the current buy",
     "details": {
-      "proposal_id": "prop_abc123",
       "envelope_field": ["packages[0].budget", "end_time"]
     },
-    "suggestion": "Call get_products with buying_mode='refine' against proposal_id prop_abc123 to obtain a fresh quote, then resubmit this update against the new proposal_id"
+    "suggestion": "Adjust the update to stay within the current quote envelope, rediscover products/terms, add packages when available, or create a separate media buy"
   }]
 }
 ```
@@ -712,7 +718,7 @@ Cancel a single package while the media buy remains active:
 - Package ID
 - Product ID
 - Pricing option ID
-- Format IDs (creatives must match existing formats)
+- Format selectors: `format_ids`, `format_option_refs`, `format_kind`, and `params` (creatives must match existing formats)
 
 ⚠️ **Append-only on update:**
 - `committed_metrics` — sellers accept new entries (mid-flight metric additions, each with its own `committed_at` timestamp) but MUST reject attempts to modify or remove existing entries with `validation_error` (code `IMMUTABLE_FIELD`). Runtime enforcement; the append-only semantics aren't expressible in the schema's `not` clause.
@@ -723,8 +729,8 @@ Common errors and resolutions:
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id |
-| `PACKAGE_NOT_FOUND` | Package doesn't exist | Verify package_id |
+| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify `media_buy_id`; for legacy correlation use `get_media_buys` + `context.internal_campaign_id` |
+| `PACKAGE_NOT_FOUND` | Package doesn't exist | Verify `package_id`; for legacy package correlation use `get_media_buys` + package `context.buyer_ref` |
 | `UPDATE_NOT_ALLOWED` | Field cannot be changed | See "What Can Be Updated" above |
 | `BUDGET_INSUFFICIENT` | New budget below minimum | Increase budget amount |
 | `POLICY_VIOLATION` | Update violates content policy | Review policy requirements |
@@ -735,7 +741,7 @@ Common errors and resolutions:
 | `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
 | `BUDGET_EXCEEDED` | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
 | `CONFLICT` | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
-| `REQUOTE_REQUIRED` | Requested change (budget, dates, volume, targeting) falls outside the envelope the original quote was priced against | Call `get_products` with `buying_mode: "refine"` against the existing `proposal_id` to obtain a fresh quote, then resubmit the update against the new `proposal_id`. Seller's `error.details.envelope_field` names which fields breached. |
+| `REQUOTE_REQUIRED` | Requested change (budget, dates, volume, targeting, or signal targeting price) falls outside the envelope the original quote was priced against | Adjust the update to fit the current quote, rediscover products/terms, add packages when `add_packages` is available, or create a separate media buy. 3.1 does not define an amendment-quote artifact for `update_media_buy`. Seller's `error.details.envelope_field` names which fields breached. |
 | `VALIDATION_ERROR` | Request format or business rule violation | Check error `field` and `message` for specifics |
 
 Example error response:

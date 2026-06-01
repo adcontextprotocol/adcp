@@ -35,10 +35,14 @@ interface TrainingBrandConfig {
   strict: boolean;
 }
 
-function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undefined): TrainingContext {
+function buildTrainingCtx(
+  account: { authInfo?: { principal?: string } } | undefined,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): TrainingContext {
   return {
     mode: 'open',
     principal: account?.authInfo?.principal ?? 'anonymous',
+    ...(storyboardCompat && { storyboardCompat }),
   };
 }
 
@@ -106,18 +110,23 @@ const trainingBrandAccounts: AccountStore<TrainingBrandMeta> = {
 export class TrainingBrandPlatform
   implements DecisioningPlatform<TrainingBrandConfig, TrainingBrandMeta>
 {
-  capabilities = {
+  constructor(private readonly storyboardCompat?: TrainingContext['storyboardCompat']) {}
+
+  get capabilities() {
+    return {
     specialisms: ['brand-rights'] as const,
     creative_agents: [],
     channels: [] as const,
     pricingModels: ['cpm', 'cpa'] as const,
+    requireOperatorAuth: this.storyboardCompat?.version === '3.0' ? true : false,
     supportedBillings: ['agent', 'operator'] as const,
     // brand-rights claims require capabilities.brand block per
     // RequiredCapabilitiesFor<S>. Empty inner object opts in;
     // BrandRightsPlatform impl below auto-derives `brand.rights: true`.
     brand: {},
-    config: { strict: false },
-  };
+      config: { strict: false },
+    };
+  }
 
   statusMappers = {};
   accounts: AccountStore<TrainingBrandMeta> = trainingBrandAccounts;
@@ -125,19 +134,19 @@ export class TrainingBrandPlatform
 
   brandRights: BrandRightsPlatform<TrainingBrandMeta> = {
     getBrandIdentity: async (req, ctx) => {
-      const result = await handleGetBrandIdentity(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleGetBrandIdentity(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
     getRights: async (req, ctx) => {
-      const result = await handleGetRights(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleGetRights(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
     acquireRights: async (req, ctx) => {
-      const result = await handleAcquireRights(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleAcquireRights(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
     updateRights: async (req, ctx) => {
-      const result = await handleUpdateRights(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleUpdateRights(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
     reviewCreativeApproval: async () => {

@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.4/creative/audit-observation.json",
+  "title": "Creative Audit Observation",
+  "description": "Non-blocking observation emitted by a creative governance agent. Audit observations surface claims that deserve human or downstream audit review but are not verifier refutations and are not rejection grounds by themselves.",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "enum": [
+        "OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED"
+      ],
+      "description": "Machine-readable observation code. `OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED` means provenance declares `human_oversight` as `edited` or `directed` while also declaring `disclosure.required: false`; the verifier is surfacing the carve-out claim for audit, not adjudicating it."
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "audit-worthy"
+      ],
+      "description": "Routing severity. `audit-worthy` means the observation should be retained and may be routed to human or downstream audit review, but it is not a protocol rejection signal."
+    },
+    "recovery": {
+      "type": "string",
+      "enum": [
+        "informational"
+      ],
+      "description": "Caller recovery category for audit observations, distinct from the canonical error-code recovery enum. `informational` means the creative can continue through the normal flow; the observation is audit context rather than a required correction."
+    },
+    "field": {
+      "type": "string",
+      "description": "Resolved creative manifest path for the risky claim side of the observation, for example `creative_manifest.provenance.disclosure.required`. Some observations are triggered by a combination of fields; `field` anchors the primary claim, not necessarily every field in the trigger condition."
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable summary suitable for an audit queue. Do not include PII, cross-tenant data, or vendor-only report details."
+    },
+    "details": {
+      "type": "object",
+      "description": "Audit-safe structured details. Mirrors the safe allowlist keys used for `PROVENANCE_CLAIM_CONTRADICTED`; value shapes remain observation-specific. Top-level `ext` remains the standard protocol extension point, but details do not allow arbitrary verifier response fields.",
+      "properties": {
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Governance agent URL that produced the observation."
+        },
+        "feature_id": {
+          "type": "string",
+          "description": "Feature or policy check that produced the observation."
+        },
+        "claimed_value": {
+          "description": "Compact object of claimed provenance values that triggered the observation.",
+          "type": "object",
+          "properties": {
+            "human_oversight": {
+              "type": "string",
+              "enum": ["edited", "directed"],
+              "description": "Human oversight level declared by the creative provenance."
+            },
+            "disclosure_required": {
+              "type": "boolean",
+              "const": false,
+              "description": "Disclosure-required claim declared by the creative provenance."
+            }
+          },
+          "required": ["human_oversight", "disclosure_required"],
+          "additionalProperties": false
+        },
+        "observed_value": {
+          "description": "Verifier observation relevant to the claim, when applicable.",
+          "type": ["boolean", "number", "string", "null"]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Confidence score for the observation, when applicable."
+        },
+        "substituted_for": {
+          "type": "string",
+          "format": "uri",
+          "description": "Buyer-nominated verifier URL when the seller or orchestrator used a different on-list governance agent."
+        }
+      },
+      "required": ["agent_url", "claimed_value"],
+      "additionalProperties": false
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-rc.4/core/ext.json"
+    }
+  },
+  "required": [
+    "code",
+    "severity",
+    "recovery",
+    "field",
+    "message",
+    "details"
+  ],
+  "additionalProperties": false
+}

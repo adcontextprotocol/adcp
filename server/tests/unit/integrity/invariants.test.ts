@@ -659,18 +659,19 @@ describe('stripe-sub-reflected-in-org-row', () => {
 describe('workos-membership-row-exists-in-workos', () => {
   it('passes when every sampled membership row resolves in WorkOS', async () => {
     mockPoolQuery.mockResolvedValueOnce({
-      rows: [{ workos_user_id: 'u_1', workos_organization_id: 'org_1', workos_membership_id: 'mem_1', status: 'active' }],
+      rows: [{ workos_user_id: 'u_1', workos_organization_id: 'org_1', workos_membership_id: 'mem_1' }],
     });
     mockWorkosListMemberships.mockResolvedValueOnce({ data: [{ id: 'mem_1' }] });
 
     const result = await workosMembershipRowExistsInWorkosInvariant.check(makeCtx());
     expect(result.checked).toBe(1);
     expect(result.violations).toEqual([]);
+    expect(mockPoolQuery.mock.calls[0][0]).not.toContain('status');
   });
 
   it('flags rows that no longer exist in WorkOS', async () => {
     mockPoolQuery.mockResolvedValueOnce({
-      rows: [{ workos_user_id: 'u_stale', workos_organization_id: 'org_1', workos_membership_id: 'mem_stale', status: 'active' }],
+      rows: [{ workos_user_id: 'u_stale', workos_organization_id: 'org_1', workos_membership_id: 'mem_stale' }],
     });
     mockWorkosListMemberships.mockResolvedValueOnce({ data: [] });
 
@@ -683,7 +684,7 @@ describe('workos-membership-row-exists-in-workos', () => {
 
   it('records a warning when WorkOS lookup fails', async () => {
     mockPoolQuery.mockResolvedValueOnce({
-      rows: [{ workos_user_id: 'u_1', workos_organization_id: 'org_1', workos_membership_id: 'mem_1', status: 'active' }],
+      rows: [{ workos_user_id: 'u_1', workos_organization_id: 'org_1', workos_membership_id: 'mem_1' }],
     });
     mockWorkosListMemberships.mockRejectedValueOnce(new Error('WorkOS down'));
 

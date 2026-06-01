@@ -390,13 +390,13 @@ GET /api/registry/authorizations/snapshot?evidence=<csv>&include=<raw|effective>
   → ~150 MB on the wire at long-run scale (effective set, evidence='adagents_json')
   → DEFAULT excludes evidence='agent_claim' to prevent buy-side trust footgun
 
-GET /api/registry/feed?entity_type=authorization&cursor=<event_id>
+GET /api/registry/feed?types=authorization.*&cursor=<event_id>
   → REUSES the existing UUIDv7-cursor change feed (registry-change-feed.md)
   → emits authorization.granted / authorization.revoked / authorization.modified events
   → consumer applies events in event_id order, advances cursor
 ```
 
-The change feed is the canonical delta mechanism for the registry — the property-side cutover already uses it for `property.created` / `property.removed`. Authorization events are a new `entity_type` filter on the same feed; same UUIDv7 `cursor` parameter, same retention window, same recovery semantics. The snapshot endpoint exists only to bootstrap a consumer that's never synced before; once bootstrapped, the change feed is the live source. **`seq_no` on the table is internal — it orders rows for the change-feed emitter and for view-layer pagination, but it never crosses the wire.** Consumers see only `event_id`.
+The change feed is the canonical delta mechanism for the registry — the property-side cutover already uses it for `property.created` / `property.updated`. Authorization consumers filter the same feed with `types=authorization.*`; same UUIDv7 `cursor` parameter, same retention window, same recovery semantics. The snapshot endpoint exists only to bootstrap a consumer that's never synced before; once bootstrapped, the change feed is the live source. **`seq_no` on the table is internal — it orders rows for the change-feed emitter and for view-layer pagination, but it never crosses the wire.** Consumers see only `event_id`.
 
 `agent_claim` rows are excluded from the snapshot by default. Consumers that want unverified self-asserted authorizations (e.g. a registry-internal admin tool, or a DSP that has its own trust-by-vendor policy) opt in with `?evidence=adagents_json,agent_claim`. Mixing them by default would let a buy-side platform that doesn't filter treat self-claims as authoritative — exactly the failure mode the override layer was designed to prevent.
 
@@ -411,13 +411,13 @@ if local_cursor == 'snapshot':
   local_cursor = snapshot.headers['X-Sync-Cursor']  -- a UUIDv7 event_id
   persist("last_feed_cursor", local_cursor)
 while true:
-  events = GET /api/registry/feed?entity_type=authorization&cursor=local_cursor
+  events = GET /api/registry/feed?types=authorization.*&cursor=local_cursor
   for ev in events:
     if ev.type == 'authorization.revoked':
       local.delete(ev.entity_id)
     else:
       local.upsert(ev.payload)
-  local_cursor = events.next_cursor
+  local_cursor = events.cursor
   persist("last_feed_cursor", local_cursor)
   sleep(poll_interval)
   -- if server returns 410 Gone, cursor is older than feed retention;
@@ -482,7 +482,7 @@ This isn't a new design decision — it's the same trust posture as the property
 
 The doc above is buy-side-coded — DSPs, sales houses, agencies pulling and verifying. A publisher reading this should be able to answer "why am I in this catalog vs. just hosting `.well-known/adagents.json` and being done?" Three concrete reasons:
 
-1. **Discoverability.** Buyer agents subscribed to `/api/registry/change-feed?entity_type=authorization` see a publisher's authorized agents the moment the crawler picks up the manifest — no per-buyer crawl needed. For new publishers especially, this collapses time-to-discovery from "whenever each buyer's crawler gets to you" to "next change-feed poll."
+1. **Discoverability.** Buyer agents subscribed to `/api/registry/feed?types=authorization.*` see a publisher's authorized agents the moment the crawler picks up the manifest — no per-buyer crawl needed. For new publishers especially, this collapses time-to-discovery from "whenever each buyer's crawler gets to you" to "next change-feed poll."
 
 2. **Bad-actor protection via the override layer.** A publisher whose `.well-known/adagents.json` is being misrepresented (a buying agent claiming authorization that wasn't granted) can file a `bad_actor 'suppress'` override through the registry's moderation flow. The override propagates through the change feed to every consumer of `v_effective_agent_authorizations`. Without the catalog, the publisher's only recourse is changing the file and waiting for buyers to re-crawl — which can take days or weeks.
 

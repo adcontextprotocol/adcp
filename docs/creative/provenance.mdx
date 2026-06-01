@@ -160,6 +160,8 @@ This field is relevant when `digital_source_type` indicates AI involvement. For 
 `human_oversight` and `disclosure.required` are independent fields, and the protocol does not derive one from the other. Some regulations carve out human-edited or human-directed AI output from disclosure obligations (for example, EU AI Act Article 50(4) where a human takes editorial responsibility), and the protocol leaves that determination to the declaring party's legal analysis. Asserting `human_oversight: edited` or `directed` does not by itself justify `disclosure.required: false` — the carve-out has factual prerequisites the schema cannot evaluate. Sellers and governance agents may treat the combination as an audit-worthy claim and require corroborating evidence from the declaring party.
 </Warning>
 
+Governance agents surface this audit-worthy pattern through `get_creative_features.audit_observations[]` using `OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED`. That observation is not a rejection code by itself; it lets sellers retain or route the claim for audit while the creative continues through normal review.
+
 ## Inheritance
 
 Provenance attaches at three levels in the creative hierarchy. The most specific provenance wins, and replacement is **full-object** -- there is no field-level merging.

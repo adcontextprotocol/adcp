@@ -15,9 +15,10 @@ vi.mock("../../src/config.js", async () => {
 
 vi.mock("../../src/db/client.js", () => ({
   initializeDatabase: vi.fn(),
+  getPool: vi.fn().mockReturnValue({ query: vi.fn() }),
   isDatabaseInitialized: vi.fn().mockReturnValue(true),
   closeDatabase: vi.fn(),
-  // The /health route exercises a dedicated connection via healthCheck().
+  // The /health route exercises a one-off connection via healthCheck().
   // Stubbing it green keeps the test focused on response shape, not on
   // whether vitest workers can reach Postgres.
   healthCheck: vi.fn().mockResolvedValue(undefined),

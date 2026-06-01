@@ -7,10 +7,14 @@ import { Router } from "express";
 import { WorkOS } from "@workos-inc/node";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin, requireGlobalAdmin } from "../../middleware/auth.js";
 import { OrganizationDatabase } from "../../db/organization-db.js";
 import { getPendingInvoices } from "../../billing/stripe-client.js";
-import { findSuccessorForPromotion, setMembershipRole } from "../../db/membership-db.js";
+import {
+  findSuccessorForPromotion,
+  setMembershipRole,
+  upsertOrganizationMembership,
+} from "../../db/membership-db.js";
 
 const orgDb = new OrganizationDatabase();
 const logger = createLogger("admin-organizations");
@@ -18,6 +22,10 @@ const logger = createLogger("admin-organizations");
 interface OrganizationRoutesConfig {
   workos: WorkOS | null;
 }
+
+type WorkOSOrganizationMembership = Awaited<
+  ReturnType<WorkOS["userManagement"]["createOrganizationMembership"]>
+>;
 
 export function setupOrganizationRoutes(
   apiRouter: Router,
@@ -1073,8 +1081,7 @@ export function setupOrganizationRoutes(
   // Used by Domain Health to move users from personal workspaces to company orgs
   apiRouter.post(
     "/organizations/:orgId/add-users",
-    requireAuth,
-    requireAdmin,
+    ...requireGlobalAdmin,
     async (req, res) => {
       try {
         const { orgId } = req.params;
@@ -1124,7 +1131,10 @@ export function setupOrganizationRoutes(
         for (const userId of user_ids) {
           try {
             // Validate user ID format
-            if (typeof userId !== "string" || !/^[\w-]+$/.test(userId)) {
+            if (
+              typeof userId !== "string" ||
+              !/^user_[0-9a-hjkmnp-tv-z]{26}$/i.test(userId)
+            ) {
               errors.push(`Invalid user ID format`);
               continue;
             }
@@ -1167,38 +1177,123 @@ export function setupOrganizationRoutes(
               continue;
             }
 
-            let newMembership;
+            const stagingKey = `admin_add_${orgId}_${userId}`;
+            await pool.query(
+              "DELETE FROM invitation_seat_types WHERE workos_organization_id = $1 AND lower(email) = lower($2)",
+              [orgId, user.email]
+            );
+            await pool.query(
+              `INSERT INTO invitation_seat_types (workos_invitation_id, workos_organization_id, email, seat_type, source)
+               VALUES ($1, $2, $3, 'community_only', 'admin_added')
+               ON CONFLICT (workos_invitation_id) DO UPDATE SET
+                 seat_type = EXCLUDED.seat_type,
+                 source = EXCLUDED.source`,
+              [stagingKey, orgId, user.email]
+            );
+
+            let membership: WorkOSOrganizationMembership | null = null;
+            let membershipAlreadyExisted = false;
             try {
-              newMembership = await workos.userManagement.createOrganizationMembership({
-                userId,
-                organizationId: orgId,
-                roleSlug: 'member',
-              });
+              membership =
+                await workos.userManagement.createOrganizationMembership({
+                  userId,
+                  organizationId: orgId,
+                  roleSlug: "member",
+                });
             } catch (workosErr) {
-              const message = workosErr instanceof Error ? workosErr.message : String(workosErr);
-              logger.error(
-                { err: workosErr, userId, orgId },
-                "Failed to create WorkOS membership during admin add-users",
-              );
-              errors.push(`User ${userId}: ${message}`);
-              continue;
+              if (
+                (workosErr as { code?: string })?.code ===
+                "organization_membership_already_exists"
+              ) {
+                membershipAlreadyExisted = true;
+                try {
+                  const existingMemberships =
+                    await workos.userManagement.listOrganizationMemberships({
+                      userId,
+                      organizationId: orgId,
+                    });
+                  membership =
+                    existingMemberships.data?.find(
+                      (candidate) =>
+                        candidate.userId === userId &&
+                        candidate.organizationId === orgId
+                    ) ?? null;
+                } catch (repairErr) {
+                  logger.error(
+                    { err: repairErr, userId, orgId },
+                    "Failed to inspect existing WorkOS membership during admin add-users repair"
+                  );
+                }
+              }
+
+              if (!membership) {
+                try {
+                  await pool.query(
+                    "DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1",
+                    [stagingKey]
+                  );
+                } catch (rollbackErr) {
+                  logger.error(
+                    { err: rollbackErr, userId, orgId, stagingKey },
+                    "CRITICAL: failed to rollback admin add-users staging row after WorkOS membership failure"
+                  );
+                }
+
+                logger.error(
+                  { err: workosErr, userId, orgId },
+                  "Failed to create WorkOS membership during admin add-users"
+                );
+                errors.push(`User ${userId}: Could not add membership`);
+                continue;
+              }
             }
 
             // Mirror locally now that WorkOS has the row.
-            await pool.query(
-              `INSERT INTO organization_memberships
-               (workos_user_id, workos_organization_id, workos_membership_id, email, first_name, last_name, role, synced_at)
-               VALUES ($1, $2, $3, $4, $5, $6, 'member', NOW())
-               ON CONFLICT (workos_user_id, workos_organization_id)
-               DO UPDATE SET workos_membership_id = EXCLUDED.workos_membership_id,
-                 email = EXCLUDED.email,
-                 first_name = COALESCE(NULLIF(TRIM(organization_memberships.first_name), ''), EXCLUDED.first_name),
-                 last_name = COALESCE(NULLIF(TRIM(organization_memberships.last_name), ''), EXCLUDED.last_name),
-                 role = EXCLUDED.role,
-                 synced_at = NOW(),
-                 updated_at = NOW()`,
-              [userId, orgId, newMembership.id, user.email, user.first_name, user.last_name]
-            );
+            try {
+              await upsertOrganizationMembership({
+                user_id: userId,
+                organization_id: orgId,
+                membership_id: membership.id,
+                email: user.email,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                role: membership.role?.slug ?? "member",
+                seat_type: "community_only",
+                has_explicit_seat_type: false,
+                provisioning_source: membershipAlreadyExisted
+                  ? undefined
+                  : "admin_added",
+              });
+            } finally {
+              try {
+                await pool.query(
+                  "DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1",
+                  [stagingKey]
+                );
+              } catch (cleanupErr) {
+                logger.error(
+                  { err: cleanupErr, userId, orgId, stagingKey },
+                  "CRITICAL: failed to cleanup admin add-users staging row after local membership mirror"
+                );
+              }
+            }
+
+            await orgDb.recordAuditLog({
+              workos_organization_id: orgId,
+              workos_user_id: req.user!.id,
+              action: "member_added",
+              resource_type: "membership",
+              resource_id: membership.id,
+              details: {
+                target_user_id: userId,
+                target_email: user.email,
+                role: membership.role?.slug ?? "member",
+                seat_type: "community_only",
+                actor_email: req.user!.email,
+                via: "admin_add_users",
+                repaired_existing_membership: membershipAlreadyExisted,
+              },
+            });
 
             addedCount++;
 
@@ -1209,6 +1304,7 @@ export function setupOrganizationRoutes(
                 targetOrgId: orgId,
                 targetOrgName: orgName,
                 previousOrgId: user.workos_organization_id,
+                membershipAlreadyExisted,
                 adminEmail: req.user!.email,
               },
               "Admin added user to organization"

@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.2/core/brand-ref.json",
+  "title": "Brand Reference",
+  "description": "Reference to a brand by domain and optional brand_id. The domain hosts /.well-known/brand.json or is registered in the brand registry. For single-brand domains, brand_id can be omitted. For house-of-brands domains, brand_id identifies the specific brand.",
+  "type": "object",
+  "properties": {
+    "domain": {
+      "type": "string",
+      "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "brand_id": {
+      "$ref": "/schemas/3.1.0-rc.2/core/brand-id.json",
+      "description": "Brand identifier within the house portfolio. Optional for single-brand domains."
+    },
+    "industries": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Inline override for the brand's industries. Useful when the caller cannot modify the brand's canonical brand.json but needs to declare industries for governance (e.g., Annex III vertical detection). brand.json remains the canonical source; when omitted here, governance agents SHOULD resolve from brand.json."
+    },
+    "data_subject_contestation": {
+      "type": "object",
+      "description": "Inline override for the brand's contestation contact point. Useful when the operator does not control brand.json but needs to discharge Art 22(3) for this plan. brand.json is canonical; when omitted, governance agents resolve brand → house → missing.",
+      "properties": {
+        "url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "email": { "type": "string", "format": "email" },
+        "languages": { "type": "array", "items": { "type": "string" } }
+      },
+      "anyOf": [
+        { "required": ["url"] },
+        { "required": ["email"] }
+      ],
+      "additionalProperties": false
+    },
+    "brand_kit_override": {
+      "type": "object",
+      "description": "Inline override for brand-kit fields normally resolved from `/.well-known/brand.json` on `domain` (logo, colors, voice, tagline). Use when brand.json is missing, stale, or inappropriate for this specific call — e.g., a campaign-scoped tagline, a co-branded creative, a freshly-rebranded color palette the brand.json hasn't shipped yet. Same inline-override pattern as `industries` and `data_subject_contestation` above: brand.json is canonical, the override is per-call. Adopters needing to override fields outside this subset (`voice_attributes`, `prohibited_terms`, etc.) MUST publish a different brand.json and reference it via a different `domain` — the inline override is intentionally narrow to a small high-traffic subset.\n\n**Merge semantics (normative).** The merge is **field-level**, not whole-object replacement. Each field within `brand_kit_override` (`logo`, `colors`, `voice`, `tagline`) is evaluated independently — when a field is present on the override the override value applies; when a field is absent the brand.json value applies (or is absent if brand.json doesn't carry one either). For composite fields (`colors.primary`, `colors.secondary`, `colors.accent`), the merge is one level deeper: each color slot is evaluated independently — a producer can override `colors.primary` while still inheriting `colors.secondary` from brand.json. SDKs MUST NOT treat a present `brand_kit_override.colors` as wiping the brand.json `colors` block entirely; only the per-slot fields present in the override take precedence. Without this rule, a partial-override semantics would diverge across SDKs and produce inconsistent rendering for the same payload.",
+      "properties": {
+        "logo": {
+          "$ref": "/schemas/3.1.0-rc.2/core/assets/image-asset.json",
+          "description": "Override logo asset."
+        },
+        "colors": {
+          "type": "object",
+          "description": "Override brand colors (hex strings).",
+          "properties": {
+            "primary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            "secondary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
+          },
+          "additionalProperties": true
+        },
+        "voice": {
+          "type": "string",
+          "description": "Override brand-voice description for surface-composed text/audio output."
+        },
+        "tagline": {
+          "type": "string",
+          "description": "Override tagline."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": ["domain"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "domain": "nova-brands.com",
+      "brand_id": "spark"
+    },
+    {
+      "domain": "nova-brands.com",
+      "brand_id": "glow"
+    },
+    {
+      "domain": "acme-corp.com"
+    }
+  ]
+}

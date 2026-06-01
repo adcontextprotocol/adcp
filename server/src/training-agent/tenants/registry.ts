@@ -37,7 +37,7 @@ import {
 } from '@adcp/sdk/server';
 import { getPool } from '../../db/client.js';
 import { getIdempotencyStore, scopedPrincipal } from '../idempotency.js';
-import { getWebhookSigningMaterial } from '../webhooks.js';
+import { emitFrameworkTaskWebhook, getWebhookSigningMaterial } from '../webhooks.js';
 import { buildSignalsTenantConfig } from './signals.js';
 import { buildSalesTenantConfig } from './sales.js';
 import { buildGovernanceTenantConfig } from './governance.js';
@@ -45,6 +45,7 @@ import { buildCreativeTenantConfig } from './creative.js';
 import { buildCreativeBuilderTenantConfig } from './creative-builder.js';
 import { buildBrandTenantConfig } from './brand.js';
 import { createLogger } from '../../logger.js';
+import type { TrainingContext } from '../types.js';
 
 const logger = createLogger('training-agent-tenants');
 
@@ -190,12 +191,16 @@ function pickStateStore(): AdcpStateStore {
   return new PostgresStateStore(lazyPool);
 }
 
-function buildDefaultServerOptions(): CreateAdcpServerFromPlatformOptions {
+function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboardCompat']): CreateAdcpServerFromPlatformOptions {
   return {
     name: 'adcp-training-agent',
     version: '1.0.0',
+    ...(storyboardCompat?.version === '3.0' && { adcpVersion: '3.0' }),
     idempotency: getIdempotencyStore(),
     webhooks: getWebhookSigningMaterial(),
+    taskWebhookEmitter: {
+      emit: emitFrameworkTaskWebhook,
+    },
     taskRegistry: pickTaskRegistry(),
     stateStore: pickStateStore(),
     mergeSeam: 'log-once',
@@ -213,8 +218,11 @@ function buildDefaultServerOptions(): CreateAdcpServerFromPlatformOptions {
       _toolName: string,
     ) => {
       const auth = ctx.authInfo?.clientId ?? 'anonymous';
-      if (auth !== 'static:public') return auth;
-      const account = params.account as { account_id?: string; brand?: { domain?: string } } | undefined;
+      if (auth !== 'static:public' && auth !== 'static:public:shared') return auth;
+      const usageAccount = Array.isArray(params.usage)
+        ? (params.usage[0] as { account?: unknown } | undefined)?.account
+        : undefined;
+      const account = (params.account ?? usageAccount) as { account_id?: string; brand?: { domain?: string } } | undefined;
       const accountScope = account?.account_id
         ? `a:${account.account_id}`
         : account?.brand?.domain
@@ -241,7 +249,7 @@ export interface RegistryHolder {
   get(): Promise<TenantRegistry>;
 }
 
-export function createRegistryHolder(): RegistryHolder {
+export function createRegistryHolder(options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): RegistryHolder {
   let registry: TenantRegistry | null = null;
   let pendingInit: Promise<TenantRegistry> | null = null;
 
@@ -254,18 +262,18 @@ export function createRegistryHolder(): RegistryHolder {
         logger.info('Tenant registry init starting');
         const hostBase = buildHostBaseUrl();
         const reg = createTenantRegistry({
-          defaultServerOptions: buildDefaultServerOptions(),
+          defaultServerOptions: buildDefaultServerOptions(options.storyboardCompat),
           jwksValidator: noopJwksValidator,
           autoValidate: true,
         });
         const tCreate = Date.now();
         const configs = [
-          { id: 'signals', cfg: buildSignalsTenantConfig(hostBase) },
-          { id: 'sales', cfg: buildSalesTenantConfig(hostBase) },
-          { id: 'governance', cfg: buildGovernanceTenantConfig(hostBase) },
-          { id: 'creative', cfg: buildCreativeTenantConfig(hostBase) },
-          { id: 'creative-builder', cfg: buildCreativeBuilderTenantConfig(hostBase) },
-          { id: 'brand', cfg: buildBrandTenantConfig(hostBase) },
+          { id: 'signals', cfg: buildSignalsTenantConfig(hostBase, options) },
+          { id: 'sales', cfg: buildSalesTenantConfig(hostBase, options) },
+          { id: 'governance', cfg: buildGovernanceTenantConfig(hostBase, options) },
+          { id: 'creative', cfg: buildCreativeTenantConfig(hostBase, options) },
+          { id: 'creative-builder', cfg: buildCreativeBuilderTenantConfig(hostBase, options) },
+          { id: 'brand', cfg: buildBrandTenantConfig(hostBase, options) },
         ] as const;
         const tConfigs = Date.now();
         // awaitFirstValidation:true blocks until the no-op validator

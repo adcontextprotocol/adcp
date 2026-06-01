@@ -137,6 +137,8 @@ phases:
 
 The runner injects a fixtures phase that calls `comply_test_controller` with `scenario: seed_product`, `scenario: seed_pricing_option`, and `scenario: seed_creative` (in foreign-key order) before running `place_buy`. An agent that implements the seed scenarios passes out of the box; an agent that returns `UNKNOWN_SCENARIO` on the seeds causes the storyboard to grade as `not_applicable`, not failed — implementers don't get penalized for missing sandbox-only surface.
 
+When a vendor-metric storyboard needs a deterministic external `measurement.metrics[]` snapshot, add an explicit `comply_test_controller` step with `scenario: seed_measurement_catalog`. Use `measurement_catalogs[]` inside a product fixture only as a compatibility fallback when the same storyboard also needs to carry the seller's product-level capability fields.
+
 See the full list of seed scenarios and their params in [Compliance test controller — Scenarios](/docs/building/implementation/comply-test-controller#scenarios).
 
 ### Pattern B — flow-derived captures via `context_outputs:` + `$context.<name>`

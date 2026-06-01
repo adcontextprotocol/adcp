@@ -25,6 +25,46 @@ export interface BadgeIssuanceResult {
   unchanged: Array<{ role: BadgeRole; adcp_version: string }>;
 }
 
+function advertisesPublicBadgeVersion(
+  supportedVersions: readonly string[] | undefined,
+  adcpVersion: string,
+): boolean {
+  if (!supportedVersions?.length) return false;
+  return supportedVersions.some(version => {
+    if (version.includes('-')) return false;
+    const match = version.match(/^([1-9][0-9]*\.[0-9]+)(?:\.|$)/);
+    return match?.[1] === adcpVersion;
+  });
+}
+
+export async function revokeUnsupportedPublicBadges(params: {
+  complianceDb: ComplianceDatabase;
+  agentUrl: string;
+  supportedVersions: readonly string[] | undefined;
+}): Promise<BadgeIssuanceResult> {
+  const { complianceDb, agentUrl, supportedVersions } = params;
+  const result: BadgeIssuanceResult = { issued: [], revoked: [], degraded: [], unchanged: [] };
+  if (!supportedVersions?.length) return result;
+
+  const publicBadgeVersions = new Set<string>(SUPPORTED_BADGE_VERSIONS);
+  const existingBadges = await complianceDb.getBadgesForAgent(agentUrl);
+
+  for (const badge of existingBadges) {
+    if (!publicBadgeVersions.has(badge.adcp_version)) continue;
+    if (advertisesPublicBadgeVersion(supportedVersions, badge.adcp_version)) continue;
+
+    const reason = `Agent no longer advertises AdCP ${badge.adcp_version} support`;
+    await complianceDb.revokeBadge(agentUrl, badge.role, badge.adcp_version, reason);
+    result.revoked.push({ role: badge.role, reason, adcp_version: badge.adcp_version });
+    logger.info(
+      { agentUrl, role: badge.role, adcpVersion: badge.adcp_version },
+      'Badge revoked — agent no longer advertises public badge version',
+    );
+  }
+
+  return result;
+}
+
 /**
  * Check and update badge status for an agent after a compliance run.
  *
@@ -170,11 +210,17 @@ export async function runBadgeFanOut(params: {
   complianceDb: ComplianceDatabase;
   agentUrl: string;
   declaredSpecialisms: string[];
+  /** Full-suite runs pass their run id so stale prior storyboard rows cannot issue/degrade badges. */
+  runId?: string | null;
+  /** Public AdCP badge versions this compliance run is authoritative for. */
+  adcpVersions?: readonly string[];
 }): Promise<BadgeIssuanceResult> {
-  const { complianceDb, agentUrl, declaredSpecialisms } = params;
+  const { complianceDb, agentUrl, declaredSpecialisms, runId } = params;
+  const adcpVersions = (params.adcpVersions === undefined ? [DEFAULT_BADGE_ADCP_VERSION] : params.adcpVersions)
+    .filter((version): version is string => typeof version === 'string' && version.length > 0);
   const aggregate: BadgeIssuanceResult = { issued: [], revoked: [], degraded: [], unchanged: [] };
 
-  if (declaredSpecialisms.length === 0) {
+  if (declaredSpecialisms.length === 0 || adcpVersions.length === 0) {
     return aggregate;
   }
 
@@ -203,7 +249,9 @@ export async function runBadgeFanOut(params: {
   // earlier storyboard's last result — essential for partial runs
   // (single-storyboard owner_test) so unrelated storyboards' badges
   // aren't degraded just because they weren't touched this run.
-  const latestStatuses = await complianceDb.getStoryboardStatuses(agentUrl);
+  const latestStatuses = runId
+    ? await complianceDb.getStoryboardStatuses(agentUrl, { runId })
+    : await complianceDb.getStoryboardStatuses(agentUrl);
   const storyboardStatuses: StoryboardStatusEntry[] = latestStatuses.map(s => ({
     storyboard_id: s.storyboard_id,
     status: s.status as StoryboardStatus,
@@ -217,7 +265,32 @@ export async function runBadgeFanOut(params: {
   const overallPassing = storyboardStatuses.length > 0 &&
     storyboardStatuses.every(s => s.status === 'passing');
 
-  for (const adcpVersion of SUPPORTED_BADGE_VERSIONS) {
+  if (!membershipOrgId) {
+    return processAgentBadges(
+      complianceDb,
+      agentUrl,
+      declaredSpecialisms,
+      storyboardStatuses,
+      overallPassing,
+      undefined,
+      adcpVersions[0] ?? DEFAULT_BADGE_ADCP_VERSION,
+    );
+  }
+
+  const supportedBadgeVersions = new Set<string>(SUPPORTED_BADGE_VERSIONS);
+  const existingBadges = await complianceDb.getBadgesForAgent(agentUrl);
+  for (const badge of existingBadges) {
+    if (supportedBadgeVersions.has(badge.adcp_version)) continue;
+    const reason = `AdCP ${badge.adcp_version} public badge issuance is not currently enabled`;
+    await complianceDb.revokeBadge(agentUrl, badge.role, badge.adcp_version, reason);
+    aggregate.revoked.push({ role: badge.role, reason, adcp_version: badge.adcp_version });
+    logger.info(
+      { agentUrl, role: badge.role, adcpVersion: badge.adcp_version },
+      'Badge revoked — version no longer publicly badge-eligible',
+    );
+  }
+
+  for (const adcpVersion of adcpVersions) {
     // Per-version try/catch matches the heartbeat behavior: a failure
     // at one version must not poison another version's issuance, and a
     // persistent failure must surface via the system-error channel

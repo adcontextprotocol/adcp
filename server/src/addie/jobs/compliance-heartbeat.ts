@@ -10,7 +10,10 @@ import {
   complianceResultToDbInput,
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
+  badgeEligibleVersionsForTargetSelection,
+  selectComplianceTargetForAgentSelection,
   type ComplyOptions,
+  type ComplianceTargetSelection,
 } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
 import { query } from '../../db/client.js';
@@ -19,11 +22,15 @@ import { notifySystemError } from '../error-notifier.js';
 import { logger as baseLogger } from '../../logger.js';
 import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
-import { runBadgeFanOut } from '../../services/badge-issuance.js';
+import { revokeUnsupportedPublicBadges, runBadgeFanOut } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
+import {
+  hostedComplianceTarget,
+} from '../../services/hosted-compliance-version.js';
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
 const complianceDb = new ComplianceDatabase();
+const fallbackComplianceTarget = hostedComplianceTarget();
 
 interface HeartbeatOptions {
   limit?: number;
@@ -63,6 +70,8 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
   for (const agent of agentsDue) {
     const startTime = Date.now();
+    let runTarget = fallbackComplianceTarget;
+    let runTargetSelection: ComplianceTargetSelection = { target: fallbackComplianceTarget, confirmed: false };
     try {
       const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
       const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `heartbeat:${agent.agent_url}` });
@@ -74,7 +83,14 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         userAgent: AAO_UA_COMPLIANCE,
       };
 
-      const complianceResult = await comply(agent.agent_url, complyOptions);
+      runTargetSelection = await selectComplianceTargetForAgentSelection(
+        agent.agent_url,
+        complyOptions,
+        fallbackComplianceTarget,
+        'canonical',
+      );
+      runTarget = runTargetSelection.target;
+      const complianceResult = await comply(agent.agent_url, complyOptions, runTarget);
 
       logOutboundRequest({
         agent_url: agent.agent_url,
@@ -91,7 +107,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         'heartbeat',
       );
       dbInput.dry_run = false;
-      const { statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+      const { run, statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
 
       result.checked++;
       if (dbInput.overall_status === 'passing') {
@@ -125,13 +141,18 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       // heartbeat is the only caller that follows it up with a Slack
       // notification, since owner-driven runs already have a chat response.
       const declaredSpecialisms = complianceResult.agent_profile?.specialisms ?? [];
+      const badgeEligibleAdcpVersions = [
+        ...badgeEligibleVersionsForTargetSelection(runTargetSelection, complianceResult.agent_profile),
+      ];
 
-      if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0) {
+      if (declaredSpecialisms.length > 0 && badgeEligibleAdcpVersions.length > 0) {
         try {
           const badgeResult = await runBadgeFanOut({
             complianceDb,
             agentUrl: agent.agent_url,
             declaredSpecialisms,
+            runId: run.id,
+            adcpVersions: badgeEligibleAdcpVersions,
           });
 
           if (badgeResult.issued.length > 0 || badgeResult.revoked.length > 0) {
@@ -151,6 +172,23 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             source: 'compliance-badge-issuance',
             errorMessage: `Badge processing setup failed for ${agent.agent_url}: ${badgeError instanceof Error ? badgeError.message : String(badgeError)}`,
           });
+        }
+      } else {
+        try {
+          const badgeResult = await revokeUnsupportedPublicBadges({
+            complianceDb,
+            agentUrl: agent.agent_url,
+            supportedVersions: complianceResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+          });
+          if (badgeResult.revoked.length > 0) {
+            await notifyVerificationChange({
+              agentUrl: agent.agent_url,
+              issued: [],
+              revoked: badgeResult.revoked,
+            });
+          }
+        } catch (badgeError) {
+          logger.error({ badgeError, agentUrl: agent.agent_url }, 'Unsupported public badge revocation failed');
         }
       }
     } catch (error) {
@@ -199,8 +237,11 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
       // Record failure so stale passing data doesn't persist
       try {
+        const badgeEligibleAdcpVersions = [...badgeEligibleVersionsForTargetSelection(runTargetSelection)];
         await complianceDb.recordComplianceRun({
           agent_url: agent.agent_url,
+          requested_compliance_target: runTarget.requested,
+          adcp_version: runTarget.version,
           lifecycle_stage: agent.lifecycle_stage as LifecycleStage,
           overall_status: 'failing',
           headline,
@@ -212,7 +253,56 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           observations_json: [{ category: observationCategory, severity: observationSeverity, message: observationMessage }],
           triggered_by: 'heartbeat',
           dry_run: false,
+          replace_storyboard_statuses: true,
         });
+
+        if (badgeEligibleAdcpVersions.length > 0) {
+          const eligibleBadgeVersions = new Set(badgeEligibleAdcpVersions);
+          const existingBadges = await complianceDb.getBadgesForAgent(agent.agent_url);
+          const revoked = [];
+          for (const badge of existingBadges) {
+            if (!eligibleBadgeVersions.has(badge.adcp_version)) continue;
+            await complianceDb.revokeBadge(
+              agent.agent_url,
+              badge.role,
+              badge.adcp_version,
+              'Authoritative compliance run failed before storyboard verification',
+            );
+            revoked.push({
+              role: badge.role,
+              reason: 'Authoritative compliance run failed',
+              adcp_version: badge.adcp_version,
+            });
+          }
+          if (revoked.length > 0) {
+            try {
+              await notifyVerificationChange({
+                agentUrl: agent.agent_url,
+                issued: [],
+                revoked,
+              });
+            } catch (notifyError) {
+              logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification revocation notification');
+            }
+          }
+        } else if (runTargetSelection.confirmed) {
+          const badgeResult = await revokeUnsupportedPublicBadges({
+            complianceDb,
+            agentUrl: agent.agent_url,
+            supportedVersions: runTargetSelection.supportedVersions,
+          });
+          if (badgeResult.revoked.length > 0) {
+            try {
+              await notifyVerificationChange({
+                agentUrl: agent.agent_url,
+                issued: [],
+                revoked: badgeResult.revoked,
+              });
+            } catch (notifyError) {
+              logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification revocation notification');
+            }
+          }
+        }
       } catch (recordError) {
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
       }

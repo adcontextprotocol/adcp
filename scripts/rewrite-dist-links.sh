@@ -44,11 +44,15 @@ rewrite_file() {
 
   # Phase 1: rewrite absolute prefixes (/docs/, /schemas/latest/, /schemas/vN/)
   # to point at the pinned version. Idempotent on repeat runs because the
-  # left-hand patterns no longer match after the first pass.
+  # left-hand patterns no longer match after the first pass. The bare
+  # "$schema": "/schemas/" rule is intentionally followed by a collapse rule:
+  # it also matches already-pinned schema paths on repeat runs, so the collapse
+  # keeps the script idempotent instead of producing /schemas/VERSION/VERSION/.
   sed \
     -e "s|](/docs/|](/dist/docs/$VERSION/|g" \
     -e "s|href=\"/docs/|href=\"/dist/docs/$VERSION/|g" \
     -e "s|\"\$schema\": \"/schemas/|\"\$schema\": \"/schemas/$VERSION/|g" \
+    -e "s|\"\$schema\": \"/schemas/$VERSION/$VERSION/|\"\$schema\": \"/schemas/$VERSION/|g" \
     -e "s|https://adcontextprotocol.org/schemas/latest/|https://adcontextprotocol.org/schemas/$VERSION/|g" \
     -e "s|](/schemas/latest/|](/schemas/$VERSION/|g" \
     -e "s|\`/schemas/latest/|\`/schemas/$VERSION/|g" \

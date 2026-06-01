@@ -82,7 +82,7 @@ async function getPendingContentForUser(
     SELECT wg.slug as committee_slug, COUNT(*) as count
     FROM perspectives p
     LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-    WHERE p.status = 'pending_review'
+    WHERE p.status IN ('pending_review', 'needs_revisions')
   `;
   const params: (string | string[])[] = [];
 
@@ -363,7 +363,10 @@ export interface MemberContext {
 
   /** Working groups the user is a member of */
   working_groups?: Array<{
+    id?: string;
     name: string;
+    slug?: string;
+    committee_type?: string;
     is_leader: boolean;
   }>;
 
@@ -745,7 +748,10 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
     if (userWorkingGroups.length > 0) {
       const workingGroupsWithLeadership = await Promise.all(
         userWorkingGroups.map(async (wg) => ({
+          id: wg.id,
           name: wg.name,
+          slug: wg.slug,
+          committee_type: wg.committee_type,
           is_leader: await workingGroupDb.isLeader(wg.id, workosUserId).catch(() => false),
         }))
       );
@@ -972,7 +978,10 @@ async function resolveContextFromLocalDb(
     if (userWorkingGroups.length > 0) {
       const workingGroupsWithLeadership = await Promise.all(
         userWorkingGroups.map(async (wg) => ({
+          id: wg.id,
           name: wg.name,
+          slug: wg.slug,
+          committee_type: wg.committee_type,
           is_leader: await workingGroupDb.isLeader(wg.id, workosUserId),
         }))
       );
@@ -1305,8 +1314,11 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     }
   }
 
-  // Member profile details
+  // Company profile — registry-sourced facts only. Response policy (what to
+  // do when sparse or absent) lives in rules/constraints.md §"Ground
+  // Company-Specific Statements in Registry Data".
   if (context.member_profile) {
+    lines.push('### Company Profile (source: AgenticAdvertising.org registry)');
     if (context.member_profile.tagline) {
       lines.push(`Company description: ${context.member_profile.tagline}`);
     }
@@ -1316,6 +1328,9 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     if (context.member_profile.headquarters) {
       lines.push(`Company headquarters: ${context.member_profile.headquarters}`);
     }
+  } else if (context.organization && !context.organization.is_personal) {
+    lines.push('### Company Profile');
+    lines.push('No registry profile on file for this organization.');
   }
 
   // Persona and journey stage

@@ -39,7 +39,7 @@ test('authored_check_kinds enum loads from runner-output-contract.yaml', () => {
   const kinds = loadKnownCheckKinds();
   // Spot-check a few load-bearing entries — keep this tight so the test
   // doesn't have to track every authored kind. Full enum is the contract.
-  for (const expected of ['response_schema', 'field_present', 'upstream_traffic']) {
+  for (const expected of ['response_schema', 'field_present', 'field_pattern', 'envelope_field_pattern', 'upstream_traffic']) {
     assert.ok(kinds.has(expected), `expected "${expected}" in authored_check_kinds`);
   }
   // Synthesized codes MUST NOT be in the authored enum.

@@ -1,0 +1,413 @@
+id: creative_template
+version: "1.0.0"
+title: "Creative template and transformation agent"
+protocol: creative
+category: creative_template
+summary: "Stateless creative agent that takes assets in, applies templates, and produces tags or rendered output."
+track: creative
+required_tools:
+  - build_creative
+
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. approved → processing on a creative asset.
+invariants:
+  - status.monotonic
+
+narrative: |
+  You build a creative management or rich media platform — think Celtra, a format
+  conversion service, or any tool that defines ad templates and transforms input assets
+  into finished creatives. Your agent is stateless: every call is self-contained. The
+  caller passes assets inline with each request, and you return the result. There is no
+  creative library to sync to and no persistent state between calls.
+
+  A buyer agent connects to discover your templates, preview them with real brand assets,
+  and request fully built creatives for trafficking. This storyboard walks through that
+  flow step by step.
+
+agent:
+  interaction_model: stateless_transform
+  capabilities:
+    - supports_transformation
+  examples:
+    - "Celtra"
+    - "Format conversion services"
+    - "Rich media template platforms"
+
+caller:
+  role: buyer_agent
+  example: "Scope3 (DSP)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity (brand.json with colors, fonts, logos) and creative
+    assets that match the format's requirements (images at the right dimensions, text at
+    the right lengths). The test kit provides these ingredients so you can test without
+    assembling them yourself.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports creative operations before browsing or building creatives.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring creative in supported_protocols, confirming the agent handles creative operations.
+        sample_request:
+          context:
+            correlation_id: "creative_template--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_template--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: format_exposure
+    title: "Format discovery"
+    narrative: |
+      The buyer's first question is: what can your platform do? They call
+      list_creative_formats to discover your templates — the available ad formats,
+      what assets each one requires, what dimensions they render at, and what
+      variables (dynamic fields) they support.
+
+      For a Celtra-like platform, this is where your publisher templates (Yahoo
+      Lighthouse, custom slider units) and standard templates (300x250 banners,
+      responsive display) get exposed as AdCP-compliant format definitions.
+
+    steps:
+      - id: discover_formats
+        title: "Discover available formats"
+        narrative: |
+          A buyer agent asks: "What creative formats do you support?" This is
+          the entry point for any interaction with your agent. The response tells
+          the buyer what templates are available, what assets each one needs, and
+          what the output dimensions will be.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_sync
+        stateful: false
+        expected: |
+          Return your supported formats. Each format must include:
+          - format_id with your agent_url and a unique id
+          - Human-readable name and description
+          - Asset slots with types, roles, and requirements (dimensions, file sizes, mime types)
+          - Render dimensions (width/height per render)
+          - Variables array if the format supports dynamic fields (text, colors, images)
+
+        sample_request:
+          context:
+            correlation_id: "creative_template--discover_formats"
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats"
+            description: "Response contains a formats array"
+          - check: field_present
+            path: "formats[0].format_id.agent_url"
+            description: "Each format has a format_id with agent_url"
+          - check: field_present
+            path: "formats[0].assets"
+            description: "Each format defines its asset requirements"
+          - check: field_present
+            path: "formats[0].renders"
+            description: "Each format defines its render dimensions"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_template--discover_formats"
+            description: "Context correlation_id returned unchanged"
+      - id: filter_by_type
+        title: "Filter formats by type"
+        narrative: |
+          The buyer narrows the search. Maybe they only want display formats, or
+          they need formats that accept image assets at specific dimensions. This
+          tests that your agent handles filter parameters correctly.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_sync
+        stateful: false
+        expected: |
+          Return only formats matching the filter criteria. If no formats match,
+          return an empty formats array — not an error.
+
+        sample_request:
+          type: "display"
+          max_width: 728
+          max_height: 90
+
+          context:
+            correlation_id: "creative_template--filter_by_type"
+        validations:
+          - check: response_schema
+            description: "Response matches schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_template--filter_by_type"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "formats[0].format_id.agent_url"
+            description: "Format IDs include agent_url"
+          - check: field_present
+            path: "formats[0].format_id.id"
+            description: "Format IDs include id — must match those in get_products"
+  - id: preview
+    title: "Preview with real assets"
+    narrative: |
+      The buyer wants to see what the template looks like with actual content.
+      They pass a complete creative manifest inline — brand identity, assets,
+      and format reference — and your agent renders a preview.
+
+      This is where the stateless nature matters: the buyer doesn't sync assets
+      to your library first. Everything needed is in the request.
+
+      To test this, you need compatible "ingredients" — a brand.json and assets
+      that match your format's requirements. The test kit provides these.
+
+    steps:
+      - id: preview_creative
+        title: "Preview a creative"
+        narrative: |
+          The buyer has chosen a format from Phase 1 and assembled a manifest with
+          brand assets. They call preview_creative with the full manifest inline to
+          see how the template renders with real content.
+
+          For a Celtra-like platform, this is where the template gets populated with
+          the advertiser's images, copy, and brand colors, and a preview URL or HTML
+          snippet is returned.
+        task: preview_creative
+        schema_ref: "creative/preview-creative-request.json"
+        response_schema_ref: "creative/preview-creative-response.json"
+        doc_ref: "/creative/task-reference/preview_creative"
+        comply_scenario: creative_flow
+        stateful: false
+        expected: |
+          Return a preview render. The response should include:
+          - A preview URL (iframe-embeddable) and/or inline HTML
+          - Render dimensions matching the format spec
+          - An expiration timestamp (previews are ephemeral)
+
+          The preview should show the template populated with the provided assets —
+          not a placeholder or empty template.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          request_type: "single"
+          creative_manifest:
+            format_id:
+              agent_url: "https://your-agent.example.com"
+              id: "display_300x250"
+            assets:
+              image:
+                asset_type: "image"
+                url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-300x250.jpg"
+                width: 300
+                height: 250
+              click_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/summer-sale"
+              headline:
+                asset_type: "text"
+                content: "Summer Sale — 40% Off All Gear"
+          output_format: "url"
+          quality: "draft"
+
+          context:
+            correlation_id: "creative_template--preview_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches preview-creative-response.json schema"
+          - check: field_present
+            path: "previews[0].renders[0].preview_url"
+            description: "Preview includes a renderable URL"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_template--preview_creative"
+            description: "Context correlation_id returned unchanged"
+  - id: build
+    title: "Full build (transformation)"
+    narrative: |
+      Now the buyer needs a finished creative — a serving tag or rendered output they
+      can traffic in a media buy. They call build_creative with the same inline manifest
+      and a target format. Your agent applies the template and returns the output.
+
+      This is where the three tag generation models come in:
+      - Universal tags: a single tag that adapts to any environment
+      - Single-placement tags: scoped to specific dimensions
+      - Multi-placement tags: covering multiple sizes in one tag
+
+      The output is a creative manifest with the serving code in an HTML, JavaScript,
+      or VAST asset — ready for the buyer to traffic.
+
+    steps:
+      - id: build_creative
+        title: "Build a creative from assets"
+        narrative: |
+          The buyer passes assets inline along with a target format and asks your agent
+          to produce a finished creative. This is the core transformation: raw assets in,
+          serving tag out.
+
+          For a Celtra-like platform, this means applying the template, assembling the
+          rich media unit, and returning an ad tag the buyer can traffic.
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        comply_scenario: creative_flow
+        stateful: false
+        expected: |
+          Return a creative manifest with the output creative. The response should include:
+          - A creative manifest with serving code (html, javascript, or vast asset)
+          - The format_id matching the target format
+          - Assets array with the generated output
+
+          The output should be a valid, traffickable creative — not a preview or placeholder.
+
+        sample_request:
+          creative_manifest:
+            format_id:
+              agent_url: "https://your-agent.example.com"
+              id: "display_300x250"
+            assets:
+              image:
+                asset_type: "image"
+                url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-300x250.jpg"
+                width: 300
+                height: 250
+              click_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/summer-sale"
+              headline:
+                asset_type: "text"
+                content: "Summer Sale — 40% Off All Gear"
+          target_format_id:
+            agent_url: "https://your-agent.example.com"
+            id: "display_300x250"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          idempotency_key: "$generate:uuid_v4#creative_template_build_build_creative"
+          context:
+            correlation_id: "creative_template--build_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches build-creative-response.json schema"
+          - check: field_present
+            path: "creative_manifest.assets"
+            description: "Output manifest includes assets"
+          - check: field_present
+            path: "creative_manifest.format_id"
+            description: "Output manifest includes format_id"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_template--build_creative"
+            description: "Context correlation_id returned unchanged"
+      - id: build_multi_format
+        title: "Build for multiple formats"
+        narrative: |
+          The buyer needs the same creative adapted to several sizes — 300x250, 728x90,
+          and 320x50. Instead of making three separate calls, they pass target_format_ids
+          (plural) and your agent returns manifests for each.
+
+          This tests the multi-format generation capability that makes template agents
+          valuable — build once, get all sizes.
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        comply_scenario: creative_flow
+        stateful: false
+        expected: |
+          Return creative manifests for each requested format. If a format cannot be
+          produced, include it in the response with an error — don't fail the entire
+          request.
+
+        sample_request:
+          creative_manifest:
+            format_id:
+              agent_url: "https://your-agent.example.com"
+              id: "source_master"
+            assets:
+              image:
+                asset_type: "image"
+                url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-master.jpg"
+                width: 1200
+                height: 628
+              click_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/summer-sale"
+              headline:
+                asset_type: "text"
+                content: "Summer Sale — 40% Off All Gear"
+          target_format_ids:
+            - agent_url: "https://your-agent.example.com"
+              id: "display_300x250"
+            - agent_url: "https://your-agent.example.com"
+              id: "display_728x90"
+            - agent_url: "https://your-agent.example.com"
+              id: "display_320x50"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          idempotency_key: "$generate:uuid_v4#creative_template_build_build_multi_format"
+          context:
+            correlation_id: "creative_template--build_multi_format"
+        validations:
+          - check: response_schema
+            description: "Response matches schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_template--build_multi_format"
+            description: "Context correlation_id returned unchanged"

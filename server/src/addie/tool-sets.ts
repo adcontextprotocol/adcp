@@ -49,6 +49,7 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   "list_pending_content",
   "approve_content",
   "reject_content",
+  "request_revisions",
   // Members routinely share Google Doc links as drafts. Reading the doc is
   // the precondition for calling propose_content, so it should be available
   // in any channel regardless of router intent selection. The handler is
@@ -256,6 +257,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "create_promotion_code",
       "resend_invoice",
       "update_billing_email",
+      "preview_org_stripe_customer_update",
+      "confirm_org_stripe_customer_update",
       "list_pending_invoices",
       "get_account",
     ],
@@ -297,12 +300,17 @@ export const TOOL_SETS: Record<string, ToolSet> = {
   committee_leadership: {
     name: "committee_leadership",
     description:
-      "Manage committee co-leaders - add or remove co-leaders for committees you lead (working groups, councils, chapters, industry gatherings)",
+      "Manage committees you lead: co-leaders plus event management for working groups, councils, chapters, and industry gatherings",
     tools: [
       "add_committee_co_leader",
       "remove_committee_co_leader",
       "list_committee_co_leaders",
       "list_working_groups",
+      "create_event",
+      "update_event",
+      "manage_event_registrations",
+      "check_person_event_status",
+      "invite_to_event",
     ],
   },
 

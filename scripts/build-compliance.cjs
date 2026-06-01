@@ -250,7 +250,14 @@ function loadMutatingSchemaRefs(schemasDir) {
 function lintStoryboardIdempotency(sourceDir, schemasDir) {
   const { refs: mutatingRefs, tools: mutatingTools } = loadMutatingSchemaRefs(schemasDir);
   const violations = [];
+  const stableKeyViolations = [];
+  const duplicateGeneratedKeyViolations = [];
   const missingSchemaRefs = [];
+  const generatedKeyUses = new Map();
+
+  function isGeneratedIdempotencyKey(value) {
+    return typeof value === 'string' && value.startsWith('$generate:uuid_v4');
+  }
 
   function lintFile(p) {
     const rel = path.relative(sourceDir, p);
@@ -267,9 +274,6 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
       if (!phase || !Array.isArray(phase.steps)) continue;
       for (const step of phase.steps) {
         if (!step || typeof step !== 'object' || !step.task) continue;
-        // expect_error steps intentionally exercise invalid-request paths,
-        // including the "missing idempotency_key" test in universal/idempotency.yaml.
-        if (step.expect_error === true) continue;
         // Steps without schema_ref are HTTP probes, controller calls, or
         // synthetic invocations (e.g., comply_test_controller's
         // simulate_budget scenarios, universal/security.yaml's probe steps)
@@ -287,11 +291,40 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
         }
         const schemaRef = step.schema_ref;
         if (!schemaRef || !mutatingRefs.has(schemaRef)) continue;
+        // The missing-key negative vector explicitly suppresses both runner
+        // auto-injection and this authored-sample lint.
+        if (step.omit_idempotency_key === true) continue;
         const hasKey =
           step.sample_request &&
           typeof step.sample_request === 'object' &&
           step.sample_request.idempotency_key !== undefined;
-        if (hasKey) continue;
+        if (hasKey) {
+          const key = step.sample_request.idempotency_key;
+          if (!isGeneratedIdempotencyKey(key)) {
+            stableKeyViolations.push({
+              file: rel,
+              phase: phase.id,
+              step: step.id,
+              task: step.task,
+              key,
+            });
+          } else if (rel !== 'universal/idempotency.yaml') {
+            const existing = generatedKeyUses.get(key);
+            const current = {
+              file: rel,
+              phase: phase.id,
+              step: step.id,
+              task: step.task,
+              key,
+            };
+            if (existing) {
+              duplicateGeneratedKeyViolations.push({ first: existing, second: current });
+            } else {
+              generatedKeyUses.set(key, current);
+            }
+          }
+          continue;
+        }
         violations.push({
           file: rel,
           phase: phase.id,
@@ -325,6 +358,33 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
       `static/compliance/source/universal/idempotency.yaml for the convention, ` +
       `and note the deliberate alias-reuse pattern there when two steps must ` +
       `share a key (replay tests).`
+    );
+  }
+
+  if (stableKeyViolations.length > 0) {
+    const lines = stableKeyViolations.map(v =>
+      `  ${v.file} phase=${v.phase} step=${v.step}: task "${v.task}" uses stable idempotency_key ${JSON.stringify(v.key)}.`
+    );
+    throw new Error(
+      `Storyboard idempotency_key freshness lint: ${stableKeyViolations.length} step(s) use stable authored idempotency_key values.\n\n` +
+      lines.join('\n') +
+      `\n\nUse \`idempotency_key: "$generate:uuid_v4#<storyboard>_<phase>_<step>"\` ` +
+      `so each storyboard run mints fresh keys. Literal keys can replay stale ` +
+      `successful responses from a prior run and leak terminal state into later phases.`
+    );
+  }
+
+  if (duplicateGeneratedKeyViolations.length > 0) {
+    const lines = duplicateGeneratedKeyViolations.map(v =>
+      `  ${v.second.file} phase=${v.second.phase} step=${v.second.step}: ` +
+      `idempotency_key ${JSON.stringify(v.second.key)} was already used by ` +
+      `${v.first.file} phase=${v.first.phase} step=${v.first.step}.`
+    );
+    throw new Error(
+      `Storyboard idempotency_key freshness lint: ${duplicateGeneratedKeyViolations.length} duplicate generated alias use(s).\n\n` +
+      lines.join('\n') +
+      `\n\nUse a unique \`$generate:uuid_v4#...\` alias for each mutating storyboard step. ` +
+      `Only universal/idempotency.yaml may intentionally reuse aliases for replay vectors.`
     );
   }
 
@@ -587,6 +647,18 @@ function main() {
     process.exit(1);
   }
 
+  // Packaged-reference lint: authored storyboards may only point at files that
+  // ship in the versioned compliance tree. This catches source-tree-only
+  // references before they produce protocol tarballs that SDKs cannot load.
+  try {
+    execSync('node scripts/lint-compliance-packaged-refs.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Pagination invariant: schema examples and storyboard fixtures MUST NOT
   // teach the cursor↔has_more contradiction. has_more=true requires cursor;
   // has_more=false MUST omit cursor. See pagination-response.json.
@@ -637,6 +709,18 @@ function main() {
   // signal. adcontextprotocol/adcp#3847 item 2.
   try {
     execSync('node scripts/lint-storyboard-raw-mode-required.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Upstream-traffic path lint: identifier_paths use a small portable
+  // request-payload-relative grammar so runners don't diverge on JSONPath
+  // variants, numeric indexes, or explicit roots. adcontextprotocol/adcp#5073.
+  try {
+    execSync('node scripts/lint-storyboard-upstream-traffic-paths.cjs', {
       cwd: path.join(__dirname, '..'),
       stdio: 'inherit',
     });

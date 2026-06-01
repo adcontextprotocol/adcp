@@ -25,26 +25,9 @@
         "scenarios": {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": [
-              "force_creative_status",
-              "force_account_status",
-              "force_media_buy_status",
-              "force_create_media_buy_arm",
-              "force_task_completion",
-              "force_session_status",
-              "simulate_delivery",
-              "simulate_budget_spend",
-              "seed_product",
-              "seed_pricing_option",
-              "seed_creative",
-              "seed_plan",
-              "seed_media_buy",
-              "seed_creative_format",
-              "query_upstream_traffic"
-            ]
+            "type": "string"
           },
-          "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive minor bumps. Adopters who advertise `query_upstream_traffic` opt in to the upstream-traffic conformance contract; storyboards that declare `check: upstream_traffic` grade `not_applicable` against adopters who do not advertise it."
+          "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive releases. Adopters who advertise `force_creative_purge` opt in to deterministic creative purge coverage for account-level lifecycle webhooks. Adopters who advertise `seed_measurement_catalog` opt in to deterministic measurement-catalog fixtures used by vendor_metric precondition storyboards. Adopters who advertise `query_upstream_traffic` opt in to the upstream-traffic conformance contract; storyboards that declare `check: upstream_traffic` grade `not_applicable` against adopters who do not advertise it. Adopters who advertise `query_provenance_audit_observations` opt in to sandbox-only audit-observation assertions for accepted creatives. Adopters who advertise `force_upstream_unavailable` opt in to stale-cache conformance testing via the `stale_response_advisory` storyboard."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -83,6 +66,11 @@
           {
             "required": [
               "recorded_calls"
+            ]
+          },
+          {
+            "required": [
+              "audit_observations"
             ]
           }
         ]
@@ -148,13 +136,18 @@
             "required": [
               "recorded_calls"
             ]
+          },
+          {
+            "required": [
+              "audit_observations"
+            ]
           }
         ]
       }
     },
     {
       "title": "SimulationSuccess",
-      "description": "A simulate_delivery or simulate_budget_spend scenario succeeded. For delivery: simulated contains impressions/clicks/reported_spend/conversions and cumulative contains running totals. For budget: simulated contains spend_percentage/computed_spend/budget.",
+      "description": "A simulate_delivery or simulate_budget_spend scenario succeeded. For delivery: simulated contains the metrics injected by this call (impressions/clicks/reported_spend/conversions plus optional reach/frequency/reach_window/viewability values) and cumulative contains running totals or latest non-additive metric state. For budget: simulated contains spend_percentage/computed_spend/budget.",
       "type": "object",
       "properties": {
         "success": {
@@ -211,6 +204,11 @@
           {
             "required": [
               "recorded_calls"
+            ]
+          },
+          {
+            "required": [
+              "audit_observations"
             ]
           }
         ]
@@ -291,6 +289,11 @@
             "required": [
               "recorded_calls"
             ]
+          },
+          {
+            "required": [
+              "audit_observations"
+            ]
           }
         ]
       }
@@ -317,6 +320,80 @@
       },
       "required": [
         "success"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "error"
+            ]
+          },
+          {
+            "required": [
+              "scenarios"
+            ]
+          },
+          {
+            "required": [
+              "previous_state"
+            ]
+          },
+          {
+            "required": [
+              "simulated"
+            ]
+          },
+          {
+            "required": [
+              "forced"
+            ]
+          },
+          {
+            "required": [
+              "recorded_calls"
+            ]
+          },
+          {
+            "required": [
+              "audit_observations"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "ProvenanceAuditObservationsSuccess",
+      "description": "A query_provenance_audit_observations scenario returned sandbox-recorded audit observations for a creative. This hook is for conformance only; public seller responses do not have to expose internal audit-log state.",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
+        "creative_id": {
+          "type": "string",
+          "description": "Creative ID whose audit observations were queried.",
+          "x-entity": "creative"
+        },
+        "audit_observations": {
+          "type": "array",
+          "description": "Audit observations recorded for the creative in the sandbox session.",
+          "items": {
+            "$ref": "/schemas/creative/audit-observation.json"
+          }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "success",
+        "creative_id",
+        "audit_observations"
       ],
       "additionalProperties": true,
       "not": {
@@ -401,7 +478,7 @@
               },
               "content_type": {
                 "type": "string",
-                "description": "Media type of the outbound request body, mirroring the agent's outbound `Content-Type` header (e.g., `application/json`, `application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`). In raw mode this describes the returned `payload`; in digest mode it describes the body the digest was computed over. Storyboard `payload_must_contain` JSONPath assertions are valid only when content_type is `application/json` or has a `+json` suffix AND attestation_mode is `raw` — digest mode and non-JSON content types grade `payload_must_contain` as not_applicable. Required so the runner can choose the right matcher deterministically."
+                "description": "Media type of the outbound request body, mirroring the agent's outbound `Content-Type` header (e.g., `application/json`, `application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`). In raw mode this describes the returned `payload`; in digest mode it describes the body the digest was computed over. Storyboard `payload_must_contain` JSONPath-lite assertions are valid only when content_type is `application/json` or has a `+json` suffix AND attestation_mode is `raw` — digest mode and non-JSON content types grade `payload_must_contain` as not_applicable. Required so the runner can choose the right matcher deterministically."
               },
               "attestation_mode": {
                 "type": "string",
@@ -424,18 +501,19 @@
                 "description": "Optional adopter-supplied semantic tag for the call's role. Values: `platform_primary` for the primary upstream platform the adapter is integrating with (e.g., a TikTok audience-upload call from a sales-social adapter); `measurement` for ancillary calls to measurement vendors (DV, IAS, Nielsen, MOAT); `attribution` for server-side conversion APIs (TTD Trans-API, Meta CAPI, AppsFlyer/Branch postbacks) that flow alongside primary platform calls in a buy-step; `creative_serving` for ad-server / CDN / tag-build calls (GAM tag generation, VAST/CDN fetches, creative trafficking); `identity` for ID-graph / hashing-service calls (LiveRamp, ID5, UID2); `other` for everything else (config fetches, internal telemetry, consent signal exchange). Lets storyboards scope `upstream_traffic` assertions via `purpose_filter` so a buyer-agent adapter that legitimately calls measurement vendors during a single buy step doesn't muddy the platform-primary assertion. Calls without a `purpose` field are treated as `purpose: other` for `purpose_filter` matching — adopters who haven't classified are matched only by storyboards filtering on `other` (or by storyboards with no `purpose_filter`). Self-reported, not adversarially trustworthy — same trust model as the rest of recorded_calls; misclassification by a façade is bounded by the runner's reporting of unclassified-call counts in `actual` when filters match zero."
               },
               "payload": {
-                "description": "Request body the agent sent. Required when `attestation_mode` is `raw` (or omitted); MUST be absent when `attestation_mode` is `digest`. Object when content_type is JSON-shaped and the controller decoded it; string otherwise. Adopters MUST apply the recursive secret-key redaction described in this branch's top-level description before emission — secrets at any depth (Authorization values inlined into JSON bodies, embedded JWTs, presigned-URL tokens, OAuth refresh tokens) MUST be replaced with the literal string `[redacted]`. Storyboards that assert `payload_must_contain` or `identifier_paths` are matching against THIS field — secrets MUST be redacted but storyboard-supplied identifiers (hashed PII, request correlation values) MUST NOT be redacted. Adopters SHOULD cap individual payload size at 64 KiB; payloads exceeding that SHOULD be truncated with a trailing `[…truncated]` marker — large payloads bloat compliance reports and the LLM-rendered context windows that consume them.",
+                "description": "Request body the agent sent. Required when `attestation_mode` is `raw` (or omitted); MUST be absent when `attestation_mode` is `digest`. Object when content_type is JSON-shaped and the controller decoded it; string otherwise. The `x-adcp-open-payload: true` annotation applies to the decoded JSON/object arm of this mixed field; non-JSON string payloads remain scalar values governed by the surrounding schema. Adopters MUST apply the recursive secret-key redaction described in this branch's top-level description before emission — secrets at any depth (Authorization values inlined into JSON bodies, embedded JWTs, presigned-URL tokens, OAuth refresh tokens) MUST be replaced with the literal string `[redacted]`. Storyboards that assert `payload_must_contain` or `identifier_paths` are matching against THIS field — secrets MUST be redacted but storyboard-supplied identifiers (hashed PII, request correlation values) MUST NOT be redacted. Adopters SHOULD cap individual payload size at 64 KiB; payloads exceeding that SHOULD be truncated with a trailing `[…truncated]` marker — large payloads bloat compliance reports and the LLM-rendered context windows that consume them.",
+                "x-adcp-open-payload": true,
                 "maxLength": 65536
               },
               "payload_digest_sha256": {
                 "type": "string",
                 "pattern": "^[a-f0-9]{64}$",
-                "description": "SHA-256 digest of the canonicalized outbound request body, lowercase hex (64 chars). Required when `attestation_mode` is `digest`; MUST be absent when `attestation_mode` is `raw`. Canonicalization order is normative: (1) controllers MUST apply the recursive secret-key redaction (same pattern as the raw-mode payload field) BEFORE computing the digest; (2) for `application/json` and `*+json` content types, controllers MUST then serialize the redacted body to RFC 8785 (JCS) canonical form — sorted keys, no extraneous whitespace — and digest the resulting bytes. Storyboard-supplied identifiers (hashed PII, request correlation values) MUST NOT be redacted before digest computation; they are the load-bearing match target for `identifier_match_proofs` and digesting them away makes echo verification impossible. Both `payload_digest_sha256` AND `identifier_match_proofs` MUST be computed against the same post-redaction canonical bytes — diverging the two surfaces breaks coherence between digest replay and identifier echo. JCS edge cases: payloads containing `NaN` or `Infinity` numbers MUST grade `not_applicable` for digest mode (RFC 8785 forbids them); payloads carrying numeric identifiers MUST serialize them as JSON strings before digest computation (adtech bid payloads regularly carry IDs outside ±2^53 where I-JSON / RFC 7493 number round-tripping diverges across implementations). For non-JSON content types the digest is computed over the post-redaction raw body bytes."
+                "description": "SHA-256 digest of the canonicalized outbound request body, lowercase hex (64 chars). Required when `attestation_mode` is `digest`; MUST be absent when `attestation_mode` is `raw`. Canonicalization order is normative: (1) controllers MUST apply the recursive secret-key redaction (same pattern as the raw-mode payload field) BEFORE computing the digest; (2) for `application/json` and `*+json` content types, controllers MUST then serialize the redacted body to RFC 8785 (JCS) canonical form — sorted keys, no extraneous whitespace — and digest the resulting bytes. Storyboard-supplied identifiers (hashed PII, request correlation values) MUST NOT be redacted before digest computation; they are the load-bearing match target for `identifier_match_proofs` and digesting them away makes echo verification impossible. Both `payload_digest_sha256` AND `identifier_match_proofs` MUST be computed against the same post-redaction canonical bytes — diverging the two surfaces breaks coherence between digest replay and identifier echo. JCS edge cases: when a digest-mode `query_upstream_traffic` response cannot be produced because the parsed JSON-like value tree contains a non-finite numeric value (`NaN`, `+Infinity`, or `-Infinity`), controllers MUST NOT coerce that value to `null`, a string, or any other placeholder for digest computation; they MUST return the typed ControllerError code `JCS_NON_FINITE_NUMBER`. Runners MUST grade the affected upstream_traffic digest validation `not_applicable` because RFC 8785 forbids non-finite numbers. Payloads carrying numeric identifiers MUST serialize them as JSON strings before digest computation (adtech bid payloads regularly carry IDs outside ±2^53 where I-JSON / RFC 7493 number round-tripping diverges across implementations). For non-JSON content types the digest is computed over the post-redaction raw body bytes."
               },
               "payload_length": {
                 "type": "integer",
                 "minimum": 0,
-                "description": "Byte length of the post-redaction canonicalized body. Required in both `raw` and `digest` modes — symmetric across modes so runners can detect adopter-side truncation regardless of attestation choice. In raw mode this MUST equal the byte length of the `payload` value as serialized for transmission; in digest mode this is the length of the canonicalized body the digest covers. Mismatch between observed payload length and reported `payload_length` is a controller-side bug worth surfacing in the report."
+                "description": "Byte length of the post-redaction body bytes represented by this recorded_call. Required in both `raw` and `digest` modes — symmetric across modes so runners can detect adopter-side truncation regardless of attestation choice. In `raw` mode this MUST equal the UTF-8 byte length of the emitted `payload` value after the same recursive secret-key redaction the controller applied before returning it. In `digest` mode this MUST equal the exact number of bytes fed into SHA-256 for `payload_digest_sha256`: RFC 8785 (JCS) canonical bytes for JSON-shaped content after redaction, or the post-redaction raw body bytes for non-JSON content. Digest-mode `payload_length` is therefore NOT the original outbound body length before JSON parsing, redaction, or canonicalization. Mismatch between observed payload length and reported `payload_length` is a controller-side bug worth surfacing in the report."
               },
               "identifier_match_proofs": {
                 "type": "array",
@@ -589,13 +667,18 @@
             "required": [
               "forced"
             ]
+          },
+          {
+            "required": [
+              "audit_observations"
+            ]
           }
         ]
       }
     },
     {
       "title": "ControllerError",
-      "description": "The scenario failed — invalid transition, unknown entity, unsupported scenario, or invalid params",
+      "description": "The scenario failed or could not produce a conformant response — invalid transition, unknown entity, unsupported scenario, invalid params, forbidden sandbox access, non-finite JCS canonicalization, or internal failure",
       "type": "object",
       "properties": {
         "success": {
@@ -611,9 +694,10 @@
             "UNKNOWN_SCENARIO",
             "INVALID_PARAMS",
             "FORBIDDEN",
+            "JCS_NON_FINITE_NUMBER",
             "INTERNAL_ERROR"
           ],
-          "description": "Structured error code"
+          "description": "Structured error code. `JCS_NON_FINITE_NUMBER` is reserved for digest-mode upstream_traffic responses that cannot be RFC 8785/JCS-canonicalized because the parsed JSON-like value tree contains a non-finite numeric value (`NaN`, `+Infinity`, or `-Infinity`); controllers MUST NOT coerce those values during digest computation, and runners grade that validation `not_applicable`, not failed."
         },
         "error_detail": {
           "type": "string",
@@ -664,6 +748,11 @@
             "required": [
               "recorded_calls"
             ]
+          },
+          {
+            "required": [
+              "audit_observations"
+            ]
           }
         ]
       }
@@ -677,6 +766,7 @@
         "success": true,
         "scenarios": [
           "force_creative_status",
+          "force_creative_purge",
           "force_account_status",
           "force_media_buy_status"
         ]

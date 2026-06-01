@@ -1,0 +1,370 @@
+---
+title: Accounts Protocol
+sidebarTitle: Overview
+description: "AdCP Accounts Protocol defines the commercial layer for advertising transactions — billing, operator authorization, and usage reporting between buyers, brands, and vendor agents."
+"og:title": "AdCP — Accounts Protocol"
+---
+
+The Accounts Protocol defines the commercial layer beneath all AdCP vendor protocols. Every transaction — a media buy, a data signal, a content standards check — happens between parties that have a commercial relationship. The Accounts Protocol establishes that relationship and provides consumption reporting so vendors can track how their services were used.
+
+## The commercial model
+
+Seven questions underlie every AdCP transaction:
+
+| Question | Answered by | Mechanism |
+|----------|-------------|-----------|
+| Who is the advertiser? | Brand registry | `brand.domain` resolves to `brand.json` |
+| Who operates on the brand's behalf? | Brand registry | `authorized_operators` in `brand.json` declares who can buy on the brand's behalf |
+| How does the operator authenticate? | Seller capabilities | `require_operator_auth` determines who must authenticate and which account reference shape is expected. |
+| What am I allowed to do on this account? | Caller scope | The `authorization` object on each per-account entry in [`sync_accounts`](/dist/docs/3.1.0-rc.6/accounts/tasks/sync_accounts) and [`list_accounts`](/dist/docs/3.1.0-rc.6/accounts/tasks/list_accounts) responses describes `allowed_tasks`, `field_scopes`, `scope_name`, and `read_only` for the calling agent. See [Caller authorization](#caller-authorization) below. |
+| Who gets billed? | Buyer declaration | Buyer passes `billing` in `sync_accounts` — `operator`, `agent`, or `advertiser`. Seller accepts or rejects. |
+| What was consumed? | Usage reporting | `report_usage` informs vendor agents how their services were used after delivery |
+
+The seller declares the account model in [`get_adcp_capabilities`](/dist/docs/3.1.0-rc.6/protocol/get_adcp_capabilities) via `require_operator_auth`. That field declares who must authenticate; it does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported.
+
+When `require_operator_auth` is `true` (**account-id namespaces**), operators authenticate independently and buyers pass seller-assigned `account_id` values because the seller or upstream platform owns the canonical account namespace. If a credential may access more than one account, the seller MUST expose [`list_accounts`](/dist/docs/3.1.0-rc.6/accounts/tasks/list_accounts) and buyers MUST resolve an explicit `account_id` before the first account-scoped request. If a credential is bound to exactly one account, the seller SHOULD expose `list_accounts` returning that singleton, and MAY omit it only when the same explicit `account_id` is supplied through another declared path or out-of-band onboarding.
+
+When `require_operator_auth` is `false` (**buyer-declared accounts**), the agent is trusted and the buyer declares brand/operator pairs via [`sync_accounts`](/dist/docs/3.1.0-rc.6/accounts/tasks/sync_accounts) to provision accounts.
+
+An **ad network** may use both models simultaneously — buyer-declared accounts on the buyer-facing side (the network is agent-trusted) and an account-id namespace with each underlying platform (the network authenticates as an operator). See the [Sponsored Intelligence guide — account model for networks](/dist/docs/3.1.0-rc.6/sponsored-intelligence/networks#account-model-for-networks) for the full account chain: `buyer agent → network (buyer-declared) → AI platform (account-id namespace)`.
+
+After delivery, the orchestrator calls [`report_usage`](/dist/docs/3.1.0-rc.6/accounts/tasks/report_usage) to inform vendor agents (signals, governance, creative) how their services were consumed. This is not settlement — it's consumption reporting so the vendor can track earned revenue and verify billing.
+
+## Scope
+
+The Accounts Protocol applies across all vendor protocols. An orchestrator establishes an account once per brand/operator pair per vendor agent and reuses the same account reference across all interactions with that agent:
+
+| Vendor Protocol | Account reference used for |
+|---|---|
+| Media Buy | Rate cards, invoicing, campaign attribution |
+| Signals | Per-account pricing options, activation, usage reporting |
+| Governance | Content standards billing |
+| Creative | Creative service billing |
+
+The account reference may be a seller-assigned `account_id` (seller-owned namespaces, usually `require_operator_auth: true`) or a natural key — `brand` + `operator` (buyer-declared accounts, `require_operator_auth: false`). For buyer-declared accounts, the natural-key `AccountRef` MUST remain valid on subsequent calls even if the seller also echoes an internal `account_id`. For sandbox, account-id namespaces use pre-existing test accounts discovered via `list_accounts` or supplied out-of-band, while buyer-declared accounts declare sandbox via `sync_accounts` with `sandbox: true`. See [Account references](/dist/docs/3.1.0-rc.6/building/by-layer/L2/accounts-and-agents#account-references) for details.
+
+## Account Status Lifecycle
+
+Accounts progress through a defined set of states. Terminal states (`rejected`, `closed`) allow no further transitions.
+
+```
+sync_accounts ──▶ pending_approval ──▶ active
+                       │                  │
+                       │ (seller declines) ├── (credit limit / funds depleted)
+                       ▼                  │    ▼
+                   rejected (terminal)    │  payment_required
+                                          │    │ (buyer resolves billing)
+                                          │    ▼
+                                          │  active
+                                          │
+                                          ├── (seller suspends) ──▶ suspended
+                                          │                           │
+                                          │    (seller reactivates) ◀─┤
+                                          │                           │
+                                          │                           └──▶ closed (terminal)
+                                          │
+                                          └── (seller or buyer closes) ──▶ closed (terminal)
+```
+
+**Transition rules:**
+
+- `pending_approval` → `active`: seller approves after credit/contract/identity review
+- `pending_approval` → `rejected`: seller declines. Terminal — buyer must submit a new account request.
+- `active` → `payment_required`: automatic when credit limit is reached or funds are depleted
+- `payment_required` → `active`: when the buyer resolves the outstanding balance. Sellers MAY auto-transition or MAY require manual re-activation.
+- `active` → `suspended`: seller-initiated (policy violation, billing dispute, fraud review). Sellers MUST notify orchestrators via webhook.
+- `suspended` → `active`: seller-initiated reactivation
+- `suspended` → `closed`: seller-initiated permanent closure
+- `active` → `closed`: seller or buyer-initiated permanent closure. Terminal.
+- Sellers MUST reject operations on accounts in terminal states with `ACCOUNT_NOT_FOUND` or an appropriate error
+
+### Operations by Account Status
+
+Account status acts as a gate on which tasks are permitted. Read-only operations are always available; mutation operations are restricted based on status.
+
+| Task | `active` | `pending_approval` | `payment_required` | `suspended` | `rejected` / `closed` |
+|------|----------|-------------------|-------------------|------------|----------------------|
+| `list_accounts` | Yes | Yes | Yes | Yes | Yes |
+| `get_account_financials` | Yes | Yes | Yes | Yes | No |
+| `get_products` | Yes | No | Yes | No | No |
+| `create_media_buy` | Yes | No | No | No | No |
+| `update_media_buy` | Yes | No | Yes | No | No |
+| `get_media_buys` | Yes | No | Yes | Yes | No |
+| `sync_creatives` | Yes | No | Yes | No | No |
+| `sync_catalogs` | Yes | No | Yes | No | No |
+| `sync_event_sources` | Yes | No | Yes | No | No |
+| `report_usage` | Yes | No | Yes | Yes | No |
+
+- `payment_required` blocks new spend (`create_media_buy`) but allows managing existing buys and resolving setup. Sellers SHOULD also reject `new_packages` within `update_media_buy` when the account is in `payment_required`, since adding packages is functionally equivalent to new spend.
+- `suspended` allows read-only access to existing data but blocks all mutations
+- Sellers MUST return `ACCOUNT_SUSPENDED` for blocked operations on suspended accounts and `ACCOUNT_PAYMENT_REQUIRED` for blocked operations on payment-required accounts
+
+## Caller authorization
+
+Not every caller with access to an account has the same grant. A vendor agent may issue one calling agent a full scope and another agent a narrow read-plus-update scope. Authentication confirms the caller is who they claim to be; authorization answers "what is this caller allowed to do on this account?"
+
+<Note>
+**Applies to every vendor protocol.** The authorization mechanism described here is part of the shared Accounts Protocol — it applies to every agent that implements `sync_accounts` / `list_accounts`: media-buy sales agents, signals agents, governance agents, creative agents, brand agents. Signals agents scope activation vs. catalog access; governance agents scope audit read vs. plan management; creative agents scope library read vs. upload. Only the standard named scope `attestation_verifier` is Media Buy Protocol-specific (it binds to the **AAO Verified (Live)** qualifier); the rest of the machinery — `allowed_tasks`, `field_scopes`, `read_only`, `custom:`-prefixed scopes — is protocol-neutral.
+</Note>
+
+**Schema**: [`/schemas/3.1.0-rc.6/core/account-authorization.json`](https://adcontextprotocol.org/schemas/3.1.0-rc.6/core/account-authorization.json)
+
+Vendor agents that support scope introspection attach an `authorization` object to each per-account entry in [`sync_accounts`](/dist/docs/3.1.0-rc.6/accounts/tasks/sync_accounts) and [`list_accounts`](/dist/docs/3.1.0-rc.6/accounts/tasks/list_accounts) responses:
+
+```json
+{
+  "account_id": "acc_acme_compliance",
+  "name": "Acme c/o AAO Compliance",
+  "status": "active",
+  "billing": "operator",
+  "authorization": {
+    "allowed_tasks": [
+      "get_adcp_capabilities",
+      "get_products",
+      "get_media_buys",
+      "get_media_buy_delivery",
+      "list_creatives",
+      "update_media_buy"
+    ],
+    "field_scopes": {
+      "update_media_buy": ["reporting_webhook"]
+    },
+    "scope_name": "attestation_verifier",
+    "read_only": false
+  }
+}
+```
+
+### Fields
+
+| Field | Description |
+|-------|-------------|
+| `allowed_tasks` | Canonical snake_case task names the caller may invoke against this account. Absence of a task MUST be read as "not permitted" — invoking an absent task returns `SCOPE_INSUFFICIENT`. |
+| `field_scopes` | Optional per-task allowlist of request fields the caller may set. Keys are task names; values are field paths. When a task appears here, any field outside the allowlist returns `FIELD_NOT_PERMITTED`. Implicit framing fields — typed entity references (`account`, `media_buy_id`, `package_id`, `creative_id`, `signal_id`, `format_id`, `proposal_id`, `plan_id`, `session_id`), concurrency/idempotency (`revision`, `idempotency_key`), buyer-side correlation (`buyer_ref`, `po_number`), mode flags (`dry_run`), pagination (`pagination`, `cursor`, `max_results`), and envelope fields (`context`, `ext`, `adcp_major_version`, `push_notification_config`) — are always permitted and do not need to appear in the allowlist. The list is non-exhaustive: any other typed entity-id parameter or query-shaping field on a read task SHOULD be treated as framing. |
+| `scope_name` | Optional named scope identifier. Only `attestation_verifier` is standardized (media-buy-specific, binds to the **AAO Verified (Live)** qualifier); agent-defined names MUST use the `custom:` prefix so typos of the standard value fail schema validation rather than pass through. |
+| `read_only` | Convenience flag. When true, mutations return `READ_ONLY_SCOPE` regardless of whether the task is in `allowed_tasks`. Omission is equivalent to `false`. Callers MUST NOT infer read-only from `allowed_tasks` alone. |
+
+### Semantics of presence and absence
+
+- **Present**: the vendor agent asserts the shape reflects its enforcement for this caller on this account at this moment. Stale-by-seconds is fine; systematically-divergent is non-conformant.
+- **Absent on a single account**: the vendor agent is not telling the caller their scope for that account. Caller falls back to error-driven discovery (try the task, handle the RBAC error codes).
+- **Absent on all accounts**: the vendor agent does not implement scope introspection. Callers MUST NOT infer access from absence — the vendor agent may still enforce scope locally and return `SCOPE_INSUFFICIENT` / `READ_ONLY_SCOPE` / `FIELD_NOT_PERMITTED` on any task call.
+- **`authorization` is optional for 3.x**. Vendor agents that want to avoid a breaking change can defer populating it. Populating is strictly additive — it lets callers preempt errors they would otherwise discover by trying.
+
+Vendor agents claiming the `attestation_verifier` standard scope (Media Buy Protocol-specific) **MUST** populate `authorization` — the **AAO Verified (Live)** attestation flow depends on verifying the advertised scope matches enforcement.
+
+### Identity binding, refresh cadence, and consistency
+
+The `authorization` object is **implicitly scoped to the `(caller identity, account_id)` tuple** at read time. The same account returned to a different authenticated caller MAY return a different `authorization` object — that's the point of the RBAC model. Vendor agents MUST resolve caller identity from the authenticated request (not from any client-supplied field) and MUST bind the returned `authorization` to that resolved identity.
+
+**Refresh cadence.**
+
+- Callers SHOULD re-read `authorization` at least every **300 seconds** of active use against an account, via `sync_accounts` or `list_accounts` (filtered by the held `account`).
+- Vendor agents MUST reflect operator-initiated scope changes in `sync_accounts` / `list_accounts` responses **within 300 seconds** of the change being made. A compliant caller polling every 300s sees operator changes within at most one refresh cycle.
+- Vendor agents MAY cache the `authorization` object briefly but MUST NOT cache past 300 seconds without revalidation.
+- The 300s figure is a floor, not a target — vendor agents whose scope changes more frequently SHOULD surface them faster, and callers running **AAO Verified (Live)** attestation SHOULD probe at the check-7 cadence (at least once per rolling window, plus on every observed scope change).
+
+**Consistency.**
+
+For a given `(caller identity, account_id)` tuple, sequential reads within the refresh window MUST return identical `authorization` objects, modulo operator-initiated scope changes. Flicker from load-balanced or eventually-consistent backends — two reads 10 seconds apart returning different `allowed_tasks` because they hit different replicas — is non-conformant. Compliance engines and coding agents rely on scope stability for state tracking; a vendor agent that cannot guarantee it MUST omit `authorization` rather than populate it inconsistently.
+
+This is the concrete form of the "systematically-divergent is non-conformant" guarantee from the presence semantics above — it's verifiable: a conformance check can read the same account twice from the same identity inside the refresh window and diff the results.
+
+### Buyer response to SCOPE_INSUFFICIENT within the refresh window
+
+A single `SCOPE_INSUFFICIENT` response is observationally indistinguishable between two causes: a seller replica that has not yet propagated a valid grant (transient infrastructure artifact — will resolve), and a legitimate scope reduction by the operator (persistent — must surface). Before classifying the error as a definitive `correctable` signal requiring operator intervention, buyers MAY exhaust a small bounded retry budget to disambiguate the two:
+
+- **Retry budget:** no more than 3 attempts, each separated by 1–5 seconds of jittered backoff. This is disambiguation logic — establishing whether the scope is genuinely insufficient before trusting the `correctable` classification — not a recovery action for a correctable error.
+- **Not the 300s window:** the retry budget is not the seller's propagation SLA. Buyers SHOULD NOT wait out the full 300-second window on every false negative; up to 15 seconds of accumulated backoff delay is sufficient to absorb typical replica lag.
+- **After retries exhaust:** buyers MUST surface the error. "Surface" means: return a structured error to the calling layer (including account ID, the failed task, and `error.details.retry_count` with the number of attempts made) AND ensure the failure is visible in an operator-accessible channel — a structured log, dashboard alert, or notification. The escalation mechanism is implementation-defined; the requirement is that the error is not silently swallowed.
+
+`READ_ONLY_SCOPE` follows the same bounded-retry logic when the buyer suspects grant-propagation lag (a replica lagging on a write-grant update). Caution: if write access was recently *revoked*, a stale replica may accept a mutation that the revoked scope should have rejected. If bounded retries succeed, buyers MUST re-read `authorization` before treating the result as reliable — and if re-reading confirms that write access has been revoked, buyers MUST surface an alert to the operator flagging the mutation as potentially unauthorized; they MUST NOT silently accept it as correct.
+
+`FIELD_NOT_PERMITTED` does not follow this pattern. The agent-autonomous recovery path — strip the disallowed field and resubmit — supersedes the retry consideration. Buyers MUST NOT retry the identical failing request for `FIELD_NOT_PERMITTED`; they SHOULD correct and resubmit immediately.
+
+See [Authorization (RBAC)](/dist/docs/3.1.0-rc.6/building/by-layer/L3/error-handling#authorization-rbac) for the normative retry exception clause on these codes.
+
+### Standard named scope: `attestation_verifier`
+
+Media-buy sales agents advertising **AAO Verified (Live)** readiness (tracked in [#2965](https://github.com/adcontextprotocol/adcp/issues/2965)) MUST support a named scope identified by `scope_name: "attestation_verifier"` with the following minimum shape:
+
+- `allowed_tasks` (at minimum — vendor agents MAY include additional read-only tasks):
+  - `get_adcp_capabilities`
+  - `get_products`
+  - `get_media_buys`
+  - `get_media_buy_delivery`
+  - `list_creatives`
+  - `update_media_buy`
+- `field_scopes.update_media_buy`: `["reporting_webhook"]`
+- `read_only`: `false`
+
+The scope deliberately omits `create_media_buy`, `sync_creatives`, and all spend-committing or targeting-modifying fields on `update_media_buy`. It is narrowly designed for continuous-observability verification — the compliance engine can discover live campaigns, read inventory and creative state, attach a verification reporting webhook, and read delivery, but cannot book inventory, modify budgets, change flight dates, upload creatives, or cancel anything.
+
+`get_products` and `list_creatives` are included because **AAO Verified (Live)** observability requires sanity-reading the seller's declared inventory and the creative pipeline state on active buys.
+
+`attestation_verifier` is Media Buy Protocol-specific — it binds to the **AAO Verified (Live)** qualifier, which is a media-buy flow (live observation requires real ad delivery). Equivalent observability scopes for signals, governance, creative, or brand agents are not yet standardized; until they are, those agents use `custom:` scopes.
+
+<Note>
+**Reporting only — lifecycle-running is a future scope.** `attestation_verifier` is the *reporting* half of (Live): the engine observes campaigns the seller has trafficked, reads delivery, and attaches a verification webhook. It deliberately cannot create campaigns, attach creatives, or modify budgets. The complementary *lifecycle-running* role — for the AAO-operated canonical-campaign runner contemplated in [#3046](https://github.com/adcontextprotocol/adcp/issues/3046), where the engine traffics canonical PSAs end-to-end through a seller's live agent — needs a broader write scope (`attestation_runner`, tracked in [#3561](https://github.com/adcontextprotocol/adcp/issues/3561)). Today's brownfield enrollment (Path B) requires only `attestation_verifier`; the runner-side scope lights up alongside the canonical-campaign runner itself.
+</Note>
+
+### Custom scopes for other vendor protocols
+
+Any vendor agent MAY define custom scopes using the `custom:` prefix. Buyers MUST NOT assume any semantics from a custom-prefixed scope name — the names are agent-defined and learned out-of-band (docs, onboarding).
+
+Illustrative examples (not standardized — each agent names its own):
+
+- **Signals agent**: `custom:activation_only` — `allowed_tasks: [get_signals, activate_signal, get_adcp_capabilities]`, no catalog management, no cross-account metadata.
+- **Governance agent**: `custom:audit_viewer` — `allowed_tasks: [get_plan_audit_logs, get_adcp_capabilities]`, `read_only: true`. Useful for regulators or external auditors granted read access to governance trails.
+- **Creative agent**: `custom:library_reader` — `allowed_tasks: [list_creatives, list_creative_formats]`, `read_only: true`. Lets a non-uploading buyer (e.g., a measurement partner) discover what's in the library without mutating it.
+- **Brand agent (rights)**: `custom:rights_viewer` — `allowed_tasks: [get_rights, get_brand_identity]`, `read_only: true`. Discovery without clearance privilege.
+
+The presence/absence semantics, identity binding, refresh cadence, and consistency requirements above apply uniformly across all vendor protocols — a signals agent populating `custom:activation_only` takes on the same 300s refresh obligation a media-buy seller does populating `attestation_verifier`.
+
+### Prior art
+
+The introspection model — "the caller asks the authorization-enforcing party what the grant is" — is structurally analogous to [RFC 7662 OAuth 2.0 Token Introspection](https://www.rfc-editor.org/rfc/rfc7662), specialized for AdCP's task-and-field authorization model. Embedding the response in sync/list rather than splitting it into a separate task reflects that account discovery and scope introspection are the same natural question ("what are my accounts, and what can I do with them?") — the two are returned together.
+
+## Transaction lifecycle
+
+```
+1. Discover seller capabilities
+   get_adcp_capabilities → require_operator_auth, supported_billing
+
+2. Resolve brand identity
+   Fetch brand.domain/.well-known/brand.json → canonical brand (domain, brand_id)
+
+3. Verify operator identity
+   Check authorized_operators in brand.json → confirm operator is permitted to buy for this brand
+
+4. Authenticate (if required)
+   When require_operator_auth is true → obtain operator credential via authorization_endpoint or out-of-band
+
+5. Establish account reference
+   Account-id namespace (require_operator_auth: true):
+     list_accounts() → find existing account_id for this brand/operator (upstream-managed)
+     or receive account_id out-of-band (seller-defined)
+   Buyer-declared account (require_operator_auth: false):
+     sync_accounts({ accounts: [{ brand, operator, billing, billing_entity? }] }) → status, billing terms
+
+6. Execute
+   Protocol tasks use the account reference to apply correct rates and terms
+   Examples: get_products(account: {...}), create_media_buy(account: {...})
+
+7. Report usage
+   report_usage(usage: [{ account: {...}, operator_id, kind, vendor_cost, ... }])
+   Informs vendor agents how their services were consumed after delivery
+```
+
+## Parties
+
+The Accounts Protocol operates with four party types. See [Accounts and agents](/dist/docs/3.1.0-rc.6/building/by-layer/L2/accounts-and-agents) for full details on billing hierarchy, trust models, and authorized operators.
+
+| Party | Role | Identified by |
+|-----------|------|---------------|
+| Brand | Whose products are advertised | `brand.domain` + optional `brand.brand_id` via brand.json |
+| Operator | Who drives the buys | Domain (e.g., `pinnacle-media.com`) |
+| Agent | What software places the buys | Authenticated session |
+| Vendor agent | The seller's AdCP agent | `agent_url` |
+
+## Tasks
+
+**Account discovery (normative).** Every agent accepting accounts MUST expose at least one of `list_accounts` (upstream-managed account-id namespaces) or `sync_accounts` (buyer-declared accounts, `require_operator_auth: false`). A seller-defined account-id namespace MAY omit both account-discovery tasks only when account IDs are supplied out-of-band and no account settings are managed through AdCP. An agent MAY implement both; for account-id namespaces, `sync_accounts` is settings-update only in 3.0.x unless a future explicit capability declares account-id provisioning. See [Required tasks by protocol](/dist/docs/3.1.0-rc.6/protocol/required-tasks#any-agent-accepting-accounts).
+
+| Task | Purpose |
+|------|--------|
+| [`sync_accounts`](/dist/docs/3.1.0-rc.6/accounts/tasks/sync_accounts) | Declare brand/operator pairs and billing; provision accounts (buyer-declared accounts, `require_operator_auth: false`); optionally update settings for existing accounts when the seller exposes settings-update mode |
+| [`list_accounts`](/dist/docs/3.1.0-rc.6/accounts/tasks/list_accounts) | Discover existing accounts (upstream-managed account-id namespaces); poll status on pending accounts |
+| [`get_account_financials`](/dist/docs/3.1.0-rc.6/accounts/tasks/get_account_financials) | Query spend, credit, and invoice status for operator-billed accounts |
+| [`sync_governance`](/dist/docs/3.1.0-rc.6/accounts/tasks/sync_governance) | Sync governance agent endpoints to accounts for seller-side validation |
+| [`report_usage`](/dist/docs/3.1.0-rc.6/accounts/tasks/report_usage) | Inform vendor agents how their services were consumed after delivery |
+
+## Brand registry connection
+
+The `brand.domain` in account references is not an arbitrary identifier — it is the brand's domain, resolvable to a `brand.json` file that declares the brand's canonical identity, sub-brands, authorized operators, and properties.
+
+Vendor agents can verify buyer claims against the brand registry: if an orchestrator claims to represent `acme-corp.com`, the vendor can fetch `acme-corp.com/.well-known/brand.json` to confirm authorized operators and brand hierarchy. This makes the Accounts Protocol tamper-resistant — account relationships are grounded in publicly verifiable brand identity.
+
+See the [Brand Protocol](/dist/docs/3.1.0-rc.6/brand-protocol/index) for how brand identity resolution works.
+
+## Counterparty verification
+
+Every commercial relationship in advertising depends on knowing who you're actually doing business with. The Accounts Protocol addresses this at the protocol level through the brand registry.
+
+When an orchestrator references an account, the `brand.domain` identifies the advertiser. Vendor agents can fetch `brand.domain/.well-known/brand.json` to verify:
+
+- **Brand identity**: Is this brand who they claim to be?
+- **Operator authorization**: Is the operator listed in the request actually authorized to buy on this brand's behalf?
+- **Brand hierarchy**: Which sub-brands does this house portfolio include?
+
+This verification is grounded in publicly accessible DNS-hosted identity — not in what the buyer agent asserts, but in what the brand itself has declared.
+
+The `pending_approval` account state is where human review occurs: credit checks, legal agreements, and identity verification. Vendor agents that require these steps return a `setup.url` for the human to complete the process before the account becomes active.
+
+### Brand registry and the contribute-back pattern
+
+The [AgenticAdvertising.org brand registry](https://agenticadvertising.org) provides a community-maintained layer of brand identity for brands that haven't yet published their own `brand.json`. Buyer agents resolving brands before account setup can contribute data back to the registry as a byproduct of normal workflows — improving identity coverage for the ecosystem without extra effort.
+
+The recommended pattern for buyer agents uses three building blocks (see [#1166](https://github.com/adcontextprotocol/adcp/issues/1166)):
+
+| Tool | Purpose |
+|------|--------|
+| `resolve_brand` | Check registry and fetch brand.json — returns canonical identity if available |
+| `research_brand` | Enrich via Brandfetch and auto-save to registry as `enriched` |
+| `save_brand` | Manually contribute a brand to the registry as `community` |
+
+```javascript
+async function ensureBrand(domain) {
+  // 1. Check registry (brand.json or previously resolved)
+  const resolved = await resolveBrand(domain);
+
+  if (resolved.errors) {
+    // Resolution failed — brand unknown, proceed to enrich
+  } else if (resolved.source === 'brand_json' || resolved.source === 'enriched') {
+    // Authoritative or enriched data available — confirm with user, then use
+    return await confirmWithUser(resolved);
+  }
+  // source === 'community': registry has a placeholder, but enrich for richer data
+
+  // 2. Enrich via Brandfetch — auto-saves to registry as 'enriched'
+  const enriched = await researchBrand(domain);
+  if (enriched.errors) {
+    // Enrichment unavailable — fall back to community entry or prompt user to correct
+    return resolved ? await confirmWithUser(resolved) : null;
+  }
+
+  // 3. Confirm with user before using enriched data
+  // Enrichment is third-party — user confirmation catches errors and improves registry quality
+  return await confirmWithUser(enriched);
+}
+```
+
+`confirmWithUser` is a placeholder for whatever confirmation mechanism fits your UX — an explicit prompt, a review step in a workflow UI, or a low-confidence flag that triggers human review. The confirmation step is what makes the improvement loop work: enrichment data comes from third parties and isn't guaranteed to be correct. User verification before the data is used in a live campaign is what keeps the registry accurate over time.
+
+#### Source authority
+
+The registry tracks where brand data came from. Sources in descending authority:
+
+| Source | Meaning | Can be overwritten? |
+|--------|---------|---------------------|
+| `brand_json` | Brand self-declared via `/.well-known/brand.json` | No — returns 409 |
+| `enriched` | Third-party enrichment (Brandfetch) | Only by higher authority |
+| `community` | Manually contributed by a registry member | Yes |
+
+When an agent calls `save_brand` or `research_brand`, the registry applies merge logic: existing fields from a higher-authority source are preserved, and only missing fields are filled in. This respects what brands have declared while filling gaps.
+
+`research_brand` skips re-enrichment if the registry already has recent `enriched` data for the domain, avoiding redundant API calls.
+
+The full edit history for any brand — who contributed, when, and with what summary — is queryable via [`GET /api/brands/history`](/dist/docs/3.1.0-rc.6/registry/index#activity-history).
+
+#### Property contribute-back
+
+The same pattern applies to publisher properties. When a buyer agent discovers a new publisher through a sales agent interaction, it can contribute that property back to the registry via `POST /api/properties/save`. This improves property coverage for the ecosystem the same way brand contribute-back improves brand coverage. See [Registry API — save property](/dist/docs/3.1.0-rc.6/registry/index#save-property) for details.
+
+## Usage reporting
+
+Vendor agents (signals, governance, creative) are not direct participants in campaign execution — the orchestrator uses their services as inputs to a media buy. After delivery, `report_usage` tells these vendors what was consumed so they can track earned revenue and verify billing.
+
+`report_usage` is buyer-reported: the orchestrator computes and reports consumption. Each record carries its own `account`, `operator_id`, and `kind` (`"signal"`, `"content_standards"`, `"creative"`). The vendor agent uses the reported `pricing_option_id` to verify the correct rate was applied.
+
+Partial acceptance is valid — a single request can span multiple accounts, operators, and campaigns. The response confirms how many records were accepted and which (if any) failed validation.

@@ -10,7 +10,7 @@ This page is non-normative. It collects conventions for the consumer side — DS
 
 ## Rendering rejected claims
 
-The rejected response carries a `status` (`disputed` or `not_ours`) and usually a `context_note` written by the brand-agent. The note is intended for human eyes; surface it.
+The rejected response carries a `verification_status` (`disputed` or `not_ours`) and usually a `context_note` written by the brand-agent. The note is intended for human eyes; surface it.
 
 ### Attribution language
 
@@ -114,10 +114,11 @@ Out-of-spec but worth documenting: keep a record of rejections so a brand or pub
 - **Timestamp** of the response.
 - **Caller identity** that initiated the verify call (your own user, or the upstream service).
 - **Full signed envelope** of the brand-agent's response — signature included, for downstream attestation.
-- **`status`**, **`context_note`**, and the `claim` payload that triggered it.
-- **Cache validity window** (`Cache-Control: max-age`) so you know when the record could be stale.
+- **`verification_status`**, **`context_note`**, and the `claim` payload that triggered it.
+- **Bulk context**, when the answer came from `verify_brand_claims`: the full original `claims[]` request and the rejected result index. The single bulk envelope signs the whole `results[]` array, not a standalone per-result artifact.
+- **Cache validity window**: the earlier of `Cache-Control: max-age` and `signed_response.payload.exp`, so you know when the record stopped being fresh.
 
-A signed envelope is durable evidence. If a buyer is challenged for excluding a property based on a Nike rejection, the signed envelope from Nike's brand-agent at that moment in time is the artifact the buyer hands back.
+A signed envelope is durable historical evidence when its signature verifies, its `request_hash` matches the triggering request, and the rejected claim falls within the envelope's `iat`/`exp` window. If a buyer is challenged for excluding a property based on a house-brand rejection, that verified envelope is the artifact the buyer hands back.
 
 ### Appeal-process surface
 

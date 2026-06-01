@@ -223,6 +223,66 @@ describe('AdAgentsManager', () => {
       expect(result.manager_domain).toBe('manager.example');
     });
 
+    it('falls back to managerdomain adagents.json when origin returns 403 for a missing S3/CloudFront object', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return {
+            status: 403,
+            data: Buffer.from('<Error><Code>AccessDenied</Code></Error>'),
+            headers: { 'content-type': 'application/xml' },
+          };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'All inventory',
+                authorization_type: 'publisher_properties',
+                publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.field === 'managerdomain')).toBe(true);
+      expect(result.domain).toBe('publisher.example');
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+      expect(result.manager_domain).toBe('manager.example');
+    });
+
+    it('does not trigger manager fallback on generic 403 denial responses', async () => {
+      let calledAdsTxt = false;
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return {
+            status: 403,
+            data: Buffer.from('<html>Forbidden</html>'),
+            headers: { 'content-type': 'text/html' },
+          };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          calledAdsTxt = true;
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(calledAdsTxt).toBe(false);
+      expect(result.errors.some(e => e.message.includes('HTTP 403'))).toBe(true);
+    });
+
     it('does not recurse indefinitely when managerdomain points back to original domain', async () => {
       mockedSafeFetch.mockImplementation(async (url) => {
         if (url === 'https://publisher.example/.well-known/adagents.json') {
@@ -865,7 +925,7 @@ describe('AdAgentsManager', () => {
       expect(result.valid).toBe(true);
     });
 
-    it('does not trigger manager fallback on non-404 adagents responses', async () => {
+    it('does not trigger manager fallback on non-403/404 adagents responses', async () => {
       let calledAdsTxt = false;
       mockedSafeFetch.mockImplementation(async (url) => {
         if (url === 'https://publisher.example/.well-known/adagents.json') {
@@ -1633,11 +1693,57 @@ describe('AdAgentsManager', () => {
       // This test validates that combined error reporting works when both A2A and MCP fail.
       const results = await manager.validateAgentCards(agents);
 
+      const postCall = mockedSafeFetch.mock.calls.find(([, opts]) => opts?.method === 'POST');
+      expect(postCall).toBeDefined();
+      expect(postCall?.[1]?.headers).toMatchObject({
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+      });
+      expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({
+        jsonrpc: '2.0',
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'AAO Registry Validator', version: '1.0.0' },
+        },
+        id: 1,
+      });
+
       // With the real @adcp/sdk unable to connect, MCP validation will fail
       // and the result captures errors from both protocols
       expect(results[0].valid).toBe(false);
       expect(results[0].errors.some((e) => e.includes('A2A') || e.includes('agent card'))).toBe(true);
       expect(results[0].errors.some((e) => e.includes('MCP'))).toBe(true);
+    });
+
+    it('marks MCP agents as auth-required when the preflight returns 401', async () => {
+      const agents: AuthorizedAgent[] = [
+        {
+          url: 'https://private-mcp.example.com/mcp',
+          authorized_for: 'Test',
+        },
+      ];
+
+      mockedSafeFetch.mockImplementation(async (_url, opts) => {
+        if (opts?.method === 'POST') {
+          return {
+            status: 401,
+            data: buf({ error: 'unauthorized' }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        return { status: 404, data: buf({}), headers: {} };
+      });
+
+      const results = await manager.validateAgentCards(agents);
+
+      expect(results[0].valid).toBe(true);
+      expect(results[0].oauth_required).toBe(true);
+      expect(results[0].card_data).toMatchObject({
+        protocol: 'mcp',
+        requires_auth: true,
+      });
     });
 
     it('returns combined errors when both A2A and MCP fail', async () => {
@@ -2363,6 +2469,83 @@ describe('AdAgentsManager', () => {
 
         expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v3/adagents.json');
         expect(parsed.last_updated).toBeDefined();
+      });
+
+      it('creates adagents.json with formats, placements, and placement tags', () => {
+        const json = manager.createAdAgentsJson({
+          agents: [
+            {
+              url: 'https://agent.example.com',
+              authorized_for: 'Homepage inventory',
+              authorization_type: 'property_ids',
+              property_ids: ['homepage'],
+            },
+          ],
+          properties: [
+            {
+              property_id: 'homepage',
+              property_type: 'website',
+              name: 'Homepage',
+              identifiers: [{ type: 'domain', value: 'example.com' }],
+            },
+          ],
+          formats: [
+            {
+              format_option_id: 'homepage_mrec_image',
+              format_kind: 'image',
+              params: { width: 300, height: 250 },
+            },
+          ],
+          placements: [
+            {
+              placement_id: 'homepage_mrec',
+              name: 'Homepage MREC',
+              property_ids: ['homepage'],
+              format_options: [{ format_option_id: 'homepage_mrec_image' }],
+            },
+          ],
+          placementTags: {
+            homepage: { name: 'Homepage', description: 'Homepage placements' },
+          },
+          includeTimestamp: false,
+        });
+        const parsed = JSON.parse(json);
+
+        expect(parsed.formats[0].format_option_id).toBe('homepage_mrec_image');
+        expect(parsed.placements[0].format_options[0].format_option_id).toBe('homepage_mrec_image');
+        expect(parsed.placement_tags.homepage.name).toBe('Homepage');
+      });
+
+      it('rejects placement format refs that do not resolve to top-level formats', () => {
+        const result = manager.validateProposed({
+          agents: [
+            {
+              url: 'https://agent.example.com',
+              authorized_for: 'Homepage inventory',
+              authorization_type: 'property_ids',
+              property_ids: ['homepage'],
+            },
+          ],
+          properties: [
+            {
+              property_id: 'homepage',
+              property_type: 'website',
+              name: 'Homepage',
+              identifiers: [{ type: 'domain', value: 'example.com' }],
+            },
+          ],
+          placements: [
+            {
+              placement_id: 'homepage_mrec',
+              name: 'Homepage MREC',
+              property_ids: ['homepage'],
+              format_options: [{ format_option_id: 'missing_format' }],
+            },
+          ],
+        });
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.field === 'placements[0].format_options[0].format_option_id')).toBe(true);
       });
     });
   });

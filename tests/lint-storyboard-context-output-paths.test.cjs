@@ -111,6 +111,26 @@ test('pathResolves descends oneOf variants — captures from a discriminated arm
   assert.equal(pathResolves(schema, parsePath('reason')), true);
 });
 
+test('task_completion prefix validates against the terminal artifact schema', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'create_media_buy',
+            task: 'create_media_buy',
+            response_schema_ref: 'media-buy/create-media-buy-response.json',
+            context_outputs: [{ name: 'media_buy_id', path: 'task_completion.media_buy_id' }],
+          },
+        ],
+      },
+    ],
+  };
+
+  assert.deepEqual(lintDoc(doc, '/synth/test.yaml'), []);
+});
+
 test('pathResolves rejects paths that no oneOf variant defines', () => {
   const schema = loadSchema('brand/acquire-rights-response.json');
   assert.equal(pathResolves(schema, parsePath('does_not_exist')), false);

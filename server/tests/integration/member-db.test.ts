@@ -384,6 +384,14 @@ describe('MemberDatabase Integration Tests', () => {
       expect(carouselProfiles.every(p => p.show_in_carousel)).toBe(true);
     });
 
+    it('should count public profiles for homepage stats', async () => {
+      const publicProfiles = await memberDb.getPublicProfiles();
+      const publicCount = await memberDb.countPublicProfiles();
+
+      expect(publicCount).toBe(publicProfiles.length);
+      expect(publicCount).toBeGreaterThanOrEqual(2);
+    });
+
     it('should filter by offerings', async () => {
       const buyerProfiles = await memberDb.listProfiles({ offerings: ['buyer_agent'] });
       expect(buyerProfiles.every(p => p.offerings.includes('buyer_agent'))).toBe(true);

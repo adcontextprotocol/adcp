@@ -2,6 +2,7 @@ import type { Agent } from "./types.js";
 import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/sdk";
 import { sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
 import { FederatedIndexService } from "./federated-index.js";
+import type { DiscoveredAgent } from "./db/federated-index-db.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { BrandManager } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
@@ -10,7 +11,7 @@ import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { HealthChecker } from "./health.js";
-import { AgentSnapshotDatabase } from "./db/agent-snapshot-db.js";
+import { AgentSnapshotDatabase, type AgentCapabilitiesSnapshotRow } from "./db/agent-snapshot-db.js";
 import { AgentContextDatabase } from "./db/agent-context-db.js";
 import { AAO_HOST } from "./config/aao.js";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
@@ -23,6 +24,17 @@ import { resolveUserAgentAuth } from "./routes/helpers/resolve-user-agent-auth.j
 import { adaptAuthForSdk, type SdkAuth } from "./services/sdk-auth-adapter.js";
 
 const log = createLogger('crawler');
+
+function unknownClassificationProbeDue(
+  snapshot: AgentCapabilitiesSnapshotRow | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!snapshot) return true;
+  if (snapshot.inferred_type !== null) return true;
+  if (snapshot.probe_terminal_state) return false;
+  if (!snapshot.next_probe_after) return true;
+  return new Date(snapshot.next_probe_after).getTime() <= now.getTime();
+}
 
 /**
  * Compare a freshly-fetched adagents.json against the previously-cached
@@ -154,6 +166,29 @@ export class CrawlerService {
       log.warn({ err }, 'Failed to fetch discovered sales agents; proceeding with config agents only');
     }
 
+    // Fetch sales_candidate agents discovered via publisher_properties fan-out.
+    // These get included in the same crawlAgents call so the SDK probes their
+    // list_authorized_properties alongside registered and confirmed sales agents.
+    let salesCandidates: DiscoveredAgent[] = [];
+    try {
+      salesCandidates = await this.federatedIndex.getSalesCandidatesForProbe();
+      let added = 0;
+      for (const candidate of salesCandidates) {
+        if (seenAgentUrls.has(candidate.agent_url) || pausedUrls.has(candidate.agent_url)) continue;
+        seenAgentUrls.add(candidate.agent_url);
+        agentInfos.push({
+          agent_url: candidate.agent_url,
+          protocol: (candidate.protocol as 'mcp' | 'a2a') || 'mcp',
+        });
+        added++;
+      }
+      if (added > 0) {
+        log.debug({ count: added }, 'Including sales_candidate agents in PropertyCrawler pass');
+      }
+    } catch (err) {
+      log.warn({ err }, 'Failed to fetch sales_candidate agents; proceeding without candidate probes');
+    }
+
     try {
       const result = await this.crawler.crawlAgents(agentInfos);
 
@@ -187,8 +222,32 @@ export class CrawlerService {
       // Snapshot pre-crawl state for diffing
       const preCrawlAgents = await this.snapshotAgentState();
 
-      // Populate federated index from PropertyIndex and adagents.json files
+      // Populate federated index from PropertyIndex and adagents.json files,
+      // including any publisher-domain claims returned by sales_candidate probes.
       const crawledDomains = await this.populateFederatedIndex(agents);
+
+      // Promote or back off sales_candidates based on positive PropertyIndex evidence.
+      // Absence of an error is not sufficient — the agent must have returned publisher-domain
+      // authorizations (non-empty publisher_domains) to earn promotion to 'sales'.
+      if (salesCandidates.length > 0) {
+        const index = getPropertyIndex();
+        for (const candidate of salesCandidates) {
+          const auth = index.getAgentAuthorizations(candidate.agent_url);
+          try {
+            if (auth && auth.publisher_domains.length > 0) {
+              await this.federatedIndex.promoteSalesCandidateToSales(candidate.agent_url);
+              log.debug({ agentUrl: candidate.agent_url }, 'sales_candidate promoted to sales');
+            } else {
+              await this.federatedIndex.recordSalesCandidateProbeFailure(candidate.agent_url);
+            }
+          } catch (err) {
+            log.warn(
+              { agentUrl: candidate.agent_url, err: err instanceof Error ? err.message : err },
+              'sales_candidate probe outcome recording failed',
+            );
+          }
+        }
+      }
 
       // Build and upsert inventory profiles
       const builtProfiles = await this.buildInventoryProfiles();
@@ -603,13 +662,10 @@ export class CrawlerService {
       }
     }
 
-    // 2b. Walk all DB-discovered agents through the PropertyIndex. The type filter
+    // 2b. Walk DB-discovered agents through the PropertyIndex. The type filter
     //     is intentionally absent — `index.getAgentAuthorizations` acts as the gate:
-    //     only agents included in the PropertyCrawler pass (those with agent_type='sales'
-    //     at the START of this cycle, promoted by refreshAgentSnapshots in a prior cycle)
-    //     will have non-empty publisher_domains. Agents discovered for the first time
-    //     this cycle have no PropertyIndex entry and are silently skipped; they will
-    //     appear here on the next cycle (adcp#4849).
+    //     confirmed sales agents and due sales_candidates included in the
+    //     PropertyCrawler pass have publisher_domains; others are skipped.
     log.debug('Processing DB-discovered agents via PropertyIndex');
     try {
       const discoveredSalesAgents = await this.federatedIndex.listDiscoveredAgents();
@@ -740,14 +796,46 @@ export class CrawlerService {
       return;
     }
 
+    const existingSnapshots = await this.snapshotDb.bulkGetCapabilities(toProbe.map(a => a.url));
+    const now = new Date();
+    const dueToProbe: Agent[] = [];
+    let skippedBackoff = 0;
+    let skippedTerminal = 0;
+
+    for (const agent of toProbe) {
+      const knownType = knownTypes.get(agent.url);
+      if (knownType && knownType !== 'unknown') {
+        dueToProbe.push(agent);
+        continue;
+      }
+
+      const snapshot = existingSnapshots.get(agent.url);
+      if (unknownClassificationProbeDue(snapshot, now)) {
+        dueToProbe.push(agent);
+      } else if (snapshot?.probe_terminal_state) {
+        skippedTerminal++;
+      } else {
+        skippedBackoff++;
+      }
+    }
+
+    if (dueToProbe.length === 0) {
+      log.info(
+        { skippedBackoff, skippedTerminal, probed: 0, candidates: toProbe.length },
+        'No agents due for snapshot refresh',
+      );
+      return;
+    }
+
     const CONCURRENCY = 5;
     const PROBE_TIMEOUT_MS = 10000;
     let typesUpdated = 0;
     let snapshotsWritten = 0;
     let failed = 0;
+    let unknownFailuresRecorded = 0;
 
-    for (let i = 0; i < toProbe.length; i += CONCURRENCY) {
-      const batch = toProbe.slice(i, i + CONCURRENCY);
+    for (let i = 0; i < dueToProbe.length; i += CONCURRENCY) {
+      const batch = dueToProbe.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(
         batch.map(async (agent) => {
           // Use saved owner credentials when the agent has any — keeps the
@@ -767,6 +855,8 @@ export class CrawlerService {
           const inferredType = this.capabilityDiscovery.inferTypeFromProfile(profile);
           const effectiveType = knownTypes.get(agent.url) || inferredType;
           const agentForHealth: Agent = { ...agent, type: effectiveType as Agent['type'], protocol: profile.protocol };
+          const knownType = knownTypes.get(agent.url);
+          const trackUnknownProbe = !knownType || knownType === 'unknown';
 
           const [health, stats] = await Promise.all([
             Promise.race([
@@ -788,7 +878,11 @@ export class CrawlerService {
           ]);
 
           await Promise.all([
-            this.snapshotDb.upsertCapabilities(profile, inferredType === 'unknown' ? null : inferredType),
+            this.snapshotDb.upsertCapabilities(
+              profile,
+              inferredType === 'unknown' ? null : inferredType,
+              { trackUnknownProbe },
+            ),
             this.snapshotDb.upsertHealth(agent.url, health, stats),
           ]);
 
@@ -798,7 +892,6 @@ export class CrawlerService {
           //     Operator runs the backfill script to flip explicitly. Single
           //     probes can be wrong; auto-flipping would corrupt good rows on
           //     a transient bad probe. See #3538.
-          const knownType = knownTypes.get(agent.url);
           const canPromote = inferredType !== 'unknown' && (!knownType || knownType === 'unknown');
           const isDisagreement =
             !!knownType && knownType !== 'unknown' && inferredType !== 'unknown' && knownType !== inferredType;
@@ -831,18 +924,39 @@ export class CrawlerService {
         })
       );
 
-      for (const result of results) {
+      for (let j = 0; j < results.length; j++) {
+        const result = results[j];
         if (result.status === 'fulfilled') {
           snapshotsWritten++;
           if (result.value === 'type_updated') typesUpdated++;
         } else {
           failed++;
+          const agent = batch[j];
+          const knownType = agent ? knownTypes.get(agent.url) : undefined;
+          if (agent && (!knownType || knownType === 'unknown')) {
+            const error = result.reason instanceof Error ? result.reason.message : String(result.reason);
+            await this.snapshotDb.recordUnknownProbeFailure(
+              agent.url,
+              (agent.protocol as 'mcp' | 'a2a') || 'mcp',
+              error,
+            );
+            unknownFailuresRecorded++;
+          }
         }
       }
     }
 
     log.info(
-      { snapshotsWritten, typesUpdated, unreachable: failed, probed: toProbe.length },
+      {
+        snapshotsWritten,
+        typesUpdated,
+        unreachable: failed,
+        unknownFailuresRecorded,
+        skippedBackoff,
+        skippedTerminal,
+        probed: dueToProbe.length,
+        candidates: toProbe.length,
+      },
       'Agent snapshots refreshed',
     );
   }
@@ -937,7 +1051,11 @@ export class CrawlerService {
     ]);
 
     await Promise.all([
-      this.snapshotDb.upsertCapabilities(profile, inferredType === 'unknown' ? null : inferredType),
+      this.snapshotDb.upsertCapabilities(
+        profile,
+        inferredType === 'unknown' ? null : inferredType,
+        { trackUnknownProbe: !knownType },
+      ),
       this.snapshotDb.upsertHealth(agentUrl, health, stats),
     ]);
 
@@ -1194,6 +1312,21 @@ export class CrawlerService {
         );
       }
     }
+
+    // Register the declaring agent as a sales_candidate so the next periodic
+    // crawl probes it via list_authorized_properties. Only takes effect when
+    // the agent has no confirmed type yet — upsertSalesCandidate will not
+    // downgrade a row already classified as 'sales', 'creative', etc.
+    if (childDomains.size > 0) {
+      try {
+        await this.federatedIndex.upsertSalesCandidate(agentUrl, managerCanonical);
+      } catch (err) {
+        log.warn(
+          { agentUrl, managerDomain: managerCanonical, err: err instanceof Error ? err.message : err },
+          'publisher_properties fan-out: sales_candidate registration failed',
+        );
+      }
+    }
   }
 
   private async recordPropertiesForAgent(
@@ -1338,16 +1471,25 @@ export class CrawlerService {
 
   // ── Inventory Profile Building ───────────────────────────────────
 
-  private async buildInventoryProfiles(): Promise<Map<string, ProfileUpsertInput>> {
+  private async buildInventoryProfiles(
+    options: { agentUrls?: string[]; deleteStale?: boolean } = {},
+  ): Promise<Map<string, ProfileUpsertInput>> {
     const profileMap = new Map<string, ProfileUpsertInput>();
     if (!this.profilesDb) return profileMap;
 
     const agents = await this.federatedIndex.listAllAgents();
+    const agentUrlFilter = options.agentUrls ? new Set(options.agentUrls) : null;
     const profiles: ProfileUpsertInput[] = [];
+    const emptyAgentUrls: string[] = [];
 
     for (const agent of agents) {
+      if (agentUrlFilter && !agentUrlFilter.has(agent.url)) continue;
+
       const domains = await this.federatedIndex.getDomainsForAgent(agent.url);
-      if (domains.length === 0) continue;
+      if (domains.length === 0) {
+        if (agentUrlFilter) emptyAgentUrls.push(agent.url);
+        continue;
+      }
 
       const markets = new Set<string>();
       const propertyTypes = new Set<string>();
@@ -1390,12 +1532,20 @@ export class CrawlerService {
 
     if (profiles.length > 0) {
       await this.profilesDb.upsertProfiles(profiles);
-      const currentUrls = profiles.map(p => p.agent_url);
-      const staleDeleted = await this.profilesDb.deleteStaleProfiles(currentUrls);
-      if (staleDeleted > 0) {
-        log.info({ deleted: staleDeleted }, 'Stale inventory profiles cleaned up');
+      if (options.deleteStale !== false && !agentUrlFilter) {
+        const currentUrls = profiles.map(p => p.agent_url);
+        const staleDeleted = await this.profilesDb.deleteStaleProfiles(currentUrls);
+        if (staleDeleted > 0) {
+          log.info({ deleted: staleDeleted }, 'Stale inventory profiles cleaned up');
+        }
       }
       log.info({ profileCount: profiles.length }, 'Inventory profiles updated');
+    }
+    if (agentUrlFilter && emptyAgentUrls.length > 0) {
+      const deleted = await this.profilesDb.deleteProfiles(emptyAgentUrls);
+      if (deleted > 0) {
+        log.info({ deleted }, 'Empty inventory profiles cleaned up');
+      }
     }
 
     return profileMap;
@@ -1436,9 +1586,17 @@ export class CrawlerService {
         },
       );
 
+      const affectedAgentUrls = new Set<string>();
+      const existingAuthorizations = await this.federatedIndex.getAuthorizationsForDomain(domain);
+      for (const auth of existingAuthorizations) {
+        if (auth.source !== 'adagents_json') continue;
+        affectedAgentUrls.add(canonicalizeAgentUrl(auth.agent_url) ?? auth.agent_url);
+      }
+
       // Record agents and properties
       for (const authorizedAgent of validation.raw_data.authorized_agents) {
         if (!authorizedAgent.url) continue;
+        affectedAgentUrls.add(canonicalizeAgentUrl(authorizedAgent.url) ?? authorizedAgent.url);
 
         await this.federatedIndex.recordAgentFromAdagentsJson(
           authorizedAgent.url,
@@ -1488,7 +1646,10 @@ export class CrawlerService {
       }
 
       // Rebuild profiles for affected agents
-      await this.buildInventoryProfiles();
+      await this.buildInventoryProfiles({
+        agentUrls: [...affectedAgentUrls],
+        deleteStale: false,
+      });
 
       log.info({ domain }, 'Single domain crawl complete');
     } catch (err) {
@@ -1639,11 +1800,11 @@ export class CrawlerService {
 
     this.managerRevalidationProcessing = true;
     // Bounded per-tick batch — caps concurrency budget regardless of
-    // queue depth. At a 5-minute tick and BATCH_SIZE=50, a 6K-publisher
-    // manager rotation propagates within ~10 hours, comfortably ahead
-    // of the 60-minute organic re-crawl cadence for any single row.
+    // queue depth. Keep concurrent full domain crawls below the default
+    // database pool size so background revalidation leaves headroom for
+    // health checks and foreground requests.
     const BATCH_SIZE = 50;
-    const CONCURRENCY = 10;
+    const CONCURRENCY = 4;
 
     try {
       const rows = await this.publisherDb.dequeueRevalidationBatch(BATCH_SIZE);

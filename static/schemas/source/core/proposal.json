@@ -2,12 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/proposal.json",
   "title": "Proposal",
-  "description": "A proposed media plan with budget allocations across products. Represents the publisher's strategic recommendation for how to structure a campaign based on the brief. Proposals are actionable - buyers can execute them directly via create_media_buy by providing the proposal_id.",
+  "description": "A proposed media plan with budget allocations across products. Represents the publisher's strategic recommendation for how to structure a campaign based on the brief. Proposals are actionable: committed proposals can be executed directly via create_media_buy by providing the proposal_id; draft proposals must first be finalized via get_products refine action 'finalize'.",
   "type": "object",
   "properties": {
     "proposal_id": {
       "type": "string",
-      "description": "Unique identifier for this proposal. Used to execute it via create_media_buy.",
+      "description": "Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.",
       "maxLength": 255
     },
     "name": {
@@ -30,7 +30,7 @@
     },
     "proposal_status": {
       "$ref": "/schemas/enums/proposal-status.json",
-      "description": "Lifecycle status of this proposal. When absent, the proposal is ready to buy (backward compatible). 'draft' means indicative pricing — finalize via refine before purchasing. 'committed' means firm pricing with inventory reserved until expires_at."
+      "description": "Lifecycle status of this proposal and the per-proposal source of truth for whether finalization is required before create_media_buy. When absent, the proposal is ready to buy (backward compatible). 'draft' means indicative pricing — finalize via refine before purchasing. 'committed' means firm pricing with inventory reserved until expires_at and executable via create_media_buy."
     },
     "expires_at": {
       "type": "string",

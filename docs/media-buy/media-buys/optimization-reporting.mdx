@@ -290,7 +290,7 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`grps`**: Gross Rating Points (for CPP billing)
 - **`engagements`**: Direct ad interactions beyond viewing (reactions, taps, opens)
 - **`engagement_rate`**: Platform-specific engagement rate
-- **`follows`**: New followers/subscribes attributed to delivery
+- **`follows`**: New followers, page likes, artist/podcast/channel follows, or free channel/feed subscribes attributed to delivery. Paid subscriptions are conversion events with `event_type: "subscribe"`.
 - **`saves`**: Saves, bookmarks, playlist adds attributed to delivery (platforms vary in name — Pinterest "repins", TikTok "video_saves" — all report under this canonical key)
 - **`profile_visits`**: Visits to the brand's in-platform page
 - **`viewability`**: Viewability data (measurable_impressions, viewable_impressions, viewable_rate, viewed_seconds, standard, vendor). Separates MRC and GroupM standards. `viewed_seconds` is the average in-view duration per measurable impression — reporting-side counterpart to the `viewed_seconds` optimization goal, governed by the same `standard` threshold as `viewable_rate`. The optional `vendor` field carries a `BrandRef` so the row is self-describing — buyer agents reading delivery in isolation can attribute the numbers to a measurement vendor without joining back to `package.committed_metrics` or `package.performance_standards`.
@@ -334,13 +334,49 @@ When a reporting webhook is configured, publishers commit to sending:
 
 #### Webhook Payload
 
-Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) with additional metadata:
+Reporting webhooks send a full MCP webhook envelope. The delivery report itself uses the same payload structure as [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) with additional metadata, but it is nested under `result`. Do not send the inner delivery object as the top-level POST body.
+
+```json
+{
+  "idempotency_key": "whk_20240205_example_000005",
+  "operation_id": "delivery_report_mb001_2024_02_05",
+  "task_id": "delivery_report_mb001_2024_02_05_000005",
+  "task_type": "media_buy_delivery",
+  "status": "completed",
+  "timestamp": "2024-02-06T08:00:00Z",
+  "message": "Scheduled media buy delivery report available",
+  "result": {
+    "notification_type": "scheduled",
+    "sequence_number": 5,
+    "next_expected_at": "2024-02-06T08:00:00Z",
+    "reporting_period": {
+      "start": "2024-02-05T00:00:00Z",
+      "end": "2024-02-05T23:59:59Z"
+    },
+    "currency": "USD",
+    "media_buy_deliveries": [
+      {
+        "media_buy_id": "mb_001",
+        "status": "active",
+        "totals": {
+          "impressions": 125000,
+          "spend": 5625.0,
+          "clicks": 250,
+          "ctr": 0.002
+        },
+        "by_package": []
+      }
+    ]
+  }
+}
+```
+
+The inner `result` object can be shown or stored separately, but this shape is not valid as the top-level webhook POST body:
 
 ```json
 {
   "notification_type": "scheduled",
   "sequence_number": 5,
-  "next_expected_at": "2024-02-06T08:00:00Z",
   "reporting_period": {
     "start": "2024-02-05T00:00:00Z",
     "end": "2024-02-05T23:59:59Z"
@@ -352,21 +388,24 @@ Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](
       "status": "active",
       "totals": {
         "impressions": 125000,
-        "spend": 5625.00,
-        "clicks": 250,
-        "ctr": 0.002
+        "spend": 5625.0
       },
-      "by_package": [...]
+      "by_package": []
     }
   ]
 }
 ```
 
 **Fields:**
+- **`idempotency_key`**: Unique per webhook event and stable across retries of that same event. Receivers dedupe by this field.
+- **Top-level `status`**: Async webhook status, such as `"completed"` for a delivered report.
 - **`notification_type`**: `"scheduled"` (regular update), `"final"` (campaign complete), or `"delayed"` (data not yet available)
 - **`sequence_number`**: Sequential notification number (starts at 1)
 - **`next_expected_at`**: ISO 8601 timestamp for next notification (omitted for final notifications)
+- **`media_buy_deliveries[].status`**: Media buy lifecycle or reporting status, distinct from the top-level async webhook status.
 - **`media_buy_deliveries`**: Array of media buy delivery data (may contain multiple media buys aggregated by publisher)
+
+Webhook signatures and content digests are computed over the exact raw bytes of the full envelope being sent, not over a reserialized `result` object.
 
 #### Timezone Handling
 

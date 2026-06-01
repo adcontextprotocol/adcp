@@ -301,6 +301,8 @@ export const PropertyRegistryItemSchema = z
 export const AgentComplianceSchema = z
   .object({
     status: z.enum(["passing", "degraded", "failing", "unknown"]),
+    requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta." }),
+    adcp_version: z.string().nullable().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the latest run, e.g. 3.0.12." }),
     lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
     tracks: z.record(z.string(), z.string()).openapi({ example: { core: "pass", products: "fail" } }),
     streak_days: z.number().int(),
@@ -334,6 +336,8 @@ export const VerificationBadgeSchema = z
 export const AgentComplianceDetailSchema = z
   .object({
     agent_url: z.string(),
+    requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Null for legacy rows before target recording." }),
+    adcp_version: z.string().nullable().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the latest run, e.g. 3.0.12. Null for legacy rows before version recording." }),
     status: z.enum(["passing", "degraded", "failing", "unknown", "opted_out"]),
     lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
     compliance_opt_out: z.boolean().optional(),
@@ -349,6 +353,25 @@ export const AgentComplianceDetailSchema = z
     check_interval_hours: z.number().int().optional().openapi({ description: "How often the heartbeat re-tests this agent, in hours" }),
     declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared in get_adcp_capabilities, from the latest run" }),
     specialism_status: z.record(z.string(), z.enum(['passing', 'failing', 'untested', 'unknown'])).optional().openapi({ description: "Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status" }),
+    storyboard_statuses: z.array(z.object({
+      storyboard_id: z.string(),
+      requested_compliance_target: z.string().nullable().optional(),
+      adcp_version: z.string().nullable().optional(),
+      title: z.string(),
+      category: z.string().nullable(),
+      track: z.string().nullable(),
+      status: z.enum(["passing", "failing", "partial", "untested"]),
+      steps_passed: z.number().int(),
+      steps_total: z.number().int(),
+      last_tested_at: z.string().nullable(),
+      last_passed_at: z.string().nullable(),
+    })).optional().openapi({ description: "Owner-scoped per-storyboard diagnostics used by the dashboard. Empty for non-owners." }),
+    notices: z.array(z.any()).optional().openapi({ description: "Run-summary notices from the latest non-dry-run compliance run. Unknown codes/severities are preserved verbatim." }),
+    observations: z.array(z.object({
+      category: z.string(),
+      severity: z.string(),
+      message: z.string(),
+    })).optional().openapi({ description: "Public-safe advisory observations from the latest non-dry-run compliance run. Raw evidence is intentionally omitted; this array is not merged across runs, so cleared advisories disappear on the next fresh run." }),
     membership_tier: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's membership tier. Populated only when the authenticated viewer owns the agent; null otherwise. Field is always present so response shape doesn't reveal ownership." }),
     membership_tier_label: z.string().nullable().optional().openapi({ description: "Owner-scoped: human-readable label for membership_tier (e.g. 'Builder'). Null for non-owners." }),
     subscription_status: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's subscription status (active, past_due, trialing, etc.). Null for non-owners." }),
@@ -372,6 +395,8 @@ export const AgentVerificationSchema = z
 export const StoryboardStatusSchema = z
   .object({
     storyboard_id: z.string(),
+    requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target from the run that produced this storyboard verdict, e.g. 3.0 or 3.1-beta." }),
+    adcp_version: z.string().nullable().optional().openapi({ description: "Concrete AdCP compliance bundle version from the run that produced this storyboard verdict." }),
     title: z.string(),
     category: z.string().nullable(),
     track: z.string().nullable(),
@@ -718,6 +743,8 @@ export const MonitoringSettingsSchema = z
 export const ComplianceRunSchema = z
   .object({
     id: z.string(),
+    requested_compliance_target: z.string().nullable().optional(),
+    adcp_version: z.string().nullable().optional(),
     overall_status: z.string(),
     headline: z.string().nullable(),
     tracks_passed: z.number().int(),
@@ -823,4 +850,3 @@ export const StoryboardDetailSchema = z
     track: z.string().optional(),
   })
   .openapi("StoryboardDetail");
-

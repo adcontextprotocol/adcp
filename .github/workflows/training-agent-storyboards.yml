@@ -5,18 +5,38 @@ on:
     branches: [main, '3.0.x']
     paths:
       - 'server/src/training-agent/**'
+      - 'server/src/services/hosted-compliance-version.ts'
       - 'server/tests/manual/run-storyboards.ts'
       - 'package.json'
       - 'package-lock.json'
+      - 'scripts/build-compliance.cjs'
+      - 'scripts/overlay-compliance-cache.sh'
+      - 'scripts/run-storyboards-matrix.sh'
+      - 'scripts/run-storyboards-3-0-compat.sh'
+      - 'scripts/stage-sdk-schema-bundle.sh'
+      - 'static/schemas/source/**'
       - 'static/compliance/source/**'
+      - 'dist/compliance/**'
+      - 'dist/schemas/**'
+      - '.github/workflows/training-agent-storyboards.yml'
   push:
     branches: [main, '3.0.x']
     paths:
       - 'server/src/training-agent/**'
+      - 'server/src/services/hosted-compliance-version.ts'
       - 'server/tests/manual/run-storyboards.ts'
       - 'package.json'
       - 'package-lock.json'
+      - 'scripts/build-compliance.cjs'
+      - 'scripts/overlay-compliance-cache.sh'
+      - 'scripts/run-storyboards-matrix.sh'
+      - 'scripts/run-storyboards-3-0-compat.sh'
+      - 'scripts/stage-sdk-schema-bundle.sh'
+      - 'static/schemas/source/**'
       - 'static/compliance/source/**'
+      - 'dist/compliance/**'
+      - 'dist/schemas/**'
+      - '.github/workflows/training-agent-storyboards.yml'
 
 concurrency:
   group: training-agent-storyboards-${{ github.ref }}
@@ -24,16 +44,19 @@ concurrency:
 
 jobs:
   storyboards:
-    name: Storyboards (/${{ matrix.tenant }})
+    name: Storyboards (${{ matrix.surface }} /${{ matrix.tenant }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
+        surface: [current, 3.0-compat]
         # The training agent is split into six per-specialism tenants; each
         # tenant runs the full conformance suite and is graded against its
-        # own floors. Floors below are the post-migration baseline (PR #3713,
-        # SDK 6.0.0). Rising is fine; regressing fails CI.
+        # own floors per compliance surface. Current-source floors are the
+        # post-migration baseline (PR #3713, SDK 6.0.0); 3.0-compat floors
+        # are the frozen latest dist/compliance/3.0.x bundle baseline.
+        # Rising is fine; regressing fails CI.
         tenant: [signals, sales, governance, creative, creative-builder, brand]
         include:
           # #3965 Class C closed by per-tenant /<tenant>/mcp-strict route
@@ -53,26 +76,58 @@ jobs:
           # phantom-rejection vectors (audience_buy_flow / performance_buy_flow),
           # and the asap-timing scenario's IO_REQUIRED gap. +1-clean buffer
           # below observed counts for flake tolerance.
-          - tenant: signals
+          - surface: current
+            tenant: signals
             min_clean_storyboards: 74
             min_passing_steps: 111
-          - tenant: sales
+          - surface: current
+            tenant: sales
             min_clean_storyboards: 74
             min_passing_steps: 380
-          - tenant: governance
+          - surface: current
+            tenant: governance
             min_clean_storyboards: 73
             min_passing_steps: 151
-          - tenant: creative
+          - surface: current
+            tenant: creative
             min_clean_storyboards: 73
             min_passing_steps: 169
-          - tenant: creative-builder
+          - surface: current
+            tenant: creative-builder
             min_clean_storyboards: 70
             min_passing_steps: 146
-          - tenant: brand
+          - surface: current
+            tenant: brand
             min_clean_storyboards: 73
             min_passing_steps: 96
+          - surface: 3.0-compat
+            tenant: signals
+            min_clean_storyboards: 65
+            min_passing_steps: 94
+          - surface: 3.0-compat
+            tenant: sales
+            min_clean_storyboards: 65
+            min_passing_steps: 272
+          - surface: 3.0-compat
+            tenant: governance
+            min_clean_storyboards: 65
+            min_passing_steps: 135
+          - surface: 3.0-compat
+            tenant: creative
+            min_clean_storyboards: 65
+            min_passing_steps: 137
+          - surface: 3.0-compat
+            tenant: creative-builder
+            min_clean_storyboards: 65
+            min_passing_steps: 121
+          - surface: 3.0-compat
+            tenant: brand
+            min_clean_storyboards: 65
+            min_passing_steps: 80
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -86,20 +141,99 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
       - name: Overlay in-repo compliance source onto SDK cache
+        if: matrix.surface == 'current'
         # The storyboard runner loads from @adcp/sdk's bundled compliance
         # cache (a snapshot synced from this repo's static/compliance/source/
         # on each SDK publish). To grade current-PR fixtures rather than
-        # the published snapshot, copy the source tree onto the cache.
+        # the published snapshot, rebuild the development compliance bundle
+        # and copy that generated bundle onto the cache so index.json includes
+        # newly-added storyboards.
         # Logic lives in scripts/overlay-compliance-cache.sh so the
         # pre-push hook (scripts/run-storyboards-matrix.sh) and CI grade
         # against the same overlay.
         run: bash scripts/overlay-compliance-cache.sh
+
+      - name: Select latest released 3.0.x compliance bundle
+        if: matrix.surface == '3.0-compat'
+        id: compat-bundle
+        env:
+          RELEASE_BASE_REF: 3.0.x
+        run: |
+          set -euo pipefail
+          if ! git show-ref --verify --quiet "refs/remotes/origin/${RELEASE_BASE_REF}"; then
+            git fetch --no-tags --depth=1 origin "${RELEASE_BASE_REF}:refs/remotes/origin/${RELEASE_BASE_REF}"
+          fi
+          VERSION=$(node - <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const baseRef = process.env.RELEASE_BASE_REF || 'main';
+          const gitRef = baseRef.includes('/') ? baseRef : `origin/${baseRef}`;
+          function listFromGit(ref) {
+            try {
+              const output = execFileSync('git', ['ls-tree', '-d', '--name-only', `${ref}:dist/compliance`], {
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore'],
+              });
+              return output.split(/\r?\n/).filter((name) => /^3\.0\.\d+$/.test(name));
+            } catch {
+              return [];
+            }
+          }
+          function listFromWorkingTree() {
+            const dir = path.join(process.cwd(), 'dist', 'compliance');
+            return fs.existsSync(dir)
+              ? fs.readdirSync(dir).filter((name) => /^3\.0\.\d+$/.test(name))
+              : [];
+          }
+          const versions = listFromGit(gitRef);
+          if (versions.length === 0) {
+            versions.push(...listFromWorkingTree());
+          }
+          versions.sort((a, b) => {
+            const pa = a.split('.').map(Number);
+            const pb = b.split('.').map(Number);
+            for (let i = 0; i < 3; i += 1) {
+              if (pa[i] !== pb[i]) return pa[i] - pb[i];
+            }
+            return 0;
+          });
+          const latest = versions.at(-1);
+          if (!latest) process.exit(2);
+          process.stdout.write(latest);
+          NODE
+          )
+          TMP_DIR="$(mktemp -d)"
+          git archive "origin/${RELEASE_BASE_REF}" "dist/compliance/${VERSION}" | tar -x -C "${TMP_DIR}"
+          git archive "origin/${RELEASE_BASE_REF}" "dist/schemas/${VERSION}" | tar -x -C "${TMP_DIR}"
+          mkdir -p "${TMP_DIR}/schemas/cache"
+          cp -R "${TMP_DIR}/dist/schemas/${VERSION}" "${TMP_DIR}/schemas/cache/${VERSION}"
+          DIR="${TMP_DIR}/dist/compliance/${VERSION}"
+          if [ ! -f "${DIR}/index.json" ]; then
+            echo "::error::Compliance bundle not found at ${DIR}"
+            exit 1
+          fi
+          git archive "origin/${RELEASE_BASE_REF}" "dist/schemas/${VERSION}" | tar -x -C "${TMP_DIR}"
+          SCHEMA_DIR="${TMP_DIR}/dist/schemas/${VERSION}"
+          if [ ! -f "${SCHEMA_DIR}/index.json" ]; then
+            echo "::error::Schema bundle not found at ${SCHEMA_DIR}"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "dir=${DIR}" >> "$GITHUB_OUTPUT"
+          echo "schema_dir=${SCHEMA_DIR}" >> "$GITHUB_OUTPUT"
+          echo "Using ${DIR}"
+
+      - name: Stage latest released 3.0.x schema bundle
+        if: matrix.surface == '3.0-compat'
+        run: bash scripts/stage-sdk-schema-bundle.sh "${{ steps.compat-bundle.outputs.schema_dir }}" "${{ steps.compat-bundle.outputs.version }}"
 
       - name: Run storyboards against /${{ matrix.tenant }}
         id: run
         env:
           TENANT_PATH: ${{ matrix.tenant }}
           PUBLIC_TEST_AGENT_TOKEN: storyboard-ci-token
+          ADCP_COMPLIANCE_DIR: ${{ steps.compat-bundle.outputs.dir }}
         run: |
           set -uo pipefail
           # The runner exits 1 when any storyboard step fails (intentional —
@@ -113,7 +247,7 @@ jobs:
           passed=$(grep -oE 'steps: [0-9]+ passed' /tmp/storyboards.log | tail -1 | grep -oE '[0-9]+')
           set -e
           if [ -z "${clean}" ] || [ -z "${passed}" ]; then
-            echo "::error::Failed to parse storyboard count from log — the runner's output format may have changed. Download the storyboards-log-${{ matrix.tenant }} artifact from this run to inspect the raw output and update the grep patterns in this workflow."
+            echo "::error::Failed to parse storyboard count from log — the runner's output format may have changed. Download the storyboards-log-${{ matrix.surface }}-${{ matrix.tenant }} artifact from this run to inspect the raw output and update the grep patterns in this workflow."
             exit 1
           fi
           echo "clean=${clean}" >> "$GITHUB_OUTPUT"
@@ -123,7 +257,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: storyboards-log-${{ matrix.tenant }}
+          name: storyboards-log-${{ matrix.surface }}-${{ matrix.tenant }}
           path: /tmp/storyboards.log
           retention-days: 14
           if-no-files-found: ignore
@@ -137,6 +271,10 @@ jobs:
         run: |
           set -euo pipefail
           echo "Tenant: /${{ matrix.tenant }}"
+          echo "Surface: ${{ matrix.surface }}"
+          if [ "${{ matrix.surface }}" = "3.0-compat" ]; then
+            echo "Compliance bundle: ${{ steps.compat-bundle.outputs.version }}"
+          fi
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
           echo "Passing steps: ${PASSED} (floor: ${MIN_PASSED})"
           regression_help() {
@@ -149,9 +287,9 @@ jobs:
           Next steps:
             • If this drop is intentional (removed deprecated invariant, retired
               storyboard, etc.): edit .github/workflows/training-agent-storyboards.yml,
-              find the matrix entry where tenant == ${{ matrix.tenant }}, and update
+              find the matrix entry where surface == ${{ matrix.surface }} and tenant == ${{ matrix.tenant }}, and update
               the floor to ${observed}.
-            • If unintentional: download the storyboards-log-${{ matrix.tenant }} artifact
+            • If unintentional: download the storyboards-log-${{ matrix.surface }}-${{ matrix.tenant }} artifact
               from this run to see which storyboards regressed and why.
           HELP
           }
@@ -163,3 +301,87 @@ jobs:
             regression_help "passing steps" "${PASSED}" "${MIN_PASSED}"
             exit 1
           fi
+
+      - name: Enforce required-clean storyboards
+        if: matrix.surface == 'current' && matrix.tenant == 'sales'
+        run: |
+          set -euo pipefail
+          required_clean=(
+            "media_buy_seller/billing_finality_delivery"
+            "media_buy_seller/canonical_formats"
+            "media_buy_seller/vendor_metric_catalog_precondition"
+            "canonical_format_validate_input"
+            "notification_config_event_scope"
+            "notification_config_lifecycle"
+            "notification_config_rejections"
+            "wholesale_feed_products"
+            "wholesale_feed_product_webhooks"
+            "wholesale_feed_bulk_webhooks"
+          )
+          for storyboard_id in "${required_clean[@]}"; do
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
+              echo "Required-clean storyboard passed: ${storyboard_id}"
+            else
+              echo "::error::Required-clean storyboard did not pass on /sales current surface: ${storyboard_id}"
+              echo "Last matching log lines:"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
+
+      - name: Enforce signals required-clean storyboards
+        if: matrix.surface == 'current' && matrix.tenant == 'signals'
+        run: |
+          set -euo pipefail
+          required_clean=(
+            "wholesale_feed_signals"
+            "wholesale_feed_signal_webhooks"
+            "wholesale_feed_bulk_webhooks"
+          )
+          for storyboard_id in "${required_clean[@]}"; do
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
+              echo "Required-clean storyboard passed: ${storyboard_id}"
+            else
+              echo "::error::Required-clean storyboard did not pass on /signals current surface: ${storyboard_id}"
+              echo "Last matching log lines:"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
+
+      - name: Enforce creative required-clean storyboards
+        if: matrix.surface == 'current' && matrix.tenant == 'creative'
+        run: |
+          set -euo pipefail
+          required_clean=(
+            "canonical_format_validate_input"
+            "creative/billing_out_of_band"
+          )
+          for storyboard_id in "${required_clean[@]}"; do
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
+              echo "Required-clean storyboard passed: ${storyboard_id}"
+            else
+              echo "::error::Required-clean storyboard did not pass on /creative current surface: ${storyboard_id}"
+              echo "Last matching log lines:"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
+
+      - name: Enforce creative-builder required-clean storyboards
+        if: matrix.surface == 'current' && matrix.tenant == 'creative-builder'
+        run: |
+          set -euo pipefail
+          required_clean=(
+            "canonical_format_validate_input"
+          )
+          for storyboard_id in "${required_clean[@]}"; do
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
+              echo "Required-clean storyboard passed: ${storyboard_id}"
+            else
+              echo "::error::Required-clean storyboard did not pass on /creative-builder current surface: ${storyboard_id}"
+              echo "Last matching log lines:"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done

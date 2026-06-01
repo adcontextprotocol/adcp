@@ -16,7 +16,6 @@ interface MembershipRow {
   workos_user_id: string;
   workos_organization_id: string;
   workos_membership_id: string | null;
-  status: string;
 }
 
 export const workosMembershipRowExistsInWorkosInvariant: Invariant = {
@@ -35,9 +34,8 @@ export const workosMembershipRowExistsInWorkosInvariant: Invariant = {
     // ORDER BY RANDOM() is fine at our scale (tens of thousands of rows).
     // If membership counts grow significantly, switch to TABLESAMPLE.
     const result = await pool.query<MembershipRow>(
-      `SELECT workos_user_id, workos_organization_id, workos_membership_id, status
+      `SELECT workos_user_id, workos_organization_id, workos_membership_id
          FROM organization_memberships
-        WHERE status = 'active'
         ORDER BY RANDOM()
         LIMIT $1`,
       [sampleSize],
@@ -56,7 +54,7 @@ export const workosMembershipRowExistsInWorkosInvariant: Invariant = {
             subject_type: 'membership',
             subject_id: `${row.workos_user_id}:${row.workos_organization_id}`,
             message:
-              `organization_memberships row marked active for user ${row.workos_user_id} in ` +
+              `organization_memberships row cached for user ${row.workos_user_id} in ` +
               `org ${row.workos_organization_id}, but WorkOS reports no such membership`,
             details: {
               workos_user_id: row.workos_user_id,

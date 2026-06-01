@@ -120,7 +120,7 @@ import {
   buildConformanceTokenRouter,
   conformanceSessions,
 } from "./conformance/index.js";
-import { createRegistryApiRouter } from "./routes/registry-api.js";
+import { createRegistryApiRouters } from "./routes/registry-api.js";
 import { getPublicJwks } from "./services/verification-token.js";
 import { createCatalogApiRouter } from "./routes/catalog-api.js";
 import { getLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
@@ -163,6 +163,10 @@ function isValidSlug(slug: string): boolean {
     return false;
   }
   return /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(slug.toLowerCase());
+}
+
+function formatPublicMemberCount(count: number): string {
+  return `${Math.max(0, Math.trunc(count))}+`;
 }
 
 /**
@@ -811,6 +815,8 @@ export class HTTPServer {
         // redirect through AAO to pick up the session (if one exists).
         if (this.bridgeIfNeeded(req, res)) return;
 
+        html = await this.injectHomepageMemberCount(html);
+
         // Get user from session (if authenticated), passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
@@ -916,6 +922,20 @@ export class HTTPServer {
     return false;
   }
 
+  private async injectHomepageMemberCount(html: string, memberDb = new MemberDatabase()): Promise<string> {
+    if (!html.includes('{{PUBLIC_MEMBER_COUNT_PLUS}}')) {
+      return html;
+    }
+
+    try {
+      const memberCount = await memberDb.countPublicProfiles();
+      return html.replace(/\{\{PUBLIC_MEMBER_COUNT_PLUS\}\}/g, formatPublicMemberCount(memberCount));
+    } catch (error) {
+      logger.warn({ error }, 'Failed to inject dynamic homepage member count');
+      return html.replace(/\{\{PUBLIC_MEMBER_COUNT_PLUS\}\}/g, process.env.PUBLIC_MEMBER_COUNT_FALLBACK || '80+');
+    }
+  }
+
   /**
    * Serve an HTML file with APP_CONFIG injected.
    * This ensures clean URL routes (like /membership) get the same config injection
@@ -938,6 +958,7 @@ export class HTTPServer {
 
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
+      html = await this.injectHomepageMemberCount(html);
       const configScript = getAppConfigScript(user);
 
       // Inject before </head>
@@ -1055,7 +1076,7 @@ export class HTTPServer {
     this.app.use('/api', createInvitesRouter());
 
     // Mount public Registry API routes (brands, properties, agents, search, validation)
-    const registryApiRouter = createRegistryApiRouter({
+    const { router: registryApiRouter, v1AgentsRouter } = createRegistryApiRouters({
       brandManager: this.brandManager,
       brandDb: this.brandDb,
       propertyDb: this.propertyDb,
@@ -1070,6 +1091,11 @@ export class HTTPServer {
       optionalAuth,
     });
     this.app.use('/api', registryApiRouter);
+    // adcp#4924: spec defines the AAO directory inverse-lookup path as
+    // /v1/agents/{url}/publishers (docs/aao/directory-api.mdx). Mount the
+    // v1AgentsRouter at /v1 so spec-conformant clients work without the /api
+    // prefix workaround. The /api/v1/agents/... path remains for backward compat.
+    this.app.use('/v1', v1AgentsRouter);
 
     // RFC 8615: serve JWKS at root /.well-known/ path for standard OIDC/JWT discovery
     this.app.get('/.well-known/jwks.json', (_req, res) => {
@@ -1093,11 +1119,12 @@ export class HTTPServer {
         const brand = await this.brandDb.getDiscoveredBrandByDomain(domain);
         if (!brand || brand.is_public === false) return res.status(404).json({ error: 'Brand not found' });
 
-        // Only serve brand_json and community source types. Enriched (Brandfetch) entries are
-        // not brand-attested — serving them under this URL would misrepresent third-party data
-        // as brand-authoritative. editDiscoveredBrand promotes enriched→community on first
-        // human edit, so curated rows land here under the community type.
-        if (brand.source_type !== 'brand_json' && brand.source_type !== 'community') {
+        // Serve brand_json (brand-attested), community (human-curated), and enriched
+        // (Brandfetch-derived) source types. Provenance is signaled to consumers via
+        // the X-AAO-Source response header so agents can decide how much trust to
+        // place in each row — the JSON body itself stays clean of non-spec fields.
+        const ALLOWED_SOURCE_TYPES = new Set(['brand_json', 'community', 'enriched']);
+        if (!ALLOWED_SOURCE_TYPES.has(brand.source_type as string)) {
           return res.status(404).json({ error: 'Brand not found' });
         }
 
@@ -1116,6 +1143,7 @@ export class HTTPServer {
 
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Cache-Control', 'public, max-age=300');
+        res.setHeader('X-AAO-Source', brand.source_type as string);
         return res.json(brandJson);
       } catch (error) {
         logger.error({ err: error, domain }, 'Failed to serve brand.json');
@@ -8414,7 +8442,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // GET /api/members/carousel - Get member profiles for homepage carousel
     this.app.get('/api/members/carousel', async (req, res) => {
       try {
-        const profiles = await memberDb.getCarouselProfiles();
+        const [profiles, memberCount] = await Promise.all([
+          memberDb.getCarouselProfiles(),
+          memberDb.countPublicProfiles(),
+        ]);
 
         // Batch-fetch all brand data in two queries to avoid pool exhaustion.
         // Brand-primary domains come from the Stage 1 resolver (org_domains.is_primary
@@ -8439,7 +8470,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           }
         }
 
-        res.json({ members: profiles });
+        res.json({
+          members: profiles,
+          member_count: memberCount,
+          member_count_label: formatPublicMemberCount(memberCount),
+        });
       } catch (error) {
         logger.error({ err: error }, 'Get carousel members error');
         res.status(500).json({

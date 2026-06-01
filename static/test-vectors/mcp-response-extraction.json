@@ -37,6 +37,9 @@
         "structuredContent": {
           "status": "completed",
           "media_buy_id": "mb_12345",
+          "media_buy_status": "active",
+          "confirmed_at": "2025-01-22T10:30:00Z",
+          "revision": 1,
           "packages": [
             {"package_id": "pkg_001", "status": "active"}
           ],
@@ -46,6 +49,9 @@
       "expected_data": {
         "status": "completed",
         "media_buy_id": "mb_12345",
+        "media_buy_status": "active",
+        "confirmed_at": "2025-01-22T10:30:00Z",
+        "revision": 1,
         "packages": [
           {"package_id": "pkg_001", "status": "active"}
         ],
@@ -195,7 +201,7 @@
     },
     {
       "id": "input-required-status",
-      "description": "Input-required status with reason data",
+      "description": "Input-required status with reason data. Extraction-only legacy/interim fixture; not a create_media_buy success payload.",
       "path": "structuredContent",
       "response": {
         "content": [{"type": "text", "text": "Need approval for budget over $100K."}],

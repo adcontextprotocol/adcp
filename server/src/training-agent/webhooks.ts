@@ -16,6 +16,9 @@ import {
   createWebhookEmitter,
   memoryWebhookKeyStore,
   type WebhookEmitter,
+  type WebhookAuthentication,
+  type WebhookEmitParams,
+  type WebhookEmitResult,
 } from '@adcp/sdk/server';
 import type { SignerKey, SigningProvider } from '@adcp/sdk/signing';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
@@ -205,6 +208,22 @@ export function maybeEmitCompletionWebhook(opts: {
     .catch(err => logger.warn({ err, tool: opts.toolName, url: webhookUrl }, 'Webhook emission failed'));
 }
 
+export async function emitAccountNotificationWebhook(opts: {
+  url: string;
+  payload: Record<string, unknown>;
+  operationId: string;
+  notificationType: string;
+  authentication?: WebhookAuthentication;
+}): Promise<WebhookEmitResult> {
+  const emitter = getWebhookEmitter();
+  return emitter.emit({
+    url: opts.url,
+    payload: opts.payload,
+    operation_id: opts.operationId,
+    ...(opts.authentication !== undefined && { authentication: opts.authentication }),
+  });
+}
+
 const ENV_KEY = 'WEBHOOK_SIGNING_KEY_JWK';
 const KMS_WEBHOOK_ENV = 'GCP_KMS_WEBHOOK_KEY_VERSION';
 
@@ -365,6 +384,17 @@ export function getWebhookEmitter(): WebhookEmitter {
     fetch: createWebhookFetch({ allowPrivateIp }),
   });
   return emitter;
+}
+
+export async function emitFrameworkTaskWebhook(params: WebhookEmitParams): Promise<WebhookEmitResult> {
+  const taskId = typeof params.payload.task_id === 'string' ? params.payload.task_id : undefined;
+  return getWebhookEmitter().emit({
+    ...params,
+    payload: {
+      ...params.payload,
+      operation_id: params.payload.operation_id ?? taskId,
+    },
+  });
 }
 
 /** Reset state — tests only. */

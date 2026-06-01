@@ -17,6 +17,9 @@
         "message": "Media buy created successfully",
         "result": {
           "media_buy_id": "mb_12345",
+          "media_buy_status": "active",
+          "confirmed_at": "2025-01-22T10:30:00Z",
+          "revision": 1,
           "packages": [
             {"package_id": "pkg_001", "status": "active"}
           ]
@@ -25,6 +28,9 @@
       "expected_format": "mcp",
       "expected_data": {
         "media_buy_id": "mb_12345",
+        "media_buy_status": "active",
+        "confirmed_at": "2025-01-22T10:30:00Z",
+        "revision": 1,
         "packages": [
           {"package_id": "pkg_001", "status": "active"}
         ]
@@ -125,6 +131,9 @@
               "kind": "data",
               "data": {
                 "media_buy_id": "mb_12345",
+                "media_buy_status": "active",
+                "confirmed_at": "2025-01-22T10:30:00Z",
+                "revision": 1,
                 "packages": [
                   {"package_id": "pkg_001", "status": "active"}
                 ]
@@ -136,6 +145,9 @@
       "expected_format": "a2a",
       "expected_data": {
         "media_buy_id": "mb_12345",
+        "media_buy_status": "active",
+        "confirmed_at": "2025-01-22T10:30:00Z",
+        "revision": 1,
         "packages": [
           {"package_id": "pkg_001", "status": "active"}
         ]

@@ -239,7 +239,7 @@ export class FederatedIndexService {
    */
   async getPublishersForAgentDetail(
     agentUrl: string,
-    opts: { cursor?: string; since?: Date; includeRevoked?: boolean; limit: number },
+    opts: { cursor?: string; since?: Date; includeRevoked?: boolean; includePropertyIds?: boolean; limit: number },
   ): Promise<AgentPublisherDetailRow[]> {
     return this.db.getPublishersForAgentDetail(agentUrl, opts);
   }
@@ -369,6 +369,26 @@ export class FederatedIndexService {
    */
   async markPublisherHasValidAdagents(domain: string): Promise<void> {
     await this.db.markPublisherHasValidAdagents(domain);
+  }
+
+  // ============================================
+  // Sales-candidate probe lifecycle
+  // ============================================
+
+  async upsertSalesCandidate(agentUrl: string, sourceDomain: string): Promise<void> {
+    await this.db.upsertSalesCandidate(agentUrl, sourceDomain);
+  }
+
+  async getSalesCandidatesForProbe(): Promise<DiscoveredAgent[]> {
+    return this.db.getSalesCandidatesForProbe();
+  }
+
+  async promoteSalesCandidateToSales(agentUrl: string): Promise<void> {
+    await this.db.promoteSalesCandidateToSales(agentUrl);
+  }
+
+  async recordSalesCandidateProbeFailure(agentUrl: string): Promise<void> {
+    await this.db.recordSalesCandidateProbeFailure(agentUrl);
   }
 
   // ============================================

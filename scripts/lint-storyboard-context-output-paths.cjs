@@ -70,6 +70,14 @@ function parsePath(raw) {
   return raw.replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
 }
 
+function contextOutputPathResolves(schema, segments) {
+  if (segments[0] === 'task_completion') {
+    if (segments.length === 1) return false;
+    return pathResolves(schema, segments.slice(1));
+  }
+  return pathResolves(schema, segments);
+}
+
 function schemaRefToPath(ref) {
   if (!ref) return null;
   const trimmed = ref.startsWith('/schemas/') ? ref.slice('/schemas/'.length) : ref;
@@ -296,7 +304,7 @@ function lintDoc(doc, filePath, allowlist = []) {
       const rawPath = out?.path;
       if (typeof rawPath !== 'string' || rawPath.length === 0) continue;
       const segments = parsePath(rawPath);
-      if (pathResolves(schema, segments)) continue;
+      if (contextOutputPathResolves(schema, segments)) continue;
       if (isAllowlisted(allowlist, filePath, step.stepId, rawPath)) continue;
       violations.push({
         rule: 'path_not_in_schema',

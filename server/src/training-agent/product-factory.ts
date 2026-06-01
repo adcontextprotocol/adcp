@@ -24,11 +24,21 @@ type DeliveryType = Product['delivery_type'];
 type PublisherPropertySelector = Product['publisher_properties'][number];
 type FlatRatePricingOption = Extract<PricingOption, { pricing_model: 'flat_rate' }>;
 type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
+type ProductCardImage = NonNullable<NonNullable<Product['product_card']>['image']>;
 type CollectionSelector = {
   publisher_domain: string;
   collection_ids: string[];
 };
-type TrainingProduct = Product & {
+type ProductCardManifest = {
+  format_id: FormatID;
+  manifest: {
+    format_id: FormatID;
+    assets: Record<string, unknown>;
+  };
+};
+type TrainingProduct = Omit<Product, 'product_card' | 'product_card_detailed'> & {
+  product_card?: Product['product_card'] | ProductCardManifest;
+  product_card_detailed?: Product['product_card_detailed'] | ProductCardManifest;
   collections?: CollectionSelector[];
   installments?: Installment[];
   exclusivity?: 'exclusive' | 'category';
@@ -58,6 +68,29 @@ function inferPrimaryAssetType(channels: string[]): string {
   if (channels.some(c => ['radio', 'streaming_audio', 'podcast'].includes(c))) return 'audio';
   if (channels.some(c => ['social', 'influencer'].includes(c))) return 'social';
   return 'display';
+}
+
+function truncateLabel(value: string, maxLength: number): string {
+  return value.length <= maxLength ? value : value.slice(0, maxLength - 3).trimEnd() + '...';
+}
+
+function productCardImage(pub: PublisherProfile): ProductCardImage | undefined {
+  if (!pub.heroImageUrl) return undefined;
+  return {
+    asset_type: 'image',
+    url: pub.heroImageUrl,
+    width: 600,
+    height: 300,
+    alt_text: `${pub.name} product preview`,
+  };
+}
+
+function productCardPriceLabel(pricing: PricingTemplate | undefined): string | undefined {
+  if (!pricing) return undefined;
+  const price = pricing.fixedPrice ?? pricing.floorPrice;
+  if (price === undefined) return pricing.model.toUpperCase();
+  const amount = pricing.currency === 'USD' ? `$${price}` : `${pricing.currency} ${price}`;
+  return truncateLabel(`${pricing.fixedPrice === undefined ? 'From ' : ''}${amount} ${pricing.model.toUpperCase()}`, 30);
 }
 
 function normalizeInstallmentStatus(status: string): InstallmentStatus {
@@ -562,6 +595,10 @@ function buildProduct(
     } as NonNullable<Product['reporting_capabilities']>,
     ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as CatalogType[] }),
     ...(metricOptimization && { metric_optimization: metricOptimization }),
+    // Vendor-metric optimization is a publisher/inventory capability, not
+    // auction-only. Guaranteed products can still steer allocation/pacing
+    // toward the vendor signal, so do not gate this on delivery_type.
+    ...(pub.vendorMetricOptimization && { vendor_metric_optimization: pub.vendorMetricOptimization }),
     ...(forecast && { forecast }),
     ...(conversionTracking && { conversion_tracking: conversionTracking }),
     ...(collectionSelectors && { collections: collectionSelectors }),
@@ -570,35 +607,29 @@ function buildProduct(
     ...(collectionTargetingAllowed && { collection_targeting_allowed: collectionTargetingAllowed }),
   };
 
-  // Populate product card manifests from the product's own data
+  // Populate inline product cards from the product's own data.
   const primaryPricing = effectivePricing[0];
   const primaryAssetType = inferPrimaryAssetType(template.channels);
-  const specifications: Array<{ label: string; value: string }> = [
+  const image = productCardImage(pub);
+  const priceLabel = productCardPriceLabel(primaryPricing);
+  const specifications = [
     { label: 'Publisher', value: pub.name },
-    { label: 'Delivery type', value: template.deliveryType },
-    { label: 'Primary asset type', value: primaryAssetType },
-  ];
-  if (pub.audienceSummary) {
-    specifications.push({ label: 'Audience', value: pub.audienceSummary });
-  }
-  if (pub.estimatedVolume) {
-    specifications.push({ label: 'Estimated volume', value: pub.estimatedVolume });
-  }
-  let priceLabel: string | undefined;
-  if (primaryPricing) {
-    const priceValue = primaryPricing.fixedPrice ?? primaryPricing.floorPrice;
-    if (priceValue !== undefined) {
-      priceLabel = `From ${priceValue} ${primaryPricing.currency}`;
-    }
-  }
+    { label: 'Delivery type', value: template.deliveryType === 'guaranteed' ? 'Guaranteed' : 'Non-guaranteed' },
+    { label: 'Channels', value: template.channels.join(', ') },
+    { label: 'Primary asset', value: primaryAssetType },
+    ...(pub.audienceSummary ? [{ label: 'Audience', value: pub.audienceSummary }] : []),
+    ...(pub.estimatedVolume ? [{ label: 'Estimated volume', value: pub.estimatedVolume }] : []),
+  ].map(spec => ({ label: truncateLabel(spec.label, 60), value: truncateLabel(spec.value, 200) }));
 
   product.product_card = {
-    title: template.name.slice(0, 60),
-    description: template.description.slice(0, 200),
-    ...(priceLabel && { price_label: priceLabel.slice(0, 30) }),
+    ...(image && { image }),
+    title: truncateLabel(template.name, 60),
+    description: truncateLabel(template.description, 200),
+    ...(priceLabel && { price_label: priceLabel }),
     cta_label: 'View details',
   };
   product.product_card_detailed = {
+    ...(image && { hero_image: image }),
     title: template.name,
     description: template.description,
     specifications,
@@ -607,7 +638,7 @@ function buildProduct(
   };
 
   return {
-    product: product as Product,
+    product: product as unknown as Product,
     publisherId: pub.id,
     trainingTier: tierForProduct(pub, template.deliveryType, template.channels),
     scenarioTags: scenarioTagsForProduct(pub, template.deliveryType, template.channels),
@@ -973,6 +1004,12 @@ export function buildCatalog(): CatalogProduct[] {
         product_id: alias.id,
         name: alias.name,
         ...(aliasedPricing && { pricing_options: aliasedPricing }),
+        ...('product_card' in alias.source.product && alias.source.product.product_card
+          ? { product_card: { ...alias.source.product.product_card, title: truncateLabel(alias.name, 60) } }
+          : {}),
+        ...('product_card_detailed' in alias.source.product && alias.source.product.product_card_detailed
+          ? { product_card_detailed: { ...alias.source.product.product_card_detailed, title: alias.name } }
+          : {}),
       },
     });
   }

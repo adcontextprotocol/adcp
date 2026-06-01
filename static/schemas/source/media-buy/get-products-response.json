@@ -235,7 +235,7 @@
         },
         "excluded_by": {
           "type": "object",
-          "description": "Per-filter exclusion counts, keyed by the filter property name as it appears in the request's `filters` object (e.g., `required_metrics`, `required_vendor_metrics`, `required_geo_targeting`, `budget_range`). Values are objects carrying `count` and optional filter-specific detail. Only filters that actually narrowed the set need appear here; absence of a key means that filter did not exclude anything (or was not in the request).",
+          "description": "Per-filter exclusion counts, keyed by the filter property name as it appears in the request's `filters` object (e.g., `pricing_currencies`, `required_metrics`, `required_vendor_metrics`, `required_geo_targeting`, `budget_range`). Values are objects carrying `count` and optional filter-specific detail. Only filters that actually narrowed the set need appear here; absence of a key means that filter did not exclude anything (or was not in the request).",
           "additionalProperties": {
             "type": "object",
             "properties": {
@@ -285,6 +285,12 @@
             "required_geo_targeting": {
               "count": 9
             },
+            "pricing_currencies": {
+              "count": 3,
+              "values": [
+                "USD"
+              ]
+            },
             "budget_range": {
               "count": 7
             }
@@ -311,7 +317,7 @@
     },
     "pricing_version": {
       "type": "string",
-      "description": "Opaque token representing the version of the pricing layer. When the seller supports independent pricing versioning, pricing_version changes when prices move but wholesale_feed_version changes only when structure/metadata moves. Same cache_scope keying as wholesale_feed_version. Sellers not separating these MAY omit pricing_version and use wholesale_feed_version for both."
+      "description": "Opaque token representing the version of the pricing layer, including product pricing_options and nested signal_targeting_options pricing_options. When the seller supports independent pricing versioning, pricing_version changes when prices move but wholesale_feed_version changes only when structure/metadata moves. Same cache_scope keying as wholesale_feed_version. Sellers not separating these MAY omit pricing_version and use wholesale_feed_version for both."
     },
     "cache_scope": {
       "type": "string",

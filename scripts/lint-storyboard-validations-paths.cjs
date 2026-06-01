@@ -17,6 +17,10 @@
  *   - field_value
  *   - field_value_or_absent
  *   - field_absent
+ *   - field_pattern
+ *   - envelope_field_present
+ *   - envelope_field_absent
+ *   - envelope_field_pattern
  *
  * Non-path-bearing checks (error_code, response_schema, http_status_in,
  * http_status, any_of, on_401_require_header) are skipped — they don't
@@ -43,6 +47,10 @@ const PATH_BEARING_CHECKS = new Set([
   'field_value',
   'field_value_or_absent',
   'field_absent',
+  'field_pattern',
+  'envelope_field_present',
+  'envelope_field_absent',
+  'envelope_field_pattern',
 ]);
 
 function loadAllowlist() {
@@ -101,12 +109,13 @@ function loadSchema(ref) {
 }
 
 /**
- * `core/protocol-envelope.json` defines the fields wrapping every task
- * response — `status`, `task_id`, `context_id`, `replayed`, `adcp_error`,
- * `governance_context`, `push_notification_config`, etc. The envelope's
- * top-level description explicitly states "Task response schemas should
- * NOT include these fields - they are protocol-level concerns," so they
- * never appear in the per-task response schemas this lint walks.
+ * `core/protocol-envelope.json` and `core/version-envelope.json` define
+ * fields wrapping or mixed into every task response — `status`, `task_id`,
+ * `context_id`, `replayed`, `adcp_error`, `adcp_version`,
+ * `adcp_major_version`, etc. Protocol-envelope fields never appear in the
+ * per-task response schemas this lint walks; version-envelope fields are
+ * composed via allOf into source schemas but can be absent from older built
+ * artifacts and still need envelope-scoped validation semantics.
  *
  * Storyboards do assert on envelope fields (e.g., `path: "replayed"`,
  * `path: "adcp_error"`), so the resolver falls back to the envelope when
@@ -115,11 +124,33 @@ function loadSchema(ref) {
  * envelope property, further resolution proceeds normally.
  */
 const ENVELOPE_REF = 'core/protocol-envelope.json';
+const VERSION_ENVELOPE_REF = 'core/version-envelope.json';
+const ENVELOPE_REFS = [ENVELOPE_REF, VERSION_ENVELOPE_REF];
 
 function isEnvelopeProperty(name) {
-  const envelope = loadSchema(ENVELOPE_REF);
-  if (!envelope || !envelope.properties) return false;
-  return Object.prototype.hasOwnProperty.call(envelope.properties, name);
+  for (const ref of ENVELOPE_REFS) {
+    const envelope = loadSchema(ref);
+    if (envelope?.properties && Object.prototype.hasOwnProperty.call(envelope.properties, name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function pathResolvesAgainstAnyEnvelope(segments) {
+  for (const ref of ENVELOPE_REFS) {
+    const envelope = loadSchema(ref);
+    if (envelope && pathResolves(envelope, segments)) return true;
+  }
+  return false;
+}
+
+function pathIsForbiddenByAnyEnvelope(segments) {
+  for (const ref of ENVELOPE_REFS) {
+    const envelope = loadSchema(ref);
+    if (envelope && pathIsForbiddenByRequiredNot(envelope, segments)) return true;
+  }
+  return false;
 }
 
 /**
@@ -291,16 +322,55 @@ function resolveExpectedArmSchema(schema, expectedArm, expectError) {
 
 function pathResolvesAgainstResponseOrEnvelope(schema, segments) {
   if (pathResolves(schema, segments)) return true;
-  // Fall back to the protocol envelope. Storyboards address envelope-level
-  // fields with bare top-level names (e.g., `replayed`, `adcp_error`,
-  // `status`), so we only consult the envelope when the FIRST segment
-  // matches an envelope property; subsequent segments resolve through
-  // the envelope's own definition of that field.
+  // Fall back to the protocol/version envelopes. Storyboards address
+  // envelope-level fields with bare top-level names (e.g., `replayed`,
+  // `adcp_error`, `status`, `adcp_version`), so we only consult envelope
+  // schemas when the FIRST segment matches an envelope property; subsequent
+  // segments resolve through that envelope's own definition of the field.
   if (segments.length > 0 && isEnvelopeProperty(segments[0])) {
-    const envelope = loadSchema(ENVELOPE_REF);
-    if (envelope && pathResolves(envelope, segments)) return true;
+    if (pathResolvesAgainstAnyEnvelope(segments)) return true;
   }
   return false;
+}
+
+function pathIsForbiddenByRequiredNot(node, segments, seen = new Set()) {
+  if (!node || typeof node !== 'object') return false;
+  if (segments.length !== 1) return false;
+
+  if (node.$ref) {
+    if (seen.has(node.$ref)) return false;
+    const next = new Set(seen);
+    next.add(node.$ref);
+    return pathIsForbiddenByRequiredNot(loadSchema(node.$ref), segments, next);
+  }
+
+  const [seg] = segments;
+  const notNode = node.not;
+  const notVariants = notNode && typeof notNode === 'object'
+    ? [notNode, ...(Array.isArray(notNode.anyOf) ? notNode.anyOf : []), ...(Array.isArray(notNode.oneOf) ? notNode.oneOf : [])]
+    : [];
+  for (const variant of notVariants) {
+    const required = variant && typeof variant === 'object' && Array.isArray(variant.required)
+      ? variant.required
+      : [];
+    if (required.includes(seg)) return true;
+  }
+
+  const variants = node.oneOf || node.anyOf || node.allOf;
+  if (Array.isArray(variants)) {
+    for (const variant of variants) {
+      if (pathIsForbiddenByRequiredNot(variant, segments, seen)) return true;
+    }
+  }
+
+  return false;
+}
+
+function absentPathForbiddenState(schema, segments) {
+  return {
+    forbiddenBySchema: pathIsForbiddenByRequiredNot(schema, segments),
+    forbiddenByEnvelope: pathIsForbiddenByAnyEnvelope(segments),
+  };
 }
 
 function lintDoc(doc, filePath, allowlist = []) {
@@ -336,7 +406,32 @@ function lintDoc(doc, filePath, allowlist = []) {
       const rawPath = v.path;
       if (typeof rawPath !== 'string' || rawPath.length === 0) continue;
       const segments = parsePath(rawPath);
+      if (
+        v.check === 'envelope_field_present' ||
+        v.check === 'envelope_field_absent' ||
+        v.check === 'envelope_field_pattern'
+      ) {
+        const resolvesOnEnvelope = pathResolvesAgainstAnyEnvelope(segments);
+        const forbiddenOnEnvelope = pathIsForbiddenByAnyEnvelope(segments);
+        if ((v.check === 'envelope_field_present' || v.check === 'envelope_field_pattern') && resolvesOnEnvelope) continue;
+        if (v.check === 'envelope_field_absent' && (resolvesOnEnvelope || forbiddenOnEnvelope)) continue;
+        if (isAllowlisted(allowlist, filePath, step.stepId, rawPath)) continue;
+        violations.push({
+          rule: 'path_not_in_schema',
+          filePath,
+          stepId: step.stepId,
+          responseRef: step.responseRef,
+          validationPath: rawPath,
+          check: v.check,
+          index: i,
+        });
+        continue;
+      }
       if (pathResolvesAgainstResponseOrEnvelope(schema, segments)) continue;
+      if (v.check === 'field_absent' || v.check === 'envelope_field_absent') {
+        const { forbiddenBySchema, forbiddenByEnvelope } = absentPathForbiddenState(schema, segments);
+        if (v.check === 'field_absent' && forbiddenBySchema && !forbiddenByEnvelope) continue;
+      }
       if (isAllowlisted(allowlist, filePath, step.stepId, rawPath)) continue;
       violations.push({
         rule: 'path_not_in_schema',

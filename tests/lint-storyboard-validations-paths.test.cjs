@@ -206,9 +206,147 @@ test('envelope-aware resolution: replayed and adcp_error resolve via protocol-en
   );
 });
 
+test('source tree allows envelope_field_absent for protocol-envelope forbidden fields', () => {
+  const violations = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'get_adcp_capabilities',
+            response_schema_ref: 'protocol/get-adcp-capabilities-response.json',
+            validations: [
+              {
+                check: 'envelope_field_absent',
+                path: 'task_status',
+                description: 'legacy v2 field must be absent',
+              },
+              {
+                check: 'envelope_field_absent',
+                path: 'response_status',
+                description: 'legacy v2 field must be absent',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/envelope-absent.yaml');
+  assert.deepEqual(violations, []);
+});
+
+test('field_absent does not use the envelope-forbidden exemption', () => {
+  const violations = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'get_adcp_capabilities',
+            response_schema_ref: 'protocol/get-adcp-capabilities-response.json',
+            validations: [
+              {
+                check: 'field_absent',
+                path: 'task_status',
+                description: 'wrong check kind for an envelope field',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/envelope-absent-wrong-kind.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'path_not_in_schema');
+  assert.equal(violations[0].check, 'field_absent');
+});
+
+test('envelope_field_absent does not accept payload-only paths', () => {
+  const violations = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'get_adcp_capabilities',
+            response_schema_ref: 'protocol/get-adcp-capabilities-response.json',
+            validations: [
+              {
+                check: 'envelope_field_absent',
+                path: 'adcp',
+                description: 'payload field is not an envelope field',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/envelope-absent-payload-path.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'path_not_in_schema');
+  assert.equal(violations[0].check, 'envelope_field_absent');
+});
+
+test('envelope_field_pattern resolves only against envelope fields', () => {
+  const ok = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'get_adcp_capabilities',
+            response_schema_ref: 'protocol/get-adcp-capabilities-response.json',
+            validations: [
+              {
+                check: 'envelope_field_pattern',
+                path: 'adcp_version',
+                pattern: '^\\d+\\.\\d+$',
+                description: 'version envelope field',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/envelope-pattern-ok.yaml');
+  assert.deepEqual(ok, []);
+
+  const bad = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'get_adcp_capabilities',
+            response_schema_ref: 'protocol/get-adcp-capabilities-response.json',
+            validations: [
+              {
+                check: 'envelope_field_pattern',
+                path: 'adcp.supported_versions[0]',
+                pattern: '^\\d+\\.\\d+$',
+                description: 'payload field is not an envelope field',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/envelope-pattern-payload-path.yaml');
+  assert.equal(bad.length, 1);
+  assert.equal(bad[0].rule, 'path_not_in_schema');
+  assert.equal(bad[0].check, 'envelope_field_pattern');
+});
+
 test('isEnvelopeProperty identifies envelope fields', () => {
   assert.equal(isEnvelopeProperty('replayed'), true);
   assert.equal(isEnvelopeProperty('adcp_error'), true);
+  assert.equal(isEnvelopeProperty('adcp_version'), true);
+  assert.equal(isEnvelopeProperty('adcp_major_version'), true);
   assert.equal(isEnvelopeProperty('status'), true);
   assert.equal(isEnvelopeProperty('task_id'), true);
   assert.equal(isEnvelopeProperty('context_id'), true);
@@ -231,6 +369,10 @@ test('PATH_BEARING_CHECKS is the documented set', () => {
   assert.ok(PATH_BEARING_CHECKS.has('field_value'));
   assert.ok(PATH_BEARING_CHECKS.has('field_value_or_absent'));
   assert.ok(PATH_BEARING_CHECKS.has('field_absent'));
+  assert.ok(PATH_BEARING_CHECKS.has('field_pattern'));
+  assert.ok(PATH_BEARING_CHECKS.has('envelope_field_present'));
+  assert.ok(PATH_BEARING_CHECKS.has('envelope_field_absent'));
+  assert.ok(PATH_BEARING_CHECKS.has('envelope_field_pattern'));
   assert.ok(!PATH_BEARING_CHECKS.has('error_code'));
   assert.ok(!PATH_BEARING_CHECKS.has('response_schema'));
 });

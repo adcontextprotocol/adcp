@@ -1,0 +1,261 @@
+---
+title: Seller verification
+sidebarTitle: Seller verification
+"og:image": /images/walkthrough/verification-01-unfamiliar-counter.png
+description: "How a buyer verifies an unfamiliar seller end-to-end — brand.json, adagents.json, and request signing as one chain, with bounded honesty about what the chain does not prove."
+"og:title": "AdCP — Seller verification"
+---
+
+<img src="/images/walkthrough/verification-01-unfamiliar-counter.png" alt="Sam stands at a wide marble counter facing a confident agent in a sharp blazer holding a clipboard of glossy ad placements — but the counter behind the agent is empty, with no logo, no signage, and no one else in sight" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+A `get_products` response just hit Sam's orchestrator. The seller — Northwind Media — quoted CTV inventory across StreamHaus, a sports network Acme Outdoor wants to be on. The CPMs look fair, the avails fit the flight, and the response arrived in under a second.
+
+Sam has never transacted with Northwind. He has no idea whether the agent that signed this response is actually authorized to sell StreamHaus inventory, whether StreamHaus is a real publisher under a parent house he recognizes, or whether a clever attacker registered `northw1nd.example` last week and is about to walk away with \$25,000.
+
+He doesn't need Northwind to convince him with a sales deck. He needs the protocol to make the chain verifiable in code — every link from the signing key on the response, through Northwind's brand identity, to StreamHaus's authorization, back to a parent house he can recognize. His buyer agent walks the chain automatically; Sam reads the verdict.
+
+This walkthrough follows that chain through Sam's eyes.
+
+<Note>
+**What this verifies and what it doesn't.** The chain answers *who is authorized to sell*. It does not answer *who the legal entity behind the agent is* (KYC, real operator), *whether the avails reflect reality at delivery time* (catalog accuracy, CPM, delivery), or *whether the hosting infrastructure can be trusted* (DNS, CDN, registrar). The [bounded-honesty step](#step-5-know-what-the-chain-does-not-prove) names every limit explicitly. This is the C2PA "claim-not-certification" posture applied to inventory — the protocol carries the authorization claim and makes it verifiable, and stops there.
+</Note>
+
+## The chain at a glance
+
+Three discoverable surfaces and one cryptographic check. Sam's agent runs them in whatever order is convenient:
+
+| Surface | Source | Question it answers |
+|---|---|---|
+| RFC 9421 signature | Response headers | "Did this response come from the key it claims?" |
+| `brand.json` | `northwind.example/.well-known/brand.json` | "Who is Northwind, and what is it claiming to represent?" |
+| `adagents.json` | `streamhaus.example/.well-known/adagents.json` | "Does the publisher authorize Northwind to sell its inventory?" |
+| Mutual assertion | Both `brand.json` files cross-referencing | "Do the two sides of the relationship agree?" |
+
+The chain is bilateral by design: each fact is asserted by exactly the party with authority over it. The publisher decides who can sell its inventory. The brand owner decides what it owns. The seller decides which key signs its responses. No third-party registry adjudicates between them — a misbehaving authorized seller is remediated by the publisher revoking the `adagents.json` entry, not by an in-protocol claim check.
+
+Only one of the four steps below is cryptographically grounded (the signature). The other three are integrity-checked discoveries — string-equality matches against authoritative files at well-known locations. The chain is only as strong as the publisher's and seller's control of their own DNS, hosting, and well-known endpoints. See [Step 5](#step-5-know-what-the-chain-does-not-prove) for what that implies.
+
+## Step 1: Verify the response signature
+
+<img src="/images/walkthrough/verification-02-signature.png" alt="Sam holds a paper response up to a lamp — a wax seal in the corner glows under the light, revealing a cryptographic pattern that matches a key card he pulls from a folder labeled adagents.json" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+The `get_products` response carries an RFC 9421 `Signature` and `Signature-Input` header. The `keyid` parameter points at a JWK in Northwind's published JWKS. Sam's client verifies the signature before parsing the body:
+
+```javascript
+const response = await fetch("https://northwind.example/mcp", { /* get_products call */ });
+
+const verified = await verifyMessageSignature(response, {
+  fetchJwks: (keyid) => fetchJwksForAgent("northwind.example", keyid),
+  requiredFields: ["@method", "@target-uri", "content-digest", "@authority"],
+  requireCreated: true,   // RFC 9421 `created` parameter MUST be present
+  maxAge: 300,            // seconds — receiver MUST enforce a window
+});
+
+if (!verified) throw new Error("signature failed — discard response");
+```
+
+A pass tells Sam one narrow thing: the entity holding the private key paired with `keyid` produced this response, and the response has not been tampered with in transit. It does not yet tell him that `keyid` belongs to the legitimate Northwind. That binding comes from `adagents.json` in step 3.
+
+<Accordion title="Why signature verification comes first">
+
+If the signature fails, every other check is wasted work — the response cannot be trusted to even identify itself correctly. Verifying first also gives Sam a clean abort: he discards the response before any business logic touches it.
+
+`maxAge` and `requireCreated` are not optional — without a freshness window the same signed response can be replayed indefinitely. Tune `maxAge` to your clock-skew budget; 300s is a common starting point.
+
+In AdCP 3.0, signing on `get_products` is RECOMMENDED. Mandatory signing on spend-committing operations is tracked under [#2307](https://github.com/adcontextprotocol/adcp/issues/2307) for 4.0. Deployments that require signing today enforce it at the platform layer.
+
+</Accordion>
+
+## Step 2: Read Northwind's brand.json
+
+<img src="/images/walkthrough/verification-03-brand-json.png" alt="Sam opens a leather-bound folder on Northwind's reception desk — inside is a single embossed page declaring the agency's portfolio, signing keys, and authorized operators, with a glowing seal at the top" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Sam's agent fetches `https://northwind.example/.well-known/brand.json`. This is Northwind's self-declaration: who it is and where its signing keys live.
+
+```json
+{
+  "$schema": "/schemas/3.0.15/brand.json",
+  "version": "1.0",
+  "id": "northwind_media",
+  "names": [{ "en_US": "Northwind Media" }],
+  "url": "https://northwind.example",
+  "keller_type": "master",
+  "industries": ["advertising"],
+  "agents": [
+    {
+      "type": "sales",
+      "id": "northwind_sales",
+      "url": "https://northwind.example/mcp",
+      "jwks_uri": "https://northwind.example/.well-known/jwks.json"
+    }
+  ]
+}
+```
+
+Two things matter here:
+
+1. **The `keyid` from step 1 must resolve in `https://northwind.example/.well-known/jwks.json`** — the JWKS Northwind's own brand.json points at. Sam now has a binding from signature to a self-declared brand identity.
+2. **Northwind is a standalone agency** — no `house_domain` field. There is no parent house claim to verify on Northwind's side. The authorization claim that matters lives on the publisher's side, in step 3.
+
+<Warning>
+`brand.json` is published over HTTPS by the entity it describes. A buyer agent that pipes raw fields into an LLM prompt without schema-validating them first is taking adversarial input from a counterparty. Validate against the [brand.json schema](/dist/docs/3.0.15/brand-protocol/brand-json) before parsing, and never pass attacker-controlled string fields (`names`, `description`, custom keys) into an LLM context without sanitization.
+</Warning>
+
+## Step 3: Confirm against StreamHaus's adagents.json
+
+<img src="/images/walkthrough/verification-04-adagents.png" alt="Sam holds two documents side by side — Northwind's brand.json on the left listing StreamHaus, and StreamHaus's adagents.json on the right listing Northwind — and the matching delegation_type field on both glows green as the chain locks in" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Sam's agent fetches `https://streamhaus.example/.well-known/adagents.json` — the publisher's own declaration of who is authorized to sell its inventory:
+
+```json
+{
+  "$schema": "/schemas/3.0.15/adagents.json",
+  "contact": {
+    "name": "StreamHaus Publishing",
+    "email": "adops@streamhaus.example",
+    "domain": "streamhaus.example"
+  },
+  "properties": [
+    {
+      "property_id": "streamhaus_ctv",
+      "property_type": "ctv_app",
+      "name": "StreamHaus CTV App",
+      "publisher_domain": "streamhaus.example",
+      "identifiers": [{ "type": "roku_store_id", "value": "12345" }]
+    }
+  ],
+  "authorized_agents": [
+    {
+      "url": "https://northwind.example/mcp",
+      "authorized_for": "StreamHaus CTV inventory via delegated authority",
+      "authorization_type": "property_ids",
+      "property_ids": ["streamhaus_ctv"],
+      "delegation_type": "delegated",
+      "signing_keys": [
+        {
+          "kid": "northwind-sell-prod-2026",
+          "kty": "OKP",
+          "alg": "EdDSA",
+          "crv": "Ed25519",
+          "x": "Xe2lAKRJR_zr3FQRdSNwp3zsrv_IXnVCWJXDcWXwkLI",
+          "use": "sig"
+        }
+      ]
+    }
+  ],
+  "last_updated": "2026-04-12T10:00:00Z"
+}
+```
+
+This is the bilateral lock:
+
+- **`url` matches** the MCP endpoint Northwind's `brand.json` named in `agents[].url`. Same agent on both sides.
+- **`delegation_type: "delegated"`** declares the commercial relationship — Northwind is authorized to sell on StreamHaus's behalf. The enum is `direct | delegated | ad_network`; the publisher chooses which fits.
+- **`signing_keys[]`** contains the JWK whose `kid` matches the one used in step 1's signature. This is the link Sam was missing: StreamHaus, the publisher, attests in its own file that this specific public key may sign on its behalf.
+
+Now Sam has the answer to "who is authorized to sell": **the entity that signed this response is named in the publisher's own authorization file, with a matching commercial relationship and an explicit signing-key authorization**. The chain is closed.
+
+<Accordion title="The five-state trust signal">
+
+The brand-protocol [mutual-assertion model](https://github.com/adcontextprotocol/adcp/issues/3533) produces a discrete signal Sam's downstream logic can act on:
+
+| State | Meaning | Buyer action |
+|---|---|---|
+| `inline` | The seller is the brand owner — no delegation involved | Proceed; nothing to delegate |
+| `mutual_assertion` | Both sides published matching declarations | Proceed |
+| `one_sided_brand` | The seller's brand.json claims a publisher; the publisher hasn't reciprocated | **Do not treat as authorization.** Any domain can claim any publisher unilaterally. |
+| `one_sided_house` | The publisher's adagents.json names the seller; the seller's brand.json doesn't acknowledge | Hold for human review |
+| `standalone` | Neither side publishes — bearer-token trust only | Out-of-band authorization or refuse |
+
+Sam's chain resolves to `mutual_assertion` — the strongest state short of inline. Only `inline` and `mutual_assertion` close the chain.
+
+</Accordion>
+
+## Step 4: Walk the parent house
+
+<img src="/images/walkthrough/verification-05-parent-house.png" alt="Sam stands in front of a wall display showing a brand-portfolio hierarchy — a large parent-house emblem at top, with the publisher emblem below it connected by a glowing teal line, and other sibling sub-brand emblems branching off the parent" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Acme Outdoor's inclusion list resolves at the parent-house level — they trust Sportshaus Holdings' family of brands. StreamHaus is a sub-brand, so Sam's agent walks one hop further.
+
+StreamHaus's own brand.json declares its parent:
+
+```json
+{
+  "$schema": "/schemas/3.0.15/brand.json",
+  "version": "1.0",
+  "id": "streamhaus",
+  "names": [{ "en_US": "StreamHaus" }],
+  "url": "https://streamhaus.example",
+  "house_domain": "sportshaus-holdings.example",
+  "keller_type": "endorsed",
+  "industries": ["media", "broadcasting"]
+}
+```
+
+Then the parent's brand.json reciprocates:
+
+```json
+{
+  "$schema": "/schemas/3.0.15/brand.json",
+  "version": "1.0",
+  "house": {
+    "domain": "sportshaus-holdings.example",
+    "name": "Sportshaus Holdings",
+    "architecture": "branded_house"
+  },
+  "brand_refs": [
+    { "domain": "streamhaus.example", "brand_id": "streamhaus", "effective_at": "2025-01-01T00:00:00Z" },
+    { "domain": "courtsidehq.example", "brand_id": "courtsidehq" }
+  ]
+}
+```
+
+The reciprocity rule: **StreamHaus's `house_domain` ↔ Sportshaus Holdings' `brand_refs[].domain`**. Both sides agree.
+
+Two distinct concepts ride along this step, and the doc is careful not to conflate them:
+
+- **The `keller_type` on the child** (`endorsed`) describes the brand-architecture relationship — how the sub-brand is positioned beside the parent. It is Keller-architecture metadata, not a commercial authorization.
+- **The commercial relationship that lets Northwind sell** is `delegation_type: "delegated"` from step 3, which lives on the publisher (StreamHaus), not on the parent house.
+
+Sportshaus Holdings is on Acme Outdoor's inclusion list. The chain Sam's agent just walked is: signed response → Northwind's `brand.json` → StreamHaus's `adagents.json` → StreamHaus's and Sportshaus Holdings' mutual `brand.json` declarations. Four discoverable surfaces, one cryptographic anchor, zero phone calls for the authorization question.
+
+## Step 5: Know what the chain does not prove
+
+<img src="/images/walkthrough/verification-06-bounded-honesty.png" alt="Sam sits at his desk with the sealed document beside him, holding his phone to his ear — the technical chain is complete, and now he's calling a person at the publisher to confirm the human-layer details the protocol cannot attest" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+The authorization chain is closed. Northwind is for the first time a counterparty Acme Outdoor will actually transact with at meaningful spend, so Sam picks up the phone. Not for the protocol's sake — the chain told him what it can tell him. For everything the chain can't.
+
+| The chain proves | The chain does not prove |
+|---|---|
+| Northwind is authorized to sell StreamHaus inventory under a `delegated` relationship | A real human at Northwind operates this agent and answers for it |
+| The signing key is named by both the seller and the publisher | The operator behind that key has been KYC'd by anyone Sam trusts |
+| StreamHaus declares Sportshaus Holdings as its parent, and the parent reciprocates | The legal counterparty matches who Sam thinks he's transacting with |
+| The response was not tampered with in transit | The avails in the response will be available on the flight start date, or the CPM quoted will hold |
+| Northwind's domain controls the signing key today | The key cannot be rotated to an attacker tomorrow — first-encounter trust is TOFU until [key transparency](https://github.com/adcontextprotocol/adcp/issues/3925) lands in 4.0 |
+
+Three named gaps live on the right side of that table.
+
+**The human-layer gap.** AdCP does not carry an operator/human KYC primitive. The cryptographic chain says "this domain is authorized to sell, and this key signed this response" — it does not say "a verified human at a verified company is on the other side of this agent." KYC is the membership and account layer. For a new counterparty above Acme's threshold, Sam still escalates to a human check, exactly as he would for any meaningful new vendor.
+
+**The hosting-layer gap.** The chain trusts whoever controls `northwind.example`, its DNS, TLS, and CDN. A registrar takeover, a CDN compromise, or a mis-issued TLS certificate substitutes the entire chain — the attacker serves attacker-controlled `brand.json`, `adagents.json`, and JWKS over a valid-looking pipeline. There is no public key-transparency log in 3.x; first-encounter trust is trust-on-first-use, and revocation is detectable only by re-fetching. A buyer client that has previously transacted with Northwind pins the seen `kid`s and warns on rotation; a buyer client on first encounter does not have that signal. See [#3925](https://github.com/adcontextprotocol/adcp/issues/3925).
+
+**The delivery-time gap.** Catalog accuracy is not protocol-attested. Publishers do not sign individual product entries, and per-product attestation does not match how inventory operates in production — forecasts drift, prices move, supply is dynamic. A misbehaving authorized seller is remediated by the publisher revoking the `adagents.json` entry, not by an in-protocol claim check. Delivery-time truth lives in [measurement](https://github.com/adcontextprotocol/adcp/issues/2391) and billing reconciliation.
+
+This is the C2PA "claim-not-certification" posture. The protocol carries the authorization claim and makes it cryptographically verifiable. It does not — and at the protocol layer should not — replace the human-layer, hosting-layer, or delivery-layer checks a buyer would do for any meaningful new counterparty.
+
+## What Sam does next
+
+Sam's client logs the verification result with the `get_products` response — including the captured `brand.json`, `adagents.json`, and JWKS bytes at decision time, not just pointers to live files. Months from now, an auditor can re-verify the signature against those captured artifacts and reproduce Sam's decision exactly. Re-fetching the live `.well-known/` files is not sufficient — they are mutable, and a single key rotation or domain transfer would invalidate a naive replay.
+
+The verification result and the five-state trust signal travel with the candidate plan into Sam's [governance flow](/dist/docs/3.0.15/governance/overview), where Jordan's governance agent applies Acme's policy checks before any spend is committed.
+
+## Where to go from here
+
+- [brand.json reference](/dist/docs/3.0.15/brand-protocol/brand-json) — full schema for self-declarations, parent-house portfolios, and Keller architecture metadata
+- [Seller setup](/dist/docs/3.0.15/brand-protocol/seller-setup) — how publishers, networks, and SSPs publish seller identity and authorization files
+- [adagents.json reference](/dist/docs/3.0.15/governance/property/adagents) — publisher-side authorization, the `authorization_type` discriminator, and the `signing_keys[]` JWK shape
+- [verify_brand_claim](/dist/docs/3.0.15/brand-protocol/tasks/verify_brand_claim) — Tier-2 implementer guide for delegating verification to a brand agent
+- [Security model](/dist/docs/3.0.15/building/concepts/security-model) — three-party governance and trust posture
+- [Request signing](/dist/docs/3.0.15/building/by-layer/L1/request-signing) — RFC 9421 details, key rotation, transparency-log roadmap
+- [Trust & Security](/dist/docs/3.0.15/trust) — CISO-facing surface map; this walkthrough is the buyer-facing companion
+- [AAO Verified](/dist/docs/3.0.15/building/verification/aao-verified) — continuous behavioral conformance attestation, layered on top of the identity chain above

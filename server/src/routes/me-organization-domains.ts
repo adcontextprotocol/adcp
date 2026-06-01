@@ -62,6 +62,10 @@ export function _resetVerifyCooldown() {
   verifyAttemptTimes.clear();
 }
 
+function dnsRecordName(domain: string, verificationPrefix?: string | null): string {
+  return verificationPrefix ? `${verificationPrefix}.${domain}` : domain;
+}
+
 // Returns true when `domain` is already linked to an organization other
 // than `orgId`. Used by the POST issue path to refuse cross-tenant
 // ownership transfer at issue time (before DNS proof). `linkDomain` would
@@ -323,7 +327,7 @@ export function createMeOrganizationDomainsRouter(
         }
         // Non-verified branches below MUST cross-check the local DB before
         // writing — see comment near the create path.
-        const tokenMissing = !existingEntry.verificationToken || !existingEntry.verificationPrefix;
+        const tokenMissing = !existingEntry.verificationToken;
         if (!tokenMissing) {
           const conflict = await crossOrgConflict(normalizedDomain, orgId);
           if (conflict) {
@@ -344,6 +348,7 @@ export function createMeOrganizationDomainsRouter(
             already_verified: false,
             verification_token: existingEntry.verificationToken,
             verification_prefix: existingEntry.verificationPrefix,
+            dns_record_name: dnsRecordName(normalizedDomain, existingEntry.verificationPrefix),
             verification_strategy: existingEntry.verificationStrategy ?? 'dns',
           });
         }
@@ -401,6 +406,9 @@ export function createMeOrganizationDomainsRouter(
           already_verified: false,
           verification_token: created.verificationToken ?? null,
           verification_prefix: created.verificationPrefix ?? null,
+          dns_record_name: created.verificationToken
+            ? dnsRecordName(normalizedDomain, created.verificationPrefix)
+            : null,
           verification_strategy: created.verificationStrategy ?? 'dns',
         });
       } catch (err: any) {
@@ -506,10 +514,12 @@ export function createMeOrganizationDomainsRouter(
         } catch (err: any) {
           const status = err?.status ?? err?.response?.status;
           if (status === 422 || status === 400) {
+            const recordName = dnsRecordName(normalizedDomain, entry.verificationPrefix);
             return res.status(400).json({
               error: 'still_pending',
-              message: 'WorkOS could not find a matching DNS TXT record. Make sure the prefix.domain TXT record is published, then retry.',
+              message: `WorkOS could not find a matching DNS TXT record. Make sure ${recordName} is published with the verification token, then retry.`,
               state: stateStr,
+              dns_record_name: recordName,
             });
           }
           logger.error({ err, orgId, domain: normalizedDomain }, 'verifyOrganizationDomain failed');

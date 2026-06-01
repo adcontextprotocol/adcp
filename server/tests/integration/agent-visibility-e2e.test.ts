@@ -84,10 +84,8 @@ describe('Agent visibility E2E', () => {
     // resolve the test user's primary organization. We swap the user +
     // its declared org per test via middleware state.
     let currentUserId = 'user_e2e';
-    let currentOrgId: string | null = null;
     (app as any).setCurrentUser = (id: string, orgId?: string | null) => {
       currentUserId = id;
-      currentOrgId = orgId ?? null;
     };
     app.use((req, _res, next) => {
       (req as any).user = {
@@ -99,15 +97,33 @@ describe('Agent visibility E2E', () => {
       next();
     });
 
-    // Minimal WorkOS stub so the profile PUT path can resolve the user's
-    // org membership. Returns whatever the current test declared.
+    // Minimal WorkOS stub so routes resolve the test user's real seeded org
+    // memberships instead of trusting the org declared by setCurrentUser().
     const fakeWorkos = {
       userManagement: {
-        listOrganizationMemberships: async () => ({
-          data: currentOrgId
-            ? [{ organizationId: currentOrgId, userId: currentUserId, status: 'active' }]
-            : [],
-        }),
+        listOrganizationMemberships: async ({
+          userId = currentUserId,
+          organizationId,
+        }: {
+          userId?: string;
+          organizationId?: string;
+        } = {}) => {
+          const rows = await pool.query<{ workos_organization_id: string; role: string | null }>(
+            `SELECT workos_organization_id, role
+               FROM organization_memberships
+              WHERE workos_user_id = $1
+                AND ($2::text IS NULL OR workos_organization_id = $2)`,
+            [userId, organizationId ?? null],
+          );
+          return {
+            data: rows.rows.map((row) => ({
+              organizationId: row.workos_organization_id,
+              userId,
+              status: 'active',
+              role: { slug: row.role ?? 'member' },
+            })),
+          };
+        },
       },
       organizations: {
         getOrganization: async (orgId: string) => ({ id: orgId, name: `Org ${orgId}` }),
@@ -192,6 +208,16 @@ describe('Agent visibility E2E', () => {
     );
   }
 
+  async function addMembership(userId: string, orgId: string, role = 'admin') {
+    await pool.query(
+      `INSERT INTO organization_memberships
+         (workos_user_id, workos_organization_id, role, email, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, NOW(), NOW())
+       ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = EXCLUDED.role`,
+      [userId, orgId, role, `${userId}@example.com`],
+    );
+  }
+
   async function createProfile(orgId: string, slug: string) {
     await memberDb.createProfile({
       workos_organization_id: orgId,
@@ -204,6 +230,23 @@ describe('Agent visibility E2E', () => {
       ],
     });
     await seedBrandPrimary(orgId, `${slug}.example`);
+  }
+
+  async function createProfileWithAgent(
+    orgId: string,
+    slug: string,
+    domain: string,
+    agentUrl: string,
+    visibility: 'private' | 'members_only' | 'public' = 'private',
+  ) {
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: `Test ${slug}`,
+      slug,
+      is_public: true,
+      agents: [{ url: agentUrl, visibility }],
+    });
+    await seedBrandPrimary(orgId, domain);
   }
 
   beforeEach(async () => {
@@ -266,6 +309,76 @@ describe('Agent visibility E2E', () => {
     expect(res.body.visibility).toBe('members_only');
     const profile = await memberDb.getProfileByOrgId(orgId);
     expect(profile!.agents[0].visibility).toBe('members_only');
+  });
+
+  it('agent visibility and check endpoints honor URL-selected org', async () => {
+    const primaryOrgId = `${TEST_PREFIX}_agent_scope_primary`;
+    const selectedOrgId = `${TEST_PREFIX}_agent_scope_selected`;
+    const userId = `${TEST_PREFIX}_agent_scope_user`;
+    await seedOrg(pool, primaryOrgId, 'individual_academic');
+    await seedOrg(pool, selectedOrgId, 'individual_academic');
+    await provisionUser(userId, primaryOrgId);
+    await addMembership(userId, selectedOrgId);
+    await createProfileWithAgent(
+      primaryOrgId,
+      'agentscopeprimary',
+      'example.net',
+      'https://agent.example.net/mcp',
+    );
+    await createProfileWithAgent(
+      selectedOrgId,
+      'agentscopeselected',
+      'example.org',
+      'https://agent.example.org/mcp',
+    );
+
+    (app as any).setCurrentUser(userId, selectedOrgId);
+    const visibilityRes = await request(app)
+      .patch(`/api/me/member-profile/agents/0/visibility?org=${selectedOrgId}`)
+      .send({ visibility: 'members_only' });
+
+    expect(visibilityRes.status).toBe(200);
+    expect(visibilityRes.body.visibility).toBe('members_only');
+
+    const selectedProfile = await memberDb.getProfileByOrgId(selectedOrgId);
+    const primaryProfile = await memberDb.getProfileByOrgId(primaryOrgId);
+    expect(selectedProfile!.agents[0].visibility).toBe('members_only');
+    expect(primaryProfile!.agents[0].visibility).toBe('private');
+
+    const checkRes = await request(app)
+      .post(`/api/me/member-profile/agents/0/check?org=${selectedOrgId}`);
+
+    expect(checkRes.status).toBe(200);
+    expect(checkRes.body.agent_url).toBe('https://agent.example.org/mcp');
+  });
+
+  it('agent visibility and check endpoints reject URL-selected org outsiders', async () => {
+    const primaryOrgId = `${TEST_PREFIX}_agent_scope_outsider_primary`;
+    const selectedOrgId = `${TEST_PREFIX}_agent_scope_outsider_selected`;
+    const userId = `${TEST_PREFIX}_agent_scope_outsider_user`;
+    await seedOrg(pool, primaryOrgId, 'individual_academic');
+    await seedOrg(pool, selectedOrgId, 'individual_academic');
+    await provisionUser(userId, primaryOrgId);
+    await createProfileWithAgent(
+      selectedOrgId,
+      'agentscopeoutsider',
+      'outsider.example.org',
+      'https://agent.outsider.example.org/mcp',
+    );
+
+    (app as any).setCurrentUser(userId, selectedOrgId);
+    const visibilityRes = await request(app)
+      .patch(`/api/me/member-profile/agents/0/visibility?org=${selectedOrgId}`)
+      .send({ visibility: 'members_only' });
+
+    expect(visibilityRes.status).toBe(403);
+    expect(visibilityRes.body.error).toBe('Not authorized');
+
+    const checkRes = await request(app)
+      .post(`/api/me/member-profile/agents/0/check?org=${selectedOrgId}`);
+
+    expect(checkRes.status).toBe(403);
+    expect(checkRes.body.error).toBe('Not authorized');
   });
 
   it('Professional tier: PATCH visibility=public succeeds and sets brand.json snippet', async () => {

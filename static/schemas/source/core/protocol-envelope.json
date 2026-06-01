@@ -54,6 +54,7 @@
     "payload": {
       "type": "object",
       "description": "Conceptual grouping for the task-specific response data defined by individual task response schemas (e.g., get-products-response.json, create-media-buy-response.json). `payload` is a documentary construct — it is NOT a required wire field, and its on-the-wire shape depends on transport (see Transport serialization below). Task response schemas declare body fields without wrapping them in a `payload` object; the wire representation places those body fields per transport convention. On MCP the body fields appear as siblings of envelope fields at the root of the tool response; on A2A they appear inside `task.artifacts[0].parts[].DataPart`; on REST they appear at the root of the JSON body.",
+      "x-adcp-open-payload": true,
       "additionalProperties": true
     }
   },

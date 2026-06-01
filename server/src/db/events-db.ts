@@ -173,6 +173,58 @@ export class EventsDatabase {
   }
 
   /**
+   * Get an event slug redirect.
+   */
+  async getEventSlugRedirect(oldSlug: string): Promise<{ old_slug: string; current_slug: string; event_id: string } | null> {
+    const result = await query<{ old_slug: string; current_slug: string; event_id: string }>(
+      `SELECT r.old_slug, e.slug AS current_slug, r.event_id
+       FROM event_slug_redirects r
+       JOIN events e ON e.id = r.event_id
+       WHERE r.old_slug = $1`,
+      [oldSlug]
+    );
+
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Resolve an old slug to its canonical event row.
+   */
+  async getEventByRedirectSlug(oldSlug: string): Promise<Event | null> {
+    const result = await query<Event>(
+      `SELECT e.*
+       FROM event_slug_redirects r
+       JOIN events e ON e.id = r.event_id
+       WHERE r.old_slug = $1
+       LIMIT 1`,
+      [oldSlug]
+    );
+
+    return result.rows[0] ? this.deserializeEvent(result.rows[0]) : null;
+  }
+
+  /**
+   * Record a redirect from a previous event slug to the event's current slug.
+   */
+  async createSlugRedirect(eventId: string, oldSlug: string): Promise<void> {
+    await query(
+      `INSERT INTO event_slug_redirects (old_slug, event_id)
+       VALUES ($1, $2)
+       ON CONFLICT (old_slug) DO UPDATE SET
+         event_id = EXCLUDED.event_id,
+         created_at = NOW()`,
+      [oldSlug, eventId]
+    );
+  }
+
+  /**
+   * Remove a stale redirect when a previous slug becomes canonical again.
+   */
+  async removeSlugRedirect(oldSlug: string): Promise<void> {
+    await query('DELETE FROM event_slug_redirects WHERE old_slug = $1', [oldSlug]);
+  }
+
+  /**
    * Find an event by a fuzzy title match. Last-resort fallback for callers
    * (Addie tools) that pass user-typed strings like "foundry". Only matches
    * published/completed events to avoid leaking drafts. Ambiguous matches
@@ -201,6 +253,7 @@ export class EventsDatabase {
    */
   async updateEvent(id: string, updates: UpdateEventInput): Promise<Event | null> {
     const COLUMN_MAP: Record<keyof UpdateEventInput, string> = {
+      slug: 'slug',
       title: 'title',
       description: 'description',
       short_description: 'short_description',
@@ -375,12 +428,22 @@ export class EventsDatabase {
    * Check if slug is available
    */
   async isSlugAvailable(slug: string, excludeId?: string): Promise<boolean> {
-    let sql = 'SELECT 1 FROM events WHERE slug = $1';
+    let sql = `
+      SELECT 1 FROM events WHERE slug = $1
+    `;
     const params: unknown[] = [slug];
 
     if (excludeId) {
-      sql += ' AND id != $2';
+      sql += ' AND id::text != $2';
       params.push(excludeId);
+    }
+
+    sql += `
+      UNION ALL
+      SELECT 1 FROM event_slug_redirects WHERE old_slug = $1
+    `;
+    if (excludeId) {
+      sql += ' AND event_id::text != $2';
     }
 
     sql += ' LIMIT 1';

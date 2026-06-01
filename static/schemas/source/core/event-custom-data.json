@@ -47,6 +47,17 @@
       "type": "string",
       "description": "Search query for search events"
     },
+    "progress_percent": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Content progress percentage reached, primarily for `watch_milestone` events. Use 25, 50, 75, or 100 for quartiles, or another publisher-defined threshold. Do not use `value` for non-monetary progress."
+    },
+    "progress_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Content progress duration reached in seconds, primarily for `watch_milestone` events. Use when the milestone is time-based rather than percentage-based."
+    },
     "contents": {
       "type": "array",
       "description": "Per-item details for e-commerce events",

@@ -3,8 +3,10 @@ import type { WorkOSUser } from '../types.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('workos-client');
+const OWNERLESS_PROMOTION_WORKOS_TIMEOUT_MS = 10_000;
 
 let _workos: WorkOS | null = null;
+let _ownerlessPromotionWorkos: WorkOS | null = null;
 let _clientId = '';
 
 /** Returns the shared WorkOS client. Constructed on first call; WORKOS_API_KEY and WORKOS_CLIENT_ID must be set by then. */
@@ -16,6 +18,20 @@ export function getWorkos(): WorkOS {
     _workos = new WorkOS(process.env.WORKOS_API_KEY, { clientId: _clientId });
   }
   return _workos;
+}
+
+/** Returns a WorkOS client with a shorter timeout for DB-lock-held promotion flows. */
+export function getOwnerlessPromotionWorkos(): WorkOS {
+  if (!_ownerlessPromotionWorkos) {
+    if (!process.env.WORKOS_API_KEY) throw new Error('WORKOS_API_KEY environment variable is required');
+    if (!process.env.WORKOS_CLIENT_ID) throw new Error('WORKOS_CLIENT_ID environment variable is required');
+    _clientId = process.env.WORKOS_CLIENT_ID;
+    _ownerlessPromotionWorkos = new WorkOS(process.env.WORKOS_API_KEY, {
+      clientId: _clientId,
+      timeout: OWNERLESS_PROMOTION_WORKOS_TIMEOUT_MS,
+    });
+  }
+  return _ownerlessPromotionWorkos;
 }
 
 /**

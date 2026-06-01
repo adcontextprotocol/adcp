@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.6/core/creative-asset.json",
+  "title": "Creative Asset",
+  "description": "Creative asset for upload to library — supports static assets, generative formats, and third-party snippets. Identifies which format this creative conforms to via EITHER a legacy `format_id` (structured `{agent_url, id}`) OR a 3.1+ `format_kind` (canonical format name), with optional `format_option_ref` when the target product needs disambiguation. Mutually exclusive — see the `oneOf` at the schema root.",
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "description": "Unique identifier for the creative. Stable across legacy named-format and 3.1+ canonical-format paths — a creative registered against `format_id` retains the same `creative_id` when later viewed through a canonical-format flatten.",
+      "x-entity": "creative"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable creative name"
+    },
+    "format_id": {
+      "$ref": "/schemas/3.1.0-rc.6/core/format-id.json",
+      "description": "Legacy named-format path. Always a structured object {agent_url, id} — never a plain string. Format identifier specifying which format this creative conforms to. Can be: (1) concrete format_id referencing a format with fixed dimensions, (2) template format_id referencing a template format, or (3) parameterized format_id with dimensions/duration parameters for template formats. Mutually exclusive with `format_kind`."
+    },
+    "format_kind": {
+      "$ref": "/schemas/3.1.0-rc.6/core/canonical-format-kind.json",
+      "description": "3.1+ canonical-format path. The canonical format name this creative targets (e.g., `image`, `video_hosted`). Mutually exclusive with `format_id`."
+    },
+    "format_option_ref": {
+      "$ref": "/schemas/3.1.0-rc.6/core/format-option-ref.json",
+      "description": "3.1+ format-option path, optional. Structured format option reference matching one of the target product's `format_options[]` declarations. Publisher-catalog-backed options match by `{ scope: \"publisher\", publisher_domain, format_option_id }`; product-local options match by `{ scope: \"product\", format_option_id }`. Required when the target product has multiple `format_options` entries sharing the same `format_kind`; optional when `format_kind` alone routes the creative to a single declaration. Product-scoped refs require an enclosing target product/package context."
+    },
+    "assets": {
+      "type": "object",
+      "description": "Assets required by the format, keyed by asset_id. Each slot value is either a single asset object or an array of asset objects (for slots with `min`/`max > 1` like carousel `cards` or responsive_creative `headlines`). Each asset value carries an `asset_type` discriminator that selects the matching asset schema.",
+      "patternProperties": {
+        "^[a-z0-9_]+$": {
+          "oneOf": [
+            { "$ref": "/schemas/3.1.0-rc.6/core/assets/asset-union.json" },
+            {
+              "type": "array",
+              "items": { "$ref": "/schemas/3.1.0-rc.6/core/assets/asset-union.json" },
+              "minItems": 1
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "inputs": {
+      "type": "array",
+      "description": "Preview contexts for generative formats - defines what scenarios to generate previews for",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this preview variant"
+          },
+          "macros": {
+            "type": "object",
+            "description": "Macro values to apply for this preview",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "context_description": {
+            "type": "string",
+            "description": "Natural language description of the context for AI-generated content"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "tags": {
+      "type": "array",
+      "description": "User-defined tags for organization and searchability",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "$ref": "/schemas/3.1.0-rc.6/enums/creative-status.json",
+      "description": "For generative creatives: set to 'approved' to finalize, 'rejected' to request regeneration with updated assets/message. Omit for non-generative creatives (system will set based on processing state)."
+    },
+    "weight": {
+      "type": "number",
+      "description": "Optional delivery weight for creative rotation when uploading via create_media_buy or update_media_buy (0-100). If omitted, platform determines rotation. Only used during upload to media buy - not stored in creative library.",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "placement_refs": {
+      "type": "array",
+      "description": "Optional structured placement references where this uploaded creative should run when uploading via create_media_buy or update_media_buy. New senders SHOULD use this field for placement-level targeting because placement IDs are publisher-scoped. References product placements by `{ publisher_domain, placement_id }`. If omitted, creative runs on all buyer-targetable placements. If both `placement_refs` and legacy `placement_ids` are present, `placement_refs` wins and receivers MUST ignore `placement_ids`. Only used during upload to media buy - not stored in creative library.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.6/core/placement-ref.json"
+      },
+      "minItems": 1
+    },
+    "placement_ids": {
+      "type": "array",
+      "description": "Legacy shorthand array of placement IDs where this creative should run when uploading via create_media_buy or update_media_buy. New senders SHOULD use `placement_refs` because placement IDs are publisher-scoped and strings are ambiguous in multi-publisher products. If omitted, creative runs on all buyer-targetable placements. If `placement_refs` is also present, receivers MUST ignore this field. Only used during upload to media buy - not stored in creative library.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "industry_identifiers": {
+      "type": "array",
+      "description": "Industry-standard identifiers for this creative (e.g., Ad-ID, ISCI, Clearcast clock number). In broadcast buying, these identifiers tie the creative to rotation instructions and traffic systems. A creative may have multiple identifiers when different systems reference the same asset.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.6/core/industry-identifier.json"
+      },
+      "uniqueItems": true
+    },
+    "provenance": {
+      "$ref": "/schemas/3.1.0-rc.6/core/provenance.json",
+      "description": "Provenance metadata for this creative. Serves as the default provenance for all manifests and assets within this creative. A manifest or asset with its own provenance replaces this object entirely (no field-level merging)."
+    }
+  },
+  "required": [
+    "creative_id",
+    "name",
+    "assets"
+  ],
+  "not": {
+    "anyOf": [
+      { "required": ["capability_id"] },
+      { "required": ["capability_ref"] }
+    ]
+  },
+  "oneOf": [
+    {
+      "title": "Legacy creative (named-format reference)",
+      "description": "Creative references a named format via the structured `format_id` object. The legacy named-format path remains supported through 4.x.",
+      "required": ["format_id"],
+      "not": { "required": ["format_kind"] }
+    },
+    {
+      "title": "3.1+ creative (canonical format kind)",
+      "description": "Creative declares which canonical format it targets via `format_kind` (e.g., `image`). This 3.1+ canonical-format path was introduced by RFC #3305.",
+      "required": ["format_kind"],
+      "not": { "required": ["format_id"] }
+    }
+  ],
+  "additionalProperties": true
+}

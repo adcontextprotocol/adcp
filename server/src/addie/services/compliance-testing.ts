@@ -7,8 +7,9 @@
 
 import {
   setAgentTesterLogger,
-  comply,
-  loadComplianceIndex,
+  comply as sdkComply,
+  loadComplianceIndex as sdkLoadComplianceIndex,
+  testCapabilityDiscovery,
   type ComplyOptions,
   type ComplianceResult,
   type ComplianceTrack,
@@ -17,7 +18,19 @@ import {
   type SampleBrief,
   SAMPLE_BRIEFS,
   getBriefsByVertical,
+  CapabilityResolutionError,
 } from '@adcp/sdk/testing';
+import {
+  hostedComplianceTarget,
+  hostedAuthProbeTaskForProfile,
+  agentAdvertisesBadgeEligibleHostedComplianceTarget,
+  badgeEligibleVersionsForHostedComplianceTarget,
+  selectCanonicalHostedComplianceTargetForProfile,
+  selectHostedComplianceTargetForProfile,
+  withHostedComplianceRunOptions,
+  type HostedComplianceTarget,
+} from '../../services/hosted-compliance-version.js';
+import { createLogger } from '../../logger.js';
 
 import type {
   TrackSummaryEntry,
@@ -29,11 +42,43 @@ import type {
   TriggeredBy,
 } from '../../db/compliance-db.js';
 
+const logger = createLogger('addie-compliance-testing');
+const DEFAULT_TARGET_DISCOVERY_TIMEOUT_MS = 10_000;
+
+export interface ComplianceTargetSelection {
+  target: HostedComplianceTarget;
+  confirmed: boolean;
+  supportedVersions?: readonly string[];
+}
+
+function complianceTargetDiscoveryTimeoutMs(options: ComplyOptions): number {
+  const requested = options.timeout_ms;
+  if (typeof requested !== 'number' || !Number.isFinite(requested)) {
+    return DEFAULT_TARGET_DISCOVERY_TIMEOUT_MS;
+  }
+  return Math.max(1_000, Math.min(requested, DEFAULT_TARGET_DISCOVERY_TIMEOUT_MS));
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 // ── Re-exports ────────────────────────────────────────────────────
 
 export { setAgentTesterLogger };
-export { comply, SAMPLE_BRIEFS, getBriefsByVertical };
+export { SAMPLE_BRIEFS, getBriefsByVertical };
 export type {
   ComplyOptions,
   ComplianceResult,
@@ -43,16 +88,101 @@ export type {
   SampleBrief,
 };
 
+async function hostedAuthProbeTaskForRun(
+  agentUrl: string,
+  options: ComplyOptions,
+): Promise<string | undefined> {
+  const auth = options.auth;
+  if (auth?.type !== 'bearer' && auth?.type !== 'basic') return undefined;
+  if (options.test_kit?.auth?.probe_task) return options.test_kit.auth.probe_task;
+
+  try {
+    const discovery = await testCapabilityDiscovery(agentUrl, options);
+    return hostedAuthProbeTaskForProfile(discovery.profile);
+  } catch (err) {
+    logger.warn({ err, agentUrl }, 'Could not pre-discover hosted auth probe task; using default');
+    return undefined;
+  }
+}
+
+export async function comply(
+  agentUrl: string,
+  options: ComplyOptions,
+  target: HostedComplianceTarget,
+): Promise<ComplianceResult> {
+  const authProbeTask = await hostedAuthProbeTaskForRun(agentUrl, options);
+  const result = await sdkComply(agentUrl, withHostedComplianceRunOptions(options, target, authProbeTask));
+  result.adcp_version ??= target.version;
+  (result as ComplianceResult & { requested_compliance_target?: string }).requested_compliance_target = target.requested;
+  return result;
+}
+
+export function loadComplianceIndex(target: HostedComplianceTarget, options: ComplyOptions = {}) {
+  return sdkLoadComplianceIndex(withHostedComplianceRunOptions(options, target));
+}
+
+export function defaultComplianceTarget(): HostedComplianceTarget {
+  return hostedComplianceTarget();
+}
+
+export async function selectComplianceTargetForAgentSelection(
+  agentUrl: string,
+  options: ComplyOptions,
+  fallback: HostedComplianceTarget = defaultComplianceTarget(),
+  mode: 'preferred' | 'canonical' = 'preferred',
+): Promise<ComplianceTargetSelection> {
+  try {
+    const discovery = await withTimeout(
+      testCapabilityDiscovery(agentUrl, options),
+      complianceTargetDiscoveryTimeoutMs(options),
+      'Hosted compliance target pre-discovery',
+    );
+    const target = mode === 'canonical'
+      ? selectCanonicalHostedComplianceTargetForProfile(discovery.profile, fallback)
+      : selectHostedComplianceTargetForProfile(discovery.profile, fallback);
+    return { target, confirmed: true, supportedVersions: discovery.profile?.adcp_supported_versions };
+  } catch (err) {
+    logger.warn({ err, agentUrl }, 'Could not pre-discover hosted compliance target; using fallback');
+    return { target: fallback, confirmed: false };
+  }
+}
+
+export async function selectComplianceTargetForAgent(
+  agentUrl: string,
+  options: ComplyOptions,
+  fallback: HostedComplianceTarget = defaultComplianceTarget(),
+  mode: 'preferred' | 'canonical' = 'preferred',
+): Promise<HostedComplianceTarget> {
+  const selection = await selectComplianceTargetForAgentSelection(agentUrl, options, fallback, mode);
+  return selection.target;
+}
+
+export function badgeEligibleVersionsForTargetSelection(
+  selection: ComplianceTargetSelection,
+  profile?: { adcp_supported_versions?: readonly string[] },
+): readonly string[] {
+  const versions = badgeEligibleVersionsForHostedComplianceTarget(selection.target);
+  if (versions.length === 0) return [];
+  if (selection.confirmed) return versions;
+  return agentAdvertisesBadgeEligibleHostedComplianceTarget(
+    profile?.adcp_supported_versions ?? selection.supportedVersions,
+    selection.target,
+  )
+    ? versions
+    : [];
+}
+
 // ── Capability-resolution error classification ───────────────────
 //
 // `@adcp/sdk`'s `resolveStoryboardsForCapabilities` fails closed with
-// plain `Error` instances for two distinct agent-config problems:
+// agent-config problems:
 //   1. Declared specialism whose parent protocol isn't in supported_protocols.
 //   2. Declared specialism whose bundle isn't in the local compliance cache.
-// Both surface through `comply()` and any caller that invokes the resolver
-// directly. They are *agent-config* faults (or, for #2, a stale local cache),
-// not platform errors — callers should log at warn and return actionable
-// coaching, not alarm on them as system failures.
+//   3. Selected compliance cache version isn't in adcp.supported_versions.
+// They surface through `comply()` and any caller that invokes the resolver
+// directly. They are *agent-config* or target-selection faults (or, for #2, a
+// stale local cache), not platform errors — callers should log at warn and
+// return actionable coaching, not alarm on them as system failures.
 //
 // Until @adcp/sdk exports typed errors (tracked upstream at
 // adcontextprotocol/adcp-client#734), we classify by message regex. The
@@ -75,12 +205,15 @@ export type {
 
 export type CapabilityResolutionErrorKind =
   | 'specialism_parent_protocol_missing'
-  | 'unknown_specialism';
+  | 'unknown_specialism'
+  | 'unsupported_adcp_version';
 
 export interface CapabilityResolutionErrorInfo {
   kind: CapabilityResolutionErrorKind;
   specialism?: string;
   parentProtocol?: string;
+  complianceVersion?: string;
+  supportedVersions?: string[];
 }
 
 // Anchored at start of message. Specialism capture forbids `"\r\n` (ends the
@@ -90,6 +223,9 @@ const PARENT_PROTOCOL_MISSING_RE =
   /^Agent declared specialism "([^"\r\n]{1,256})" \(parent protocol: ([^)\r\n]{1,256})\) but did not include/;
 const UNKNOWN_SPECIALISM_RE =
   /^Agent declared specialism "([^"\r\n]{1,256})" but no bundle exists/;
+const UNSUPPORTED_ADCP_VERSION_RE =
+  /^Compliance cache version ([^\s\r\n]{1,80}) is not supported by this seller\. Seller advertises adcp\.supported_versions \[([^\]\r\n]{0,512})\]\./;
+const SAFE_VERSION_TOKEN_RE = /^[0-9A-Za-z.+_-]{1,40}$/;
 
 // Strip control chars, backticks, and collapse whitespace on extracted
 // values. Backticks would break markdown fences in Addie-facing output;
@@ -103,9 +239,19 @@ function sanitizeClassifiedValue(value: string, maxLen = 120): string {
     .slice(0, maxLen);
 }
 
+function parseSupportedVersionList(value: string): string[] {
+  return value
+    .split(',')
+    .map(part => {
+      const cleaned = sanitizeClassifiedValue(part, 40);
+      return SAFE_VERSION_TOKEN_RE.test(cleaned) ? cleaned : '';
+    })
+    .filter(Boolean);
+}
+
 function knownProtocolsFromIndex(): Set<string> {
   try {
-    const index = loadComplianceIndex();
+    const index = loadComplianceIndex(defaultComplianceTarget());
     return new Set(index.specialisms.map(s => s.protocol).filter(Boolean));
   } catch {
     // Cache unavailable — accept the extracted value without cross-check.
@@ -119,6 +265,24 @@ export function classifyCapabilityResolutionError(
 ): CapabilityResolutionErrorInfo | undefined {
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
   if (!msg) return undefined;
+
+  if (err instanceof CapabilityResolutionError && err.code === 'unsupported_adcp_version') {
+    const match = msg.match(UNSUPPORTED_ADCP_VERSION_RE);
+    return {
+      kind: 'unsupported_adcp_version',
+      complianceVersion: match ? sanitizeClassifiedValue(match[1], 80) : undefined,
+      supportedVersions: match ? parseSupportedVersionList(match[2]) : [],
+    };
+  }
+
+  const unsupportedVersionMatch = msg.match(UNSUPPORTED_ADCP_VERSION_RE);
+  if (unsupportedVersionMatch) {
+    return {
+      kind: 'unsupported_adcp_version',
+      complianceVersion: sanitizeClassifiedValue(unsupportedVersionMatch[1], 80),
+      supportedVersions: parseSupportedVersionList(unsupportedVersionMatch[2]),
+    };
+  }
 
   const parentMatch = msg.match(PARENT_PROTOCOL_MISSING_RE);
   if (parentMatch) {
@@ -173,6 +337,9 @@ export function presentCapabilityResolutionError(
 ): CapabilityResolutionErrorPresentation {
   const specialism = info.specialism ?? '';
   const parentProtocol = info.parentProtocol ?? '';
+  const complianceVersion = info.complianceVersion ?? '';
+  const supportedVersions = info.supportedVersions ?? [];
+  const supportedVersionsText = supportedVersions.length > 0 ? supportedVersions.join(', ') : '(none advertised)';
 
   if (info.kind === 'specialism_parent_protocol_missing') {
     return {
@@ -185,6 +352,21 @@ export function presentCapabilityResolutionError(
         error_kind: 'specialism_parent_protocol_missing',
         specialism,
         parent_protocol: parentProtocol,
+      },
+    };
+  }
+
+  if (info.kind === 'unsupported_adcp_version') {
+    return {
+      headline:
+        `Agent does not support selected compliance cache "${complianceVersion}". ` +
+        `Seller advertises adcp.supported_versions [${supportedVersionsText}].`,
+      logMsg: 'Agent does not support selected compliance cache version',
+      logFields: { complianceVersion, supportedVersions: supportedVersionsText },
+      restBody: {
+        error_kind: 'unsupported_adcp_version',
+        compliance_version: complianceVersion,
+        supported_versions: supportedVersionsText,
       },
     };
   }
@@ -563,6 +745,9 @@ export function complianceResultToDbInput(
 
   return {
     agent_url: agentUrl,
+    requested_compliance_target: (result as ComplianceResult & { requested_compliance_target?: string })
+      .requested_compliance_target ?? null,
+    adcp_version: result.adcp_version ?? null,
     lifecycle_stage: lifecycleStage,
     overall_status,
     headline: result.summary.headline,
@@ -576,7 +761,12 @@ export function complianceResultToDbInput(
     observations_json: result.observations,
     triggered_by: triggeredBy,
     storyboard_statuses: deriveStoryboardStatuses(result, storyboardIds),
+    replace_storyboard_statuses: !storyboardIds?.length,
     step_diagnostics: extractFailingStepDiagnostics(result),
+    // Forward-compat: notices are an optional field in the runner output
+    // contract (run_summary.notices). Unknown codes/severities are stored
+    // verbatim — do not filter or validate the values here.
+    notices_json: (result.summary as any).notices ?? null,
   };
 }
 

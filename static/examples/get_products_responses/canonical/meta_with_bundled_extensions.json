@@ -1,5 +1,7 @@
 {
   "$schema": "/schemas/media-buy/get-products-response.json",
+  "status": "completed",
+  "cache_scope": "public",
   "products": [
     {
       "product_id": "meta_reels_us",

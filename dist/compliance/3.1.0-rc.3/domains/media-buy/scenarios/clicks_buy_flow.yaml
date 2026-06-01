@@ -1,0 +1,264 @@
+id: media_buy_seller/clicks_buy_flow
+version: "1.0.0"
+title: "Seller fulfills a media buy with a clicks optimization goal (target CPC)"
+category: media_buy_seller
+summary: "Verifies that a seller advertising clicks in supported_optimization_metrics can accept a media buy whose metric-kind optimization_goal targets cost-per-click and reports clicks + cost_per_click on delivery. Lightweight sibling to the performance scenarios on the click-optimization side: sellers that don't advertise clicks as an optimization metric (rare — most do; pure brand sellers like broadcast TV upper-funnel video are the not_applicable population) grade not_applicable."
+track: media_buy
+
+# Gate: scenario runs only when the seller declares clicks in
+# media_buy.supported_optimization_metrics (proposed in #4669). Most
+# adopters declare clicks (it is the most universal metric in advertising),
+# but broadcast TV upper-funnel video and signal-only sellers honestly
+# don't optimize for clicks and grade `not_applicable`. The gate is what
+# keeps them from being marked failing. Requires runner support for the
+# `contains:` matcher (adcp-client >= 7.70).
+requires_capability:
+  path: media_buy.supported_optimization_metrics
+  contains: "clicks"
+
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buy_delivery
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  A "clicks buy" is a media buy whose optimization_goal is metric-kind with
+  metric: clicks and a target_cpc (target.kind: cost_per, value:
+  target-cost-per-click in the buy currency). This is the most common
+  performance-shaped buy in advertising — link clicks, swipe-throughs, CTA
+  taps that navigate away — and the optimization shape is well-understood
+  across the industry. The scenario certifies that the click-optimization
+  path connects end-to-end when the seller advertises clicks as an
+  optimization metric.
+
+  This scenario is intentionally lightweight (no rejection arm) because
+  clicks is universal in semantics — there isn't an obvious unbound-id or
+  unsupported-value to reject. The seller either supports clicks as an
+  optimization metric or it doesn't (handled by the capability gate). The
+  three-phase shape — setup, create, delivery — is sufficient to certify
+  the click-optimization path without manufacturing artificial rejection
+  surfaces.
+
+  Discriminating behaviors this scenario verifies:
+  1. create_media_buy with metric-kind goal (metric: clicks, target.kind:
+     cost_per, target.value: target CPC) is accepted.
+  2. get_media_buy_delivery surfaces totals.clicks and totals.cost_per_click
+     — the discriminating output fields of click optimization. cost_per_click
+     is defined in delivery-metrics.json as spend / clicks; sellers
+     optimizing for clicks MUST populate both fields on delivery.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+  examples:
+    - "DSPs running click-optimized campaigns"
+    - "Social platforms (Meta link clicks, TikTok swipe-throughs)"
+    - "Search-adjacent / native sellers optimizing for CTA taps"
+    - "Retail-media performance products optimizing for product page visits"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller must implement comply_test_controller with simulate_delivery
+    (already required for delivery_reporting). simulate_delivery injects
+    impressions, clicks, and spend so get_media_buy_delivery has something
+    to surface for the click-optimized buy.
+
+    The buyer fixture supplies a brand, an operator, and click optimization
+    parameters sufficient to exercise the cost_per target binding.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "clicks_display_q2"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "clicks_display_q2"
+      pricing_option_id: "auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 1.50
+
+phases:
+
+  - id: setup
+    title: "Establish account and discover products"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#clicks_buy_flow_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: get_products_for_clicks
+        title: "Discover products that support click optimization"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return at least one product whose metric_optimization capabilities
+          include clicks as an optimization metric.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display performance, US adults 25-54. Q2 flight ~$15K, optimizing for clicks with a target CPC."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains products"
+
+  - id: create_clicks_buy
+    title: "Create a click-optimized buy with a target CPC"
+    narrative: |
+      The buyer creates a media buy whose package carries a metric-kind
+      optimization_goal with metric: clicks and target.kind: cost_per at
+      $2.50 per click. The seller should accept and return a media_buy_id
+      used for subsequent delivery checks.
+
+    steps:
+      - id: create_media_buy_clicks
+        title: "Create media buy with metric-kind clicks goal"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Create the media buy. Response carries a media_buy_id used for
+          subsequent get_media_buy_delivery calls.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "clicks_display_q2"
+              budget: 15000
+              pricing_option_id: "auction_cpm"
+              optimization_goals:
+                - kind: "metric"
+                  metric: "clicks"
+                  target:
+                    kind: "cost_per"
+                    value: 2.50
+                  priority: 1
+          idempotency_key: "$generate:uuid_v4#clicks_buy_flow_create_clicks_buy_create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Media buy has a platform-assigned ID"
+
+  - id: clicks_delivery
+    title: "Delivery reporting carries clicks and cost_per_click"
+    narrative: |
+      The discriminating assertion of the click-optimization mode: delivery
+      reporting MUST surface clicks and cost_per_click — not just
+      impressions and spend. The runner injects simulated impressions,
+      clicks, and spend via the test controller, then verifies
+      get_media_buy_delivery returns clicks + cost_per_click on totals.
+
+      cost_per_click is defined in delivery-metrics.json as spend / clicks;
+      sellers optimizing for clicks at a cost_per target are committing to
+      populate both fields on delivery responses so the buyer can reconcile
+      effective CPC against the target.
+
+    steps:
+      - id: simulate_clicks_delivery
+        title: "Inject impressions + clicks + spend"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller acknowledges the simulated delivery.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 300000
+            clicks: 4800
+            reported_spend:
+              amount: 11000.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation succeeds"
+
+      - id: get_clicks_delivery
+        title: "Get delivery and verify clicks + cost_per_click metrics"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Delivery response includes totals.clicks (the click count) and
+          totals.cost_per_click (effective CPC, spend / clicks). These are
+          the discriminating output fields of click optimization and are
+          required on click-optimized buys.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.clicks"
+            description: "Click count surfaced at the buy level"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.cost_per_click"
+            description: "Effective CPC surfaced at the buy level (spend / clicks — the discriminating field of click-optimization with a cost_per target)"

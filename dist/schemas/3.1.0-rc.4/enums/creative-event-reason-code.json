@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.4/enums/creative-event-reason-code.json",
+  "title": "Creative Event Reason Code",
+  "description": "Categorical reason carried on creative lifecycle webhooks (`creative.status_changed`, `creative.purged`). Distinct from `impairment-reason-code` because creative-policy reasons differ in vocabulary and remediation paths from media-buy delivery impairments — a creative may be revoked for a content-policy reason that produces no impairment on any buy, and an impairment may close without any creative-side status change. Buyers correlate the two via `creative_id` when both surfaces fire.",
+  "type": "string",
+  "enum": [
+    "review_passed",
+    "review_failure",
+    "processing_failure",
+    "seller_rereview",
+    "policy_revocation",
+    "content_drift",
+    "takedown_request",
+    "advertiser_request",
+    "seller_archive",
+    "account_closed",
+    "account_suspended",
+    "retention_expired",
+    "legal_erasure"
+  ],
+  "enumDescriptions": {
+    "review_passed": "Initial content-policy review succeeded — used on `pending_review → approved`. No buyer action required. The default reason for a clean first approval and the value sellers MUST emit when no more specific reason applies.",
+    "review_failure": "Initial human or automated content-policy review failed — used on `pending_review → rejected`. Distinct from `policy_revocation` because no prior approval existed. Buyer remediation: address the policy concern and resubmit via `sync_creatives`.",
+    "processing_failure": "Seller's automated processing pipeline failed — corrupt file, unsupported codec, asset reference unreachable, transcoding error. Used on `processing → rejected`. Buyer remediation: fix the underlying asset and resubmit via `sync_creatives`.",
+    "seller_rereview": "Seller pulled an approved creative back to pending review without an immediate rejection — typically a policy update, a flagged-content investigation, or a sampling-driven re-review. Used on `approved → pending_review`. Buyer remediation: wait for the re-review outcome; no buyer action available.",
+    "policy_revocation": "Seller content-policy decision applied after initial approval — the seller's policy changed or a previously-overlooked violation was caught. Used on `approved → rejected`. When the buyer's asset/destination changed (rather than the seller's policy), use `content_drift` instead. Buyer remediation: review against the seller's updated policy and resubmit a compliant variant via `sync_creatives`.",
+    "content_drift": "Landing page or referenced content changed after approval in a way that breaks the original review (e.g., destination URL now serves different content, asset host swapped). Used on `approved → pending_review` (re-review pulled) or `approved → rejected` (revocation). When in doubt between `content_drift` and `policy_revocation`, prefer `content_drift` when buyer remediation involves restoring the original asset/destination; prefer `policy_revocation` when the seller's policy itself changed. Buyer remediation: restore the original content or resubmit with the new destination for fresh review.",
+    "takedown_request": "Third-party legal or IP takedown notice forced the seller to disable the creative — DMCA, trademark, defamation, court order, or equivalent. Used on `approved → rejected` or destruction (`creative.purged`, either purge_kind). Buyer remediation: dispute the takedown out-of-band with the seller; protocol-side remediation is unavailable.",
+    "advertiser_request": "Buyer-initiated takedown that propagated through the seller's review queue (the advertiser's legal or trust-and-safety team asked the seller to pull a creative the buyer had already approved internally). Distinct from `takedown_request` (third-party request) — `advertiser_request` originates with the buying side and is voluntary. Used on `approved → rejected` or `creative.purged`. No buyer-side remediation needed; the buyer initiated the action.",
+    "seller_archive": "Seller-initiated archive — covers inactivity, post-flight expiry, storage-tier policy, and other operational seller-side cleanup. Used on `approved → archived`. Buyer remediation: unarchive via `sync_creatives` if the creative is needed again; no content change required.",
+    "account_closed": "Account-level cascade: the owning account transitioned to `closed`, and the seller is purging or archiving the account's creatives as part of teardown. Used on `creative.purged` (typically `purge_kind: soft` first; `hard` if legal disposition requires). Buyer remediation: none on the protocol side — the account is gone.",
+    "account_suspended": "Account-level cascade: the owning account transitioned to `suspended`, and the seller is archiving the account's creatives until the account is reactivated. Used on `approved → archived`. Buyer remediation: resolve the account suspension out-of-band; archived creatives can be unarchived once the account is active again.",
+    "retention_expired": "Creative reached the end of its retention window and was purged. Used on `creative.purged` with `purge_kind: soft` only — retention-driven purges retain a tombstone for the 30-day webhook activity retention window. Buyer remediation: re-upload via `sync_creatives` if the creative is still needed.",
+    "legal_erasure": "Creative purged under a legal erasure obligation (GDPR Article 17, CCPA deletion, equivalent). Used on `creative.purged` with `purge_kind: hard` only — no tombstone is retained and the seller MUST NOT echo the asset content elsewhere. Buyer remediation: none on the seller side; the buyer's own systems may also need to honor the erasure."
+  }
+}

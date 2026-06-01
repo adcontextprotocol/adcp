@@ -19,8 +19,10 @@ import type { StoryboardResult, StoryboardRunOptions } from '@adcp/sdk/testing';
 import { conformanceSessions } from './session-store.js';
 import { getStoryboard } from '../services/storyboards.js';
 import { createLogger } from '../logger.js';
+import { hostedComplianceTarget, withHostedStoryboardRunOptions } from '../services/hosted-compliance-version.js';
 
 const logger = createLogger('conformance-run-storyboard');
+const complianceTarget = hostedComplianceTarget();
 
 export class ConformanceNotConnectedError extends Error {
   constructor(public readonly orgId: string) {
@@ -97,11 +99,11 @@ export async function runStoryboardViaConformanceSocket(
   // `getOrCreateClient` but isn't on the public type. Cast through the
   // narrow runOptions shape rather than `as any` so unrelated typos still
   // get caught.
-  const runOptions = {
+  const runOptions = withHostedStoryboardRunOptions({
     _client: agentClient,
     test_session_id: testSessionId,
     timeout_ms: options.timeoutMs ?? 60_000,
-  } as StoryboardRunOptions & { _client: AgentClient };
+  } as StoryboardRunOptions & { _client: AgentClient }, complianceTarget);
 
   return runStoryboard(syntheticUrl, storyboard, runOptions);
 }

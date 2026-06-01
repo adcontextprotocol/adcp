@@ -131,6 +131,8 @@ const exampleData = {
   mediaBuy: {
     "media_buy_id": "mb_12345",
     "status": "active",
+    "confirmed_at": "2026-05-27T09:00:00Z",
+    "revision": 1,
     "total_budget": 50000,
     "packages": []
   },
@@ -234,7 +236,11 @@ const exampleData = {
   },
   
   createMediaBuyResponse: {
+    "status": "completed",
     "media_buy_id": "mb_12345",
+    "media_buy_status": "active",
+    "confirmed_at": "2026-05-27T09:00:00Z",
+    "revision": 1,
     "packages": [
       {
         "package_id": "pkg_12345_001",
@@ -282,13 +288,20 @@ const exampleData = {
   },
   
   getSignalsResponse: {
+    "status": "completed",
+    "cache_scope": "public",
     "signals": [
       {
+        "signal_ref": {
+          "scope": "data_provider",
+          "data_provider_domain": "pinnacle-data.example",
+          "signal_id": "luxury_auto_intenders"
+        },
         "signal_agent_segment_id": "luxury_auto_intenders",
         "name": "Luxury Automotive Intenders",
         "description": "High-income individuals researching luxury vehicles",
         "signal_type": "marketplace",
-        "data_provider": "Experian",
+        "data_provider": "Pinnacle Data",
         "coverage_percentage": 12,
         "deployments": [
           {
