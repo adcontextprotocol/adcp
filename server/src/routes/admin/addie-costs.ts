@@ -21,7 +21,8 @@
  * active-subscription members show `member_paid`; for everyone else we
  * fall back to the namespace-level inference (email/mcp/tavus/anon →
  * anonymous, slack/workos → member_free). WorkOS users in the
- * `aao-admin` governance group show `aao_team` and are uncapped.
+ * `aao-admin` governance group or AgenticAdvertising.org org show
+ * `aao_team` and are uncapped.
  */
 
 import { Router } from 'express';
@@ -209,14 +210,23 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
            best_org.has_active_subscription AS org_has_active_subscription,
            (
              ${namespaceCaseSql('t.scope_key')} = 'workos'
-             AND EXISTS (
-               SELECT 1
-                 FROM working_groups wg
-                 JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
-                WHERE wg.slug = 'aao-admin'
-                  AND wg.status = 'active'
-                  AND wgm.workos_user_id = t.scope_key
-                  AND wgm.status = 'active'
+             AND (
+               EXISTS (
+                 SELECT 1
+                   FROM working_groups wg
+                   JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
+                  WHERE wg.slug = 'aao-admin'
+                    AND wg.status = 'active'
+                    AND wgm.workos_user_id = t.scope_key
+                    AND wgm.status = 'active'
+               )
+               OR EXISTS (
+                 SELECT 1
+                   FROM organization_memberships om
+                   JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+                  WHERE om.workos_user_id = t.scope_key
+                    AND LOWER(o.name) = 'agenticadvertising.org'
+               )
              )
            ) AS is_aao_team
          FROM scope_totals t

@@ -63,7 +63,7 @@ describe('resolveUserTierFromDb', () => {
     expect(sql).toContain('subscription_canceled_at IS NULL');
   });
 
-  it('returns aao_team when the WorkOS user belongs to the AAO admin team', async () => {
+  it('returns aao_team when the WorkOS user belongs to the AAO admin team or org', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: true, has_active_subscription: false }] });
     const tier = await resolveUserTierFromDb('user_aao_staff');
     expect(tier).toBe('aao_team');
@@ -71,6 +71,7 @@ describe('resolveUserTierFromDb', () => {
     const sql = queryMock.mock.calls[0][0] as string;
     expect(sql).toContain("wg.slug = 'aao-admin'");
     expect(sql).toContain("wgm.status = 'active'");
+    expect(sql).toContain("LOWER(o.name) = 'agenticadvertising.org'");
   });
 
   it('prefers aao_team over member_paid when both signals are true', async () => {

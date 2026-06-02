@@ -71,9 +71,9 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
  * - `member_paid`: $25/day. Paying members get a generous ceiling
  *   that's still a real cap — a runaway automated session still
  *   trips it within an hour of sustained abuse.
- * - `aao_team`: uncapped. AAO staff/admin users are operating the
- *   service, not consuming member benefits, so they should not hit
- *   a self-service spend ceiling while doing support or admin work.
+ * - `aao_team`: uncapped. AAO staff/admin/team users are operating
+ *   the service, not consuming member benefits, so they should not
+ *   hit a self-service spend ceiling while doing support or admin work.
  */
 export const DAILY_BUDGET_USD = {
   anonymous: 3,
@@ -328,11 +328,11 @@ function writeCachedTier(userId: string, tier: UserTier): void {
  * at call time, so they stay `member_free` regardless of the underlying
  * person's membership — upgrading those paths would need the caller to
  * have already mapped to a WorkOS id and passed *that* here. AAO team
- * members (`aao-admin` governance group) return `aao_team`, which is
- * uncapped at the cost-gate boundary but still recorded for spend
- * observability. DB errors
- * fall back to `member_free` so a transient outage doesn't accidentally
- * grant the $25/day ceiling or uncapped staff access to unverified callers.
+ * members (`aao-admin` governance group or AgenticAdvertising.org org
+ * membership) return `aao_team`, which is uncapped at the cost-gate
+ * boundary but still recorded for spend observability. DB errors fall
+ * back to `member_free` so a transient outage doesn't accidentally grant
+ * the $25/day ceiling or uncapped staff access to unverified callers.
  *
  * The SQL predicate here (`subscription_status = 'active' AND
  * subscription_canceled_at IS NULL`) matches `MEMBER_FILTER` in
@@ -360,14 +360,23 @@ export async function resolveUserTierFromDb(userId: string | null | undefined): 
       has_active_subscription: boolean;
     }>(
       `SELECT
-          EXISTS (
-            SELECT 1
-              FROM working_groups wg
-              JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
-             WHERE wg.slug = 'aao-admin'
-               AND wg.status = 'active'
-               AND wgm.workos_user_id = $1
-               AND wgm.status = 'active'
+          (
+            EXISTS (
+              SELECT 1
+                FROM working_groups wg
+                JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
+               WHERE wg.slug = 'aao-admin'
+                 AND wg.status = 'active'
+                 AND wgm.workos_user_id = $1
+                 AND wgm.status = 'active'
+            )
+            OR EXISTS (
+              SELECT 1
+                FROM organization_memberships om
+                JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+               WHERE om.workos_user_id = $1
+                 AND LOWER(o.name) = 'agenticadvertising.org'
+            )
           ) AS is_aao_team,
           EXISTS (
             SELECT 1
