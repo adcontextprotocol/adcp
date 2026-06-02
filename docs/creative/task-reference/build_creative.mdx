@@ -569,11 +569,11 @@ When the request uses `max_creatives`, `max_variants` > 1, `variant_axis`, or `r
 }
 ```
 
-- **creatives[]**: One entry per built creative. With `max_creatives`, there is one entry per sampled catalog item (`catalog_item_ref` identifies which item); without catalog fan-out there is a single entry.
+- **creatives[]**: One entry per built creative group. With `max_creatives`, there is one entry per sampled catalog item (`catalog_item_ref` identifies which item); without catalog fan-out there is a single entry. Treat this as the produced group set; choose among alternatives inside each group's `variants[]`.
 - **creatives[].build_creative_id**: Identifies a built creative within this response.
 - **creatives[].catalog_item_ref**: Present on catalog fan-out — an object identifying the source catalog item via `item_id` (plus optional `catalog_type`).
 - **creatives[].errors[]**: Present only on a *failed* catalog item — catalog fan-out is non-atomic, so a failed item is returned as a `creatives[]` entry carrying `errors[]` and no `variants[]`, without failing the batch.
-- **creatives[].variants[]**: The alternatives produced for this creative. Length is at most `max_variants`. Each variant carries its own complete `creative_manifest`.
+- **creatives[].variants[]**: The choose-among alternatives produced for this creative group. Length is at most `max_variants`. Each variant carries its own complete `creative_manifest`.
 - **variants[].build_variant_id**: Identifies a single variant — the leaf-level **lineage anchor**. This is its **own namespace** — never reuse a `preview_id` (a `preview_creative` render) or a served `variant_id` (a delivery-time identifier) here. You traffic a chosen build by passing its `build_variant_id`.
 - **variants[].parent_build_variant_id**: Present only on a refined variant ([Refinement](#refinement)) — the `build_variant_id` of the source it was refined from. Absent for first-generation builds.
 - **variants[].variant_axis_value**: The value of the `variant_axis` dimension this variant represents (e.g. a voice, a theme).

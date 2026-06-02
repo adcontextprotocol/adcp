@@ -279,12 +279,12 @@
     },
     {
       "title": "BuildCreativeVariantSuccess",
-      "description": "Multiplicity success response. Returned WHENEVER the request used max_creatives, max_variants > 1, variant_axis, or refine_from_build_variant_id — with or without a transformer_id. **There is no fallback to the single/multi-format shapes: a client that sends any of those inputs MUST handle this `creatives[]` shape; it will not receive `creative_manifest`/`creative_manifests`.** Carries creatives[] — one entry per produced creative (per catalog item when fanning out) — each holding variants[] alternatives. Every produced variant is a real, independently-billed build (you pay for all produced); the buyer keeps one or many by trafficking the chosen build_variant_id(s). Mutually exclusive with the other success/error/submitted shapes. Per-FORMAT remains atomic within a (creative) group; per-ITEM (catalog fan-out) is non-atomic — a failed item is reported via that creative's errors[] and does not fail the batch.",
+      "description": "Multiplicity success response. Returned WHENEVER the request used max_creatives, max_variants > 1, variant_axis, or refine_from_build_variant_id — with or without a transformer_id. **There is no fallback to the single/multi-format shapes: a client that sends any of those inputs MUST handle this `creatives[]` shape; it will not receive `creative_manifest`/`creative_manifests`.** Carries creatives[] — one entry per produced creative group (per catalog item when fanning out) — each holding variants[] alternatives. The envelope semantics are fixed: creatives[] is the set of creative groups the call produced; variants[] is the choose-among set within each group. Every produced variant is a real, independently-billed build (you pay for all produced); the buyer keeps one or many by trafficking the chosen build_variant_id(s). Mutually exclusive with the other success/error/submitted shapes. Per-FORMAT remains atomic within a (creative) group; per-ITEM (catalog fan-out) is non-atomic — a failed item is reported via that creative's errors[] and does not fail the batch.",
       "type": "object",
       "properties": {
         "creatives": {
           "type": "array",
-          "description": "One entry per produced creative. With catalog fan-out, one entry per catalog item (bounded/sampled by max_creatives).",
+          "description": "One entry per produced creative group. With catalog fan-out, one entry per catalog item (bounded/sampled by max_creatives). This array is the produced group set; use variants[] inside each group for choose-among alternatives.",
           "items": {
             "type": "object",
             "properties": {
@@ -310,7 +310,7 @@
               },
               "variants": {
                 "type": "array",
-                "description": "Alternatives produced for this creative (voices, themes, best-of-N, etc.). At least one. Each is an independently-tagged, independently-billed build.",
+                "description": "Choose-among alternatives produced for this creative group (voices, themes, best-of-N, etc.). At least one. Each is an independently-tagged, independently-billed build.",
                 "items": {
                   "type": "object",
                   "properties": {

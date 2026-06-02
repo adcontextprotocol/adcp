@@ -266,9 +266,10 @@ phases:
     title: "Produce variants along an axis"
     narrative: |
       The buyer A/Bs two voices in one call: max_variants with a variant_axis
-      fixing the values. The agent returns the variant shape — creatives[] each
-      carrying variants[], one independently-tagged leaf per axis value. Each
-      leaf is a real, independently-billed build; keep_mode is advisory.
+      fixing the values. The agent returns the variant shape — creatives[] is
+      the produced creative group set, and variants[] is the choose-among set
+      within each group, with one independently-tagged leaf per axis value.
+      Each leaf is a real, independently-billed build; keep_mode is advisory.
     steps:
       - id: build_variants
         title: "Build two voice variants"

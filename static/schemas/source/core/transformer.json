@@ -23,6 +23,44 @@
       "description": "Transformer-specific attributes a buyer can filter or display (e.g. provider, modality, language).",
       "additionalProperties": true
     },
+    "voice_synthesis_ref": {
+      "type": "array",
+      "description": "Optional discovery/audit anchors for voice transformers provisioned from brand-agent voice_synthesis entries. Informational only: these references help buyers match a discovered transformer to brand/rights-agent provenance, but they do not assert build-time authorization or require the creative agent to perform rights-token validation.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "brand_agent": {
+            "type": "object",
+            "description": "Brand agent that exposed the referenced voice_synthesis entry.",
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "MCP endpoint URL of the brand agent."
+              },
+              "id": {
+                "type": "string",
+                "description": "Agent identifier."
+              }
+            },
+            "required": ["url", "id"],
+            "additionalProperties": true
+          },
+          "voice_id": {
+            "type": "string",
+            "description": "voice_synthesis.voice_id from the brand agent."
+          },
+          "rights_id": {
+            "type": "string",
+            "x-entity": "rights_grant",
+            "description": "Optional rights offering or grant identifier associated with this provisioned voice. This is provenance metadata only, not a build_creative rights token."
+          }
+        },
+        "required": ["brand_agent", "voice_id"],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
     "input_format_ids": {
       "type": "array",
       "description": "Formats this transformer accepts as input. Empty or omitted means it builds from a brief / raw assets (pure generation) rather than transforming an existing creative.",
@@ -71,6 +109,13 @@
       "name": "Voiceover",
       "description": "Script-to-audio voiceover with account-configured voices.",
       "metadata": { "provider": "audiostack", "modality": "audio" },
+      "voice_synthesis_ref": [
+        {
+          "brand_agent": { "url": "https://brand.novabrands.example/mcp", "id": "nova_brand_agent" },
+          "voice_id": "sara",
+          "rights_id": "rgt_sara_voice_2026"
+        }
+      ],
       "input_format_ids": [{ "agent_url": "https://creative.audiostack.example", "id": "script" }],
       "output_format_ids": [{ "agent_url": "https://creative.audiostack.example", "id": "audio_vo" }],
       "params": [
