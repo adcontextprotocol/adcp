@@ -278,6 +278,29 @@ test('product placements can narrow product format options', async () => {
   assert.equal(validate(product), true, JSON.stringify(validate.errors, null, 2));
 });
 
+test('product format options require full declarations while catalog placements may use bare refs', async () => {
+  const validateProduct = await compile('/schemas/core/product.json');
+  const validatePlacementDefinition = await compile('/schemas/core/placement-definition.json');
+
+  assert.equal(
+    validateProduct(validProduct({
+      format_options: [{ format_option_id: 'homepage_image' }]
+    })),
+    false
+  );
+
+  assert.equal(
+    validatePlacementDefinition({
+      placement_id: 'homepage_mrec',
+      name: 'Homepage MREC',
+      property_ids: ['daily_pulse'],
+      format_options: [{ format_option_id: 'homepage_image' }]
+    }),
+    true,
+    JSON.stringify(validatePlacementDefinition.errors, null, 2)
+  );
+});
+
 test('products can include publisher-scoped referenced placements', async () => {
   const validate = await compile('/schemas/core/product.json');
   const product = validProduct({
