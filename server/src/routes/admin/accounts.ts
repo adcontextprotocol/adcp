@@ -15,7 +15,7 @@ import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin, requireGlobalAdmin } from "../../middleware/auth.js";
 import { serveHtmlWithConfig } from "../../utils/html-config.js";
-import { OrganizationDatabase, VALID_REVENUE_TIERS, resolveMembershipTier, type MembershipTier } from "../../db/organization-db.js";
+import { OrganizationDatabase, resolveMembershipTier, type MembershipTier } from "../../db/organization-db.js";
 import { formatCompanyTypes } from "../../config/company-types.js";
 import { deleteOrganizationMembership } from "../../db/membership-db.js";
 import { invalidateMembershipCache } from "../../db/org-filters.js";
