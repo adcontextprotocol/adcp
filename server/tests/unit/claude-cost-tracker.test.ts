@@ -70,6 +70,13 @@ describe('checkCostCap', () => {
     expect((await checkCostCap('u-tier', 'member_paid')).ok).toBe(true);
   });
 
+  it('does not cap AAO team usage', async () => {
+    await recordCost('u-aao-team', 'claude-opus-4-7', { input_tokens: 10_000_000, output_tokens: 10_000_000 });
+    const result = await checkCostCap('u-aao-team', 'aao_team');
+    expect(result.ok).toBe(true);
+    expect(result.tier).toBe('aao_team');
+  });
+
   it('aggregates multiple recorded calls into the running total', async () => {
     // 10× small Haiku calls (10 * 100 micros = 1000 micros = $0.001)
     for (let i = 0; i < 10; i++) {
@@ -138,6 +145,11 @@ describe('resolveUserTier', () => {
 
   it('returns member_paid for active subscribers', () => {
     expect(resolveUserTier({ hasActiveSubscription: true })).toBe('member_paid');
+  });
+
+  it('returns aao_team for AAO staff/admin users regardless of subscription status', () => {
+    expect(resolveUserTier({ isAAOTeam: true })).toBe('aao_team');
+    expect(resolveUserTier({ isAAOTeam: true, hasActiveSubscription: true })).toBe('aao_team');
   });
 
   it('returns member_free when authenticated but no subscription', () => {
