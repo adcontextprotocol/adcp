@@ -144,6 +144,19 @@ NODE
   node scripts/build-compliance.cjs
 fi
 
+if [ "${SRC}" = "dist/compliance/latest" ]; then
+  # Remove canonical/generated compliance entries before overlaying the current
+  # source bundle so deleted or renamed storyboards cannot survive from the SDK
+  # snapshot and mask source-authority drift.
+  rm -rf "$DST/protocols" \
+    "$DST/specialisms" \
+    "$DST/test-kits" \
+    "$DST/test-vectors" \
+    "$DST/universal" \
+    "$DST/domains" \
+    "$DST/index.json"
+fi
+
 echo "Overlaying $SRC onto $DST"
 (cd "$SRC" && find . -type f) | while read -r rel; do
   target="$DST/${rel#./}"
@@ -163,5 +176,8 @@ index.published_version = version;
 index.adcp_version = version;
 fs.writeFileSync(file, `${JSON.stringify(index, null, 2)}\n`);
 NODE
+fi
+if [ "${SRC}" = "dist/compliance/latest" ]; then
+  node scripts/lint-compliance-source-authority.cjs --target "$DST"
 fi
 echo "Overlay complete."

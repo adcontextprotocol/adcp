@@ -241,6 +241,25 @@ function normalizeThreeZeroCompatFlightDates(value: unknown): void {
   for (const child of Object.values(obj)) normalizeThreeZeroCompatFlightDates(child);
 }
 
+function normalizeThreeZeroIdempotencyDates(value: unknown): void {
+  if (!value || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    for (const item of value) normalizeThreeZeroIdempotencyDates(item);
+    return;
+  }
+
+  const obj = value as Record<string, unknown>;
+  if (obj.start_time === '2026-06-01T00:00:00Z') {
+    obj.start_time = '2099-06-01T00:00:00Z';
+  }
+  if (obj.end_time === '2026-06-30T23:59:59Z') {
+    obj.end_time = '2099-06-30T23:59:59Z';
+  } else if (obj.end_time === '2026-09-30T23:59:59Z') {
+    obj.end_time = '2099-09-30T23:59:59Z';
+  }
+  for (const child of Object.values(obj)) normalizeThreeZeroIdempotencyDates(child);
+}
+
 function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
   let patched = sb;
   if (sb.id === 'creative/creative_lifecycle_webhooks') {
@@ -264,6 +283,10 @@ function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
   if (!isThreeZeroCompatRun) return patched;
   patched = structuredClone(patched) as Storyboard;
   normalizeThreeZeroCompatFlightDates(patched);
+  if (sb.id === 'idempotency') {
+    normalizeThreeZeroIdempotencyDates(patched);
+    return patched;
+  }
   if (sb.id === 'media_buy_seller/pending_creatives_to_start') {
     for (const phase of patched.phases ?? []) {
       for (const step of phase.steps ?? []) {

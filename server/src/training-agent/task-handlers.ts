@@ -2741,12 +2741,14 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   const wholesaleMeta = buyingMode === 'wholesale'
     ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session)
     : undefined;
+  const contextEcho = req.context ? { context: req.context } : {};
 
   if (wholesaleMeta && wholesaleFeedUnchanged(req as WholesaleFeedRequest, wholesaleMeta)) {
     return {
       status: 'completed' as const,
       unchanged: true,
       ...wholesaleMeta,
+      ...contextEcho,
     } as GetProductsResponse;
   }
 
@@ -3090,6 +3092,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     ...(pagination && { pagination }),
     ...(buyingMode !== 'wholesale' && proposals.length > 0 && { proposals }),
     ...(refinementApplied.length > 0 && { refinement_applied: refinementApplied }),
+    ...contextEcho,
     ...((canonicalFormatAdvisories.length > 0 || staleDirective) && {
       errors: [
         ...(staleDirective ? [{

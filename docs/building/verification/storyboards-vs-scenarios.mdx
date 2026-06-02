@@ -25,7 +25,7 @@ Storyboards are the conformance specification. Each one defines:
 - Every wire-shape assertion the seller's responses must satisfy
 - The `comply_test_controller` operations the runner uses to seed deterministic state
 
-[`conformance.mdx`](/docs/building/verification/conformance) calls these *"the truth"* — and means it. The AdCP Verified (Spec) badge is issued by running these YAML files through [`comply()`](/docs/building/verification/validate-your-agent) and observing every assertion pass.
+[`conformance.mdx`](/docs/building/verification/conformance) calls these *"the truth"* — and means it. These YAML files are the basis for **AgenticAdvertising.org Verified (Spec)**; AgenticAdvertising.org issues that qualifier when its compliance heartbeat runs the applicable storyboards and every assertion passes.
 
 You'll see storyboards at:
 - `/compliance/{version}/universal/*.yaml` — every AdCP agent must pass
@@ -33,6 +33,20 @@ You'll see storyboards at:
 - `/compliance/{version}/specialisms/{id}/index.yaml` — opt-in claims
 
 Run them via `npx @adcp/sdk@latest storyboard run <id>` or interactively through [Addie](https://agenticadvertising.org).
+
+### Source authority and rollout
+
+The authored source of truth for storyboards is `static/compliance/source/` in the `adcontextprotocol/adcp` repo. `scripts/build-compliance.cjs` builds `dist/compliance/latest/` during development and stamps `dist/compliance/{version}/` on release, adding only generated distribution artifacts such as `index.json` and the legacy `domains/` alias. SDKs may bundle a snapshot so runners work offline and remain version-pinned, but that snapshot is a distribution copy, not the authority.
+
+During the current migration, `@adcp/sdk` still loads its bundled cache by default. Spec repo CI overlays `static/compliance/source/` onto that cache before running the training-agent storyboards so pull requests are graded against the candidate source without switching runtime authority in the same step. SDK release work should separately prove its bundled cache matches the spec bundle it claims to ship.
+
+Breaking or materially stricter storyboard changes must roll out in this order:
+
+```text
+spec storyboard change -> reference implementations update -> @adcp/sdk runner release -> downstream consumers update
+```
+
+That order prevents the release deadlock where a new runner expects stricter scenarios before repo-owned reference implementations have a tagged implementation that can pass them.
 
 ## `comply_test_controller` scenarios (normative — but different)
 
@@ -48,7 +62,7 @@ The SDK ships TypeScript files under `testing/scenarios/` — `media-buy.ts`, `s
 
 - **Not the conformance spec.** Reading them to learn what AdCP requires will produce wrong answers.
 - **Not maintained in lockstep with storyboards.** A scenario file may hard-code parameters that the storyboard equivalent has long since corrected. *Example: `scenarios/media-buy.ts` hard-codes `buying_mode: 'brief'` at four call sites; the YAML storyboard for `sales-guaranteed` exercises `buying_mode: 'refine'` + `action: 'finalize'` via the `proposal_finalize` storyboard. Both are valid `buying_mode` values; the scenario file just doesn't cover the lifecycle.*
-- **Callable, but for different purposes.** Internal smoke tests in the SDK, integration-test fixtures for downstream tooling, and some legacy paths still use these. They are not what AAO Verified (Spec) runs against.
+- **Callable, but for different purposes.** Internal smoke tests in the SDK, integration-test fixtures for downstream tooling, and some legacy paths still use these. They are not what AgenticAdvertising.org Verified (Spec) runs against.
 
 If you find yourself grepping `testing/scenarios/*.ts` to understand AdCP, you've taken a wrong turn. The right path:
 
