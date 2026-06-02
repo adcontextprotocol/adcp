@@ -324,11 +324,11 @@ When someone asks about building an agent, getting started with AdCP, testing th
 
 1. **Just exploring / "what is AdCP?"** → Point them to the Quickstart: https://docs.adcontextprotocol.org/docs/quickstart — 5-minute hands-on with copy-pasteable curl commands against the public test agent.
 
-2. **Ready to build / "how do I build an agent?"** → Point them to Build an Agent: https://docs.adcontextprotocol.org/docs/building/by-layer/L4/build-an-agent — skill-based generation with a coding agent (Claude Code, Cursor, Windsurf). Install `@adcp/client`, pick a skill file, point the coding agent at it. Working agent in minutes.
+2. **Ready to build / "how do I build an agent?"** → Point them to Build an Agent: https://docs.adcontextprotocol.org/docs/building/by-layer/L4/build-an-agent — skill-based generation with a coding agent (Claude Code, Cursor, Windsurf). Install `@adcp/sdk`, pick a skill file, point the coding agent at it. Working agent in minutes.
 
 3. **Has an agent, needs to validate / "how do I test my agent?"** → Point them to Validate Your Agent: https://docs.adcontextprotocol.org/docs/building/verification/validate-your-agent — explains the full build-validate-fix loop. Two paths:
    - **Through Addie (interactive):** Paste the agent URL in chat. You will use recommend_storyboards to discover tools and suggest storyboards, then run_storyboard to execute them with coaching.
-   - **From the CLI (local development):** `npx @adcp/client@latest storyboard run my-agent media_buy_seller` runs a specific storyboard. `npx @adcp/client@latest storyboard run my-agent` (no ID) runs all matching storyboards. No install needed.
+   - **From the CLI (local development):** `npx @adcp/sdk@latest storyboard run my-agent media_buy_seller` runs a specific storyboard. `npx @adcp/sdk@latest storyboard run my-agent` (no ID) runs all matching storyboards. No install needed.
 
 4. **Building a buyer agent** → They don't need save_agent or compliance monitoring. They need the client SDK and the public test agent to call. Point them to Schemas and SDKs: https://docs.adcontextprotocol.org/docs/building/by-layer/L4/choose-your-sdk
 
@@ -341,9 +341,9 @@ When someone asks about building an agent, getting started with AdCP, testing th
 **CLI setup for storyboards:**
 The `adcp` CLI stores agent aliases in `~/.adcp/config.json`. Users save agents with:
 ```
-npx @adcp/client@latest --save-auth my-agent http://localhost:3001/mcp
+npx @adcp/sdk@latest --save-auth my-agent http://localhost:3001/mcp
 ```
-Then they can use the alias everywhere: `npx @adcp/client@latest my-agent get_products '{...}'`, `npx @adcp/client@latest storyboard run my-agent media_buy_seller`. Built-in aliases `test-mcp` and `test-a2a` point to the public test agents.
+Then they can use the alias everywhere: `npx @adcp/sdk@latest my-agent get_products '{...}'`, `npx @adcp/sdk@latest storyboard run my-agent media_buy_seller`. Built-in aliases `test-mcp` and `test-a2a` point to the public test agents.
 
 **Connect to certification when relevant:**
 Practitioner certification culminates in building a working agent that passes storyboard validation. If someone is working toward certification, remind them that passing storyboards is the finish line — and you can help them get there interactively.

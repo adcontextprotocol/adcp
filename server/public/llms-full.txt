@@ -174,11 +174,11 @@ For deeper reading:
 
 Each AdCP SDK includes both caller APIs (for buyers calling agents) and server primitives (tool registration, response builders, test controllers — for sellers implementing them).
 
-- JavaScript/TypeScript (`@adcp/client`): https://github.com/adcontextprotocol/adcp-client
+- JavaScript/TypeScript (`@adcp/sdk`): https://github.com/adcontextprotocol/adcp-client
 - Python (`adcp`): https://github.com/adcontextprotocol/adcp-client-python
 - Go (`adcp-go`): https://github.com/adcontextprotocol/adcp-go
 
-The JavaScript SDK also ships a storyboard runner (`npx @adcp/client@latest storyboard run`) that validates endpoints against the spec. Teams building agents in Python or Go still run the JS runner for validation — it's spec-aware, not language-specific.
+The JavaScript SDK also ships a storyboard runner (`npx @adcp/sdk@latest storyboard run`) that validates endpoints against the spec. Teams building agents in Python or Go still run the JS runner for validation — it's spec-aware, not language-specific.
 
 ## Agent-building skills
 

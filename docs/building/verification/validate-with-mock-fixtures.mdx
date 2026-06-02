@@ -6,7 +6,7 @@ description: "Pre-staging gate for AdCP adapter agents — published mock upstre
 ---
 
 <Note>
-**Non-normative.** This page describes a complementary harness pattern, not a compliance tier. The recipe builds on top of the storyboard runner ([Validate your agent](/docs/building/verification/validate-your-agent)) — it does not replace storyboards or staging integration tests, and is not a certification gate. The mock-fixture conventions described here (`/_lookup/<resource>`, `/_debug/traffic`) are reference implementations in `@adcp/client`; alternative SDK implementations may diverge. Treat as harness convention, not protocol contract.
+**Non-normative.** This page describes a complementary harness pattern, not a compliance tier. The recipe builds on top of the storyboard runner ([Validate your agent](/docs/building/verification/validate-your-agent)) — it does not replace storyboards or staging integration tests, and is not a certification gate. The mock-fixture conventions described here (`/_lookup/<resource>`, `/_debug/traffic`) are reference implementations in `@adcp/sdk`; alternative SDK implementations may diverge. Treat as harness convention, not protocol contract.
 </Note>
 
 Most AdCP agents that wrap an external platform (a DSP, SSP, retail data warehouse, creative server, signal marketplace) ship façade bugs that storyboards alone cannot detect: handlers return shape-valid AdCP responses without actually integrating with the upstream. The recipe on this page closes that gap as a **pre-staging gate** — cheap, fast, runs in CI, surfaces façades and contract drift before code reaches a staging tenant.
@@ -17,13 +17,13 @@ If your agent does not wrap an upstream — for example, a pure decisioning serv
 
 ```bash
 # 1. Boot a mock upstream for your specialism
-npx @adcp/client@latest mock-server sales-social --port 4250 &
+npx @adcp/sdk@latest mock-server sales-social --port 4250 &
 
 # 2. Run your AdCP agent, configured to use http://localhost:4250 as its upstream
 ./your-agent.sh        # Python / Go / Rust / TS — language-agnostic
 
 # 3. Grade your agent against the matching storyboard
-npx @adcp/client@latest storyboard run http://localhost:3001/mcp sales_social \
+npx @adcp/sdk@latest storyboard run http://localhost:3001/mcp sales_social \
   --auth $TOKEN --json > grader.json
 
 # 4. Assert your agent actually called the upstream
@@ -34,7 +34,7 @@ curl -s http://localhost:4250/_debug/traffic
 Step 3 catches AdCP wire bugs (response shape, error codes, idempotency, missing required fields). Step 4 catches **integration gaps** — agents whose handlers return shape-valid AdCP responses without exercising the upstream's headline endpoints. Both signals matter; one without the other is incomplete.
 
 <Info>
-The mock-server CLI shown above ships in `@adcp/client` (TypeScript). If your CI runs in another language, the simplest pattern is to run the TS CLI as a sidecar (e.g. a Docker service container in GitHub Actions, or a separate Node process) — the agent under test stays in its native language, only the mock + storyboard runner are TS. A Python or Go SDK shipping its own mock-server would re-implement the conventions described below; until that lands, the TS CLI is the reference.
+The mock-server CLI shown above ships in `@adcp/sdk` (TypeScript). If your CI runs in another language, the simplest pattern is to run the TS CLI as a sidecar (e.g. a Docker service container in GitHub Actions, or a separate Node process) — the agent under test stays in its native language, only the mock + storyboard runner are TS. A Python or Go SDK shipping its own mock-server would re-implement the conventions described below; until that lands, the TS CLI is the reference.
 </Info>
 
 ## Why traffic counters
@@ -51,7 +51,7 @@ A traffic counter on the mock upstream catches the first two cases unconditional
 
 ## What's available
 
-The reference TS implementation (`@adcp/client`) ships four mock-server specialisms covering distinct upstream surface shapes. These are not exhaustive — they exist to exercise representative auth/tenancy/payload patterns, and other specialisms reuse the closest match.
+The reference TS implementation (`@adcp/sdk`) ships four mock-server specialisms covering distinct upstream surface shapes. These are not exhaustive — they exist to exercise representative auth/tenancy/payload patterns, and other specialisms reuse the closest match.
 
 | Specialism | Mimics | Auth | Multi-tenant scope |
 |---|---|---|---|
@@ -60,7 +60,7 @@ The reference TS implementation (`@adcp/client`) ships four mock-server speciali
 | `sales-social` | TikTok / Meta-shaped social ads platform | OAuth 2.0 client_credentials with refresh | Path (`/v1.3/advertiser/{advertiser_id}/…`) |
 | `sales-guaranteed` | GAM / FreeWheel guaranteed-sales platform | Static Bearer | Header (`X-Network-Code`) |
 
-The auth shapes and tenancy patterns are realistic; the specific account-field names the adapter receives (e.g. `account.advertiser`, `account.operator`) are SDK conventions for binding AdCP requests to upstream tenants, not normative AdCP terms. See `@adcp/client` source for the canonical mapping.
+The auth shapes and tenancy patterns are realistic; the specific account-field names the adapter receives (e.g. `account.advertiser`, `account.operator`) are SDK conventions for binding AdCP requests to upstream tenants, not normative AdCP terms. See the `@adcp/sdk` source for the canonical mapping.
 
 Each mock exposes:
 
@@ -82,13 +82,13 @@ jobs:
       mock-upstream:
         image: node:20
         ports: ['4250:4250']
-        # Use a bootstrap script that runs `npx @adcp/client@latest mock-server <specialism>`.
+        # Use a bootstrap script that runs `npx @adcp/sdk@latest mock-server <specialism>`.
     steps:
       - uses: actions/checkout@v4
       - run: ./scripts/start-agent.sh &              # Your agent in your language
       - run: ./scripts/wait-for-port.sh 3001
       - run: |
-          npx @adcp/client@latest storyboard run http://localhost:3001/mcp <storyboard_id> \
+          npx @adcp/sdk@latest storyboard run http://localhost:3001/mcp <storyboard_id> \
             --auth $TOKEN --json > grader.json
       - run: |
           # Assert each expected upstream route was hit at least once
@@ -109,7 +109,7 @@ Realistically your first run will not pass both gates. Common shapes and how to 
 - **Storyboard `failing` on a single step + traffic gate clean** — usually a one-line shape bug (wrong field name, missing required field, status mismatch). The per-step `details` names the field via JSON pointer.
 - **Traffic gate empty (0 hits everywhere) + agent appears to start** — agent boot threw a recoverable error after listening on port. Check the agent's stderr.
 
-Fastest debug loop: use `npx @adcp/client@latest storyboard step <agent> <storyboard_id> <step_id>` to isolate the failing step. Skips the cascade, runs a single tool call, sub-second feedback. Don't run the full storyboard until the isolated step passes — saves minutes per iteration.
+Fastest debug loop: use `npx @adcp/sdk@latest storyboard step <agent> <storyboard_id> <step_id>` to isolate the failing step. Skips the cascade, runs a single tool call, sub-second feedback. Don't run the full storyboard until the isolated step passes — saves minutes per iteration.
 
 ## Limitations
 

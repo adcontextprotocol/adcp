@@ -142,7 +142,7 @@ The comply report appears in your agent's dashboard panel under the AAO Verified
 2. Find the storyboard definition in the [Compliance Catalog](/docs/building/verification/compliance-catalog).
 3. Reproduce locally:
    ```bash
-   npx @adcp/sdk test --storyboard signed_requests --url https://your-agent-url.example/mcp
+   npx @adcp/sdk@latest storyboard run signed_requests --agent-url https://your-agent-url.example/mcp
    ```
 4. The local runner gives the same assertions as the heartbeat. Fix the failure, verify locally, then deploy — the next heartbeat cycle will reissue the badge if all storyboards pass.
 

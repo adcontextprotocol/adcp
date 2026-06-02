@@ -32,7 +32,7 @@ You'll see storyboards at:
 - `/compliance/{version}/protocols/{protocol}/index.yaml` — anyone claiming the protocol
 - `/compliance/{version}/specialisms/{id}/index.yaml` — opt-in claims
 
-Run them via `npx @adcp/sdk storyboard run <id>` or interactively through [Addie](https://agenticadvertising.org).
+Run them via `npx @adcp/sdk@latest storyboard run <id>` or interactively through [Addie](https://agenticadvertising.org).
 
 ## `comply_test_controller` scenarios (normative — but different)
 
@@ -52,9 +52,9 @@ The SDK ships TypeScript files under `testing/scenarios/` — `media-buy.ts`, `s
 
 If you find yourself grepping `testing/scenarios/*.ts` to understand AdCP, you've taken a wrong turn. The right path:
 
-1. Find the storyboard that matches your declared specialism: `npx @adcp/sdk storyboard list`
-2. Read the YAML: `npx @adcp/sdk storyboard show <id>`
-3. Run it: `npx @adcp/sdk storyboard run <id> --agent-url <url>`
+1. Find the storyboard that matches your declared specialism: `npx @adcp/sdk@latest storyboard list`
+2. Read the YAML: `npx @adcp/sdk@latest storyboard show <id>`
+3. Run it: `npx @adcp/sdk@latest storyboard run <id> --agent-url <url>`
 
 ## Three-line decoder
 

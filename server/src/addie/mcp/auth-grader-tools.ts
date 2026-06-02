@@ -190,7 +190,7 @@ export const AUTH_GRADER_TOOLS: AddieTool[] = [
     description:
       "Diagnose an agent's OAuth handshake by probing RFC 9728 protected-resource metadata and RFC 8414 authorization-server metadata, decoding any access token in scope, and reporting ranked hypotheses about what's wrong (likely / possible / ruled out). Use when an agent returns 401/403 unexpectedly, when OAuth metadata might be misconfigured, or when validating an agent's OAuth setup before integrating. This is anonymous-mode diagnosis — token refresh and authenticated tool-call probes are skipped, so the report describes what the public surface advertises rather than whether a specific token works.",
     usage_hints:
-      'use for "diagnose OAuth on this agent", "why is the agent rejecting my token?", "is this agent\'s OAuth metadata correct?", "validate OAuth setup". For deeper diagnosis with a saved token the user can run `npx @adcp/sdk diagnose-auth <alias>` locally — point them there if a token-aware probe is needed.',
+      'use for "diagnose OAuth on this agent", "why is the agent rejecting my token?", "is this agent\'s OAuth metadata correct?", "validate OAuth setup". For deeper diagnosis with a saved token the user can run `npx @adcp/sdk@latest diagnose-auth <alias>` locally — point them there if a token-aware probe is needed.',
     input_schema: {
       type: 'object',
       properties: {
@@ -451,7 +451,7 @@ function formatAuthDiagnosisReport(report: AuthDiagnosisReport): string {
 
   lines.push(
     '',
-    'This is anonymous-mode diagnosis (no token, no authenticated tool call). For a deeper probe with a saved token, run `npx @adcp/sdk diagnose-auth <alias>` locally.'
+    'This is anonymous-mode diagnosis (no token, no authenticated tool call). For a deeper probe with a saved token, run `npx @adcp/sdk@latest diagnose-auth <alias>` locally.'
   );
   return lines.join('\n');
 }
