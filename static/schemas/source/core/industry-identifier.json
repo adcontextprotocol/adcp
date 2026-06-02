@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/industry-identifier.json",
   "title": "Industry Identifier",
-  "description": "An industry-standard identifier for an advertising creative (e.g., Ad-ID, ISCI, Clearcast clock number). These identifiers are managed by external registries and used across the supply chain to track and reference specific creative assets.",
+  "description": "An industry-standard or market-specific identifier for an advertising creative (e.g., Ad-ID, ISCI, Clearcast clock number, IDcrea). These identifiers are managed by external registries or clearance bodies and used across the supply chain to track and reference specific creative assets. Add a PR to extend creative-identifier-type when another shared identifier scheme needs first-class support.",
   "type": "object",
   "properties": {
     "type": {
@@ -11,7 +11,7 @@
     "value": {
       "type": "string",
       "maxLength": 64,
-      "description": "The identifier value (e.g., 'ABCD1234000H' for Ad-ID)"
+      "description": "The identifier value (e.g., 'ABCD1234000H' for Ad-ID). Preserve the value exactly as the traffic or clearance system expects it."
     }
   },
   "required": ["type", "value"],
