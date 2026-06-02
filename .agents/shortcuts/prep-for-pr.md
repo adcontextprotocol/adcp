@@ -14,11 +14,14 @@ request.
 3. If API or MCP logic changed, run the server locally and verify the behavior
    directly.
 4. Check for the right changeset. If none exists, or the type is wrong, fix it.
+   Stage the changeset before checking because the CLI ignores untracked files:
+   `git add .changeset/<name>.md && npx --yes @changesets/cli@^2.31.0 status --since=origin/main`.
 5. Run code review and address the findings.
 6. Run the `security-reviewer` agent and address all Must Fix and Should Fix
    findings before proceeding.
 7. Draft the PR output:
-   - short title
+   - short conventional-commits title; validate with
+     `node scripts/check-pr-title.cjs "fix(scope): summary"`
    - summary
    - testing section
    - risks or follow-ups

@@ -1,5 +1,4 @@
 ---
-"adcontextprotocol": patch
 ---
 
 Relax the public training-agent MCP route to avoid requiring request signing in

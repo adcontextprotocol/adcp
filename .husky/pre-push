@@ -3,6 +3,32 @@
 # Verify version sync before pushing
 npm run verify-version-sync
 
+# Catch missing changesets locally before GitHub Actions. CI still runs the
+# full Changesets CLI gate; this fast preflight avoids invoking that CLI from
+# Git's pre-push environment, where stdin/ref handling is fragile.
+BRANCH_NAME=$(git branch --show-current)
+case "$BRANCH_NAME" in
+  changeset-release/*|forward-merge/*|auto/docs-v*)
+    echo "⏭  Release machinery branch — skipping changeset check"
+    ;;
+  *)
+    CHANGESET_BASE="${ADCP_CHANGESET_BASE:-origin/main}"
+    if git rev-parse --verify --quiet "$CHANGESET_BASE" >/dev/null; then
+      echo "🔍 Checking for changeset since $CHANGESET_BASE..."
+      if ! git diff --name-only --diff-filter=ACMR "$CHANGESET_BASE"...HEAD -- .changeset |
+        grep -Eq '^\.changeset/[^/]+\.md$'; then
+        echo "Missing changeset. Add one with 'npx changeset --empty' before pushing."
+        echo "Run the full CI-equivalent check with:"
+        echo "  npx --yes @changesets/cli@^2.31.0 status --since=$CHANGESET_BASE"
+        exit 1
+      fi
+      echo "✅ Changeset present"
+    else
+      echo "⏭  $CHANGESET_BASE not found — skipping local changeset check"
+    fi
+    ;;
+esac
+
 # Only run Mintlify broken-links when docs actually changed on this branch.
 # CI (.github/workflows/broken-links.yml) is the authoritative check; this is a
 # fast local pre-flight. A11y is skipped locally — add to CI if we want it gated.
