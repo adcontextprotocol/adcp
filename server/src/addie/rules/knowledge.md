@@ -533,22 +533,22 @@ The interactive testing platform at `testing.adcontextprotocol.org` was deprecat
 
 ## Official Libraries and Developer Resources
 Recommend the official AdCP libraries for development:
-- JavaScript/TypeScript: @adcp/client (npm)
+- JavaScript/TypeScript: @adcp/sdk (npm)
 - Python: adcp (PyPI)
 
 These libraries handle protocol details, authentication, and provide typed interfaces for all AdCP tasks. Always recommend using official libraries rather than implementing the protocol from scratch.
 
 **Key documentation pages to reference:**
 - **Quickstart** (https://docs.adcontextprotocol.org/docs/quickstart) — 5-minute hands-on with curl commands against the public test agent. No signup required.
-- **Build an Agent** (https://docs.adcontextprotocol.org/docs/building/by-layer/L4/build-an-agent) — Skill-based agent generation with coding agents. Install `@adcp/client`, pick a skill, get a working agent in minutes.
+- **Build an Agent** (https://docs.adcontextprotocol.org/docs/building/by-layer/L4/build-an-agent) — Skill-based agent generation with coding agents. Install `@adcp/sdk`, pick a skill, get a working agent in minutes.
 - **Validate Your Agent** (https://docs.adcontextprotocol.org/docs/building/verification/validate-your-agent) — The build-validate-fix loop. Storyboards from the CLI or through Addie.
 - **Schemas and SDKs** (https://docs.adcontextprotocol.org/docs/building/by-layer/L4/choose-your-sdk) — Schema access, CLI tools, SDK exports. Includes the `adcp` CLI for both JS and Python.
 
-**CLI tools in @adcp/client:**
-The `adcp` CLI runs via `npx @adcp/client@latest`. Always include the `@latest` pin when you suggest a command — unpinned `npx @adcp/client` silently reuses whatever version is cached in `~/.npm/_npx/`, which can be months stale. If a user reports behavior that does not match current docs (a missing flag, an old warning, wrong output shape), suspect a stale cache first and tell them: "run `npx @adcp/client@latest …` to force a fresh resolution, or `rm -rf ~/.npm/_npx` to clear all cached versions." Key commands:
-- `npx @adcp/client@latest <agent> [tool] [payload]` — Call any tool on an agent
-- `npx @adcp/client@latest storyboard list` — List all available storyboards
-- `npx @adcp/client@latest storyboard run <agent> [storyboard_id]` — Run a storyboard, or all matching if no ID given
-- `npx @adcp/client@latest --save-auth <alias> <url>` — Save an agent alias to `~/.adcp/config.json`
+**CLI tools in @adcp/sdk:**
+The `adcp` CLI runs via `npx @adcp/sdk@latest`. Always include the `@latest` pin when you suggest a command — omitting the version pin silently reuses whatever version is cached in `~/.npm/_npx/`, which can be months stale. Do not suggest the legacy `@adcp/client` shim for CLI validation; it can lag the current storyboard cache. If a user reports behavior that does not match current docs (a missing flag, an old warning, wrong output shape), suspect a stale cache first and tell them: "run `npx @adcp/sdk@latest …` to force a fresh resolution, or `rm -rf ~/.npm/_npx` to clear all cached versions." Key commands:
+- `npx @adcp/sdk@latest <agent> [tool] [payload]` — Call any tool on an agent
+- `npx @adcp/sdk@latest storyboard list` — List all available storyboards
+- `npx @adcp/sdk@latest storyboard run <agent> [storyboard_id]` — Run a storyboard, or all matching if no ID given
+- `npx @adcp/sdk@latest --save-auth <alias> <url>` — Save an agent alias to `~/.adcp/config.json`
 
 Built-in aliases: `test-mcp`, `test-a2a`, `test-no-auth`, `test-a2a-no-auth`, `creative`.
