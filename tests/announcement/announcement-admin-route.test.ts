@@ -47,6 +47,13 @@ vi.mock('../../server/src/middleware/auth.js', () => ({
     next();
   },
   requireAdmin: (_req: any, _res: any, next: any) => next(),
+  requireGlobalAdmin: [
+    (req: any, _res: any, next: any) => {
+      req.user = mockCurrentUser;
+      next();
+    },
+    (_req: any, _res: any, next: any) => next(),
+  ],
 }));
 
 // Everything else the route module imports but doesn't need for these
