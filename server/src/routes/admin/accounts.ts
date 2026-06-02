@@ -13,9 +13,10 @@
 import { Router, Request, Response } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin, requireGlobalAdmin } from "../../middleware/auth.js";
 import { serveHtmlWithConfig } from "../../utils/html-config.js";
-import { OrganizationDatabase, VALID_REVENUE_TIERS } from "../../db/organization-db.js";
+import { OrganizationDatabase, VALID_REVENUE_TIERS, resolveMembershipTier, type MembershipTier } from "../../db/organization-db.js";
+import { formatCompanyTypes } from "../../config/company-types.js";
 import { deleteOrganizationMembership } from "../../db/membership-db.js";
 import { invalidateMembershipCache } from "../../db/org-filters.js";
 import {
@@ -58,6 +59,19 @@ import {
 const orgDb = new OrganizationDatabase();
 const logger = createLogger("admin-accounts");
 
+const MEMBERSHIP_TIER_LABELS: Record<MembershipTier, string> = {
+  individual_academic: "Explorer",
+  individual_professional: "Professional",
+  company_standard: "Builder",
+  company_icl: "Partner",
+  company_leader: "Leader",
+};
+
+function escapeCsvValue(value: string | number | boolean | null | undefined): string {
+  const str = value == null ? "" : String(value);
+  const prefixed = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+  return `"${prefixed.replace(/"/g, '""')}"`;
+}
 
 export function setupAccountRoutes(
   pageRouter: Router,
@@ -326,6 +340,172 @@ export function setupAccountRoutes(
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to fetch view counts",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/accounts/contacts-export - CSV of people attached to active member orgs.
+  // Registered before /accounts/:orgId so "contacts-export" is not treated as an org id.
+  apiRouter.get(
+    "/accounts/contacts-export",
+    ...requireGlobalAdmin,
+    async (_req: Request, res: Response) => {
+      try {
+        const pool = getPool();
+        const result = await pool.query<{
+          row_source: "membership" | "org_contact";
+          membership_first_name: string | null;
+          membership_last_name: string | null;
+          user_first_name: string | null;
+          user_last_name: string | null;
+          email: string;
+          role: string | null;
+          company: string;
+          company_types: string[] | null;
+          prospect_contact_name: string | null;
+          prospect_contact_email: string | null;
+          prospect_contact_title: string | null;
+          membership_tier: MembershipTier | null;
+          subscription_price_lookup_key: string | null;
+          subscription_status: string | null;
+          subscription_amount: number | null;
+          subscription_interval: string | null;
+          is_personal: boolean;
+          subscription_product_name: string | null;
+        }>(`
+          WITH active_member_orgs AS (
+            SELECT
+              o.workos_organization_id,
+              o.name,
+              COALESCE(
+                o.company_types,
+                CASE WHEN o.company_type IS NOT NULL THEN ARRAY[o.company_type] ELSE NULL END
+              ) AS company_types,
+              o.prospect_contact_name,
+              o.prospect_contact_email,
+              o.prospect_contact_title,
+              o.membership_tier,
+              o.subscription_price_lookup_key,
+              o.subscription_status,
+              o.subscription_amount,
+              o.subscription_interval,
+              o.is_personal,
+              o.subscription_product_name
+            FROM organizations o
+            WHERE ${MEMBER_FILTER_ALIASED}
+          ),
+          membership_contacts AS (
+            SELECT
+              'membership'::text AS row_source,
+              om.first_name AS membership_first_name,
+              om.last_name AS membership_last_name,
+              COALESCE(NULLIF(u.first_name, ''), NULL) AS user_first_name,
+              COALESCE(NULLIF(u.last_name, ''), NULL) AS user_last_name,
+              COALESCE(NULLIF(om.email, ''), u.email) AS email,
+              om.role,
+              o.name AS company,
+              o.company_types,
+              o.prospect_contact_name,
+              o.prospect_contact_email,
+              o.prospect_contact_title,
+              o.membership_tier,
+              o.subscription_price_lookup_key,
+              o.subscription_status,
+              o.subscription_amount,
+              o.subscription_interval,
+              o.is_personal,
+              o.subscription_product_name
+            FROM organization_memberships om
+            JOIN active_member_orgs o
+              ON o.workos_organization_id = om.workos_organization_id
+            LEFT JOIN users u
+              ON u.workos_user_id = om.workos_user_id
+          ),
+          org_contact_rows AS (
+            SELECT
+              'org_contact'::text AS row_source,
+              NULL::text AS membership_first_name,
+              NULL::text AS membership_last_name,
+              NULL::text AS user_first_name,
+              NULL::text AS user_last_name,
+              o.prospect_contact_email AS email,
+              NULL::text AS role,
+              o.name AS company,
+              o.company_types,
+              o.prospect_contact_name,
+              o.prospect_contact_email,
+              o.prospect_contact_title,
+              o.membership_tier,
+              o.subscription_price_lookup_key,
+              o.subscription_status,
+              o.subscription_amount,
+              o.subscription_interval,
+              o.is_personal,
+              o.subscription_product_name
+            FROM active_member_orgs o
+            WHERE NULLIF(TRIM(o.prospect_contact_email), '') IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1
+                FROM membership_contacts mc
+                WHERE mc.email IS NOT NULL
+                  AND LOWER(TRIM(mc.email)) = LOWER(TRIM(o.prospect_contact_email))
+              )
+          )
+          SELECT *
+          FROM (
+            SELECT * FROM membership_contacts
+            UNION ALL
+            SELECT * FROM org_contact_rows
+          ) contacts
+          ORDER BY LOWER(company), row_source, LOWER(COALESCE(user_last_name, membership_last_name, '')), LOWER(COALESCE(user_first_name, membership_first_name, prospect_contact_name, '')), LOWER(COALESCE(email, ''))
+        `);
+
+        const headers = [
+          "First Name",
+          "Last Name",
+          "Title",
+          "Company",
+          "Email Address",
+          "Membership Type",
+          "Company Type",
+          "Primary Contact",
+        ];
+
+        const rows = result.rows.map((row) => {
+          const email = row.email?.trim() ?? "";
+          const isKnownOrgContact =
+            email.length > 0 &&
+            row.prospect_contact_email?.trim().toLowerCase() === email.toLowerCase();
+          const tier = resolveMembershipTier(row);
+
+          return [
+            row.user_first_name || row.membership_first_name || (row.row_source === "org_contact" ? row.prospect_contact_name || "" : ""),
+            row.user_last_name || row.membership_last_name || "",
+            isKnownOrgContact ? row.prospect_contact_title || "" : "",
+            row.company,
+            email,
+            tier ? MEMBERSHIP_TIER_LABELS[tier] : "",
+            row.company_types?.length ? formatCompanyTypes(row.company_types) : "",
+            isKnownOrgContact ? "Yes" : "No",
+          ];
+        });
+
+        const csv = [headers, ...rows]
+          .map((row) => row.map(escapeCsvValue).join(","))
+          .join("\n");
+
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="member-contacts-${new Date().toISOString().split("T")[0]}.csv"`
+        );
+        res.send(csv);
+      } catch (error) {
+        logger.error({ err: error }, "Error exporting member contacts");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to export member contacts",
         });
       }
     }
@@ -3140,4 +3320,3 @@ export function setupAccountRoutes(
     }
   );
 }
-

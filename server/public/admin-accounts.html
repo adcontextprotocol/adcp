@@ -853,7 +853,7 @@
       </select>
       <div id="membersActions" style="display: none; margin-left: auto; gap: var(--space-2); align-items: center;">
         <span id="membersSyncStatus" style="font-size: var(--text-xs); color: var(--color-text-secondary);"></span>
-        <button class="btn btn-secondary btn-sm" onclick="exportMembersCsv()">Export CSV</button>
+        <button class="btn btn-secondary btn-sm" onclick="exportMemberContactsCsv(this)">Export all contacts CSV</button>
         <button class="btn btn-primary btn-sm" id="syncAllStripeBtn" onclick="syncAllStripe()">Sync from Stripe</button>
       </div>
     </div>
@@ -1462,43 +1462,39 @@
       }
     }
 
-    async function exportMembersCsv() {
+    async function exportMemberContactsCsv(button) {
+      const statusEl = document.getElementById('membersSyncStatus');
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Exporting...';
+      statusEl.textContent = '';
+      statusEl.style.color = 'var(--color-text-secondary)';
+
       try {
-        const response = await fetch('/api/admin/accounts?view=members&limit=500');
-        if (!response.ok) throw new Error('Failed to load members');
-        const members = await response.json();
+        const response = await fetch('/api/admin/accounts/contacts-export');
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({ message: response.statusText }));
+          throw new Error(err.message || `Export failed (${response.status})`);
+        }
 
-        const headers = ['Name', 'Domain', 'Subscription Status', 'Product', 'Renewal Date', 'Community Points', 'Interest Level'];
-        const rows = members.map(m => [
-          m.name || '',
-          m.email_domain || '',
-          m.subscription_status || '',
-          m.subscription_product_name || '',
-          m.subscription_current_period_end ? new Date(m.subscription_current_period_end).toISOString().split('T')[0] : '',
-          m.community_points ?? '',
-          m.interest_level || '',
-        ]);
-
-        const csv = [headers, ...rows]
-          .map(row => row.map(cell => {
-            // Defuse spreadsheet formula injection: prefix risky leading chars with '
-            const s = String(cell).replace(/"/g, '""');
-            const safe = /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
-            return `"${safe}"`;
-          }).join(','))
-          .join('\n');
-
-        const blob = new Blob([csv], { type: 'text/csv' });
+        const blob = await response.blob();
+        const disposition = response.headers.get('content-disposition') || '';
+        const filenameMatch = disposition.match(/filename="([^"]+)"/);
+        const filename = filenameMatch?.[1] || `member-contacts-${new Date().toISOString().split('T')[0]}.csv`;
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `members-${new Date().toISOString().split('T')[0]}.csv`;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       } catch (err) {
-        alert('Failed to export: ' + err.message);
+        statusEl.textContent = err.message;
+        statusEl.style.color = 'var(--color-error-600)';
+      } finally {
+        button.disabled = false;
+        button.textContent = originalText;
       }
     }
 
