@@ -143,7 +143,24 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
  * upstream issue and skipping the whole storyboard would lose passing
  * coverage. Track every entry with a linked issue.
  */
-const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([]);
+const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
+  [
+    'creative_transformers/list_transformers',
+    'list_transformers is a new task in @adcp/sdk 8.1.0-beta.19: the storyboard runner dispatches and grades tasks via a task-name registry (storyboard/task-map.js + TOOL_RESPONSE_SCHEMAS) that does not yet include it, so the runner cannot invoke or schema-grade the response. The reference agent implements list_transformers (custom tool on /creative + /creative-builder), and the build_creative transformer path it feeds is graded live by the rest of this storyboard. Remove this entry when the SDK ships the list_transformers task.',
+  ],
+  [
+    'creative_transformers/list_transformers_expand',
+    'Same blocker as creative_transformers/list_transformers — list_transformers is not yet in the SDK task-map/TOOL_RESPONSE_SCHEMAS. Remove when the SDK ships the task.',
+  ],
+  [
+    'creative_transformers/build_variants',
+    'The build_creative BuildCreativeVariantSuccess arm (creatives[]/variants[]/build_variant_id) added in #5219 is not yet in @adcp/sdk 8.1.0-beta.19\'s build_creative response validator (TOOL_RESPONSE_SCHEMAS knows only the creative_manifest/creative_manifests arms), so the runner rejects the valid variant response. The reference agent produces the variant shape correctly. Remove this entry when the SDK ships the build_creative variant arm.',
+  ],
+  [
+    'creative_transformers/refine_variant',
+    'Same blocker as creative_transformers/build_variants — refinement returns the BuildCreativeVariantSuccess (creatives[]) shape, not yet in the SDK build_creative response validator. Remove when the SDK ships the variant arm.',
+  ],
+]);
 
 const THREE_ZERO_COMPAT_KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
   [

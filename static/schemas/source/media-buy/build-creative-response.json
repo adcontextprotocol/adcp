@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-response.json",
   "title": "Build Creative Response",
-  "description": "Response payload for build_creative. Exactly one of four shapes: (1) synchronous single-format success — creative_manifest issued in-line (target_format_id request); (2) synchronous multi-format success — creative_manifests issued in-line (target_format_ids request); (3) terminal failure — an errors array; (4) submitted task envelope — status 'submitted' with task_id when the build is queued (e.g., slow generative or multi-minute LLM pipeline). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These four shapes are mutually exclusive — a response has exactly one.",
+  "description": "Response payload for build_creative. Exactly one of six shapes: (1) synchronous single-format success — creative_manifest issued in-line (target_format_id request); (2) synchronous multi-format success — creative_manifests issued in-line (target_format_ids request); (3) multiplicity success — creatives[] each carrying variants[], returned when the request used item (max_creatives) and/or variant (max_variants) fan-out; (4) dry-run estimate — mode 'estimate' returns a BuildCreativeEstimate cost band and produces/bills nothing; (5) terminal failure — an errors array; (6) submitted task envelope — status 'submitted' with task_id when the build is queued (e.g., slow generative or multi-minute LLM pipeline). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These six shapes are mutually exclusive — a response has exactly one.",
   "type": "object",
   "allOf": [
     {
@@ -15,12 +15,17 @@
   "oneOf": [
     {
       "title": "BuildCreativeSuccess",
-      "description": "Single-format success response. Returned when the request used target_format_id.",
+      "description": "Single-format success response. Returned when the request used target_format_id (without fan-out). Carries an optional build_variant_id so a single build is refinable; multi-format builds that need per-output refinable leaves should request the variant shape (max_variants).",
       "type": "object",
       "properties": {
         "creative_manifest": {
           "$ref": "/schemas/core/creative-manifest.json",
           "description": "The generated or transformed creative manifest"
+        },
+        "build_variant_id": {
+          "type": "string",
+          "x-entity": "build_variant",
+          "description": "Leaf handle for this produced creative — present when the agent supports refinement (creative.supports_refinement). Pass it as refine_from_build_variant_id to refine this build. Same namespace as BuildCreativeVariantSuccess leaves; distinct from served variant_id / preview_id. Lazily earns a creative_id on trafficking."
         },
         "sandbox": {
           "type": "boolean",
@@ -273,6 +278,241 @@
       "additionalProperties": true
     },
     {
+      "title": "BuildCreativeVariantSuccess",
+      "description": "Multiplicity success response. Returned WHENEVER the request used max_creatives, max_variants > 1, variant_axis, or refine_from_build_variant_id — with or without a transformer_id. **There is no fallback to the single/multi-format shapes: a client that sends any of those inputs MUST handle this `creatives[]` shape; it will not receive `creative_manifest`/`creative_manifests`.** Carries creatives[] — one entry per produced creative group (per catalog item when fanning out) — each holding variants[] alternatives. The envelope semantics are fixed: creatives[] is the set of creative groups the call produced; variants[] is the choose-among set within each group. Every produced variant is a real, independently-billed build (you pay for all produced); the buyer keeps one or many by trafficking the chosen build_variant_id(s). Mutually exclusive with the other success/error/submitted shapes. Per-FORMAT remains atomic within a (creative) group; per-ITEM (catalog fan-out) is non-atomic — a failed item is reported via that creative's errors[] and does not fail the batch.",
+      "type": "object",
+      "properties": {
+        "creatives": {
+          "type": "array",
+          "description": "One entry per produced creative group. With catalog fan-out, one entry per catalog item (bounded/sampled by max_creatives). This array is the produced group set; use variants[] inside each group for choose-among alternatives.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "build_creative_id": {
+                "type": "string",
+                "description": "Build-time handle for this produced creative within this response. Distinct from a library creative_id — a build_creative_id is not yet persisted/servable; it acquires a creative_id when a chosen variant is trafficked or added to the library (lazy promotion)."
+              },
+              "catalog_item_ref": {
+                "type": "object",
+                "description": "When this creative was produced by fanning out over a catalog, identifies the source item.",
+                "properties": {
+                  "catalog_type": {
+                    "type": "string",
+                    "description": "The catalog type the item came from."
+                  },
+                  "item_id": {
+                    "type": "string",
+                    "description": "Identifier of the catalog item this creative was built for."
+                  }
+                },
+                "required": ["item_id"],
+                "additionalProperties": true
+              },
+              "variants": {
+                "type": "array",
+                "description": "Choose-among alternatives produced for this creative group (voices, themes, best-of-N, etc.). At least one. Each is an independently-tagged, independently-billed build.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "build_variant_id": {
+                      "type": "string",
+                      "x-entity": "build_variant",
+                      "description": "Build-time handle for this produced variant — the leaf-level lineage anchor for the creative. Minted per produced variant. Its OWN namespace — MUST NOT reuse a `preview_id` (preview renders) or a served `variant_id` (delivery). Lineage and joins (refinement parentage, build→delivery learning, QA re-rolls) anchor on this leaf id, NOT on the call-level `build_creative_id`. A leaf lazily earns a durable `creative_id` only when trafficked / added to the library; that `creative_id` is what flows into `report_usage`. An untrafficked leaf has no `report_usage` key — it is billed via the inline per-leaf `vendor_cost` only, and `report_usage` reconciliation applies once the leaf earns a `creative_id`."
+                    },
+                    "parent_build_variant_id": {
+                      "type": "string",
+                      "x-entity": "build_variant",
+                      "description": "When this variant was produced by refining a prior build (request `refine_from_build_variant_id`), the source leaf's `build_variant_id` — establishing refinement lineage (a leaf may itself be refined, forming a chain). Absent for first-generation builds. AI-derivative attribution rides the manifest's existing `provenance`; this field carries only the lineage edge."
+                    },
+                    "creative_manifest": {
+                      "$ref": "/schemas/core/creative-manifest.json",
+                      "description": "The generated creative for this variant. Carries its own format_id."
+                    },
+                    "variant_axis_value": {
+                      "description": "The value of the variant axis that produced this variant (e.g. the voice id, theme name, or config value). Lets the buyer correlate the variant to its A/B cell."
+                    },
+                    "recommended": {
+                      "type": "boolean",
+                      "description": "Set when keep_mode was keep_one/keep_some — flags the agent's recommended pick(s). Advisory."
+                    },
+                    "rank": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "description": "Agent's ranking of this variant (1 = best) when it scored alternatives (best-of-N). Advisory."
+                    },
+                    "pricing_option_id": {
+                      "type": "string",
+                      "x-entity": "vendor_pricing_option",
+                      "description": "Which rate-card pricing option was applied for THIS variant leaf. Pass in report_usage after promotion."
+                    },
+                    "vendor_cost": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Cost incurred for this variant leaf, denominated in currency."
+                    },
+                    "currency": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{3}$",
+                      "description": "ISO 4217 currency code for vendor_cost."
+                    },
+                    "consumption": {
+                      "$ref": "/schemas/core/creative-consumption.json",
+                      "description": "Structured consumption for this variant leaf. Informational; vendor_cost is the billing source of truth."
+                    }
+                  },
+                  "required": ["build_variant_id", "creative_manifest"],
+                  "additionalProperties": true
+                },
+                "minItems": 1
+              },
+              "errors": {
+                "type": "array",
+                "description": "Per-creative errors when this catalog item failed to build. Present only on failed items; does not fail the batch (per-item non-atomic). A failed entry carries errors[] and no variants[]; a successful entry carries variants[] and SHOULD NOT carry errors.",
+                "items": { "$ref": "/schemas/core/error.json" },
+                "minItems": 1
+              }
+            },
+            "anyOf": [
+              { "required": ["variants"] },
+              { "required": ["errors"] }
+            ],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "items_total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total catalog items eligible for the build (before max_creatives sampling). Lets the buyer see that creatives[] is a sample of a larger set."
+        },
+        "items_returned": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of creatives returned in creatives[] (after max_creatives sampling)."
+        },
+        "leaves_total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total leaves the request would have produced (≈ items_to_produce × variants_per_item). Present when a max_spend cap may have stopped production short. Counts LEAVES, not catalog items — so it expresses a shortfall even for a variant-only fan-out with no catalog."
+        },
+        "leaves_returned": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of leaves actually produced and billed across creatives[].variants[]. When budget_status is 'capped', leaves_returned < leaves_total is the leaf-granular shortfall signal (items_returned/items_total are catalog-item counts and do not capture a mid-item or variant-only cap)."
+        },
+        "vendor_cost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Aggregate cost across all variant leaves, denominated in currency. MUST equal the sum of the per-leaf vendor_cost values (leaves are the source of truth)."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "ISO 4217 currency code for the aggregate vendor_cost."
+        },
+        "keep_mode_applied": {
+          "type": "string",
+          "enum": ["keep_all", "keep_one", "keep_some"],
+          "description": "Echoes the `keep_mode` the agent applied (mirrors the request hint). Present when the request set `keep_mode`. `keep_mode` is advisory — it does not change what is produced or billed (you pay for every leaf in `variants[]`) — so this echo is the buyer's confirmation that the hint was received, the audit paper trail for a 'I asked for keep_one but was billed for N' dispute. Whether the agent acted on it shows in the `recommended`/`rank` it set on the leaves."
+        },
+        "budget_status": {
+          "type": "string",
+          "enum": ["complete", "capped"],
+          "default": "complete",
+          "description": "`complete` (default; absent == complete for back-compat) means the agent produced everything requested. `capped` means a `max_spend` ceiling stopped production early: every returned leaf is real/billed, and an advisory `BUDGET_CAP_REACHED` entry in `errors[]` is the authoritative cap signal. The leaf-granular shortfall is `leaves_returned` < `leaves_total` (do NOT rely on items_returned < items_total — that is also the normal max_creatives-sampling signal and does not capture a mid-item or variant-only cap). This is a successful partial build, not a failure."
+        },
+        "errors": {
+          "type": "array",
+          "description": "Advisory (non-terminal) entries on an otherwise-successful build — e.g. a `BUDGET_CAP_REACHED` notice when `budget_status` is `capped`. Terminal failures use the BuildCreativeError shape, not this field.",
+          "items": { "$ref": "/schemas/core/error.json" }
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the earliest generated asset URL expires across all variants. Re-build after this time to get fresh URLs."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "creatives"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "title": "BuildCreativeEstimate",
+      "description": "Dry-run estimate. Returned when the request set mode:\"estimate\". The agent produced NOTHING and billed NOTHING; it returns a projected cost band computed against this request's actual inputs (script length, brief, catalog size, max_creatives × max_variants) — the band the buyer cannot derive itself because per_unit gives the rate but not the unit count. Advisory and non-binding in this revision. Mutually exclusive with the success/error/submitted shapes (discriminated by mode:\"estimate\" + the estimate object).",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "estimate",
+          "description": "Echoes the request mode; discriminates this dry-run envelope from the producing shapes."
+        },
+        "estimate": {
+          "type": "object",
+          "description": "Projected cost for what mode:\"execute\" would have produced.",
+          "properties": {
+            "items_total": { "type": "integer", "minimum": 0, "description": "Catalog items eligible (before max_creatives sampling)." },
+            "items_to_produce": { "type": "integer", "minimum": 0, "description": "Distinct creatives that would be produced (after max_creatives)." },
+            "variants_per_item": { "type": "integer", "minimum": 1, "description": "Alternatives per creative (max_variants)." },
+            "leaves_total": { "type": "integer", "minimum": 0, "description": "Total billable leaves = items_to_produce × variants_per_item." },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 currency for the cost band." },
+            "cost_low": { "type": "number", "minimum": 0, "description": "Low end of the projected aggregate vendor_cost." },
+            "cost_high": { "type": "number", "minimum": 0, "description": "High end. For basis \"fixed\" this equals cost_low (exact)." },
+            "cost_expected": { "type": "number", "minimum": 0, "description": "Optional point estimate within the band." },
+            "basis": {
+              "type": "string",
+              "enum": ["fixed", "estimated_units", "cpm_deferred"],
+              "description": "`fixed` = per-format flat pricing (cost_low == cost_high, exact). `estimated_units` = generative per_unit where the seller projects a unit range (band reflects the uncertainty in seconds/images/tokens). `cpm_deferred` = CPM-priced; build-time cost is 0 and cost accrues at serve time (mirrors the vendor_cost:0 CPM convention)."
+            },
+            "per_leaf": {
+              "type": "array",
+              "description": "Optional per-leaf breakdown of the estimate.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "catalog_item_ref": { "type": "object", "additionalProperties": true },
+                  "variant_axis_value": {},
+                  "pricing_option_id": { "type": "string", "x-entity": "vendor_pricing_option" },
+                  "cost_low": { "type": "number", "minimum": 0 },
+                  "cost_high": { "type": "number", "minimum": 0 },
+                  "consumption_estimate": { "$ref": "/schemas/core/creative-consumption.json" }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "required": ["currency", "cost_low", "cost_high", "basis"],
+          "additionalProperties": true
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp after which this estimate's inputs/prices may no longer hold."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "mode",
+        "estimate"
+      ],
+      "additionalProperties": true
+    },
+    {
       "title": "BuildCreativeError",
       "description": "Error response — creative generation failed. Multi-format requests (`target_format_ids[]`) are atomic per `BuildCreativeMultiSuccess` semantics: a single format failing means the entire batch returns an error response, not a partial success. Buyers diagnose per-format failures by reading the `errors[]` array's per-format attribution (see the `errors` field description).",
       "type": "object",
@@ -306,6 +546,16 @@
           {
             "required": [
               "creative_manifests"
+            ]
+          },
+          {
+            "required": [
+              "creatives"
+            ]
+          },
+          {
+            "required": [
+              "estimate"
             ]
           },
           {
@@ -370,6 +620,16 @@
           {
             "required": [
               "creative_manifests"
+            ]
+          },
+          {
+            "required": [
+              "creatives"
+            ]
+          },
+          {
+            "required": [
+              "estimate"
             ]
           }
         ]

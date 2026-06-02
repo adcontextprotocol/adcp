@@ -9,6 +9,7 @@ import { buildCreativeComplyConfig } from './comply.js';
 import { listAccountsTool } from './account-tools.js';
 import { reportUsageTool } from './report-usage-tool.js';
 import { validateInputTool } from './validate-input-tool.js';
+import { listTransformersTool } from './list-transformers-tool.js';
 import type { TrainingContext } from '../types.js';
 
 const TENANT_ID = 'creative';
@@ -36,6 +37,7 @@ export function buildCreativeTenantConfig(host: string, options: { storyboardCom
               creativeBillsThroughAdcp: false,
               ...(options.storyboardCompat && { storyboardCompat: options.storyboardCompat }),
             }),
+            list_transformers: listTransformersTool(),
           }),
         },
         complyTest: buildCreativeComplyConfig(),

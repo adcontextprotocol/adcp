@@ -29,7 +29,16 @@ For information about legacy format IDs and how to reference formats, see [Creat
 | `target_format_ids` | array | Conditional | Array of format IDs to generate in a single call. Each element is an object with `agent_url` and `id` fields. For 3.1 canonical creative-agent routing, each `id` is an advertised `creative.supported_formats[].capability_id`; legacy named-format IDs remain accepted during the migration window. Mutually exclusive with `target_format_id` — provide exactly one. Returns one manifest per format. |
 | `brand` | object | No | Brand reference with `domain` field. Resolves brand identity via `/.well-known/brand.json`. Provides brand-level context (colors, logos, tone). |
 | `quality` | string | No | Quality tier: `"draft"` (fast, lower-fidelity for iteration) or `"production"` (full quality for final delivery). If omitted, the creative agent uses its own default. |
-| `item_limit` | integer | No | Maximum number of catalog items to use when generating. Caps generation cost for catalog-driven formats. |
+| `item_limit` | integer | No | Maximum number of catalog items to use **within one creative**. Caps generation cost for catalog-driven formats (e.g. a 6-card carousel built from a 1,000-product catalog). Distinct from `max_creatives`, which fans out across items. |
+| `transformer_id` | string | No | Select one transformer (discovered via [`list_transformers`](/docs/creative/task-reference/list_transformers)) to perform the build. The requested target format(s) MUST be a subset of that transformer's `output_format_ids`. The transformer's `per_unit` rate is the pricing source for the build. |
+| `config` | object | No | Typed configuration bag keyed to the selected transformer's `params[].field` (e.g. `{ "voice": "isaac", "speaking_rate": 1.1 }`). The creative agent MUST reject unknown keys and out-of-range values with field-attributed errors (strict validation) — vendor-specific knobs that are not declared params go in `ext`. Only meaningful with `transformer_id`. |
+| `max_creatives` | integer | No | Catalog fan-out axis: produce up to N **distinct creatives, one per catalog item** (a sample — e.g. 5 of 150). Distinct from `item_limit`, which caps items used *within* a single creative. Mutually exclusive with `refine_from_build_variant_id`. Triggers the `BuildCreativeVariantSuccess` response shape. Supported only when the agent advertises `creative.multiplicity.supports_catalog_fanout`; values above `max_creatives_limit` are **clamped** (shortfall via `items_returned` < `items_total`), not rejected. |
+| `max_variants` | integer | No | Number of alternative renders to produce **per creative** (best-of-N). Default `1`. You pay for every produced variant; keeping one or more is a separate trafficking step. Supported only when the agent advertises `creative.multiplicity.supports_variants`; values above `max_variants_limit` are clamped. |
+| `variant_axis` | object | No | Describes the dimension along which variants differ. Object with `dimension` (`voice` \| `theme` \| `best_of_n` \| `transformer_config` \| `custom`), optional `values[]` (explicit values to enumerate along the axis), optional `field` (the `config` param to sweep — required when `dimension` is `transformer_config`), and optional `label`. |
+| `keep_mode` | string | No | Advisory hint to the agent on how many variants you intend to keep: `"keep_all"`, `"keep_one"`, or `"keep_some"`. Default `"keep_all"`. Advisory only — you are billed for all produced variants regardless. The response echoes `keep_mode_applied` so you have confirmation the hint was received (audit trail for billing disputes). |
+| `refine_from_build_variant_id` | string | No | Refine a prior produced variant: re-build from its `build_variant_id` applying the NL instruction in `message` plus any `config` delta, returning **new** lineage-linked variants (never a mutation). `transformer_id` and target format(s) are inherited from the parent. Composes with `max_variants`/`variant_axis`; mutually exclusive with `max_creatives`. Requires `creative.supports_refinement` — otherwise `UNSUPPORTED_FEATURE`; an unknown/no-longer-retained ref is `REFERENCE_NOT_FOUND` (`error.field` = `refine_from_build_variant_id`). See [Refinement](#refinement). |
+| `mode` | string | No | `"execute"` (default) produces and bills. `"estimate"` is a **dry run** — produces and bills nothing, returns a `BuildCreativeEstimate` cost band (`cost_low`/`cost_high`) computed against this request's inputs. Requires `creative.supports_spend_controls`. See [Spend controls](#spend-controls). |
+| `max_spend` | object | No | Hard per-call spend ceiling `{ amount, currency }`. The agent produces leaves until the next would exceed `amount`, then stops and returns the partial result with `budget_status: "capped"`. Requires `creative.supports_spend_controls`. Caps one call — bound refinement loops buyer-side. See [Spend controls](#spend-controls). |
 | `include_preview` | boolean | No | When true, requests preview renders alongside the manifest. Agents that support this return a `preview` object in the response. Agents that don't simply omit it. |
 | `preview_inputs` | array | No | Input sets for preview generation when `include_preview` is true. Each entry has `name` (required), optional `macros`, and optional `context_description`. If omitted, the agent generates a single default preview. Only supported with `target_format_id` (single-format) — ignored for multi-format requests. |
 | `preview_quality` | string | No | Render quality for inline previews: `"draft"` or `"production"`. Independent of the build `quality` — you can build at draft and preview at production, or vice versa. Only used when `include_preview` is true. |
@@ -326,6 +335,73 @@ To refine a single format from a multi-format build, call `build_creative` again
 Multi-format requests with `include_preview: true` generate one default preview per format. Custom `preview_inputs` are only supported with single-format requests. For multi-format builds where you need context-specific previews (device variants, different contexts), use a separate `preview_creative` batch call after building.
 </Note>
 
+### Transformers & variants
+
+Select a transformer (discovered via [`list_transformers`](/docs/creative/task-reference/list_transformers)) with `transformer_id`, supply a typed `config` keyed to its params, and ask for alternatives with `max_variants`. The agent returns the [variant response](#variant-response): `creatives[]`, each holding a `variants[]` array. Read `recommended` / `rank` to surface the agent's best-of-N pick; traffic the variant(s) you want by their `build_variant_id`.
+
+Resolutions and quality tiers go on `target_format_ids` (or `quality`), not on `variant_axis` — variants are alternatives for the *same* format.
+
+<CodeGroup>
+
+```javascript test=false
+import { testAgent } from '@adcp/sdk/testing';
+import { BuildCreativeResponseSchema } from '@adcp/sdk';
+
+const result = await testAgent.buildCreative({
+  account: { account_id: 'acct_acme' },
+  transformer_id: 'audiostack_voiceover',
+  config: { voice: 'isaac', speaking_rate: 1.1, mastering_preset: 'podcast' },
+  target_format_id: { agent_url: 'https://creative.audiostack.example', id: 'audio_vo' },
+  creative_manifest: {
+    format_id: { agent_url: 'https://creative.audiostack.example', id: 'script' },
+    assets: { script: { asset_type: 'text', content: 'Discover the new winter collection.' } },
+  },
+  max_variants: 3,
+  variant_axis: { dimension: 'best_of_n', label: 'Read takes' },
+  keep_mode: 'keep_one',
+  idempotency_key: '0c1d2e3f-4a5b-6c7d-8e9f-a0b1c2d3e4f5',
+});
+
+const parsed = BuildCreativeResponseSchema.parse(result);
+for (const creative of parsed.creatives ?? []) {
+  for (const variant of creative.variants) {
+    console.log(variant.build_variant_id, variant.rank, variant.recommended, variant.vendor_cost);
+  }
+}
+```
+
+```python test=false
+import asyncio
+from adcp.testing import test_agent
+from adcp import BuildCreativeResponse
+
+async def main():
+    result = await test_agent.build_creative(
+        account={"account_id": "acct_acme"},
+        transformer_id="audiostack_voiceover",
+        config={"voice": "isaac", "speaking_rate": 1.1, "mastering_preset": "podcast"},
+        target_format_id={"agent_url": "https://creative.audiostack.example", "id": "audio_vo"},
+        creative_manifest={
+            "format_id": {"agent_url": "https://creative.audiostack.example", "id": "script"},
+            "assets": {"script": {"asset_type": "text", "content": "Discover the new winter collection."}},
+        },
+        max_variants=3,
+        variant_axis={"dimension": "best_of_n", "label": "Read takes"},
+        keep_mode="keep_one",
+        idempotency_key="0c1d2e3f-4a5b-6c7d-8e9f-a0b1c2d3e4f5",
+    )
+    parsed = BuildCreativeResponse.model_validate(result)
+    for creative in parsed.creatives or []:
+        for variant in creative.variants:
+            print(variant.build_variant_id, variant.rank, variant.recommended, variant.vendor_cost)
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+You pay for all three takes (`per_unit` × 3); `keep_mode` is advisory. Keeping is a separate trafficking step on the chosen `build_variant_id` — the kept variant then lazily earns a `creative_id` that flows to [`report_usage`](/docs/accounts/tasks/report_usage).
+
 ### Paid build with pricing
 
 When the creative agent charges and `account` is provided, the response includes pricing fields. The agent selects the applicable pricing option server-side based on the account's rate card and the work performed — the buyer does not pass `pricing_option_id` in the request.
@@ -443,6 +519,151 @@ When the request uses `target_format_ids`, the response contains an array of cre
   ]
 }
 ```
+
+### Variant response
+
+When the request uses `max_creatives`, `max_variants` > 1, `variant_axis`, or `refine_from_build_variant_id`, the agent returns the `BuildCreativeVariantSuccess` shape — the third success shape (`oneOf` member 3 of 6) alongside the single- and multi-format responses, which are unchanged and still used when you build one creative with one variant.
+
+<Warning>
+**No fallback.** If you send any of `max_creatives`, `max_variants > 1`, `variant_axis`, or `refine_from_build_variant_id`, you **must** handle `creatives[]` — you will not get `creative_manifest`/`creative_manifests` back. There is no automatic downgrade to the single/multi shapes.
+</Warning>
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "completed",
+  "creatives": [
+    {
+      "build_creative_id": "bc_card_01",
+      "catalog_item_ref": { "catalog_type": "product", "item_id": "sku_winter_parka" },
+      "variants": [
+        {
+          "build_variant_id": "bv_card01_a",
+          "creative_manifest": { "format_id": { "agent_url": "https://creative.example.com", "id": "display_300x250" }, "assets": { "...": "..." } },
+          "variant_axis_value": "studio",
+          "recommended": true,
+          "rank": 1,
+          "pricing_option_id": "po_per_image",
+          "vendor_cost": 0.40,
+          "currency": "USD",
+          "consumption": { "images_generated": 1 }
+        },
+        {
+          "build_variant_id": "bv_card01_b",
+          "creative_manifest": { "format_id": { "agent_url": "https://creative.example.com", "id": "display_300x250" }, "assets": { "...": "..." } },
+          "variant_axis_value": "lifestyle",
+          "recommended": false,
+          "rank": 2,
+          "pricing_option_id": "po_per_image",
+          "vendor_cost": 0.40,
+          "currency": "USD",
+          "consumption": { "images_generated": 1 }
+        }
+      ]
+    }
+  ],
+  "items_total": 150,
+  "items_returned": 5,
+  "vendor_cost": 4.00,
+  "currency": "USD"
+}
+```
+
+- **creatives[]**: One entry per built creative group. With `max_creatives`, there is one entry per sampled catalog item (`catalog_item_ref` identifies which item); without catalog fan-out there is a single entry. Treat this as the produced group set; choose among alternatives inside each group's `variants[]`.
+- **creatives[].build_creative_id**: Identifies a built creative within this response.
+- **creatives[].catalog_item_ref**: Present on catalog fan-out — an object identifying the source catalog item via `item_id` (plus optional `catalog_type`).
+- **creatives[].errors[]**: Present only on a *failed* catalog item — catalog fan-out is non-atomic, so a failed item is returned as a `creatives[]` entry carrying `errors[]` and no `variants[]`, without failing the batch.
+- **creatives[].variants[]**: The choose-among alternatives produced for this creative group. Length is at most `max_variants`. Each variant carries its own complete `creative_manifest`.
+- **variants[].build_variant_id**: Identifies a single variant — the leaf-level **lineage anchor**. This is its **own namespace** — never reuse a `preview_id` (a `preview_creative` render) or a served `variant_id` (a delivery-time identifier) here. You traffic a chosen build by passing its `build_variant_id`.
+- **variants[].parent_build_variant_id**: Present only on a refined variant ([Refinement](#refinement)) — the `build_variant_id` of the source it was refined from. Absent for first-generation builds.
+- **variants[].variant_axis_value**: The value of the `variant_axis` dimension this variant represents (e.g. a voice, a theme).
+- **variants[].recommended** / **variants[].rank**: Best-of-N signals — `recommended` flags the agent's top pick; `rank` orders the variants. These plus `variant_axis` and `keep_mode` are how best-of-N is expressed.
+- **variants[] pricing receipt**: Each variant carries a per-leaf receipt (`pricing_option_id`, `vendor_cost`, `currency`, `consumption`) for the work that produced it.
+- **items_total** / **items_returned**: For catalog fan-out, the total eligible catalog items and how many creatives were returned (e.g. "5 of 150").
+- **leaves_total** / **leaves_returned**: Leaf-granular counts — total leaves the request would produce vs. how many were actually produced/billed. When `budget_status` is `capped`, `leaves_returned` < `leaves_total` is the shortfall (works even for variant-only fan-out with no catalog).
+- **vendor_cost** / **currency**: Aggregate cost across all produced variants in the response.
+- **keep_mode_applied**: Echoes the `keep_mode` the agent applied (present when the request set it). `keep_mode` is advisory and doesn't change what's produced or billed, so this is your confirmation the hint was received — the audit trail for a "I asked for keep_one but was billed for N" dispute.
+- **budget_status**: `complete` (default; absent == complete) or `capped` — a `max_spend` ceiling stopped production early (a successful partial build, not a failure). See [Spend controls](#spend-controls).
+- **errors[]**: Advisory (non-terminal) entries on an otherwise-successful build — e.g. a `BUDGET_CAP_REACHED` notice when `budget_status` is `capped`.
+
+<Warning>
+You pay for **every produced variant** (`per_unit` × N), not just the ones you keep. Keeping is a separate client act of trafficking the chosen `build_variant_id`(s). A kept variant lazily earns a `creative_id` when it is added to the library or first trafficked; that `creative_id` is what flows to [`report_usage`](/docs/accounts/tasks/report_usage). An unkept variant is still billed but never earns a `creative_id`.
+</Warning>
+
+<Note>
+**Atomicity differs by axis.** Variant production *per format* is atomic — if one variant for a format fails, that format's build fails. Catalog fan-out (`max_creatives`, per item) is **non-atomic**: individual `creatives[]` entries may succeed while others fail. A failed item is returned as a `creatives[]` entry carrying `errors[]` (and no `variants[]`); the batch still succeeds.
+
+**Build-time variants are not delivery variants.** The `build_variant_id` here is a pre-delivery handle for an alternative you produced. It is a different namespace from the served `variant_id` in [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery), which identifies a creative *execution that was delivered*. A build-time variant becomes a delivery variant only once you keep and traffic it.
+
+**Resolutions and quality tiers are not variants.** Multiple sizes or quality levels belong on the format axis — pass them as `target_format_ids` (or `quality`), not as `variant_axis` values. Variants are alternatives *for the same format* (different voice, theme, or best-of-N take).
+</Note>
+
+### Refinement
+
+Conversational refinement re-builds a prior variant with free-form direction — "make it warmer", "tighten the CTA". The typed `config` surface is closed by design, so free-form intent rides the **open** surface that already exists: the `message` field (whose description is already *"For refinement, this describes the desired changes"*). Refinement is therefore not a new task — it's `build_creative` with one extra input:
+
+- Pass `refine_from_build_variant_id` (a prior leaf's `build_variant_id`) plus your instruction in `message` and any `config` delta.
+- The agent re-builds from that leaf and returns **new** variants, each with `parent_build_variant_id` set to the source. A refinement is **never a mutation** — the parent leaf is unchanged, and the new leaf earns its own `build_variant_id` (and, on trafficking, its own `creative_id`).
+- `transformer_id` and the target format(s) are **inherited** from the parent; you don't repeat them. Passing a `transformer_id` or target format that differs from the parent's is an `INVALID_REQUEST`. `config` is applied as a **delta** over the parent's config.
+- Composes with `max_variants` / `variant_axis` (e.g. "three warmer takes" → three refined leaves), but **not** with `max_creatives` / catalog fan-out — you refine one produced creative, not a catalog.
+- Requires the agent to advertise `creative.supports_refinement: true` (it retains produced leaves for an agent-defined window). Agents that retain nothing return `UNSUPPORTED_FEATURE`; refine a buyer-held manifest instead via the transform path (`creative_manifest` + `message`). An unknown or no-longer-retained ref returns `REFERENCE_NOT_FOUND` with `error.field` set to `refine_from_build_variant_id`.
+
+Any build can be refined, not just variant builds: a single-format `BuildCreativeSuccess` carries an optional `build_variant_id` (present when the agent supports refinement) that you pass as `refine_from_build_variant_id`. Multi-format builds that need per-output refinable leaves should request the variant shape (`max_variants`), since the bare `creative_manifests[]` array carries no leaf ids.
+
+AI-derivative attribution rides the manifest's existing `provenance`; `parent_build_variant_id` carries only the lineage edge (refinements chain into a tree).
+
+```json test=false
+{
+  "refine_from_build_variant_id": "bv_card01_a",
+  "message": "Warmer lighting, and move the logo to the lower-right.",
+  "max_variants": 3,
+  "account": { "account_id": "acct_acme" },
+  "idempotency_key": "7f2a1b3c-4d5e-6f70-8192-a3b4c5d6e7f8"
+}
+```
+
+### Spend controls
+
+Fan-out and refinement can produce many independently-billed leaves (`max_creatives` × `max_variants`), and `per_unit` pricing gives a *rate* but not the *unit count* in advance (a 6-second voiceover and a 60-second one cost 10× at the same rate). Two opt-in controls, both gated by `creative.supports_spend_controls`:
+
+- **Estimate first (`mode: "estimate"`).** A dry run: the agent produces and bills nothing and returns a `BuildCreativeEstimate` with a `cost_low`/`cost_high` band (and `basis`: `fixed` = exact, `estimated_units` = generative projection, `cpm_deferred` = cost accrues at serve). The band is the load-bearing piece — the seller derives it from your actual inputs, so you don't have to guess unit counts.
+- **Cap the call (`max_spend: { amount, currency }`).** A hard stop: the agent produces leaves until the next would push aggregate `vendor_cost` over `amount`, then returns the partial `BuildCreativeVariantSuccess` with `budget_status: "capped"` and an advisory `BUDGET_CAP_REACHED` in `errors[]` — every returned leaf is real and billed, nothing produced is discarded. The leaf-granular shortfall is `leaves_returned` < `leaves_total` (not `items_returned`/`items_total`, which count catalog items and don't capture a variant-only or mid-item cap); the `BUDGET_CAP_REACHED` advisory is the authoritative cap signal. If even the first leaf would exceed the cap, the call fails with a terminal `BUDGET_CAP_REACHED`. `currency` must match the rate card (no FX) or the request is rejected `INVALID_REQUEST` (`error.field: max_spend.currency`). `max_spend` bounds only **build-time** `vendor_cost` — CPM-priced builds (`basis: cpm_deferred`) are 0 at build time and accrue at serve, so the cap never engages; bound a CPM fan-out with `max_creatives` instead.
+
+They compose: estimate to get `cost_high`, then execute with `max_spend` = `cost_high` × a safety margin (CPM builds excepted — their `cost_high` is 0 at build time). `max_spend` caps a **single call**; to bound an autonomous **refinement loop**, track aggregate `vendor_cost` across calls and stop issuing them (a buyer responsibility in this revision — a protocol-level session budget is deferred to the working group).
+
+<Warning>
+`max_spend` and `mode: "estimate"` require the agent to advertise `creative.supports_spend_controls`; otherwise they're rejected with `UNSUPPORTED_FEATURE`. They're only meaningful with `bills_through_adcp: true` (an out-of-band biller has no AdCP cost to cap against).
+</Warning>
+
+### Estimate response
+
+A `mode: "estimate"` request returns the `BuildCreativeEstimate` shape (`oneOf` member 4 of 6) — produced and billed nothing, just a projected cost band:
+
+```json test=false
+{
+  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "completed",
+  "mode": "estimate",
+  "estimate": {
+    "items_total": 150,
+    "items_to_produce": 5,
+    "variants_per_item": 3,
+    "leaves_total": 15,
+    "currency": "USD",
+    "cost_low": 6.00,
+    "cost_high": 9.00,
+    "cost_expected": 7.50,
+    "basis": "estimated_units"
+  },
+  "expires_at": "2026-06-01T00:00:00Z"
+}
+```
+
+- **estimate.leaves_total** = `items_to_produce` × `variants_per_item` — the number of billable leaves `mode: "execute"` would produce.
+- **estimate.cost_low / cost_high / cost_expected**: the projected aggregate cost band. The seller derives it from your actual inputs.
+- **estimate.basis**: `fixed` (per-format flat — `cost_low == cost_high`, exact), `estimated_units` (generative `per_unit`; the band reflects unit-count uncertainty), or `cpm_deferred` (CPM — build-time cost 0, accrues at serve, so the band is 0).
+- **estimate.per_leaf** (optional): per-leaf breakdown.
+- Estimates are **advisory / non-binding** in this revision (binding quotes are deferred to the working group).
 
 ### Field descriptions
 

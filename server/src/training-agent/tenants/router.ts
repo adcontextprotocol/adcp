@@ -547,13 +547,22 @@ function projectSalesCapabilities(
         ? adcp.supported_versions
         : [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
     };
-    if (tenantId === 'creative' && storyboardCompat?.version !== '3.0') {
+    if ((tenantId === 'creative' || tenantId === 'creative-builder') && storyboardCompat?.version !== '3.0') {
       const creative = structured.creative && typeof structured.creative === 'object'
         ? structured.creative
         : {};
       structured.creative = {
         ...creative,
-        bills_through_adcp: false,
+        ...(tenantId === 'creative' ? { bills_through_adcp: false } : {}),
+        supports_transformers: true,
+        supports_refinement: true,
+        refinable_retention_seconds: 3600,
+        multiplicity: {
+          supports_catalog_fanout: false,
+          supports_variants: true,
+          max_variants_limit: 10,
+          variant_dimensions: ['voice', 'theme', 'best_of_n', 'transformer_config', 'custom'],
+        },
       };
     }
     if (tenantId === 'sales') {

@@ -93,6 +93,7 @@
                       "docs/reference/migration/pricing",
                       "docs/reference/migration/geo-targeting",
                       "docs/reference/migration/creatives",
+                      "docs/reference/migration/creative-transformers",
                       "docs/reference/migration/catalogs",
                       "docs/reference/migration/optimization-goals",
                       "docs/reference/migration/brand-identity",
@@ -359,6 +360,7 @@
                           "docs/creative/task-reference/preview_creative",
                           "docs/creative/task-reference/preview_creative-advanced",
                           "docs/creative/task-reference/list_creative_formats",
+                          "docs/creative/task-reference/list_transformers",
                           "docs/creative/task-reference/list_creatives",
                           "docs/creative/task-reference/sync_creatives",
                           "docs/creative/task-reference/get_creative_delivery"
@@ -1298,6 +1300,7 @@
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
                   "docs/reference/migration/creatives",
+                  "docs/reference/migration/creative-transformers",
                   "docs/reference/migration/catalogs",
                   "docs/reference/migration/optimization-goals",
                   "docs/reference/migration/brand-identity",
@@ -1556,6 +1559,7 @@
                       "docs/creative/task-reference/preview_creative",
                       "docs/creative/task-reference/preview_creative-advanced",
                       "docs/creative/task-reference/list_creative_formats",
+                      "docs/creative/task-reference/list_transformers",
                       "docs/creative/task-reference/list_creatives",
                       "docs/creative/task-reference/sync_creatives",
                       "docs/creative/task-reference/get_creative_delivery"

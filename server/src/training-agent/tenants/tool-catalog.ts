@@ -53,6 +53,9 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   // (they live on `CreativeAdServerPlatform`); the /creative-builder tenant
   // no longer advertises them in tools/list.
   validate_input: ['sales', 'creative', 'creative-builder'],
+  // list_transformers (account-scoped transformer discovery) rides customTools
+  // on the creative tenants, gated off 3.0-compat like validate_input.
+  list_transformers: ['creative', 'creative-builder'],
   list_creatives: ['sales', 'creative'],
   sync_creatives: ['sales', 'creative', 'creative-builder'],
   build_creative: ['sales', 'creative', 'creative-builder'],
@@ -109,7 +112,7 @@ export function toolsForTenant(
     .filter(([, tenants]) => tenants.includes(tenantId))
     .map(([tool]) => tool)
     .filter(tool => !(
-      tool === 'validate_input'
+      (tool === 'validate_input' || tool === 'list_transformers')
       && (
         options.storyboardCompat?.version === '3.0'
         || options.adcpVersion?.startsWith('3.0')
