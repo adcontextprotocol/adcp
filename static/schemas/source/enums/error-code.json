@@ -9,6 +9,7 @@
     "AUTH_REQUIRED",
     "AUTH_MISSING",
     "AUTH_INVALID",
+    "AUTHORIZATION_REQUIRED",
     "RATE_LIMITED",
     "SERVICE_UNAVAILABLE",
     "CONFIGURATION_ERROR",
@@ -93,6 +94,7 @@
     "AUTH_REQUIRED": "**Deprecated** — use `AUTH_MISSING` (no credentials presented) or `AUTH_INVALID` (credentials presented and rejected). Retained as a backward-compatible alias during the 3.x deprecation window. Recovery: correctable.",
     "AUTH_MISSING": "No credentials were presented. Sellers MUST return this code when no `Authorization` header was included in the request. Recovery: correctable (provide credentials via the auth header and retry).",
     "AUTH_INVALID": "Credentials were presented but rejected — revoked, malformed signature, or a key no longer in the seller's keystore. Sellers MUST return this code when an `Authorization` header was present but verification failed. Recovery: terminal. Exception: agents with a valid OAuth 2.1 refresh grant MAY treat this as correctable when the rejection reason is token expiry — silently refresh and retry once; if the refresh fails or the seller explicitly signals revocation, escalate to human.",
+    "AUTHORIZATION_REQUIRED": "The caller is authenticated, but the referenced object requires an additional platform, identity, creator, or post authorization before the seller can complete the requested action. Typical use: `sync_creatives` with a `published_post` reference where the seller can resolve the post but the owning identity has not authorized paid serving, or authorization has expired/revoked and can be restored. Distinct from `AUTH_MISSING` / `AUTH_INVALID` (caller credentials) and from `PERMISSION_DENIED` (seller policy denies the caller). Sellers SHOULD include recovery details such as `error.details.authorization_url`, `authorization_instructions`, or `reference_authorization` when safe to disclose. Recovery: correctable (complete or restore the required authorization, then retry).",
     "RATE_LIMITED": "Request rate exceeded. Retry after the retry_after interval. Recovery: transient.",
     "SERVICE_UNAVAILABLE": "Seller service is temporarily unavailable. Retry with exponential backoff. Recovery: transient.",
     "CONFIGURATION_ERROR": "The seller's deployment is misconfigured in a way that prevents handling the request — the buyer cannot fix it, retrying will not help, and reporting to the seller's operator is the only remediation. Examples: account declared with `mode: 'mock'` but no `mock_upstream_url` populated; platform declared with `mode: 'live'` or `mode: 'sandbox'` but no `upstream_url` declared; required environment variable unset on the seller process. Distinct from `INVALID_REQUEST` (buyer-fixable; the request itself is malformed), `SERVICE_UNAVAILABLE` (transient; retry-with-backoff may succeed), `UNSUPPORTED_FEATURE` (capability mismatch — the seller does not implement the requested specialism), `ACCOUNT_SETUP_REQUIRED` (buyer-side onboarding incomplete; this code is seller-side deployment incomplete), and `GOVERNANCE_UNAVAILABLE` (governance-agent-scoped; transient). Wire placement. The deployment cannot produce a success artifact, so sellers MUST flip transport-level failure markers (HTTP 5xx, MCP `isError: true`, A2A `failed`) and populate both layers per the two-layer model in `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`. The code itself is the discriminator; no `error.details` shape is defined for this code (mirroring the minimal-disclosure precedent of `AGENT_SUSPENDED` / `AGENT_BLOCKED`). Sellers SHOULD populate `error.message` with operator-actionable detail (which metadata key is missing, which env var is unset) and MUST NOT include credentials, connection strings, or stack traces — the message is wire-visible to the buyer. Recovery: terminal — the buyer MUST surface to the seller's operator and MUST NOT auto-retry (retries cannot resolve a misconfigured deployment until the operator intervenes).",
@@ -189,6 +191,10 @@
     "AUTH_INVALID": {
       "recovery": "terminal",
       "suggestion": "do NOT auto-retry — credentials were rejected; rotate keys, refresh OAuth tokens once if applicable, otherwise escalate to a human"
+    },
+    "AUTHORIZATION_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "complete or restore the required platform, identity, creator, or post authorization; use error.details.authorization_url, authorization_instructions, or reference_authorization when present"
     },
     "RATE_LIMITED": {
       "recovery": "transient",

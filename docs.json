@@ -325,7 +325,9 @@
                         "group": "Formats and Assets",
                         "pages": [
                           "docs/creative/formats",
+                          "docs/creative/canonical-formats",
                           "docs/creative/asset-types",
+                          "docs/creative/published-post-reference-creatives",
                           "docs/creative/template-format-ids",
                           "docs/creative/universal-macros"
                         ]

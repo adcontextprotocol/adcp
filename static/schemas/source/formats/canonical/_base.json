@@ -62,8 +62,8 @@
           },
           "asset_type": {
             "type": "string",
-            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "catalog", "zip", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"],
-            "description": "Discriminator selecting the asset schema this slot accepts. SDK codegen uses this to type the slot value. `card` is the multi-card carousel element type (see card-asset.json). `pixel_tracker` / `vast_tracker` / `daast_tracker` are the renderer-fired measurement-tracker primitives — see `/schemas/core/assets/pixel-tracker-asset.json` and the VAST / DAAST tracker schemas. `object` is a last-resort fallback for structured non-asset inputs that don't fit any primitive asset_type — prefer specific types whenever possible."
+            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "catalog", "published_post", "zip", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"],
+            "description": "Discriminator selecting the asset schema this slot accepts. SDK codegen uses this to type the slot value. `published_post` is an existing-post reference asset, not uploaded media bytes and not a catalog row. `card` is the multi-card carousel element type (see card-asset.json). `pixel_tracker` / `vast_tracker` / `daast_tracker` are the renderer-fired measurement-tracker primitives — see `/schemas/core/assets/pixel-tracker-asset.json` and the VAST / DAAST tracker schemas. `object` is a last-resort fallback for structured non-asset inputs that don't fit any primitive asset_type — prefer specific types whenever possible."
           },
           "required": {
             "type": "boolean",
@@ -145,9 +145,9 @@
             }
           },
           {
-            "$comment": "Non-size asset types (url, catalog, html, css, javascript, webhook, daast, vast, card, object, pixel_tracker, vast_tracker, daast_tracker) reject both — there's no defined per-slot size semantics on those.",
+            "$comment": "Non-size asset types (url, catalog, published_post, html, css, javascript, webhook, daast, vast, card, object, pixel_tracker, vast_tracker, daast_tracker) reject both — there's no defined per-slot size semantics on those.",
             "if": {
-              "properties": { "asset_type": { "enum": ["url", "catalog", "html", "css", "javascript", "webhook", "daast", "vast", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"] } },
+              "properties": { "asset_type": { "enum": ["url", "catalog", "published_post", "html", "css", "javascript", "webhook", "daast", "vast", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"] } },
               "required": ["asset_type"]
             },
             "then": {
@@ -159,6 +159,11 @@
           }
         ]
       }
+    },
+    "reference_mutability": {
+      "type": "string",
+      "enum": ["immutable_snapshot", "mutable_requires_reapproval", "mutable_auto_recheck"],
+      "description": "Policy for formats whose `slots` accept a `published_post` reference. `immutable_snapshot`: seller snapshots the referenced post at approval and later source changes do not change the served creative. `mutable_requires_reapproval`: the source post may change and material changes require review before continued serving. `mutable_auto_recheck`: the source post may change and the seller continuously or periodically rechecks authorization/policy without requiring buyer resubmission. Omit when the format has no `published_post` slot."
     },
     "production_window_business_days": {
       "type": "integer",

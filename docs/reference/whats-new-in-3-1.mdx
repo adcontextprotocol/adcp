@@ -88,7 +88,7 @@ RC4 locks the trust envelope: successful `verify_brand_claim` and `verify_brand_
 
 ### Dependency-impact webhooks and snapshot coherence
 
-When a resource a media buy depends on transitions to an offline state — an audience suspended, a creative rejected post-approval, a catalog item withdrawn, an event source quiet, a property depublished — buyers see it through two parallel surfaces:
+When a resource a media buy depends on transitions to an offline state — an audience suspended, a creative suspended/rejected post-approval, a catalog item withdrawn, an event source quiet, a property depublished — buyers see it through two parallel surfaces:
 
 - **Snapshot.** `media_buy.health` flips from `ok` to `impaired`; `media_buy.impairments[]` lists every offline resource with its package_ids, transition, reason_code, and remediation hint. The next `get_media_buys` read shows current truth.
 - **Log.** `notification-type: impairment` webhooks fire with `notification_id = impairment_id` and the same payload shape, configured via `push_notification_config`.
