@@ -1662,9 +1662,10 @@ async function handleUserMessage({
     ? CERTIFICATION_MAX_ITERATIONS
     : undefined;
   // Resolve the cost-cap identity + tier (#2790 / #2945 f/u).
-  // Prefers a mapped WorkOS user ID (member_paid for active subs);
-  // falls back to `slack:${userId}` at member_free when no mapping
-  // exists, bounding an individual Slack user's Addie spend.
+  // Prefers a mapped WorkOS user ID (aao_team for AAO admins,
+  // member_paid for active subs); falls back to `slack:${userId}` at
+  // member_free when no mapping exists, bounding an individual Slack
+  // user's Addie spend.
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
     requestContext: requestContextWithRouting,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),

@@ -71,20 +71,24 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
  * - `member_paid`: $25/day. Paying members get a generous ceiling
  *   that's still a real cap — a runaway automated session still
  *   trips it within an hour of sustained abuse.
+ * - `aao_team`: uncapped. AAO staff/admin users are operating the
+ *   service, not consuming member benefits, so they should not hit
+ *   a self-service spend ceiling while doing support or admin work.
  */
-export const DAILY_BUDGET_USD: Record<'anonymous' | 'member_free' | 'member_paid', number> = {
+export const DAILY_BUDGET_USD = {
   anonymous: 3,
   member_free: 5,
   member_paid: 25,
-};
+} as const satisfies Record<'anonymous' | 'member_free' | 'member_paid', number>;
 
-const DAILY_BUDGET_MICROS: Record<keyof typeof DAILY_BUDGET_USD, number> = {
+type CappedUserTier = keyof typeof DAILY_BUDGET_USD;
+const DAILY_BUDGET_MICROS: Record<CappedUserTier, number> = {
   anonymous: DAILY_BUDGET_USD.anonymous * MICROS_PER_DOLLAR,
   member_free: DAILY_BUDGET_USD.member_free * MICROS_PER_DOLLAR,
   member_paid: DAILY_BUDGET_USD.member_paid * MICROS_PER_DOLLAR,
 };
 
-export type UserTier = keyof typeof DAILY_BUDGET_USD;
+export type UserTier = CappedUserTier | 'aao_team';
 
 export interface CostCheckResult {
   ok: boolean;
@@ -177,6 +181,7 @@ export async function checkCostCap(
 ): Promise<CostCheckResult> {
   if (!userId) return { ok: true };
   if (SYSTEM_USER_IDS.has(userId)) return { ok: true };
+  if (tier === 'aao_team') return { ok: true, tier };
 
   const budgetMicros = DAILY_BUDGET_MICROS[tier];
   const { totalMicros, firstAtMs } = await store.sumInWindow(userId, WINDOW_MS);
@@ -232,6 +237,9 @@ export async function recordCost(
  */
 export function formatCapExceededMessage(result: CostCheckResult): string {
   const tier = result.tier ?? 'anonymous';
+  if (tier === 'aao_team') {
+    return 'AAO team usage is uncapped.';
+  }
   const capUsd = DAILY_BUDGET_USD[tier];
   const spentUsd = ((result.spentCents ?? 0) / 100).toFixed(2);
   // Render the wait as hours when a user trips the cap early in the
@@ -261,9 +269,11 @@ export function formatCapExceededMessage(result: CostCheckResult): string {
  */
 export function resolveUserTier(opts: {
   isAnonymous?: boolean;
+  isAAOTeam?: boolean;
   hasActiveSubscription?: boolean;
 }): UserTier {
   if (opts.isAnonymous) return 'anonymous';
+  if (opts.isAAOTeam) return 'aao_team';
   return opts.hasActiveSubscription ? 'member_paid' : 'member_free';
 }
 
@@ -317,9 +327,12 @@ function writeCachedTier(userId: string, tier: UserTier): void {
  * (`slack:...`, `email:...`, etc.) can't resolve a real subscription
  * at call time, so they stay `member_free` regardless of the underlying
  * person's membership — upgrading those paths would need the caller to
- * have already mapped to a WorkOS id and passed *that* here. DB errors
+ * have already mapped to a WorkOS id and passed *that* here. AAO team
+ * members (`aao-admin` governance group) return `aao_team`, which is
+ * uncapped at the cost-gate boundary but still recorded for spend
+ * observability. DB errors
  * fall back to `member_free` so a transient outage doesn't accidentally
- * grant the $25/day ceiling to unverified callers.
+ * grant the $25/day ceiling or uncapped staff access to unverified callers.
  *
  * The SQL predicate here (`subscription_status = 'active' AND
  * subscription_canceled_at IS NULL`) matches `MEMBER_FILTER` in
@@ -342,17 +355,35 @@ export async function resolveUserTierFromDb(userId: string | null | undefined): 
   if (cached && cached.expiresAt > now) return cached.tier;
 
   try {
-    const { rows } = await query<{ exists: 1 }>(
-      `SELECT 1 AS exists
-         FROM organization_memberships om
-         JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
-        WHERE om.workos_user_id = $1
-          AND o.subscription_status = 'active'
-          AND o.subscription_canceled_at IS NULL
-        LIMIT 1`,
+    const { rows } = await query<{
+      is_aao_team: boolean;
+      has_active_subscription: boolean;
+    }>(
+      `SELECT
+          EXISTS (
+            SELECT 1
+              FROM working_groups wg
+              JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
+             WHERE wg.slug = 'aao-admin'
+               AND wg.status = 'active'
+               AND wgm.workos_user_id = $1
+               AND wgm.status = 'active'
+          ) AS is_aao_team,
+          EXISTS (
+            SELECT 1
+              FROM organization_memberships om
+              JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+             WHERE om.workos_user_id = $1
+               AND o.subscription_status = 'active'
+               AND o.subscription_canceled_at IS NULL
+          ) AS has_active_subscription`,
       [userId],
     );
-    const tier: UserTier = rows.length > 0 ? 'member_paid' : 'member_free';
+    const row = rows[0];
+    const tier = resolveUserTier({
+      isAAOTeam: row?.is_aao_team === true,
+      hasActiveSubscription: row?.has_active_subscription === true,
+    });
     writeCachedTier(userId, tier);
     return tier;
   } catch (err) {

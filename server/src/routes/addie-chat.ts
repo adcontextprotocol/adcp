@@ -867,8 +867,9 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
 
       // Cost-cap scope (#2790 / #2945 f/u). Authenticated callers key
       // off the WorkOS user ID and resolve their tier from
-      // subscription status — paying members land on member_paid
-      // ($25/day), free accounts on member_free ($5). Anonymous
+      // AAO team/admin + subscription status — AAO team users are
+      // uncapped, paying members land on member_paid ($25/day), free
+      // accounts on member_free ($5). Anonymous
       // callers key off a hashed IP; the client-generated
       // `externalId` alone was a bypass vector (an attacker could
       // rotate it to get a fresh budget per request). The per-IP 50

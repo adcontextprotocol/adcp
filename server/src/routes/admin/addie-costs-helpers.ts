@@ -8,6 +8,7 @@
 const MICROS_PER_DOLLAR = 1_000_000;
 
 export type Namespace = 'email' | 'slack' | 'mcp' | 'tavus' | 'anon' | 'workos' | 'unknown';
+export type DisplayTier = 'anonymous' | 'member_free' | 'member_paid' | 'aao_team';
 
 /**
  * Fallback tier inference when we can't join to organizations (every
@@ -15,7 +16,7 @@ export type Namespace = 'email' | 'slack' | 'mcp' | 'tavus' | 'anon' | 'workos' 
  * tightest cap; slack (which *could* be a real member but wasn't mapped
  * at call time) gets member_free.
  */
-export const NAMESPACE_FALLBACK_TIER: Record<Namespace, 'anonymous' | 'member_free' | 'member_paid'> = {
+export const NAMESPACE_FALLBACK_TIER: Record<Namespace, Exclude<DisplayTier, 'aao_team'>> = {
   email: 'anonymous',
   mcp: 'anonymous',
   tavus: 'anonymous',
@@ -36,7 +37,9 @@ export const NAMESPACE_FALLBACK_TIER: Record<Namespace, 'anonymous' | 'member_fr
 export function inferDisplayTier(
   namespace: Namespace,
   hasActiveSubscription: boolean | null,
-): 'anonymous' | 'member_free' | 'member_paid' {
+  isAAOTeam: boolean | null = null,
+): DisplayTier {
+  if (isAAOTeam === true) return 'aao_team';
   if (hasActiveSubscription === true) return 'member_paid';
   return NAMESPACE_FALLBACK_TIER[namespace];
 }
@@ -55,6 +58,16 @@ export function classifyScopeKey(key: string): Namespace {
   if (key.startsWith('anon:')) return 'anon';
   if (key.startsWith('user_')) return 'workos';
   return 'unknown';
+}
+
+/**
+ * Validate scope keys accepted by the admin detail/reset endpoints.
+ * SQL parameterization is the real injection defense; this keeps
+ * control characters and whitespace out of logs and audit trails while
+ * allowing IdP-shaped subjects inside `mcp:<sub>` keys.
+ */
+export function isValidScopeKey(scopeKey: string): boolean {
+  return scopeKey.length > 0 && scopeKey.length <= 256 && /^[\x21-\x7E]+$/.test(scopeKey);
 }
 
 export function microsToUsd(micros: number): number {

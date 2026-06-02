@@ -107,6 +107,7 @@
     .tier-anonymous { background: var(--color-bg-subtle); color: var(--color-text-secondary); }
     .tier-member_free { background: var(--color-info-50); color: var(--color-info-700); }
     .tier-member_paid { background: var(--color-success-50); color: var(--color-success-700); }
+    .tier-aao_team { background: var(--color-warning-50); color: var(--color-warning-700); }
 
     .ns-badge {
       display: inline-block;
@@ -182,6 +183,25 @@
       cursor: pointer;
       color: var(--color-text-secondary);
     }
+    .detail-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-bottom: 16px;
+    }
+    .danger-btn {
+      background: var(--color-error-50);
+      border: 1px solid var(--color-error-200);
+      border-radius: 6px;
+      color: var(--color-error-700);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 6px 12px;
+    }
+    .danger-btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
     .detail-modal h3 { margin-bottom: 12px; color: var(--color-text-heading); }
   </style>
 </head>
@@ -192,7 +212,7 @@
     <h1>Addie Cost Cap</h1>
     <p class="subtitle">
       Per-user Anthropic API spend tracked against the rolling 24h cap
-      (anonymous $1 · member_free $5 · member_paid $25). Scope keys group
+      (anonymous $3 · member_free $5 · member_paid $25 · aao_team uncapped). Scope keys group
       callers by identity namespace — bare <code>user_…</code> ids join back
       to real members; <code>email:</code>/<code>mcp:</code>/<code>tavus:</code>
       stay opaque by design.
@@ -238,6 +258,9 @@
     <div class="panel">
       <button id="detailCloseBtn" class="close-btn" type="button">Close</button>
       <h3 id="detailTitle">Scope detail</h3>
+      <div class="detail-actions">
+        <button id="resetScopeBtn" class="danger-btn" type="button">Reset 24h cap</button>
+      </div>
       <div id="detailContent"><div class="loading">Loading…</div></div>
     </div>
   </div>
@@ -259,6 +282,8 @@
       if (pct >= 50) return 'warn';
       return '';
     }
+
+    let activeScopeKey = null;
 
     async function loadSummary() {
       try {
@@ -330,8 +355,9 @@
         }
 
         const rows = data.leaderboard.map(row => {
-          const fillCls = percentFillClass(row.percent_of_cap);
-          const widthPct = Math.max(0, Math.min(100, row.percent_of_cap));
+          const isUncapped = row.cap_usd === null || row.percent_of_cap === null;
+          const fillCls = isUncapped ? '' : percentFillClass(row.percent_of_cap);
+          const widthPct = isUncapped ? 0 : Math.max(0, Math.min(100, row.percent_of_cap));
           const memberCell = row.member_name
             ? `<div class="member-name">${escapeHtml(row.member_name)}</div><div class="scope-key">${escapeHtml(row.member_email || '')}</div>`
             : '<span class="scope-key" style="color: var(--color-text-muted);">—</span>';
@@ -346,8 +372,10 @@
               <td><span class="tier-badge tier-${escapeHtml(row.inferred_tier)}">${escapeHtml(row.inferred_tier)}</span></td>
               <td>$${row.spent_usd.toFixed(2)}</td>
               <td>
-                <span class="percent-bar"><span class="fill ${fillCls}" style="width: ${widthPct}%;"></span></span>
-                ${row.percent_of_cap.toFixed(1)}%
+                ${isUncapped
+                  ? '<span class="scope-key">Uncapped</span>'
+                  : `<span class="percent-bar"><span class="fill ${fillCls}" style="width: ${widthPct}%;"></span></span>${row.percent_of_cap.toFixed(1)}%`
+                }
               </td>
               <td>${row.event_count}</td>
               <td>${escapeHtml(row.models.join(', '))}</td>
@@ -379,6 +407,7 @@
     }
 
     async function openDetail(scopeKey) {
+      activeScopeKey = scopeKey;
       const modal = document.getElementById('detailModal');
       document.getElementById('detailTitle').textContent = `Scope: ${scopeKey}`;
       document.getElementById('detailContent').innerHTML = '<div class="loading">Loading…</div>';
@@ -426,13 +455,46 @@
     }
 
     function closeDetail() {
+      activeScopeKey = null;
       document.getElementById('detailModal').classList.remove('show');
+    }
+
+    async function resetActiveScope() {
+      if (!activeScopeKey) return;
+      const scopeKey = activeScopeKey;
+      const confirmed = window.confirm(`Reset the last 24 hours of Addie cost events for ${scopeKey}?`);
+      if (!confirmed) return;
+
+      const btn = document.getElementById('resetScopeBtn');
+      btn.disabled = true;
+      btn.textContent = 'Resetting…';
+      try {
+        const res = await fetch(`/api/admin/addie-costs/scope/${encodeURIComponent(scopeKey)}/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}'
+        });
+        if (!res.ok) throw new Error('reset failed');
+        const data = await res.json();
+        await Promise.all([loadSummary(), loadLeaderboard()]);
+        if (activeScopeKey === scopeKey) {
+          await openDetail(scopeKey);
+        }
+        window.alert(`Reset ${data.deleted_events} events ($${data.deleted_cost_usd.toFixed(2)}).`);
+      } catch (err) {
+        console.error(err);
+        window.alert('Failed to reset this scope.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Reset 24h cap';
+      }
     }
 
     document.getElementById('detailModal').addEventListener('click', (e) => {
       if (e.target.id === 'detailModal') closeDetail();
     });
     document.getElementById('detailCloseBtn').addEventListener('click', closeDetail);
+    document.getElementById('resetScopeBtn').addEventListener('click', resetActiveScope);
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeDetail();
     });

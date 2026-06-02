@@ -20,7 +20,7 @@ import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } 
 import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummary, type MessageTurn } from '../utils/token-limiter.js';
 import { notifySystemError, notifyToolError } from './error-notifier.js';
 import { ToolError } from './tool-error.js';
-import { checkCostCap, recordCost, formatCapExceededMessage } from './claude-cost-tracker.js';
+import { checkCostCap, recordCost, formatCapExceededMessage, type UserTier } from './claude-cost-tracker.js';
 import { EMPTY_RESPONSE_FALLBACK, applyResponsePipeline, stripBannedRituals } from './response-postprocess.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
@@ -358,7 +358,7 @@ export interface ProcessMessageOptions {
    */
   costScope?: {
     userId: string;
-    tier: 'anonymous' | 'member_free' | 'member_paid';
+    tier: UserTier;
   };
   /**
    * Explicit opt-out for system / router callers that shouldn't
