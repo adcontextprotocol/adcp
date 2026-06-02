@@ -898,6 +898,8 @@ Pinterest is the canonical disambiguation example because a single platform sell
 
 The cleave is **asset-bundle vs catalog-row composition**, not "is it Pinterest." Same logic applies to Snap Story Ad (native_in_feed) vs Snap Collection (sponsored_placement), TikTok TopView (native_in_feed via `applies_to_channels: ["social"]`) vs TikTok Collection (sponsored_placement), and so on. Buyer agents route on the composition shape; the publisher's brand of the surface is incidental.
 
+The `fanout_mode: single_item` case above is its own family: catalog-driven render where the platform composes **one SKU per impression** rather than a multi-item collection. Meta Dynamic Product Ads (single-product render), Snap Collection in single-item mode, and TikTok Shopping single-SKU all map to `sponsored_placement` with `fanout_mode: single_item` — the buyer ships a catalog reference and the seller renders one item per ad, with the platform selecting which item. This is still catalog-row composition; it differs from `multi_item_in_creative` only in how many items land in one creative. See [Sponsored Placement adapter contracts](/docs/creative/sponsored-placement-adapter-contracts) for the per-adopter runtime contracts (the Collection-layout family in §3 covers Pinterest/Snap Collection).
+
 A buyer agent reading a `format_kind: native_in_feed` product knows to assemble the title/image/body/CTA bundle from its own creative pool. Reading `format_kind: sponsored_placement`, it knows to attach a catalog feed and let the seller compose per-item. The discriminator carries the decision; no per-platform branching needed.
 
 ## Validation flow — `validate_input`

@@ -48,6 +48,10 @@
       "type": "integer",
       "minimum": 1
     },
+    "card_video_max_file_size_kb": {
+      "type": "integer",
+      "minimum": 1
+    },
     "card_video_max_duration_ms": {
       "type": "integer",
       "minimum": 1

@@ -167,7 +167,7 @@ By providing assets grouped by role, each catalog item self-describes the images
 }
 ```
 
-The `asset_group_id` vocabulary is not standardized at the protocol level — each format defines which group IDs it uses via `offering_asset_constraints` in the catalog asset's `requirements`. Common conventions: `images_landscape` (16:9), `images_vertical` (9:16), `images_square` (1:1), `logo`, `video`.
+The `asset_group_id` vocabulary is not standardized at the protocol level — each format defines which group IDs it uses via `offering_asset_constraints` in the catalog asset's `requirements`. Common conventions: `images_landscape` (16:9), `images_vertical` (9:16), `images_square` (1:1), `logo`, `video`. Video pools are first-class catalog asset groups alongside image pools — beyond the generic `video` pool, orientation-specific `video_vertical` (9:16) and `video_horizontal` (16:9) pool IDs let a feed carry per-orientation video the same way the image pools do.
 
 Formats use `field_bindings` (see [Format catalog requirements](#format-catalog-requirements)) to explicitly declare which template slot maps to which asset group.
 
@@ -457,7 +457,7 @@ Each mapping entry is one of:
 | Pattern | What it does |
 |---------|-------------|
 | `feed_field` + `catalog_field` | Renames a feed field to its schema equivalent (dot notation for nested fields) |
-| `feed_field` + `asset_group_id` | Places a URL into a typed asset pool on the item's `assets` array |
+| `feed_field` + `asset_group_id` | Places a URL into a typed asset pool on the item's `assets` array; the URL is wrapped as an image **or** video asset depending on the pool (e.g., `video`, `video_vertical`, `video_horizontal` wrap a video asset) |
 | `value` + `catalog_field` | Injects a static literal — useful for fields the feed omits (e.g., currency when always USD) |
 | Any of the above + `transform` | Applies a named coercion before writing |
 | Any of the above + `default` | Fallback when the feed field is absent or null |
