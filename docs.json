@@ -316,6 +316,7 @@
                         "group": "Building Creative Agents",
                         "pages": [
                           "docs/creative/implementing-creative-agents",
+                          "docs/creative/buyer-attached-inputs",
                           "docs/creative/sales-agent-creative-capabilities",
                           "docs/creative/multi-agent-orchestration",
                           "docs/creative/creative-manifests",
@@ -1515,6 +1516,7 @@
                     "group": "Building Creative Agents",
                     "pages": [
                       "docs/creative/implementing-creative-agents",
+                      "docs/creative/buyer-attached-inputs",
                       "docs/creative/sales-agent-creative-capabilities",
                       "docs/creative/multi-agent-orchestration",
                       "docs/creative/creative-manifests",
