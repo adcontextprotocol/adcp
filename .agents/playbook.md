@@ -273,7 +273,24 @@ Then **immediately rename** the generated file from its random name (for example
 mv .changeset/<random-name>.md .changeset/<descriptive-name>.md
 ```
 
-Add a clear description in the changeset body. Use `--empty` (no package entry) for non-protocol changes (server, UI, docs, infra, tools). Use `patch`/`minor`/`major` only for changes to the published AdCP protocol spec (schemas, task definitions, API reference).
+Add a clear description in the changeset body.
+
+Before opening or updating a PR, stage the changeset and run the same gate CI
+uses:
+
+```bash
+git add .changeset/<descriptive-name>.md
+npx --yes @changesets/cli@^2.31.0 status --since=origin/main
+```
+
+The changesets CLI ignores untracked files, so the local check can still fail
+until the changeset file is staged or committed.
+
+Use `--empty` (empty frontmatter) for changes that do not alter the published
+AdCP protocol package surface, including server/runtime behavior, UI, docs,
+infra, migrations, and tooling. Use `patch`/`minor`/`major` only for changes to
+the published AdCP protocol spec (schemas, task definitions, API reference) or
+an intentional package-version release note.
 
 **NEVER manually edit versions.** Use changesets:
 ```bash
@@ -293,6 +310,12 @@ PR titles must be review- and release-ready:
 - Use conventional-commits format (`fix(scope): summary`, `docs: summary`, `feat(schema): summary`).
 - Do not prefix titles with the tool or model that authored the PR. In particular, never use `[codex]`, `[claude]`, `[agent]`, or similar ownership tags.
 - The authoring tool belongs in the PR body/session link or labels when useful, not in the title. PR titles flow into release/review surfaces, so tool prefixes create noise and can break title-based automation.
+
+Before creating or updating a PR title, validate it locally:
+
+```bash
+node scripts/check-pr-title.cjs "fix(scope): concise human title"
+```
 
 **Use `--empty` (no package entry) for everything that isn't a protocol change:**
 - Addie (any server-side AI behavior, tools, routing, bolt app)

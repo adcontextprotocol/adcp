@@ -139,17 +139,19 @@ function loadTestJwks(): AdcpJsonWebKey[] {
 /**
  * Capability block for the public sandbox `/mcp` route.
  *
- * `required_for: []` so unsigned bearer callers keep working — this endpoint
- * is a learning sandbox, not a conformance target. Signed callers are still
- * verified end-to-end (signature composes via `anyOf(verifyApiKey, ...)`).
+ * Do not advertise or enforce request signing on the public sandbox. This
+ * endpoint is a learning target for localhost storefronts and SDK smoke tests,
+ * so bearer-authenticated callers must be able to exercise mutating protocol
+ * flows without publishing a remotely fetchable JWKS. Signing-specific
+ * coverage lives on the `/mcp-strict*` conformance endpoints.
  */
 export function getRequestSigningCapability(): VerifierCapability {
   if (!defaultCapability) {
     defaultCapability = {
-      supported: true,
+      supported: false,
       covers_content_digest: 'either',
       required_for: [],
-      supported_for: [...MUTATING_TOOLS],
+      supported_for: [],
     };
   }
   return defaultCapability;
@@ -344,23 +346,6 @@ function buildAuthenticatorWithCapability(capability: VerifierCapability): Authe
     },
     resolveOperation: mcpOperationResolver,
   });
-}
-
-/**
- * Build the Authenticator that verifies RFC 9421 signatures. Composed
- * into the main auth chain via `anyOf(verifyApiKey(...), this)` so the
- * endpoint accepts either bearer OR a valid signature.
- *
- * Returns `null` (fall-through) on unsigned requests. Throws `AuthError`
- * on signature-present-but-invalid. Returns a principal
- * `signing:<keyid>` on success.
- */
-export function buildRequestSigningAuthenticator(): Authenticator {
-  logger.info(
-    { required_for_count: getRequestSigningCapability().required_for.length },
-    'Request-signing authenticator initialised from compliance test JWKS',
-  );
-  return buildAuthenticatorWithCapability(getRequestSigningCapability());
 }
 
 /** Authenticator for `/mcp-strict`: presence-gated signing with

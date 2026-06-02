@@ -25,7 +25,7 @@ import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 export interface TrainingConfig {
-  /** Strict route advertises required_for: ['create_media_buy']. */
+  /** Strict route advertises request-signing requirements for mutating operations. */
   strict: boolean;
 }
 

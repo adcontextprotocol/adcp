@@ -65,6 +65,28 @@ describe('Training Agent legacy /mcp back-compat alias', () => {
     expect(res.headers['link']).toContain('successor-version');
   });
 
+  it('ignores malformed request-signing headers on the public legacy sandbox', async () => {
+    const res = await request(app)
+      .post('/api/training-agent/mcp')
+      .set('Authorization', AUTH)
+      .set('Content-Type', 'application/json')
+      .set('Accept', 'application/json, text/event-stream')
+      .set('Signature-Input', 'sig1=("@method");created=1;keyid="localhost-dev"')
+      .set('Signature', 'sig1=:not-valid-base64:')
+      .send({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'get_adcp_capabilities', arguments: {} },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.result?.structuredContent?.request_signing).toMatchObject({
+      supported: false,
+      required_for: [],
+      supported_for: [],
+    });
+  });
+
   it('rejects unauthenticated requests with 401 + WWW-Authenticate', async () => {
     const res = await request(app)
       .post('/api/training-agent/mcp')
@@ -86,6 +108,9 @@ describe('Training Agent legacy /mcp back-compat alias', () => {
     expect(res.status).toBe(204);
     expect(res.headers['access-control-allow-origin']).toBe('*');
     expect(res.headers['access-control-allow-methods']).toContain('POST');
+    expect(res.headers['access-control-allow-headers']).toContain('Signature-Input');
+    expect(res.headers['access-control-allow-headers']).toContain('Signature');
+    expect(res.headers['access-control-allow-headers']).toContain('Content-Digest');
   });
 });
 
@@ -180,5 +205,14 @@ describe('Tenant routes via host-based dispatch (no /api/training-agent prefix)'
     const tools = (res.body.result?.tools ?? []) as Array<{ name: string }>;
     const names = new Set(tools.map(t => t.name));
     expect(names.has('get_brand_identity')).toBe(true);
+  });
+
+  it('returns signing headers on tenant OPTIONS preflight', async () => {
+    const res = await request(app).options('/sales/mcp');
+    expect(res.status).toBe(204);
+    expect(res.headers['access-control-allow-origin']).toBe('*');
+    expect(res.headers['access-control-allow-headers']).toContain('Signature-Input');
+    expect(res.headers['access-control-allow-headers']).toContain('Signature');
+    expect(res.headers['access-control-allow-headers']).toContain('Content-Digest');
   });
 });

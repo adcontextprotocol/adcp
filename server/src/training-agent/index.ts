@@ -41,7 +41,6 @@ import { getPublicJwks } from './webhooks.js';
 import { getAggregatedPublicJwks } from './tenants/signing.js';
 import { WALKTHROUGH_FIXTURES } from './fixtures/verification-walkthrough/index.js';
 import {
-  buildRequestSigningAuthenticator,
   buildStrictRequestSigningAuthenticator,
   buildStrictRequiredRequestSigningAuthenticator,
   buildStrictForbiddenRequestSigningAuthenticator,
@@ -126,20 +125,11 @@ function buildBearerAuthenticator(): Authenticator | null {
   return authenticators.length === 1 ? authenticators[0] : anyOf(...authenticators);
 }
 
-// Lazy so the signing authenticator builds on first auth call —
+// Lazy so strict signing authenticators build on first auth call —
 // avoids reading the compliance test JWKS at module import time, which
-// would break test setups that mock the compliance cache. Each route
-// owns its own InMemoryReplayStore (#3338) — sharing one store lets a
-// nonce consumed on /mcp falsely fire request_signature_replayed on
-// /mcp-strict, so the strict-route authenticator is built separately.
-let _signingAuth: Authenticator | null = null;
-function lazySigningAuth(): Authenticator {
-  return (req) => {
-    if (!_signingAuth) _signingAuth = buildRequestSigningAuthenticator();
-    return _signingAuth(req);
-  };
-}
-
+// would break test setups that mock the compliance cache. Each strict route
+// owns its own InMemoryReplayStore (#3338) so digest-profile variants do not
+// falsely share nonce state with each other.
 let _strictSigningAuth: Authenticator | null = null;
 function lazyStrictSigningAuth(): Authenticator {
   return (req) => {
@@ -165,14 +155,24 @@ function lazyStrictForbiddenSigningAuth(): Authenticator {
 }
 
 /**
- * Tenant-route authenticator: presence-gated signature composition.
- * Callers with no `Signature-Input` header fall through to bearer auth.
- * Callers that DO present a signature header MUST produce a valid one.
+ * Public sandbox authenticator. Deliberately bearer-only: localhost storefronts
+ * and SDK smoke tests may send signature headers from clients whose JWKS is not
+ * publicly fetchable, and the sandbox should not fail before protocol flow.
+ * Signing verifier coverage belongs to the `/mcp-strict*` routes below.
  */
 function buildDefaultAuthenticator(): Authenticator | null {
-  const bearerAuth = buildBearerAuthenticator();
-  if (!bearerAuth) return null;
-  return requireSignatureWhenPresent(lazySigningAuth(), bearerAuth);
+  return buildBearerAuthenticator();
+}
+
+function rejectBearerOnStrictRequiredOps(inner: Authenticator, requiredOps: readonly string[]): Authenticator {
+  const required = new Set(requiredOps);
+  return async (req) => {
+    const operation = mcpOperationResolver(req as { rawBody?: string });
+    if (operation && required.has(operation)) {
+      return null;
+    }
+    return inner(req);
+  };
 }
 
 /**
@@ -197,11 +197,12 @@ function buildDefaultAuthenticator(): Authenticator | null {
 function buildStrictAuthenticator(): Authenticator | null {
   const bearerAuth = buildBearerAuthenticator();
   if (!bearerAuth) return null;
+  const requiredOps = [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR];
   const presenceGated = requireSignatureWhenPresent(
     lazyStrictSigningAuth(),
-    bearerAuth,
+    rejectBearerOnStrictRequiredOps(bearerAuth, requiredOps),
     {
-      requiredFor: [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR],
+      requiredFor: requiredOps,
       resolveOperation: mcpOperationResolver,
     },
   );
@@ -211,11 +212,12 @@ function buildStrictAuthenticator(): Authenticator | null {
 function buildStrictRequiredAuthenticator(): Authenticator | null {
   const bearerAuth = buildBearerAuthenticator();
   if (!bearerAuth) return null;
+  const requiredOps = [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR];
   const presenceGated = requireSignatureWhenPresent(
     lazyStrictRequiredSigningAuth(),
-    bearerAuth,
+    rejectBearerOnStrictRequiredOps(bearerAuth, requiredOps),
     {
-      requiredFor: [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR],
+      requiredFor: requiredOps,
       resolveOperation: mcpOperationResolver,
     },
   );
@@ -225,11 +227,12 @@ function buildStrictRequiredAuthenticator(): Authenticator | null {
 function buildStrictForbiddenAuthenticator(): Authenticator | null {
   const bearerAuth = buildBearerAuthenticator();
   if (!bearerAuth) return null;
+  const requiredOps = [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR];
   const presenceGated = requireSignatureWhenPresent(
     lazyStrictForbiddenSigningAuth(),
-    bearerAuth,
+    rejectBearerOnStrictRequiredOps(bearerAuth, requiredOps),
     {
-      requiredFor: [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR],
+      requiredFor: requiredOps,
       resolveOperation: mcpOperationResolver,
     },
   );
@@ -375,7 +378,7 @@ export function createTrainingAgentRouter(options: { storyboardCompat?: Training
   function setLegacyCORS(res: Response): void {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id, Signature, Signature-Input, Content-Digest');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Type');
   }
 
@@ -459,8 +462,8 @@ export function createTrainingAgentRouter(options: { storyboardCompat?: Training
   // request-signing is a transport-layer property, not
   // specialism-specific, so the strict route doesn't need v6 platform
   // dispatch. The default `/<tenant>/mcp` continues to serve the v6
-  // framework with sandbox signing (presence-gated, no required_for
-  // enforcement).
+  // framework as a bearer-authenticated public sandbox with no request-signing
+  // advertisement or enforcement.
   function makeStrictMcpHandler(digestMode?: 'either' | 'required' | 'forbidden') {
     return async function strictMcpHandler(req: Request, res: Response): Promise<void> {
       setLegacyCORS(res);
