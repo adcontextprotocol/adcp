@@ -2883,6 +2883,7 @@
           chatSidebar.classList.add('visible');
           sidebarToggleBtn.classList.add('visible');
           loadActiveTabs(); // Restore from localStorage
+          await restoreCurrentTab();
           loadThreads();
         } catch (error) {
           // Network error — don't assume anonymous, just skip the banner
@@ -2989,6 +2990,40 @@
         }
       }
 
+      function saveCurrentTab(id) {
+        try {
+          localStorage.setItem('addie_current_tab', id);
+        } catch (e) {
+          console.warn('Failed to save current tab to localStorage');
+        }
+      }
+
+      function clearCurrentTab() {
+        try {
+          localStorage.removeItem('addie_current_tab');
+        } catch (e) {
+          console.warn('Failed to clear current tab from localStorage');
+        }
+      }
+
+      async function restoreCurrentTab() {
+        try {
+          const saved = localStorage.getItem('addie_current_tab');
+          if (!saved) return;
+
+          const tab = activeTabs.find(t => t.id === saved);
+          if (!tab) {
+            clearCurrentTab();
+            return;
+          }
+
+          await switchToConversation(tab.id, tab.channel);
+        } catch (e) {
+          console.warn('Failed to restore current tab from localStorage');
+          clearCurrentTab();
+        }
+      }
+
       // Add a conversation to active tabs
       function addActiveTab(id, title, channel = 'web') {
         // Check if already in active tabs
@@ -3058,7 +3093,7 @@
         activeTabsList.innerHTML = '';
         if (activeTabs.length === 0) return;
 
-        activeTabs.forEach(tab => {
+        [...activeTabs].reverse().forEach(tab => {
           const indicatorClass = tab.isLoading ? 'tab-item-indicator--thinking' :
                                  tab.unreadCount > 0 ? 'tab-item-indicator--ready' :
                                  'tab-item-indicator--idle';
@@ -3170,6 +3205,7 @@
       // Switch to home tab
       function switchToHome() {
         currentTabId = 'home';
+        clearCurrentTab();
         conversationId = null;
         currentChannel = 'web';
         lastAssistantMessageId = null;
@@ -3282,6 +3318,7 @@
         conversationId = newConversationId;
         currentChannel = channel;
         currentTabId = newConversationId;
+        saveCurrentTab(newConversationId);
 
         // Update home tab state
         homeTab.classList.remove('active');
@@ -3330,6 +3367,8 @@
           }
         } catch (error) {
           console.error('Failed to load conversation:', error);
+          removeActiveTab(newConversationId);
+          switchToHome();
           showError('Failed to load conversation');
         }
 
@@ -3359,6 +3398,7 @@
         conversationId = null;
         currentChannel = 'web';
         currentTabId = 'home'; // New chat starts from home
+        clearCurrentTab();
         lastAssistantMessageId = null;
         clearSessionFeedbackTimer();
 
@@ -4411,6 +4451,7 @@
                     const title = message.slice(0, 50) + (message.length > 50 ? '...' : '');
                     addActiveTab(newConversationId, title, 'web');
                     currentTabId = newConversationId;
+                    saveCurrentTab(newConversationId);
                     homeTab.classList.remove('active');
 
                     // Mark as loading

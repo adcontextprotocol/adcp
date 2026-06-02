@@ -57,8 +57,7 @@ function toAdaptedResponse(result: unknown, callerContext: unknown, options: Cus
   const servedAdcpVersion = typeof (result as { adcp_version?: unknown } | null | undefined)?.adcp_version === 'string'
     ? (result as { adcp_version: string }).adcp_version
     : undefined;
-  const canReturnPayloadErrors = options.payloadErrorsAsSuccess
-    && typeof (result as { accepted?: unknown } | null | undefined)?.accepted === 'number';
+  const canReturnPayloadErrors = options.payloadErrorsAsSuccess;
   if (Array.isArray(errsField) && errsField.length > 0 && !canReturnPayloadErrors) {
     const first = errsField[0] as InlineError;
     const errorObj: Record<string, unknown> = { code: first.code, message: first.message };

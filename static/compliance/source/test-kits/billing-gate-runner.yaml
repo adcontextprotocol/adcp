@@ -84,7 +84,7 @@ harness_mode: black_box
 # authenticated under; the CLI carries the bearer onto the wire.
 auth:
   api_key: "demo-billing-passthrough-v1"
-  probe_task: list_accounts
+  probe_task: list_creatives
 
 # Brand identity for the storyboard's sample_request payloads. Reuses the Acme
 # Outdoor sandbox brand so the brand-resolution path is the same as for

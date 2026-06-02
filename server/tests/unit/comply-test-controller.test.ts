@@ -189,10 +189,11 @@ describe('comply_test_controller', () => {
         'seed_creative_format',
         'seed_measurement_catalog',
         'query_provenance_audit_observations',
+        'evaluate_distributed_brand_resolution',
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(18);
+      expect(scenarios.length).toBe(19);
       // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });
