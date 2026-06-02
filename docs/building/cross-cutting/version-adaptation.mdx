@@ -9,7 +9,7 @@ Three versions move at the same time when you ship an AdCP agent or client:
 
 | Axis | Example | What changes |
 |---|---|---|
-| **Spec version** | AdCP `2.5 → 3.0.5 → 3.1` | Wire shapes, error codes, lifecycle states, new tools |
+| **Spec version** | AdCP `2.5 → 3.0 → 3.1` | Wire shapes, error codes, lifecycle states, new tools |
 | **SDK version** | SDK `5.x → 6.x` | API surface, ergonomics, compile-time guarantees |
 | **Peer version** (per call) | Buyer at v3.0, seller at v2.5 | A single conversation crosses versions |
 
@@ -97,7 +97,7 @@ Use this when you're a **server** and you want to be explicit about which spec v
 
 ### Declare what you support
 
-`supported_versions` (release-precision strings) and/or `major_versions` go on your agent's capability declaration. Use release-precision strings — `'3.0.5'`, `'3.1.0'` — not the legacy aliases (`'v2.5'`, `'v3'`) used for client-side pinning. A 3.x server with no v2.5 handler logic should not declare `'v2.5'` here — its 2.5 callers go through *client-side* adapters at the buyer end, not the server's accepted-version set.
+`supported_versions` (release-precision strings) and/or `major_versions` go on your agent's capability declaration. Use release-precision strings — `'3.0'`, `'3.1'` — not the legacy aliases (`'v2.5'`, `'v3'`) used for client-side pinning. A 3.x server with no v2.5 handler logic should not declare `'v2.5'` here — its 2.5 callers go through *client-side* adapters at the buyer end, not the server's accepted-version set. If you want to surface your deployment's patch build for incident triage, use the `build_version` capability field — not `supported_versions`.
 
 Example with `@adcp/sdk` (lower-level handler-bag API):
 
@@ -109,7 +109,7 @@ const server = createAdcpServer({
   version: '1.0.0',
   capabilities: {
     major_versions: [3],
-    supported_versions: ['3.0.5', '3.1.0'],
+    supported_versions: ['3.0', '3.1'],
     // …other capability fields
   },
   // …handlers
@@ -161,7 +161,7 @@ This is the third mechanism rather than a fallback to the first: negotiation tel
 
 A typical multi-version production setup:
 
-1. **Server**: declare `supported_versions: ['3.0.5', '3.1.0']` in capabilities. The SDK accepts both on the wire and returns `VERSION_UNSUPPORTED` to anyone outside the set. (Only declare a version your handlers actually satisfy.)
+1. **Server**: declare `supported_versions: ['3.0', '3.1']` in capabilities. The SDK accepts both on the wire and returns `VERSION_UNSUPPORTED` to anyone outside the set. (Only declare a version your handlers actually satisfy.)
 2. **Client (per peer)**: pin `adcpVersion` (e.g., `'v2.5'`) based on what the registry or peer's capabilities advertise. The client-side adapters translate the wire shape so your application code stays on the current spec.
 3. **SDK upgrades**: bump the SDK on your schedule; switch to the new entry point per specialism over time; keep the rest on the legacy import until you're ready.
 

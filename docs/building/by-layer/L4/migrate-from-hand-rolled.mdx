@@ -169,7 +169,7 @@ const buyerB = new ADCPMultiAgentClient([{
   agent_uri: 'https://buyer-b.example.com/a2a',
   protocol: 'a2a',
   auth_token: process.env.BUYER_B_TOKEN,
-  adcpVersion: '3.0.5', // ← canonical / current
+  adcpVersion: '3.0', // ← canonical / current
 }]);
 ```
 
@@ -181,7 +181,7 @@ import { createAdcpServer } from '@adcp/sdk/server';
 createAdcpServer({
   capabilities: {
     major_versions: [3],
-    supported_versions: ['3.0.5'],
+    supported_versions: ['3.0'],
   },
   // …handlers, all on the canonical 3.0 shape;
   // 2.5 callers are translated by client-side adapters before they reach you.
