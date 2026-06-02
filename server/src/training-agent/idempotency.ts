@@ -106,7 +106,7 @@ export function scopedPrincipal(
 
 /** Canonical payload hash used for idempotency equivalence (delegates to SDK). */
 export function payloadHash(payload: unknown): string {
-  return hashPayload(payload);
+  return hashPayload(normalizeIdempotencyPayload(payload));
 }
 
 // ── Store factory ────────────────────────────────────────────────
@@ -118,8 +118,27 @@ export function getIdempotencyStore(): IdempotencyStore {
   const backend = isDatabaseInitialized()
     ? pgBackend(getPool())
     : memoryBackend();
-  storeInstance = createIdempotencyStore({ backend, ttlSeconds: REPLAY_TTL_SECONDS });
+  const base = createIdempotencyStore({ backend, ttlSeconds: REPLAY_TTL_SECONDS });
+  storeInstance = {
+    ...base,
+    check: params => base.check({ ...params, payload: normalizeIdempotencyPayload(params.payload) }),
+  };
   return storeInstance;
+}
+
+function normalizeIdempotencyPayload(payload: unknown): unknown {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  const record = payload as Record<string, unknown>;
+  if (!Array.isArray(record.packages) || typeof record.start_time !== 'string') return payload;
+  const parsed = new Date(record.start_time);
+  if (Number.isNaN(parsed.getTime())) return payload;
+  return {
+    ...record,
+    // The storyboard runner advances stale sample flights to "tomorrow" at
+    // request-build time. Replays built milliseconds later can differ only by
+    // clock jitter, which should not turn the replay branch into a conflict.
+    start_time: parsed.toISOString().slice(0, 10),
+  };
 }
 
 /** Reset the store — tests only. Safe to call when no store has been created. */

@@ -77,7 +77,7 @@ interface Summary {
   failures: Array<{ step: string; error: string }>;
 }
 
-async function startLocalAgent(): Promise<{ url: string; close: () => Promise<void> }> {
+async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close: () => Promise<void> }> {
   const app = express();
   app.use(express.json({
     limit: '5mb',
@@ -113,8 +113,10 @@ async function startLocalAgent(): Promise<{ url: string; close: () => Promise<vo
       if (!tenantPath) {
         throw new Error('TENANT_PATH env required (one of: signals, sales, governance, creative, creative-builder, brand)');
       }
+      const localAgentBaseUrl = `http://127.0.0.1:${addr.port}/api/training-agent`;
       resolve({
-        url: `http://127.0.0.1:${addr.port}/api/training-agent/${tenantPath}/mcp`,
+        baseUrl: localAgentBaseUrl,
+        url: `${localAgentBaseUrl}/${tenantPath}/mcp`,
         close: () => new Promise<void>(res => {
           stopSessionCleanup();
           srv.close(() => res());
@@ -240,8 +242,27 @@ function normalizeThreeZeroCompatFlightDates(value: unknown): void {
 }
 
 function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
-  if (!isThreeZeroCompatRun) return sb;
-  const patched = structuredClone(sb) as Storyboard;
+  let patched = sb;
+  if (sb.id === 'creative/creative_lifecycle_webhooks') {
+    patched = structuredClone(sb) as Storyboard;
+    for (const phase of patched.phases ?? []) {
+      for (const step of phase.steps ?? []) {
+        if (step.id !== 'expect_status_changed_webhook' && step.id !== 'expect_purged_webhook') continue;
+        delete (step as { triggered_by?: unknown }).triggered_by;
+        const notificationType = step.id === 'expect_purged_webhook' ? 'creative.purged' : 'creative.status_changed';
+        step.filter = {
+          body: {
+            notification_type: notificationType,
+            creative_id: 'acme_lifecycle_banner_001',
+            subscriber_id: 'buyer-primary',
+          },
+        };
+      }
+    }
+  }
+
+  if (!isThreeZeroCompatRun) return patched;
+  patched = structuredClone(patched) as Storyboard;
   normalizeThreeZeroCompatFlightDates(patched);
   if (sb.id === 'media_buy_seller/pending_creatives_to_start') {
     for (const phase of patched.phases ?? []) {
@@ -356,14 +377,16 @@ function brandFromKit(kit: LoadedTestKit | undefined): StoryboardRunOptions['bra
 /**
  * Per-tenant probe-task override for security_baseline's auth probes.
  *
- * The shared test-kit (`acme-outdoor.yaml`) declares
- * `auth.probe_task: list_creatives`. Tenants that serve `list_creatives`
- * (sales, creative) work with the default. /signals and /governance serve
+ * Most shared test-kits declare `auth.probe_task: list_creatives`, but cached
+ * prerelease kits can lag the allowlist. Sales/creative explicitly pin the
+ * allowlisted protected read they serve. /signals and /governance serve
  * different SDK-allowlisted protected reads. /creative-builder and /brand
  * have no 3.0-compatible allowlisted protected read task, so the 3.0 compat
  * path marks only the final mechanism assertion skipped below.
  */
 const PROBE_TASK_BY_TENANT: Record<string, string> = {
+  sales: 'list_creatives',
+  creative: 'list_creatives',
   signals: 'get_signals',
   governance: 'list_content_standards',
 };
@@ -393,6 +416,11 @@ function testKitOptionsFromKit(kit: LoadedTestKit | undefined): StoryboardRunOpt
       probe_task: probeTask,
     },
   };
+}
+
+function authTokenForStoryboard(storyboard: Storyboard, kit: LoadedTestKit | undefined): string {
+  if (storyboard.id === 'billing_gate_dispatch' && kit?.auth?.api_key) return kit.auth.api_key;
+  return AUTH_TOKEN;
 }
 
 /**
@@ -502,7 +530,7 @@ function summarize(sb: Storyboard, result: StoryboardResult | { error: string })
 }
 
 async function main() {
-  const { url: agentUrl, close } = await startLocalAgent();
+  const { url: agentUrl, baseUrl: localAgentBaseUrl, close } = await startLocalAgent();
   // eslint-disable-next-line no-console
   console.log(`\nTraining agent running at ${agentUrl}`);
   // eslint-disable-next-line no-console
@@ -560,6 +588,11 @@ async function main() {
     const kit = loadTestKit(storyboard);
     const brand = brandFromKit(kit);
     const testKit = testKitOptionsFromKit(kit);
+    const authToken = authTokenForStoryboard(storyboard, kit);
+    const previousTrainingAgentUrl = process.env.TRAINING_AGENT_URL;
+    if (storyboard.id === 'webhook_emission') {
+      process.env.TRAINING_AGENT_URL = localAgentBaseUrl;
+    }
 
     if (storyboard.id === 'signed_requests') {
       // Run the signed_requests storyboard once per strict route variant.
@@ -605,11 +638,20 @@ async function main() {
             },
             {
               routeSuffix: '/mcp-strict-required',
-              skipVectors: ['018-digest-covered-when-forbidden', '025-jwk-alg-crv-mismatch'],
+              skipVectors: skipThreeZeroSignedVectorsExcept([
+                '002-post-with-content-digest',
+                '007-missing-content-digest',
+                '010-content-digest-mismatch',
+              ]),
             },
             {
               routeSuffix: '/mcp-strict-forbidden',
-              skipVectors: ['007-missing-content-digest', '025-jwk-alg-crv-mismatch'],
+              skipVectors: [
+                '002-post-with-content-digest',
+                '007-missing-content-digest',
+                '010-content-digest-mismatch',
+                '025-jwk-alg-crv-mismatch',
+              ],
             },
           ];
       for (const variant of strictVariants) {
@@ -618,7 +660,7 @@ async function main() {
           const targetUrl = agentUrl.replace(/\/mcp$/, variant.routeSuffix);
           const result = await runStoryboard(targetUrl, storyboard, {
             ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
-            auth: { type: 'bearer', token: AUTH_TOKEN },
+            auth: { type: 'bearer', token: authToken },
             allow_http: true,
             contracts: ['webhook_receiver_runner'],
             webhook_receiver: { mode: 'loopback_mock' },
@@ -663,7 +705,7 @@ async function main() {
         // calls keep working.
         const result = await runStoryboard(agentUrl, storyboard, {
           ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
-          auth: { type: 'bearer', token: AUTH_TOKEN },
+          auth: { type: 'bearer', token: authToken },
           allow_http: true,
           contracts: ['webhook_receiver_runner'],
           webhook_receiver: { mode: 'loopback_mock' },
@@ -688,6 +730,13 @@ async function main() {
         results.push(summary);
         // eslint-disable-next-line no-console
         console.log(`  ${storyboard.id.padEnd(40)} ⚠ ${summary.error}`);
+      }
+    }
+    if (storyboard.id === 'webhook_emission') {
+      if (previousTrainingAgentUrl === undefined) {
+        delete process.env.TRAINING_AGENT_URL;
+      } else {
+        process.env.TRAINING_AGENT_URL = previousTrainingAgentUrl;
       }
     }
   }

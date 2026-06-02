@@ -12,6 +12,7 @@ import { buildSalesComplyConfig } from './comply.js';
 import { listAccountsTool } from './account-tools.js';
 import { reportUsageTool } from './report-usage-tool.js';
 import { validateInputTool } from './validate-input-tool.js';
+import { buildCreativeTool, previewCreativeTool } from './creative-tools.js';
 import type { TrainingContext } from '../types.js';
 
 const TENANT_ID = 'sales';
@@ -32,11 +33,21 @@ export function buildSalesTenantConfig(host: string, options: { storyboardCompat
       serverOptions: {
         customTools: {
           list_accounts: listAccountsTool(options.storyboardCompat),
-          report_usage: reportUsageTool({ creativeBillsThroughAdcp: true }),
+          report_usage: reportUsageTool({ creativeBillsThroughAdcp: false }),
           ...(options.storyboardCompat?.version === '3.0' ? {} : {
+            build_creative: buildCreativeTool({
+              tenantId: TENANT_ID,
+              creativeBillsThroughAdcp: false,
+              ...(options.storyboardCompat && { storyboardCompat: options.storyboardCompat }),
+            }),
+            preview_creative: previewCreativeTool({
+              tenantId: TENANT_ID,
+              creativeBillsThroughAdcp: false,
+              ...(options.storyboardCompat && { storyboardCompat: options.storyboardCompat }),
+            }),
             validate_input: validateInputTool({
               tenantId: TENANT_ID,
-              creativeBillsThroughAdcp: true,
+              creativeBillsThroughAdcp: false,
               ...(options.storyboardCompat && { storyboardCompat: options.storyboardCompat }),
             }),
           }),

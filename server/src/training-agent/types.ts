@@ -271,6 +271,14 @@ export interface ComplyExtensions {
     taskId: string;
     message?: string;
   };
+  /** Single-shot stale-cache directive registered by
+   * comply_test_controller.force_upstream_unavailable. Consumed by the next
+   * matching read tool so follow-up healthy reads do not emit STALE_RESPONSE. */
+  forcedUpstreamUnavailable?: {
+    tool: string;
+    upstreamName?: string;
+    createdAt: string;
+  };
 }
 
 export interface SessionState {
@@ -387,6 +395,7 @@ export interface MediaBuyState {
   cancellationReason?: string;
   creativeDeadline?: string;
   governanceContext?: string;
+  context?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
   history: MediaBuyHistoryEntry[];
@@ -434,6 +443,8 @@ export interface PackageState {
   params?: Record<string, unknown>;
   creativeAssignments: string[];
   targeting?: PackageTargeting;
+  context?: Record<string, unknown>;
+  legacyOmitProductId?: boolean;
   /** Buyer-declared optimization goals carried through from create_media_buy.
    *  Persisted opaquely so delivery handlers can gate metric emission on
    *  what the buyer actually requested (e.g., only surface reach + frequency

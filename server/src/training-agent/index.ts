@@ -616,6 +616,13 @@ export function createTrainingAgentRouter(options: { storyboardCompat?: Training
     const baseUrl = getBaseUrl(req);
     const agentBase = `${baseUrl}${req.baseUrl}`;
     const jwksUri = `${agentBase}/.well-known/jwks.json`;
+    const agents = TENANT_IDS.map(tenantId => ({
+      type: TENANT_BRAND_AGENT_TYPE[tenantId],
+      id: `aao_training_agent_${tenantId.replace(/-/g, '_')}`,
+      url: `${agentBase}/${tenantId}/mcp`,
+      jwks_uri: jwksUri,
+      description: TENANT_BRAND_AGENT_DESCRIPTION[tenantId],
+    }));
 
     // Vary on the forwarding headers `getBaseUrl(req)` reads — a shared cache
     // that keyed only on path would otherwise serve a poisoned host back to
@@ -631,13 +638,7 @@ export function createTrainingAgentRouter(options: { storyboardCompat?: Training
         domain: 'adcontextprotocol.org',
         name: 'Ad Context Protocol',
         architecture: 'branded_house',
-        agents: TENANT_IDS.map(tenantId => ({
-          type: TENANT_BRAND_AGENT_TYPE[tenantId],
-          id: `aao_training_agent_${tenantId.replace(/-/g, '_')}`,
-          url: `${agentBase}/${tenantId}/mcp`,
-          jwks_uri: jwksUri,
-          description: TENANT_BRAND_AGENT_DESCRIPTION[tenantId],
-        })),
+        agents,
       },
       brands: [
         {
@@ -647,6 +648,7 @@ export function createTrainingAgentRouter(options: { storyboardCompat?: Training
           keller_type: 'master',
           industries: ['advertising'],
           description: 'Reference sandbox for AdCP — multi-tenant agent simulating sales, signals, governance, creative, and brand specialisms for conformance testing and education.',
+          agents,
         },
       ],
       contact: {
