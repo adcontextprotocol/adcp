@@ -81,6 +81,7 @@ This request must not include any personally identifiable information. The `inte
 | `summary` | string | Brief description |
 | `tagline` | string | Short promotional tagline |
 | `expires_at` | string | When the offering expires |
+| `availability_status` | string | Machine-readable availability state (enum: `available`, `limited`, `sold_out`, `expired`, `region_restricted`, `inactive`). Optional; aligns to the Unavailable Reasons vocabulary below. |
 | `price_hint` | string | Price indication (e.g., "from \$89") |
 | `image_url` | string | Hero image URL |
 | `landing_url` | string | Landing page URL |
@@ -95,6 +96,7 @@ This request must not include any personally identifiable information. The `inte
 | `original_price` | string | Original price if on sale |
 | `image_url` | string | Product image URL |
 | `availability_summary` | string | Brief availability info |
+| `availability_status` | string | Machine-readable availability state (same enum as the offering field). Optional; structured counterpart to `availability_summary`. |
 | `url` | string | Product detail page URL |
 
 ### Unavailable Reasons

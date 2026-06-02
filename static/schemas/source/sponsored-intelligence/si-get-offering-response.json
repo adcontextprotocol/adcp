@@ -58,6 +58,10 @@
           "format": "date-time",
           "description": "When this offering expires"
         },
+        "availability_status": {
+          "$ref": "/schemas/enums/offering-availability-status.json",
+          "description": "Machine-readable availability state for the offering. Optional; when omitted, derive availability from the top-level 'available' boolean and 'unavailable_reason'."
+        },
         "price_hint": {
           "type": "string",
           "description": "Price indication (e.g., 'from $199', '50% off')"
@@ -106,6 +110,10 @@
           "availability_summary": {
             "type": "string",
             "description": "Brief availability info (e.g., 'In stock', 'Size 14 available', '3 left')"
+          },
+          "availability_status": {
+            "$ref": "/schemas/enums/offering-availability-status.json",
+            "description": "Machine-readable availability state for this product. Structured counterpart to availability_summary."
           },
           "url": {
             "type": "string",
