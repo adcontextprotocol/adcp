@@ -49,7 +49,7 @@ const SALES_CURRENT_SCENARIOS = [
   'evaluate_distributed_brand_resolution',
 ] as const;
 
-const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4'] as const;
+const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6'] as const;
 const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
 
 function bearerToken(req: Request): string | undefined {
