@@ -17,6 +17,8 @@ Carousel formats use repeatable asset groups to represent:
 
 All carousel formats use `asset_group_id` with `item_type: "repeatable_group"`, `min_count`, and `max_count` to define the structure.
 
+A card's media may be an image or a video. Where a card carries video, platforms can cap the per-card video file size via `card_video_max_file_size_kb` (the video counterpart to `card_image_max_file_size_kb`), alongside the per-card `card_video_max_duration_ms` duration cap. The authoritative per-card field list lives in the `image_carousel` schema.
+
 ## Repeatable Asset Groups
 
 ### Basic Structure
