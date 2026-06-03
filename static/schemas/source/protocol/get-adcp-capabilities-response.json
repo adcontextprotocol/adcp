@@ -1109,7 +1109,7 @@
         "supports_evaluator": {
           "type": "boolean",
           "default": false,
-          "description": "When true, build_creative accepts an advisory `evaluator` input (exemplars / evaluator_id / agent_url) and populates a per-leaf `eval` block ({verdict, features[]}, mirroring the content-standards oracle shape) on BuildCreativeVariantSuccess leaves, explaining the recommended/rank it sets on the best_of_n axis. When false or absent, the `evaluator` input is ignored and no `eval` block is emitted. Advisory throughout: the evaluator informs ranking, never gates which leaves are returned or billed."
+          "description": "When true, build_creative accepts an advisory `evaluator` input (exemplars / evaluator_id / agent_url, plus an optional rank_by preference) and populates a per-leaf `eval` block of creative-feature values (creative-feature-result[], the same shape get_creative_features returns) on BuildCreativeVariantSuccess leaves, which is what the recommended/rank it sets on the best_of_n axis are computed over. When false or absent, the `evaluator` input is ignored and no `eval` block is emitted. Advisory throughout: the evaluator informs ranking, never gates which leaves are returned or billed."
         },
         "refinable_retention_seconds": {
           "type": "integer",

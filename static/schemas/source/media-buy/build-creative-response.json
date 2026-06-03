@@ -341,8 +341,36 @@
                       "description": "Agent's ranking of this variant (1 = best) when it scored alternatives (best-of-N). Advisory."
                     },
                     "eval": {
-                      "$ref": "/schemas/core/evaluator-result.json",
-                      "description": "Optional per-leaf evaluation block populated when the request supplied an `evaluator` and the agent advertises creative.supports_evaluator. EXPLAINS the recommended/rank on this leaf: mirrors the content-standards oracle {verdict, features[]} shape. Advisory; does not change what is produced or billed."
+                      "type": "object",
+                      "description": "Optional per-leaf evaluation block populated when the request supplied an `evaluator` and the agent advertises creative.supports_evaluator. The rank-side of the get_creative_features feature oracle: it carries the creative-feature values this leaf was scored on, which is what `recommended`/`rank` are computed over. `features[]` reuses creative/creative-feature-result.json field-for-field — the same shape get_creative_features.results[] returns — so a leaf's eval is a feature measurement, not a pass/fail verdict. Advisory; does not change what is produced or billed.",
+                      "properties": {
+                        "features": {
+                          "type": "array",
+                          "description": "Creative-feature values the evaluator measured for this leaf (e.g., a `creative_quality_score` number, an `on_brief` categorical). Ranking is a preference over these values (see evaluator-spec rank_by). Same shape get_creative_features returns.",
+                          "items": {
+                            "$ref": "/schemas/creative/creative-feature-result.json"
+                          }
+                        },
+                        "ranked_against": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "description": "Number of leaves this leaf was scored against (the best-of-N N). Lets the buyer interpret rank in context."
+                        },
+                        "calls_used": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "Number of judge calls made during evaluation. Sellers SHOULD populate when agent_url was used and an eval_budget was supplied, giving buyers visibility into external call usage. No billing coupling in v1."
+                        },
+                        "seconds_used": {
+                          "type": "number",
+                          "minimum": 0,
+                          "description": "Wall-clock seconds consumed during evaluation. Sellers SHOULD populate when agent_url was used and an eval_budget was supplied, giving buyers visibility into external call usage. No billing coupling in v1."
+                        },
+                        "ext": {
+                          "$ref": "/schemas/core/ext.json"
+                        }
+                      },
+                      "additionalProperties": true
                     },
                     "pricing_option_id": {
                       "type": "string",

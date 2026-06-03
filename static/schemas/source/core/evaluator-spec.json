@@ -2,9 +2,17 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/evaluator-spec.json",
   "title": "Evaluator Spec",
-  "description": "Advisory buyer-attached pointer (#5280) declaring HOW produced build_creative variants should be judged. Informs the agent's best_of_n recommended/rank and, when the agent advertises creative.supports_evaluator, populates a per-leaf `eval` block (evaluator-result.json) on the response. Advisory only: it MUST NOT hard-block at the AdCP layer and does not change what is produced or billed. An unreachable or unknown evaluator degrades to seller-default ranking with an advisory errors[] note (non-terminal), NOT a failure. Provide exactly one of three forms; a shared optional eval_budget applies to whichever form is chosen.",
+  "description": "Advisory buyer-attached pointer (#5280) declaring HOW produced build_creative variants should be ranked. The rank-side of the get_creative_features feature oracle: the chosen form is the SOURCE of feature evaluation that yields creative-feature values for each leaf, and `rank_by` is a soft preference over those values. Informs the agent's best_of_n recommended/rank and, when the agent advertises creative.supports_evaluator, populates a per-leaf `eval` block (creative-feature-result[]) on the response. Advisory only: it MUST NOT hard-block at the AdCP layer and does not change what is produced or billed — gating is a separate hard predicate (feature-requirement[] over the same feature values). An unreachable or unknown evaluator degrades to seller-default ranking with an advisory errors[] note (non-terminal), NOT a failure. Provide exactly one of three forms; an optional rank_by and a shared optional eval_budget apply to whichever form is chosen.",
   "type": "object",
   "properties": {
+    "rank_by": {
+      "type": "array",
+      "description": "Optional ranking preference over creative-feature values — an ordered list of predicates (most significant first) the agent uses to order leaves into recommended/rank. Reuses the feature-requirement shape (min_value/max_value for quantitative features like creative_quality_score, allowed_values for binary/categorical) so the same predicate vocabulary that gates property/audience filters expresses creative ranking. Soft preference, never a gate: leaves that fail a rank_by predicate are still produced, billed, and returned — they just rank lower. Omit to let the evaluator/seller choose the ordering.",
+      "items": {
+        "$ref": "/schemas/core/feature-requirement.json"
+      },
+      "minItems": 1
+    },
     "eval_budget": {
       "type": "object",
       "description": "Optional soft ceiling on evaluation effort. Advisory in v1 with no billing coupling. Well-known soft fields max_calls / max_seconds; open for evaluator-specific knobs.",
@@ -29,7 +37,7 @@
   "oneOf": [
     {
       "type": "object",
-      "description": "Exemplar form: inline pass/fail calibration examples. Mirrors content-standards.json calibration_exemplars (artifact-based) — a creative variant is content to be judged.",
+      "description": "Exemplar form: inline pass/fail calibration examples that anchor the SOURCE of feature evaluation. The agent derives creative-feature values (e.g. on_brief, brand_consistency) for each leaf by comparing it to these exemplars; ranking is then a preference (rank_by) over those values. Artifact-based, mirroring content-standards.json calibration_exemplars — a creative variant is content to be measured.",
       "required": [
         "exemplars"
       ],
@@ -59,7 +67,7 @@
     },
     {
       "type": "object",
-      "description": "Identifier form: an account-scoped house evaluator. Its resolution surface (list_evaluators) is a noted follow-on; evaluator_id resolves out-of-band until then.",
+      "description": "Identifier form: an account-scoped house evaluator that produces creative-feature values for each leaf. Its resolution surface (list_evaluators) is a noted follow-on; evaluator_id resolves out-of-band until then.",
       "required": [
         "evaluator_id"
       ],
@@ -74,7 +82,7 @@
     },
     {
       "type": "object",
-      "description": "Agent form: an external judge agent the seller calls to score leaves.",
+      "description": "Agent form: an external judge agent the seller calls to produce creative-feature values for each leaf (the same results[] shape get_creative_features returns). eval_budget bounds the calls; calls_used/seconds_used on the leaf eval block report what was spent.",
       "required": [
         "agent_url"
       ],
