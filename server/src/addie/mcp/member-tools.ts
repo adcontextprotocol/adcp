@@ -154,12 +154,71 @@ function requiresAdvertisedHostedComplianceSupport(target: HostedComplianceTarge
 
 function explicitTargetUnsupportedMessage(target: HostedComplianceTarget, profile: AgentProfile | undefined): string {
   const supportedVersions = profile?.adcp_supported_versions;
-  const supportedText = supportedVersions?.length ? supportedVersions.join(', ') : '(none advertised)';
+  const supportedText = supportedVersions?.length
+    ? supportedVersions.map(version => sanitizeAgentField(version, 64)).filter(Boolean).join(', ')
+    : '(none advertised)';
   return [
     `**Error:** compliance_target \`${target.requested}\` resolves to \`${target.version}\`, but this agent does not advertise support for that target.`,
     `Agent advertises adcp.supported_versions: \`${supportedText}\`.`,
     'Use `3.0` or update `get_adcp_capabilities.adcp.supported_versions` before running prerelease diagnostics.',
   ].join('\n');
+}
+
+function capabilityDiscoveryProbeError(
+  caps: Awaited<ReturnType<typeof testCapabilityDiscovery>>,
+): string | undefined {
+  if (caps.profile?.capabilities_probe_error) return caps.profile.capabilities_probe_error;
+  return caps.steps?.find(step => step.step === 'Discover agent capabilities' && !step.passed)?.error;
+}
+
+function capabilityDiscoveryOAuthError(
+  caps: Awaited<ReturnType<typeof testCapabilityDiscovery>>,
+): string | undefined {
+  const probeError = capabilityDiscoveryProbeError(caps);
+  if (isOAuthRequiredErrorMessage(probeError)) return probeError;
+  return caps.steps?.find(step => isOAuthRequiredErrorMessage(step.error))?.error;
+}
+
+function explicitTargetProbeFailureMessage(
+  input: Record<string, unknown>,
+  target: HostedComplianceTarget,
+  probeError: string | undefined,
+): string | undefined {
+  if (!hasExplicitComplianceTarget(input) || !requiresAdvertisedHostedComplianceSupport(target) || !probeError) {
+    return undefined;
+  }
+
+  const safeProbeError = fenceAgentValue(probeError, 300);
+  return [
+    `**Error:** compliance_target \`${target.requested}\` resolves to \`${target.version}\`, but I could not verify this agent advertises support for that target.`,
+    `Capability discovery failed${safeProbeError ? ` with agent-reported error ${safeProbeError}` : ''}.`,
+    'Fix capability discovery or authentication, then retry the prerelease diagnostic.',
+  ].join('\n');
+}
+
+async function explicitTargetOAuthRequiredMessage(
+  agentUrl: string,
+  organizationId: string | undefined,
+): Promise<string> {
+  const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+    agentUrl,
+    organizationId,
+    agentContextDb,
+  );
+  if (authorizeUrl) {
+    return (
+      `**OAuth authorization required**\n\n` +
+      `The agent at \`${agentUrl}\` requires OAuth authentication ` +
+      `before I can verify or run the requested compliance target.\n\n` +
+      `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+      `After you authorize, retry the diagnostic.`
+    );
+  }
+  return (
+    `**OAuth authorization required**\n\n` +
+    `The agent at \`${agentUrl}\` requires OAuth authentication. ` +
+    `An organization is needed to start the OAuth flow — sign in or create one, then retry.`
+  );
 }
 
 function explicitTargetSupportError(
@@ -178,6 +237,7 @@ async function explicitTargetSupportErrorFromAgent(
   auth: ComplyOptions['auth'] | undefined,
   input: Record<string, unknown>,
   target: HostedComplianceTarget,
+  organizationId: string | undefined,
 ): Promise<string | undefined> {
   if (!hasExplicitComplianceTarget(input) || !requiresAdvertisedHostedComplianceSupport(target)) return undefined;
 
@@ -185,6 +245,11 @@ async function explicitTargetSupportErrorFromAgent(
     const caps = await testCapabilityDiscovery(agentUrl, {
       ...(auth && { auth }),
     });
+    const oauthError = capabilityDiscoveryOAuthError(caps);
+    if (oauthError) return explicitTargetOAuthRequiredMessage(agentUrl, organizationId);
+
+    const probeFailure = explicitTargetProbeFailureMessage(input, target, capabilityDiscoveryProbeError(caps));
+    if (probeFailure) return probeFailure;
     return explicitTargetSupportError(input, target, caps.profile);
   } catch (error) {
     logger.warn({ err: error, agentUrl }, 'Could not verify explicit prerelease compliance target support');
@@ -3864,6 +3929,7 @@ export function createMemberToolHandlers(
         authOption,
         input,
         runTarget,
+        organizationId,
       );
       if (targetError) return targetError;
     }
@@ -4233,26 +4299,22 @@ export function createMemberToolHandlers(
     // lists or ask the member what they're building.
     const authOption = buildAuthOption(resolved);
     let profile: AgentProfile | undefined;
+    let discoveryProbeError: string | undefined;
     try {
       const caps = await testCapabilityDiscovery(resolved.resolvedUrl, {
         ...(authOption && { auth: authOption }),
       });
       profile = caps.profile;
+      discoveryProbeError = capabilityDiscoveryProbeError(caps);
       if (!hasExplicitComplianceTarget(input)) {
         runTarget = selectCanonicalHostedComplianceTargetForProfile(profile, complianceTarget);
         runOptions = hostedComplianceOptions(runTarget);
-      } else {
-        const targetError = explicitTargetSupportError(input, runTarget, profile);
-        if (targetError) return targetError;
       }
 
       // testCapabilityDiscovery catches its own throws and surfaces them as
       // step errors / capabilities_probe_error strings — the catch below
       // only sees programmer errors. Detect OAuth here.
-      const probeOAuth =
-        isOAuthRequiredErrorMessage(profile?.capabilities_probe_error)
-          ? profile?.capabilities_probe_error
-          : caps.steps?.find(s => isOAuthRequiredErrorMessage(s.error))?.error;
+      const probeOAuth = capabilityDiscoveryOAuthError(caps);
       if (probeOAuth) {
         logger.warn(
           { agentUrl: resolved.resolvedUrl },
@@ -4283,6 +4345,11 @@ export function createMemberToolHandlers(
     const supportedProtocols = profile?.supported_protocols ?? [];
     const specialisms = profile?.specialisms ?? [];
     const probeError = profile?.capabilities_probe_error;
+    const probeFailure = explicitTargetProbeFailureMessage(input, runTarget, discoveryProbeError);
+    if (probeFailure) return probeFailure;
+
+    const targetError = explicitTargetSupportError(input, runTarget, profile);
+    if (targetError) return targetError;
 
     // Load the compliance index once so coaching paths can interpolate the
     // real cache version instead of emitting a literal `{version}` placeholder.
@@ -4585,6 +4652,7 @@ export function createMemberToolHandlers(
         authOption,
         input,
         runTarget,
+        organizationId,
       );
       if (targetError) return targetError;
     }
@@ -4762,6 +4830,7 @@ export function createMemberToolHandlers(
         authOption,
         input,
         runTarget,
+        organizationId,
       );
       if (targetError) return targetError;
     }

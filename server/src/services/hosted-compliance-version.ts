@@ -11,6 +11,7 @@ import { SUPPORTED_BADGE_VERSIONS } from './adcp-taxonomy.js';
 
 export const DEFAULT_HOSTED_COMPLIANCE_LINE = '3.0';
 export const HOSTED_COMPLIANCE_TARGET_PREFERENCE = [
+  '3.1',
   '3.1-rc',
   '3.1-beta',
   DEFAULT_HOSTED_COMPLIANCE_LINE,
@@ -113,7 +114,7 @@ function complianceReleaseLine(version: string): string | undefined {
 }
 
 function stableLineForHostedPrereleaseTarget(target: HostedComplianceTarget): string | undefined {
-  if (!isDefaultHostedComplianceTarget(target)) return undefined;
+  if (target.requested.includes('-')) return undefined;
 
   const line = prereleaseComplianceLine(target.version);
   return line === target.requested ? line : undefined;
@@ -171,14 +172,19 @@ function latestBadgeEligibleComplianceVersionForLine(line: string): string {
   try {
     return latestStableComplianceVersionForLine(line);
   } catch (stableError) {
-    if (line !== DEFAULT_HOSTED_COMPLIANCE_LINE) {
-      throw stableError;
+    try {
+      return latestRcComplianceVersionForLine(line);
+    } catch {
+      // Fall through to beta/default handling below.
     }
 
-    // Only the default line may temporarily fall back to a prerelease cache
-    // while its stable compliance bundle is being staged. Other lines must be
-    // selected explicitly via their prerelease alias (for example 3.1-beta).
-    return latestBetaComplianceVersionForLine(line);
+    if (line === DEFAULT_HOSTED_COMPLIANCE_LINE) {
+      // The default line may temporarily fall back to a beta cache while its
+      // stable compliance bundle is being staged.
+      return latestBetaComplianceVersionForLine(line);
+    }
+
+    throw stableError;
   }
 }
 
@@ -274,11 +280,11 @@ function hostedComplianceTargetForBundledVersion(version: string): HostedComplia
 }
 
 function hostedComplianceTargetCandidates(): HostedComplianceTarget[] {
-  const byVersion = new Map<string, HostedComplianceTarget>();
+  const byRequested = new Map<string, HostedComplianceTarget>();
 
   function add(target: HostedComplianceTarget) {
-    if (!byVersion.has(target.version)) {
-      byVersion.set(target.version, target);
+    if (!byRequested.has(target.requested)) {
+      byRequested.set(target.requested, target);
     }
   }
 
@@ -291,6 +297,7 @@ function hostedComplianceTargetCandidates(): HostedComplianceTarget[] {
   }
 
   const bundledVersions = complianceVersions().sort(compareVersions).reverse();
+  addRequested('3.1');
   addRequested('3.1-rc');
   for (const version of bundledVersions.filter(v => /^3\.1\.0-rc\.\d+$/.test(v))) {
     add(hostedComplianceTargetForBundledVersion(version));
@@ -306,7 +313,7 @@ function hostedComplianceTargetCandidates(): HostedComplianceTarget[] {
     const target = hostedComplianceTargetForBundledVersion(version);
     add(target);
   }
-  return [...byVersion.values()];
+  return [...byRequested.values()];
 }
 
 export function selectHostedComplianceTargetForSupportedVersions(
@@ -316,8 +323,7 @@ export function selectHostedComplianceTargetForSupportedVersions(
   if (!supportedVersions?.length) return fallback;
 
   for (const target of hostedComplianceTargetCandidates()) {
-    const hostedStableLineAlias = hostedStableLineAliasForVersion(target, target.version);
-    if (isComplianceVersionSupported(target.version, supportedVersions, { hostedStableLineAlias })) {
+    if (agentAdvertisesHostedComplianceTarget(supportedVersions, target)) {
       return target;
     }
   }
@@ -359,6 +365,11 @@ export function agentAdvertisesHostedComplianceTarget(
   target: HostedComplianceTarget,
 ): boolean {
   if (!supportedVersions?.length) return false;
+
+  const stableLine = stableLineForHostedPrereleaseTarget(target);
+  if (stableLine) {
+    return isComplianceVersionSupported(stableLine, supportedVersions);
+  }
 
   const hostedStableLineAlias = hostedStableLineAliasForVersion(target, target.version);
   return isComplianceVersionSupported(target.version, supportedVersions, { hostedStableLineAlias });
