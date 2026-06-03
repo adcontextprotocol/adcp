@@ -24,9 +24,9 @@ Any AdCP task can return one of these statuses. The server chooses based on what
 :::tip Webhooks for `submitted` operations
 **Webhooks** are the recommended approach for `submitted` operations — they work with any transport (MCP, A2A, REST) and handle operations that outlive a single session. See [Push Notifications](/docs/building/by-layer/L3/webhooks).
 
-**Polling** via `tasks/get` works as a simpler alternative or backup. See the [polling pattern](#polling-for-submitted-operations) below.
+**Polling** via the AdCP task polling surface works as a simpler alternative or backup. In 3.x, that surface is legacy `tasks/get`, with optional `get_task_status` when the seller advertises the alias. See the [polling pattern](#polling-for-submitted-operations) below.
 
-**MCP Tasks** handle async at the protocol level, but client support is still limited — most chat-based MCP clients (Claude Desktop, Cursor) don't yet support task-augmented tool calls. If you're building your own MCP client or using the JS SDK directly, MCP Tasks work well. See [MCP Guide](/docs/building/by-layer/L0/mcp-guide#async-operations-via-mcp-tasks).
+**Transport-native tasks are not the AdCP lifecycle.** MCP Tasks or A2A task updates may carry or stream an AdCP response, but the durable task state is the AdCP payload: `task_id`, `status`, webhook payloads, and AdCP polling/reconciliation. See [MCP Guide](/docs/building/by-layer/L0/mcp-guide#mcp-tasks-as-a-transport-wrapper).
 :::
 
 ## Operation examples
@@ -249,7 +249,7 @@ async function pollForResult(taskId, options = {}) {
 
     await sleep(pollInterval);
 
-    const response = await adcp.call('tasks/get', {
+    const response = await adcp.call('get_task_status', {
       task_id: taskId,
       include_result: true
     });
@@ -314,7 +314,7 @@ async function onStartup() {
 
   for (const operation of pending) {
     // Check current status on server
-    const response = await adcp.call('tasks/get', {
+    const response = await adcp.call('get_task_status', {
       task_id: operation.task_id,
       include_result: true
     });

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/protocol/list-tasks-response.json",
   "title": "List Tasks Response",
-  "description": "Response from the list_tasks AdCP tool with filtered task results and state reconciliation data across AdCP protocols.",
+  "description": "Response from the list_tasks AdCP tool, a 3.x protocol-namespace alias for legacy AdCP tasks/list. Contains filtered AdCP application-layer task results and reconciliation data while preserving the legacy 3.x domain field shape; distinct from transport-native MCP/A2A task responses.",
   "type": "object",
   "allOf": [
     {

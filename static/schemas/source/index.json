@@ -1658,21 +1658,21 @@
         "get-task-status": {
           "request": {
             "$ref": "/schemas/protocol/get-task-status-request.json",
-            "description": "Request parameters for get_task_status polling"
+            "description": "Request parameters for get_task_status, the 3.x AdCP application-layer alias for legacy tasks/get polling; distinct from transport-native tasks/* methods"
           },
           "response": {
             "$ref": "/schemas/protocol/get-task-status-response.json",
-            "description": "Task status, metadata, and optional completion result"
+            "description": "AdCP application-layer task status, metadata, and optional completion result; alias response for legacy tasks/get"
           }
         },
         "list-tasks": {
           "request": {
             "$ref": "/schemas/protocol/list-tasks-request.json",
-            "description": "Request parameters for cross-protocol task reconciliation"
+            "description": "Request parameters for list_tasks, the 3.x AdCP application-layer alias for legacy tasks/list reconciliation; distinct from transport-native tasks/* methods"
           },
           "response": {
             "$ref": "/schemas/protocol/list-tasks-response.json",
-            "description": "Filtered async task list for reconciliation"
+            "description": "Filtered AdCP application-layer async task list for reconciliation; alias response for legacy tasks/list"
           }
         }
       }

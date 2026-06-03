@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/protocol/list-tasks-request.json",
   "title": "List Tasks Request",
-  "description": "Request parameters for the list_tasks AdCP tool. Lists and filters async tasks across AdCP protocols for state reconciliation.",
+  "description": "Request parameters for the list_tasks AdCP tool. This is a 3.x protocol-namespace alias for the legacy AdCP tasks/list reconciliation surface, not a transport-native MCP/A2A tasks/* method. It lists and filters AdCP application-layer async tasks for state reconciliation while preserving the legacy 3.x payload shape.",
   "type": "object",
   "allOf": [
     {

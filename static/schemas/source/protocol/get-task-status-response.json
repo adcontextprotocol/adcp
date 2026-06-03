@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/protocol/get-task-status-response.json",
   "title": "Get Task Status Response",
-  "description": "Response from the get_task_status AdCP tool containing task status, task metadata, and optional conversation history or terminal result payload.",
+  "description": "Response from the get_task_status AdCP tool, a 3.x protocol-namespace alias for legacy AdCP tasks/get. Contains AdCP application-layer task status, task metadata, and optional conversation history or terminal result payload; distinct from transport-native MCP/A2A task responses.",
   "type": "object",
   "allOf": [
     {
