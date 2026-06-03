@@ -342,11 +342,11 @@
                     },
                     "eval": {
                       "type": "object",
-                      "description": "Optional per-leaf evaluation block populated when the request supplied an `evaluator` and the agent advertises creative.supports_evaluator. The rank-side of the get_creative_features feature oracle: it carries the creative-feature values this leaf was scored on, which is what `recommended`/`rank` are computed over. `features[]` reuses creative/creative-feature-result.json field-for-field — the same shape get_creative_features.results[] returns — so a leaf's eval is a feature measurement, not a pass/fail verdict. Advisory; does not change what is produced or billed.",
+                      "description": "Optional per-leaf evaluation block populated when the request supplied an `evaluator` and the agent advertises creative.supports_evaluator. The rank-side of the get_creative_features feature oracle: it carries the creative-feature values this leaf was scored on, which is what the gate-then-rank pipeline (evaluator.feature_requirement[] gate → evaluator.rank_by ordering) and `recommended`/`rank` are computed over. `eval.features[]` is `creative/creative-feature-result.json[]` — the same shape get_creative_features.results[] returns; the wrapper is open (additionalProperties:true) while each feature item is closed. A leaf's eval is a feature measurement, not a pass/fail verdict (a verdict is a categorical string feature value gated via feature_requirement.allowed_values). Leaves the agent dropped via the gate are not present; this block appears only on returned (recommended/billed) leaves. Advisory; does not change what is produced or billed.",
                       "properties": {
                         "features": {
                           "type": "array",
-                          "description": "Creative-feature values the evaluator measured for this leaf (e.g., a `creative_quality_score` number, an `on_brief` categorical). Ranking is a preference over these values (see evaluator-spec rank_by). Same shape get_creative_features returns.",
+                          "description": "Creative-feature values the evaluator measured for this leaf — `creative-feature-result[]` (e.g., a `creative_quality_score` number, an `on_brief` categorical, a calibrated `predicted_performance` in [0,1] from the exemplars form). The gate (evaluator.feature_requirement[]) and ranking (evaluator.rank_by) are evaluated over these values. Same shape get_creative_features returns.",
                           "items": {
                             "$ref": "/schemas/creative/creative-feature-result.json"
                           }
