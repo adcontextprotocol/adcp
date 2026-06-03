@@ -11,6 +11,11 @@
       "target_version": "3.1",
       "note": "AUTH_REQUIRED split (#3739) — terminal-recovery half (credentials presented but rejected). Wire change — held for 3.1. Pairs with AUTH_MISSING."
     },
+    "AUTHORIZATION_REQUIRED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Published-post reference creatives can require additional creator, identity, or post authorization before serving. Wire change — held for 3.1."
+    },
     "AUTH_MISSING": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",

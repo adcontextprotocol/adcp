@@ -1,5 +1,5 @@
 ---
-"adcp": minor
+"adcontextprotocol": minor
 ---
 
 Add published-post reference creatives as a canonical-format refinement, not a new task surface or format family.
