@@ -229,8 +229,6 @@ This is a discovery signal, not a verification claim. Buyers can filter for prod
 
 #### Sponsored placement types
 
-> **WG review draft (#5270):** the value set below is a proposal under working-group review and may change before it ships.
-
 Catalog-driven retail-media products can declare `sponsored_placement_types` at the product level, placement level, or both, distinguishing where the sponsored placement renders on the retailer surface:
 
 | Value | Meaning |
@@ -244,8 +242,6 @@ These values describe placement surfaces for products under the catalog-driven `
 This is a discovery signal, not a verification claim. Buyers can filter for products that can satisfy a requested type with `get_products.filters.sponsored_placement_types`, but sellers should not return mixed, non-targetable bundles unless they can constrain delivery to the requested type during planning or purchase.
 
 #### Social placement surfaces
-
-> **WG review draft (#5278):** the value set below is a proposal under working-group review and may change before it ships.
 
 Social products can declare `social_placement_surfaces` at the product level, placement level, or both, distinguishing the in-app surface where the social placement renders:
 
