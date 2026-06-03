@@ -340,6 +340,39 @@
                       "minimum": 1,
                       "description": "Agent's ranking of this variant (1 = best) when it scored alternatives (best-of-N). Advisory."
                     },
+                    "eval": {
+                      "type": "object",
+                      "x-status": "experimental",
+                      "description": "Optional per-leaf evaluation block populated when the request supplied an `evaluator` and the agent advertises creative.supports_evaluator. Experimental (x-status: experimental) — part of the evaluator surface; sellers populating it MUST list `creative.evaluator` in experimental_features. The rank-side of the get_creative_features feature oracle: it carries the creative-feature values this leaf was scored on, which is what the gate-then-rank pipeline (evaluator.feature_requirement[] gate → evaluator.rank_by ordering) and `recommended`/`rank` are computed over. `eval.features[]` is `creative/creative-feature-result.json[]` — the same shape get_creative_features.results[] returns; the wrapper is open (additionalProperties:true) while each feature item is closed. A leaf's eval is a feature measurement, not a pass/fail verdict (a verdict is a categorical string feature value gated via feature_requirement.allowed_values). Leaves the agent dropped via the gate are not present; this block appears only on returned (recommended/billed) leaves. Advisory; does not change what is produced or billed.",
+                      "properties": {
+                        "features": {
+                          "type": "array",
+                          "description": "Creative-feature values the evaluator measured for this leaf — `creative-feature-result[]` (e.g., a `creative_quality_score` number, an `on_brief` categorical, a calibrated `predicted_performance` in [0,1] from the exemplars form). The gate (evaluator.feature_requirement[]) and ranking (evaluator.rank_by) are evaluated over these values. Same shape get_creative_features returns.",
+                          "items": {
+                            "$ref": "/schemas/creative/creative-feature-result.json"
+                          }
+                        },
+                        "ranked_against": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "description": "Number of leaves this leaf was scored against (the best-of-N N). Lets the buyer interpret rank in context."
+                        },
+                        "calls_used": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "Number of judge calls made during evaluation. Sellers SHOULD populate when agent_url was used and an eval_budget was supplied, giving buyers visibility into external call usage. No billing coupling in v1."
+                        },
+                        "seconds_used": {
+                          "type": "number",
+                          "minimum": 0,
+                          "description": "Wall-clock seconds consumed during evaluation. Sellers SHOULD populate when agent_url was used and an eval_budget was supplied, giving buyers visibility into external call usage. No billing coupling in v1."
+                        },
+                        "ext": {
+                          "$ref": "/schemas/core/ext.json"
+                        }
+                      },
+                      "additionalProperties": true
+                    },
                     "pricing_option_id": {
                       "type": "string",
                       "x-entity": "vendor_pricing_option",

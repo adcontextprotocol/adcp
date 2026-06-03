@@ -422,6 +422,10 @@
           "$ref": "/schemas/core/transformer-param.json",
           "description": "Descriptor for one configuration knob a transformer exposes (field, type, value_source inline|range|enumerable, allowed values/range/account-scoped options, default)."
         },
+        "evaluator-spec": {
+          "$ref": "/schemas/core/evaluator-spec.json",
+          "description": "Advisory buyer-attached evaluator input for build_creative — the rank-side of the get_creative_features feature oracle, driving a gate-then-rank pipeline. Declares the SOURCE of feature evaluation via one of three forms (inline pass/fail exemplars calibrating a single predicted_performance feature, an account-scoped evaluator_id, or an external get_creative_features-capable agent_url), an optional hard feature_requirement[] GATE (drop fails — internal best_of_n pruning), an explicit rank_by ordering ({feature_id, direction}), an allowlisted feature_agent pointer (accepted_verifiers; off-list → EVALUATOR_AGENT_NOT_ACCEPTED), plus an optional soft eval_budget. Informs best_of_n recommended/rank; never blocks an already-produced billable leaf."
+        },
         "property-id": {
           "$ref": "/schemas/core/property-id.json",
           "description": "Identifier for a publisher property - lowercase alphanumeric with underscores only"
