@@ -111,8 +111,10 @@ Transitions a creative to the specified status. The seller MUST enforce valid tr
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `creative_id` | string | Yes | Creative to transition |
-| `status` | `processing` \| `approved` \| `rejected` \| `pending_review` \| `archived` | Yes | Target status |
+| `status` | `processing` \| `pending_review` \| `approved` \| `suspended` \| `rejected` \| `archived` | Yes | Target status |
 | `rejection_reason` | string | When `status` = `rejected` | Reason for rejection |
+| `reason_code` | CreativeEventReasonCode | No | Reason code for the lifecycle transition |
+| `reason_detail` | string | No | Human-readable detail for the lifecycle transition |
 
 **Example:**
 
@@ -122,6 +124,7 @@ Transitions a creative to the specified status. The seller MUST enforce valid tr
   "params": {
     "creative_id": "cr-123",
     "status": "rejected",
+    "reason_code": "policy_revocation",
     "rejection_reason": "Brand safety policy violation"
   }
 }

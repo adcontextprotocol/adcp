@@ -12,8 +12,8 @@
     },
     "asset_source": {
       "type": "string",
-      "enum": ["buyer_uploaded", "publisher_host_recorded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized"],
-      "description": "Where the rendered asset bytes come from on the projected v2 declaration. Default (when omitted) is `buyer_uploaded` — the canonical's default. Set explicitly when the v1 named format doesn't follow that default. Required for generative entries (`agent_synthesized` or `seller_pre_rendered_from_brief`) because their asset shape doesn't carry image/video/audio bytes — projection without this hint produces a lossy v2 declaration that claims buyer-uploaded bytes."
+      "enum": ["buyer_uploaded", "publisher_host_recorded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized", "publisher_owned_reference"],
+      "description": "Where the rendered asset bytes come from on the projected v2 declaration. Default (when omitted) is `buyer_uploaded` — the canonical's default. Set explicitly when the v1 named format doesn't follow that default. Required for generative entries (`agent_synthesized` or `seller_pre_rendered_from_brief`) because their asset shape doesn't carry image/video/audio bytes, and for published-post reference entries (`publisher_owned_reference`) because their asset shape carries a post reference rather than uploaded bytes. Projection without this hint produces a lossy v2 declaration that claims buyer-uploaded bytes."
     },
     "slots_override": {
       "type": "array",

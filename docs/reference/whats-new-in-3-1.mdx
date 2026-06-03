@@ -90,7 +90,7 @@ RC4 locks the trust envelope: successful `verify_brand_claim` and `verify_brand_
 
 ### Dependency-impact webhooks and snapshot coherence
 
-When a resource a media buy depends on transitions to an offline state — an audience suspended, a creative rejected post-approval, a catalog item withdrawn, an event source quiet, a property depublished — buyers see it through two parallel surfaces:
+When a resource a media buy depends on transitions to an offline state — an audience suspended, a creative suspended/rejected post-approval, a catalog item withdrawn, an event source quiet, a property depublished — buyers see it through two parallel surfaces:
 
 - **Snapshot.** `media_buy.health` flips from `ok` to `impaired`; `media_buy.impairments[]` lists every offline resource with its package_ids, transition, reason_code, and remediation hint. The next `get_media_buys` read shows current truth.
 - **Log.** `notification-type: impairment` webhooks fire with `notification_id = impairment_id` and the same payload shape, configured via `push_notification_config`.
@@ -150,6 +150,8 @@ Legacy `SignalId` / `signal_id.source` remains accepted during the minor-version
 → Spec: [Product discovery § Signal targeting](/docs/media-buy/product-discovery/media-products#signal-targeting) · [Targeting § signal_targeting_groups](/docs/media-buy/advanced-topics/targeting#signal_targeting_groups) · [`get_signals`](/docs/signals/tasks/get_signals) · PR [#5009](https://github.com/adcontextprotocol/adcp/pull/5009)
 
 ### Canonical creative formats — live, 12 canonicals, backwards-compatible
+
+- **Published-post reference creatives.** Existing social/publisher posts are represented as canonical `video_hosted`, `image`, or `native_in_feed` formats with `asset_source: "publisher_owned_reference"` and a `published_post` slot. Products can declare `required_connections[]` for downstream platform grants such as advertiser account and publisher identity connections. Missing or expired grants use `AUTHORIZATION_REQUIRED` with `error.details.missing_connections[]`; recoverable dependency loss moves creatives to `suspended` rather than policy rejection. Catalog-driven retail media remains `sponsored_placement` with `source_catalog`.
 
 Live in 3.1, additive over 3.0. Products carry `format_options[]`: a list of `ProductFormatDeclaration` entries with a `format_kind` discriminator from the canonical enum. **12 canonicals:** `image`, `html5`, `display_tag`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `image_carousel`, `native_in_feed`, `responsive_creative`, `sponsored_placement`, `agent_placement`. The enum also includes `custom` as the escape hatch for adopter-defined shapes that do not fit the canonicals. Three canonicals (`sponsored_placement`, `responsive_creative`, `agent_placement`) plus `custom` are tagged **experimental** within the framework; the remaining canonicals are non-experimental. The promotion queue for new canonicals is tracked in [#3666](https://github.com/adcontextprotocol/adcp/issues/3666).
 

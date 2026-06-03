@@ -47,18 +47,9 @@
     },
     "asset_types": {
       "type": "array",
-      "description": "Filter to formats that include these asset types. For third-party tags, search for 'html' or 'javascript'. E.g., ['image', 'text'] returns formats with images and text, ['javascript'] returns formats accepting JavaScript tags.",
+      "description": "Filter to formats that include these asset types. For third-party tags, search for 'html' or 'javascript'. For published-post reference formats, search for 'published_post'. E.g., ['image', 'text'] returns formats with images and text, ['javascript'] returns formats accepting JavaScript tags.",
       "items": {
-        "type": "string",
-        "enum": [
-          "image",
-          "video",
-          "audio",
-          "text",
-          "html",
-          "javascript",
-          "url"
-        ]
+        "$ref": "/schemas/enums/asset-content-type.json"
       },
       "minItems": 1
     },
