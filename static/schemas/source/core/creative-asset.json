@@ -106,7 +106,7 @@
     },
     "industry_identifiers": {
       "type": "array",
-      "description": "Industry-standard identifiers for this creative (e.g., Ad-ID, ISCI, Clearcast clock number). In broadcast buying, these identifiers tie the creative to rotation instructions and traffic systems. A creative may have multiple identifiers when different systems reference the same asset.",
+      "description": "Industry-standard or market-specific identifiers for this creative (e.g., Ad-ID, ISCI, Clearcast clock number, IDcrea). In broadcast and scheduled audio/video buying, these identifiers tie the creative to rotation instructions, clearance records, and traffic systems. A creative may have multiple identifiers when different systems reference the same asset. Add a PR to extend creative-identifier-type when another shared identifier scheme needs first-class support.",
       "items": {
         "$ref": "/schemas/core/industry-identifier.json"
       },

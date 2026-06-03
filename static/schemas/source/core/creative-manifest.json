@@ -47,7 +47,7 @@
     },
     "industry_identifiers": {
       "type": "array",
-      "description": "Industry-standard identifiers for this specific manifest (e.g., Ad-ID, ISCI, Clearcast clock number). When present, overrides creative-level identifiers. Use when different format versions of the same source creative have distinct Ad-IDs (e.g., the :15 and :30 cuts).",
+      "description": "Industry-standard or market-specific identifiers for this specific manifest (e.g., Ad-ID, ISCI, Clearcast clock number, IDcrea). When present, overrides creative-level identifiers. Use when different format versions of the same source creative have distinct traffic identifiers (e.g., the :15 and :30 cuts, or separate TV and radio versions). Add a PR to extend creative-identifier-type when another shared identifier scheme needs first-class support.",
       "items": {
         "$ref": "/schemas/core/industry-identifier.json"
       },
