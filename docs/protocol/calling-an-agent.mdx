@@ -71,12 +71,14 @@ A mutating tool can return one of three shapes:
 { "errors": [{ "code": "PRODUCT_NOT_FOUND", "message": "..." }] }
 ```
 
-When you see `status: 'submitted'`, the work is **not** complete. Poll via `tasks/get` (A2A) or the MCP async task extension, using the returned `task_id`. Over A2A the AdCP `task_id` also rides on `artifact.metadata.adcp_task_id`.
+AdCP task state is an **application-layer** contract. MCP and A2A may wrap, stream, or transport an AdCP response, but their native task mechanisms do not replace the AdCP `task_id`, status values, webhook payloads, or polling/reconciliation surfaces. A transport task can complete after delivering an AdCP response whose payload still says `status: 'submitted'`.
+
+When you see `status: 'submitted'`, the work is **not** complete. In 3.x, poll via the legacy AdCP `tasks/get` surface using the returned `task_id`. Sellers MAY also advertise the non-colliding `get_task_status` alias; callers MAY use that alias when it appears in discovery. Both AdCP polling names use the same snake_case payload shape. Do not confuse either AdCP polling shape with transport-native MCP/A2A `tasks/get`, which uses the transport's own task wire shape.
 
 Pass `include_result: true` when polling so the seller includes the completion payload once status transitions to `completed`:
 
 ```json
-// tasks/get request
+// tasks/get request (same payload as optional get_task_status alias)
 { "task_id": "task_456", "include_result": true }
 
 // tasks/get response — completed
@@ -143,7 +145,7 @@ Every validation failure produces an envelope shaped like:
 | `keyword: 'type'` or `additionalProperties` at `/budget` | Sent `{amount, currency}` | `budget` is a number. Currency is implied by `pricing_option_id`. |
 | `additionalProperties` at `/format_id` (string passed) | Sent `"format_id": "video_..."` | `format_id` is `{agent_url, id}` — always an object. |
 | `keyword: 'enum'` at `/destinations/*/type` | Made-up destination type | Use `'platform'` (with `platform`) or `'agent'` (with `agent_url`). |
-| Response carries `status: 'submitted'` and `task_id` | Async — work is queued, NOT done | Poll via `tasks/get` (A2A) or the MCP async task extension using `task_id`. |
+| Response carries `status: 'submitted'` and `task_id` | Async — work is queued, NOT done | Poll with legacy `tasks/get`, or `get_task_status` when the seller advertises the alias. |
 
 ## Transport notes
 

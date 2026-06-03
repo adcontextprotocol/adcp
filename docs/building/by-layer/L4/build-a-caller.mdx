@@ -145,7 +145,7 @@ if ('errors' in response) {
   // for correctable failures (validation, oneOf, etc.)
 } else if (response.status === 'submitted') {
   // Async: the work is queued, NOT done. The completion payload arrives
-  // later — either via webhook (preferred) or by polling tasks/get.
+  // later — either via webhook (preferred) or by polling the AdCP task.
 } else {
   // Sync success: response carries the completion payload directly.
   // (e.g., response.media_buy_id, response.packages)
@@ -154,7 +154,7 @@ if ('errors' in response) {
 
 The SDK steers you to webhooks for async completion. Configure `webhookUrlTemplate` and a status-change handler at construction; the SDK verifies the inbound webhook against the seller's JWKS and fires your handler with the same `result` shape that synchronous responses carry — see [Receive webhooks](#receive-webhooks) below.
 
-If you must poll instead of using webhooks (e.g. inside a one-shot script), call `tasks/get` directly via the underlying transport. The [Async responses section of Calling an agent](/docs/protocol/calling-an-agent#async-responses-status-submitted-means-queued) has the wire contract.
+If you must poll instead of using webhooks (e.g. inside a one-shot script), call the AdCP polling surface: `get_task_status` when the seller advertises it, otherwise legacy AdCP `tasks/get` in 3.x. The [Async responses section of Calling an agent](/docs/protocol/calling-an-agent#async-responses-status-submitted-means-queued) has the wire contract.
 
 ## Recover from errors
 
@@ -182,7 +182,7 @@ switch (recovery) {
 
 ## Receive webhooks
 
-For async tasks, you can either poll or register a webhook. The webhook delivers the same `result` payload as a `tasks/get` with `include_result: true`. The SDK ships an RFC 9421 webhook verifier (`createWebhookVerifier` from `@adcp/sdk/signing/server`) that resolves keys via the seller's brand.json, enforces the replay window, and surfaces structured errors for the [webhook error taxonomy](/docs/building/by-layer/L1/security#webhook-error-taxonomy).
+For async tasks, you can either poll or register a webhook. The webhook delivers the same `result` payload as AdCP task polling with `include_result: true`. The SDK ships an RFC 9421 webhook verifier (`createWebhookVerifier` from `@adcp/sdk/signing/server`) that resolves keys via the seller's brand.json, enforces the replay window, and surfaces structured errors for the [webhook error taxonomy](/docs/building/by-layer/L1/security#webhook-error-taxonomy).
 
 If you wire the multi-agent client with a `webhookUrlTemplate` and status-change handlers (per the [@adcp/sdk README](https://github.com/adcontextprotocol/adcp-client#readme)), incoming webhooks are verified and dispatched into your handlers automatically — your HTTP route is one line that hands the request to the client.
 

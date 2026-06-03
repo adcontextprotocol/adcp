@@ -6,11 +6,10 @@ description: "AdCP task lifecycle: status values (submitted, working, input-requ
 
 Every AdCP response includes a `status` field that tells you exactly what state the operation is in and what action you should take next. This is the foundation for handling any AdCP operation.
 
-:::note Transport-specific task management
-The status values and lifecycle described here are transport-independent — they apply regardless of how you access AdCP. The *mechanism* for tracking async tasks varies by transport:
-- **MCP**: Use [MCP Tasks](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks) — the client polls via `tasks/get` and retrieves results via `tasks/result` at the protocol level. See [MCP Guide](/docs/building/by-layer/L0/mcp-guide#async-operations-via-mcp-tasks).
-- **A2A**: Use native A2A task lifecycle with SSE streaming. See [A2A Guide](/docs/building/by-layer/L0/a2a-guide).
-- **REST**: Use AdCP's `task_id` with polling or [push notifications](/docs/building/by-layer/L3/webhooks).
+:::note Application-layer task state
+The status values and lifecycle described here are transport-independent AdCP application state. MCP and A2A task mechanisms may wrap, stream, or deliver an AdCP response, but they do not replace AdCP's `task_id`, webhook payloads, or polling/reconciliation surfaces.
+
+For `submitted` operations, observe the AdCP task with [push notifications](/docs/building/by-layer/L3/webhooks) or the AdCP polling surface. In 3.x, that polling surface is legacy `tasks/get`, with optional `get_task_status` when the seller advertises the alias. Transport-native MCP/A2A `tasks/*` methods use their own wire shapes and are separate from AdCP task polling.
 :::
 
 ## Status Values
@@ -162,10 +161,9 @@ Operations that take longer than 30 seconds return either `working` or `submitte
 }
 ```
 
-**Transport-specific handling for `submitted` operations:**
-- **MCP**: Use [MCP Tasks](/docs/building/by-layer/L0/mcp-guide#async-operations-via-mcp-tasks) or poll via `tasks/get`
-- **A2A**: Subscribe to SSE stream for real-time updates
-- **REST**: Use [push notifications](/docs/building/by-layer/L3/webhooks) (recommended) or poll with `task_id`
+**Handling for `submitted` operations:**
+- **All transports**: Use [push notifications](/docs/building/by-layer/L3/webhooks) (recommended) or poll the AdCP task with `get_task_status` / legacy `tasks/get`.
+- **MCP/A2A transport tasks**: Treat native task state as transport state. A native task can finish once it has delivered an AdCP payload that still says `status: 'submitted'`.
 
 ## Status Progression
 
@@ -199,7 +197,7 @@ async function pollForResult(taskId, pollInterval = 30_000) {
   while (true) {
     await sleep(pollInterval);
 
-    const response = await adcp.call('tasks/get', {
+    const response = await adcp.call('get_task_status', {
       task_id: taskId,
       include_result: true
     });
@@ -233,11 +231,11 @@ function getTimeout(status) {
 
 ## Task Reconciliation
 
-Use `tasks/list` to recover from lost state:
+Use `list_tasks` (or legacy `tasks/list` in 3.x) to recover from lost state:
 
 ```javascript
 // Find all pending operations
-const pending = await session.call('tasks/list', {
+const pending = await session.call('list_tasks', {
   filters: {
     statuses: ["submitted", "working", "input-required"]
   }
