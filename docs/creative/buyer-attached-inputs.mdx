@@ -69,10 +69,10 @@ Buyer-attached provenance follows the same [seller-publishes / buyer-represents 
 
 The following advisory pointers belong to this contract's second class but are not yet in the schema. They are referenced here by governance class only — no fields are defined.
 
-- **`signal_ref` ([#5240](https://github.com/adcontextprotocol/adcp/issues/5240), RFC).** Signal-driven creative fan-out: a buyer-attached pointer to an audience signal the production steers toward. Advisory at the AdCP layer; where enforcement exists it lives in trafficking-compatibility checks. No `signal_ref` creative-context schema exists yet.
+- **Signal-driven creative fan-out ([#5240](https://github.com/adcontextprotocol/adcp/issues/5240), RFC).** A buyer fans out over `signal_conditions: SignalTargeting[]` on `build_creative`, producing one creative group per condition, each tagged with the `signal_condition` it is FOR. Advisory at the AdCP layer; trafficking-compatibility (a sun creative MUST NOT serve into a rain-targeted package) is enforced sales-side via `SIGNAL_TARGETING_INCOMPATIBLE`. #5240 **reuses the existing signals-domain `SignalTargeting` / `signal-ref.json`** — no new creative-context `signal_ref` is minted — so the creative's condition and the sales-side package targeting share one `signal_ref` identity.
 
 <Warning>
-Do not confuse this proposed creative pointer with the signals-domain `signal-ref.json` (`x-entity: signal`, `scope` discriminator) used for signal targeting and discovery. They share a name but are different constructs; only the signals-domain one exists today.
+Do not mint a SECOND `x-entity: signal` creative schema. #5240's resolution is to **reuse** the existing signals-domain `signal-ref.json` (`x-entity: signal`, `scope` discriminator) and `signal-targeting.json` for the creative `signal_condition` rather than create a parallel signal vocabulary — that shared identity is what lets the sales agent match a creative's condition against package targeting. The signal pointer stays in the advisory class (no build-time gate); enforcement lives at the trafficking boundary.
 </Warning>
 
 - **`evaluator` / `evaluator_id` ([#5241](https://github.com/adcontextprotocol/adcp/issues/5241), RFC).** A creative evaluator/oracle the buyer attaches so the agent can explore and rank alternatives (the `best_of_n` dimension is where it would plug in, surfacing `recommended` / `rank` on leaves). Advisory — a preference signal, not a gate. No evaluator schema exists yet.

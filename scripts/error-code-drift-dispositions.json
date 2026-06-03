@@ -1,6 +1,11 @@
 {
   "$comment": "Disposition registry for error codes that are present in the current source enum but absent from the 3.0.x maintenance branch. Read by scripts/lint-error-code-drift.cjs. Every code in the AHEAD set (main \\ 3.0.x) MUST have an entry here; codes missing from this file fail the lint. Policy: 3.0.x is wire-stable. Adding a new enum value is a wire change (a 3.0.x receiver decoding a 3.1 sender's error.code cannot match against an enum it doesn't carry, and JSON Schema enum is closed by default), so the default disposition for any new code is 'held-for-next-minor' with target_version='3.1'. 'held-for-next-major' (target_version='4.0') is for codes that should defer past 3.x \u2014 typically because the surrounding subsystem is being reworked. 'backport-pending' is reserved for prose-only or doc-comment-only changes to a code that already exists on 3.0.x; the lint rejects backport-pending entries whose code is not on 3.0.x. Valid `disposition` values: 'backport-pending', 'held-for-next-minor', 'held-for-next-major', 'unclassified'. `target_version` (required for held-*) is a 'MAJOR.MINOR' string. When a code lands on 3.0.x its entry SHOULD be removed; the lint flags stale entries.",
   "dispositions": {
+    "SIGNAL_TARGETING_INCOMPATIBLE": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Signal-driven creative fan-out (#5240/#5304) — reject-at-trafficking when a signal-built creative is assigned to a package with incompatible signal targeting. New 3.1 creative-fan-out surface; wire change — held for 3.1."
+    },
     "EVALUATOR_AGENT_NOT_ACCEPTED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",

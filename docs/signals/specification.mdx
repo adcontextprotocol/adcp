@@ -243,6 +243,14 @@ The `activate_signal` request supports two destination types. The choice depends
 - Orchestrators buying directly on a DSP SHOULD use `type: "platform"` destinations. The orchestrator is responsible for ensuring the activation platform matches where campaigns will run.
 - Signal marketplace agents MUST support both destination types per the destination schema.
 
+### Creative signal fan-out and trafficking compatibility
+
+`build_creative` may fan out over `signal_conditions` ([#5240](https://github.com/adcontextprotocol/adcp/issues/5240)) — a keep-all production axis that produces one distinct creative group per signal condition (e.g. a rain creative AND a sun creative). Each produced group is tagged with the `signal_condition` (a `SignalTargeting`) it is FOR.
+
+**Trafficking-compatibility invariant (normative).** A creative built FOR one signal condition MUST NOT serve into a package targeting an incompatible condition. The sales agent enforces this **reject-at-trafficking** on `create_media_buy` / `sync_creatives`: assigning a creative whose `signal_condition` is incompatible with the package's signal targeting is rejected with `SIGNAL_TARGETING_INCOMPATIBLE`. This is NOT enforced at `build_creative` — at the build layer the signal pointer is advisory (the buyer-attached-input contract); enforcement lives at the trafficking boundary.
+
+**Matching.** Compatibility is matched on shared `signal_ref` identity — namespaced `signal_agent_segment_id` / data-provider-scoped `signal_ref` is the primary path, categorical `{signal_id, value}` the fallback. For `value_type: numeric` the comparison is range-overlap (WG-open: range-overlap vs exact-match). This is the **same** `signal_ref` identity used by `packages[].targeting_overlay.signal_targeting_groups` on `create_media_buy`, which is what makes the cross-agent match structurally possible without a shared-taxonomy registry.
+
 ## Schema Reference
 
 | Schema | Description |
