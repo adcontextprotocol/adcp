@@ -21,6 +21,7 @@ const SALES_CURRENT_SCENARIOS = [
   'force_create_media_buy_arm',
   'force_task_completion',
   'force_creative_purge',
+  'seed_account',
   'seed_product',
   'seed_pricing_option',
   'seed_creative',

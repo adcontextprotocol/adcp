@@ -157,12 +157,12 @@ phases:
             operator: "pinnacle-agency.example"
           brand:
             domain: "acmeoutdoor.example"
-          start_time: "2026-07-01T00:00:00Z"
+          start_time: "asap"
           end_time: "2026-09-30T23:59:59Z"
           packages:
-            - product_id: "test-product"
+            - product_id: "$context.product_id"
               budget: 10000
-              pricing_option_id: "test-pricing"
+              pricing_option_id: "$context.pricing_option_id"
 
           idempotency_key: "$generate:uuid_v4#media_buy_state_machine_setup_create_buy"
           context:
@@ -222,8 +222,8 @@ phases:
             correlation_id: "media_buy_state_machine--pause_buy"
         validations:
           - check: field_present
-            path: "status"
-            description: "Response includes updated status"
+            path: "media_buy_status"
+            description: "Response includes updated media_buy_status"
 
           - check: field_present
             path: "context"
@@ -258,8 +258,8 @@ phases:
             correlation_id: "media_buy_state_machine--resume_buy"
         validations:
           - check: field_present
-            path: "status"
-            description: "Response includes updated status"
+            path: "media_buy_status"
+            description: "Response includes updated media_buy_status"
 
           - check: field_present
             path: "context"
@@ -295,8 +295,8 @@ phases:
             correlation_id: "media_buy_state_machine--cancel_buy"
         validations:
           - check: field_present
-            path: "status"
-            description: "Response includes canceled status"
+            path: "media_buy_status"
+            description: "Response includes canceled media_buy_status"
 
           - check: field_present
             path: "context"

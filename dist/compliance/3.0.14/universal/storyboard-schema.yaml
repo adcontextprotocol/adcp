@@ -139,6 +139,13 @@
 #           pricing_options:
 #             - pricing_option_id: "test-pricing"
 #               pricing_model: "cpm"
+#       accounts:
+#         - account_id: "acct_test"
+#           fixture:
+#             brand: { domain: "acme.example" }
+#             operator: "buyer.example"
+#             billing: "operator"
+#             sandbox: true
 #       creatives:
 #         - creative_id: "campaign_hero_video"
 #           status: "approved"
@@ -149,11 +156,12 @@
 #       media_buys:
 #         - media_buy_id: "mb_acme_q2_2026_auction"
 #           status: "active"
-#   Each top-level key maps to a seed_* scenario (products → seed_product,
-#   pricing_options → seed_pricing_option, creatives → seed_creative,
-#   plans → seed_plan, media_buys → seed_media_buy). Foreign-key dependency DAG
-#   the runner MUST honor when auto-seeding:
+#   Each top-level key maps to a seed_* scenario (accounts → seed_account,
+#   products → seed_product, pricing_options → seed_pricing_option,
+#   creatives → seed_creative, plans → seed_plan, media_buys → seed_media_buy).
+#   Foreign-key dependency DAG the runner MUST honor when auto-seeding:
 #
+#     account ───→ product
 #     product ──┬─→ pricing_option
 #               ├─→ plan
 #               └─→ media_buy

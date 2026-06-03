@@ -157,12 +157,12 @@ phases:
             operator: "pinnacle-agency.example"
           brand:
             domain: "acmeoutdoor.example"
-          start_time: "2026-07-01T00:00:00Z"
+          start_time: "asap"
           end_time: "2026-09-30T23:59:59Z"
           packages:
-            - product_id: "test-product"
+            - product_id: "$context.product_id"
               budget: 10000
-              pricing_option_id: "test-pricing"
+              pricing_option_id: "$context.pricing_option_id"
 
           idempotency_key: "$generate:uuid_v4#media_buy_state_machine_setup_create_buy"
           context:

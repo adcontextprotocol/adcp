@@ -1,8 +1,8 @@
 id: pagination_integrity_list_accounts
 version: "1.0.0"
-title: "Pagination cursor integrity — list_accounts"
+title: "Pagination continuation integrity — list_accounts"
 category: schema_validation
-summary: "Validates the cursor↔has_more invariant by walking a paginated list_accounts response from a continuation page to a terminal page."
+summary: "Validates list_accounts pagination by seeding sandbox accounts, requesting a small first page, and following its cursor once."
 track: core
 required_tools:
   - list_accounts
@@ -16,21 +16,17 @@ narrative: |
 
   The invariant is documented in prose on
   `static/schemas/source/core/pagination-response.json` but JSON Schema does
-  not gate the two fields against each other. This storyboard exercises both
-  sides of the invariant on `list_accounts` in a single run.
+  not gate the two fields against each other. This storyboard exercises the
+  continuation side on `list_accounts`: when `has_more=true`, `cursor` must be
+  present and usable.
 
-  The runner bootstraps three accounts via `sync_accounts`, then lists them
-  back with `max_results=2`. The first page MUST cap at two accounts and
-  signal continuation with `has_more=true` plus a cursor. The runner then
-  follows that cursor; the next page returns the remaining account and MUST
-  signal `has_more=false` with no cursor. An agent that hides the third
-  account by reporting `has_more=false` on the first page fails the
-  first-page assertion. An agent that carries a stale cursor onto the
-  terminal page fails the second-page assertion.
-
-  The `total_count` field is allowed to be absent (some backends cannot
-  compute it cheaply per the pagination-response schema) but when an agent
-  volunteers it, the value MUST match the seeded account count of three.
+  The runner seeds three sandbox accounts via `comply_test_controller`, then
+  lists sandbox accounts back with `max_results=2`. The first page MUST cap at
+  two accounts and signal continuation with `has_more=true` plus a cursor. The
+  runner then follows that cursor to prove the continuation token is usable.
+  The seed_account contract is session-scoped: seeded accounts are visible to
+  the requesting compliance principal for this run and MUST NOT rely on
+  production tenant data already present in the seller's sandbox.
 
 agent:
   interaction_model: stateful_preloaded
@@ -44,18 +40,38 @@ caller:
 
 prerequisites:
   description: |
-    The storyboard bootstraps three accounts in the setup phase via
-    `sync_accounts`. The seed-DAG documented at
-    `static/compliance/source/universal/storyboard-schema.yaml` does not
-    include accounts (today's seed kinds are products, pricing_options,
-    creatives, plans, media_buys), so this storyboard deliberately
-    departs from the `controller_seeding: true` precedent used by
-    `pagination-integrity.yaml` (list_creatives) and bootstraps via
-    real protocol calls. Adding `seed_account` to the controller is
-    tracked separately; until then the create-then-list pattern keeps
-    the storyboard self-contained without extending the seed taxonomy.
+    The runner seeds three accounts through comply_test_controller.seed_account
+    so the pagination walk uses compliance-session state rather than assuming
+    pre-existing tenant fixtures.
   test_kit: "test-kits/acme-outdoor.yaml"
-  controller_seeding: false
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_pagination_integrity_accounts_1"
+      fixture:
+        brand:
+          domain: "pagination-acme-1.example"
+        operator: "pagination-pinnacle.example"
+        billing: "operator"
+        sandbox: true
+        status: "active"
+    - account_id: "acct_pagination_integrity_accounts_2"
+      fixture:
+        brand:
+          domain: "pagination-acme-2.example"
+        operator: "pagination-pinnacle.example"
+        billing: "operator"
+        sandbox: true
+        status: "active"
+    - account_id: "acct_pagination_integrity_accounts_3"
+      fixture:
+        brand:
+          domain: "pagination-acme-3.example"
+        operator: "pagination-pinnacle.example"
+        billing: "operator"
+        sandbox: true
+        status: "active"
 
 phases:
   - id: capability_discovery
@@ -96,75 +112,126 @@ phases:
             value: "pagination_integrity_list_accounts--get_capabilities"
             description: "Context correlation_id returned unchanged"
 
-  - id: setup
-    title: "Bootstrap three test accounts"
+  - id: seed_accounts
+    title: "Seed three test accounts"
     narrative: |
-      Sync three sandbox accounts so the pagination walk has a
-      deterministic set of three items to page through with max_results=2.
+      Seed three sandbox accounts so the pagination walk has at least three
+      sandbox items to page through with max_results=2. seed_account is
+      idempotent within a run: the same account_id plus same fixture succeeds,
+      while the same account_id with a different fixture is invalid state.
     steps:
-      - id: sync_three_accounts
-        title: "Sync three sandbox accounts"
-        narrative: |
-          Create three sandbox accounts — Acme c/o Pinnacle, Nova c/o Pinnacle,
-          and Pinnacle Direct. The agent MUST accept all three and respond with
-          account_id values that subsequent list_accounts calls surface.
-        task: sync_accounts
-        schema_ref: "account/sync-accounts-request.json"
-        response_schema_ref: "account/sync-accounts-response.json"
-        doc_ref: "/accounts/task-reference/sync_accounts"
-        comply_scenario: pagination_integrity_list_accounts
+      - id: seed_account_1
+        title: "Seed first sandbox account"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: seed_account
         stateful: true
         expected: |
-          Accept all three accounts and return account_id for each.
-
+          Return success: true.
         sample_request:
-          accounts:
-            - brand:
-                domain: acme-corp.com
-              operator: pinnacle-media.com
-              billing: operator
+          account:
+            sandbox: true
+            account_id: "acct_pagination_integrity_accounts_1"
+          scenario: "seed_account"
+          params:
+            account_id: "acct_pagination_integrity_accounts_1"
+            fixture:
+              brand:
+                domain: "pagination-acme-1.example"
+              operator: "pagination-pinnacle.example"
+              billing: "operator"
               sandbox: true
-            - brand:
-                domain: nova-brands.com
-              operator: pinnacle-media.com
-              billing: operator
-              sandbox: true
-            - brand:
-                domain: pinnacle-media.com
-              operator: pinnacle-media.com
-              billing: operator
-              sandbox: true
-
-          idempotency_key: "$generate:uuid_v4#pagination_integrity_list_accounts_setup_sync_three_accounts"
+              status: "active"
           context:
-            correlation_id: "pagination_integrity_list_accounts--setup"
+            correlation_id: "pagination_integrity_list_accounts--seed_1"
         validations:
-          - check: response_schema
-            description: "Response matches sync-accounts-response.json schema"
-          - check: field_present
-            path: "accounts"
-            description: "Response contains accounts array"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Seed acknowledged"
+
+      - id: seed_account_2
+        title: "Seed second sandbox account"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: seed_account
+        stateful: true
+        expected: |
+          Return success: true.
+        sample_request:
+          account:
+            sandbox: true
+            account_id: "acct_pagination_integrity_accounts_2"
+          scenario: "seed_account"
+          params:
+            account_id: "acct_pagination_integrity_accounts_2"
+            fixture:
+              brand:
+                domain: "pagination-acme-2.example"
+              operator: "pagination-pinnacle.example"
+              billing: "operator"
+              sandbox: true
+              status: "active"
+          context:
+            correlation_id: "pagination_integrity_list_accounts--seed_2"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Seed acknowledged"
+
+      - id: seed_account_3
+        title: "Seed third sandbox account"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: seed_account
+        stateful: true
+        expected: |
+          Return success: true.
+        sample_request:
+          account:
+            sandbox: true
+            account_id: "acct_pagination_integrity_accounts_3"
+          scenario: "seed_account"
+          params:
+            account_id: "acct_pagination_integrity_accounts_3"
+            fixture:
+              brand:
+                domain: "pagination-acme-3.example"
+              operator: "pagination-pinnacle.example"
+              billing: "operator"
+              sandbox: true
+              status: "active"
+          context:
+            correlation_id: "pagination_integrity_list_accounts--seed_3"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Seed acknowledged"
 
   - id: pagination_walk
     title: "Walk pages with a small max_results"
     narrative: |
-      With three accounts seeded and `max_results: 2`, the first call MUST
-      return a continuation page (has_more=true with a cursor). The runner
-      then follows the cursor; the second call MUST return the terminal
-      page (has_more=false with no cursor).
+      With at least three sandbox accounts and `max_results: 2`, the first call
+      MUST return a continuation page (has_more=true with a cursor). The
+      runner then follows the cursor and validates the next page response shape.
 
     steps:
       - id: first_page
         title: "Request the first page with max_results=2"
         narrative: |
-          The buyer asks for up to two accounts. The agent has three matching
-          accounts, so the request is non-terminal: callers expect
+          The buyer asks for up to two sandbox accounts. The compliance session
+          has at least three seeded accounts, so the request is non-terminal: callers expect
           `has_more=true` and a `cursor` they can follow to retrieve the
           remaining account.
 
           The runner captures `pagination.cursor` into `$context.next_cursor`
           for the follow-up step. If the agent reports `has_more=false` on
-          this page (hiding the seeded third account behind a dishonest
+          this page (hiding the seeded third sandbox account behind a dishonest
           terminal signal), the field_value check on `pagination.has_more`
           fails — surfacing exactly the bug class this storyboard exists to
           catch.
@@ -183,6 +250,7 @@ phases:
           - pagination.cursor present (an opaque continuation token)
 
         sample_request:
+          sandbox: true
           pagination:
             max_results: 2
 
@@ -194,15 +262,10 @@ phases:
           - check: field_value
             path: "pagination.has_more"
             value: true
-            description: "Three accounts seeded with max_results=2 → first page is non-terminal"
+            description: "At least three sandbox accounts exist with max_results=2 → first page is non-terminal"
           - check: field_present
             path: "pagination.cursor"
             description: "has_more=true requires a cursor — without one the caller cannot continue"
-          - check: field_value_or_absent
-            path: "pagination.total_count"
-            allowed_values: [3]
-            description: "If volunteered, total_count MUST equal the seeded set size — under-reporting hides accounts the same way a dishonest has_more does"
-
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
@@ -211,13 +274,13 @@ phases:
             value: "pagination_integrity_list_accounts--first_page"
             description: "Context correlation_id returned unchanged"
 
-      - id: terminal_page
-        title: "Follow the cursor to the terminal page"
+      - id: next_page
+        title: "Follow the cursor to the next page"
         narrative: |
-          The buyer follows the captured cursor. With at most one remaining
-          account the agent MUST return a terminal page: `has_more=false`
-          with no `cursor` field. A cursor on `has_more=false` is a stale
-          token that invites callers to follow it past the end of results.
+          The buyer follows the captured cursor. The response MUST remain
+          schema-valid and echo context. The runner does not require this page
+          to be terminal because sellers may already have more than the three
+          sandbox accounts created during setup.
         task: list_accounts
         schema_ref: "account/list-accounts-request.json"
         response_schema_ref: "account/list-accounts-response.json"
@@ -225,38 +288,27 @@ phases:
         comply_scenario: pagination_integrity_list_accounts
         stateful: true
         expected: |
-          Return the remaining account(s) with:
-          - pagination.has_more = false
-          - pagination.cursor absent (a stale cursor on a terminal page is a
-            dishonest pagination signal)
+          Return the next page of sandbox accounts with a valid pagination block.
 
         sample_request:
+          sandbox: true
           pagination:
             cursor: "$context.next_cursor"
             max_results: 2
 
           context:
-            correlation_id: "pagination_integrity_list_accounts--terminal_page"
+            correlation_id: "pagination_integrity_list_accounts--next_page"
         validations:
           - check: response_schema
             description: "Response matches list-accounts-response.json schema"
-          - check: field_value
+          - check: field_present
             path: "pagination.has_more"
-            value: false
-            description: "After two pages of two items the seeded set is exhausted"
-          - check: field_value_or_absent
-            path: "pagination.cursor"
-            allowed_values: [null]
-            description: "Terminal page MUST omit cursor (null also accepted for clients that explicitly clear the field)"
-          - check: field_value_or_absent
-            path: "pagination.total_count"
-            allowed_values: [3]
-            description: "total_count (when volunteered) MUST stay stable across pages and equal the seeded set size"
+            description: "Pagination response declares whether more sandbox accounts remain"
 
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "pagination_integrity_list_accounts--terminal_page"
+            value: "pagination_integrity_list_accounts--next_page"
             description: "Context correlation_id returned unchanged"
