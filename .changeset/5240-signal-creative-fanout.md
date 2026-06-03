@@ -4,7 +4,7 @@
 
 spec(creative): signal-driven creative fan-out (`signal_conditions[]`) + item-selection strategy (`selection_strategy`), folding #5262.
 
-DRAFT RFC for #5240 (Refs, not Closes — per `docs/governance/rfc-process.mdx` an RFC spec PR cannot merge until an accepted WG decision record exists on #5240). Adds a keep-all PRODUCTION axis for signals to `build_creative`, sibling to the catalog fan-out axis (`max_creatives`, #5219) and distinct from the choose-among `variant_axis`. Rides #5280's advisory-pointer contract: signal pointers inform production but MUST NOT hard-block at the build layer; trafficking-compatibility is enforced reject-at-trafficking on the sales side.
+Implements RFC #5240 (accepted 2026-06-03; ships `x-status: experimental`). Adds a keep-all PRODUCTION axis for signals to `build_creative`, sibling to the catalog fan-out axis (`max_creatives`, #5219) and distinct from the choose-among `variant_axis`. Rides #5280's advisory-pointer contract: signal pointers inform production but MUST NOT hard-block at the build layer; trafficking-compatibility is enforced reject-at-trafficking on the sales side.
 
 Strictly additive — no existing agents break. All new fields optional and gated by new capability flags; agents that don't advertise `supports_signal_fanout` behave exactly as today.
 
@@ -20,4 +20,4 @@ Strictly additive — no existing agents break. All new fields optional and gate
 
 Consolidates the parallel exploration in #5315 (segment-handle identity, namespaced provider IDs, trafficking-compat rules) into this single RFC-impl PR rather than a second RFC for #5240.
 
-Refs #5240, #5262, #5219, #5280, #5315.
+Closes #5240, #5262. Refs #5219, #5280, #5315.
