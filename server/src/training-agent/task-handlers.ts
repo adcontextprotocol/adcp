@@ -45,7 +45,7 @@ import type {
   BuildCreativeResponse,
   CreativeManifest as AdcpCreativeManifest,
 } from '@adcp/sdk';
-import { CreativeManifestSchema } from '@adcp/sdk/types';
+import { CreativeManifestSchema } from '@adcp/sdk/schemas';
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
