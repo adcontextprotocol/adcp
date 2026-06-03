@@ -704,6 +704,14 @@
           "$ref": "/schemas/enums/video-placement-type.json",
           "description": "Declared video placement classifications using IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions"
         },
+        "sponsored-placement-type": {
+          "$ref": "/schemas/enums/sponsored-placement-type.json",
+          "description": "Declared sponsored-placement classifications for catalog-driven retail-media inventory"
+        },
+        "social-placement-surface": {
+          "$ref": "/schemas/enums/social-placement-surface.json",
+          "description": "Declared social-placement surface classifications for social inventory"
+        },
         "task-status": {
           "$ref": "/schemas/enums/task-status.json",
           "description": "Standardized task status values based on A2A TaskState enum"

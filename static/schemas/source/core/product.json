@@ -69,6 +69,24 @@
       "uniqueItems": true,
       "minItems": 1
     },
+    "sponsored_placement_types": {
+      "type": "array",
+      "description": "Declared sponsored-placement types that may be included in this product, distinguishing where catalog-driven retail-media placements render on the retailer surface (sponsored search, sponsored display, or sponsored native). Use on retail-media products when buyers need to distinguish search-keyed, display, and native in-grid sponsored inventory. Aggregate products and ad-network products MAY declare multiple values. When `placements[]` also carry `sponsored_placement_types`, this product-level array SHOULD be the union of the placement-level declarations the seller may deliver under the product. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "/schemas/enums/sponsored-placement-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "social_placement_surfaces": {
+      "type": "array",
+      "description": "Declared social-placement surfaces that may be included in this product, distinguishing the in-app surface where social placements render (feed, stories, short_video, explore, or search). Use on social products when buyers need to distinguish feed, story, short-video, and discovery surfaces. Aggregate products and ad-network products MAY declare multiple values. When `placements[]` also carry `social_placement_surfaces`, this product-level array SHOULD be the union of the placement-level declarations the seller may deliver under the product. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "/schemas/enums/social-placement-surface.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
     "delivery_type": {
       "$ref": "/schemas/enums/delivery-type.json"
     },

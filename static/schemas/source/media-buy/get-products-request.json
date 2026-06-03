@@ -191,6 +191,8 @@
           "publisher_properties",
           "channels",
           "video_placement_types",
+          "sponsored_placement_types",
+          "social_placement_surfaces",
           "format_ids",
           "format_options",
           "placements",
