@@ -77,9 +77,11 @@ Use `connection_type` to distinguish the platform grants:
 | `publisher_identity` | Creator, page, channel, organization, or profile that owns published posts. |
 | `post_authorization` | Post-scoped grant when the platform authorizes individual posts instead of, or in addition to, the owning identity. |
 
-If a call cannot proceed because one of those downstream grants is missing, expired, or revoked, return `AUTHORIZATION_REQUIRED` with `error.details.missing_connections[]`. Each entry can carry an `authorization_url`, `authorization_instructions`, and a safe `resource_ref` hint such as the post URL or profile URL.
+If a call cannot proceed because one of those downstream grants is missing, expired, or revoked, return `AUTHORIZATION_REQUIRED` with `error.details.missing_connections[]`. Each blocked entry must include either `provider` or `authorization_url` so a buyer can route the human to the correct provider-specific connection flow. Entries can also carry `authorization_instructions` and a safe `resource_ref` hint such as the post URL or profile URL.
 
 `required_for` carries concrete AdCP operation names, not broad categories. Prefer values such as `list_creatives`, `sync_creatives`, `create_media_buy`, `get_media_buy_delivery`, or `get_creative_delivery` so buyer agents can route connection prompts to the operation they are about to perform.
+
+When a manifest uses `platform_post_id` without `post_url`, include `platform` unless the selected product or format option already narrows the platform. A bare platform-native id is otherwise ambiguous across provider namespaces.
 
 ## Creative manifest
 
@@ -111,6 +113,8 @@ The creative manifest uses the same canonical path as any other 3.1 creative. Th
 ```
 
 If the seller can resolve the post but needs creator/page authorization before paid serving, it returns `AUTHORIZATION_REQUIRED` with recovery details in `error.details`, preferably `missing_connections[]`.
+
+`reference_authorization` on a `published_post` asset is server-emitted authorization state. Sellers may return it on read surfaces, but must ignore buyer-supplied authorization-state claims on write requests unless a platform extension defines a signed proof and the seller verifies that proof.
 
 ```json
 {

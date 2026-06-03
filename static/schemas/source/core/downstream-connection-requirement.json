@@ -7,7 +7,7 @@
   "properties": {
     "provider": {
       "type": "string",
-      "description": "Stable provider or platform namespace, preferably lowercase. Examples: `social.example`, `shortvideo.example`, or a seller-defined namespace. Omit only when the requirement is provider-agnostic."
+      "description": "Stable provider or platform namespace, preferably lowercase. Examples: `social.example`, `shortvideo.example`, or a seller-defined namespace. Omit only when the requirement is provider-agnostic, or when an `authorization_url` fully routes the human to the correct provider-specific connection flow."
     },
     "connection_type": {
       "type": "string",
@@ -87,6 +87,24 @@
     }
   },
   "required": ["connection_type"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": ["missing", "pending", "expired", "revoked"]
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "anyOf": [
+          { "required": ["provider"] },
+          { "required": ["authorization_url"] }
+        ]
+      }
+    }
+  ],
   "additionalProperties": true,
   "examples": [
     {

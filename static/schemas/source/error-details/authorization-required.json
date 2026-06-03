@@ -17,7 +17,7 @@
       "items": {
         "$ref": "/schemas/core/downstream-connection-requirement.json"
       },
-      "description": "Subset of downstream connections that blocked the current request. Sellers SHOULD populate this array when the caller needs to route a human through a connections flow."
+      "description": "Subset of downstream connections that blocked the current request. Sellers SHOULD populate this array when the caller needs to route a human through a connections flow. Entries with `status` of `missing`, `pending`, `expired`, or `revoked` MUST include either `provider` or `authorization_url` so the buyer can route the remediation unambiguously."
     },
     "authorization_url": {
       "type": "string",

@@ -21,7 +21,7 @@
     },
     "platform_post_id": {
       "type": "string",
-      "description": "Optional platform-native post identifier when a URL alone is not stable or not available. Platform-specific identifier semantics belong in platform_extensions; this field is only an opaque reference."
+      "description": "Optional platform-native post identifier when a URL alone is not stable or not available. Buyers SHOULD include `platform` when using `platform_post_id` without `post_url`, unless the product or format declaration already narrows the platform. Platform-specific identifier semantics belong in platform_extensions; this field is only an opaque reference."
     },
     "identity_ref": {
       "type": "object",
@@ -50,7 +50,8 @@
     },
     "reference_authorization": {
       "type": "object",
-      "description": "Seller-observed authorization state for the referenced post or identity. Sellers MAY return this object on read surfaces and SHOULD ignore buyer-supplied authorization status on write requests unless their platform extension explicitly defines a signed proof shape.",
+      "readOnly": true,
+      "description": "Server-emitted, seller-observed authorization state for the referenced post or identity. Sellers MAY return this object on read surfaces. On write requests, sellers MUST ignore buyer-supplied `reference_authorization.status` and other authorization-state claims unless a platform extension explicitly defines a signed proof shape and the seller verifies that proof.",
       "properties": {
         "status": {
           "type": "string",
