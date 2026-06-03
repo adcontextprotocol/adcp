@@ -21,11 +21,15 @@ if (!/^3\.0\.\d+$/.test(version)) {
 }
 
 const idempotencyPath = path.join(bundleDir, 'universal', 'idempotency.yaml');
-if (!fs.existsSync(idempotencyPath)) {
-  process.exit(0);
+let idempotencyFd;
+try {
+  idempotencyFd = fs.openSync(idempotencyPath, 'r+');
+} catch (err) {
+  if (err && err.code === 'ENOENT') {
+    process.exit(0);
+  }
+  throw err;
 }
-
-const before = fs.readFileSync(idempotencyPath, 'utf8');
 
 // The frozen 3.0.15 idempotency storyboard authored fixed 2026 flight dates.
 // Once those dates became stale, @adcp/sdk's fixture-aware create_media_buy
@@ -34,9 +38,15 @@ const before = fs.readFileSync(idempotencyPath, 'utf8');
 // compatibility check into a runner-fixture failure instead of an idempotency
 // regression check. Patch only the temp compatibility bundle so the old
 // storyboard keeps exercising stable same-payload replay semantics.
-const after = before.replace(/\b2026-/g, '2099-');
+try {
+  const before = fs.readFileSync(idempotencyFd, 'utf8');
+  const after = before.replace(/\b2026-/g, '2099-');
 
-if (after !== before) {
-  fs.writeFileSync(idempotencyPath, after);
-  console.log(`Patched stale 3.0 compatibility dates in ${idempotencyPath}`);
+  if (after !== before) {
+    fs.ftruncateSync(idempotencyFd, 0);
+    fs.writeSync(idempotencyFd, after, 0, 'utf8');
+    console.log(`Patched stale 3.0 compatibility dates in ${idempotencyPath}`);
+  }
+} finally {
+  fs.closeSync(idempotencyFd);
 }
