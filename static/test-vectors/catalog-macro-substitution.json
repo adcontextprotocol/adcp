@@ -2,7 +2,7 @@
   "$schema_version": "1.0",
   "name": "Catalog-item macro substitution — conformance fixtures",
   "spec_reference": "docs/creative/universal-macros.mdx#substitution-safety-catalog-item-macros",
-  "description": "Reference vectors for the NFC normalization + percent-encoding + nested-expansion rules on buyer-controlled catalog-item macros. Sales agents SHOULD reproduce each `expected` output bit-exactly. All `value` fields are as-supplied (may include NFD); the substitution pipeline MUST normalize to NFC before encoding per docs/creative/universal-macros#substitution-safety-catalog-item-macros. Vectors cover: (1) reserved-character URL breakout, (2) nested-expansion literal preservation, (3) CRLF injection, (4) non-ASCII UTF-8 encoding (NFC input), (5) NFC normalization from NFD input, (6) mixed path/query substitution, (7) bidi-override neutralization, (8) URL-scheme injection neutralization.",
+  "description": "Reference vectors for the NFC normalization + percent-encoding + nested-expansion rules on buyer-controlled catalog-item macros. Sales agents SHOULD reproduce each `expected` output bit-exactly. All `value` fields are as-supplied (may include NFD); the substitution pipeline MUST normalize to NFC before encoding per docs/creative/universal-macros#substitution-safety-catalog-item-macros. Vectors cover: (1) reserved-character URL breakout, (2) nested-expansion literal preservation, (3) CRLF injection, (4) non-ASCII UTF-8 encoding (NFC input), (5) NFC normalization from NFD input, (6) mixed path/query substitution, (7) bidi-override neutralization, (8) URL-scheme injection neutralization, (9-11) content-macro values (free-text title with ampersand and spaces, double-brace downstream-macro neutralization in a content value, NFD content title).",
   "vectors": [
     {
       "name": "reserved-character-breakout",
@@ -67,6 +67,30 @@
       "value": "javascript:alert(0)",
       "template": "https://track.example/go?c={CLICK}",
       "expected": "https://track.example/go?c=javascript%3Aalert%280%29"
+    },
+    {
+      "name": "content-macro-freetext-title",
+      "description": "A content macro carries free-text catalog field values (here {ITEM_NAME}) that are far more likely than ID values to contain spaces and reserved characters. The value `Tom & Jerry — 50% off` must percent-encode the space, ampersand, em-dash (non-ASCII, UTF-8), and percent sign under the same unreserved-whitelist rule as ID macros. Content macros are scalar text in a URL context — no new escaping context.",
+      "macro": "{ITEM_NAME}",
+      "value": "Tom & Jerry — 50% off",
+      "template": "https://track.example/imp?t={ITEM_NAME}",
+      "expected": "https://track.example/imp?t=Tom%20%26%20Jerry%20%E2%80%94%2050%25%20off"
+    },
+    {
+      "name": "content-macro-double-brace-neutralized",
+      "description": "A content value containing the downstream ad-server double-brace macro syntax `{{store.name}}` MUST be neutralized. AdCP performs a single substitution pass and does NOT adopt `{{...}}` as a content-macro syntax; percent-encoding the value escapes the braces (`{` and `}` are outside the unreserved set), so the literal survives without being interpreted by AdCP or a downstream ad server reading this AdCP-emitted URL.",
+      "macro": "{ITEM_DESCRIPTION}",
+      "value": "Visit {{store.name}} today",
+      "template": "https://track.example/imp?d={ITEM_DESCRIPTION}",
+      "expected": "https://track.example/imp?d=Visit%20%7B%7Bstore.name%7D%7D%20today"
+    },
+    {
+      "name": "content-macro-nfc-from-nfd-title",
+      "description": "A content-macro value supplied in Unicode NFD (`Café Noir`, base `e` U+0065 + combining acute U+0301) MUST be normalized to NFC (`Café Noir`, U+00E9) before percent-encoding, identical to the ID-macro NFC rule. The NFC form emits `%C3%A9`; an implementation that skips normalization emits `e%CC%81` and fails this vector.",
+      "macro": "{ITEM_NAME}",
+      "value": "Café Noir",
+      "template": "https://track.example/imp?t={ITEM_NAME}",
+      "expected": "https://track.example/imp?t=Caf%C3%A9%20Noir"
     }
   ]
 }

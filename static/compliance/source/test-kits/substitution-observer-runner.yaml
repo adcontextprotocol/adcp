@@ -256,6 +256,9 @@ attacker_value_catalog:
     - mixed-path-and-query-contexts
     - bidi-override-neutralized
     - url-scheme-injection-neutralized
+    - content-macro-freetext-title
+    - content-macro-double-brace-neutralized
+    - content-macro-nfc-from-nfd-title
 
 # --- Storyboard-layer step task ---
 #
