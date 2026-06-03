@@ -370,8 +370,7 @@
       "properties": {
         "feed_url": { "type": "string", "format": "uri", "description": "URL to product catalog feed" },
         "feed_format": {
-          "type": "string",
-          "enum": ["google_merchant_center", "facebook_catalog", "openai_product_feed", "custom"],
+          "$ref": "/schemas/enums/feed-format.json",
           "description": "Format of the product feed"
         },
         "categories": {
