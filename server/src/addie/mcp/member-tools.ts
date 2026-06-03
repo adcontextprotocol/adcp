@@ -68,7 +68,9 @@ import {
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
   badgeEligibleVersionsForHostedComplianceTarget,
-  selectHostedComplianceTargetForProfile,
+  selectCanonicalHostedComplianceTargetForProfile,
+  agentAdvertisesHostedComplianceTarget,
+  type HostedComplianceTarget,
 } from '../../services/hosted-compliance-version.js';
 import { AgentContextDatabase, validateAuthTokenChars, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
@@ -141,6 +143,55 @@ function targetFromInput(input: Record<string, unknown>): ReturnType<typeof host
       : complianceTarget;
   } catch {
     throw new ToolError('Invalid compliance_target. Use 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.');
+  }
+}
+
+function requiresAdvertisedHostedComplianceSupport(target: HostedComplianceTarget): boolean {
+  const versionLine = target.version.match(/^([1-9][0-9]*\.[0-9]+)/)?.[1];
+  const requestedLine = target.requested.match(/^([1-9][0-9]*\.[0-9]+)/)?.[1];
+  return versionLine !== '3.0' || (requestedLine !== undefined && requestedLine !== '3.0');
+}
+
+function explicitTargetUnsupportedMessage(target: HostedComplianceTarget, profile: AgentProfile | undefined): string {
+  const supportedVersions = profile?.adcp_supported_versions;
+  const supportedText = supportedVersions?.length ? supportedVersions.join(', ') : '(none advertised)';
+  return [
+    `**Error:** compliance_target \`${target.requested}\` resolves to \`${target.version}\`, but this agent does not advertise support for that target.`,
+    `Agent advertises adcp.supported_versions: \`${supportedText}\`.`,
+    'Use `3.0` or update `get_adcp_capabilities.adcp.supported_versions` before running prerelease diagnostics.',
+  ].join('\n');
+}
+
+function explicitTargetSupportError(
+  input: Record<string, unknown>,
+  target: HostedComplianceTarget,
+  profile: AgentProfile | undefined,
+): string | undefined {
+  if (!hasExplicitComplianceTarget(input) || !requiresAdvertisedHostedComplianceSupport(target)) return undefined;
+  return agentAdvertisesHostedComplianceTarget(profile?.adcp_supported_versions, target)
+    ? undefined
+    : explicitTargetUnsupportedMessage(target, profile);
+}
+
+async function explicitTargetSupportErrorFromAgent(
+  agentUrl: string,
+  auth: ComplyOptions['auth'] | undefined,
+  input: Record<string, unknown>,
+  target: HostedComplianceTarget,
+): Promise<string | undefined> {
+  if (!hasExplicitComplianceTarget(input) || !requiresAdvertisedHostedComplianceSupport(target)) return undefined;
+
+  try {
+    const caps = await testCapabilityDiscovery(agentUrl, {
+      ...(auth && { auth }),
+    });
+    return explicitTargetSupportError(input, target, caps.profile);
+  } catch (error) {
+    logger.warn({ err: error, agentUrl }, 'Could not verify explicit prerelease compliance target support');
+    return [
+      `**Error:** cannot run compliance_target \`${target.requested}\` because the agent's advertised supported versions could not be verified.`,
+      'Retry after `get_adcp_capabilities` is reachable, or use `3.0`.',
+    ].join('\n');
   }
 }
 
@@ -1293,7 +1344,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to discover and recommend storyboards for' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the best hosted target advertised by the agent.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit non-3.0 targets only run when the agent advertises support.' },
       },
       required: ['agent_url'],
     },
@@ -1323,7 +1374,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL to test' },
         storyboard_id: { type: 'string', description: 'Storyboard ID to run' },
         dry_run: { type: 'boolean', description: 'If true (default), use test data that won\'t affect production state', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the best hosted target advertised by the agent. Explicit non-default targets are diagnostic-only.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit non-3.0 targets are diagnostic-only and only run when the agent advertises support.' },
       },
       required: ['agent_url', 'storyboard_id'],
     },
@@ -1341,7 +1392,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         step_id: { type: 'string', description: 'Step ID to run (from storyboard detail or previous step\'s next.step_id)' },
         context: { type: 'object', description: 'Accumulated context from previous step (pass the context field from the previous run_storyboard_step result)', additionalProperties: true },
         dry_run: { type: 'boolean', description: 'If true (default), use test data', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the best hosted target advertised by the agent. Explicit non-default targets are diagnostic-only.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit non-3.0 targets are diagnostic-only and only run when the agent advertises support.' },
       },
       required: ['agent_url', 'storyboard_id', 'step_id'],
     },
@@ -3807,6 +3858,14 @@ export function createMemberToolHandlers(
         'canonical',
       );
       runTarget = runTargetSelection.target;
+    } else {
+      const targetError = await explicitTargetSupportErrorFromAgent(
+        resolved.resolvedUrl,
+        authOption,
+        input,
+        runTarget,
+      );
+      if (targetError) return targetError;
     }
 
     const complyOptions: ComplyOptions = {
@@ -4180,8 +4239,11 @@ export function createMemberToolHandlers(
       });
       profile = caps.profile;
       if (!hasExplicitComplianceTarget(input)) {
-        runTarget = selectHostedComplianceTargetForProfile(profile, complianceTarget);
+        runTarget = selectCanonicalHostedComplianceTargetForProfile(profile, complianceTarget);
         runOptions = hostedComplianceOptions(runTarget);
+      } else {
+        const targetError = explicitTargetSupportError(input, runTarget, profile);
+        if (targetError) return targetError;
       }
 
       // testCapabilityDiscovery catches its own throws and surfaces them as
@@ -4515,7 +4577,16 @@ export function createMemberToolHandlers(
         resolved.resolvedUrl,
         { auth: authOption },
         complianceTarget,
+        'canonical',
       );
+    } else {
+      const targetError = await explicitTargetSupportErrorFromAgent(
+        resolved.resolvedUrl,
+        authOption,
+        input,
+        runTarget,
+      );
+      if (targetError) return targetError;
     }
 
     const runOptions = hostedComplianceOptions(runTarget);
@@ -4683,7 +4754,16 @@ export function createMemberToolHandlers(
         resolved.resolvedUrl,
         { auth: authOption },
         complianceTarget,
+        'canonical',
       );
+    } else {
+      const targetError = await explicitTargetSupportErrorFromAgent(
+        resolved.resolvedUrl,
+        authOption,
+        input,
+        runTarget,
+      );
+      if (targetError) return targetError;
     }
 
     const runOptions = hostedComplianceOptions(runTarget);

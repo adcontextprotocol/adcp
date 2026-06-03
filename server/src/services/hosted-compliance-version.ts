@@ -354,6 +354,16 @@ export function selectCanonicalHostedComplianceTargetForProfile(
   return selectCanonicalHostedComplianceTargetForSupportedVersions(profile?.adcp_supported_versions, fallback);
 }
 
+export function agentAdvertisesHostedComplianceTarget(
+  supportedVersions: readonly string[] | undefined,
+  target: HostedComplianceTarget,
+): boolean {
+  if (!supportedVersions?.length) return false;
+
+  const hostedStableLineAlias = hostedStableLineAliasForVersion(target, target.version);
+  return isComplianceVersionSupported(target.version, supportedVersions, { hostedStableLineAlias });
+}
+
 export function agentAdvertisesBadgeEligibleHostedComplianceTarget(
   supportedVersions: readonly string[] | undefined,
   target: HostedComplianceTarget,

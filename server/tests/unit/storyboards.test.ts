@@ -20,6 +20,7 @@ import {
   hostedComplianceTargetPreference,
   hostedComplianceTarget,
   isDefaultHostedComplianceTarget,
+  agentAdvertisesHostedComplianceTarget,
   agentAdvertisesBadgeEligibleHostedComplianceTarget,
   selectCanonicalHostedComplianceTargetForSupportedVersions,
   selectHostedComplianceTargetForSupportedVersions,
@@ -235,6 +236,19 @@ describe('wrapper contract', () => {
 
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.4']).requested).toBe('3.0');
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1-rc.4']).requested).toBe('3.1-rc.4');
+  });
+
+  it('uses canonical hosted targets without silently upgrading 3.0-only agents', () => {
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.6']).requested).toBe('3.0');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1-rc.6']).requested).toBe('3.1-rc');
+  });
+
+  it('requires agents to advertise non-3.0 hosted targets before selecting them', () => {
+    const rcTarget = hostedComplianceTarget('3.1-rc');
+    expect(agentAdvertisesHostedComplianceTarget(['3.0'], rcTarget)).toBe(false);
+    expect(agentAdvertisesHostedComplianceTarget(undefined, rcTarget)).toBe(false);
+    expect(agentAdvertisesHostedComplianceTarget(['3.0', '3.1-rc.6'], rcTarget)).toBe(true);
   });
 
   it('does not treat an unconfirmed fallback target as badge eligible', () => {
