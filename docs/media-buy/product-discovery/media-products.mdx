@@ -21,7 +21,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `channels` (list[string], optional): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD declare `channels` on products that span non-obvious channels, particularly retail media, CTV/OLV, and multi-channel bundles. Product channels SHOULD be a subset of the union of their properties' `supported_channels`. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
 - `video_placement_types` (list[string], optional): Declared video placement types that may be included in this product, using IAB Tech Lab/OpenRTB 2.6 `video.plcmt` definitions with AdCP-native names: `instream`, `accompanying_content`, `interstitial`, and `standalone`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
 - `sponsored_placement_types` (list[string], optional): Declared sponsored-placement types for catalog-driven retail-media products: `sponsored_search`, `sponsored_display`, and `sponsored_native`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
-- `social_placement_surfaces` (list[string], optional): Declared social-placement surfaces for social products: `feed`, `stories`, `reels`, `shorts`, `spotlight`, `explore`, `search`, and `marketplace`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
+- `social_placement_surfaces` (list[string], optional): Declared social-placement surfaces for social products: `feed`, `stories`, `short_video`, `explore`, and `search`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
 - `format_ids` (list[FormatID], conditional): Legacy named-format references. Products must include `format_ids`, `format_options`, or both. See [Creative Formats](/docs/creative/formats).
 - `format_options` (list[ProductFormatDeclaration], conditional): 3.1+ canonical format-option declarations accepted by this product. Buyers prefer `format_options` when both format fields are present. Product-level formats are the upper bound for the sellable product; placement-level formats can narrow this set but cannot add formats the product does not accept. Buyer `FormatOptionRef` selectors use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-declared options and `{scope: "product", format_option_id}` for product-local options.
 - `placements` (list[Placement], optional): Specific public ad placements within this product. Each placement declares `kind` (`publisher_ref` or `seller_inline`) and `mode` (`targetable` or `included`); seller-private delivery objects are not exposed here. See [Placements](#placements).
@@ -253,12 +253,9 @@ Social products can declare `social_placement_surfaces` at the product level, pl
 |---|---|
 | `feed` | The primary scrolling home or timeline surface |
 | `stories` | The full-screen, ephemeral tap-through story surface |
-| `reels` | The full-screen vertical short-video surface (Reels-branded) |
-| `shorts` | The full-screen vertical short-video surface (Shorts-branded) |
-| `spotlight` | The full-screen vertical short-video surface (Spotlight-branded) |
+| `short_video` | The full-screen vertical algorithmically-recommended short-video surface (branded Reels, Shorts, Spotlight, etc.) |
 | `explore` | The discovery or browse surface outside the followed graph |
 | `search` | The in-app search-results surface, keyed to the user's query |
-| `marketplace` | The in-app commerce or buy-and-sell listings surface |
 
 The field is an array because a sellable product can aggregate multiple surfaces; when both product and placement declarations are present, the product-level array should be the union the seller may deliver under that product.
 

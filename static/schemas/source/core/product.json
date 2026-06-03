@@ -80,7 +80,7 @@
     },
     "social_placement_surfaces": {
       "type": "array",
-      "description": "Declared social-placement surfaces that may be included in this product, distinguishing the in-app surface where social placements render (feed, stories, reels, shorts, spotlight, explore, search, or marketplace). Use on social products when buyers need to distinguish feed, story, short-video, and discovery surfaces. Aggregate products and ad-network products MAY declare multiple values. When `placements[]` also carry `social_placement_surfaces`, this product-level array SHOULD be the union of the placement-level declarations the seller may deliver under the product. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "description": "Declared social-placement surfaces that may be included in this product, distinguishing the in-app surface where social placements render (feed, stories, short_video, explore, or search). Use on social products when buyers need to distinguish feed, story, short-video, and discovery surfaces. Aggregate products and ad-network products MAY declare multiple values. When `placements[]` also carry `social_placement_surfaces`, this product-level array SHOULD be the union of the placement-level declarations the seller may deliver under the product. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
       "items": {
         "$ref": "/schemas/enums/social-placement-surface.json"
       },
