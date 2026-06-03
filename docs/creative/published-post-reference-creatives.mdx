@@ -79,6 +79,8 @@ Use `connection_type` to distinguish the platform grants:
 
 If a call cannot proceed because one of those downstream grants is missing, expired, or revoked, return `AUTHORIZATION_REQUIRED` with `error.details.missing_connections[]`. Each entry can carry an `authorization_url`, `authorization_instructions`, and a safe `resource_ref` hint such as the post URL or profile URL.
 
+`required_for` carries concrete AdCP operation names, not broad categories. Prefer values such as `list_creatives`, `sync_creatives`, `create_media_buy`, `get_media_buy_delivery`, or `get_creative_delivery` so buyer agents can route connection prompts to the operation they are about to perform.
+
 ## Creative manifest
 
 The creative manifest uses the same canonical path as any other 3.1 creative. The only new part is the asset payload.
@@ -150,6 +152,8 @@ Published-post references can become unavailable after approval. Use `suspended`
 | Source post deleted | `archived`, `rejected`, or `creative.purged` | `source_deleted` |
 
 For active buys, a suspended creative also creates a media-buy impairment with `resource_type: "creative"` and `transition.to: "suspended"`. Buyers reconcile the creative snapshot via `list_creatives` and the buy snapshot via `get_media_buys`; webhook ordering is not guaranteed.
+
+If the seller later determines the dependency cannot be restored for that creative, it may transition `suspended → rejected` with the same reason family, such as `identity_authorization_revoked`. The buyer then needs to replace the referenced post or resubmit a different creative.
 
 ## Discovery boundary
 

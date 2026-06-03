@@ -18,6 +18,7 @@
     "url",
     "webhook",
     "brief",
-    "catalog"
+    "catalog",
+    "published_post"
   ]
 }

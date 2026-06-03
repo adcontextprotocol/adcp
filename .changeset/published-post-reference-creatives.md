@@ -4,9 +4,9 @@
 
 Add published-post reference creatives as a canonical-format refinement, not a new task surface or format family.
 
-- Adds `published_post` as an asset payload type and canonical slot asset type.
+- Adds `published_post` as an asset payload type, canonical slot asset type, and `asset_types` filter value for `list_creative_formats`.
 - Adds `publisher_owned_reference` to canonical `asset_source` where a product resolves an existing post instead of accepting uploaded bytes.
 - Adds `required_connections` for downstream platform grants, plus `AUTHORIZATION_REQUIRED` details for missing advertiser account, publisher identity, or post-scoped authorizations.
-- Adds `CreativeStatus: "suspended"` plus authorization/source reason codes so recoverable published-post dependency loss is distinct from policy rejection.
+- Adds `CreativeStatus: "suspended"` plus authorization/source reason codes so recoverable published-post dependency loss is distinct from policy rejection, with documented escalation from `suspended` to `rejected` when the dependency becomes terminal.
 - Adds `AUTHORIZATION_REQUIRED` for authenticated calls that need additional creator, identity, or post authorization before serving.
 - Documents the canonical `video_hosted` published-post pattern and keeps catalog-driven retail media on `sponsored_placement`.

@@ -18,10 +18,11 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["get_products", "list_creatives", "sync_creatives", "create_media_buy", "reporting"]
+        "minLength": 1,
+        "examples": ["list_creatives", "sync_creatives", "create_media_buy", "get_media_buy_delivery", "get_creative_delivery"]
       },
       "uniqueItems": true,
-      "description": "Operations that require this downstream connection. Sellers SHOULD include this in product declarations when the requirement is known ahead of time, and in AUTHORIZATION_REQUIRED details when it explains the failed operation."
+      "description": "Concrete AdCP protocol operation names that require this downstream connection. Sellers SHOULD include this in product declarations when the requirement is known ahead of time, and in AUTHORIZATION_REQUIRED details when it explains the failed operation. Prefer specific operation names such as `list_creatives`, `sync_creatives`, `create_media_buy`, `get_media_buy_delivery`, or `get_creative_delivery` over broad category labels such as `reporting`."
     },
     "scope": {
       "type": "string",
