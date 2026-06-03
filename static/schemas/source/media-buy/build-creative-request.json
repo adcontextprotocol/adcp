@@ -96,6 +96,7 @@
     },
     "signal_conditions": {
       "type": "array",
+      "x-status": "experimental",
       "minItems": 1,
       "items": {
         "allOf": [
@@ -155,6 +156,7 @@
     },
     "selection_strategy": {
       "$ref": "/schemas/enums/creative-selection-strategy.json",
+      "x-status": "experimental",
       "description": "Governs HOW the agent samples when max_creatives < items_total (folds #5262). audience_relevance draws its ranking input from the SAME signal_ref pointers in signal_conditions / package targeting — NOT a parallel signals[] array. proximity takes a location input (geo shape TBD — WG open). inventory_priority is seller-side catalog metadata (margin/overstock/promo; no buyer input). random is the status-quo default. Per-creative selection ordering surfaces on the existing rank / recommended fields of creatives[].variants[], not a new selection_rank. Advisory; absent => agent default (random)."
     },
     "account": {

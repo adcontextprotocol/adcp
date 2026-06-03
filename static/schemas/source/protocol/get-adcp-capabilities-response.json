@@ -1134,11 +1134,13 @@
             "supports_signal_fanout": {
               "type": "boolean",
               "default": false,
-              "description": "When true, build_creative accepts signal_conditions[] (one distinct creative group per signal condition, keep-all). Mirrors supports_catalog_fanout."
+              "x-status": "experimental",
+              "description": "Experimental (x-status: experimental) — agents setting this true MUST also list `creative.signal_fanout` in `experimental_features`; the surface MAY change between 3.x releases with notice (see docs/reference/experimental-status). When true, build_creative accepts signal_conditions[] (one distinct creative group per signal condition, keep-all). Mirrors supports_catalog_fanout."
             },
             "max_signal_conditions_limit": {
               "type": "integer",
               "minimum": 1,
+              "x-status": "experimental",
               "description": "Ceiling on len(signal_conditions). Over-limit requests are CLAMPED (not rejected), like max_creatives_limit. Omitted means no advertised ceiling."
             },
             "supports_variants": {
@@ -1162,7 +1164,8 @@
             },
             "selection_strategies": {
               "type": "array",
-              "description": "Which selection_strategy values this agent supports when sampling max_creatives < items_total. Sibling to variant_dimensions.",
+              "x-status": "experimental",
+              "description": "Which selection_strategy values this agent supports when sampling max_creatives < items_total. Sibling to variant_dimensions. Part of the experimental signal-fanout surface (feature id `creative.signal_fanout`).",
               "items": {
                 "$ref": "/schemas/enums/creative-selection-strategy.json"
               },

@@ -310,6 +310,7 @@
               },
               "signal_condition": {
                 "$ref": "/schemas/core/signal-targeting.json",
+                "x-status": "experimental",
                 "description": "When this creative group was produced by fanning out over signal_conditions, the SignalTargeting condition this group is FOR (e.g. weather=rain). Sibling to catalog_item_ref. Carries the SAME signal_ref identity the sales-side package targeting uses, so a sales agent can structurally match condition identity and reject-at-trafficking (SIGNAL_TARGETING_INCOMPATIBLE) when a creative is assigned to an incompatible package."
               },
               "variants": {
@@ -454,6 +455,7 @@
         },
         "selection_strategy_applied": {
           "$ref": "/schemas/enums/creative-selection-strategy.json",
+          "x-status": "experimental",
           "description": "Echoes the selection_strategy the agent applied when max_creatives sampling occurred (mirrors keep_mode_applied). Present when the request set selection_strategy. The ranking itself shows in the rank/recommended on creatives[].variants[]."
         },
         "budget_status": {
@@ -504,7 +506,7 @@
           "properties": {
             "items_total": { "type": "integer", "minimum": 0, "description": "Catalog items eligible (before max_creatives sampling)." },
             "items_to_produce": { "type": "integer", "minimum": 0, "description": "Distinct creatives that would be produced (after max_creatives)." },
-            "conditions_total": { "type": "integer", "minimum": 1, "description": "Signal-fan-out conditions axis count (len(signal_conditions)). Present when signal_conditions was sent so leaves_total = items_to_produce × conditions_total × variants_per_item is legible before spend." },
+            "conditions_total": { "type": "integer", "minimum": 1, "x-status": "experimental", "description": "Signal-fan-out conditions axis count (len(signal_conditions)). Present when signal_conditions was sent so leaves_total = items_to_produce × conditions_total × variants_per_item is legible before spend." },
             "variants_per_item": { "type": "integer", "minimum": 1, "description": "Alternatives per creative (max_variants)." },
             "leaves_total": { "type": "integer", "minimum": 0, "description": "Total billable leaves = items_to_produce × variants_per_item." },
             "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 currency for the cost band." },
