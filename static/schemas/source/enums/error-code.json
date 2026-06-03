@@ -40,6 +40,7 @@
     "IDEMPOTENCY_EXPIRED",
     "IDEMPOTENCY_IN_FLIGHT",
     "CREATIVE_DEADLINE_EXCEEDED",
+    "CREATIVE_INACCESSIBLE",
     "INVALID_STATE",
     "MEDIA_BUY_NOT_FOUND",
     "NOT_CANCELLABLE",
@@ -127,6 +128,7 @@
     "BUDGET_EXCEEDED": "Operation would exceed the allocated budget for the media buy or package. Distinct from BUDGET_EXHAUSTED (already spent) and BUDGET_TOO_LOW (below minimum). Recovery: correctable (reduce requested amount or increase budget allocation).",
     "BUDGET_CAP_REACHED": "build_creative stopped producing early because the next leaf would exceed the request's max_spend ceiling. Normally a SUCCESSFUL partial build (BuildCreativeVariantSuccess with budget_status: 'capped' and an advisory BUDGET_CAP_REACHED entry — every returned leaf is real and billed); returned as a terminal error only when even the first leaf would exceed the cap (no partial possible). Distinct from BUDGET_EXCEEDED (would exceed a media-buy/package allocation — a rejection) and BUDGET_EXHAUSTED (already spent). Recovery: correctable (raise max_spend, or reduce max_creatives/max_variants).",
     "CREATIVE_DEADLINE_EXCEEDED": "Creative change submitted after the package's creative_deadline. Distinct from CREATIVE_REJECTED (content policy failure). Recovery: correctable (check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller).",
+    "CREATIVE_INACCESSIBLE": "A creative governance agent (get_creative_features) could not retrieve the submitted creative_manifest assets for evaluation — an asset URL was unreachable, returned an error, or required credentials the agent does not hold. Distinct from CREATIVE_NOT_FOUND (a creative_id absent from the agent's library, not an asset-fetch failure) and CREATIVE_REJECTED (assets retrieved but failed policy). Recovery: correctable (verify the asset URLs are reachable without agent-side credentials, then re-submit).",
     "CONFLICT": "Concurrent modification detected. The resource was modified by another request between read and write. Recovery: transient (re-read the resource and retry with current state).",
     "IDEMPOTENCY_CONFLICT": "An earlier request with the same idempotency_key was processed with a different canonical payload within the seller's replay window. Distinct from CONFLICT (concurrent write) — this indicates the client reused a key across semantically different requests. Recovery: correctable (use a fresh UUID v4 for the new request, or resend the exact original payload to get the cached response).",
     "IDEMPOTENCY_EXPIRED": "The idempotency_key was seen previously but its cached response has been evicted because it is past the seller's declared replay_ttl_seconds. Distinct from IDEMPOTENCY_CONFLICT (different payload within window) — this indicates the retry arrived too late for at-most-once guarantees. Recovery: correctable (perform a natural-key reconciliation — e.g., call get_media_buys for the relevant account/status scope and match returned media_buys[].context.internal_campaign_id — to determine whether the original request succeeded, then either accept that result or generate a fresh idempotency_key for a new attempt). If the buyer has any evidence the prior call succeeded (partial response received before crash, entry in the buyer's own DB, a webhook fired), the buyer MUST do the natural-key reconciliation BEFORE minting a new key — minting a new key in that situation is exactly how double-creation happens.",
@@ -327,6 +329,10 @@
     "CREATIVE_DEADLINE_EXCEEDED": {
       "recovery": "correctable",
       "suggestion": "check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller"
+    },
+    "CREATIVE_INACCESSIBLE": {
+      "recovery": "correctable",
+      "suggestion": "verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit"
     },
     "INVALID_STATE": {
       "recovery": "correctable",
