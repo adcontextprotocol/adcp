@@ -320,6 +320,15 @@ phases:
 
           context:
             correlation_id: "sales_guaranteed--get_products_brief"
+        context_outputs:
+          - name: product_1_id
+            path: "products[0].product_id"
+          - name: pricing_option_1_id
+            path: "products[0].pricing_options[0].pricing_option_id"
+          - name: product_2_id
+            path: "products[1].product_id"
+          - name: pricing_option_2_id
+            path: "products[1].pricing_options[0].pricing_option_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -395,14 +404,14 @@ phases:
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
-            - product_id: "sports_preroll_q2_guaranteed"
+            - product_id: "$context.product_1_id"
               budget: 30000
-              pricing_option_id: "cpm_guaranteed_fixed"
+              pricing_option_id: "$context.pricing_option_1_id"
               creative_assignments:
                 - creative_id: "video_30s_trail_pro"
-            - product_id: "outdoor_ctv_q2_guaranteed"
+            - product_id: "$context.product_2_id"
               budget: 20000
-              pricing_option_id: "cpm_guaranteed_fixed"
+              pricing_option_id: "$context.pricing_option_2_id"
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             authentication:

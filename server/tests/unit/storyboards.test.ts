@@ -243,18 +243,20 @@ describe('wrapper contract', () => {
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.6']).requested).toBe('3.0');
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1']).requested).toBe('3.1');
-    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1-rc.6']).requested).toBe('3.1-rc');
+    const rc6Target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1-rc.6']);
+    expect(rc6Target.version).toBe('3.1.0-rc.6');
   });
 
   it('requires agents to advertise non-3.0 hosted targets before selecting them', () => {
     const stableTarget = hostedComplianceTarget('3.1');
     const rcTarget = hostedComplianceTarget('3.1-rc');
+    const latestRcWireVersion = rcTarget.version.replace(/^([0-9]+\.[0-9]+)\.0-/, '$1-');
     expect(agentAdvertisesHostedComplianceTarget(['3.0'], stableTarget)).toBe(false);
     expect(agentAdvertisesHostedComplianceTarget(['3.1'], stableTarget)).toBe(true);
     expect(agentAdvertisesHostedComplianceTarget(['3.1-rc.6'], stableTarget)).toBe(false);
     expect(agentAdvertisesHostedComplianceTarget(['3.0'], rcTarget)).toBe(false);
     expect(agentAdvertisesHostedComplianceTarget(undefined, rcTarget)).toBe(false);
-    expect(agentAdvertisesHostedComplianceTarget(['3.0', '3.1-rc.6'], rcTarget)).toBe(true);
+    expect(agentAdvertisesHostedComplianceTarget(['3.0', latestRcWireVersion], rcTarget)).toBe(true);
   });
 
   it('does not treat an unconfirmed fallback target as badge eligible', () => {

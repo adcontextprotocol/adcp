@@ -346,6 +346,15 @@ phases:
 
           context:
             correlation_id: "creative_generative--seller--get_products_brief"
+        context_outputs:
+          - name: product_1_id
+            path: "products[0].product_id"
+          - name: pricing_option_1_id
+            path: "products[0].pricing_options[0].pricing_option_id"
+          - name: product_2_id
+            path: "products[1].product_id"
+          - name: pricing_option_2_id
+            path: "products[1].pricing_options[0].pricing_option_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -409,12 +418,12 @@ phases:
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
-            - product_id: "outdoor_display_q2"
+            - product_id: "$context.product_1_id"
               budget: 30000
-              pricing_option_id: "cpm_guaranteed"
-            - product_id: "outdoor_video_q2"
+              pricing_option_id: "$context.pricing_option_1_id"
+            - product_id: "$context.product_2_id"
               budget: 20000
-              pricing_option_id: "cpm_standard"
+              pricing_option_id: "$context.pricing_option_2_id"
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             authentication:
@@ -428,6 +437,10 @@ phases:
         context_outputs:
           - name: media_buy_id
             path: "media_buy_id"
+          - name: package_1_id
+            path: "packages[0].package_id"
+          - name: package_2_id
+            path: "packages[1].package_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -536,9 +549,9 @@ phases:
                         jurisdictions: ["US"]
           assignments:
             - creative_id: "gen_display_summer_sale"
-              package_id: "outdoor_display_q2"
+              package_id: "$context.package_1_id"
             - creative_id: "gen_video_summer_sale"
-              package_id: "outdoor_video_q2"
+              package_id: "$context.package_2_id"
 
           idempotency_key: "$generate:uuid_v4#creative_generative_seller_creative_brief_sync_sync_creatives_brief"
           context:

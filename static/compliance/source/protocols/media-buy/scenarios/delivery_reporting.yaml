@@ -120,6 +120,19 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+        context_outputs:
+          - name: product_1_id
+            path: "products[0].product_id"
+          - name: pricing_option_1_id
+            path: "products[0].pricing_options[0].pricing_option_id"
+          - name: product_2_id
+            path: "products[1].product_id"
+          - name: pricing_option_2_id
+            path: "products[1].pricing_options[0].pricing_option_id"
+          - name: product_3_id
+            path: "products[2].product_id"
+          - name: pricing_option_3_id
+            path: "products[2].pricing_options[0].pricing_option_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -147,12 +160,12 @@ phases:
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
-            - product_id: "outdoor_display_q2"
+            - product_id: "$context.product_1_id"
               budget: 15000
-              pricing_option_id: "cpm_standard"
-            - product_id: "outdoor_video_q2"
+              pricing_option_id: "$context.pricing_option_1_id"
+            - product_id: "$context.product_2_id"
               budget: 10000
-              pricing_option_id: "cpm_standard"
+              pricing_option_id: "$context.pricing_option_2_id"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_delivery_reporting_setup_create_media_buy"
         validations:
           - check: response_schema
@@ -258,9 +271,9 @@ phases:
           start_time: "2026-06-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
-            - product_id: "video_viewability_q2"
+            - product_id: "$context.product_3_id"
               budget: 20000
-              pricing_option_id: "vcpm_standard"
+              pricing_option_id: "$context.pricing_option_3_id"
               optimization_goals:
                 - kind: "metric"
                   metric: "viewed_seconds"
