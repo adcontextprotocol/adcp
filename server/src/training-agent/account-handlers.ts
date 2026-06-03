@@ -453,6 +453,78 @@ export function resolveAccountIdForRef(
   return account?.accountId;
 }
 
+export function seedAccountFixture(
+  args: ToolArgs,
+  ctx: TrainingContext,
+): { success: boolean; message?: string; error?: string; error_detail?: string } {
+  const identityError = durableAccountIdentityError(ctx);
+  if (identityError) {
+    return {
+      success: false,
+      error: identityError.errors[0]?.code ?? 'AUTH_REQUIRED',
+      error_detail: identityError.errors[0]?.message ?? 'Durable account tools require caller identity',
+    };
+  }
+
+  const params = ((args as Record<string, unknown>).params ?? {}) as Record<string, unknown>;
+  const accountId = params.account_id;
+  if (typeof accountId !== 'string' || accountId.length === 0) {
+    return { success: false, error: 'INVALID_PARAMS', error_detail: 'params.account_id is required for seed_account' };
+  }
+
+  const fixture = (params.fixture ?? {}) as Record<string, unknown>;
+  const brand = fixture.brand as { domain?: string; brand_id?: string; name?: string } | undefined;
+  const operator = fixture.operator;
+  if (!brand?.domain) {
+    return { success: false, error: 'INVALID_PARAMS', error_detail: 'params.fixture.brand.domain is required for seed_account' };
+  }
+  if (typeof operator !== 'string' || operator.length === 0) {
+    return { success: false, error: 'INVALID_PARAMS', error_detail: 'params.fixture.operator is required for seed_account' };
+  }
+
+  const billing = typeof fixture.billing === 'string' ? fixture.billing : 'operator';
+  const status = typeof fixture.status === 'string' ? fixture.status : 'active';
+  const now = new Date().toISOString();
+  const sessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
+  const accounts = getAccountMap(sessionKey, ctx.principal);
+  const key = accountKey(brand as { domain: string; brand_id?: string }, operator);
+  const existing = accounts.get(key)
+    ?? findAccountByIdAcrossSessions(accountId, ctx.principal);
+
+  const state: AccountState = {
+    accountId,
+    brand: brand as { domain: string; brand_id?: string; name?: string },
+    operator,
+    billing,
+    paymentTerms: typeof fixture.payment_terms === 'string' ? fixture.payment_terms : 'net_30',
+    status,
+    accountScope: typeof fixture.account_scope === 'string' ? fixture.account_scope : 'operator_brand',
+    sandbox: fixture.sandbox !== false,
+    rateCard: typeof fixture.rate_card === 'string' ? fixture.rate_card : 'sandbox',
+    creditLimit: undefined,
+    governanceAgents: [],
+    notificationConfigs: [],
+    notificationConfigsTouched: false,
+    syncedAt: now,
+  };
+
+  if (existing) {
+    const existingComparable = JSON.stringify(accountStateToWire(existing));
+    const nextComparable = JSON.stringify(accountStateToWire(state));
+    if (existingComparable !== nextComparable) {
+      return {
+        success: false,
+        error: 'INVALID_STATE',
+        error_detail: `account_id "${accountId}" was already seeded with a different fixture - seed_account is idempotent`,
+      };
+    }
+    return { success: true, message: `account_id "${accountId}" already seeded with the same fixture` };
+  }
+
+  accounts.set(key, state);
+  return { success: true, message: `Account "${accountId}" seeded` };
+}
+
 // Compliance fixture pool — used when the session has no synced accounts, so
 // storyboards that rely on stable account IDs work without prior sync_accounts.
 function getComplianceAccounts(): AccountWireShape[] {
@@ -1064,10 +1136,12 @@ export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object
   const preferFixtureAccounts = ctx.storyboardCompat?.version === '3.0';
   const exactAccountFilter = hasExactAccountFilter(req.account)
     && (req.sandbox !== true || Boolean(req.account?.account_id));
-  const scopedAccounts = !preferFixtureAccounts ? accountsForPrincipal(ctx.principal) : [];
+  const scopedAccounts = accountsForPrincipal(ctx.principal);
 
   let accounts: AccountWireShape[] = preferFixtureAccounts
-    ? getComplianceAccounts()
+    ? scopedAccounts.length > 0
+      ? scopedAccounts.map(accountStateToWire)
+      : getComplianceAccounts()
     : scopedAccounts.length > 0
       ? scopedAccounts.map(accountStateToWire)
       : accountMap.size > 0

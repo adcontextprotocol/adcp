@@ -39,6 +39,7 @@ const SALES_CURRENT_SCENARIOS = [
   'force_task_completion',
   'force_creative_purge',
   'force_upstream_unavailable',
+  'seed_account',
   'seed_product',
   'seed_pricing_option',
   'seed_creative',

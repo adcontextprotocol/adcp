@@ -7594,6 +7594,7 @@ describe('get_adcp_capabilities handler', () => {
       'force_session_status',
       'simulate_delivery',
       'simulate_budget_spend',
+      'seed_account',
       'seed_product',
       'seed_pricing_option',
       'seed_creative',
