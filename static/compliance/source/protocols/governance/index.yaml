@@ -21,6 +21,9 @@ narrative: |
   those boundaries are exceeded, the system escalates to humans rather than blocking
   entirely. The audit trail provides accountability for every decision in the chain.
 
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+
 agent:
   interaction_model: media_buy_seller
   capabilities:
@@ -196,7 +199,7 @@ phases:
                   domain: "acmeoutdoor.example"
                 operator: "pinnacle-agency.example"
               governance_agents:
-                - url: "https://governance.pinnacle-agency.example"
+                - url: "$context.governance_agent_url"
                   authentication:
                     schemes: ["Bearer"]
                     credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
