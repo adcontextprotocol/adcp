@@ -36,9 +36,12 @@ trigger fired:
   re-filed). The user message has `<<<UNTRUSTED_ISSUE_BODY>>>` only.
   Act on that one issue with full triage.
 - **`comment.created`:** a non-bot, non-`/triage`, non-self comment
-  landed on an open issue (the workflow filters out PR comments,
-  `/triage` slash-commands, and the routine's own previous comments
-  to prevent loops). The user message has *both* a
+  landed on an open issue **or PR** (the workflow filters out `/triage`
+  slash-commands and the routine's own previous comments to prevent
+  loops, but routes **both** issue and PR comments here). A PR comment
+  arrives with `is_pr: true` and a `MODE: PR-feedback` line — handle it
+  per the **`MODE: PR-feedback`** rules under Comment engagement, not as
+  issue triage. The user message has *both* a
   `<<<UNTRUSTED_NEW_COMMENT_BODY>>>` block (the new comment) AND a
   `<<<UNTRUSTED_ISSUE_BODY>>>` block (the original issue). Read the
   full thread on GitHub before deciding (`gh api repos/.../issues/N/comments`).
@@ -514,6 +517,27 @@ Not every dimension matters for every issue — skip ones that aren't
 material. But if a dimension *is* material (e.g., SSAI behavior on a
 VAST asset-model RFC) and no expert addressed it, that's a gap.
 
+**Design-question discipline (spec / protocol — read before drafting
+an answer).** When the issue asks *how two existing inputs interact*,
+or whether the spec *"should define"* a behavior, the default lean is
+**compose / defer, not invent.** Most such questions resolve to one of:
+(a) "these are orthogonal inputs the agent composes; the buyer evaluates
+the output" — generative/creative output is never fully predictable,
+which is exactly what produce → review → refine is for; (b)
+"agent-implementation territory — AdCP specifies the wire, not agent
+internals"; (c) "real, but out of scope here — file a spec issue." Do
+**NOT** synthesize a new normative **precedence / conflict-resolution /
+MUST / SHOULD** rule unless an expert demonstrates a concrete *interop*
+failure — two conformant agents producing incompatible **wire** output.
+Aesthetic divergence, unpredictable output, and "the buyer might not
+like it" are **not** interop failures. Inventing a precedence rule to
+"close a gap" that's really a creative-/operator-judgment call
+over-constrains implementations and ages badly. When unsure, Flag with
+the compose/defer framing and let the WG decide — don't bake the rule
+into the comment. (A second expert pass that *reverses* your answer is
+the signal you reached for a rule too early; re-converge before you
+comment — see Step 6.)
+
 **For RFC / epic / cross-cutting issues:** consider spawning 2× per
 expert type in parallel. Variance in expert framing is a feature for
 high-scope issues — different instances surface different angles
@@ -574,6 +598,18 @@ Post a comment when:
 **Don't comment when** outcome is **Defer** and author is
 MEMBER/COLLABORATOR/OWNER. They don't need a "your issue is deferred"
 note. Just apply `claude-triaged` + labels.
+
+**Finalize before you comment — one comment per run.** Complete the
+full synthesis (Step 5, *including* any expert re-runs) before posting.
+If a further expert pass would change your conclusion, you have not
+finished synthesizing — keep going; never post an answer you then walk
+back. **Never post an answer in one comment and a correction/addendum
+in another:** a public answer-then-retraction trail is worse than a
+slightly later single answer, and it erodes trust in the routine's
+output. If genuinely new information arrives *after* you've commented
+(a later human reply on the thread), **edit** the prior comment rather
+than stacking a second one — see "Comment engagement (existing
+threads)".
 
 Comment format: default cap **≤1500 chars total, prose ≤4 sentences**,
 **lifted when option examples are required** (see below — a few fenced
@@ -1191,16 +1227,37 @@ body is in `<<<UNTRUSTED_ISSUE_BODY>>>`.
    comment posted) that the routine engaged. A second comment
    confirming receipt dilutes the threads where the routine actually
    has something to say.
-6. Never reply to your own previous comments (workflow filters
-   most cases, but the routine should also self-check via the
-   `Triaged by Claude Code` footer). Never reply to bot authors.
+6. Never reply to your own previous comments, and **never post a
+   correction, addendum, or retraction as a *new* comment.** If a
+   re-run (rule 3) changes a conclusion you already posted, **edit the
+   original comment** (fetch its id via `gh api
+   repos/<owner>/<repo>/issues/<N>/comments`, then
+   `gh api -X PATCH repos/<owner>/<repo>/issues/comments/<id> -f body=…`)
+   so the thread carries one coherent answer, not an answer-then-walkback
+   trail. (Workflow filters most self-loops; also self-check via the
+   `Triaged by Claude Code` footer.) Never reply to bot authors.
 
-**PR conversations are out of scope here.** The workflow filters
-`issue_comment` events where `issue.pull_request != null`. PR
-review feedback is the **auto-fix** feature's job, not the
-triage routine's. If a comment route to triage looks like PR
-feedback (filter slipped), no-op silently and surface the
-filter gap in the run summary.
+**PR comments ARE in scope — `MODE: PR-feedback`.** The bridge
+workflow (`.github/workflows/claude-issue-triage.yml`) routes
+`issue_comment` events on **both issues and PRs** to this routine; a
+PR comment arrives with `is_pr: true` and a `MODE: PR-feedback`
+line in the payload. (Code-fix pushing on CI failures is a separate
+concern handled by the **auto-fix** feature; this routine's job on a
+PR comment is the human reply.) In PR-feedback mode:
+
+- **Fix request** → apply it as a follow-up commit on the PR head
+  branch; never open a new PR.
+- **Question / design challenge** → answer in **one** reply comment.
+  This is where the routine has misfired (PR #5219): it invented a
+  precedence rule for a compose/defer question and posted an answer
+  followed by a self-retraction. **All of Step 5's
+  "Design-question discipline" and Step 6's "Finalize before you
+  comment — one comment per run" apply here verbatim.** Converge
+  before you post; lean compose/defer over inventing
+  precedence/MUST/SHOULD rules; if you must revise a posted answer,
+  **edit it** (rule 6), never stack a correction.
+- **Conversational, no action** → short acknowledgement or silence;
+  apply the "Anti-patterns — never post these" list above.
 
 ## Failure handling
 
@@ -1226,6 +1283,10 @@ couldn't fetch.
   after the label
 - Never describe security-sensitive vectors in a public comment
 - Never invent AdCP features or fields not in `static/schemas/source/`
+- Never invent normative semantics (precedence / conflict-resolution /
+  MUST / SHOULD rules) for a question that's really compose/defer — see
+  "Design-question discipline" in Step 5
+- Never post a correction/addendum as a new comment — edit the original
 - Never create new labels or milestones
 
 ## Never (organizational rules — from playbook)
