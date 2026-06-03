@@ -17,7 +17,7 @@
     },
     "signal_agent_segment_id": {
       "type": "string",
-      "description": "Optional opaque seller execution handle for this signal. Omit when signal_ref is sufficient for the seller to resolve the signal. Include only when the product option exposes a separate runtime or activation handle that differs from the named signal reference.",
+      "description": "Optional opaque resolved-segment or seller execution handle for this signal. Omit when signal_ref plus the value expression is sufficient for the seller to resolve the signal. Include when the product option exposes a separate runtime or activation handle, and pass it verbatim. Buyers SHOULD prefer an exposed segment handle over reconstructing condition identity from categorical values because the handle can carry provider namespace and methodology distinctions.",
       "x-entity": "signal_activation_id"
     },
     "activation_key": {

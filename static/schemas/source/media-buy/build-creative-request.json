@@ -98,10 +98,21 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "$ref": "/schemas/core/signal-targeting.json"
+        "allOf": [
+          { "$ref": "/schemas/core/signal-targeting.json" },
+          {
+            "properties": {
+              "signal_agent_segment_id": {
+                "type": "string",
+                "x-entity": "signal_activation_id",
+                "description": "Optional opaque resolved-segment handle for this fan-out condition — the RESOLVED condition identity, distinct from signal_ref's DEFINITION identity. When get_signals or a product signal_targeting_options entry exposed a signal_agent_segment_id for the targeted signal, echo it here verbatim so the produced creative's signal_condition carries the resolved-segment identity that the trafficking-compatibility check (SIGNAL_TARGETING_INCOMPATIBLE) matches on exactly. Providers MAY namespace it (e.g. provider_a:weather:rain_realtime vs provider_b:precip:high) so cross-provider conditions stay distinct without a shared taxonomy registry; treat as opaque, do not parse the namespace for business logic. Prefer it over reconstructing condition identity from categorical values — categorical {signal_ref,value} identity is the weaker fallback, appropriate only for inherently-categorical signals with no resolved handle, and never a cross-provider equivalence claim."
+              }
+            }
+          }
+        ]
       },
       "x-entity": "signal",
-      "description": "Advisory keep-all PRODUCTION axis: produce one distinct creative group per signal condition, each kept and trafficked with its own signal targeting (e.g. a rain creative AND a sun creative). Sibling to max_creatives (catalog axis), NOT a variant_axis value (which is choose-among). Each item reuses SignalTargeting (value_type-discriminated binary/categorical/numeric over signal_ref) so the produced group's signal_condition resolves condition identity through the SAME schema the sales-side package targeting uses. Per #5280 this is an ADVISORY context pointer — it informs production and MUST NOT hard-block at the build_creative layer; trafficking-compatibility (a sun creative MUST NOT serve into rain-targeted packages) is enforced reject-at-trafficking on the sales side (SIGNAL_TARGETING_INCOMPATIBLE), not here. Triggers the BuildCreativeVariantSuccess shape. Supported only when the agent advertises creative.multiplicity.supports_signal_fanout; condition counts above max_signal_conditions_limit are CLAMPED (not rejected), consistent with max_creatives. Composes with max_creatives (catalog × conditions cross-product) and max_variants (variants per group)."
+      "description": "Advisory keep-all PRODUCTION axis: produce one distinct creative group per signal condition, each kept and trafficked with its own signal targeting (e.g. a rain creative AND a sun creative). Sibling to max_creatives (catalog axis), NOT a variant_axis value (which is choose-among). Each item reuses SignalTargeting (value_type-discriminated binary/categorical/numeric over signal_ref) so the produced group's signal_condition resolves condition identity through the SAME schema the sales-side package targeting uses, plus an optional signal_agent_segment_id carrying the RESOLVED-segment identity (vs signal_ref's definition identity) — echo a provider-exposed handle verbatim; it is the primary trafficking-compatibility key, with categorical signal_ref+value as the weaker fallback. Per #5280 this is an ADVISORY context pointer — it informs production and MUST NOT hard-block at the build_creative layer; trafficking-compatibility (a sun creative MUST NOT serve into rain-targeted packages) is enforced reject-at-trafficking on the sales side (SIGNAL_TARGETING_INCOMPATIBLE), not here. Triggers the BuildCreativeVariantSuccess shape. Supported only when the agent advertises creative.multiplicity.supports_signal_fanout; condition counts above max_signal_conditions_limit are CLAMPED (not rejected), consistent with max_creatives. Composes with max_creatives (catalog × conditions cross-product) and max_variants (variants per group)."
     },
     "max_variants": {
       "type": "integer",
