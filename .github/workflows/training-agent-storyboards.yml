@@ -213,6 +213,7 @@ jobs:
             echo "::error::Compliance bundle not found at ${DIR}"
             exit 1
           fi
+          node scripts/patch-3-0-compat-bundle.cjs "${DIR}"
           git archive "origin/${RELEASE_BASE_REF}" "dist/schemas/${VERSION}" | tar -x -C "${TMP_DIR}"
           SCHEMA_DIR="${TMP_DIR}/dist/schemas/${VERSION}"
           if [ ! -f "${SCHEMA_DIR}/index.json" ]; then
