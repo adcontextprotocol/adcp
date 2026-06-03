@@ -93,14 +93,8 @@ const ENUM_VALUE_ALLOWLIST = [
   { value: 'amazon', pathContains: 'brand/verify-brand-claims-request.json' },
   { value: 'roku',   pathContains: 'brand/verify-brand-claims-request.json' },
 
-  // brand.json — feed_format: google_merchant_center and facebook_catalog are
-  // widely-adopted open interchange formats implemented by many third parties.
-  { value: 'google_merchant_center', pathContains: 'brand.json' },
-  { value: 'facebook_catalog',       pathContains: 'brand.json' },
-  // openai_product_feed is contested (see #3456): code-reviewer treats it as
-  // a violation; protocol expert treats it as a canonical feed schema identifier
-  // parallel to google_merchant_center. Allowlisted pending @bokelley decision.
-  { value: 'openai_product_feed',    pathContains: 'brand.json' },
+  // brand.json — feed_format now $refs enums/feed-format.json (no inline enum
+  // values), so the canonical feed-format.json entries below cover it.
 
   // enums/demographic-system.json — Nielsen notation IS the industry-standard
   // demographic audience measurement vocabulary (parallel to Nielsen DMA).
@@ -122,6 +116,11 @@ const ENUM_VALUE_ALLOWLIST = [
   // linkedin_jobs names LinkedIn's job-listing feed format, the canonical format
   // for ATS/job-board integrations — parallel to google_merchant_center for retail.
   { value: 'linkedin_jobs', pathContains: 'enums/feed-format.json' },
+  // openai_product_feed — OpenAI Commerce product feed for ChatGPT shopping;
+  // approved as a canonical feed format per #3456 (@bokelley). Same open-spec
+  // justification as the other named formats. (tiktok_shop / pinterest_catalog
+  // need no entry — 'tiktok'/'pinterest' are not vendor tokens.)
+  { value: 'openai_product_feed', pathContains: 'enums/feed-format.json' },
 
   // enums/genre-taxonomy.json — platform taxonomy system identifiers, comparable
   // to gracenote and eidr. Note: bare 'roku' is inconsistent with the {vendor}_genres
