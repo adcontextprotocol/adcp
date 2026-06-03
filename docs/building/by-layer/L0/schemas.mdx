@@ -191,7 +191,7 @@ dist/schemas/{VERSION}/
 │   ├── content-standards/        # Content standards tasks
 │   ├── sponsored-intelligence/   # Sponsored intelligence tasks
 │   ├── protocol/                 # Protocol tasks
-│   └── core/                     # Core task schemas
+│   └── core/                     # Core shared schemas and legacy task lifecycle schemas
 ├── core/                         # Modular schemas with $ref
 ├── media-buy/
 └── index.json                    # Schema registry
@@ -209,7 +209,7 @@ All request/response task schemas are bundled:
 | `bundled/property/` | create-property-list, get-property-list, list-property-lists, update-property-list, delete-property-list, validate-property-delivery |
 | `bundled/content-standards/` | create-content-standards, get-content-standards, list-content-standards, update-content-standards, calibrate-content, validate-content-delivery, get-media-buy-artifacts |
 | `bundled/sponsored-intelligence/` | si-get-offering, si-initiate-session, si-send-message, si-terminate-session |
-| `bundled/protocol/` | get-adcp-capabilities |
+| `bundled/protocol/` | get-adcp-capabilities, get-task-status, list-tasks |
 | `bundled/core/` | tasks-get, tasks-list |
 
 See the [schema registry](https://adcontextprotocol.org/schemas/v3/index.json) for all available schemas.

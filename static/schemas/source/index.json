@@ -1654,6 +1654,26 @@
             "$ref": "/schemas/protocol/get-adcp-capabilities-response.json",
             "description": "Response payload for get_adcp_capabilities task - includes AdCP version, supported protocols, and protocol-specific capabilities (media_buy, signals, etc.)"
           }
+        },
+        "get-task-status": {
+          "request": {
+            "$ref": "/schemas/protocol/get-task-status-request.json",
+            "description": "Request parameters for get_task_status polling"
+          },
+          "response": {
+            "$ref": "/schemas/protocol/get-task-status-response.json",
+            "description": "Task status, metadata, and optional completion result"
+          }
+        },
+        "list-tasks": {
+          "request": {
+            "$ref": "/schemas/protocol/list-tasks-request.json",
+            "description": "Request parameters for cross-protocol task reconciliation"
+          },
+          "response": {
+            "$ref": "/schemas/protocol/list-tasks-response.json",
+            "description": "Filtered async task list for reconciliation"
+          }
         }
       }
     },
