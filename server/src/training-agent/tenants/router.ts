@@ -33,12 +33,24 @@ const SALES_LEGACY_CAPABILITY_SCENARIOS = [
   'simulate_budget_spend',
 ] as const;
 
+const SALES_THREE_ZERO_COMPLY_SCENARIOS = [
+  ...SALES_LEGACY_CAPABILITY_SCENARIOS,
+  'force_create_media_buy_arm',
+  'force_task_completion',
+  'seed_product',
+  'seed_pricing_option',
+  'seed_creative',
+  'seed_media_buy',
+  'seed_creative_format',
+] as const;
+
 const SALES_CURRENT_SCENARIOS = [
   ...SALES_LEGACY_CAPABILITY_SCENARIOS,
   'force_create_media_buy_arm',
   'force_task_completion',
   'force_creative_purge',
   'force_upstream_unavailable',
+  'seed_account',
   'seed_product',
   'seed_pricing_option',
   'seed_creative',
@@ -83,7 +95,7 @@ function apiKeyCredential(req: Request, principal: string): { kind: 'api_key'; k
 
 function salesComplyScenarios(storyboardCompat?: TrainingContext['storyboardCompat']): string[] {
   return storyboardCompat?.version === '3.0'
-    ? [...SALES_LEGACY_CAPABILITY_SCENARIOS]
+    ? [...SALES_THREE_ZERO_COMPLY_SCENARIOS]
     : [...SALES_CURRENT_SCENARIOS];
 }
 
@@ -585,12 +597,16 @@ function projectSalesCapabilities(
       const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
         ? structured.compliance_testing
         : {};
+      const capabilityScenarios = salesCapabilityScenarios(storyboardCompat);
+      const existingCapabilityScenarios = Array.isArray((complianceTesting as { scenarios?: unknown }).scenarios)
+        ? (complianceTesting as { scenarios: unknown[] }).scenarios.filter((s): s is string => typeof s === 'string')
+        : [];
       const scenarios = new Set(
-        Array.isArray((complianceTesting as { scenarios?: unknown }).scenarios)
-          ? (complianceTesting as { scenarios: unknown[] }).scenarios.filter((s): s is string => typeof s === 'string')
-          : [],
+        storyboardCompat?.version === '3.0'
+          ? capabilityScenarios
+          : existingCapabilityScenarios,
       );
-      for (const scenario of salesCapabilityScenarios(storyboardCompat)) {
+      for (const scenario of capabilityScenarios) {
         scenarios.add(scenario);
       }
       structured.compliance_testing = {

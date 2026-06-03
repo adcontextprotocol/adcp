@@ -13,9 +13,9 @@ Both MCP and A2A provide identical AdCP capabilities using the same unified stat
 | **Request Style** | Tool calls | Task messages |
 | **Response Style** | Direct JSON | Artifacts |
 | **Status System** | Unified status field | Unified status field |
-| **Async Handling** | [MCP Tasks](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks) | SSE streaming |
+| **Async Handling** | AdCP status payloads over tool calls; optional MCP Tasks wrapper | AdCP status payloads in A2A artifacts; optional SSE streaming |
 | **Webhooks** | `push_notification_config` in tool args | Native PushNotificationConfig |
-| **Task Management** | MCP Tasks (`tasks/get`, `tasks/result`, `tasks/cancel`) | Native task lifecycle |
+| **Task Management** | AdCP `task_id` via webhooks or AdCP polling (`get_task_status`, legacy `tasks/get`) | AdCP `task_id` via webhooks or AdCP polling |
 | **Context** | Manual (pass context_id) | Automatic (protocol-managed) |
 | **Best For** | Claude, AI assistants | Agent workflows |
 
@@ -39,7 +39,7 @@ Every response includes a status field that tells you exactly what to do:
 |--------|---------------|-------------|
 | `completed` | Task finished | Process data, show success |
 | `input-required` | Need user input | Read message, prompt user, follow up |
-| `working` | Processing (< 120s) | Poll frequently, show progress |
+| `working` | Processing (< 120s) | Wait for the open call/stream result; show progress |
 | `submitted` | Long-running (hours to days) | Provide webhook or poll less frequently |
 | `failed` | Error occurred | Show error, handle gracefully |
 | `auth-required` | Need auth | Prompt for credentials |
@@ -88,16 +88,18 @@ Same status and data, different packaging:
 
 ## Async Operation Differences
 
-Both protocols handle async operations with the same status progression:
+Both protocols carry the same AdCP status progression:
 `submitted` → `working` → `completed`/`failed`
 
-### MCP Async Pattern (MCP Tasks)
+The progression above is AdCP application state. MCP Tasks and A2A task state are transport mechanics that can deliver an AdCP payload, but they are not a replacement for AdCP task polling or reconciliation.
+
+### MCP Task-Augmented Call (Transport Wrapper)
 ```javascript
 // Task-augmented tool call — returns CreateTaskResult immediately
 const createResult = await mcp.callTool({
   name: "create_media_buy",
   arguments: {
-    buyer_ref: "nike_q1",
+    buyer_ref: "acme_q1",
     packages: [...],
     push_notification_config: {  // Optional: webhook for session-outliving ops
       url: "https://buyer.com/webhooks/adcp/create_media_buy/op_123",
@@ -112,17 +114,26 @@ const createResult = await mcp.callTool({
 const status = await mcp.getTask({ taskId: "task-456" });
 // status = { taskId: "task-456", status: "completed", ... }
 
-// Retrieve the actual CallToolResult
+// Retrieve the actual CallToolResult, then inspect the AdCP payload inside it
 const result = await mcp.getTaskResult({ taskId: "task-456" });
 // result = { content: [...], isError: false }
+
+const adcpResponse = result.structuredContent;
+if (adcpResponse.status === "submitted") {
+  // The MCP task delivered the AdCP response; the media-buy workflow is still open.
+  await adcp.call("get_task_status", {
+    task_id: adcpResponse.task_id,
+    include_result: true
+  });
+}
 ```
 
 ### A2A Async Pattern
 ```javascript
-// Initial response with native task tracking
+// Initial response carries an AdCP payload inside A2A task/artifact transport
 {
   "status": "submitted",
-  "taskId": "task-456",
+  "task_id": "adcp-task-456",
   "contextId": "ctx-123",
   "estimatedCompletionTime": "2025-01-23T10:00:00Z"
 }

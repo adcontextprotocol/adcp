@@ -880,6 +880,8 @@ Each dimension accepts optional `limit` (max rows; defaults to 25 for geo, audie
 
 Check `reporting_capabilities` on the product to discover which dimensions are available. Product-level capabilities are authoritative since different products from the same seller may support different breakdowns.
 
+Placement rows MAY also carry an optional `publisher_domain` — the publisher namespace (matching the product placement's `publisher_domain` in `adagents.json`) that `placement_id` resolves to. Sellers SHOULD populate it whenever the placement resolves to a publisher namespace, letting buyers attribute delivered impressions to a publisher for multi-publisher buys without re-fetching the product catalog. It is single-valued because each placement belongs to exactly one publisher namespace.
+
 ### Truncation
 
 Each breakdown array has a sibling boolean flag (e.g., `by_geo_truncated`). When `true`, additional rows exist beyond the returned set. When `false`, the list is complete. Sellers MUST return the truncated flag whenever the corresponding breakdown array is present. Rows are sorted by the requested `sort_by` metric descending.

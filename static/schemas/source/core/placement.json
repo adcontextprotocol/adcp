@@ -65,6 +65,24 @@
       },
       "uniqueItems": true,
       "minItems": 1
+    },
+    "sponsored_placement_types": {
+      "type": "array",
+      "description": "Declared sponsored-placement types for this product placement, distinguishing where the catalog-driven retail-media placement renders on the retailer surface. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "/schemas/enums/sponsored-placement-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "social_placement_surfaces": {
+      "type": "array",
+      "description": "Declared social-placement surfaces for this product placement, distinguishing the in-app surface where the social placement renders. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "/schemas/enums/social-placement-surface.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
     }
   },
   "required": [

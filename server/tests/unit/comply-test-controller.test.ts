@@ -12,6 +12,7 @@ import {
 } from '../../src/training-agent/state.js';
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
+import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'comply-test.example.com' }, operator: 'comply-tester', sandbox: true };
@@ -141,6 +142,7 @@ describe('comply_test_controller', () => {
 
   beforeEach(() => {
     clearSessions();
+    clearAccountStore();
     invalidateCache();
     clearTaskStore();
     clearIdempotencyCache();
@@ -186,6 +188,7 @@ describe('comply_test_controller', () => {
         'force_task_completion',
         'force_creative_purge',
         'force_wholesale_feed_webhook',
+        'seed_account',
         'seed_creative_format',
         'seed_measurement_catalog',
         'query_provenance_audit_observations',
@@ -193,9 +196,67 @@ describe('comply_test_controller', () => {
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(19);
+      expect(scenarios.length).toBe(20);
       // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
+    });
+  });
+
+  describe('seed_account', () => {
+    it('seeds accounts into list_accounts for pagination checks', async () => {
+      for (const n of [1, 2, 3]) {
+        const fixture = {
+          brand: { domain: `seed-account-${n}.example` },
+          operator: 'seed-operator.example',
+          billing: 'operator',
+          sandbox: true,
+          status: 'active',
+        };
+        const { result } = await simulateCallTool(server, 'comply_test_controller', {
+          scenario: 'seed_account',
+          account: { sandbox: true, account_id: `acct_seed_account_${n}` },
+          params: {
+            account_id: `acct_seed_account_${n}`,
+            fixture,
+          },
+        });
+        expect(result.success).toBe(true);
+
+        const { result: repeatResult } = await simulateCallTool(server, 'comply_test_controller', {
+          scenario: 'seed_account',
+          account: { sandbox: true, account_id: `acct_seed_account_${n}` },
+          params: {
+            account_id: `acct_seed_account_${n}`,
+            fixture,
+          },
+        });
+        expect(repeatResult.success).toBe(true);
+      }
+
+      const { result } = await simulateCallTool(server, 'list_accounts', {
+        sandbox: true,
+        pagination: { max_results: 2 },
+      });
+
+      const accounts = result.accounts as Array<{ account_id: string }>;
+      expect(accounts.map(a => a.account_id)).toEqual(expect.arrayContaining([
+        'acct_seed_account_1',
+        'acct_seed_account_2',
+      ]));
+      expect(result.pagination).toMatchObject({ has_more: true });
+      expect((result.pagination as { cursor?: string }).cursor).toBeTruthy();
+
+      const threeZeroServer = createTrainingAgentServer({ ...DEFAULT_CTX, storyboardCompat: { version: '3.0' } });
+      const { result: threeZeroResult } = await simulateCallTool(threeZeroServer, 'list_accounts', {
+        sandbox: true,
+        pagination: { max_results: 2 },
+      });
+      const threeZeroAccounts = threeZeroResult.accounts as Array<{ account_id: string }>;
+      expect(threeZeroAccounts.map(a => a.account_id)).toEqual(expect.arrayContaining([
+        'acct_seed_account_1',
+        'acct_seed_account_2',
+      ]));
+      expect(threeZeroResult.pagination).toMatchObject({ has_more: true });
     });
   });
 

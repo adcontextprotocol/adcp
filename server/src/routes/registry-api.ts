@@ -27,7 +27,7 @@ import {
   hostedAuthProbeTaskForProfile,
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
-  selectHostedComplianceTargetForProfile,
+  selectCanonicalHostedComplianceTargetForProfile,
 } from "../services/hosted-compliance-version.js";
 import {
   comply,
@@ -6233,7 +6233,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       const supportedProtocols = profile?.supported_protocols ?? [];
       const specialisms = profile?.specialisms ?? [];
-      const runTarget = selectHostedComplianceTargetForProfile(profile, complianceTarget);
+      const runTarget = selectCanonicalHostedComplianceTargetForProfile(profile, complianceTarget);
       const runOptions = hostedComplianceOptions(runTarget);
 
       let resolved;
@@ -6367,6 +6367,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             ...(sdkAuth && { auth: sdkAuth }),
           },
           complianceTarget,
+          'canonical',
         );
         const runOptions = hostedComplianceOptions(runTarget);
         const storyboard = getComplianceStoryboardById(req.params.storyboardId, runOptions);
@@ -6632,7 +6633,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           storyboards: storyboardIds,
           ...(sdkAuth && { auth: sdkAuth }),
         };
-        const runTarget = await selectComplianceTargetForAgent(agentUrl, userComplyOptions, complianceTarget);
+        const runTarget = await selectComplianceTargetForAgent(agentUrl, userComplyOptions, complianceTarget, 'canonical');
         const storyboard = getComplianceStoryboardById(req.params.storyboardId, hostedComplianceOptions(runTarget));
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });

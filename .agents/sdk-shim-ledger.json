@@ -36,5 +36,22 @@
       "node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js",
       "schemas.generated.js"
     ]
+  },
+  {
+    "id": "creative-transformer-runner-gap-skips",
+    "title": "Creative transformer storyboard step skips for SDK runner gaps",
+    "kind": "storyboard_step_skip",
+    "status": "temporary",
+    "owner": "compliance",
+    "upstream": "adcontextprotocol/adcp-client#2165",
+    "problem": "The manual storyboard runner carries known-failing step skips for creative transformer coverage while the packaged SDK runner lacks the task registry and response-schema support needed to dispatch and grade those steps.",
+    "localBehavior": "Skip only the affected creative_transformers steps in server/tests/manual/run-storyboards.ts so the rest of the storyboard matrix remains useful.",
+    "removalCondition": "Remove when the SDK runner can dispatch list_transformers and validate the build_creative variant response shape without local step skips.",
+    "paths": [
+      "server/tests/manual/run-storyboards.ts"
+    ],
+    "terms": [
+      "TOOL_RESPONSE_SCHEMAS"
+    ]
   }
 ]

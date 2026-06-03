@@ -117,14 +117,16 @@ await mcp.call('activate_signal', {...});  // Deploy signals to platforms
 
 **Task Parameters**: See individual task documentation in [Media Buy](/docs/media-buy) and [Signals](/docs/signals/overview) sections.
 
-## Async Operations via MCP Tasks
+## MCP Tasks as a Transport Wrapper
 
-AdCP uses [MCP Tasks](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks) for long-running operations over MCP. This removes the LLM from the polling path — the client handles task lifecycle at the protocol level, and the model only sees the final result.
+AdCP task lifecycle state is application-layer state. MCP Tasks can wrap a `tools/call` request so the MCP client, rather than the LLM, waits for the `CallToolResult`; they do not replace the AdCP `task_id`, status payloads, webhooks, or polling/reconciliation surfaces.
+
+A task-augmented MCP call can complete successfully after delivering an AdCP payload whose `status` is still `submitted`. From that point, the media-buy, creative, signals, or governance workflow remains open at the AdCP layer and should be observed with webhooks or AdCP polling.
 
 :::warning Client support is limited
-Most chat-based MCP clients (Claude Desktop, Cursor) do not yet support MCP Tasks. If your client doesn't support task-augmented tool calls, use **webhooks** or **polling via `tasks/get`** instead — these work with any MCP client. See [Async Operations](/docs/building/by-layer/L3/async-operations) and [Push Notifications](/docs/building/by-layer/L3/webhooks) for transport-independent patterns.
+Most chat-based MCP clients (Claude Desktop, Cursor) do not yet support MCP Tasks. If your client doesn't support task-augmented tool calls, use standard `tools/call` plus **webhooks** or **AdCP polling** instead — these work with any MCP client. See [Async Operations](/docs/building/by-layer/L3/async-operations) and [Push Notifications](/docs/building/by-layer/L3/webhooks) for transport-independent patterns.
 
-MCP Tasks are the right choice when you control the MCP client (e.g., building your own orchestrator with `@modelcontextprotocol/sdk`) or when client support matures.
+MCP Tasks are useful when you control the MCP client (e.g., building your own orchestrator with `@modelcontextprotocol/sdk`) and want protocol-level waiting for the initial `tools/call` result. They are optional transport plumbing, not the canonical AdCP task store.
 :::
 
 ### SDK Implementation
@@ -232,7 +234,7 @@ Each tool declares whether it supports task-augmented execution via `execution.t
 
 Tools with `taskSupport: "optional"` can be called either way:
 - **Without `task` field**: Synchronous — returns the result directly
-- **With `task` field**: Returns a `CreateTaskResult` immediately; poll via `tasks/get`, retrieve the result via `tasks/result`
+- **With `task` field**: Returns a `CreateTaskResult` immediately; poll the MCP task via transport-native `tasks/get`, retrieve the `CallToolResult` via transport-native `tasks/result`, then inspect the AdCP payload inside that result.
 
 ### Invoking a Tool as a Task
 
@@ -276,11 +278,13 @@ The server returns a task handle immediately:
 }
 ```
 
-The client polls with `tasks/get` (respecting `pollInterval`) until the task reaches a terminal state (`completed`, `failed`, or `cancelled`), then retrieves the `CallToolResult` via `tasks/result`. To abort a running task, send `tasks/cancel` with the `taskId`.
+The client polls the MCP transport task with `tasks/get` (respecting `pollInterval`) until the task reaches a terminal state (`completed`, `failed`, or `cancelled`), then retrieves the `CallToolResult` via `tasks/result`. To abort the transport task, send `tasks/cancel` with the MCP `taskId`.
 
-### AdCP Status Mapping
+After retrieving the `CallToolResult`, inspect the AdCP response payload. If it contains `status: "submitted"` and an AdCP `task_id`, the transport task has delivered the queued AdCP response but the application workflow is still open. Continue with webhooks or AdCP polling (`get_task_status`, or legacy `tasks/get` in 3.x).
 
-AdCP uses a richer set of statuses than MCP Tasks. When serving over MCP, AdCP statuses map to MCP Task statuses:
+### MCP Task Status vs. AdCP Status
+
+AdCP uses a richer set of statuses than MCP Tasks. If an implementation mirrors AdCP progress into a transport-native MCP Task, use this mapping only for the MCP wrapper. The AdCP payload remains the source of truth for domain workflow state:
 
 | AdCP Status | MCP Task Status | Notes |
 |-------------|-----------------|-------|
@@ -295,7 +299,7 @@ AdCP uses a richer set of statuses than MCP Tasks. When serving over MCP, AdCP s
 
 ### Webhooks for Long-Lived Operations
 
-MCP Tasks handles polling within the MCP session, but some AdCP operations outlive a single session (e.g., a media buy that takes 24 hours for publisher approval). For these, combine MCP Tasks with `push_notification_config`:
+MCP Tasks handles waiting within the MCP session, but many AdCP operations outlive a single session (e.g., a media buy that takes 24 hours for publisher approval). For these, register `push_notification_config` on the AdCP call:
 
 ```json
 {
@@ -322,7 +326,7 @@ MCP Tasks handles polling within the MCP session, but some AdCP operations outli
 }
 ```
 
-The MCP Task tracks status within the session. If the session ends before the task completes, the webhook delivers the result independently. See [Push Notifications](/docs/building/by-layer/L3/webhooks) for webhook payload formats and authentication.
+The MCP Task tracks the transport wrapper within the session. The webhook tracks the AdCP application task independently and remains valid even after the MCP session ends. See [Push Notifications](/docs/building/by-layer/L3/webhooks) for webhook payload formats and authentication.
 
 ## Context Management (MCP-Specific)
 
@@ -422,7 +426,9 @@ const result = await session.call('create_media_buy',
   }
 );
 
-// result is a CreateTaskResult — the client handles polling via tasks/get
+// result is a CreateTaskResult for the MCP wrapper.
+// After tasks/result, inspect the AdCP payload; if it is still submitted,
+// continue via webhook or AdCP get_task_status / legacy tasks/get.
 ```
 
 **Webhook POST format:**
@@ -571,16 +577,21 @@ function verifySignature(payload, signature, timestamp) {
 
 #### Task Management and Polling
 ```javascript
-// Check status of specific task
-const taskStatus = await session.pollTask('task_456', true);
+// Check status of a specific AdCP task
+const taskStatus = await session.call('get_task_status', {
+  task_id: 'task_456',
+  include_result: true
+});
 if (taskStatus.status === 'completed') {
   console.log('Result:', taskStatus.result);
 }
 
 // State reconciliation
-const reconciliation = await session.reconcileState();
-if (reconciliation.missing_from_client.length > 0) {
-  console.log('Found orphaned tasks:', reconciliation.missing_from_client);
+const reconciliation = await session.call('list_tasks', {
+  filters: { statuses: ['submitted', 'working', 'input-required'] }
+});
+if (reconciliation.tasks.length > 0) {
+  console.log('Found open AdCP tasks:', reconciliation.tasks);
   // Start tracking these tasks
 }
 
@@ -610,13 +621,13 @@ async function handleContextExpiration(session, tool, params) {
 
 ## Handling Async Operations
 
-When a task returns `working` or `submitted` status, you need a way to receive the result. This applies whether or not your MCP client supports MCP Tasks — the patterns below work with any client.
+When an AdCP response returns `working` or `submitted` status, you need a way to receive the result. This applies whether or not your MCP client supports MCP Tasks — the patterns below work with any client.
 
 | Approach | Best For | Trade-offs |
 |----------|----------|------------|
 | **Webhooks** | Production systems, any task duration | Handles hours/days, but requires a public endpoint |
 | **Polling** | Simple integrations, short tasks | Easy to implement, but inefficient for long waits |
-| **MCP Tasks** | Custom clients using the MCP SDK | Protocol-native, but requires client support |
+| **MCP Tasks** | Custom clients using the MCP SDK | Protocol-native wrapper for the initial `tools/call`, but does not replace AdCP task tracking |
 
 ### Option 1: Webhooks (recommended)
 
@@ -647,12 +658,15 @@ See [Push Notifications](/docs/building/by-layer/L3/webhooks) for payload format
 
 ### Option 2: Polling (backup)
 
-Use `tasks/get` as a backup for `submitted` operations, or when you can't expose a webhook endpoint:
+Use AdCP polling as a backup for `submitted` operations, or when you can't expose a webhook endpoint. In 3.x, prefer `get_task_status` when the seller advertises it; otherwise use legacy `tasks/get`:
 
 ```javascript
 async function pollForResult(session, taskId, pollInterval = 30000) {
   while (true) {
-    const response = await session.pollTask(taskId, true);
+    const response = await session.call('get_task_status', {
+      task_id: taskId,
+      include_result: true
+    });
 
     if (['completed', 'failed', 'canceled'].includes(response.status)) {
       return response;

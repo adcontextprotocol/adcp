@@ -87,15 +87,15 @@
     },
     "asset_source": {
       "type": "string",
-      "enum": ["buyer_uploaded", "publisher_host_recorded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized"],
+      "enum": ["buyer_uploaded", "publisher_host_recorded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized", "publisher_owned_reference"],
       "default": "buyer_uploaded",
-      "description": "Where the rendered asset bytes come from. Single shared enum across canonicals. See `image.json#asset_source` for the full semantics. `publisher_host_recorded` is audio-specific and has no defined behavior on video — adopters MUST select a value appropriate to the canonical."
+      "description": "Where the rendered asset bytes come from. Single shared enum across canonicals. See `image.json#asset_source` for the full semantics. `publisher_host_recorded` is audio-specific and has no defined behavior on video. `publisher_owned_reference` is valid when the product accepts an existing post reference via a `published_post` slot instead of uploaded video bytes. Adopters MUST select a value appropriate to the canonical."
     },
     "buyer_asset_acceptance": {
       "type": "string",
       "enum": ["accepted", "rejected"],
       "default": "accepted",
-      "description": "Whether the product accepts buyer-uploaded video. When `rejected`, the buyer cannot ship a video asset directly — they must use build_creative (or sync_creatives with brief inputs) so the seller produces the video."
+      "description": "Whether the product accepts buyer-uploaded video. When `rejected`, the buyer cannot ship a video asset directly — they must use build_creative, sync_creatives with brief inputs, or sync_creatives with an accepted reference asset so the seller produces or resolves the video."
     }
   },
   "additionalProperties": true

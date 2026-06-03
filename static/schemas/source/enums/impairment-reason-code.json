@@ -11,6 +11,9 @@
     "pii_audit_failed",
     "seller_removed",
     "content_rejected",
+    "identity_authorization_revoked",
+    "identity_authorization_expired",
+    "source_private",
     "source_offline",
     "property_depublished"
   ],
@@ -21,6 +24,9 @@
     "pii_audit_failed": "Resource failed a privacy / PII audit. Applies to: audience.",
     "seller_removed": "Seller withdrew the resource from active use for operational reasons not covered by other codes (e.g., inventory withdrawal). Applies to: catalog_item, audience, creative, property. Distinct from policy_violation (seller-policy-driven) and from catalog_item's withdrawn state (the lifecycle endpoint) — this code is the impairment reason that surfaces when a previously-active resource is withdrawn.",
     "content_rejected": "Previously-approved creative content was re-reviewed and rejected. Applies to: creative.",
+    "identity_authorization_revoked": "Authorization for a creative's referenced identity or post was revoked. Applies to: creative, especially `published_post` reference creatives. Offline state is usually `suspended` while authorization can be restored.",
+    "identity_authorization_expired": "Authorization for a creative's referenced identity or post expired. Applies to: creative, especially `published_post` reference creatives. Offline state is usually `suspended` while authorization can be renewed.",
+    "source_private": "A creative's referenced source post became private or inaccessible to the seller. Applies to: creative, especially `published_post` reference creatives. Offline state is usually `suspended` while visibility can be restored.",
     "source_offline": "Underlying event/signal source stopped firing (zero events received over the seller's evaluation window). Applies to: event_source.",
     "property_depublished": "Property was depublished or removed from the seller's catalog via brand.json / adagents.json. Verification is via the publisher's brand.json / adagents.json files. Applies to: property."
   }

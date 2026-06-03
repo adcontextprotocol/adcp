@@ -21,6 +21,7 @@ const SALES_CURRENT_SCENARIOS = [
   'force_create_media_buy_arm',
   'force_task_completion',
   'force_creative_purge',
+  'seed_account',
   'seed_product',
   'seed_pricing_option',
   'seed_creative',
@@ -35,6 +36,17 @@ const SALES_THREE_ZERO_COMPAT_SCENARIOS = [
   'force_media_buy_status',
   'simulate_delivery',
   'simulate_budget_spend',
+];
+
+const SALES_THREE_ZERO_COMPLY_SCENARIOS = [
+  ...SALES_THREE_ZERO_COMPAT_SCENARIOS,
+  'force_create_media_buy_arm',
+  'force_task_completion',
+  'seed_product',
+  'seed_pricing_option',
+  'seed_creative',
+  'seed_media_buy',
+  'seed_creative_format',
 ];
 
 async function bootServer(options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): Promise<{ baseUrl: string; close: () => Promise<void> }> {
@@ -402,6 +414,7 @@ describe('tenant routing smoke', () => {
       };
       const scenarios = capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios ?? [];
       expect(scenarios).toEqual(expect.arrayContaining(SALES_THREE_ZERO_COMPAT_SCENARIOS));
+      expect(scenarios).not.toContain('seed_product');
       expect(scenarios).not.toContain('seed_measurement_catalog');
       expect(scenarios).not.toContain('query_provenance_audit_observations');
 
@@ -421,7 +434,7 @@ describe('tenant routing smoke', () => {
       const listed = await list.json() as {
         result?: { structuredContent?: { scenarios?: string[] } };
       };
-      expect(listed.result?.structuredContent?.scenarios).toEqual(SALES_THREE_ZERO_COMPAT_SCENARIOS);
+      expect(listed.result?.structuredContent?.scenarios).toEqual(SALES_THREE_ZERO_COMPLY_SCENARIOS);
       expect(listed.result?.structuredContent?.scenarios).not.toContain('seed_measurement_catalog');
 
       const directSeed = await fetch(url, {

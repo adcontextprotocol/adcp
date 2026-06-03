@@ -36,7 +36,7 @@ The following `specialisms` fall under the `creative` domain. Each has its own c
 - Use `preview_creative` in all three request modes — single, batch (5–10× faster for many creatives), and variant (retrieve historical renders from `get_creative_delivery`) — and choose `output_format: "html"` when bypassing the iframe speeds rendering
 - Understand creative agent pricing: the `pricing_options[]` array on discovery responses, how `pricing_option_id` flows through `build_creative` and `report_usage`, and why CPM ad servers show zero `vendor_cost` at build time while transformation agents do not
 - Reason about tracker-slot presence — a format supports third-party measurement only if its `assets` array declares a tracker slot (e.g., `impression_tracker`). Broadcast formats intentionally omit tracker slots; measurement comes from panel and STB data via `billing_measurement`
-- Attach `industry_identifiers[]` to broadcast manifests with the correct `creative-identifier-type` (`ad_id`, `isci`, `clearcast_clock`), and give each cut (`:15` vs `:30`) its own Ad-ID
+- Attach `industry_identifiers[]` to broadcast manifests with the correct `creative-identifier-type` (`ad_id`, `isci`, `clearcast_clock`, or `idcrea`), and give each cut (`:15` vs `:30`) its own traffic identifier
 - Reason about format edge cases, accessibility, and provenance
 
 ## Prerequisite reading
@@ -83,7 +83,7 @@ The following `specialisms` fall under the `creative` domain. Each has its own c
     Channel-specific specs for video, display, audio, DOOH, and carousels.
   </Card>
   <Card title="Broadcast TV" icon="clapperboard" href="/docs/creative/channels/broadcast">
-    Broadcast formats, `industry_identifiers[]` (`ad_id`, `isci`, `clearcast_clock`), Ad-ID integration, and why broadcast formats omit tracker slots.
+    Broadcast formats, `industry_identifiers[]` (`ad_id`, `isci`, `clearcast_clock`, `idcrea`), creative identifier integration, and why broadcast formats omit tracker slots.
   </Card>
   <Card title="Generative creative" icon="wand-magic-sparkles" href="/docs/creative/generative-creative">
     AI-generated creative workflows and best practices.
@@ -196,7 +196,7 @@ Vendors often offer multiple pricing options per creative — volume/commitment 
 9. **Compliance** — Configure provenance metadata and disclosure requirements for AI-generated creatives
 10. **Preview modes** — Run `preview_creative` as `request_type: "single"`, then `"batch"` (submit 5 creatives in one call and measure the speedup), then `"variant"` against a prior `get_creative_delivery` result. Compare `output_format: "url"` vs `"html"` for rendering latency.
 11. **Tracker-slot audit** — For each sandbox format, inspect the `assets` array and determine whether it supports third-party measurement. Explain why assigning a DoubleVerify pixel to a broadcast spot won't work, and which `billing_measurement` vendor would instead.
-12. **Broadcast identifiers** — Build a broadcast manifest with distinct `industry_identifiers[]` for `:15` and `:30` cuts of the same spot. Verify the `creative-identifier-type` values and explain why each cut needs its own Ad-ID.
+12. **Broadcast identifiers** — Build a broadcast manifest with distinct `industry_identifiers[]` for `:15` and `:30` cuts of the same spot. Verify the `creative-identifier-type` values and explain why each cut needs its own traffic identifier.
 
 ## Assessment
 

@@ -27,7 +27,7 @@
   "properties": {
     "signal_agent_segment_id": {
       "type": "string",
-      "description": "Optional opaque seller execution handle for this signal. Omit when signal_ref is sufficient for the seller to resolve the signal. Include only when the seller exposes a distinct runtime or activation handle that buyers must echo in packages[].targeting_overlay.signal_targeting_groups.groups[].signals[].signal_agent_segment_id.",
+      "description": "Optional opaque resolved-segment or seller execution handle for this signal. Omit when signal_ref plus the value expression is sufficient for the seller to resolve the signal. Include when the seller exposes a distinct runtime or activation handle that buyers must echo in packages[].targeting_overlay.signal_targeting_groups.groups[].signals[].signal_agent_segment_id. Buyers SHOULD echo this handle verbatim rather than reconstructing identity from categorical values; providers MAY namespace handles so cross-provider identity stays legible without a shared taxonomy registry.",
       "x-entity": "signal_activation_id"
     },
     "activation_status": {

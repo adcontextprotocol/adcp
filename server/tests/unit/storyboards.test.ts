@@ -20,6 +20,7 @@ import {
   hostedComplianceTargetPreference,
   hostedComplianceTarget,
   isDefaultHostedComplianceTarget,
+  agentAdvertisesHostedComplianceTarget,
   agentAdvertisesBadgeEligibleHostedComplianceTarget,
   selectCanonicalHostedComplianceTargetForSupportedVersions,
   selectHostedComplianceTargetForSupportedVersions,
@@ -218,6 +219,7 @@ describe('wrapper contract', () => {
 
   it('selects the highest hosted target advertised by the agent', () => {
     expect(hostedComplianceTargetPreference().map(t => t.requested)).toEqual([
+      '3.1',
       '3.1-rc',
       '3.1-beta',
       '3.0',
@@ -230,11 +232,29 @@ describe('wrapper contract', () => {
     expect(selectHostedComplianceTargetForSupportedVersions(['3.1-beta.5']).version).toBe('3.1.0-beta.5');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.5']).requested).toBe('3.1-beta.5');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.3']).requested).toBe('3.1-rc.3');
-    expect(selectHostedComplianceTargetForSupportedVersions(['3.1']).requested).toBe('3.0');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.1']).requested).toBe('3.1');
     expect(selectHostedComplianceTargetForSupportedVersions(undefined).requested).toBe('3.0');
 
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.4']).requested).toBe('3.0');
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1-rc.4']).requested).toBe('3.1-rc.4');
+  });
+
+  it('uses canonical hosted targets without silently upgrading 3.0-only agents', () => {
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.6']).requested).toBe('3.0');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1']).requested).toBe('3.1');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1-rc.6']).requested).toBe('3.1-rc');
+  });
+
+  it('requires agents to advertise non-3.0 hosted targets before selecting them', () => {
+    const stableTarget = hostedComplianceTarget('3.1');
+    const rcTarget = hostedComplianceTarget('3.1-rc');
+    expect(agentAdvertisesHostedComplianceTarget(['3.0'], stableTarget)).toBe(false);
+    expect(agentAdvertisesHostedComplianceTarget(['3.1'], stableTarget)).toBe(true);
+    expect(agentAdvertisesHostedComplianceTarget(['3.1-rc.6'], stableTarget)).toBe(false);
+    expect(agentAdvertisesHostedComplianceTarget(['3.0'], rcTarget)).toBe(false);
+    expect(agentAdvertisesHostedComplianceTarget(undefined, rcTarget)).toBe(false);
+    expect(agentAdvertisesHostedComplianceTarget(['3.0', '3.1-rc.6'], rcTarget)).toBe(true);
   });
 
   it('does not treat an unconfirmed fallback target as badge eligible', () => {
@@ -402,7 +422,9 @@ describe('getStoryboardsForVersion', () => {
     expect(getStoryboardIdsForVersion('3.0').length).toBe(getStoryboardsForVersion('3.0').length);
   });
 
-  it('does not reuse the 3.0 cache for unavailable future stable badge lines', () => {
-    expect(getStoryboardsForVersion('3.1')).toEqual([]);
+  it('does not reuse the 3.0 cache for 3.1 stable-line aliases', () => {
+    const storyboards = getStoryboardsForVersion('3.1');
+    expect(storyboards.length).toBeGreaterThan(0);
+    expect(storyboards.every(storyboard => storyboard.adcp_version?.startsWith('3.1.'))).toBe(true);
   });
 });

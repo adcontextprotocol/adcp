@@ -36,7 +36,7 @@ import type {
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
-import { getAccountNotificationSubscribers } from './account-handlers.js';
+import { getAccountNotificationSubscribers, seedAccountFixture } from './account-handlers.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { buildCatalog } from './product-factory.js';
 import { getAllSignals } from './signal-providers.js';
@@ -769,6 +769,7 @@ const LOCAL_SCENARIOS = [
   'force_task_completion',
   'force_creative_purge',
   'force_wholesale_feed_webhook',
+  'seed_account',
   'seed_creative_format',
   'seed_measurement_catalog',
   'query_provenance_audit_observations',
@@ -915,6 +916,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       };
     }
     return handleForceWholesaleFeedWebhook(sessionKey, ctx.principal, rawArgs);
+  }
+  if (scenario === 'seed_account') {
+    return seedAccountFixture(rawArgs as ToolArgs, ctx);
   }
   if (scenario === 'seed_measurement_catalog') {
     return handleSeedMeasurementCatalog(session, rawArgs);

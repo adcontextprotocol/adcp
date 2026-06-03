@@ -188,7 +188,7 @@ jobs:
             (if $is_pr == "true" then
               "is_pr: true\n" +
               "pr: " + $pr_block + "\n" +
-              "MODE: PR-feedback. Treat new comment as actionable feedback on the PR diff. If the comment requests a fix, apply it as a follow-up commit on the PR head branch — do not open a new PR. If the comment asks a question, answer it as a reply comment. If the comment is conversational with no action implied, post a short acknowledgement and stop.\n"
+              "MODE: PR-feedback. Treat new comment as actionable feedback on the PR diff. Follow the `MODE: PR-feedback` rules in .agents/routines/triage-prompt.md. If the comment requests a fix, apply it as a follow-up commit on the PR head branch — do not open a new PR. If the comment asks a question or challenges a design choice, answer it in ONE coherent reply comment: lean compose/defer over inventing precedence/MUST/SHOULD rules, finalize your synthesis before posting, and if you must revise a prior answer, EDIT it rather than posting a correction/addendum. If the comment is conversational with no action implied, post a short acknowledgement and stop.\n"
             else
               "is_pr: false\n" +
               "LABEL POLICY: When your triage status is `ready-for-human` (a real scope/policy/protocol decision is needed before code can land), apply the `needs-wg-review` label via `gh issue edit <num> --add-label needs-wg-review` AND apply the relevant domain label so the working group queue can route. Domain label vocabulary (pick one or more that match the issue's subject area):\n" +

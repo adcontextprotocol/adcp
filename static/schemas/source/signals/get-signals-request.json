@@ -93,7 +93,7 @@
     },
     "fields": {
       "type": "array",
-      "description": "Specific signal fields to include in the response, aligned with get_products.fields. Required identity and activation fields such as signal_ref or signal_id, signal_agent_segment_id, name, description, signal_type, coverage_percentage, and deployments are always included when required by the response schema. Use for progressive disclosure of rich signal-definition metadata: request fields such as taxonomy, data_sources, methodology, segmentation_criteria, criteria_url, refresh_cadence, lookback_window, onboarder, modeling, audience_expansion, device_expansion, countries, consent_basis, restricted_attributes, policy_categories, art9_basis, and data_subject_rights when the buyer needs them inline. Omit for the agent's default discovery projection. Agents SHOULD honor requested fields for exact lookup, refinement, small custom-signal result sets, and private/source-native signals when available. fields is a projection request, not an entitlement grant; agents MAY redact requested definition fields unless the caller is authorized for the underlying lineage, methodology, and rights-routing metadata. When consent_basis or art9_basis is projected for another provider's signal, the value remains provider-declared signal-definition posture; sellers and federating agents MUST NOT substitute their own processing basis. For broad discovery and wholesale pages, agents MAY return compact pointers instead of inlining large resources, especially when provider-published definitions can be resolved from signal_ref, taxonomy.ref, criteria_url, disclosure_url, and validators such as resolved URL plus catalog_etag, HTTP ETag/Last-Modified, or taxonomy.etag.",
+      "description": "Specific signal fields to include in the response, aligned with get_products.fields. Required identity and activation fields such as signal_ref or signal_id, signal_agent_segment_id, name, description, signal_type, coverage_percentage, and deployments are always included when required by the response schema. Use for progressive disclosure of rich signal-definition metadata: request fields such as taxonomy, data_sources, methodology, segmentation_criteria, criteria_url, refresh_cadence, lookback_window, onboarder, modeling, audience_expansion, device_expansion, countries, consent_basis, restricted_attributes, policy_categories, art9_basis, data_subject_rights, and last_updated when the buyer needs them inline. Omit for the agent's default discovery projection. Agents SHOULD honor requested fields for exact lookup, refinement, small custom-signal result sets, and private/source-native signals when available. fields is a projection request, not an entitlement grant; agents MAY redact requested definition fields unless the caller is authorized for the underlying lineage, methodology, and rights-routing metadata. When consent_basis or art9_basis is projected for another provider's signal, the value remains provider-declared signal-definition posture; sellers and federating agents MUST NOT substitute their own processing basis. For broad discovery and wholesale pages, agents MAY return compact pointers instead of inlining large resources, especially when provider-published definitions can be resolved from signal_ref, taxonomy.ref, criteria_url, disclosure_url, and validators such as resolved URL plus catalog_etag, HTTP ETag/Last-Modified, or taxonomy.etag.",
       "items": {
         "type": "string",
         "enum": [
@@ -126,7 +126,8 @@
           "restricted_attributes",
           "policy_categories",
           "art9_basis",
-          "data_subject_rights"
+          "data_subject_rights",
+          "last_updated"
         ]
       },
       "minItems": 1,

@@ -121,8 +121,8 @@ Sync local state with server on startup:
 
 ```python
 async def reconcile_with_server(self, adcp_client):
-    """Sync local state with server using tasks/list"""
-    server_tasks = await adcp_client.call('tasks/list', {
+    """Sync local state with server using AdCP task reconciliation"""
+    server_tasks = await adcp_client.call('list_tasks', {
         'filters': {'statuses': ['submitted', 'working', 'input_required']}
     })
 
@@ -218,7 +218,7 @@ async def _poll_for_completion(self, operation_id, task_id, interval=60):
             await asyncio.sleep(interval)
             poll_count += 1
 
-            task_response = await self.adcp.call('tasks/get', {
+            task_response = await self.adcp.call('get_task_status', {
                 'task_id': task_id,
                 'include_result': True
             })

@@ -186,6 +186,11 @@
       "variants": 2,
       "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"
     },
+    "core/evaluator-spec.json##/oneOf": {
+      "kind": "narrowable",
+      "variants": 3,
+      "note": "0:[exemplars] | 1:[evaluator_id] | 2:[agent_url]"
+    },
     "core/format.json##/properties/assets/items/oneOf": {
       "kind": "dangerous",
       "variants": 16,

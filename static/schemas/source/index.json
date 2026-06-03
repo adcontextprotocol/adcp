@@ -282,6 +282,10 @@
           "$ref": "/schemas/core/product-format-declaration.json",
           "description": "v2 inline format declaration on products. Keyed by canonical format name; product narrows exactly one canonical with platform-specific parameters."
         },
+        "downstream-connection-requirement": {
+          "$ref": "/schemas/core/downstream-connection-requirement.json",
+          "description": "Seller/platform-side connection or grant required by a product, format, or request, distinct from the AdCP caller credential."
+        },
         "canonical-projection-slot-override": {
           "$ref": "/schemas/core/canonical-projection-slot-override.json",
           "description": "Slot override used when projecting a legacy named format to a canonical format declaration"
@@ -417,6 +421,10 @@
         "transformer-param": {
           "$ref": "/schemas/core/transformer-param.json",
           "description": "Descriptor for one configuration knob a transformer exposes (field, type, value_source inline|range|enumerable, allowed values/range/account-scoped options, default)."
+        },
+        "evaluator-spec": {
+          "$ref": "/schemas/core/evaluator-spec.json",
+          "description": "Advisory buyer-attached evaluator input for build_creative — the rank-side of the get_creative_features feature oracle, driving a gate-then-rank pipeline. Declares the SOURCE of feature evaluation via one of three forms (inline pass/fail exemplars calibrating a single predicted_performance feature, an account-scoped evaluator_id, or an external get_creative_features-capable agent_url), an optional hard feature_requirement[] GATE (drop fails — internal best_of_n pruning), an explicit rank_by ordering ({feature_id, direction}), an allowlisted feature_agent pointer (accepted_verifiers; off-list → EVALUATOR_AGENT_NOT_ACCEPTED), plus an optional soft eval_budget. Informs best_of_n recommended/rank; never blocks an already-produced billable leaf."
         },
         "property-id": {
           "$ref": "/schemas/core/property-id.json",
@@ -703,6 +711,14 @@
         "video-placement-type": {
           "$ref": "/schemas/enums/video-placement-type.json",
           "description": "Declared video placement classifications using IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions"
+        },
+        "sponsored-placement-type": {
+          "$ref": "/schemas/enums/sponsored-placement-type.json",
+          "description": "Declared sponsored-placement classifications for catalog-driven retail-media inventory"
+        },
+        "social-placement-surface": {
+          "$ref": "/schemas/enums/social-placement-surface.json",
+          "description": "Declared social-placement surface classifications for social inventory"
         },
         "task-status": {
           "$ref": "/schemas/enums/task-status.json",
@@ -1653,6 +1669,26 @@
           "response": {
             "$ref": "/schemas/protocol/get-adcp-capabilities-response.json",
             "description": "Response payload for get_adcp_capabilities task - includes AdCP version, supported protocols, and protocol-specific capabilities (media_buy, signals, etc.)"
+          }
+        },
+        "get-task-status": {
+          "request": {
+            "$ref": "/schemas/protocol/get-task-status-request.json",
+            "description": "Request parameters for get_task_status, the 3.x AdCP application-layer alias for legacy tasks/get polling; distinct from transport-native tasks/* methods"
+          },
+          "response": {
+            "$ref": "/schemas/protocol/get-task-status-response.json",
+            "description": "AdCP application-layer task status, metadata, and optional completion result; alias response for legacy tasks/get"
+          }
+        },
+        "list-tasks": {
+          "request": {
+            "$ref": "/schemas/protocol/list-tasks-request.json",
+            "description": "Request parameters for list_tasks, the 3.x AdCP application-layer alias for legacy tasks/list reconciliation; distinct from transport-native tasks/* methods"
+          },
+          "response": {
+            "$ref": "/schemas/protocol/list-tasks-response.json",
+            "description": "Filtered AdCP application-layer async task list for reconciliation; alias response for legacy tasks/list"
           }
         }
       }
