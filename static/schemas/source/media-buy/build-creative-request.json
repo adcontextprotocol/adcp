@@ -94,6 +94,15 @@
       "minimum": 1,
       "description": "Caps how many DISTINCT creatives to produce along the catalog/item fan-out axis — one creative per catalog item. Use it to sample a large catalog (e.g. send 150 job openings, set max_creatives: 5 to preview five). Distinct from item_limit, which caps how many catalog items a SINGLE creative consumes (DCO-style). Omitted with a catalog input means one creative per item up to the catalog/format bound; omitted without a catalog collapses to a single creative. Large fan-outs may return asynchronously. Mutually exclusive with `refine_from_build_variant_id` (refinement targets one prior creative, not a catalog fan-out). Supported only when the agent advertises `creative.multiplicity.supports_catalog_fanout`; values above `max_creatives_limit` are clamped. Pair with `max_spend` to bound the bill of a large fan-out."
     },
+    "signal_conditions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "/schemas/core/signal-targeting.json"
+      },
+      "x-entity": "signal",
+      "description": "Advisory keep-all PRODUCTION axis: produce one distinct creative group per signal condition, each kept and trafficked with its own signal targeting (e.g. a rain creative AND a sun creative). Sibling to max_creatives (catalog axis), NOT a variant_axis value (which is choose-among). Each item reuses SignalTargeting (value_type-discriminated binary/categorical/numeric over signal_ref) so the produced group's signal_condition resolves condition identity through the SAME schema the sales-side package targeting uses. Per #5280 this is an ADVISORY context pointer — it informs production and MUST NOT hard-block at the build_creative layer; trafficking-compatibility (a sun creative MUST NOT serve into rain-targeted packages) is enforced reject-at-trafficking on the sales side (SIGNAL_TARGETING_INCOMPATIBLE), not here. Triggers the BuildCreativeVariantSuccess shape. Supported only when the agent advertises creative.multiplicity.supports_signal_fanout; condition counts above max_signal_conditions_limit are CLAMPED (not rejected), consistent with max_creatives. Composes with max_creatives (catalog × conditions cross-product) and max_variants (variants per group)."
+    },
     "max_variants": {
       "type": "integer",
       "minimum": 1,
@@ -132,6 +141,10 @@
       "enum": ["keep_all", "keep_one", "keep_some"],
       "default": "keep_all",
       "description": "Advisory hint for how the buyer intends to use the variants. `keep_one` (best-of-N) and `keep_some` signal the agent to set `recommended`/`rank` on returned variants. Advisory only — it does not change what is returned or billed; every produced variant is returned and charged. Keeping is a client act of trafficking the chosen build_variant_id(s)."
+    },
+    "selection_strategy": {
+      "$ref": "/schemas/enums/creative-selection-strategy.json",
+      "description": "Governs HOW the agent samples when max_creatives < items_total (folds #5262). audience_relevance draws its ranking input from the SAME signal_ref pointers in signal_conditions / package targeting — NOT a parallel signals[] array. proximity takes a location input (geo shape TBD — WG open). inventory_priority is seller-side catalog metadata (margin/overstock/promo; no buyer input). random is the status-quo default. Per-creative selection ordering surfaces on the existing rank / recommended fields of creatives[].variants[], not a new selection_rank. Advisory; absent => agent default (random)."
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
