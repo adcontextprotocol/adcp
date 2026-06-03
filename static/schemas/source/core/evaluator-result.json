@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/evaluator-result.json",
   "title": "Evaluator Result",
-  "description": "Per-leaf evaluation block populated on a build_creative variant when the request supplied an advisory `evaluator` and the agent advertises creative.supports_evaluator. EXPLAINS the recommended/rank the agent set on the best_of_n axis. Deliberately mirrors the content-standards oracle shape (validate-content-delivery-response results[] item): a binary verdict plus an optional per-feature breakdown that exposes verdict + rule pointer + directional explanation, never the evaluator's threshold or the submitted creative value. This is pass/fail evaluation and MUST NOT be conflated with creative-feature-result.json, which is a different, closed (additionalProperties:false) schema for quantitative feature MEASUREMENT (value/unit/measured_at). Advisory throughout: the block annotates recommended/rank, it does not change what is produced or billed.",
+  "description": "Per-leaf evaluation block populated on a build_creative variant when the request supplied an advisory `evaluator` and the agent advertises creative.supports_evaluator. EXPLAINS the recommended/rank the agent set on the best_of_n axis. Evaluator identity is established once at the request level and flows to every leaf — implementers MUST NOT re-declare a different evaluator per leaf; each leaf's eval block is scored against the same evaluator the buyer attached to the request. Deliberately mirrors the content-standards oracle shape (validate-content-delivery-response results[] item): a binary verdict plus an optional per-feature breakdown that exposes verdict + rule pointer + directional explanation, never the evaluator's threshold or the submitted creative value. This is pass/fail evaluation and MUST NOT be conflated with creative-feature-result.json, which is a different, closed (additionalProperties:false) schema for quantitative feature MEASUREMENT (value/unit/measured_at). Advisory throughout: the block annotates recommended/rank, it does not change what is produced or billed.",
   "type": "object",
   "properties": {
     "verdict": {
@@ -46,12 +46,24 @@
     },
     "score": {
       "type": "number",
-      "description": "Optional evaluator-defined score for this leaf. `rank` (on the variant leaf) remains the cross-leaf ordering of record; score is a finer-grained signal. Open WG decision: free number (this draft) vs normalized [0,1]."
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Optional normalized score for this leaf [0,1]. `rank` (on the variant leaf) remains the cross-leaf ordering of record; score is a finer-grained signal. Evaluators with non-standard output scales (cost functions, perceptual distance) MUST normalize at their own boundary before populating this field."
     },
     "ranked_against": {
       "type": "integer",
       "minimum": 1,
       "description": "Number of leaves the evaluator scored this leaf against (the best-of-N N). Lets the buyer interpret rank/score in context."
+    },
+    "calls_used": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of judge calls made during evaluation. Sellers SHOULD populate when agent_url was used and an eval_budget was supplied, giving buyers visibility into external call usage. No billing coupling in v1."
+    },
+    "seconds_used": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Wall-clock seconds consumed during evaluation. Sellers SHOULD populate when agent_url was used and an eval_budget was supplied, giving buyers visibility into external call usage. No billing coupling in v1."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
