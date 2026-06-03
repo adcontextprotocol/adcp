@@ -1106,6 +1106,11 @@
           "default": false,
           "description": "When true, build_creative honors a per-call `max_spend` ceiling (producing partial paid results and returning budget_status:\"capped\" + a BUDGET_CAP_REACHED advisory rather than overspending) AND supports mode:\"estimate\" dry-runs (a projected cost band, producing/billing nothing). When false or absent, max_spend / mode:estimate are rejected with UNSUPPORTED_FEATURE. Out-of-band billers (bills_through_adcp:false) have no AdCP cost truth to cap against, so this is meaningful only alongside bills_through_adcp:true."
         },
+        "supports_evaluator": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, build_creative accepts an advisory `evaluator` input (exemplars / evaluator_id / agent_url) and populates a per-leaf `eval` block ({verdict, features[]}, mirroring the content-standards oracle shape) on BuildCreativeVariantSuccess leaves, explaining the recommended/rank it sets on the best_of_n axis. When false or absent, the `evaluator` input is ignored and no `eval` block is emitted. Advisory throughout: the evaluator informs ranking, never gates which leaves are returned or billed."
+        },
         "refinable_retention_seconds": {
           "type": "integer",
           "minimum": 0,

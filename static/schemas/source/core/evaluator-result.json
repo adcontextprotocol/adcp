@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/evaluator-result.json",
+  "title": "Evaluator Result",
+  "description": "Per-leaf evaluation block populated on a build_creative variant when the request supplied an advisory `evaluator` and the agent advertises creative.supports_evaluator. EXPLAINS the recommended/rank the agent set on the best_of_n axis. Deliberately mirrors the content-standards oracle shape (validate-content-delivery-response results[] item): a binary verdict plus an optional per-feature breakdown that exposes verdict + rule pointer + directional explanation, never the evaluator's threshold or the submitted creative value. This is pass/fail evaluation and MUST NOT be conflated with creative-feature-result.json, which is a different, closed (additionalProperties:false) schema for quantitative feature MEASUREMENT (value/unit/measured_at). Advisory throughout: the block annotates recommended/rank, it does not change what is produced or billed.",
+  "type": "object",
+  "properties": {
+    "verdict": {
+      "$ref": "/schemas/enums/binary-verdict.json",
+      "description": "Overall pass/fail verdict the evaluator assigned to this leaf."
+    },
+    "features": {
+      "type": "array",
+      "description": "Per-feature breakdown. Oracle pattern: each entry exposes the verdict + an optional rule pointer + a directional explanation, never the evaluator threshold or the submitted creative value. When present, SHOULD include all failed and warning features; MAY include passed features. Mirrors the validate-content-delivery-response results[] feature item field-for-field; it is an inline OPEN item, NOT a reference to creative-feature-result.json.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "feature_id": {
+            "type": "string",
+            "description": "Which feature was evaluated (e.g., 'brand_consistency', 'on_brief', 'identity_fidelity'). Evaluator-defined unless drawn from a shared catalog."
+          },
+          "status": {
+            "$ref": "/schemas/enums/feature-check-status.json"
+          },
+          "policy_id": {
+            "type": "string",
+            "description": "Registry policy ID that triggered this result, when the result originates from a specific registry policy. Enables programmatic routing by looking up the policy in the registry.",
+            "x-entity": "governance_registry_policy"
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Directional human-readable explanation (e.g., 'Headline drifts from the brand voice exemplars'). Avoid quantitative thresholds — the evaluator is the oracle."
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Optional evaluator confidence in this result (0-1). Distinguishes certain verdicts from ambiguous ones."
+          }
+        },
+        "required": [
+          "feature_id",
+          "status"
+        ]
+      }
+    },
+    "score": {
+      "type": "number",
+      "description": "Optional evaluator-defined score for this leaf. `rank` (on the variant leaf) remains the cross-leaf ordering of record; score is a finer-grained signal. Open WG decision: free number (this draft) vs normalized [0,1]."
+    },
+    "ranked_against": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of leaves the evaluator scored this leaf against (the best-of-N N). Lets the buyer interpret rank/score in context."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "verdict"
+  ],
+  "additionalProperties": true
+}

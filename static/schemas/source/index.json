@@ -422,6 +422,14 @@
           "$ref": "/schemas/core/transformer-param.json",
           "description": "Descriptor for one configuration knob a transformer exposes (field, type, value_source inline|range|enumerable, allowed values/range/account-scoped options, default)."
         },
+        "evaluator-spec": {
+          "$ref": "/schemas/core/evaluator-spec.json",
+          "description": "Advisory buyer-attached evaluator input for build_creative — declares HOW produced variants should be judged via one of three forms (inline pass/fail exemplars, an account-scoped evaluator_id, or an external judge agent_url), plus an optional soft eval_budget. Informs best_of_n recommended/rank; never hard-blocks."
+        },
+        "evaluator-result": {
+          "$ref": "/schemas/core/evaluator-result.json",
+          "description": "Per-leaf evaluation block on build_creative variants — mirrors the content-standards oracle {verdict, features[]} shape to explain the recommended/rank the agent set. Distinct from creative-feature-result (quantitative measurement); this is pass/fail evaluation."
+        },
         "property-id": {
           "$ref": "/schemas/core/property-id.json",
           "description": "Identifier for a publisher property - lowercase alphanumeric with underscores only"

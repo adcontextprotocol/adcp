@@ -340,6 +340,10 @@
                       "minimum": 1,
                       "description": "Agent's ranking of this variant (1 = best) when it scored alternatives (best-of-N). Advisory."
                     },
+                    "eval": {
+                      "$ref": "/schemas/core/evaluator-result.json",
+                      "description": "Optional per-leaf evaluation block populated when the request supplied an `evaluator` and the agent advertises creative.supports_evaluator. EXPLAINS the recommended/rank on this leaf: mirrors the content-standards oracle {verdict, features[]} shape. Advisory; does not change what is produced or billed."
+                    },
                     "pricing_option_id": {
                       "type": "string",
                       "x-entity": "vendor_pricing_option",

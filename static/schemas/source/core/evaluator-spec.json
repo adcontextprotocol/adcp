@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/evaluator-spec.json",
+  "title": "Evaluator Spec",
+  "description": "Advisory buyer-attached pointer (#5280) declaring HOW produced build_creative variants should be judged. Informs the agent's best_of_n recommended/rank and, when the agent advertises creative.supports_evaluator, populates a per-leaf `eval` block (evaluator-result.json) on the response. Advisory only: it MUST NOT hard-block at the AdCP layer and does not change what is produced or billed. An unreachable or unknown evaluator degrades to seller-default ranking with an advisory errors[] note (non-terminal), NOT a failure. Provide exactly one of three forms; a shared optional eval_budget applies to whichever form is chosen.",
+  "type": "object",
+  "properties": {
+    "eval_budget": {
+      "type": "object",
+      "description": "Optional soft ceiling on evaluation effort. Advisory in v1 with no billing coupling. Well-known soft fields max_calls / max_seconds; open for evaluator-specific knobs.",
+      "properties": {
+        "max_calls": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Soft cap on the number of judge calls the evaluator should make."
+        },
+        "max_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Soft cap on wall-clock seconds the evaluation should consume."
+        }
+      },
+      "additionalProperties": true
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Exemplar form: inline pass/fail calibration examples. Mirrors content-standards.json calibration_exemplars (artifact-based) — a creative variant is content to be judged.",
+      "required": [
+        "exemplars"
+      ],
+      "properties": {
+        "exemplars": {
+          "type": "object",
+          "description": "Calibration pass/fail examples that anchor the evaluator's notion of 'good'. Artifact-based, mirroring content-standards.json calibration_exemplars.",
+          "properties": {
+            "pass": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/content-standards/artifact.json"
+              },
+              "description": "Artifacts exemplifying variants the buyer considers good."
+            },
+            "fail": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/content-standards/artifact.json"
+              },
+              "description": "Artifacts exemplifying variants the buyer considers bad."
+            }
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Identifier form: an account-scoped house evaluator. Its resolution surface (list_evaluators) is a noted follow-on; evaluator_id resolves out-of-band until then.",
+      "required": [
+        "evaluator_id"
+      ],
+      "properties": {
+        "evaluator_id": {
+          "type": "string",
+          "x-entity": "evaluator",
+          "description": "Account-scoped house evaluator selected by the buyer. Discovery via list_evaluators is a follow-on RFC; until it lands, this resolves out-of-band. An unknown id degrades to seller-default ranking (advisory errors[] note), not a failure."
+        }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Agent form: an external judge agent the seller calls to score leaves.",
+      "required": [
+        "agent_url"
+      ],
+      "properties": {
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of an external judge agent the seller calls to score the produced leaves. An unreachable agent degrades to seller-default ranking (advisory errors[] note), not a failure."
+        }
+      },
+      "additionalProperties": true
+    }
+  ],
+  "additionalProperties": true
+}
