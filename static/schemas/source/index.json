@@ -282,6 +282,10 @@
           "$ref": "/schemas/core/product-format-declaration.json",
           "description": "v2 inline format declaration on products. Keyed by canonical format name; product narrows exactly one canonical with platform-specific parameters."
         },
+        "downstream-connection-requirement": {
+          "$ref": "/schemas/core/downstream-connection-requirement.json",
+          "description": "Seller/platform-side connection or grant required by a product, format, or request, distinct from the AdCP caller credential."
+        },
         "canonical-projection-slot-override": {
           "$ref": "/schemas/core/canonical-projection-slot-override.json",
           "description": "Slot override used when projecting a legacy named format to a canonical format declaration"

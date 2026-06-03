@@ -79,6 +79,10 @@ The `filters` object supports these optional, composable filters:
 **Archived creatives are excluded by default.** To include archived creatives in results, explicitly include `"archived"` in the `statuses` array. Suspended creatives are not archived; include `"suspended"` when you specifically want recoverably offline creatives such as published-post references with expired authorization.
 </Note>
 
+<Note>
+For published-post reference products, `list_creatives` is limited to the downstream publisher identities the seller is authorized to inspect. If a product requires a second platform connection such as `publisher_identity` and it is missing, the seller should return `AUTHORIZATION_REQUIRED` with `error.details.missing_connections[]`. It should not present `list_creatives` as global platform post search.
+</Note>
+
 
 ## Sorting options
 

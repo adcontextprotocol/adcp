@@ -160,6 +160,13 @@
         ]
       }
     },
+    "required_connections": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/downstream-connection-requirement.json"
+      },
+      "description": "Downstream platform connections or grants required to use this format declaration. These are in addition to the single AdCP caller credential. Use this when a platform product requires multiple downstream grants, such as an advertiser account connection plus a publisher identity or post authorization for published-post references."
+    },
     "reference_mutability": {
       "type": "string",
       "enum": ["immutable_snapshot", "mutable_requires_reapproval", "mutable_auto_recheck"],

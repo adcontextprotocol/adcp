@@ -115,11 +115,14 @@ Two orthogonal patterns govern how a creative is produced and how it serves. Con
 
 **Production source** — `asset_source` describes **who renders or owns the source asset, and when**:
 - `asset_source` on `image`, `video_hosted`, `audio_hosted` — shared enum: `buyer_uploaded | publisher_host_recorded | seller_pre_rendered_from_brief | seller_human_designed | agent_synthesized | publisher_owned_reference`. `publisher_host_recorded` is audio-specific (podcast host-read pattern) and meaningful only on `audio_hosted`. `publisher_owned_reference` is meaningful when the product's slots accept a reference asset such as `published_post`.
+- `required_connections` on any canonical declaration — downstream platform connections or grants the seller needs in addition to the single AdCP caller credential. Use it for products that require multiple platform-side connections, such as an advertiser account plus a publisher identity for published-post references.
 - `item_production_model` on `sponsored_placement` — same axis, 4-value subset (drops `publisher_host_recorded`), applied per catalog item (the multi-output generative case: 1 brief × N catalog items → N rendered creatives)
 
 The two axes don't collapse. A generative DSP that produces ONE rendered image from a brief is `composition_model: deterministic` (the surface serves what it received) + `asset_source: seller_pre_rendered_from_brief` (seller produced it from inputs at sync_creatives time). A retail-media surface that runs an AI synthesis pipeline per catalog item is `composition_model: deterministic` + `item_production_model: agent_synthesized`. Google PMax is `composition_model: algorithmic` + (production-source unspecified — buyer ships a pool of pre-rendered assets so the production-source question doesn't apply at the format level).
 
 The production-source enums are informational, not the binding contract. The format's `slots` declaration is the contract — what the buyer ships, in what shape. The `asset_source` field tells the buyer "here's how this product produces or resolves the rendered creative" so they can pick products whose production model fits their workflow (in-house pre-rendered vs upstream creative agent vs seller-driven generative vs existing post reference).
+
+Downstream platform authorization is separate from production source. If a format requires platform-side connections, declare them with `required_connections[]`. For example, a published-post reference product can require both `advertiser_account` and `publisher_identity`; the buyer still authenticates to the seller once, while the seller manages those downstream grants. Missing grants surface as `AUTHORIZATION_REQUIRED` with `error.details.missing_connections[]`, not as a new format family or identity-discovery task.
 
 ### Tracker assembly under seller-rendered sources
 

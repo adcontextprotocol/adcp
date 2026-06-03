@@ -179,6 +179,8 @@ Assets are keyed by role name. Each role contains the asset details:
 }
 ```
 
+For published-post reference products, the asset role is usually `published_post` and the payload contains a post URL or platform post ID instead of uploaded media bytes. If the seller can resolve the post but lacks a required downstream platform connection, such as the publisher identity that owns the post, the terminal error is `AUTHORIZATION_REQUIRED`. New implementations should include `error.details.missing_connections[]` so the caller can send a human through the correct connections flow.
+
 ### Assignments structure
 
 Assignments are at the request level, mapping creative IDs to package IDs. Standalone creative agents that do not manage media buys ignore this field.
