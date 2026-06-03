@@ -173,7 +173,7 @@ The two are orthogonal. A buy can be `paused`-and-impaired, `pending_creatives`-
 `health` transitions to `impaired` when an upstream dependency referenced by the buy enters an offline state that affects delivery for at least one package:
 
 - An audience the buy targets transitions to `suspended` (consent expiry, TTL, policy enforcement).
-- A creative the buy uses transitions from `approved` to `rejected` (post-approval revocation).
+- A creative the buy uses transitions from `approved` to `suspended` (recoverable dependency/authorization loss), from `suspended` to `rejected` (terminal dependency/authorization loss), or from `approved` to `rejected` (post-approval revocation).
 - A catalog item the buy targets transitions to `withdrawn` (seller-initiated removal).
 - An event source the buy depends on enters `insufficient` (zero events received).
 - A property the buy targets is depublished via brand.json / adagents.json.
@@ -229,6 +229,9 @@ Each `reason_code` has a typical buyer remediation path. Sellers don't fill this
 | `ttl_expired` | Re-sync the audience via `sync_audiences` to renew. |
 | `pii_audit_failed` | Address audit findings upstream (hashing, identifier hygiene). Re-sync only **after** the seller signals the audit is cleared — a buyer agent that loops `sync_audiences` against an uncleared audit will not converge. |
 | `content_rejected` | Same path as initial creative approval — fix the issue and resubmit via `sync_creatives`. Campaign-level decision (replace vs. wait for resubmit) depends on creative pool composition and is left to the buyer. |
+| `identity_authorization_revoked` | Restore the downstream identity/post authorization through the seller's connection flow, or replace the affected `published_post` creative if authorization cannot be restored. |
+| `identity_authorization_expired` | Renew the downstream identity/post authorization through the seller's connection flow, then let the seller re-check or re-review the creative. |
+| `source_private` | Restore source post visibility or replace the affected `published_post` reference. |
 | `source_offline` | Verify the tag is firing on the buyer's properties (this is often a buyer/publisher integration issue, not a seller-side outage), then re-sync via `sync_event_sources`. |
 | `seller_removed` | No buyer-side resubmit path. Find a replacement via the same discovery tool used at campaign setup (`get_products`, `get_signals`, `list_creative_formats`), or contact the seller for restoration ETA. |
 | `policy_violation` | Seller-side enforcement; buyer-side resubmit unlikely to clear. Await resolution or escalate per the seller's standard contact path. |
@@ -262,7 +265,7 @@ The `impairment.coherence` assertion verifies that the buy's `impairments[]` sur
 
 Default when absent is `["snapshot"]`. Each surface is independent of the others; declare the actual mix of surfaces buyers will observe on the agent. A seller with impairment data in their API under a non-AdCP field name (a mapping gap) SHOULD document the mapping rather than declare `out_of_band` — the spec's gap is what `out_of_band` legitimately covers.
 
-**Relationship to other invariants.** `impairment.coherence` complements `status.monotonic`, which observes single-resource transitions only. The two run together on every specialism whose storyboard exercises both a resource-state transition and a media-buy snapshot read — audience-sync, creative-ad-server, creative-template, creative-generative, sales-catalog-driven. The cross-resource exercise that drives non-NA grading is the dependency-impairment storyboard (`media_buy_seller/dependency_impairment`, creative-track), which forces a creative from approved → rejected on an active buy, verifies the buy reflects `health: impaired` with a matching `impairments[]` entry, recovers the creative, and verifies the buy returns to `health: ok` with `impairments[]` cleared. Audience-track and catalog-track variants are follow-ups, pending `force_audience_status` / `force_catalog_item_status` support in the compliance test controller.
+**Relationship to other invariants.** `impairment.coherence` complements `status.monotonic`, which observes single-resource transitions only. The two run together on every specialism whose storyboard exercises both a resource-state transition and a media-buy snapshot read — audience-sync, creative-ad-server, creative-template, creative-generative, sales-catalog-driven. The cross-resource exercise that drives non-NA grading is the dependency-impairment storyboard (`media_buy_seller/dependency_impairment`, creative-track), which forces a creative on an active buy into an offline state (`approved → suspended` for recoverable dependency loss or `approved/suspended → rejected` for terminal revocation), verifies the buy reflects `health: impaired` with a matching `impairments[]` entry, recovers or replaces the creative, and verifies the buy returns to `health: ok` with `impairments[]` cleared. Audience-track and catalog-track variants are follow-ups, pending `force_audience_status` / `force_catalog_item_status` support in the compliance test controller.
 
 See the [Snapshot and log contract](/docs/protocol/snapshot-and-log) for the read-side rules that tie `impairments[]` (snapshot) to the `impairment` push (log).
 

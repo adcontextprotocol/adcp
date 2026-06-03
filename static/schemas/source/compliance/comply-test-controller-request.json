@@ -560,11 +560,11 @@
         },
         "reason_code": {
           "$ref": "/schemas/enums/creative-event-reason-code.json",
-          "description": "Creative lifecycle reason code for force_creative_purge."
+          "description": "Creative lifecycle reason code for force_creative_status and force_creative_purge."
         },
         "reason_detail": {
           "type": "string",
-          "description": "Human-readable detail for force_creative_purge."
+          "description": "Human-readable detail for force_creative_status and force_creative_purge."
         },
         "termination_reason": {
           "type": "string",

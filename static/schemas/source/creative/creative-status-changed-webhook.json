@@ -75,7 +75,61 @@
         "to",
         "observed_at"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "from": { "enum": ["processing"] }
+            },
+            "required": ["from"]
+          },
+          "then": {
+            "properties": {
+              "to": { "enum": ["pending_review", "rejected"] }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "from": { "enum": ["pending_review"] }
+            },
+            "required": ["from"]
+          },
+          "then": {
+            "properties": {
+              "to": { "enum": ["approved", "rejected"] }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "from": { "enum": ["approved"] }
+            },
+            "required": ["from"]
+          },
+          "then": {
+            "properties": {
+              "to": { "enum": ["pending_review", "suspended", "rejected", "archived"] }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "from": { "enum": ["suspended"] }
+            },
+            "required": ["from"]
+          },
+          "then": {
+            "properties": {
+              "to": { "enum": ["approved", "rejected"] }
+            }
+          }
+        }
+      ]
     },
     "reason_code": {
       "$ref": "/schemas/enums/creative-event-reason-code.json",

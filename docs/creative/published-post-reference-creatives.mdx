@@ -144,12 +144,12 @@ If the seller can resolve the post but needs creator/page authorization before p
 
 Published-post references can become unavailable after approval. Use `suspended` when the issue is recoverable:
 
-| Condition | Creative status | Reason code |
+| Condition | Lifecycle result | Reason code |
 |---|---|---|
 | Authorization revoked | `suspended` | `identity_authorization_revoked` |
 | Authorization expired | `suspended` | `identity_authorization_expired` |
 | Source post becomes private | `suspended` | `source_private` |
-| Source post deleted | `archived`, `rejected`, or `creative.purged` | `source_deleted` |
+| Source post deleted | status `archived`/`rejected`, or `creative.purged` event | `source_deleted` |
 
 For active buys, a suspended creative also creates a media-buy impairment with `resource_type: "creative"` and `transition.to: "suspended"`. Buyers reconcile the creative snapshot via `list_creatives` and the buy snapshot via `get_media_buys`; webhook ordering is not guaranteed.
 

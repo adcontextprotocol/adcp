@@ -193,14 +193,15 @@ phases:
   - id: status_changed_event
     title: "Observe creative.status_changed"
     narrative: |
-      The controller forces an approved → rejected seller-side transition. The
-      seller emits creative.status_changed to the registered account-level
-      subscriber, and the buyer re-reads the creative snapshot to repair state
-      after any missed webhook.
+      The controller forces recoverable and terminal seller-side transitions:
+      approved → suspended, suspended → approved, approved → suspended, then
+      suspended → rejected. The seller emits creative.status_changed to the
+      registered account-level subscriber, and the buyer re-reads the creative
+      snapshot to repair state after any missed webhook.
 
     steps:
-      - id: force_creative_rejected
-        title: "Force approved → rejected"
+      - id: force_creative_suspended
+        title: "Force approved → suspended"
         task: comply_test_controller
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
@@ -217,8 +218,182 @@ phases:
           scenario: "force_creative_status"
           params:
             creative_id: "acme_lifecycle_banner_001"
+            status: "suspended"
+            reason_code: "identity_authorization_expired"
+            reason_detail: "Lifecycle webhook storyboard: recoverable published-post authorization outage."
+          context:
+            correlation_id: "creative_lifecycle_webhooks--force_suspended"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller accepted the suspended transition"
+
+      - id: expect_suspended_webhook
+        title: "Assert approved → suspended webhook payload"
+        task: expect_webhook
+        triggered_by: force_creative_suspended
+        filter:
+          notification_type: "creative.status_changed"
+          creative_id: "acme_lifecycle_banner_001"
+          subscriber_id: "buyer-primary"
+        timeout_seconds: 30
+        expect_idempotency_key: true
+        webhook_payload_schema_ref: "creative/creative-status-changed-webhook.json"
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        expected: |
+          A webhook arrives at the account-level subscriber URL. Payload
+          validates against creative-status-changed-webhook.json and carries:
+          notification_type: creative.status_changed, subscriber_id:
+          buyer-primary, creative_id: acme_lifecycle_banner_001,
+          transition.from: approved, transition.to: suspended, notification_id,
+          and idempotency_key.
+
+      - id: list_creatives_after_suspended
+        title: "Repair from list_creatives after suspended webhook"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        stateful: true
+        expected: |
+          Snapshot repair shows the creative's current suspended status and the
+          recent creative.status_changed activity record, keyed by the same
+          creative_id as the webhook payload.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          creative_ids:
+            - "acme_lifecycle_banner_001"
+          include_webhook_activity: true
+          context:
+            correlation_id: "creative_lifecycle_webhooks--list_after_suspended"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "acme_lifecycle_banner_001"
+            description: "Snapshot returns the transitioned creative"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "suspended"
+            description: "Snapshot repair reflects the current suspended status"
+          - check: field_value
+            path: "creatives[0].webhook_activity[0].notification_type"
+            value: "creative.status_changed"
+            description: "Snapshot exposes recent status-changed webhook activity"
+          - check: field_present
+            path: "creatives[0].webhook_activity[0].idempotency_key"
+            description: "Activity record carries the delivery idempotency key"
+
+      - id: force_creative_reapproved
+        title: "Force suspended → approved"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        stateful: true
+        expected: |
+          success: true. Seller observed recovery from a recoverable dependency
+          outage and must notify account-level lifecycle subscribers.
+        sample_request:
+          account:
+            sandbox: true
+          brand:
+            domain: "acmeoutdoor.example"
+          scenario: "force_creative_status"
+          params:
+            creative_id: "acme_lifecycle_banner_001"
+            status: "approved"
+            reason_detail: "Lifecycle webhook storyboard: authorization restored."
+          context:
+            correlation_id: "creative_lifecycle_webhooks--force_reapproved"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller accepted the recovery transition"
+
+      - id: expect_reapproved_webhook
+        title: "Assert suspended → approved webhook payload"
+        task: expect_webhook
+        triggered_by: force_creative_reapproved
+        filter:
+          notification_type: "creative.status_changed"
+          creative_id: "acme_lifecycle_banner_001"
+          subscriber_id: "buyer-primary"
+        timeout_seconds: 30
+        expect_idempotency_key: true
+        webhook_payload_schema_ref: "creative/creative-status-changed-webhook.json"
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        expected: |
+          A webhook arrives for dependency recovery. Payload validates against
+          creative-status-changed-webhook.json and carries transition.from:
+          suspended and transition.to: approved.
+
+      - id: force_creative_suspended_again
+        title: "Force approved → suspended again"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        stateful: true
+        expected: |
+          success: true. Seller observed another recoverable dependency outage
+          before terminal escalation.
+        sample_request:
+          account:
+            sandbox: true
+          brand:
+            domain: "acmeoutdoor.example"
+          scenario: "force_creative_status"
+          params:
+            creative_id: "acme_lifecycle_banner_001"
+            status: "suspended"
+            reason_code: "identity_authorization_revoked"
+            reason_detail: "Lifecycle webhook storyboard: authorization revoked."
+          context:
+            correlation_id: "creative_lifecycle_webhooks--force_suspended_again"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller accepted the second suspended transition"
+
+      - id: force_creative_rejected
+        title: "Force suspended → rejected"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        stateful: true
+        expected: |
+          success: true. Seller observed terminal escalation from a suspended
+          dependency state and must notify account-level lifecycle subscribers.
+        sample_request:
+          account:
+            sandbox: true
+          brand:
+            domain: "acmeoutdoor.example"
+          scenario: "force_creative_status"
+          params:
+            creative_id: "acme_lifecycle_banner_001"
             status: "rejected"
-            rejection_reason: "Lifecycle webhook storyboard: forced revocation for account-level notification coverage."
+            reason_code: "identity_authorization_revoked"
+            rejection_reason: "Lifecycle webhook storyboard: forced terminal authorization revocation."
           context:
             correlation_id: "creative_lifecycle_webhooks--force_rejected"
         validations:
@@ -230,7 +405,7 @@ phases:
             description: "Controller accepted the rejected transition"
 
       - id: expect_status_changed_webhook
-        title: "Assert creative.status_changed webhook payload"
+        title: "Assert suspended → rejected webhook payload"
         task: expect_webhook
         triggered_by: force_creative_rejected
         filter:
@@ -247,11 +422,11 @@ phases:
           validates against creative-status-changed-webhook.json and carries:
           notification_type: creative.status_changed, subscriber_id:
           buyer-primary, creative_id: acme_lifecycle_banner_001,
-          transition.from: approved, transition.to: rejected, notification_id,
+          transition.from: suspended, transition.to: rejected, notification_id,
           and idempotency_key.
 
       - id: list_creatives_after_status_change
-        title: "Repair from list_creatives after the status webhook"
+        title: "Repair from list_creatives after terminal escalation"
         task: list_creatives
         schema_ref: "creative/list-creatives-request.json"
         response_schema_ref: "creative/list-creatives-response.json"

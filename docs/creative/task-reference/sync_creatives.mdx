@@ -149,13 +149,17 @@ asyncio.run(main())
 
 ### Creative object
 
-| Field         | Type     | Required | Description                                                        |
-| ------------- | -------- | -------- | ------------------------------------------------------------------ |
-| `creative_id` | string   | Yes      | Unique identifier for this creative                                |
-| `name`        | string   | Yes      | Human-readable name                                                |
-| `format_id`   | FormatId | Yes      | Format specification (structured object with `agent_url` and `id`) |
-| `assets`      | object   | Yes      | Assets keyed by role (e.g., `{video: {...}, thumbnail: {...}}`). Catalogs are included as assets with `asset_type: "catalog"`. See [Catalogs](/docs/creative/catalogs). |
-| `tags`        | string[] | No       | Searchable tags for creative organization                          |
+| Field               | Type                | Required    | Description                                                        |
+| ------------------- | ------------------- | ----------- | ------------------------------------------------------------------ |
+| `creative_id`       | string              | Yes         | Unique identifier for this creative                                |
+| `name`              | string              | Yes         | Human-readable name                                                |
+| `format_id`         | FormatId            | Conditional | Legacy named-format path. Structured object with `agent_url` and `id`. Required when `format_kind` is omitted; mutually exclusive with `format_kind`. |
+| `format_kind`       | CanonicalFormatKind | Conditional | 3.1+ canonical-format path. Required when `format_id` is omitted; mutually exclusive with `format_id`. |
+| `format_option_ref` | FormatOptionRef     | No          | Optional structured reference to a product or publisher format option. Required when the target product has multiple options with the same `format_kind`. |
+| `assets`            | object              | Yes         | Assets keyed by role (e.g., `{video: {...}, thumbnail: {...}}`). Catalogs are included as assets with `asset_type: "catalog"`. See [Catalogs](/docs/creative/catalogs). |
+| `tags`              | string[]            | No          | Searchable tags for creative organization                          |
+
+Provide either the legacy `format_id` or the canonical `format_kind` path, never both. New 3.1+ integrations should prefer `format_kind` with `format_option_ref` when routing depends on a product's declared format option.
 
 ### Asset structure
 
@@ -179,7 +183,7 @@ Assets are keyed by role name. Each role contains the asset details:
 }
 ```
 
-For published-post reference products, the asset role is usually `published_post` and the payload contains a post URL or platform post ID instead of uploaded media bytes. If the seller can resolve the post but lacks a required downstream platform connection, such as the publisher identity that owns the post, the terminal error is `AUTHORIZATION_REQUIRED`. New implementations should include `error.details.missing_connections[]` so the caller can send a human through the correct connections flow.
+For published-post reference products, the asset role is usually `published_post` and the payload contains a post URL or platform post ID instead of uploaded media bytes. Buyers can submit these assets through the canonical creative path, for example `format_kind: "video_hosted"` plus the product's `format_option_ref`, instead of creating a platform-specific `format_id`. If the seller can resolve the post but lacks a required downstream platform connection, such as the publisher identity that owns the post, the correctable error is `AUTHORIZATION_REQUIRED`. New implementations should include `error.details.missing_connections[]` so the caller can send a human through the correct connections flow and retry after authorization is restored.
 
 ### Assignments structure
 
