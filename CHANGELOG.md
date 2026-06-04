@@ -1,5 +1,231 @@
 # Changelog
 
+## 3.1.0-rc.7
+
+### Minor Changes
+
+- e5c2694: spec(creative): signal-driven creative fan-out (`signal_conditions[]`) + item-selection strategy (`selection_strategy`), folding #5262.
+
+  Implements RFC #5240 (accepted 2026-06-03; ships `x-status: experimental`). Adds a keep-all PRODUCTION axis for signals to `build_creative`, sibling to the catalog fan-out axis (`max_creatives`, #5219) and distinct from the choose-among `variant_axis`. Rides #5280's advisory-pointer contract: signal pointers inform production but MUST NOT hard-block at the build layer; trafficking-compatibility is enforced reject-at-trafficking on the sales side.
+
+  Strictly additive — no existing agents break. All new fields optional and gated by new capability flags; agents that don't advertise `supports_signal_fanout` behave exactly as today.
+
+  **Experimental.** The whole signal-fanout surface ships `x-status: experimental` under feature id `creative.signal_fanout` (sellers implementing it MUST list it in `experimental_features`), mirroring `creative.evaluator` (#5305). It introduces a new, not-yet-field-tested cross-agent reject-at-trafficking MUST (`SIGNAL_TARGETING_INCOMPATIBLE`), and the numeric condition-compatibility comparison (range-overlap vs exact-match) plus the `proximity` geo-input binding stay WG-open — experimental status keeps both revisable per [experimental-status](/docs/reference/experimental-status).
+
+  - `media-buy/build-creative-request.json` — optional `signal_conditions: SignalTargeting[]` (reuses `core/signal-targeting.json` via `allOf`, NOT a new minted signal-ref) plus an optional `signal_agent_segment_id` on each condition — the RESOLVED-segment identity (vs `signal_ref`'s definition identity) the buyer echoes verbatim from `get_signals` / product `signal_targeting_options`; it is the primary trafficking-compatibility key, with categorical `signal_ref`+value the weaker fallback. Also optional `selection_strategy` (new enum).
+  - `enums/creative-selection-strategy.json` — NEW closed string enum `[audience_relevance, contextual_fit, performance, proximity, inventory_priority, random]` (folds #5262; mirrors the closed shape of `creative-quality.json`).
+  - `protocol/get-adcp-capabilities-response.json` — `creative.multiplicity`: `supports_signal_fanout`, `max_signal_conditions_limit` (clamp like `max_creatives_limit`), `selection_strategies[]`.
+  - `media-buy/build-creative-response.json` — `BuildCreativeVariantSuccess.creatives[].signal_condition` + top-level `selection_strategy_applied`; `BuildCreativeEstimate.estimate.conditions_total`.
+  - `enums/error-code.json` — `SIGNAL_TARGETING_INCOMPATIBLE` (recovery: correctable) in enum + `enumDescriptions` + `enumMetadata`, with a drift disposition. The normative cross-agent trafficking-compat MUST that warrants the RFC. The compatibility algorithm is spelled out: exact `signal_agent_segment_id` match when both sides carry it; categorical `signal_ref`+value-set comparison otherwise; equal categorical labels from DIFFERENT providers are never compatible absent an explicit equivalence mechanism; mixed segment-handle/categorical only matches when the seller resolves both to the same provider-issued segment.
+  - `core/package-signal-targeting.json`, `core/product-signal-targeting-option.json`, `signals/get-signals-response.json`, `docs/media-buy/advanced-topics/targeting.mdx` — clarify that `signal_agent_segment_id` is the opaque, provider-scoped RESOLVED-segment handle buyers echo verbatim (preferred over reconstructing identity from categorical values); providers MAY namespace handles so cross-provider identity stays legible without a shared taxonomy registry.
+  - `docs/creative/buyer-attached-inputs.mdx`, `docs/creative/task-reference/build_creative.mdx`, `docs/signals/specification.mdx`, `docs/media-buy/task-reference/create_media_buy.mdx` — request/response field docs, the trafficking-compatibility contract narrative, and the reject-at-trafficking note.
+
+  Consolidates the parallel exploration in #5315 (segment-handle identity, namespaced provider IDs, trafficking-compat rules) into this single RFC-impl PR rather than a second RFC for #5240.
+
+  Closes #5240, #5262. Refs #5219, #5280, #5315.
+
+- 5fc5283: feat(creative): advisory evaluator with gate-then-rank pipeline for build_creative (#5241, #5305)
+
+  Adds an optional, advisory `evaluator` input to `build_creative` (a buyer-attached pointer, #5280) and a per-leaf `eval` block on `BuildCreativeVariantSuccess` variants that explains the `recommended`/`rank` the agent already sets on the `best_of_n` axis. The evaluator is the rank-side of the `get_creative_features` feature oracle and drives a **gate-then-rank pipeline** over the producing agent's best-of-N exploration, per leaf: evaluate (chosen source form) → optional hard **gate** (`feature_requirement[]`, drop fails) → **rank** the survivors (`rank_by`).
+
+  - **Gate (#5305 Q1):** `evaluator.feature_requirement[]` reuses the `feature-requirement` predicate (its schema already names creative gates as an intended reuse) — a leaf that fails is dropped from the agent's recommended survivors. This is internal best-of-N pruning, not an AdCP-layer block of an already-produced billable leaf: what is produced and billed stays governed by `max_variants`/`max_creatives`/`max_spend`, preserving the advisory invariant. The buyer may attach a get_creative_features-capable agent (`evaluator.feature_agent`, or the `agent_url` source form) the producing agent calls to obtain the gate's feature values; that agent is subject to the seller's `creative_policy.accepted_verifiers[]` allowlist — the same buyer-represents → seller-calls mechanism #5280 established for provenance `verify_agent`, no new allowlist. An off-list agent is rejected with a new `EVALUATOR_AGENT_NOT_ACCEPTED` error (mirrors `PROVENANCE_VERIFIER_NOT_ACCEPTED`; added to the enum, enumDescriptions, and enumMetadata).
+  - **Rank (#5305 Q2):** `rank_by` is an explicit ordered `[{feature_id, direction: maximize|minimize}]` (not the predicate shape, which has no sort direction) over the gate survivors.
+  - **Exemplars (#5305 Q3):** the exemplars form calibrates a single agent-defined `predicted_performance` feature (value in [0,1]) the evaluator computes and returns in `eval.features[]`; `rank_by` orders on it. All three forms thus resolve to "produce a feature value, gate/rank on it."
+  - **One contract (#5305 Q4):** the `agent_url`/`feature_agent` evaluator agent uses the same `get_creative_features` contract (returns `creative-feature-result[]`) used for gate, rank, and provenance.
+  - **Verdict (Q6):** a pass/warn/fail check is a categorical string feature value gated via `feature_requirement.allowed_values`; the verdict is derived, never stored on `creative-feature-result` (which stays closed: value `oneOf bool|number|string`).
+  - **Telemetry (Q7) / type (Q8):** `eval.calls_used`/`seconds_used` live on the open `eval` wrapper; `eval.features[]` is `creative-feature-result[]` (wrapper open, items closed). The `build_creative` Request parameters table gains an `evaluator` row.
+
+  New schema: `core/evaluator-spec.json` (3-form oneOf: exemplars / evaluator_id / agent_url, an optional hard `feature_requirement[]` gate, an explicit `rank_by` ordering, an allowlisted `feature_agent` pointer, plus a soft `eval_budget`). Gated by a new `creative.supports_evaluator` capability flag. Targets 3.1 (the line where `get_creative_features` finalizes). Non-breaking, fully additive / optional.
+
+  **Experimental.** The whole evaluator surface — the `evaluator` input, the `eval` response block, `creative.supports_evaluator`, and `core/evaluator-spec.json` — ships `x-status: experimental` under the feature id `creative.evaluator` (sellers that implement it MUST list it in `experimental_features`). It is a new, not-yet-field-tested gate-then-rank surface, and the `evaluator_id` form's discovery surface (`list_evaluators`) is a committed 3.x follow-on rather than shipping now — so per [experimental-status](/docs/reference/experimental-status) the surface MAY change between 3.x releases with notice, rather than being frozen under full 3.x stability guarantees before cross-party integration. Reserved follow-ons that may reshape these fields: `list_evaluators` discovery, a separate `supports_evaluator_gate` capability, and a hard MUST-enforce-gate semantic.
+
+- af3e682: Add optional `last_updated` (date-time) to `signal-definition.json`, `signal-definition-enrichment.json`, and the `get_signals.fields` projection enum.
+
+  Closes the signal-record freshness gap raised in #5248. `refresh_cadence` and `lookback_window` describe methodology freshness; `last_updated` tells buyer agents when the seller last published or updated this specific definition record — the one verifiable freshness signal that agents can compare across providers without trusting self-declared methodology claims.
+
+  Description follows `signal-listing.json` precedent: "When this definition record was last updated. This indicates freshness of the definition record, not an attestation that the underlying data or model was refreshed at that time."
+
+  Adding to `signal-definition-enrichment.json` means the field is also projectable through `get_signals.fields` for buyers that want it inline during discovery without fetching the full definition.
+
+- f8c389d: spec(media-buy): add optional `publisher_domain` to `get_media_buy_delivery` `by_placement` rows (closes #5299).
+
+  `by_placement` rows carried only `placement_id` and `placement_name`, so a buyer running across multiple publishers through one sales agent could not attribute delivered impressions to a publisher namespace without re-fetching `get_products` and cross-referencing the product's `placements[]` — a round-trip that requires retaining the buy-time catalog and breaks for inline placements.
+
+  Changes:
+
+  - `static/schemas/source/media-buy/get-media-buy-delivery-response.json` — add an optional `publisher_domain` (with the same domain regex as `core/placement.json`) to `by_placement` row items. It is a flat sibling of the existing `placement_id`/`placement_name` (not a nested PlacementRef — the row already ships those fields flat, so nesting would break consumers). Sellers SHOULD emit it whenever the resolving product placement carries a `publisher_domain` (always true for `kind: publisher_ref`); MAY omit only for `seller_inline` placements in a legacy single-publisher context. Single-valued because a placement resolves within exactly one publisher namespace. While in the block, add the missing `x-entity: "placement"` annotation to `placement_id` for parity with `core/placement.json` and `core/placement-ref.json`.
+  - `docs/media-buy/task-reference/get_media_buy_delivery.mdx` — note the optional `publisher_domain` field under "Available dimensions".
+
+  Strictly additive — no existing field changes shape, no new required fields. `by_placement` rows are already `additionalProperties: true`, and the obligation is SHOULD-when-known (not a retroactive MUST), so pre-existing single- and multi-publisher reports remain spec-valid.
+
+  Package-level publisher attribution on `get_media_buys` (the PackageStatus proposal in #5299's comments) is intentionally out of scope: an ad-network product can span multiple publishers, so a scalar there has an unresolved cardinality question (scalar-absent-when-multi vs. plural). This change covers only the placement grain, where the scalar is sound.
+
+- 68039f7: schema: allow hosted audio/video duration ranges to omit one endpoint.
+
+  Hosted `duration_ms_range` now supports one-sided ranges such as `[null, 60000]`
+  for "up to 60 seconds" and `[15000, null]` for "at least 15 seconds", while
+  rejecting `[null, null]`. This keeps duration constraints to two mechanisms:
+  `duration_ms_exact` for fixed durations and `duration_ms_range` for bounded or
+  one-sided ranges.
+
+- 0627c47: Add `idcrea` as a supported creative identifier type for French ARPP.PUB workflows.
+
+  This also clarifies that `ad_id` is common for US television and accepted by some radio/audio workflows, rather than requiring all broadcast or audio workflows to use Ad-ID.
+
+- af1d287: spec(creative): add build_creative spend controls — `max_spend` cap + `mode: "estimate"` dry-run.
+
+  Follow-on from the persona/scenario review: fan-out (`max_creatives` × `max_variants`) and refinement produce many independently-billed leaves, and `per_unit` pricing gives a rate but not the unit count in advance — so an autonomous buyer had no protocol brake on spend. Both additions are optional and gated by a new `creative.supports_spend_controls` capability.
+
+  - **`mode: "estimate"`** (request) → new `BuildCreativeEstimate` response shape (6th `oneOf` member): a dry run that produces and bills nothing and returns a `cost_low`/`cost_high` band computed against the request's actual inputs, with `basis` (`fixed` exact / `estimated_units` / `cpm_deferred`) and an optional per-leaf breakdown. Advisory/non-binding in this revision.
+  - **`max_spend: { amount, currency }`** (request) → a hard per-call ceiling: the agent stops before the next leaf would exceed it and returns the partial `BuildCreativeVariantSuccess` with new `budget_status: "capped"` and an advisory `BUDGET_CAP_REACHED` in `errors[]` (every returned leaf real and billed; `items_returned` < `items_total`). First-leaf-over-cap → terminal `BUDGET_CAP_REACHED`; currency mismatch → `INVALID_REQUEST`.
+  - New error code **`BUDGET_CAP_REACHED`** (distinct from `BUDGET_EXCEEDED`/`BUDGET_EXHAUSTED`), in both `enumDescriptions` and `enumMetadata`.
+  - New capability **`creative.supports_spend_controls`** (default false).
+
+  Deferred to the working group (flagged, not omitted): whether an estimate can be **binding**, and whether a refinement-**loop** bound is a protocol-level session budget vs. a buyer responsibility (documented as buyer-side for now).
+
+- 4deed71: Add catalog content macros (`{ITEM_NAME}`, `{ITEM_DESCRIPTION}`, `{ITEM_TAGLINE}`, `{ITEM_PRICE}`, `{ITEM_PRICE_CURRENCY}`) for catalog-driven creative rendering
+
+  Extends the catalog-item macro family from ID values (`{SKU}`, `{GTIN}`, `{OFFERING_ID}`, …) to scalar content values, so catalog-driven creatives (sponsored_placement / DPA: Meta DPA, Snap Collection, TikTok Shopping) can substitute a rendered item's `name`, `description`, `tagline`, `price.amount`, and `price.currency` into a template. Each token maps 1:1 to a real, documented catalog field via the existing `catalog_field` dot-notation vocabulary (catalog-field-binding.json ScalarBinding) — no parallel field vocabulary is introduced.
+
+  All five are scalar TEXT values and fall under the existing catalog-item substitution-safety rules unchanged (NFC normalization → RFC 3986 percent-encoding to the unreserved set → one-pass nested-expansion prohibition → URL-context scope). No new escaping context is added; conformance vectors for content values are added to `catalog-macro-substitution.json`.
+
+  Single-brace `{MACRO}` only. `{{double-brace}}` stays reserved and is NOT adopted — it is one of the downstream ad-server macro syntaxes (`%%...%%`, `${...}`, `[...]`, `{{...}}`) that sales agents MUST neutralize/percent-encode; adopting it would relax a documented substitution-safety guarantee.
+
+  Which catalog items render stays seller-declared via the already-shipped `fanout_mode` enum on `sponsored_placement.json` (`single_item` / `per_item` / `multi_item_in_creative`); no buyer-side selection field is added. On ML-optimized DPA surfaces (Meta Advantage+, TikTok Shopping) the platform may override buyer-authored overlay text, so content macros are a buyer-declared hint the seller MAY honor.
+
+  `format.supported_macros.items` auto-extends via its `anyOf` universal-enum branch (#5099); no schema edit is needed there. Closes #5277.
+
+- af1d287: spec(creative): add `list_transformers` task + account-scoped creative transformers, and extend `build_creative` for transformer selection and variant/catalog multiplicity.
+
+  A **transformer** is the creative analog of a media-buy product: an agent-offered, account-scoped, selectable unit of build capability (a voice, model, style, or director) with a typed configuration surface and per-account pricing. This makes account-specific render configuration — including custom values like cloned voices that exist only for one credential — discoverable from the agent rather than guessed, hung on a global format, or smuggled through `ext`.
+
+  Strictly additive. Existing `build_creative` callers are unaffected (all new request fields are optional; the shipped `BuildCreativeSuccess`/`BuildCreativeMultiSuccess` response shapes are unchanged — a new fifth member is added alongside them).
+
+  New:
+
+  - `list_transformers` task (creative protocol): account-scoped, brief-filterable, paginated discovery. An `expand_params` mode returns account-scoped enumerable option **values** (e.g. your configured voices) on the same tool — no separate options endpoint.
+  - Core schemas `transformer.json` and `transformer-param.json`.
+  - `get_adcp_capabilities` → `creative.supports_transformers` discriminator.
+
+  `build_creative` extensions:
+
+  - Request: `transformer_id` (select one transformer; target format(s) must be a subset of its `output_format_ids`), `config` (typed bag keyed to the transformer's params — agents MUST reject unknown/out-of-range values), `max_creatives` (catalog/item fan-out: N distinct creatives, one per item, with sampling), `max_variants` + `variant_axis` + `keep_mode` (alternatives per creative).
+  - Response: a new `BuildCreativeVariantSuccess` member — `creatives[]` each carrying `variants[]`, with a `build_variant_id` namespace (distinct from preview `preview_id` and served `variant_id`), per-leaf pricing receipt, and `items_total`/`items_returned`. Best-of-N is variants + `recommended`/`rank`. You pay for all produced variants (`per_unit` × N); a kept variant lazily earns a `creative_id` on trafficking, which flows to `report_usage`. Per-format atomic; per-item non-atomic.
+
+  `build_variant` lineage + refinement:
+
+  - `build_variant_id` is now the leaf-level lineage anchor (`x-entity: build_variant`): minted per produced variant, distinct from the call-level `build_creative_id`, lazily earning a durable `creative_id` only on trafficking. Untrafficked leaves are billed via the inline per-leaf `vendor_cost` only; `report_usage` reconciliation applies once a leaf earns a `creative_id`.
+  - Conversational refinement: `build_creative` gains `refine_from_build_variant_id` — re-build a prior leaf with a natural-language instruction in `message` plus an optional `config` delta, returning new lineage-linked variants (each with `parent_build_variant_id`); never a mutation. Composes with `max_variants`/`variant_axis`, mutually exclusive with `max_creatives`. Gated by the new `get_adcp_capabilities` → `creative.supports_refinement` discriminator (`UNSUPPORTED_FEATURE` when unsupported; `REFERENCE_NOT_FOUND` for an unknown/expired ref).
+
+  Pricing rides the existing `per_unit` model + inline receipt + `report_usage` unchanged — transformers carry `pricing_options` (reusing `vendor-pricing-option.json`).
+
+  Deprecations (deprecated in 3.1, removed at 4.0; SDKs MUST keep honoring them through 3.1–3.x): `Format.input_format_ids`, `Format.output_format_ids`, `Format.pricing_options`, and the `input_format_ids`/`output_format_ids` discovery filters on `list_creative_formats` — all superseded by `list_transformers`, which carries each transformer's own I/O signature and pricing.
+
+- 9633927: docs(spec-guidelines): enum-membership criterion + reconcile sync_catalogs phantom error codes (#3456)
+
+  Records the **enum-membership criterion** as a durable spec-authoring guideline in `docs/spec-guidelines.md` (under Enum Design), generalizing the decision recorded on #3456: a value earns membership when it is **published**, **natively supported** (handled without bespoke per-value mapping), and has **shared demand** (relevant across >1 producer AND >1 consumer); a material dialect earns its own value only when the parent's consumer would mis-handle it. `feed_format` (#3456) is the worked example, with a note distinguishing this from platform-agnosticism (a `feed_format` value legitimately names a vendor's _published spec_).
+
+  Reconciles four error codes documented in the `sync_catalogs` error table but absent from `enums/error-code.json` — `FEED_FETCH_FAILED`, `INVALID_FEED_FORMAT`, `ITEM_VALIDATION_FAILED`, `CATALOG_LIMIT_EXCEEDED` — adding them to the canonical enum with `enumDescriptions` + `enumMetadata` (all `recovery: correctable`) and `held-for-next-minor` (3.1) drift dispositions. The `INVALID_FEED_FORMAT` phantom flagged on #5271 turned out to be one of four siblings in the same table.
+
+  Refs #3456 (resolution shipped in #5298; this is the durable docs formalization + the error-code reconciliation).
+
+- 7129dbc: Add `tiktok_shop`, `pinterest_catalog`, and `openai_product_feed` to the `feed_format` enum, and reconcile `brand.json` to reference the canonical enum.
+
+  All three are externally-documented, Google-Merchant-Center-derived product-feed dialects that real sellers (TikTok Shop, Pinterest, OpenAI/ChatGPT commerce) parse natively — so buyers declaring them no longer have to fall back to `custom` + `feed_field_mappings` to re-describe a standardized feed. Each carries material deltas a strict GMC parser would mis-handle (TikTok `sku_id`/`video_link`; Pinterest composite price/shipping + mandatory `google_product_category`; OpenAI `is_eligible_*` flags), which is the bar for a dialect to earn its own value under the #3456 enum-membership criterion.
+
+  `feed_format` values are vendor spec names (proper nouns), not semantic categories — a feed format _is_ the vendor's published spec, so there is no vendor-neutral name (the deliberate inverse of the semantic `video_placement_types`/`social_placement_surfaces` axes). The enum now carries `enumDescriptions` documenting each format and citing its spec.
+
+  `brand.json` previously inlined a drifted feed_format enum (it had `openai_product_feed` but was missing `shopify`/`linkedin_jobs`); it now `$ref`s `/schemas/enums/feed-format.json` (matching `core/catalog.json`), so the two surfaces can no longer diverge.
+
+  `feed_format` is a seller-side parsing label only — AdCP ships no per-format mapping table and SDKs do not parse feeds, so first-class membership is a label + SDK enum-widening, not a parser obligation.
+
+  Closes #5271. Implements the #3456 enum-membership criterion.
+
+- 19813bd: Align `get_creative_features` documentation with its already-Final lifecycle stage, and close a phantom error code.
+
+  Per [specification-lifecycle](docs/reference/specification-lifecycle.mdx) (a surface with no `x-status` marker that has shipped in a GA release is at the **Final** stage), `get_creative_features` is already Final: none of its schemas (`get-creative-features-request.json`, `get-creative-features-response.json`, `creative-feature-result.json`) carry `x-status: experimental`, it shipped in 3.0 GA, and it is absent from the canonical `experimental_features` list in [experimental-status](docs/reference/experimental-status.mdx). It is listed as a **Required** creative-governance task in `docs/protocol/required-tasks.mdx`, and its capability is advertised via `get_adcp_capabilities.creative_features[]`. The task carried a stale "AdCP 3.0 Proposal — under development" prose banner that contradicted that Final state. This is not a Proposed→Final transition — the lifecycle stage is unchanged — so no decision record is required; it removes a contradictory documentation artifact.
+
+  **Changes**
+
+  - Removed the proposal `<Info>` banner from `docs/governance/creative/get_creative_features.mdx` and the creative-governance section landing page `docs/governance/creative/index.mdx`. The section's only banner-marked page was `get_creative_features`; `provenance-verification` carries no proposal banner.
+  - Added `CREATIVE_INACCESSIBLE` to the canonical error-code enum (with `enumDescriptions` and `enumMetadata`, recovery `correctable`). The `get_creative_features` error example documented this code but it was absent from the enum — a documented task surface must not emit a phantom code (#3456 enum-membership criterion). It fires when a creative governance agent cannot retrieve the submitted `creative_manifest` assets at all — distinct from `CREATIVE_NOT_FOUND` (a `creative_id` absent from the agent's library), `CREATIVE_REJECTED` (assets retrieved but failed policy), and `GOVERNANCE_UNAVAILABLE` (agent unreachable; transient).
+
+  No schema field changes; no behavior change to the task. The `creative/specification.mdx` (v1 creative model) and `media-buy/specification.mdx` proposal banners are unrelated surfaces and unchanged. The frozen `dist/docs/<version>/` release snapshots still carry the banner by design — they refresh at the next snapshot cut, not on content PRs.
+
+  This unblocks the 3.1 creative-feature-oracle gate/rank pipeline (#5311 / #5305), which uses `get_creative_features` as the gate's feature source.
+
+  Refs #5311, #5305, #3456.
+
+- af1d287: spec(creative): generative-encoding safe additions — `free_text` params + per-output transformer pricing.
+
+  The additive half of the generative-agent (Veo/Imagen) encodings follow-on. The two _normative_ rules it pairs with — generation count is owned by `max_variants`/`max_creatives` (never a config param), and `aspect_ratio` rides the format axis — are intentionally left to the working group; only the safe schema bits land here.
+
+  - `transformer-param.json` `value_source` gains **`free_text`** (an open buyer-authored string with no closed set — e.g. a `negative_prompt` or style note; `type` MUST be `string`, the closed-set fields MUST be absent) plus an optional **`max_length`**. The description also states that count/quantity knobs MUST NOT be params (count rides `max_variants`/`max_creatives`).
+  - `vendor-pricing-option.json` gains optional **`applies_to_output_format_ids`** so one creative transformer can price different outputs differently (e.g. a multi-publisher template charging per publisher format); an unscoped option is the default. Additive and inert for non-creative vendors (signals/governance) — **flagged for shared-schema owner ack**.
+
+- 1a2b9e3: Add non-colliding AdCP task-lifecycle aliases in the protocol namespace:
+  `get_task_status` and `list_tasks`.
+
+  These are aliases for AdCP's application-layer lifecycle tools, not aliases for
+  transport-native MCP/A2A `tasks/*` APIs. The existing `core/tasks-get-*` and
+  `core/tasks-list-*` schemas remain valid through 3.x for compatibility; the
+  new aliases avoid transport-name collisions without changing AdCP async task
+  polling or reconciliation semantics.
+
+- a8ba75c: Add `sponsored_placement_types` (retail media) and `social_placement_surfaces` (social) declarations to products and placements, plus matching `get_products.filters` discovery filters, mirroring the `video_placement_types` pattern. Both are seller-declared discovery metadata, not buyer gates. Retail values: `sponsored_search`, `sponsored_display`, `sponsored_native` (`sponsored_offsite` excluded — not catalog-keyed). Social values: `feed`, `stories`, `short_video`, `explore`, `search` (semantic surfaces, not platform brand names).
+- 8f03600: Add published-post reference creatives as a canonical-format refinement, not a new task surface or format family.
+
+  - Adds `published_post` as an asset payload type, canonical slot asset type, and `asset_types` filter value for `list_creative_formats`.
+  - Adds `publisher_owned_reference` to canonical `asset_source` where a product resolves an existing post instead of accepting uploaded bytes.
+  - Adds `required_connections` for downstream platform grants, plus `AUTHORIZATION_REQUIRED` details for missing advertiser account, publisher identity, or post-scoped authorizations.
+  - Adds `CreativeStatus: "suspended"` plus authorization/source reason codes so recoverable published-post dependency loss is distinct from policy rejection, with documented escalation from `suspended` to `rejected` when the dependency becomes terminal.
+  - Adds `AUTHORIZATION_REQUIRED` for authenticated calls that need additional creator, identity, or post authorization before serving.
+  - Documents the canonical `video_hosted` published-post pattern and keeps catalog-driven retail media on `sponsored_placement`.
+
+- 81ad6f5: Require creatives accepted by a synchronous `sync_creatives` success response to be immediately visible through `list_creatives` for the same account and authorized caller, while preserving the submitted task envelope for whole-operation async ingestion.
+- af1d287: spec(creative): add pre-call discriminators for creative-transformer refinement retention and fan-out multiplicity.
+
+  Lets a buyer agent know — before sending — what a creative agent supports, instead of probing and handling failures. Additive and optional (all fields default to "unsupported / unbounded"), and the keystone the spend-control and conformance follow-ons build on.
+
+  - `get_adcp_capabilities` → `creative.refinable_retention_seconds` (integer): the guaranteed-minimum window a produced `build_variant_id` stays refinable. Replaces the prose-only "agent-defined window" with a machine-readable floor; omit to keep it agent-defined.
+  - `get_adcp_capabilities` → `creative.multiplicity` (object): `supports_catalog_fanout` + `max_creatives_limit`, `supports_variants` + `max_variants_limit`, and `variant_dimensions[]`. Over-limit `max_creatives`/`max_variants` are **clamped** to the ceilings (shortfall via `items_returned` < `items_total`), not rejected — consistent with `item_limit`'s "use the lesser" rule. Absent means no fan-out.
+  - `transformer.json` → optional `multiplicity` that narrows the agent-level object per transformer (ceilings ≤ agent, `variant_dimensions` ⊆ agent).
+  - `build_creative` docs note the clamp behavior on `max_creatives`/`max_variants`.
+
+### Patch Changes
+
+- ba7410c: Mirror the current published SDK storyboard compliance bundle into
+  `static/compliance/source/` as the spec-owned canonical source, add source
+  authority drift checks, and document the storyboard rollout order:
+  `spec storyboard change -> reference implementations update -> @adcp/sdk runner
+release -> downstream consumers update`.
+- 52bd79c: Add an optional `availability_status` enum to the `si_get_offering` response. It appears on the `offering` object (alongside `expires_at`) and on each `matching_products[]` item (alongside the free-string `availability_summary`), and is defined by a new centralized enum `enums/offering-availability-status.json` (`available`, `limited`, `sold_out`, `expired`, `region_restricted`, `inactive`).
+
+  The value set deliberately matches the SI task page's existing "Unavailable Reasons" vocabulary so the structured enum and the free-string `unavailable_reason` stay coherent. The field is optional and additive: it is not in `required`, both objects already carry `additionalProperties: true`, and the schema is `x-status: experimental`, so existing producers and consumers are unaffected.
+
+  Refs #5264.
+
+- 9743af1: Bump `@adcp/sdk` to `8.1.0-beta.21` to consume the storyboard request-enrichment clock fix.
+
+  `3.0-compat /sales` began failing on 2026-06-01 with `create_media_buy_replay: IDEMPOTENCY_CONFLICT` (`64 clean`, floor `65`). The idempotency replay test requires the initial and replay `create_media_buy` requests to be byte-identical, but the runner's `resolveMediaBuyWindow` resolved the flight window with a per-call `Date.now()`. Once the frozen 3.0.15 fixture's `start_time` (2026-06-01) went past, the window fell to a now-relative default computed independently in each step → different canonical payload → conflict. This was branch-independent (main re-run today failed identically) and not self-healing.
+
+  `@adcp/sdk@8.1.0-beta.21` (adcp-client #2149, closing #2147) threads a stable per-run clock (`runStartMs`) into `resolveMediaBuyWindow`, so both steps enrich with the same `now` → identical window → byte-identical payload. Verified: typecheck clean and the 3.0-compat storyboard matrix returns to its floor under beta.21.
+
+  beta.21 also pins the SDK to AdCP 3.1.0-rc.6 (adcp-client #2145), so the storyboard runner now negotiates `3.1-rc.6`. The training agent's supported-version allowlist had stopped at `3.1-rc.4` (a latent skew — the repo is already on rc.6), so it rejected the runner with `VERSION_UNSUPPORTED` on the current-source matrix. Added `3.1-rc.6` to both allowlists (`task-handlers.ts`, `tenants/router.ts`), bumped `CURRENT_ADCP_VERSION` to rc.6 so the agent's current/highest-served version matches the repo, and updated the affected unit-test assertions.
+
+- 92c8382: docs(creative): social-DPA video catalog pools + catalog-driven single-item render pattern; add `card_video_max_file_size_kb` parity field
+
+  Clarifies that catalog asset pools accept video as a first-class asset group — `core/asset-group-vocabulary.json` already defines `video`, `video_vertical` (9:16), and `video_horizontal` (16:9) pools, and a feed URL mapped via `feed_field` + `asset_group_id` is wrapped as an image _or_ video asset depending on the pool. Documented at the "Typed catalog assets" and "Feed field mappings" anchors in `docs/creative/catalogs.mdx`. Docs-only; the capability already ships (#5272).
+
+  Documents the catalog-driven single-item render pattern — the platform composes one SKU per impression (Meta DPA single-product render, Snap Collection single-item, TikTok Shopping single-SKU) — using the existing `sponsored_placement` `fanout_mode: single_item`, and links the four adapter-contract families page. Extends the existing asset-bundle-vs-catalog-row prose in `docs/creative/canonical-formats.mdx`. Docs-only; addresses the docs half of #5277. The buyer-selection field and double-brace macro token syntax are deliberately out of scope (separate WG decision).
+
+  Adds one optional `card_video_max_file_size_kb` (integer, minimum 1) to `image_carousel.json` as the video twin of the existing `card_image_max_file_size_kb`, so the two per-card file-size caps sit together. Additive optional field on a non-experimental canonical = backward-compatible patch. No codec/container enums or new `card_media_types` vocabulary (#5274).
+
+  Closes #5272, #5274. Addresses docs half of #5277.
+
+- ebd12c6: Fix release-blocking storyboard drift: creative lifecycle now verifies that `list_creatives` returns the creative synced earlier, stateful creative account requests declare sandbox mode, and catalog-dependent media-buy/governance storyboards use discovered or fixture-backed product and pricing IDs instead of stale hardcoded identifiers.
+- dce2a70: Wire `sync_governance` onto the reference agent's `/sales` (`media_buy_seller`) tenant. Every media_buy_seller specialism (sales-guaranteed, sales-non-guaranteed, sales-broadcast-tv, sales-catalog-driven, sales-social, governance-aware-seller) lists `sync_governance` in `required_tools` and calls it against `/sales`, but the tool was only registered on `/signals` — so the "Register governance agents" step failed with `MCP error -32602: Tool sync_governance not found`. The handler is tenant-agnostic; this registers it via `customTools` on `/sales` (mirroring `/signals`) and updates the tool catalog so the drift test reflects both tenants.
+
 ## 3.1.0-rc.6
 
 ### Patch Changes
