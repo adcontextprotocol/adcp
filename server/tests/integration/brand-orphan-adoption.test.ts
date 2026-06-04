@@ -117,6 +117,10 @@ describe('Brand orphan-adoption integration', () => {
         TEST_DOMAIN,
         PRIOR_ORG,
         JSON.stringify({
+          brand_context: {
+            brand: { voice: { summary: 'Legacy context must stay private.' } },
+            positioning: { value_proposition: 'Legacy positioning.' },
+          },
           brands: [{
             id: 'prior',
             names: [{ en: 'Prior Brand' }],
@@ -226,6 +230,7 @@ describe('Brand orphan-adoption integration', () => {
     const logos = r.brand_manifest.brands?.[0]?.logos ?? [];
     expect(logos.length).toBe(1);
     expect(logos[0].url).toBe('https://newowner.example.com/logo.png');
+    expect('brand_context' in r.brand_manifest).toBe(false);
   });
 
   it('updateBrandIdentity with adoptPriorManifest=true keeps the prior manifest and merges the new logo', async () => {
@@ -247,6 +252,7 @@ describe('Brand orphan-adoption integration', () => {
       workos_organization_id: string | null;
       is_public: boolean;
       brand_manifest: {
+        brand_context?: unknown;
         brands?: Array<{
           id?: string;
           names?: Array<Record<string, string>>;
@@ -272,6 +278,7 @@ describe('Brand orphan-adoption integration', () => {
     expect(primary?.colors?.primary).toBe('#aabbcc');
     expect(primary?.id).toBe('prior'); // prior brand id survives
     expect(primary?.names).toEqual([{ en: 'Prior Brand' }]); // prior name survives
+    expect('brand_context' in r.brand_manifest).toBe(false);
   });
 
   it('cross-org write to a non-orphaned brand still throws cross_org_ownership (not the orphan code)', async () => {

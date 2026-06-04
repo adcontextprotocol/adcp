@@ -2762,7 +2762,7 @@ paths:
     get:
       operationId: enrichBrand
       summary: Enrich brand
-      description: Enrich brand data using Brandfetch. Returns logo, colors, and company information.
+      description: Enrich brand data using Brandfetch. Returns logo, colors, and company information. Authenticated callers may also receive ephemeral Brand Context API identity/positioning/voice data.
       tags:
         - Brand Resolution
       parameters:
@@ -2779,8 +2779,99 @@ paths:
             application/json:
               schema:
                 type: object
-                properties: {}
-                additionalProperties: {}
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - true
+                  domain:
+                    type: string
+                  cached:
+                    type: boolean
+                  manifest:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      url:
+                        type: string
+                      description:
+                        type: string
+                      logos:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            url:
+                              type: string
+                            tags:
+                              type: array
+                              items:
+                                type: string
+                          required:
+                            - url
+                            - tags
+                      colors:
+                        type: object
+                        properties:
+                          primary:
+                            type: string
+                          secondary:
+                            type: string
+                          accent:
+                            type: string
+                        additionalProperties: {}
+                      fonts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            role:
+                              type: string
+                          required:
+                            - name
+                            - role
+                          additionalProperties: {}
+                      company:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          industries:
+                            type: array
+                            items:
+                              type: string
+                          employees:
+                            type: string
+                          founded:
+                            type: number
+                          location:
+                            type: string
+                        required:
+                          - name
+                        additionalProperties: {}
+                    required:
+                      - name
+                      - url
+                    additionalProperties: {}
+                  source_type:
+                    type: string
+                    enum:
+                      - brand_json
+                      - community
+                      - enriched
+                  context:
+                    type: object
+                    properties: {}
+                    additionalProperties: {}
+                  context_error:
+                    type: string
+                required:
+                  - success
+                  - domain
+                  - cached
         "503":
           description: Brandfetch not configured
           content:
