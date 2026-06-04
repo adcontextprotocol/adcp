@@ -77,6 +77,8 @@ async function listTools(baseUrl: string, tenantId: string): Promise<string[]> {
   const NON_PROTOCOL_TOOLS = new Set([
     'get_adcp_capabilities',
     'comply_test_controller',
+    'get_task_status',
+    'list_tasks',
     'tasks_get',
     'tasks/get',
   ]);
