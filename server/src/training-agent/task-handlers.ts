@@ -5824,6 +5824,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     'force_session_status',
     'simulate_delivery',
     'simulate_budget_spend',
+    'seed_account',
     'seed_product',
     'seed_pricing_option',
     'seed_creative',

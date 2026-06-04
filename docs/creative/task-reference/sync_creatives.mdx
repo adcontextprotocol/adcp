@@ -134,6 +134,12 @@ asyncio.run(main())
 
 **Note:** Per-creative async review is surfaced via `creatives[].status` (e.g., `pending_review`) on the synchronous success response. When the *whole* operation is queued (batch ingestion, governance review gating the sync), the response is a submitted envelope with top-level `status: "submitted"` and a `task_id`. See [Async approval workflow](#async-approval-workflow).
 
+## Read-after-write visibility
+
+Creatives accepted via a synchronous `sync_creatives` success response MUST be committed to the creative library before the response is returned. They MUST be immediately visible to subsequent `list_creatives` calls from the same account and authorized caller, including creatives whose review lifecycle status is `processing` or `pending_review`.
+
+Implementations that acknowledge a creative on the synchronous success branch but buffer the library write until a later background commit are not conformant. If the whole sync operation cannot commit before returning, use the submitted task envelope instead; the visibility requirement then applies when the task completes with accepted creatives.
+
 ## Request parameters
 
 | Parameter         | Type       | Required | Description                                                                                                                                                              |
@@ -149,13 +155,17 @@ asyncio.run(main())
 
 ### Creative object
 
-| Field         | Type     | Required | Description                                                        |
-| ------------- | -------- | -------- | ------------------------------------------------------------------ |
-| `creative_id` | string   | Yes      | Unique identifier for this creative                                |
-| `name`        | string   | Yes      | Human-readable name                                                |
-| `format_id`   | FormatId | Yes      | Format specification (structured object with `agent_url` and `id`) |
-| `assets`      | object   | Yes      | Assets keyed by role (e.g., `{video: {...}, thumbnail: {...}}`). Catalogs are included as assets with `asset_type: "catalog"`. See [Catalogs](/docs/creative/catalogs). |
-| `tags`        | string[] | No       | Searchable tags for creative organization                          |
+| Field               | Type                | Required    | Description                                                        |
+| ------------------- | ------------------- | ----------- | ------------------------------------------------------------------ |
+| `creative_id`       | string              | Yes         | Unique identifier for this creative                                |
+| `name`              | string              | Yes         | Human-readable name                                                |
+| `format_id`         | FormatId            | Conditional | Legacy named-format path. Structured object with `agent_url` and `id`. Required when `format_kind` is omitted; mutually exclusive with `format_kind`. |
+| `format_kind`       | CanonicalFormatKind | Conditional | 3.1+ canonical-format path. Required when `format_id` is omitted; mutually exclusive with `format_id`. |
+| `format_option_ref` | FormatOptionRef     | No          | Optional structured reference to a product or publisher format option. Required when the target product has multiple options with the same `format_kind`. |
+| `assets`            | object              | Yes         | Assets keyed by role (e.g., `{video: {...}, thumbnail: {...}}`). Catalogs are included as assets with `asset_type: "catalog"`. See [Catalogs](/docs/creative/catalogs). |
+| `tags`              | string[]            | No          | Searchable tags for creative organization                          |
+
+Provide either the legacy `format_id` or the canonical `format_kind` path, never both. New 3.1+ integrations should prefer `format_kind` with `format_option_ref` when routing depends on a product's declared format option.
 
 ### Asset structure
 
@@ -178,6 +188,8 @@ Assets are keyed by role name. Each role contains the asset details:
   }
 }
 ```
+
+For published-post reference products, the asset role is usually `published_post` and the payload contains a post URL or platform post ID instead of uploaded media bytes. Buyers can submit these assets through the canonical creative path, for example `format_kind: "video_hosted"` plus the product's `format_option_ref`, instead of creating a platform-specific `format_id`. If the seller can resolve the post but lacks a required downstream platform connection, such as the publisher identity that owns the post, the correctable error is `AUTHORIZATION_REQUIRED`. New implementations should include `error.details.missing_connections[]` so the caller can send a human through the correct connections flow and retry after authorization is restored.
 
 ### Assignments structure
 
@@ -219,7 +231,7 @@ The final per-creative `creatives` array lands on the task completion artifact, 
 - All request fields
 - `platform_id` - Platform's internal ID (when `action` is not `failed`)
 - `action` - Lifecycle operation performed by this sync: `created`, `updated`, `unchanged`, `failed`, `deleted`
-- `status` - **Advisory** review-lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/v3/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `rejected`, `archived`. A UI hint and polling-scheduling signal — **not** a spend-authorization gate. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Values come from `CreativeStatus` only, never from `CreativeAction` (never put `created`/`updated`/`failed` in `status`). Sellers with async review return `processing` or `pending_review`; sellers with synchronous review MAY return a terminal value (`approved`/`rejected`). **Buyers MUST NOT gate downstream spend or package activation on `status: approved` from this response** — reconcile via `list_creatives` or a signed review webhook before committing spend. Authoritative state is always via `list_creatives`. **MUST be omitted** when `action` is `failed` or `deleted` — failed items have no meaningful review state (see `errors`); deleted items are gone from the library. The schema enforces the omission rule via a conditional constraint.
+- `status` - **Advisory** review-lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/v3/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `suspended`, `rejected`, `archived`. A UI hint and polling-scheduling signal — **not** a spend-authorization gate. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Values come from `CreativeStatus` only, never from `CreativeAction` (never put `created`/`updated`/`failed` in `status`). Sellers with async review return `processing` or `pending_review`; sellers with synchronous review MAY return a terminal value (`approved`/`rejected`) or `suspended` when a recoverable dependency/authorization gate prevents serving. **Buyers MUST NOT gate downstream spend or package activation on `status: approved` from this response** — reconcile via `list_creatives` or a signed review webhook before committing spend. Authoritative state is always via `list_creatives`. **MUST be omitted** when `action` is `failed` or `deleted` — failed items have no meaningful review state (see `errors`); deleted items are gone from the library. The schema enforces the omission rule via a conditional constraint.
 - `errors` - Array of error messages (only when `action: "failed"`)
 - `warnings` - Array of non-fatal warnings (optional)
 

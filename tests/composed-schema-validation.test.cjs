@@ -197,7 +197,150 @@ async function runTests() {
 
   log('');
 
-  // Test 3: Create Media Buy Request with reporting_webhook (allOf with push-notification-config.json)
+  // Test 3: Open-bound hosted durations through product format options
+  log('Hosted Duration Schemas:', 'info');
+  await testSchemaValidation(
+    '/schemas/core/product.json',
+    {
+      product_id: 'shopgrid_hosted_duration_video',
+      name: 'ShopGrid Hosted Duration Video',
+      description: 'Retail media video inventory with open-bound hosted duration constraints.',
+      publisher_properties: [
+        {
+          publisher_domain: 'shopgrid.example',
+          selection_type: 'by_id',
+          property_ids: ['shopgrid_owned_site']
+        }
+      ],
+      channels: ['retail_media'],
+      format_options: [
+        {
+          format_kind: 'video_hosted',
+          params: {
+            orientation: 'vertical',
+            duration_ms_range: [null, 30000],
+            video_codecs: ['h264'],
+            audio_codecs: ['aac'],
+            containers: ['mp4']
+          }
+        },
+        {
+          format_kind: 'audio_hosted',
+          params: {
+            duration_ms_range: [15000, null],
+            audio_codecs: ['mp3']
+          }
+        }
+      ],
+      delivery_type: 'non_guaranteed',
+      pricing_options: [
+        {
+          pricing_option_id: 'network_cpm',
+          pricing_model: 'cpm',
+          currency: 'USD'
+        }
+      ],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions', 'spend'],
+        date_range_support: 'date_range'
+      }
+    },
+    'Product accepts hosted open-bound duration ranges'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/product.json',
+    {
+      product_id: 'shopgrid_duration_precedence_video',
+      name: 'ShopGrid Duration Precedence Video',
+      description: 'Retail media video inventory declaring exact duration precedence over a broader range.',
+      publisher_properties: [
+        {
+          publisher_domain: 'shopgrid.example',
+          selection_type: 'by_id',
+          property_ids: ['shopgrid_owned_site']
+        }
+      ],
+      channels: ['retail_media'],
+      format_options: [
+        {
+          format_kind: 'video_hosted',
+          params: {
+            duration_ms_exact: 30000,
+            duration_ms_range: [null, 60000]
+          }
+        }
+      ],
+      delivery_type: 'non_guaranteed',
+      pricing_options: [
+        {
+          pricing_option_id: 'network_cpm',
+          pricing_model: 'cpm',
+          currency: 'USD'
+        }
+      ],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions', 'spend'],
+        date_range_support: 'date_range'
+      }
+    },
+    'Product accepts exact duration plus range for precedence handling'
+  );
+
+  const unboundedBothSidesProduct = {
+    product_id: 'shopgrid_invalid_duration',
+    name: 'ShopGrid Invalid Duration',
+    description: 'Invalid retail media video inventory.',
+    publisher_properties: [
+      {
+        publisher_domain: 'shopgrid.example',
+        selection_type: 'by_id',
+        property_ids: ['shopgrid_owned_site']
+      }
+    ],
+    channels: ['retail_media'],
+    format_options: [
+      {
+        format_kind: 'video_hosted',
+        params: {
+          duration_ms_range: [null, null]
+        }
+      }
+    ],
+    delivery_type: 'non_guaranteed',
+    pricing_options: [
+      {
+        pricing_option_id: 'network_cpm',
+        pricing_model: 'cpm',
+        currency: 'USD'
+      }
+    ],
+    reporting_capabilities: {
+      available_reporting_frequencies: ['daily'],
+      expected_delay_minutes: 240,
+      timezone: 'UTC',
+      supports_webhooks: false,
+      available_metrics: ['impressions', 'spend'],
+      date_range_support: 'date_range'
+    }
+  };
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    unboundedBothSidesProduct,
+    'Product rejects hosted duration_ms_range with both endpoints null'
+  );
+
+  log('');
+
+  // Test 4: Create Media Buy Request with reporting_webhook (allOf with push-notification-config.json)
   log('Create Media Buy Request Schema (reporting_webhook field):', 'info');
   await testSchemaValidation(
     '/schemas/media-buy/create-media-buy-request.json',
@@ -273,7 +416,7 @@ async function runTests() {
 
   log('');
 
-  // Test 4: Get Media Buy Delivery Response (allOf with delivery-metrics.json)
+  // Test 5: Get Media Buy Delivery Response (allOf with delivery-metrics.json)
   log('Get Media Buy Delivery Response Schema (allOf with delivery-metrics.json):', 'info');
   const deliveryResponseWithBreakdowns = {
     status: 'completed',
@@ -526,7 +669,7 @@ async function runTests() {
 
   log('');
 
-  // Test 5: Envelope `replayed` field on mutating response roots (#2839)
+  // Test 6: Envelope `replayed` field on mutating response roots (#2839)
   // The seller's idempotency layer injects `replayed` into the response envelope at
   // replay time. Every mutating response root must accept it — either by declaring
   // the property or by keeping `additionalProperties` open at the root.
@@ -1247,6 +1390,51 @@ async function runTests() {
     },
     'get_signals request rejects unknown signal fields'
   );
+  await testSchemaValidation(
+    '/schemas/signals/get-signals-async-response-submitted.json',
+    {
+      status: 'submitted',
+      task_id: 'task_signal_discovery_001',
+      message: 'Provider discovery queued'
+    },
+    'get_signals submitted async envelope validates'
+  );
+  await testSchemaValidation(
+    '/schemas/signals/get-signals-async-response-working.json',
+    {
+      percentage: 40,
+      current_step: 'querying_providers',
+      step_number: 2,
+      total_steps: 5
+    },
+    'get_signals working async progress validates'
+  );
+  await testSchemaValidation(
+    '/schemas/signals/get-signals-response.json',
+    {
+      status: 'failed',
+      errors: [
+        {
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Signal provider did not respond before the task deadline'
+        }
+      ]
+    },
+    'get_signals failed completion does not require signals or cache_scope'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/get-products-response.json',
+    {
+      status: 'failed',
+      errors: [
+        {
+          code: 'INVENTORY_UNAVAILABLE',
+          message: 'Inventory provider did not respond before the task deadline'
+        }
+      ]
+    },
+    'get_products failed completion does not require products or cache_scope'
+  );
   log('');
 
   // Product `publisher_properties` rejects `publisher_domains[]` compact form (#4508):
@@ -1596,7 +1784,7 @@ async function runTests() {
   );
   log('');
 
-  // Test 6: Bundled schemas (no $ref resolution needed)
+  // Test 7: Bundled schemas (no $ref resolution needed)
   // Only test against latest/ — versioned dirs in dist/ may be from a prior release
   // and are not updated on every source change.
   const BUNDLED_DIR = path.join(__dirname, '../dist/schemas');

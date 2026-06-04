@@ -74,7 +74,12 @@
     "PROGRAM_ID",
     "DESTINATION_ID",
     "CREATIVE_VARIANT_ID",
-    "APP_ITEM_ID"
+    "APP_ITEM_ID",
+    "ITEM_NAME",
+    "ITEM_DESCRIPTION",
+    "ITEM_TAGLINE",
+    "ITEM_PRICE",
+    "ITEM_PRICE_CURRENCY"
   ],
   "enumDescriptions": {
     "MEDIA_BUY_ID": "AdCP media buy identifier",
@@ -146,6 +151,11 @@
     "PROGRAM_ID": "Education program identifier for the catalog item being rendered",
     "DESTINATION_ID": "Travel destination identifier for the catalog item being rendered",
     "CREATIVE_VARIANT_ID": "Seller-assigned creative variant identifier, passed through at serve time",
-    "APP_ITEM_ID": "Mobile app identifier for the catalog item being rendered"
+    "APP_ITEM_ID": "Mobile app identifier for the catalog item being rendered",
+    "ITEM_NAME": "Name/title of the catalog item being rendered (catalog_field: name). Catalog content macro — scalar text value substituted under the catalog-item substitution-safety rules.",
+    "ITEM_DESCRIPTION": "Description of the catalog item being rendered (catalog_field: description). Catalog content macro — scalar text value substituted under the catalog-item substitution-safety rules.",
+    "ITEM_TAGLINE": "Short promotional tagline of the catalog item being rendered (catalog_field: tagline). Catalog content macro — scalar text value substituted under the catalog-item substitution-safety rules.",
+    "ITEM_PRICE": "Price amount of the catalog item being rendered (catalog_field: price.amount). Catalog content macro — scalar text value substituted under the catalog-item substitution-safety rules.",
+    "ITEM_PRICE_CURRENCY": "ISO 4217 currency code of the catalog item being rendered (catalog_field: price.currency). Catalog content macro — scalar text value substituted under the catalog-item substitution-safety rules."
   }
 }

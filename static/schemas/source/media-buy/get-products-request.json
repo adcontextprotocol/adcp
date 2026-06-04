@@ -191,6 +191,8 @@
           "publisher_properties",
           "channels",
           "video_placement_types",
+          "sponsored_placement_types",
+          "social_placement_surfaces",
           "format_ids",
           "format_options",
           "placements",
@@ -231,6 +233,10 @@
         }
       ],
       "description": "Maximum time the buyer will commit to this request. The seller returns the best results achievable within this budget and does not start processes (human approvals, expensive external queries) that cannot complete in time. When omitted, the seller decides timing."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/core/push-notification-config.json",
+      "description": "Optional webhook configuration for async terminal completion/failure notifications on curated discovery. Meaningful only for `buying_mode: \"brief\"` and `buying_mode: \"refine\"` requests that enter the async lifecycle. Submitted envelopes with `task_id` remain pollable through `get_task_status` (legacy `tasks/get`) whether or not this field is present. If a brief/refine request includes this field and the seller returns a Submitted envelope, the seller MUST deliver at least the terminal completion/failure notification to the configured URL; intermediate progress notifications are MAY. If the seller cannot honor the webhook channel, it MUST reject the request with a structured error instead of silently accepting. This field does not change wholesale timing semantics: sellers MUST NOT route `buying_mode: \"wholesale\"` requests through the async/Submitted arm or emit async delivery solely because `push_notification_config` is present; partial wholesale completion is reported via `incomplete[]`."
     },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"

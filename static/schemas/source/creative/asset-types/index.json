@@ -4,7 +4,7 @@
   "title": "AdCP Asset Type Registry",
   "description": "Registry of asset types used in AdCP creative manifests. Each asset type defines the structure of actual content payloads (what you send), not requirements or constraints (which belong in format specifications).",
   "version": "1.0.0",
-  "lastUpdated": "2026-02-28",
+  "lastUpdated": "2026-06-02",
   "asset_types": {
     "image": {
       "description": "Static image asset (JPG, PNG, GIF, WebP, SVG)",
@@ -95,6 +95,11 @@
       "description": "Typed data feed (products, stores, jobs, etc.)",
       "schema": "/schemas/core/assets/catalog-asset.json",
       "typical_use": "Product catalogs, store locators, job feeds for dynamic creatives"
+    },
+    "published_post": {
+      "description": "Reference to an already-published post on a publisher, creator, or social platform",
+      "schema": "/schemas/core/assets/published-post-asset.json",
+      "typical_use": "Boosted or sponsored post references where the buyer sends the existing post URL or platform post ID and the seller verifies authorization before serving"
     },
     "card": {
       "description": "Single card in a multi-card creative — image_carousel `cards` slot element",

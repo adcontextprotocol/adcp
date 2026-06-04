@@ -155,6 +155,20 @@ const __dirname = path.dirname(__filename);
 const logger = createLogger('http-server');
 
 /**
+ * Consecutive failed DB health probes on this machine. A single transient
+ * connect timeout — common during a rolling deploy or a Managed Postgres
+ * failover, when the direct endpoint briefly stops accepting connections —
+ * should not page #admin-errors. We only escalate (Slack + error-level log)
+ * once the database has been unreachable across HEALTH_DB_ALERT_THRESHOLD
+ * consecutive probes. At Fly's 15s probe interval that is ~45s of sustained
+ * unreachability, which is a real outage rather than deploy-window noise.
+ * The 503 response is unaffected: every failed probe still pulls the machine
+ * out of the load balancer immediately.
+ */
+let consecutiveDbHealthFailures = 0;
+const HEALTH_DB_ALERT_THRESHOLD = 3;
+
+/**
  * Validate slug format and check against reserved keywords
  */
 function isValidSlug(slug: string): boolean {
@@ -572,6 +586,11 @@ async function getUserFromRequest(
   }
 
   return null;
+}
+
+function stripLegacyBrandContext(manifest: Record<string, unknown>): Record<string, unknown> {
+  const { brand_context: _brandContext, ...publicManifest } = manifest;
+  return publicManifest;
 }
 
 export class HTTPServer {
@@ -1136,10 +1155,11 @@ export class HTTPServer {
         }
 
         const schemaUrl = 'https://adcontextprotocol.org/schemas/v3/brand.json';
+        const publicManifest = stripLegacyBrandContext(manifest);
         const brandJson: Record<string, unknown> =
-          typeof manifest.$schema === 'string' && manifest.$schema.startsWith('https://')
-            ? { ...manifest }
-            : { $schema: schemaUrl, ...manifest };
+          typeof publicManifest.$schema === 'string' && publicManifest.$schema.startsWith('https://')
+            ? { ...publicManifest }
+            : { $schema: schemaUrl, ...publicManifest };
 
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Cache-Control', 'public, max-age=300');
@@ -2243,15 +2263,32 @@ export class HTTPServer {
         // succeed even when the pool is fully occupied under load.
         await healthCheck(5000);
         checks.database = true;
+        consecutiveDbHealthFailures = 0;
       } catch (dbErr) {
         checks.database = false;
         const errMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
-        logger.error({ err: dbErr }, 'Database health check failed');
-        notifySystemError({
-          source: 'health-check',
-          errorMessage: `Database health check failed: ${errMsg}`,
-        });
+        consecutiveDbHealthFailures++;
         dbError = errMsg;
+
+        // Debounce alerting: a single transient connect timeout during a
+        // rolling deploy or Postgres failover is not an outage. Escalate to
+        // Slack (and error-level logs, which PostHog forwards as alerts) only
+        // after the DB has been unreachable across several consecutive probes.
+        if (consecutiveDbHealthFailures >= HEALTH_DB_ALERT_THRESHOLD) {
+          logger.error(
+            { err: dbErr, consecutiveFailures: consecutiveDbHealthFailures },
+            'Database health check failed',
+          );
+          notifySystemError({
+            source: 'health-check',
+            errorMessage: `Database health check failed (${consecutiveDbHealthFailures} consecutive): ${errMsg}`,
+          });
+        } else {
+          logger.warn(
+            { err: dbErr, consecutiveFailures: consecutiveDbHealthFailures },
+            'Database health check failed (transient, not yet alerting)',
+          );
+        }
       }
 
       checks.addie = isAddieBoltReady();
@@ -3035,7 +3072,7 @@ export class HTTPServer {
           editable: true,
           source_type: brand.source_type,
           brand_name: brand.brand_name,
-          brand_manifest: brand.brand_manifest,
+          brand_manifest: stripLegacyBrandContext((brand.brand_manifest as Record<string, unknown>) || {}),
           house_domain: brand.house_domain,
           keller_type: brand.keller_type,
         });

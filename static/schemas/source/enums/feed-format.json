@@ -2,13 +2,26 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/feed-format.json",
   "title": "Feed Format",
-  "description": "Catalog feed formats. Determines how the platform parses items from an external feed URL.",
+  "description": "Catalog feed formats. Determines how the platform (seller) parses items from an external feed URL. Each named value is an externally-documented feed specification a seller parses natively without buyer-supplied feed_field_mappings; values are vendor spec names (proper nouns), not semantic categories. Use `custom` + feed_field_mappings for any feed whose shape is not one of the named formats.",
   "type": "string",
   "enum": [
     "google_merchant_center",
     "facebook_catalog",
     "shopify",
     "linkedin_jobs",
+    "tiktok_shop",
+    "pinterest_catalog",
+    "openai_product_feed",
     "custom"
-  ]
+  ],
+  "enumDescriptions": {
+    "google_merchant_center": "Google Merchant Center / Google Shopping product data specification — the de-facto e-commerce product-feed lingua franca that the other named commerce formats derive from.",
+    "facebook_catalog": "Meta (Facebook / Instagram) product catalog feed — a Google-Merchant-Center-derived dialect, the closest clone of the GMC field set.",
+    "shopify": "Shopify product feed export.",
+    "linkedin_jobs": "LinkedIn job-posting feed (XML).",
+    "tiktok_shop": "TikTok Shop product catalog feed — a GMC-derived dialect with material deltas (sku_id as the primary identifier rather than id, and a first-class video_link) that a GMC parser keyed on id would mis-parse.",
+    "pinterest_catalog": "Pinterest product catalog feed — a GMC-derived dialect with stricter serialization (composite-encoded price and shipping, a mandatory google_product_category, space-delimited availability enums) that a strict GMC parser would mis-handle.",
+    "openai_product_feed": "OpenAI Commerce product feed for ChatGPT shopping — a GMC-derived dialect adding ChatGPT-specific eligibility flags (is_eligible_search / is_eligible_checkout / is_eligible_ads). Spec: https://developers.openai.com/commerce/specs/file-upload/products",
+    "custom": "A feed whose shape is not one of the named formats above. The buyer MUST supply feed_field_mappings to normalize it to the AdCP catalog item schema."
+  }
 }

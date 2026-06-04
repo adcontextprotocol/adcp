@@ -16,10 +16,16 @@
     },
     "duration_ms_range": {
       "type": "array",
-      "items": { "type": "integer", "minimum": 0 },
+      "items": {
+        "anyOf": [
+          { "type": "integer", "minimum": 0 },
+          { "type": "null" }
+        ]
+      },
       "minItems": 2,
       "maxItems": 2,
-      "description": "[min, max] duration in milliseconds. **Precedence**: `duration_ms_exact` takes precedence when both ship on the same product. SDKs SHOULD lint a warning when both fields ship."
+      "contains": { "type": "integer", "minimum": 0 },
+      "description": "[min, max] duration in milliseconds. Either endpoint MAY be null to express an unbounded side: [null, 60000] means up to 60s; [15000, null] means at least 15s. [null, null] is invalid because at least one endpoint must be bounded. **Precedence**: when both `duration_ms_exact` and `duration_ms_range` ship on the same product, `duration_ms_exact` takes precedence — buyers MUST validate against the exact value and ignore the range. SDKs SHOULD lint a warning when both fields ship; producers SHOULD pick one."
     },
     "duration_ms_exact": {
       "type": "integer",
@@ -55,9 +61,9 @@
     },
     "asset_source": {
       "type": "string",
-      "enum": ["buyer_uploaded", "publisher_host_recorded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized"],
+      "enum": ["buyer_uploaded", "publisher_host_recorded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized", "publisher_owned_reference"],
       "default": "buyer_uploaded",
-      "description": "Where the rendered audio bytes come from. Single shared enum across canonicals (see `image.json#asset_source` for the full semantics). `publisher_host_recorded`: the publisher's host records the audio (podcast host-read pattern); buyer must use the publisher's build_creative capability. This value is audio-specific."
+      "description": "Where the rendered audio bytes come from. Single shared enum across canonicals (see `image.json#asset_source` for the full semantics). `publisher_host_recorded`: the publisher's host records the audio (podcast host-read pattern); buyer must use the publisher's build_creative capability. `publisher_owned_reference` is valid only when the product accepts a reference asset whose publisher-owned source resolves to playable audio. `publisher_host_recorded` remains the normal audio-specific host-read value."
     },
     "buyer_asset_acceptance": {
       "type": "string",

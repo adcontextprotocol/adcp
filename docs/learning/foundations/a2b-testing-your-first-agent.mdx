@@ -153,7 +153,7 @@ curl -X POST https://test-agent.adcontextprotocol.org/mcp \
 |---|---|---|
 | `media_buy_id` + `status: "pending_creatives"` | Buy confirmed; attach creatives | Go to Step 4 |
 | `media_buy_id` + `status: "pending_start"` or `"active"` | Buy confirmed and ready | Creatives already attached or not required |
-| `status: "submitted"` + `task_id` | Buy queued for async processing | Poll `tasks/get` with `task_id` (see [Async polling](#async-polling) below) |
+| `status: "submitted"` + `task_id` | Buy queued for async processing | Poll the AdCP task with `task_id` (see [Async polling](#async-polling) below) |
 | `errors[]` present, no `media_buy_id` | Rejected — read `errors[0].code` | Fix the request and retry with a new `idempotency_key` |
 
 ### Step 4 — Attach creatives
@@ -237,17 +237,20 @@ curl -X POST https://test-agent.adcontextprotocol.org/mcp \
   -H "mcp-session-id: <session-id>" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "tasks/get",
-    "params": { "task_id": "<task-id-from-create>", "include_result": true },
+    "method": "tools/call",
+    "params": {
+      "name": "get_task_status",
+      "arguments": { "task_id": "<task-id-from-create>", "include_result": true }
+    },
     "id": 6
   }'
 ```
 
 <Note>
-`tasks/get` is an MCP protocol-level method, not an AdCP tool — it uses `"method": "tasks/get"` directly rather than the `"method": "tools/call"` + `"name": "..."` pattern used for AdCP tasks. It is auto-registered by the MCP SDK alongside `tasks/result`, `tasks/list`, and `tasks/cancel`.
+`get_task_status` is an AdCP application-layer task polling tool. In 3.x, sellers that do not advertise this alias still expose the legacy AdCP `tasks/get` surface with the same snake_case payload. Do not confuse either AdCP polling surface with transport-native MCP/A2A `tasks/*` methods, which use their own task wire shapes.
 </Note>
 
-Poll every 2–5 seconds. When `task.status` is `completed`, the `result` field contains the full `create_media_buy` response with `media_buy_id`. See the [Task lifecycle](/docs/building/implementation/task-lifecycle) doc for all MCP task status values.
+Poll every 2–5 seconds. When the AdCP task `status` is `completed`, the `result` field contains the full `create_media_buy` response with `media_buy_id`. See the [Task lifecycle](/docs/building/by-layer/L3/task-lifecycle) doc for all AdCP task status values.
 
 ## Common errors
 
@@ -256,7 +259,7 @@ Poll every 2–5 seconds. When `task.status` is `completed`, the `result` field 
 | HTTP 401 / `error: "invalid_token"` | Expired or wrong API key | Reissue the token from your dashboard; confirm the `Bearer` prefix |
 | HTTP 401 / `error: "invalid_request"` | `Authorization` header missing | Add `-H "Authorization: Bearer <token>"` to every call |
 | `errors[]` in body, no `media_buy_id` | Schema validation failure | Read `errors[0].field` and `errors[0].code`; fix the field and retry with a **new** `idempotency_key` |
-| `status: "submitted"` stays indefinitely | Async task stalled | Check `task.status` via `tasks/get`; if `failed`, read `task.error.message` for the rejection reason |
+| `status: "submitted"` stays indefinitely | Async task stalled | Check AdCP task status via `get_task_status` or legacy `tasks/get`; if `failed`, read the task error for the rejection reason |
 | `mcp-session-id: invalid` error | Session expired or header missing | Re-run Step 1 to get a fresh session ID |
 
 ## Assessment

@@ -27,7 +27,7 @@ import {
   hostedAuthProbeTaskForProfile,
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
-  selectHostedComplianceTargetForProfile,
+  selectCanonicalHostedComplianceTargetForProfile,
 } from "../services/hosted-compliance-version.js";
 import {
   comply,
@@ -95,7 +95,7 @@ import type { CrawlerService } from "../crawler.js";
 import type { CapabilityDiscovery } from "../capabilities.js";
 import { aaoHostedBrandJsonUrl, aaoHostedAdagentsJsonUrl, expectedAdagentsJsonUrl } from "../config/aao.js";
 import { canonicalTargetUri } from "@adcp/sdk/signing";
-import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "../services/brandfetch.js";
+import { fetchBrandContext, fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "../services/brandfetch.js";
 import { extractPublisherPropertiesFromBrandJson } from "../services/brand-json-properties.js";
 import { syncHostedPropertyToFederatedIndex } from "../services/hosted-property-sync.js";
 import { verifyHostedPropertyOrigin } from "../services/hosted-property-origin-verifier.js";
@@ -449,16 +449,62 @@ registry.registerPath({
   },
 });
 
+const EnrichBrandManifestSchema = z.object({
+  name: z.string(),
+  url: z.string(),
+  description: z.string().optional(),
+  logos: z.array(z.object({
+    url: z.string(),
+    tags: z.array(z.string()),
+  })).optional(),
+  colors: z.object({
+    primary: z.string().optional(),
+    secondary: z.string().optional(),
+    accent: z.string().optional(),
+  }).passthrough().optional(),
+  fonts: z.array(z.object({
+    name: z.string(),
+    role: z.string(),
+  }).passthrough()).optional(),
+  company: z.object({
+    name: z.string().optional(),
+    industry: z.string().optional(),
+    industries: z.array(z.string()).optional(),
+    employees: z.string().optional(),
+    founded: z.number().optional(),
+    location: z.string().optional(),
+  }).passthrough().optional(),
+}).passthrough();
+
+const EnrichBrandResponseSchema = z.object({
+  success: z.literal(true),
+  domain: z.string(),
+  cached: z.boolean(),
+  manifest: EnrichBrandManifestSchema.optional(),
+  company: EnrichBrandManifestSchema.shape.company.optional(),
+  source_type: z.enum(["brand_json", "community", "enriched"]).optional(),
+  context: z.object({}).passthrough().optional(),
+  context_source: z.literal("brandfetch").optional(),
+  context_scope: z.literal("ephemeral").optional(),
+  context_error: z.string().optional(),
+});
+
+function stripLegacyBrandContext(manifest: unknown): Record<string, unknown> | undefined {
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) return undefined;
+  const { brand_context: _brandContext, ...publicManifest } = manifest as Record<string, unknown>;
+  return publicManifest;
+}
+
 registry.registerPath({
   method: "get",
   path: "/api/brands/enrich",
   operationId: "enrichBrand",
   summary: "Enrich brand",
-  description: "Enrich brand data using Brandfetch. Returns logo, colors, and company information.",
+  description: "Enrich brand data using Brandfetch. Returns logo, colors, and company information. Authenticated callers may also receive ephemeral Brand Context API identity/positioning/voice data.",
   tags: ["Brand Resolution"],
   request: { query: z.object({ domain: z.string().openapi({ example: "acmecorp.com" }) }) },
   responses: {
-    200: { description: "Enrichment data from Brandfetch", content: { "application/json": { schema: z.object({}).passthrough() } } },
+    200: { description: "Enrichment data from Brandfetch", content: { "application/json": { schema: EnrichBrandResponseSchema } } },
     503: { description: "Brandfetch not configured", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -3261,7 +3307,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             canonical_domain: discovered.canonical_domain || discovered.domain,
             brand_name: discovered.brand_name,
             source: discovered.source_type,
-            brand_manifest: discovered.brand_manifest,
+            brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
           });
         }
         registryRequestsDb
@@ -3375,7 +3421,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // Serve from DB — single brands table
       const brand = await brandDb.getDiscoveredBrandByDomain(domain);
       if (brand && brand.is_public !== false) {
-        const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
+        const manifest = stripLegacyBrandContext(brand.brand_manifest) || {};
         const data = { name: brand.brand_name || domain, ...manifest };
         const enrichedData = await enrichBrandDataWithVerification(data);
 
@@ -3411,7 +3457,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.get("/brands/enrich", async (req, res) => {
+  router.get("/brands/enrich", optAuth, async (req, res) => {
     try {
       const rawDomain = req.query.domain as string;
       if (!rawDomain) {
@@ -3419,13 +3465,29 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
 
       const domain = extractDomain(rawDomain);
+      const includeContext = !!req.user || (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
 
       // Return cached enrichment if still fresh (avoids Brandfetch API cost)
       const existing = await brandDb.getDiscoveredBrandByDomain(domain);
       if (existing?.has_brand_manifest && existing.brand_manifest && existing.last_validated) {
         const ageMs = Date.now() - new Date(existing.last_validated).getTime();
+        const manifest = stripLegacyBrandContext(existing.brand_manifest) || {};
+        const company = (manifest as { company?: unknown }).company;
         if (ageMs < ENRICHMENT_CACHE_MAX_AGE_MS) {
-          return res.json({ success: true, domain: existing.domain, cached: true, manifest: existing.brand_manifest });
+          const contextResult = includeContext && isBrandfetchConfigured()
+            ? await fetchBrandContext(domain)
+            : undefined;
+          const hasContext = contextResult?.success && contextResult.context;
+          return res.json({
+            success: true,
+            domain: existing.domain,
+            cached: true,
+            manifest,
+            ...(company ? { company } : {}),
+            source_type: existing.source_type,
+            ...(hasContext ? { context: contextResult.context, context_source: 'brandfetch', context_scope: 'ephemeral' } : {}),
+            ...(contextResult && !contextResult.success ? { context_error: contextResult.error } : {}),
+          });
         }
       }
 
@@ -3433,17 +3495,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(503).json({ error: "Brandfetch not configured" });
       }
 
-      const enrichment = await fetchBrandData(domain);
+      const enrichment = await fetchBrandData(domain, { includeContext });
 
       if (!enrichment.success) {
         return res.status(404).json({ error: enrichment.error, domain });
       }
 
-      if (enrichment.manifest) {
-        brandDb.upsertDiscoveredBrand({
-          domain: enrichment.domain,
-          brand_name: enrichment.manifest.name,
-          brand_manifest: {
+      const manifest = enrichment.manifest
+        ? {
             name: enrichment.manifest.name,
             url: enrichment.manifest.url,
             description: enrichment.manifest.description,
@@ -3451,13 +3510,33 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             colors: enrichment.manifest.colors,
             fonts: enrichment.manifest.fonts,
             ...(enrichment.company ? { company: enrichment.company } : {}),
-          },
+          }
+        : undefined;
+      const sourceType = enrichment.raw
+        ? (enrichment.highQuality !== false ? 'enriched' : 'community')
+        : undefined;
+
+      if (enrichment.raw && enrichment.manifest) {
+        const persistedSourceType = enrichment.highQuality !== false ? 'enriched' : 'community';
+        brandDb.upsertDiscoveredBrand({
+          domain: enrichment.domain,
+          brand_name: enrichment.manifest.name,
+          brand_manifest: manifest,
           has_brand_manifest: true,
-          source_type: 'enriched',
+          source_type: persistedSourceType,
         }).catch((err) => logger.warn({ err, domain }, 'Failed to save enrichment result'));
       }
 
-      return res.json({ success: true, domain: enrichment.domain, cached: false, manifest: enrichment.manifest, company: enrichment.company });
+      return res.json({
+        success: true,
+        domain: enrichment.domain,
+        cached: false,
+        manifest,
+        ...(enrichment.company ? { company: enrichment.company } : {}),
+        ...(sourceType ? { source_type: sourceType } : {}),
+        ...(includeContext && enrichment.context ? { context: enrichment.context, context_source: 'brandfetch', context_scope: 'ephemeral' } : {}),
+        ...(includeContext && enrichment.contextError ? { context_error: enrichment.contextError } : {}),
+      });
     } catch (error) {
       logger.error({ error }, "Failed to enrich brand");
       return res.status(500).json({ error: "Failed to enrich brand" });
@@ -3504,7 +3583,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
                   canonical_domain: discovered.canonical_domain || discovered.domain,
                   brand_name: discovered.brand_name,
                   source: discovered.source_type,
-                  brand_manifest: discovered.brand_manifest,
+                  brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
                 },
               };
             }
@@ -4546,6 +4625,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
                 adcp_version: cs.adcp_version ?? null,
                 lifecycle_stage: cs.lifecycle_stage,
                 tracks: cs.tracks_summary_json || {},
+                track_details: cs.track_details_json || [],
                 streak_days: cs.streak_days,
                 last_checked_at: cs.last_checked_at?.toISOString() || null,
                 headline: cs.headline,
@@ -4748,6 +4828,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         lifecycle_stage: metadata?.lifecycle_stage || "production",
         compliance_opt_out: metadata?.compliance_opt_out ?? false,
         tracks: status.tracks_summary_json || {},
+        track_details: status.track_details_json || [],
         streak_days: status.streak_days,
         last_checked_at: status.last_checked_at?.toISOString() || null,
         last_passed_at: status.last_passed_at?.toISOString() || null,
@@ -6233,7 +6314,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       const supportedProtocols = profile?.supported_protocols ?? [];
       const specialisms = profile?.specialisms ?? [];
-      const runTarget = selectHostedComplianceTargetForProfile(profile, complianceTarget);
+      const runTarget = selectCanonicalHostedComplianceTargetForProfile(profile, complianceTarget);
       const runOptions = hostedComplianceOptions(runTarget);
 
       let resolved;
@@ -6367,6 +6448,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             ...(sdkAuth && { auth: sdkAuth }),
           },
           complianceTarget,
+          'canonical',
         );
         const runOptions = hostedComplianceOptions(runTarget);
         const storyboard = getComplianceStoryboardById(req.params.storyboardId, runOptions);
@@ -6632,7 +6714,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           storyboards: storyboardIds,
           ...(sdkAuth && { auth: sdkAuth }),
         };
-        const runTarget = await selectComplianceTargetForAgent(agentUrl, userComplyOptions, complianceTarget);
+        const runTarget = await selectComplianceTargetForAgent(agentUrl, userComplyOptions, complianceTarget, 'canonical');
         const storyboard = getComplianceStoryboardById(req.params.storyboardId, hostedComplianceOptions(runTarget));
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });

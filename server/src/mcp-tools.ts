@@ -1321,6 +1321,7 @@ export class MCPToolHandler {
         const existingBrand = await brandDb.getDiscoveredBrandByDomain(enrichDomain);
         if (existingBrand?.has_brand_manifest && existingBrand.brand_manifest && existingBrand.last_validated) {
           const ageMs = Date.now() - new Date(existingBrand.last_validated).getTime();
+          const { brand_context: _brandContext, ...manifest } = existingBrand.brand_manifest as Record<string, unknown>;
           if (ageMs < ENRICHMENT_CACHE_MAX_AGE_MS) {
             return {
               content: [
@@ -1333,8 +1334,8 @@ export class MCPToolHandler {
                       success: true,
                       domain: existingBrand.domain,
                       cached: true,
-                      manifest: existingBrand.brand_manifest,
-                      source: "enriched",
+                      manifest,
+                      source_type: existingBrand.source_type,
                       enrichment_provider: "brandfetch",
                     }, null, 2),
                   },
@@ -1365,22 +1366,28 @@ export class MCPToolHandler {
 
         const enrichment = await fetchBrandData(enrichDomain);
 
-        // Save enrichment to DB for future cache hits
-        if (enrichment.success && enrichment.manifest) {
-          brandDb.upsertDiscoveredBrand({
-            domain: enrichment.domain,
-            brand_name: enrichment.manifest.name,
-            brand_manifest: {
+        const manifest = enrichment.manifest
+          ? {
               name: enrichment.manifest.name,
               url: enrichment.manifest.url,
               description: enrichment.manifest.description,
               logos: enrichment.manifest.logos,
               colors: enrichment.manifest.colors,
               fonts: enrichment.manifest.fonts,
+              tone: enrichment.manifest.tone,
               ...(enrichment.company ? { company: enrichment.company } : {}),
-            },
+            }
+          : undefined;
+        const sourceType = enrichment.highQuality !== false ? 'enriched' : 'community';
+
+        // Save enrichment to DB for future cache hits
+        if (enrichment.success && enrichment.manifest) {
+          brandDb.upsertDiscoveredBrand({
+            domain: enrichment.domain,
+            brand_name: enrichment.manifest.name,
+            brand_manifest: manifest,
             has_brand_manifest: true,
-            source_type: 'enriched',
+            source_type: sourceType,
           }).catch((err) => {
             logger.warn({ err, domain: enrichDomain }, 'Failed to cache enrichment result');
           });
@@ -1394,8 +1401,12 @@ export class MCPToolHandler {
                 uri: `brand://enrichment/${encodeURIComponent(enrichDomain)}`,
                 mimeType: "application/json",
                 text: JSON.stringify({
-                  ...enrichment,
-                  source: "enriched",
+                  success: enrichment.success,
+                  domain: enrichment.domain,
+                  cached: false,
+                  ...(enrichment.error ? { error: enrichment.error } : {}),
+                  ...(manifest ? { manifest } : {}),
+                  source_type: enrichment.success ? sourceType : undefined,
                   enrichment_provider: "brandfetch",
                 }, null, 2),
               },

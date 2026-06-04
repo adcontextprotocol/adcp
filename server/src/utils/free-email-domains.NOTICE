@@ -1,0 +1,14 @@
+free-email-domains snapshot
+
+Source: npm:free-email-domains@1.9.16
+Source command: npm pack free-email-domains@1.9.16
+Tarball SHA-256: 8d264c9880e09cf84fb340385ebb3a6ea48340723258d212a43220e528429973
+domains.json SHA-256: aebab741273c2639623cdb78f6908e83fb92b102c700b84ea2b1fec6f7a4d790
+Entries: 10525
+License: MIT
+License file SHA-256: fd7dfd4301e4377aa912ef30758f99d760f24b4ec86e1852a1ce3bce35754e3f
+
+This file vendors the domains.json included in the published npm tarball.
+It intentionally does not run the package postinstall script, because that script
+fetches mutable third-party blocklists during npm install and can fail CI or
+change policy data outside review.

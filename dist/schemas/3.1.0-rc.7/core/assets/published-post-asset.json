@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.7/core/assets/published-post-asset.json",
+  "title": "Published Post Asset",
+  "description": "Reference to an already-published post on a publisher, creator, or social platform. The buyer supplies a reference to the existing post; the seller resolves, authorizes, reviews, and serves the referenced post according to the target product's format declaration. This asset is for post references, not uploaded bytes and not catalog rows.",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "published_post",
+      "description": "Discriminator identifying this as a published-post reference asset. See /schemas/creative/asset-types for the registry."
+    },
+    "post_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Canonical URL for the published post. Preferred when the platform exposes a stable public or authenticated URL."
+    },
+    "platform": {
+      "type": "string",
+      "description": "Optional platform or publisher namespace for the referenced post. Informational unless the seller's product declaration or platform extension narrows the accepted values."
+    },
+    "platform_post_id": {
+      "type": "string",
+      "description": "Optional platform-native post identifier when a URL alone is not stable or not available. Buyers SHOULD include `platform` when using `platform_post_id` without `post_url`, unless the product or format declaration already narrows the platform. Platform-specific identifier semantics belong in platform_extensions; this field is only an opaque reference."
+    },
+    "identity_ref": {
+      "type": "object",
+      "description": "Optional identity hint for the authoring handle/page/channel that owns the post. Sellers MUST verify authorization from platform state; buyers MUST NOT use this object as proof of authorization.",
+      "properties": {
+        "handle": {
+          "type": "string",
+          "description": "Human-readable handle or username when available."
+        },
+        "profile_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL for the authoring profile, page, or channel."
+        },
+        "platform_identity_id": {
+          "type": "string",
+          "description": "Opaque platform-native identity identifier."
+        }
+      },
+      "additionalProperties": true
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the referenced post was originally published, if known."
+    },
+    "reference_authorization": {
+      "type": "object",
+      "readOnly": true,
+      "description": "Server-emitted, seller-observed authorization state for the referenced post or identity. Sellers MAY return this object on read surfaces. On write requests, sellers MUST ignore buyer-supplied `reference_authorization.status` and other authorization-state claims unless a platform extension explicitly defines a signed proof shape and the seller verifies that proof.",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["authorized", "pending", "expired", "revoked", "not_required", "unknown"],
+          "description": "Current seller-observed authorization state. `authorized`: seller can serve the referenced post. `pending`: additional creator/account action is required. `expired` or `revoked`: authorization previously existed but no longer permits serving. `not_required`: the seller can legally and technically serve without a separate identity authorization. `unknown`: seller has not checked or cannot disclose the state."
+        },
+        "checked_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the seller last checked the authorization state."
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the authorization expires, if the platform exposes an expiry."
+        },
+        "authorization_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Optional URL the buyer or creator can use to complete authorization."
+        },
+        "authorization_instructions": {
+          "type": "string",
+          "description": "Human-readable instructions for completing or restoring authorization."
+        }
+      },
+      "required": ["status"],
+      "additionalProperties": true
+    },
+    "provenance": {
+      "$ref": "/schemas/3.1.0-rc.7/core/provenance.json",
+      "description": "Provenance metadata for this reference asset, overrides manifest-level provenance."
+    }
+  },
+  "required": [
+    "asset_type"
+  ],
+  "anyOf": [
+    { "required": ["post_url"] },
+    { "required": ["platform_post_id"] }
+  ],
+  "additionalProperties": true
+}

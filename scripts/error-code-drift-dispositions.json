@@ -1,6 +1,41 @@
 {
   "$comment": "Disposition registry for error codes that are present in the current source enum but absent from the 3.0.x maintenance branch. Read by scripts/lint-error-code-drift.cjs. Every code in the AHEAD set (main \\ 3.0.x) MUST have an entry here; codes missing from this file fail the lint. Policy: 3.0.x is wire-stable. Adding a new enum value is a wire change (a 3.0.x receiver decoding a 3.1 sender's error.code cannot match against an enum it doesn't carry, and JSON Schema enum is closed by default), so the default disposition for any new code is 'held-for-next-minor' with target_version='3.1'. 'held-for-next-major' (target_version='4.0') is for codes that should defer past 3.x \u2014 typically because the surrounding subsystem is being reworked. 'backport-pending' is reserved for prose-only or doc-comment-only changes to a code that already exists on 3.0.x; the lint rejects backport-pending entries whose code is not on 3.0.x. Valid `disposition` values: 'backport-pending', 'held-for-next-minor', 'held-for-next-major', 'unclassified'. `target_version` (required for held-*) is a 'MAJOR.MINOR' string. When a code lands on 3.0.x its entry SHOULD be removed; the lint flags stale entries.",
   "dispositions": {
+    "SIGNAL_TARGETING_INCOMPATIBLE": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Signal-driven creative fan-out (#5240/#5304) — reject-at-trafficking when a signal-built creative is assigned to a package with incompatible signal targeting. New 3.1 creative-fan-out surface; wire change — held for 3.1."
+    },
+    "EVALUATOR_AGENT_NOT_ACCEPTED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Creative-feature-oracle gate/rank pipeline (#5241/#5311) — off-allowlist evaluator agent_url rejection, mirroring PROVENANCE_VERIFIER_NOT_ACCEPTED for the get_creative_features-agent gate. New 3.1 creative surface; wire change — held for 3.1."
+    },
+    "CREATIVE_INACCESSIBLE": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "get_creative_features finalization — governance agent could not retrieve the creative_manifest assets for evaluation. Documented in get_creative_features.mdx error example but absent from the canonical enum; added to close the phantom as the task is promoted from 3.0 proposal to normative in 3.1 (#3456 enum-membership criterion). Wire change — held for 3.1."
+    },
+    "FEED_FETCH_FAILED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "sync_catalogs feed-ingestion error — platform could not fetch the catalog feed URL. Documented in sync_catalogs.mdx but absent from the canonical enum; added to close the phantom (#3456 follow-up). Wire change — held for 3.1."
+    },
+    "INVALID_FEED_FORMAT": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "sync_catalogs error — feed content does not match the declared feed_format. Documented in sync_catalogs.mdx but absent from the canonical enum; added to close the phantom (#3456 follow-up). Wire change — held for 3.1."
+    },
+    "ITEM_VALIDATION_FAILED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "sync_catalogs error — one or more catalog items failed schema validation (see item_issues). Documented in sync_catalogs.mdx but absent from the canonical enum; added to close the phantom (#3456 follow-up). Wire change — held for 3.1."
+    },
+    "CATALOG_LIMIT_EXCEEDED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "sync_catalogs error — account has reached its maximum catalog count. Documented in sync_catalogs.mdx but absent from the canonical enum; added to close the phantom (#3456 follow-up). Wire change — held for 3.1."
+    },
     "BUDGET_CAP_REACHED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
@@ -20,6 +55,11 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
       "note": "AUTH_REQUIRED split (#3739) — terminal-recovery half (credentials presented but rejected). Wire change — held for 3.1. Pairs with AUTH_MISSING."
+    },
+    "AUTHORIZATION_REQUIRED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Published-post reference creatives can require additional creator, identity, or post authorization before serving. Wire change — held for 3.1."
     },
     "AUTH_MISSING": {
       "disposition": "held-for-next-minor",

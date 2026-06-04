@@ -302,7 +302,7 @@ function applyToBrandJson(
   logoUrl: string | null | undefined,
   brandColor: string | null | undefined,
 ): Record<string, unknown> {
-  const bj = { ...source };
+  const { brand_context: _brandContext, ...bj } = source;
   const brands = (bj.brands as Array<Record<string, unknown>> | undefined) ?? [];
 
   let primaryBrand: Record<string, unknown>;
@@ -330,4 +330,3 @@ function applyToBrandJson(
   bj.brands = [primaryBrand, ...brands.slice(1)];
   return bj;
 }
-

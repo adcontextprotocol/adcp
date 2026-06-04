@@ -88,12 +88,16 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
     expect(out.tracks_partial).toBe(0);
   });
 
-  it('ignores skip tracks when deciding promotion', () => {
-    const result = makeResult([makeTrack('silent'), makeTrack('skip')], 'partial');
+  it('ignores empty skip tracks when deciding promotion', () => {
+    const result = makeResult([makeTrack('silent'), makeTrack('skip', 0)], 'partial');
     const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
 
     expect(out.overall_status).toBe('passing');
     expect(out.tracks_passed).toBe(1);
+    expect(out.tracks_json).toEqual([
+      expect.objectContaining({ track: 'core', has_coverage_gap_skip: false }),
+      expect.objectContaining({ track: 'governance', status: 'skip', has_coverage_gap_skip: false }),
+    ]);
   });
 
   it('does not promote when all tracks are skipped (no active tracks)', () => {
@@ -122,5 +126,86 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
     );
 
     expect(out.replace_storyboard_statuses).toBe(false);
+  });
+
+  it('preserves controller-gated reporting track as a skipped coverage gap', () => {
+    const result = makeResult([
+      {
+        track: 'reporting',
+        label: 'Reporting & Delivery',
+        status: 'skip',
+        duration_ms: 1000,
+        skipped_scenarios: [],
+        observations: [],
+        scenarios: [
+          {
+            scenario: 'delivery_reporting/requirement_unmet',
+            overall_passed: true,
+            steps: [
+              {
+                step: 'requirement_unmet:controller',
+                passed: true,
+                skipped: true,
+                skip_reason: 'missing_test_controller',
+                duration_ms: 0,
+              },
+            ],
+          },
+        ],
+      },
+    ] as any);
+    result.agent_profile = {
+      name: 'test-agent',
+      tools: ['get_media_buy_delivery'],
+      supported_protocols: ['media_buy'],
+    };
+
+    const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
+
+    expect(out.tracks_json).toEqual([
+      expect.objectContaining({ track: 'reporting', status: 'skip', has_coverage_gap_skip: true }),
+    ]);
+    expect(out.overall_status).toBe('partial');
+    expect(out.tracks_passed).toBe(0);
+    expect(out.tracks_skipped).toBe(1);
+  });
+
+  it('does not promote active clean tracks when reporting has controller-gated skips', () => {
+    const result = makeResult([
+      makeTrack('silent'),
+      {
+        track: 'reporting',
+        label: 'Reporting & Delivery',
+        status: 'skip',
+        duration_ms: 1000,
+        skipped_scenarios: [],
+        observations: [],
+        scenarios: [
+          {
+            scenario: 'delivery_reporting/requirement_unmet',
+            overall_passed: true,
+            steps: [
+              {
+                step: 'requirement_unmet:controller',
+                passed: true,
+                skipped: true,
+                skip_reason: 'missing_test_controller',
+                duration_ms: 0,
+              },
+            ],
+          },
+        ],
+      },
+    ] as any);
+
+    const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
+
+    expect(out.overall_status).toBe('partial');
+    expect(out.tracks_passed).toBe(1);
+    expect(out.tracks_skipped).toBe(1);
+    expect(out.tracks_json).toEqual([
+      expect.objectContaining({ track: 'core', has_coverage_gap_skip: false }),
+      expect.objectContaining({ track: 'reporting', status: 'skip', has_coverage_gap_skip: true }),
+    ]);
   });
 });

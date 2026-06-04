@@ -38,7 +38,7 @@
           },
           "signal_agent_segment_id": {
             "type": "string",
-            "description": "Opaque signal handle issued by this signal source. Pass this string verbatim to activate_signal.signal_agent_segment_id. For media-buy package signal targeting, signal_ref is the buy-time identity; echo this handle only when the selected product option exposes it as a separate execution handle. Do not pass the signal_id object as this handle.",
+            "description": "Opaque resolved-segment handle issued by this signal source. Pass this string verbatim to activate_signal.signal_agent_segment_id, and echo it in package signal targeting when the selected product option exposes the same handle. Treat the value as provider-scoped and opaque: providers MAY namespace it so two providers can expose similarly named signals without relying on a shared taxonomy. Do not pass the signal_id object as this handle, and do not reconstruct a segment handle from categorical values when get_signals returned a resolved segment.",
             "x-entity": "signal_activation_id"
           },
           "name": {
@@ -239,11 +239,29 @@
     }
   },
   "else": {
-    "description": "Standard response: signals[] MUST be present and cache_scope MUST declare the response's cache layer. wholesale_feed_version is required by the wholesale-mode contract and verifier constraints, but is not schema-required here because this response schema is shared by non-wholesale reads.",
-    "required": [
-      "signals",
-      "cache_scope"
-    ]
+    "if": {
+      "properties": {
+        "status": {
+          "const": "failed"
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "then": {
+      "description": "Failed response: errors[] carries the terminal failure details; signals[] and cache_scope are not required because no signal result was produced.",
+      "required": [
+        "errors"
+      ]
+    },
+    "else": {
+      "description": "Standard response: signals[] MUST be present and cache_scope MUST declare the response's cache layer. wholesale_feed_version is required by the wholesale-mode contract and verifier constraints, but is not schema-required here because this response schema is shared by non-wholesale reads.",
+      "required": [
+        "signals",
+        "cache_scope"
+      ]
+    }
   },
   "additionalProperties": true
 }

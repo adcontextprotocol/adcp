@@ -62,8 +62,10 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   preview_creative: ['sales', 'creative', 'creative-builder'],
   get_creative_delivery: ['creative'],
 
-  // signals — sync_governance rides customTools (governance-aware-seller pattern)
-  sync_governance: ['signals'],
+  // sync_governance rides customTools on both /sales (every media_buy_seller
+  // specialism registers a buyer governance agent before spend moves) and
+  // /signals (signal-marketplace governance-denial pattern).
+  sync_governance: ['sales', 'signals'],
   get_signals: ['signals'],
   activate_signal: ['signals'],
 
@@ -111,12 +113,17 @@ export function toolsForTenant(
   return Object.entries(TOOL_CATALOG)
     .filter(([, tenants]) => tenants.includes(tenantId))
     .map(([tool]) => tool)
-    .filter(tool => !(
-      (tool === 'validate_input' || tool === 'list_transformers')
-      && (
-        options.storyboardCompat?.version === '3.0'
-        || options.adcpVersion?.startsWith('3.0')
-      )
-    ))
+    .filter(tool => {
+      const is30 = options.storyboardCompat?.version === '3.0'
+        || options.adcpVersion?.startsWith('3.0');
+      if (!is30) return true;
+      // 3.0-compat exclusions. validate_input / list_transformers are gated off
+      // on every tenant that serves them. sync_governance is a 3.1+ account task
+      // gated off /sales under 3.0 (the released 3.0.x sales scenarios skip it),
+      // but /signals keeps it across versions.
+      if (tool === 'validate_input' || tool === 'list_transformers') return false;
+      if (tool === 'sync_governance' && tenantId === 'sales') return false;
+      return true;
+    })
     .sort();
 }

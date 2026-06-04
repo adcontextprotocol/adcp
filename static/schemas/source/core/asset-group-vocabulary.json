@@ -3,8 +3,8 @@
   "$id": "/schemas/core/asset-group-vocabulary.json",
   "title": "AdCP Asset Group Vocabulary Registry",
   "description": "Canonical registry of asset_group_id values used in offering asset groups (OfferingAssetGroup) and in v2 product format declarations. Non-canonical IDs remain valid for platform-specific extensions; this registry codifies the recommended canonical set so that buyers and sellers share a vocabulary for the most common slot roles. Validators may emit soft warnings on non-canonical IDs to encourage convergence.\n\nThe registry covers everything the buyer ships in the manifest's `assets` map — both directly-rendered creative content (image, video, audio) AND content the seller consumes for production (script, creative_brief, video_brief). The seller dispatches per the format's slot declaration. There is no separate \"inputs\" map on the manifest; everything is an asset.\n\n**Two-tier boundary (normative).** This registry is the *canonical, portable* tier — IAB-aligned, platform-agnostic slot roles every adopter shares (`headline`, `body_text`, `main_image`, `cta`, `landing_page_url`, etc.). Platform-specific asset identifiers (e.g., YouTube video IDs, Pinterest pin IDs, TikTok video IDs, Snap attachment IDs, Meta Advantage+ creative IDs) MUST NOT be added here — they live on the canonical's `platform_extensions[]` (URI+digest reference to the platform's extension schema) so the canonical registry stays portable. Earlier drafts carried `youtube_video_id` and `pin_id` here; they were dropped in 3.1 GA precisely because adding them set precedent for every platform's identifier vocabulary to leak into the canonical tier, defeating the registry's portability purpose. Adopters needing to reference an existing platform-hosted asset attach a `platform_extensions[]` entry on the format declaration whose extension schema defines the platform-specific ID slot.",
-  "version": "1.2.0",
-  "lastUpdated": "2026-05-28",
+  "version": "1.3.0",
+  "lastUpdated": "2026-06-02",
   "vocabulary": {
     "headlines": {
       "description": "Pool of headline text variants for the surface to choose from.",
@@ -215,6 +215,12 @@
       "description": "Catalog asset reference for catalog-driven products.",
       "asset_type": "catalog",
       "typical_use": "Required input on `sponsored_placement` formats. Buyer references a synced catalog by `catalog_id` plus optional item filters."
+    },
+    "published_post": {
+      "description": "Reference to an already-published post that the seller resolves and serves after authorization/review.",
+      "asset_type": "published_post",
+      "typical_use": "Boosted/sponsored post products on social, creator, or publisher-owned feeds. Use this when the buyer ships an existing post URL or platform post ID instead of uploaded media bytes.",
+      "aliases": ["post", "organic_post", "social_post", "source_post"]
     },
     "hero_asset": {
       "description": "Optional buyer-supplied hero/banner asset alongside a catalog reference.",

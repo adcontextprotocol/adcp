@@ -525,11 +525,17 @@
                             "properties": {
                               "placement_id": {
                                 "type": "string",
-                                "description": "Placement identifier from the product's placements array"
+                                "description": "Placement identifier from the product's placements array",
+                                "x-entity": "placement"
                               },
                               "placement_name": {
                                 "type": "string",
                                 "description": "Human-readable placement name"
+                              },
+                              "publisher_domain": {
+                                "type": "string",
+                                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+                                "description": "Canonical publisher domain whose adagents.json namespace this placement belongs to, matching the `publisher_domain` on the product's `placements[]` entry that `placement_id` resolves to (see core/placement.json). Lets buyers attribute delivered impressions to a publisher namespace without re-fetching the product catalog — the common case for multi-publisher buys through a single sales agent. Sellers SHOULD emit it whenever the resolving product placement carries a publisher_domain (always true for `kind: publisher_ref`); sellers MAY omit it only for `seller_inline` placements in a legacy single-publisher context where the seller agent's own domain is the namespace. Single-valued: a placement resolves within exactly one publisher namespace (package-level attribution, where an ad-network product can span publishers, is a separate concern)."
                               }
                             },
                             "required": [

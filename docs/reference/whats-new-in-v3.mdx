@@ -29,7 +29,7 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 | **Disclosure matching** | Position-only disclosure handling | Position + persistence-aware disclosure matching (`continuous`, `initial`, `flexible`) |
 | **Collections and installments** | No content programming model | `shows` on products with distribution IDs, installment lifecycle, break-based inventory |
 | **Planning ergonomics** | No `time_budget`, `preferred_delivery_types`, `exclusivity`, or per-package flights | `time_budget` + `incomplete`, `preferred_delivery_types`, `exclusivity`, optional `delivery_measurement`, and package-level `start_time` / `end_time` |
-| **Channel model** | 9 channels | 20 planning-oriented channels (including `sponsored_intelligence`) with broadcast TV support (Ad-ID, measurement windows, spot formats) |
+| **Channel model** | 9 channels | 20 planning-oriented channels (including `sponsored_intelligence`) with broadcast TV support (creative identifiers, measurement windows, spot formats) |
 | **Capability discovery** | Agent card extensions | Runtime `get_adcp_capabilities` task |
 | **Sandbox discovery** | Mixed capability locations | `require_operator_auth` for auth model, `account.sandbox` for sandbox support, sandbox in natural account references |
 | **Creative assignment** | Simple ID arrays | Weighted assignments with placement targeting |
@@ -363,14 +363,14 @@ New targeting overlay fields `collection_list` and `collection_list_exclude` ena
 
 Linear TV sellers can now fully participate in AdCP. This release adds the protocol primitives that distinguish broadcast from digital:
 
-- **Ad-ID identifiers** — `industry_identifiers` on creative assets and manifests, with `creative-identifier-type` enum (`ad_id`, `isci`, `clearcast_clock`). Broadcast creatives are identified by Ad-ID, which ties spots to rotation instructions and traffic systems.
+- **Broadcast creative identifiers** — `industry_identifiers` on creative assets and manifests, with `creative-identifier-type` enum (`ad_id`, `isci`, `clearcast_clock`, `idcrea`). Broadcast creatives carry the traffic or clearance identifier used by the relevant workflow, which ties spots to rotation instructions and traffic systems.
 - **Broadcast spot formats** — Reference formats for :15, :30, and :60 spots. Video file only — no VAST, no impression trackers, no clickthrough URLs. The absence of tracker asset slots in a format signals that third-party pixel tracking is not supported.
 - **Agency Estimate Number** — `agency_estimate_number` on media buys and packages. The financial reference that links broadcast orders to agency media plans and billing.
 - **Measurement windows** — `measurement_windows` on `reporting_capabilities` for Live, C3, and C7 maturation. `measurement_window` on `billing_measurement` declares which window the guarantee is reconciled against.
 - **Delivery data completeness** — `is_final` and `measurement_window` on per-package delivery data. Buyers know whether numbers are provisional or closed, and which measurement window they represent. Applies to any channel with maturing data (broadcast, podcast, long-tail content).
 
 <Card title="Broadcast TV" icon="arrow-right" href="/docs/creative/channels/broadcast">
-  Channel guide covering spot formats, Ad-ID, measurement windows, and how broadcast differs from CTV.
+  Channel guide covering spot formats, creative identifiers, measurement windows, and how broadcast differs from CTV.
 </Card>
 
 ### Structured measurement terms

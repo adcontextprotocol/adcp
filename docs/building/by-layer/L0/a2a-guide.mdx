@@ -301,6 +301,8 @@ For webhook payload formats, protocol comparison, and detailed handling examples
 
 A2A's key advantage is real-time updates via Server-Sent Events:
 
+AdCP still owns the application-layer task lifecycle on A2A. A2A `Task`, `taskId`, SSE, and push-notification frames are transport delivery mechanics; the durable business operation remains the AdCP payload keyed by AdCP `task_id`. A completed A2A task can still carry an AdCP response whose payload says `status: 'submitted'`.
+
 ### Task Monitoring
 
 ```javascript
@@ -355,7 +357,7 @@ const response = await a2a.send({
   }
 });
 
-// Monitor in real-time via SSE
+// Monitor A2A transport progress in real time via SSE
 if (response.status === 'working' || response.status === 'submitted') {
   const monitor = new A2aTaskMonitor(response.taskId);
   
@@ -368,6 +370,10 @@ if (response.status === 'working' || response.status === 'submitted') {
     const parts = final.artifacts[0].parts;
     const dataParts = parts.filter(p => p.data != null || p.kind === 'data');
     const payload = dataParts[dataParts.length - 1]?.data;
+    if (payload?.status === 'submitted') {
+      // A2A delivery completed, but the AdCP operation is still queued.
+      return pollAdcpTask(payload.task_id);
+    }
     console.log('Created:', payload?.media_buy_id);
   });
 }

@@ -144,6 +144,7 @@ asyncio.run(discover_with_filters())
 | `if_wholesale_feed_version` | string | No | Opaque `wholesale_feed_version` token from a prior `get_products` response. When provided, the seller compares against its current wholesale product feed version and MAY return `unchanged: true` (with `products` omitted) if nothing has changed. Versions are scoped to the (agent, account, filters, `buying_mode`, `property_list`, `catalog`) tuple. See [Wholesale feed versioning](#wholesale-feed-versioning). |
 | `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_wholesale_feed_version`. Evaluation order: `if_wholesale_feed_version` mismatch → full payload; `if_wholesale_feed_version` matches but `if_pricing_version` mismatches → full payload (so the buyer sees updated `pricing_options`); both match → seller MAY return `unchanged: true`. Sellers that don't track pricing separately ignore this. |
 | `time_budget` | Duration | No | Maximum time the buyer will commit to this request. The seller returns the best results achievable within this budget and does not start processes (human approvals, expensive external queries) that cannot complete in time. When omitted, the seller decides timing. Example: `{"interval": 30, "unit": "seconds"}`. |
+| `push_notification_config` | PushNotificationConfig | No | Optional webhook channel for async terminal completion/failure notifications on `brief` / `refine` curated discovery. `submitted` responses with a `task_id` remain pollable through `get_task_status` (legacy `tasks/get`) whether or not this field is present. If the request includes this field and the seller returns `submitted`, the seller MUST deliver at least the terminal completion/failure notification to the configured webhook; intermediate progress notifications are MAY. If the seller cannot honor the webhook channel, it MUST reject the request with a structured error instead of silently accepting. Ignored for `wholesale`; sellers MUST NOT route wholesale reads through the Submitted arm because this field is present. |
 
 <Note>
 **Property Governance**
@@ -176,6 +177,8 @@ The seller must declare `features.property_list_filtering: true` in [`get_adcp_c
 | `metros` | object[] | Filter by metro coverage. Each entry: `{ system, code }` (e.g., `[{ "system": "nielsen_dma", "code": "501" }]`) |
 | `channels` | string[] | Filter by advertising channels (e.g., `["display", "ctv", "social", "streaming_audio"]`). See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) |
 | `video_placement_types` | string[] | Filter video products by acceptable declared video placement types: `instream`, `accompanying_content`, `interstitial`, or `standalone`. Sellers should return only products they can satisfy with at least one requested type, and should exclude mixed, non-targetable bundles unless delivery can be constrained to the requested type. Uses IAB Tech Lab/OpenRTB 2.6 `video.plcmt` definitions with AdCP-native names. |
+| `sponsored_placement_types` | string[] | Filter catalog-driven retail-media products by acceptable declared sponsored-placement types: `sponsored_search`, `sponsored_display`, or `sponsored_native`. Sellers should return only products they can satisfy with at least one requested type, and should exclude mixed, non-targetable bundles unless delivery can be constrained to the requested type. |
+| `social_placement_surfaces` | string[] | Filter social products by acceptable declared social-placement surfaces: `feed`, `stories`, `short_video`, `explore`, or `search`. Sellers should return only products they can satisfy with at least one requested surface, and should exclude mixed, non-targetable bundles unless delivery can be constrained to the requested surface. |
 | `postal_areas` | object[] | Filter by postal area coverage. Each entry: `{ system, values }` (e.g., `[{ "system": "us_zip", "values": ["10001"] }]`) |
 | `geo_proximity` | object[] | Filter by proximity to geographic points. Each entry uses exactly one boundary method: `radius`, `travel_time` + `transport_mode`, or `geometry` |
 | `keywords` | object[] | Filter by keyword relevance for search/retail media. Each entry: `{ keyword, match_type? }`. `match_type` defaults to `broad` if omitted |
@@ -196,6 +199,8 @@ Each returned placement may carry:
 | `publisher_domain` | Domain whose `adagents.json` defines the publisher-referenced placement. New multi-publisher products SHOULD include it. When omitted on legacy products, buyers may interpret `placement_id` relative to the seller agent's own publisher domain. |
 | `mode` | `targetable` means the buyer may reference the publisher-scoped placement, for example in `creative_assignments[].placement_refs`. `included` means the placement is part of the product composition but not buyer-selectable. |
 | `video_placement_types` | Declared video placement types for OLV and other video inventory, using the IAB Tech Lab/OpenRTB 2.6 `video.plcmt` definitions with AdCP-native names. Concrete placements usually declare one value; aggregate placements may declare multiple. |
+| `sponsored_placement_types` | Declared sponsored-placement types for catalog-driven retail-media inventory. Concrete placements usually declare one value; aggregate placements may declare multiple. |
+| `social_placement_surfaces` | Declared social-placement surfaces for social inventory. Concrete placements usually declare one value; aggregate placements may declare multiple. |
 | `format_ids` / `format_options` | Placement-specific creative support. Product-level formats are the upper bound; placement-level formats narrow the effective accepted set for that placement and must not add formats the product does not accept. |
 
 Publishers can authorize sales agents for specific publisher placements using `authorized_agents[].placement_ids` or `authorized_agents[].placement_tags` in `adagents.json`. Sellers should only return publisher-referenced placements they are authorized to sell.
@@ -1263,7 +1268,29 @@ See [Authentication Guide](/docs/building/integration/authentication) for detail
 
 ## Asynchronous Operations
 
-Most product searches complete immediately, but some scenarios require asynchronous processing. When this happens, you'll receive a status other than `completed` and can track progress through webhooks or polling.
+Most product searches complete immediately, but some scenarios require asynchronous processing. When this happens, you'll receive a status other than `completed`. A `submitted` response with `task_id` is always pollable through `get_task_status` (legacy `tasks/get`); `push_notification_config` adds webhook notification for background workflows.
+
+#### SDK Status Handling
+
+```typescript
+const initial = await agent.getProducts(params);
+const final =
+  initial.status === 'submitted'
+    ? await initial.submitted!.waitForCompletion(30000)
+    : initial;
+
+if (final.status === 'failed') {
+  throw new Error(final.error?.message ?? 'get_products failed');
+}
+
+if (final.status !== 'completed') {
+  throw new Error(`Unhandled get_products status: ${final.status}`);
+}
+
+for (const product of final.products) {
+  console.log(product.name);
+}
+```
 
 ### When Search Runs Asynchronously
 
@@ -1335,9 +1362,9 @@ Response (200 OK):
 }
 ```
 
-#### Complex Search (With Webhook)
+#### Complex Search (With Webhook and Polling)
 
-For searches requiring deep inventory analysis, configure a webhook:
+For searches requiring deep inventory analysis, configure a webhook for terminal completion/failure notification. The returned `task_id` remains valid for polling via `get_task_status` (legacy `tasks/get`).
 
 ```json
 POST /api/mcp/call_tool
@@ -1348,7 +1375,7 @@ POST /api/mcp/call_tool
     "buying_mode": "brief",
     "brief": "Premium inventory across all formats for luxury automotive brand",
     "brand": { "domain": "acmecorp.com" },
-    "pushNotificationConfig": {
+    "push_notification_config": {
       "url": "https://buyer.com/webhooks/adcp/get_products",
       "authentication": {
         "schemes": ["Bearer"],
@@ -1360,15 +1387,14 @@ POST /api/mcp/call_tool
 
 Response (200 OK):
 {
-  "status": "working",
-  "message": "Searching premium inventory across display, video, and audio",
+  "status": "submitted",
+  "message": "Custom curation queued; typical turnaround 10-30 minutes",
   "task_id": "task_456",
   "context_id": "ctx_123",
-  "percentage": 10,
-  "current_step": "searching_inventory"
+  "estimated_completion": "2025-01-22T10:30:00Z"
 }
 
-// Later, webhook POST to https://buyer.com/webhooks/adcp/get_products
+// Later, poll get_task_status/tasks/get with task_id, or receive webhook POST to https://buyer.com/webhooks/adcp/get_products
 {
   "task_id": "task_456",
   "task_type": "get_products",
@@ -1481,9 +1507,9 @@ POST /api/a2a
 }
 ```
 
-#### Complex Search (With Webhook)
+#### Complex Search (With Webhook and Polling)
 
-Configure push notifications for long searches:
+For A2A, push notifications use the transport-level `configuration.pushNotificationConfig` field. Do not put snake_case `push_notification_config` inside the skill parameters. The A2A task id remains valid for task polling.
 
 ```json
 POST /api/a2a
@@ -1503,11 +1529,13 @@ POST /api/a2a
       }
     }]
   },
-  "pushNotificationConfig": {
-    "url": "https://buyer.com/webhooks/a2a/get_products",
-    "authentication": {
-      "schemes": ["bearer"],
-      "credentials": "secret_token_32_chars"
+  "configuration": {
+    "pushNotificationConfig": {
+      "url": "https://buyer.com/webhooks/a2a/get_products",
+      "authentication": {
+        "schemes": ["bearer"],
+        "credentials": "secret_token_32_chars"
+      }
     }
   }
 }
@@ -1517,15 +1545,14 @@ Response (200 OK):
   "id": "task_456",
   "contextId": "ctx_789",
   "status": {
-    "state": "working",
+    "state": "submitted",
     "message": {
       "role": "agent",
       "parts": [
-        { "text": "Searching premium inventory across display, video, and audio" },
+        { "text": "Custom curation queued; typical turnaround 10-30 minutes" },
         {
           "data": {
-            "percentage": 10,
-            "current_step": "searching_inventory"
+            "estimated_completion": "2025-01-22T10:30:00Z"
           }
         }
       ]
@@ -1533,7 +1560,7 @@ Response (200 OK):
   }
 }
 
-// Later, webhook POST to https://buyer.com/webhooks/a2a/get_products
+// Later, poll the A2A task, or receive webhook POST to https://buyer.com/webhooks/a2a/get_products
 {
   "id": "task_456",
   "contextId": "ctx_789",
@@ -1570,8 +1597,8 @@ Response (200 OK):
 |--------|----------------|-------------|
 | `completed` | Search finished successfully | Process the product results |
 | `input-required` | Need clarification on the brief | Answer the question and continue |
-| `working` | Searching across multiple sources | Wait for webhook or poll for updates |
-| `submitted` | Custom curation queued | Wait for webhook notification |
+| `working` | Searching across multiple sources | Wait on the open connection / transport progress stream |
+| `submitted` | Custom curation queued | Poll `get_task_status` (legacy `tasks/get`) with `task_id`; also wait for webhook notification if `push_notification_config` / A2A `configuration.pushNotificationConfig` was accepted |
 | `failed` | Search couldn't complete | Check error message, adjust brief |
 
 **Note:** For the complete status list see [Task Lifecycle](/docs/building/implementation/task-lifecycle).

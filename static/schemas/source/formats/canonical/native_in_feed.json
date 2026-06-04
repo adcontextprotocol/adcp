@@ -92,15 +92,15 @@
     },
     "asset_source": {
       "type": "string",
-      "enum": ["buyer_uploaded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized"],
+      "enum": ["buyer_uploaded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized", "publisher_owned_reference"],
       "default": "buyer_uploaded",
-      "description": "Where the rendered native assets come from. `publisher_host_recorded` is omitted (audio-specific and not meaningful for native). Other values mirror the shared production-source axis used on `image` / `video_hosted`. `buyer_uploaded` (default): buyer ships pre-rendered title/image/body. `seller_pre_rendered_from_brief`: buyer ships a brief, seller renders the native bundle. `agent_synthesized`: AI synthesis pipeline produces title + image + body from a brief; pair with `synthesis_nondeterministic: true` for generative pipelines that can't guarantee in-spec output."
+      "description": "Where the rendered native assets come from. `publisher_host_recorded` is omitted (audio-specific and not meaningful for native). Other values mirror the shared production-source axis used on `image` / `video_hosted`. `buyer_uploaded` (default): buyer ships pre-rendered title/image/body. `seller_pre_rendered_from_brief`: buyer ships a brief, seller renders the native bundle. `agent_synthesized`: AI synthesis pipeline produces title + image + body from a brief; pair with `synthesis_nondeterministic: true` for generative pipelines that can't guarantee in-spec output. `publisher_owned_reference`: buyer ships an existing published post reference; the seller resolves the post into the native presentation after authorization/review."
     },
     "buyer_asset_acceptance": {
       "type": "string",
       "enum": ["accepted", "rejected"],
       "default": "accepted",
-      "description": "Whether the product accepts buyer-uploaded native assets. When `rejected`, the buyer cannot ship pre-rendered title/image/body — they must use `build_creative` (or `sync_creatives` with brief inputs) so the seller produces the native bundle from a brief."
+      "description": "Whether the product accepts buyer-uploaded native assets. When `rejected`, the buyer cannot ship pre-rendered title/image/body — they must use `build_creative`, `sync_creatives` with brief inputs, or an accepted `published_post` reference so the seller produces or resolves the native bundle."
     }
   },
   "additionalProperties": true

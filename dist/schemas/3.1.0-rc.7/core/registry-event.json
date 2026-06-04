@@ -1,0 +1,624 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.7/core/registry-event.json",
+  "title": "Registry Event",
+  "description": "A single cursor-ordered event from the AgenticAdvertising.org registry change feed. Events are denormalized so RegistrySync clients can update local property, agent, publisher, and authorization indexes without re-reading the full registry. The discriminator is event_type; each branch defines the event-specific payload shape. See specs/registry-change-feed.md.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "event_type"
+  },
+  "required": [
+    "event_id",
+    "event_type",
+    "entity_type",
+    "entity_id",
+    "payload",
+    "actor",
+    "created_at"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Stable logical event identifier and feed cursor. UUID v7 is REQUIRED so consumers can apply events in event_id order without relying on producer clocks."
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "property.created",
+        "property.updated",
+        "property.merged",
+        "property.stale",
+        "property.reactivated",
+        "agent.discovered",
+        "agent.removed",
+        "agent.profile_updated",
+        "agent.compliance_changed",
+        "agent.verification_earned",
+        "agent.verification_lost",
+        "publisher.adagents_discovered",
+        "publisher.adagents_changed",
+        "authorization.granted",
+        "authorization.revoked",
+        "authorization.modified"
+      ],
+      "description": "Discriminator. Determines the shape of payload."
+    },
+    "entity_type": {
+      "type": "string",
+      "enum": [
+        "property",
+        "agent",
+        "publisher",
+        "authorization"
+      ],
+      "description": "Entity class touched by this event."
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "Primary identifier for the changed entity. For property.* events this is the property_rid; for agent.* events this is the agent_url; for publisher.adagents_changed this is the publisher domain; for authorization.* events this is the authorization row id or a stable agent/publisher composite."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-type-specific payload. Shape is determined by event_type per the oneOf below."
+    },
+    "actor": {
+      "type": "string",
+      "description": "Internal producer label for audit and debugging, such as pipeline:crawler or trigger:caa_emit_event. Consumers MUST treat this as informational and not as an authorization principal."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the registry emitted the event. Advisory only; consumers MUST order and cursor by event_id."
+    }
+  },
+  "oneOf": [
+    {
+      "description": "property.created - a new property_rid was assigned.",
+      "properties": {
+        "event_type": { "type": "string", "const": "property.created" },
+        "entity_type": { "type": "string", "const": "property" },
+        "payload": {
+          "allOf": [
+            { "$ref": "#/$defs/propertyPayload" },
+            {
+              "type": "object",
+              "required": ["property_rid", "classification", "identifiers"]
+            }
+          ]
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "property.updated - classification, identifiers, or metadata changed.",
+      "properties": {
+        "event_type": { "type": "string", "const": "property.updated" },
+        "entity_type": { "type": "string", "const": "property" },
+        "payload": {
+          "allOf": [
+            { "$ref": "#/$defs/propertyPayload" },
+            {
+              "type": "object",
+              "required": ["property_rid"]
+            }
+          ]
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "property.merged - one property_rid became an alias of another.",
+      "properties": {
+        "event_type": { "type": "string", "const": "property.merged" },
+        "entity_type": { "type": "string", "const": "property" },
+        "payload": {
+          "type": "object",
+          "required": ["alias_rid", "canonical_rid"],
+          "properties": {
+            "alias_rid": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Retired property_rid that now aliases to canonical_rid."
+            },
+            "canonical_rid": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Canonical property_rid that consumers should retain."
+            },
+            "evidence": {
+              "type": "string",
+              "description": "Registry evidence source for the merge, such as adagents_json or manual_review."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "property.stale - a property has aged out of active resolution.",
+      "properties": {
+        "event_type": { "type": "string", "const": "property.stale" },
+        "entity_type": { "type": "string", "const": "property" },
+        "payload": {
+          "type": "object",
+          "required": ["property_rid"],
+          "properties": {
+            "property_rid": { "type": "string", "format": "uuid" },
+            "last_resolved_at": { "type": "string", "format": "date-time" },
+            "reason": { "type": "string" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "property.reactivated - a stale property was resolved again.",
+      "properties": {
+        "event_type": { "type": "string", "const": "property.reactivated" },
+        "entity_type": { "type": "string", "const": "property" },
+        "payload": {
+          "allOf": [
+            { "$ref": "#/$defs/propertyPayload" },
+            {
+              "type": "object",
+              "required": ["property_rid"],
+              "properties": {
+                "reactivated_at": { "type": "string", "format": "date-time" }
+              }
+            }
+          ]
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "agent.discovered - a new agent appeared in crawled registry data.",
+      "properties": {
+        "event_type": { "type": "string", "const": "agent.discovered" },
+        "entity_type": { "type": "string", "const": "agent" },
+        "payload": {
+          "allOf": [
+            { "$ref": "#/$defs/agentProfilePayload" },
+            {
+              "type": "object",
+              "required": ["agent_url"]
+            }
+          ]
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "agent.removed - an agent no longer appears in any crawled adagents.json authorization graph.",
+      "properties": {
+        "event_type": { "type": "string", "const": "agent.removed" },
+        "entity_type": { "type": "string", "const": "agent" },
+        "payload": {
+          "type": "object",
+          "required": ["agent_url"],
+          "properties": {
+            "agent_url": { "type": "string", "format": "uri" },
+            "removed_from_publishers": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/domain" },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "agent.profile_updated - an agent inventory profile changed.",
+      "properties": {
+        "event_type": { "type": "string", "const": "agent.profile_updated" },
+        "entity_type": { "type": "string", "const": "agent" },
+        "payload": {
+          "allOf": [
+            { "$ref": "#/$defs/agentProfilePayload" },
+            {
+              "type": "object",
+              "required": ["agent_url"],
+              "properties": {
+                "changed_fields": { "$ref": "#/$defs/changedFields" }
+              }
+            }
+          ]
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "agent.compliance_changed - an agent verification or compliance heartbeat changed status.",
+      "properties": {
+        "event_type": { "type": "string", "const": "agent.compliance_changed" },
+        "entity_type": { "type": "string", "const": "agent" },
+        "payload": { "$ref": "#/$defs/compliancePayload" }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "agent.verification_earned - an agent earned an AAO Verified badge.",
+      "properties": {
+        "event_type": { "type": "string", "const": "agent.verification_earned" },
+        "entity_type": { "type": "string", "const": "agent" },
+        "payload": {
+          "type": "object",
+          "required": ["agent_url", "role", "verified_specialisms"],
+          "properties": {
+            "agent_url": { "type": "string", "format": "uri" },
+            "role": { "$ref": "#/$defs/badgeRole" },
+            "verified_specialisms": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            },
+            "adcp_version": { "type": "string" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "agent.verification_lost - an agent lost an AAO Verified badge.",
+      "properties": {
+        "event_type": { "type": "string", "const": "agent.verification_lost" },
+        "entity_type": { "type": "string", "const": "agent" },
+        "payload": {
+          "type": "object",
+          "required": ["agent_url", "role", "reason"],
+          "properties": {
+            "agent_url": { "type": "string", "format": "uri" },
+            "role": { "$ref": "#/$defs/badgeRole" },
+            "reason": { "type": "string" },
+            "adcp_version": { "type": "string" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "publisher.adagents_discovered - the crawler found a publisher adagents.json file and projected it into the registry.",
+      "properties": {
+        "event_type": { "type": "string", "const": "publisher.adagents_discovered" },
+        "entity_type": { "type": "string", "const": "publisher" },
+        "payload": { "$ref": "#/$defs/publisherAdagentsPayload" }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "publisher.adagents_changed - the registry crawler detected a publisher adagents.json change.",
+      "properties": {
+        "event_type": { "type": "string", "const": "publisher.adagents_changed" },
+        "entity_type": { "type": "string", "const": "publisher" },
+        "payload": {
+          "allOf": [
+            { "$ref": "#/$defs/publisherAdagentsPayload" },
+            {
+              "type": "object",
+              "properties": {
+                "properties_added": { "type": "integer", "minimum": 0 },
+                "properties_removed": { "type": "integer", "minimum": 0 },
+                "agents_added": {
+                  "type": "array",
+                  "items": { "type": "string", "format": "uri" }
+                },
+                "agents_removed": {
+                  "type": "array",
+                  "items": { "type": "string", "format": "uri" }
+                },
+                "changed_fields": { "$ref": "#/$defs/changedFields" }
+              }
+            }
+          ]
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "authorization.granted - an agent became authorized for a publisher or scoped inventory slice.",
+      "properties": {
+        "event_type": { "type": "string", "const": "authorization.granted" },
+        "entity_type": { "type": "string", "const": "authorization" },
+        "payload": { "$ref": "#/$defs/authorizationPayload" }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "authorization.revoked - an agent authorization is no longer visible in the effective registry set.",
+      "properties": {
+        "event_type": { "type": "string", "const": "authorization.revoked" },
+        "entity_type": { "type": "string", "const": "authorization" },
+        "payload": { "$ref": "#/$defs/authorizationPayload" }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "authorization.modified - an authorization row remained visible, but externally visible metadata changed.",
+      "properties": {
+        "event_type": { "type": "string", "const": "authorization.modified" },
+        "entity_type": { "type": "string", "const": "authorization" },
+        "payload": { "$ref": "#/$defs/authorizationPayload" }
+      },
+      "required": ["event_type"]
+    }
+  ],
+  "$defs": {
+    "domain": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "publisherAdagentsPayload": {
+          "type": "object",
+          "anyOf": [
+            { "required": ["publisher_domain"] },
+            { "required": ["domain"] }
+          ],
+          "properties": {
+            "publisher_domain": { "$ref": "#/$defs/domain" },
+            "domain": {
+              "$ref": "#/$defs/domain",
+              "description": "Legacy alias for publisher_domain retained for early feed examples."
+            },
+            "properties_added": { "type": "integer", "minimum": 0 },
+            "properties_removed": { "type": "integer", "minimum": 0 },
+            "agents_added": {
+              "type": "array",
+              "items": { "type": "string", "format": "uri" }
+            },
+            "agents_removed": {
+              "type": "array",
+              "items": { "type": "string", "format": "uri" }
+            },
+            "agent_count": { "type": "integer", "minimum": 0 },
+            "property_count": { "type": "integer", "minimum": 0 },
+            "discovery_method": { "type": "string" },
+            "manager_domain": { "type": ["string", "null"] },
+            "source": { "type": "string" }
+          },
+          "additionalProperties": true
+    },
+    "badgeRole": {
+      "type": "string",
+      "enum": ["media-buy", "creative", "signals", "governance", "brand", "sponsored-intelligence"]
+    },
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "changedFields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Advisory list of changed top-level field names. Consumers MAY use this for targeted index refresh but MUST treat the event payload as authoritative."
+    },
+    "classification": {
+      "type": "string",
+      "enum": ["property", "ad_infra", "publisher_mask", "network", "unclassified"]
+    },
+    "propertySource": {
+      "type": "string",
+      "enum": ["authoritative", "enriched", "contributed"]
+    },
+    "propertyPayload": {
+      "type": "object",
+      "properties": {
+        "property_rid": { "type": "string", "format": "uuid" },
+        "classification": { "$ref": "#/$defs/classification" },
+        "source": { "$ref": "#/$defs/propertySource" },
+        "identifiers": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.1.0-rc.7/core/identifier.json" },
+          "minItems": 1
+        },
+        "publisher_domain": { "$ref": "#/$defs/domain" },
+        "property": {
+          "$ref": "/schemas/3.1.0-rc.7/core/property.json",
+          "description": "Optional full post-change property object when available."
+        },
+        "changed_fields": { "$ref": "#/$defs/changedFields" }
+      },
+      "additionalProperties": true
+    },
+    "agentProfilePayload": {
+      "type": "object",
+      "properties": {
+        "agent_url": { "type": "string", "format": "uri" },
+        "name": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["sales", "creative", "signals", "governance", "measurement", "unknown"]
+        },
+        "channels": { "$ref": "#/$defs/stringArray" },
+        "property_types": { "$ref": "#/$defs/stringArray" },
+        "markets": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "uniqueItems": true
+        },
+        "categories": { "$ref": "#/$defs/stringArray" },
+        "category_taxonomy": { "type": ["string", "null"] },
+        "format_ids": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.1.0-rc.7/core/format-id.json" }
+        },
+        "tags": { "$ref": "#/$defs/stringArray" },
+        "delivery_types": { "$ref": "#/$defs/stringArray" },
+        "property_count": { "type": "integer", "minimum": 0 },
+        "publisher_count": { "type": "integer", "minimum": 0 },
+        "has_tmp": { "type": "boolean" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    },
+    "countries": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "authorizationPayload": {
+      "type": "object",
+      "required": ["agent_url", "publisher_domain"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Registry authorization row id when the event is backed by a materialized effective authorization row."
+        },
+        "agent_url": { "type": "string", "format": "uri" },
+        "agent_url_canonical": {
+          "type": "string",
+          "description": "Registry-canonicalized form of agent_url for equality checks."
+        },
+        "publisher_domain": { "$ref": "#/$defs/domain" },
+        "authorization_type": {
+          "type": "string",
+          "enum": [
+            "property_ids",
+            "property_tags",
+            "inline_properties",
+            "publisher_properties",
+            "signal_ids",
+            "signal_tags"
+          ],
+          "description": "When present, identifies the adagents.json authorization variant represented by this payload."
+        },
+        "authorized_for": { "type": ["string", "null"] },
+        "property_ids": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.1.0-rc.7/core/property-id.json" },
+          "minItems": 1
+        },
+        "property_tags": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.1.0-rc.7/core/property-tag.json" },
+          "minItems": 1
+        },
+        "properties": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.1.0-rc.7/core/property.json" },
+          "minItems": 1
+        },
+        "publisher_properties": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.1.0-rc.7/core/publisher-property-selector.json" },
+          "minItems": 1
+        },
+        "property_rid": {
+          "type": ["string", "null"],
+          "format": "uuid",
+          "description": "Catalog property_rid for materialized per-property authorization rows. Null for publisher-wide rows."
+        },
+        "property_id_slug": {
+          "type": ["string", "null"],
+          "description": "Publisher-local property id for materialized per-property authorization rows."
+        },
+        "placement_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "placement_tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "collections": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.1.0-rc.7/core/collection-selector.json" },
+          "minItems": 1
+        },
+        "countries": { "$ref": "#/$defs/countries" },
+        "delegation_type": {
+          "type": "string",
+          "enum": ["direct", "delegated", "ad_network"]
+        },
+        "exclusive": { "type": "boolean" },
+        "signing_keys": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.1.0-rc.7/core/agent-signing-key.json" },
+          "minItems": 1,
+          "description": "Publisher-attested signing keys copied from adagents.json when the registry has them. Advisory in feed events; verifiers MUST re-fetch the authoritative publisher artifact before treating keys as a trust anchor."
+        },
+        "effective_from": { "type": "string", "format": "date-time" },
+        "effective_until": { "type": "string", "format": "date-time" },
+        "evidence": {
+          "type": "string",
+          "enum": ["adagents_json", "agent_claim", "community", "override"]
+        },
+        "disputed": { "type": "boolean" },
+        "created_by": { "type": ["string", "null"] },
+        "expires_at": { "type": ["string", "null"], "format": "date-time" },
+        "created_at": { "type": ["string", "null"], "format": "date-time" },
+        "updated_at": { "type": ["string", "null"], "format": "date-time" },
+        "override_applied": { "type": "boolean" },
+        "override_reason": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "compliancePayload": {
+      "type": "object",
+      "required": [
+        "agent_url",
+        "previous_status",
+        "current_status",
+        "tracks",
+        "storyboards_passing",
+        "storyboards_total"
+      ],
+      "properties": {
+        "agent_url": { "type": "string", "format": "uri" },
+        "previous_status": { "$ref": "#/$defs/complianceStatus" },
+        "current_status": { "$ref": "#/$defs/complianceStatus" },
+        "headline": { "type": ["string", "null"] },
+        "tracks": {
+          "type": "object",
+          "description": "Map of compliance track id to track status.",
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["pass", "fail", "partial", "skip", "silent", "warning", "unknown", "skipped"]
+          }
+        },
+        "storyboards_passing": { "type": "integer", "minimum": 0 },
+        "storyboards_total": { "type": "integer", "minimum": 0 },
+        "storyboards": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["storyboard_id", "status"],
+            "properties": {
+              "storyboard_id": { "type": "string" },
+              "status": { "$ref": "#/$defs/storyboardStatus" },
+              "steps_passed": { "type": "integer", "minimum": 0 },
+              "steps_total": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "complianceStatus": {
+      "type": "string",
+      "enum": ["passing", "degraded", "failing", "unknown"]
+    },
+    "storyboardStatus": {
+      "type": "string",
+      "enum": ["passing", "failing", "partial", "untested", "skipped", "not_selected", "unknown"]
+    }
+  }
+}

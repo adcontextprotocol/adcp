@@ -403,6 +403,28 @@ function mapOverallStatus(status: string): OverallRunStatus {
   }
 }
 
+function skipReasonIsCoverageGap(reason: string | undefined): boolean {
+  switch (reason) {
+    case 'not_applicable':
+    case 'peer_branch_taken':
+    case 'peer_substituted':
+      return false;
+    default:
+      return true;
+  }
+}
+
+function trackHasCoverageGapSkip(track: TrackResult): boolean {
+  for (const scenario of track.scenarios) {
+    for (const step of scenario.steps ?? []) {
+      if (step.skipped && skipReasonIsCoverageGap(step.skip_reason)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 /**
  * Derive the effective overall status and track counters from a ComplianceResult.
  *
@@ -419,7 +441,9 @@ function effectiveRunStatus(result: ComplianceResult): {
   tracks_partial: number;
 } {
   const activeTracks = result.tracks.filter((t: TrackResult) => t.status !== 'skip');
+  const hasCoverageGapSkip = result.tracks.some(trackHasCoverageGapSkip);
   if (
+    !hasCoverageGapSkip &&
     activeTracks.length > 0 &&
     activeTracks.every((t: TrackResult) => t.status === 'pass' || t.status === 'silent')
   ) {
@@ -471,9 +495,17 @@ export function deriveStoryboardStatuses(
   interface Aggregate {
     stepsPassed: number;
     stepsTotal: number;
-    phasesPassed: number;
-    phasesTotal: number;
+    stepLessPhasesPassed: number;
+    stepLessPhasesTotal: number;
+    controllerSkipped: number;
   }
+  const branchSkipReasons = new Set<string>([
+    'peer_branch_taken',
+    'peer_substituted',
+  ]);
+  const isControllerSkip = (step: { skip_reason?: string; requirement?: string }): boolean =>
+    step.skip_reason === 'missing_test_controller' ||
+    (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller');
   const perStoryboard = new Map<string, Aggregate>();
   // Storyboard ids in `static/compliance/source/**/index.yaml` are flat
   // identifiers (no `/`); splitting on the first `/` therefore always yields
@@ -488,18 +520,37 @@ export function deriveStoryboardStatuses(
       const sbId = s.scenario.slice(0, sepIdx);
       let agg = perStoryboard.get(sbId);
       if (!agg) {
-        agg = { stepsPassed: 0, stepsTotal: 0, phasesPassed: 0, phasesTotal: 0 };
+        agg = {
+          stepsPassed: 0,
+          stepsTotal: 0,
+          stepLessPhasesPassed: 0,
+          stepLessPhasesTotal: 0,
+          controllerSkipped: 0,
+        };
         perStoryboard.set(sbId, agg);
       }
-      agg.phasesTotal++;
-      if (s.overall_passed) agg.phasesPassed++;
 
       // Roll per-step results up from the phase. Some SDK paths emit a phase
       // without a `steps` array (e.g. resource-resolution failures); we then
-      // fall back to phase-level counts below so the storyboard still
-      // reports a status.
-      const steps = s.steps ?? [];
-      for (const step of steps) {
+      // fall back to phase-level counts for that phase so mixed runs do not
+      // discard resource-resolution failures when other phases have steps.
+      if (!Array.isArray(s.steps) || s.steps.length === 0) {
+        agg.stepLessPhasesTotal++;
+        if (s.overall_passed) agg.stepLessPhasesPassed++;
+        continue;
+      }
+      for (const step of s.steps) {
+        if (step.skipped) {
+          if (branchSkipReasons.has(step.skip_reason ?? '')) {
+            continue;
+          }
+          if (isControllerSkip(step)) {
+            agg.controllerSkipped++;
+            continue;
+          }
+          agg.stepsTotal++;
+          continue;
+        }
         agg.stepsTotal++;
         if (step.passed) agg.stepsPassed++;
       }
@@ -521,9 +572,11 @@ export function deriveStoryboardStatuses(
       continue;
     }
 
-    const useSteps = agg.stepsTotal > 0;
-    const passed = useSteps ? agg.stepsPassed : agg.phasesPassed;
-    const total = useSteps ? agg.stepsTotal : agg.phasesTotal;
+    const passed = agg.stepsPassed + agg.stepLessPhasesPassed;
+    const executableTotal = agg.stepsTotal + agg.stepLessPhasesTotal;
+    const total = executableTotal === 0 && agg.controllerSkipped > 0
+      ? 0
+      : executableTotal + agg.controllerSkipped;
 
     let status: StoryboardStatusEntry['status'];
     if (total === 0) {
@@ -739,6 +792,7 @@ export function complianceResultToDbInput(
     scenario_count: t.scenarios.length,
     passed_count: t.scenarios.filter((s: { overall_passed: boolean }) => s.overall_passed).length,
     duration_ms: t.duration_ms,
+    has_coverage_gap_skip: trackHasCoverageGapSkip(t),
   }));
 
   const { overall_status, tracks_passed, tracks_failed, tracks_partial } = effectiveRunStatus(result);

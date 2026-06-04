@@ -1095,6 +1095,14 @@ export interface AgentCompliance {
   adcp_version?: string | null;
   lifecycle_stage: 'development' | 'testing' | 'production' | 'deprecated';
   tracks: Record<string, string>;
+  track_details?: Array<{
+    track: string;
+    status: string;
+    scenario_count: number;
+    passed_count: number;
+    duration_ms: number;
+    has_coverage_gap_skip?: boolean;
+  }>;
   streak_days: number;
   last_checked_at: string | null;
   headline: string | null;

@@ -123,6 +123,20 @@ Create a dedicated enum file when:
 - The concept is fundamental to the protocol
 - Type safety would benefit implementers
 
+### Enum membership — when to add a value
+
+Adding a value to an *existing* enum is a curation decision, not a default. An enum is a curated roster of real, shared semantics — not a registry of every vendor or integration. A value earns membership when **all** hold:
+
+- **Published** — it names an externally-documented concept with a stable definition, not a per-buyer or per-integration shape.
+- **Natively supported** — at least one real implementer handles it directly, without bespoke per-value mapping (for a `feed_format`, the seller parses it natively without `feed_field_mappings`).
+- **Shared demand** — it is relevant across more than one producer **and** more than one consumer (a shared dialect, not branding for a single bilateral integration).
+
+A material **dialect** of an existing value earns its own value only when its differences would make the parent value's consumer mis-handle it — a renamed primary key, composite-encoded fields, or a field the parent treats as optional but the dialect requires. Cosmetic or additive-optional differences do not; use the parent value. When a concept fails these tests, model it through the schema's existing extension path (`custom` + a mapping, or `ext`) rather than minting an enum value.
+
+This is distinct from [Platform Agnosticism](#platform-agnosticism): a `feed_format` value legitimately names a vendor's *published spec* (the value **is** the spec), whereas platform-agnosticism forbids a vendor-specific *version of a general concept*.
+
+**Worked example — `feed_format` ([#3456](https://github.com/adcontextprotocol/adcp/issues/3456)).** `tiktok_shop`, `pinterest_catalog`, and `openai_product_feed` qualify: published, Google-Merchant-Center-derived feed dialects that real sellers parse natively, each with deltas a strict GMC parser would mis-handle. A feed without a published, natively-parsed spec uses `custom` + `feed_field_mappings`.
+
 ## Field Design
 
 ### Discriminated Unions

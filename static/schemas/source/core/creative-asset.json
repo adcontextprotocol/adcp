@@ -28,7 +28,7 @@
     },
     "assets": {
       "type": "object",
-      "description": "Assets required by the format, keyed by asset_id. Each slot value is either a single asset object or an array of asset objects (for slots with `min`/`max > 1` like carousel `cards` or responsive_creative `headlines`). Each asset value carries an `asset_type` discriminator that selects the matching asset schema.",
+      "description": "Assets required by the format, keyed by asset_id or canonical asset_group_id. Each slot value is either a single asset object or an array of asset objects (for slots with `min`/`max > 1` like carousel `cards` or responsive_creative `headlines`). Each asset value carries an `asset_type` discriminator that selects the matching asset schema, including reference assets such as `published_post` when a product accepts already-published post references.",
       "patternProperties": {
         "^[a-z0-9_]+$": {
           "oneOf": [
@@ -106,7 +106,7 @@
     },
     "industry_identifiers": {
       "type": "array",
-      "description": "Industry-standard identifiers for this creative (e.g., Ad-ID, ISCI, Clearcast clock number). In broadcast buying, these identifiers tie the creative to rotation instructions and traffic systems. A creative may have multiple identifiers when different systems reference the same asset.",
+      "description": "Industry-standard or market-specific identifiers for this creative (e.g., Ad-ID, ISCI, Clearcast clock number, IDcrea). In broadcast and scheduled audio/video buying, these identifiers tie the creative to rotation instructions, clearance records, and traffic systems. A creative may have multiple identifiers when different systems reference the same asset. Add a PR to extend creative-identifier-type when another shared identifier scheme needs first-class support.",
       "items": {
         "$ref": "/schemas/core/industry-identifier.json"
       },

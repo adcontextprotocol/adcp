@@ -38,7 +38,7 @@ See [list_creative_formats (Sales Agent)](/docs/creative/task-reference/list_cre
 |-----------|------|----------|-------------|
 | `format_ids` | FormatID[] | No | Return only specific format IDs (from `get_products` response) |
 | `type` | string | No | *(deprecated)* Filter by type: `audio`, `video`, `display`, `dooh`. Prefer `asset_types` filter instead. |
-| `asset_types` | string[] | No | Filter to formats accepting these asset types: `image`, `video`, `audio`, `text`, `html`, `javascript`, `url`. Uses OR logic. **Recommended over `type` filter.** |
+| `asset_types` | string[] | No | Filter to formats accepting these asset types: `image`, `video`, `audio`, `text`, `markdown`, `html`, `css`, `javascript`, `vast`, `daast`, `url`, `webhook`, `brief`, `catalog`, `published_post`. Uses OR logic. **Recommended over `type` filter.** |
 | `max_width` | integer | No | Maximum width in pixels (inclusive) - matches if ANY render fits |
 | `max_height` | integer | No | Maximum height in pixels (inclusive) - matches if ANY render fits |
 | `min_width` | integer | No | Minimum width in pixels (inclusive) |
@@ -604,6 +604,8 @@ The `asset_types` parameter uses **OR logic** - formats matching ANY specified a
 **Example**: `asset_types: ['html', 'javascript', 'image']`
 - Returns formats accepting html OR javascript OR image
 - Use case: "Show me formats I can use with any of my available asset types"
+
+For boosted/existing-post formats, use `asset_types: ['published_post']` to find formats that accept a `published_post` reference asset instead of uploaded media bytes.
 
 **To find formats requiring specific combinations**, filter results after retrieval:
 

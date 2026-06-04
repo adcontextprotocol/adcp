@@ -6,6 +6,7 @@ summary: "Validates media buy state transitions: create, pause, resume, cancel, 
 track: media_buy
 required_tools:
   - create_media_buy
+  - sync_creatives
   - update_media_buy
 
 narrative: |
@@ -25,6 +26,7 @@ agent:
   capabilities:
     - sells_media
     - accepts_briefs
+    - accepts_creatives
   examples:
     - "Any AdCP seller with media buy support"
 
@@ -108,9 +110,11 @@ phases:
             correlation_id: "media_buy_state_machine--discover_products"
         context_outputs:
           - name: product_id
-            path: 'products[0].product_id'
+            path: "products[0].product_id"
           - name: pricing_option_id
-            path: 'products[0].pricing_options[0].pricing_option_id'
+            path: "products[0].pricing_options[0].pricing_option_id"
+          - name: product_format_id
+            path: "products[0].format_ids[0]"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -134,11 +138,60 @@ phases:
           - check: field_present
             path: "products[0].format_ids[0].id"
             description: "Format IDs include id — must be accepted back in sync_creatives"
+
+      - id: sync_creative
+        title: "Sync a creative for the test buy"
+        narrative: |
+          Upload a creative using the exact format_id returned by get_products. The
+          subsequent create_media_buy request assigns this creative to the package so
+          the created buy is pausable instead of legitimately remaining in
+          pending_creatives.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Accept the creative into the account library so it can be assigned on
+          create_media_buy.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "state_machine_display_creative"
+              name: "Acme Outdoor State Machine Creative"
+              format_id: "$context.product_format_id"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/state-machine-display.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+
+          idempotency_key: "$generate:uuid_v4#media_buy_state_machine_setup_sync_creative"
+          context:
+            correlation_id: "media_buy_state_machine--sync_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_state_machine--sync_creative"
+            description: "Context correlation_id returned unchanged"
+
       - id: create_buy
         title: "Create the test media buy"
         narrative: |
-          Create a media buy using the discovered product. This buy will be used for
-          all subsequent state transition tests.
+          Create a media buy using the discovered product and synced creative. This
+          buy will be used for all subsequent state transition tests.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -157,21 +210,23 @@ phases:
             operator: "pinnacle-agency.example"
           brand:
             domain: "acmeoutdoor.example"
-          start_time: "2026-07-01T00:00:00Z"
+          start_time: "asap"
           end_time: "2026-09-30T23:59:59Z"
           packages:
-            - product_id: "test-product"
+            - product_id: "$context.product_id"
               budget: 10000
-              pricing_option_id: "test-pricing"
+              pricing_option_id: "$context.pricing_option_id"
+              creative_assignments:
+                - creative_id: "state_machine_display_creative"
 
           idempotency_key: "$generate:uuid_v4#media_buy_state_machine_setup_create_buy"
           context:
             correlation_id: "media_buy_state_machine--create_buy"
         context_outputs:
           - name: media_buy_id
-            path: 'media_buy_id'
+            path: "media_buy_id"
           - name: package_id
-            path: 'packages[0].package_id'
+            path: "packages[0].package_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"

@@ -12,7 +12,7 @@
     "depublished"
   ],
   "enumDescriptions": {
-    "suspended": "Offline value of audience-status. Valid when resource_type='audience'.",
+    "suspended": "Offline value of audience-status and a recoverable offline value of creative-status. Valid when resource_type='audience', and valid when resource_type='creative' for recoverable dependency/authorization loss such as a published-post authorization expiring or a source post becoming private.",
     "rejected": "Offline value of creative-status. Valid when resource_type='creative'. Reached from approved when seller revokes post-approval.",
     "withdrawn": "Offline value of catalog-item-status. Valid when resource_type='catalog_item'. Seller-initiated removal, distinct from review-failure rejection.",
     "insufficient": "Offline value of assessment-status surfaced through event-source-health.status. Valid when resource_type='event_source'. Covers source-offline (zero events received over the evaluation window) — disambiguate via events_received_24h and last_event_at.",

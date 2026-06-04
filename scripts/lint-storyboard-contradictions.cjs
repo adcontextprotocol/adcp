@@ -237,6 +237,7 @@ function fingerprintRequest(req) {
  * eliminates a false-negative envelope in the env fingerprint.
  */
 const FIXTURE_CATEGORY_PRIMARY_ID = {
+  accounts: 'account_id',
   products: 'product_id',
   pricing_options: 'pricing_option_id',
   creatives: 'creative_id',
