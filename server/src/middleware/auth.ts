@@ -1795,7 +1795,6 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     };
     req.accessToken = 'workos-api-key';
     (req as Request & { apiKey?: ValidatedApiKey }).apiKey = apiKey;
-    (req.user as unknown as Record<string, unknown>).isMember = true;
 
     const apiKeyBan = await checkPlatformBan(
       `apikey:${apiKey.id}`,
