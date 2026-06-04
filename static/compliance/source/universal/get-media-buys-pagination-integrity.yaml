@@ -7,6 +7,9 @@ track: core
 required_tools:
   - get_media_buys
 
+requires:
+  - controller
+
 narrative: |
   Every paginated read in AdCP returns a `pagination` envelope satisfying
   the cursor↔has_more invariant: `has_more=true` carries a `cursor`,
