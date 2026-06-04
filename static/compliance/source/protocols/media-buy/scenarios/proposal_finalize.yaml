@@ -293,8 +293,8 @@ phases:
           total_budget:
             amount: 50000
             currency: "USD"
-          start_time: "2026-04-01T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2027-06-30T23:59:59Z"
           io_acceptance:
             io_id: "$context.io_id"
             accepted_at: "2026-03-15T14:30:00Z"
@@ -381,8 +381,8 @@ phases:
           total_budget:
             amount: 50000
             currency: "USD"
-          start_time: "2026-04-01T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2027-06-30T23:59:59Z"
 
           idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_unknown_proposal_create_media_buy"
         validations:
