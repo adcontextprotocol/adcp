@@ -46,8 +46,25 @@ prerequisites:
   description: |
     The seller must expose the comply_test_controller tool. The controller is detected
     via list_scenarios before any state transitions are attempted. Phases that require
-    specific scenarios are skipped if the controller does not support them.
+    specific scenarios are skipped if the controller does not support them. The runner
+    also seeds the product and pricing option referenced by the media-buy phases so
+    those phases validate lifecycle behavior rather than catalog availability.
   test_kit: 'test-kits/acme-outdoor.yaml'
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: 'test-product'
+      delivery_type: 'non_guaranteed'
+      channels: ['display']
+      format_ids:
+        - id: 'display_300x250'
+  pricing_options:
+    - product_id: 'test-product'
+      pricing_option_id: 'test-pricing'
+      pricing_model: 'cpm'
+      currency: 'USD'
+      floor_price: 1.0
 
 phases:
   - id: capability_discovery
