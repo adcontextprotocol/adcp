@@ -9,6 +9,9 @@ required_tools:
   - validate_input
   - comply_test_controller
 
+requires:
+  - controller
+
 narrative: |
   AdCP 3.1 adds `validate_input` so buyers can dry-run a v2 creative
   manifest against canonical formats and product-specific format declarations
