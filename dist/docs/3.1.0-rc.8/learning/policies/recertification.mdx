@@ -1,0 +1,129 @@
+---
+title: Recertification and protocol-change updates
+sidebarTitle: Recertification
+description: "AdCP certification recertification policy: targeted protocol-change updates, delta assessments, learner notifications, and the AdCP 3.1 canonical formats S2 rationale."
+"og:title": "AdCP - Recertification and protocol-change updates"
+---
+
+# Recertification and protocol-change updates
+
+**Adopted:** May 2026
+**Responsible party:** AgenticAdvertising.org program leadership
+
+<Note>
+This policy is IACET-aligned and CPD-aligned. It is not an assertion of current IACET Accredited Provider status or IACET CEU issuance.
+</Note>
+
+## Purpose
+
+AdCP credentials are tied to protocol competency. When the protocol changes, the certification program determines whether existing credential holders need no action, a targeted delta assessment, or full recertification.
+
+This policy documents that decision process and records the AdCP 3.1 canonical formats rationale for pre-3.1 S2 Creative specialist holders.
+
+## Decision levels
+
+| Level | When used | Learner requirement |
+|---|---|---|
+| No action | The protocol change does not affect the credential's required demonstrations | None |
+| Delta assessment | The protocol change adds or narrows a bounded competency that builds on prior demonstrated work | Complete only the new or changed required demonstrations |
+| Full recertification | The protocol change invalidates the prior competency evidence, the learner misses the delta window, or the prior record cannot support a delta decision | Complete the current module again |
+
+Delta assessment is available only when a written rationale maps the new criteria to prior demonstrated competencies before learner invitations or engine targeting go live.
+
+## General process
+
+1. Program leadership identifies the affected credential, module, and criterion IDs.
+2. The curriculum owner writes a rationale mapping the protocol change to prior evidence and the new required demonstrations.
+3. Engineering ships the updated module criteria and records the criteria effective point.
+4. The certification engine targets credential holders whose prior completion predates the criteria effective point and whose records do not already include the new criteria.
+5. Learners receive a notification explaining the change, required delta work, deadline, and escalation path.
+6. Delta completion is recorded in the learner record and retained under the [learner records policy](/dist/docs/3.1.0-rc.8/learning/policies/learner-records).
+
+## Effective dates and targeting
+
+For any protocol-change update, the curriculum change record must define these dates before engineering targets learners:
+
+| Field | Definition |
+|---|---|
+| `criteria_effective_at` | The later of the production deployment that adds the new required criteria and the protocol GA date that makes those criteria learner-facing |
+| `delta_window_opens_at` | The date learner targeting and notifications may begin |
+| `delta_window_closes_at` | The final date for delta-only completion |
+| `auditable_record_required` | The minimum learner record needed to offer a delta instead of full recertification |
+
+For the AdCP 3.1 S2 Creative canonical-format update:
+
+| Field | Value |
+|---|---|
+| `criteria_effective_at` | Later of the production deployment of `496_curriculum_3_1_canonical_formats_criteria.sql` and AdCP 3.1.0 GA |
+| `delta_window_opens_at` | `criteria_effective_at`; no learner targeting or notification may run before both AdCP 3.1.0 GA and production deployment of the new criteria |
+| `delta_window_closes_at` | 90 calendar days after `delta_window_opens_at`, ending at 23:59 UTC on the computed deadline date |
+| `auditable_record_required` | S2 learner progress completed before `criteria_effective_at`, plus an S2 completion record or teaching checkpoint trail sufficient to verify the prior required demonstrations |
+
+Holders whose learner records already include all five AdCP 3.1 canonical-format S2 criteria require no action. Holders whose records predate `criteria_effective_at` and lack one or more of the five criteria are delta candidates only when the auditable-record requirement is met.
+
+## AdCP 3.1 canonical formats: S2 Creative delta rationale
+
+AdCP 3.1 adds canonical format declarations to media-buy products through `format_options[]`. Creative specialists must now read a product's canonical declaration, choose the correct `format_kind`, distinguish product-level `format_option_id` from creative-agent `capability_id`, select the right asset-source model, and explain the validation order from shared canonical shape to product-specific narrowing.
+
+The change is material enough to require recertification for existing S2 Creative holders, but it does not invalidate the rest of the S2 credential. Pre-3.1 S2 holders already demonstrated creative workflow competency across format discovery, creative manifests, preview, sync, pricing, tracker-slot reasoning, and broadcast identifiers. Canonical formats extend those competencies with a new product-declaration layer rather than replacing the whole creative workflow.
+
+Therefore, pre-3.1 S2 Creative holders are eligible for a targeted delta assessment, not automatic full recertification, when their prior S2 learner record is available and complete.
+
+### Criteria mapping
+
+| New S2 criterion ID | New competency | Prior S2 evidence it builds on | Delta rationale |
+|---|---|---|---|
+| `s2_ex1_sc_format_kind_selection` | Select the correct canonical `format_kind` for a product and manifest | Format discovery, creative manifest authoring, and channel/format distinction | Adds the canonical vocabulary layer to an existing format-selection competency |
+| `s2_ex1_sc_format_options_cardinality` | Read `format_options[]` and explain single-option, multi-option, and multi-size fan-out declarations | Multi-format creative adaptation and sync across publisher requirements | Narrows how product declarations are represented; prior evidence covers adapting assets to publisher format constraints |
+| `s2_ex1_sc_option_vs_capability_id` | Distinguish media-buy `format_option_id` from creative-agent `capability_id` | Creative-agent capability discovery and media-buy product reading | Prevents namespace confusion introduced by 3.1; prior evidence covers both surfaces separately |
+| `s2_ex1_sc_source_taxonomy` | Choose the correct asset-source model across buyer-uploaded, agent-synthesized, seller pre-rendered, seller human-designed, and publisher-host-recorded workflows | Creative generation, transformation, preview, and sync workflows | Adds explicit taxonomy to workflow distinctions already assessed in S2 |
+| `s2_ex1_sc_validation_order` | Explain canonical-first, product-second validation and creative-agent capability narrowing | Schema compliance, preview validation, and sync error recovery | Adds validation sequencing for 3.1 product narrowing; prior evidence covers validation and recovery generally |
+
+### Eligibility
+
+The S2 canonical-format delta applies to learners who earned the S2 Creative specialist credential before `criteria_effective_at` and who have an auditable S2 completion record.
+
+Learners are assigned full S2 recertification instead of the delta when:
+
+- their prior S2 record is missing or incomplete;
+- they do not complete the delta within the published window;
+- their prior completion predates the current evidence-retention model and cannot be mapped to the criteria above;
+- program leadership determines that a future protocol change invalidates more than the canonical-format layer.
+
+### Window
+
+The delta-only window is 90 days after `delta_window_opens_at`. During that window, affected credential holders keep their S2 credential but are marked as requiring a protocol update. After the window closes, unresolved holders retain their historical S2 completion record, but their learner-facing S2 status is no longer current until they complete the current S2 module. Learner-facing messages must include the computed absolute deadline date.
+
+## CPD and accreditation disclosure
+
+Recommended disclosure for continuing professional development records:
+
+> AdCP 3.1 introduced canonical format declarations for media-buy products. AgenticAdvertising.org reviewed the S2 Creative specialist credential and determined that existing S2 holders require a targeted protocol-change update covering the new canonical-format criteria. The update is a delta assessment because the new criteria extend prior demonstrated creative workflow competencies rather than replacing the full S2 competency set. Learners who do not complete the delta assessment during the published window must complete the current S2 module.
+
+This rationale must be retained with the curriculum change record and learner records for audit purposes.
+
+## Learner notification copy
+
+In-product notification:
+
+> AdCP 3.1 adds canonical format declarations to creative workflows. Your S2 Creative specialist credential remains active, but you need a short protocol update covering the new canonical-format criteria. Complete the S2 canonical formats delta by `<computed deadline date>` to keep your credential current without retaking the full S2 module.
+>
+> If you believe you were targeted in error, email certification@agenticadvertising.org. We acknowledge assessment and targeting review requests within 2 business days and resolve them through the [complaints process](/dist/docs/3.1.0-rc.8/learning/policies/complaints).
+
+Email notification:
+
+> Subject: S2 Creative protocol update required for AdCP 3.1
+>
+> AdCP 3.1 adds canonical format declarations to media-buy products. Because you earned S2 Creative before this change, you need to complete a targeted delta assessment covering the new canonical-format criteria. This is not a full recertification: it focuses only on reading `format_options[]`, selecting `format_kind`, distinguishing `format_option_id` from creative-agent `capability_id`, choosing the correct asset-source model, and explaining canonical-first validation.
+>
+> Complete the delta by `<computed deadline date>` to keep your credential current. After that window, the current S2 module is required for renewal. If you believe you were targeted in error, email certification@agenticadvertising.org; we acknowledge assessment and targeting review requests within 2 business days and resolve them through the complaints process.
+
+## Implementation gates
+
+Engineering must not enable learner targeting or send learner notifications until all of the following are true:
+
+- this rationale is published;
+- the new S2 criteria are present in `certification_modules.exercise_definitions`;
+- the eligibility query can identify pre-effective-date S2 holders;
+- delta completion writes an auditable learner record showing the new criteria were verified;
+- support and complaints escalation paths are ready for learners who believe they were targeted incorrectly.

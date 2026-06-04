@@ -677,56 +677,56 @@
           {
             "group": "Getting Started",
             "pages": [
-              "dist/docs/3.1.0-rc.7/intro",
-              "dist/docs/3.1.0-rc.7/quickstart"
+              "dist/docs/3.1.0-rc.8/intro",
+              "dist/docs/3.1.0-rc.8/quickstart"
             ]
           },
           {
             "group": "Building with AdCP",
             "expanded": false,
             "pages": [
-              "dist/docs/3.1.0-rc.7/building/index",
+              "dist/docs/3.1.0-rc.8/building/index",
               {
                 "group": "AdCP 3.x",
                 "expanded": false,
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/reference/whats-new-in-v3",
-                  "dist/docs/3.1.0-rc.7/reference/whats-new-in-3-1",
-                  "dist/docs/3.1.0-rc.7/reference/migration/v3-readiness",
-                  "dist/docs/3.1.0-rc.7/reference/migration/index",
-                  "dist/docs/3.1.0-rc.7/reference/migration/prerelease-upgrades",
-                  "dist/docs/3.1.0-rc.7/reference/migration/channels",
-                  "dist/docs/3.1.0-rc.7/reference/migration/pricing",
-                  "dist/docs/3.1.0-rc.7/reference/migration/geo-targeting",
-                  "dist/docs/3.1.0-rc.7/reference/migration/creatives",
-                  "dist/docs/3.1.0-rc.7/reference/migration/creative-transformers",
-                  "dist/docs/3.1.0-rc.7/reference/migration/catalogs",
-                  "dist/docs/3.1.0-rc.7/reference/migration/optimization-goals",
-                  "dist/docs/3.1.0-rc.7/reference/migration/brand-identity",
-                  "dist/docs/3.1.0-rc.7/reference/migration/signals",
-                  "dist/docs/3.1.0-rc.7/reference/migration/audiences",
-                  "dist/docs/3.1.0-rc.7/reference/migration/attribution",
-                  "dist/docs/3.1.0-rc.7/reference/migration/media-buy-status"
+                  "dist/docs/3.1.0-rc.8/reference/whats-new-in-v3",
+                  "dist/docs/3.1.0-rc.8/reference/whats-new-in-3-1",
+                  "dist/docs/3.1.0-rc.8/reference/migration/v3-readiness",
+                  "dist/docs/3.1.0-rc.8/reference/migration/index",
+                  "dist/docs/3.1.0-rc.8/reference/migration/prerelease-upgrades",
+                  "dist/docs/3.1.0-rc.8/reference/migration/channels",
+                  "dist/docs/3.1.0-rc.8/reference/migration/pricing",
+                  "dist/docs/3.1.0-rc.8/reference/migration/geo-targeting",
+                  "dist/docs/3.1.0-rc.8/reference/migration/creatives",
+                  "dist/docs/3.1.0-rc.8/reference/migration/creative-transformers",
+                  "dist/docs/3.1.0-rc.8/reference/migration/catalogs",
+                  "dist/docs/3.1.0-rc.8/reference/migration/optimization-goals",
+                  "dist/docs/3.1.0-rc.8/reference/migration/brand-identity",
+                  "dist/docs/3.1.0-rc.8/reference/migration/signals",
+                  "dist/docs/3.1.0-rc.8/reference/migration/audiences",
+                  "dist/docs/3.1.0-rc.8/reference/migration/attribution",
+                  "dist/docs/3.1.0-rc.8/reference/migration/media-buy-status"
                 ]
               },
-              "dist/docs/3.1.0-rc.7/protocol/architecture",
-              "dist/docs/3.1.0-rc.7/protocol/design-principles",
-              "dist/docs/3.1.0-rc.7/protocol/capabilities-explorer",
-              "dist/docs/3.1.0-rc.7/spec-guidelines",
-              "dist/docs/3.1.0-rc.7/protocol/required-tasks",
-              "dist/docs/3.1.0-rc.7/protocol/calling-an-agent",
-              "dist/docs/3.1.0-rc.7/protocol/format-references",
-              "dist/docs/3.1.0-rc.7/protocol/snapshot-and-log",
+              "dist/docs/3.1.0-rc.8/protocol/architecture",
+              "dist/docs/3.1.0-rc.8/protocol/design-principles",
+              "dist/docs/3.1.0-rc.8/protocol/capabilities-explorer",
+              "dist/docs/3.1.0-rc.8/spec-guidelines",
+              "dist/docs/3.1.0-rc.8/protocol/required-tasks",
+              "dist/docs/3.1.0-rc.8/protocol/calling-an-agent",
+              "dist/docs/3.1.0-rc.8/protocol/format-references",
+              "dist/docs/3.1.0-rc.8/protocol/snapshot-and-log",
               {
                 "group": "Concepts",
                 "expanded": false,
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/building/concepts/index",
-                  "dist/docs/3.1.0-rc.7/building/concepts/protocol-comparison",
-                  "dist/docs/3.1.0-rc.7/building/concepts/adcp-vs-openrtb",
-                  "dist/docs/3.1.0-rc.7/building/concepts/how-agents-communicate",
-                  "dist/docs/3.1.0-rc.7/building/concepts/security-model",
-                  "dist/docs/3.1.0-rc.7/building/concepts/industry-landscape"
+                  "dist/docs/3.1.0-rc.8/building/concepts/index",
+                  "dist/docs/3.1.0-rc.8/building/concepts/protocol-comparison",
+                  "dist/docs/3.1.0-rc.8/building/concepts/adcp-vs-openrtb",
+                  "dist/docs/3.1.0-rc.8/building/concepts/how-agents-communicate",
+                  "dist/docs/3.1.0-rc.8/building/concepts/security-model",
+                  "dist/docs/3.1.0-rc.8/building/concepts/industry-landscape"
                 ]
               },
               {
@@ -735,58 +735,58 @@
                   {
                     "group": "L4 — Business logic",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L4/index",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L4/choose-your-sdk",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L4/build-an-agent",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L4/build-a-caller",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L4/migrate-from-hand-rolled"
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L4/index",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L4/choose-your-sdk",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L4/build-an-agent",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L4/build-a-caller",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L4/migrate-from-hand-rolled"
                     ]
                   },
                   {
                     "group": "L3 — Protocol semantics",
                     "expanded": false,
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L3/index",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L3/task-lifecycle",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L3/async-operations",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L3/webhooks",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L3/error-handling",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L3/comply-test-controller"
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L3/index",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L3/task-lifecycle",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L3/async-operations",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L3/webhooks",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L3/error-handling",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L3/comply-test-controller"
                     ]
                   },
                   {
                     "group": "L2 — Auth & registry",
                     "expanded": false,
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L2/index",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L2/authentication",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L2/account-state",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L2/accounts-and-agents",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L2/context-sessions"
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L2/index",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L2/authentication",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L2/account-state",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L2/accounts-and-agents",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L2/context-sessions"
                     ]
                   },
                   {
                     "group": "L1 — Identity & signing",
                     "expanded": false,
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L1/index",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L1/security",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L1/request-signing",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L1/webhook-verifier-tuning"
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L1/index",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L1/security",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L1/request-signing",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L1/webhook-verifier-tuning"
                     ]
                   },
                   {
                     "group": "L0 — Wire & transport",
                     "expanded": false,
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L0/index",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L0/schemas",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L0/mcp-guide",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L0/a2a-guide",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L0/a2a-response-format",
-                      "dist/docs/3.1.0-rc.7/protocol/get_adcp_capabilities",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L0/mcp-response-extraction",
-                      "dist/docs/3.1.0-rc.7/building/by-layer/L0/a2a-response-extraction"
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L0/index",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L0/schemas",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L0/mcp-guide",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L0/a2a-guide",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L0/a2a-response-format",
+                      "dist/docs/3.1.0-rc.8/protocol/get_adcp_capabilities",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L0/mcp-response-extraction",
+                      "dist/docs/3.1.0-rc.8/building/by-layer/L0/a2a-response-extraction"
                     ]
                   }
                 ]
@@ -795,48 +795,48 @@
                 "group": "Cross-cutting",
                 "expanded": false,
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/building/cross-cutting/sdk-stack",
-                  "dist/docs/3.1.0-rc.7/building/cross-cutting/version-adaptation",
-                  "dist/docs/3.1.0-rc.7/building/cross-cutting/known-ambiguities"
+                  "dist/docs/3.1.0-rc.8/building/cross-cutting/sdk-stack",
+                  "dist/docs/3.1.0-rc.8/building/cross-cutting/version-adaptation",
+                  "dist/docs/3.1.0-rc.8/building/cross-cutting/known-ambiguities"
                 ]
               },
               {
                 "group": "Verification & trust",
                 "expanded": false,
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/building/verification/conformance",
-                  "dist/docs/3.1.0-rc.7/building/verification/compliance-catalog",
-                  "dist/docs/3.1.0-rc.7/building/verification/storyboards-vs-scenarios",
-                  "dist/docs/3.1.0-rc.7/building/verification/how-grading-works",
-                  "dist/docs/3.1.0-rc.7/building/verification/validate-your-agent",
-                  "dist/docs/3.1.0-rc.7/building/verification/validate-with-mock-fixtures",
-                  "dist/docs/3.1.0-rc.7/building/verification/addie-socket-mode",
-                  "dist/docs/3.1.0-rc.7/building/verification/grading",
-                  "dist/docs/3.1.0-rc.7/building/verification/get-test-ready",
-                  "dist/docs/3.1.0-rc.7/building/verification/aao-verified"
+                  "dist/docs/3.1.0-rc.8/building/verification/conformance",
+                  "dist/docs/3.1.0-rc.8/building/verification/compliance-catalog",
+                  "dist/docs/3.1.0-rc.8/building/verification/storyboards-vs-scenarios",
+                  "dist/docs/3.1.0-rc.8/building/verification/how-grading-works",
+                  "dist/docs/3.1.0-rc.8/building/verification/validate-your-agent",
+                  "dist/docs/3.1.0-rc.8/building/verification/validate-with-mock-fixtures",
+                  "dist/docs/3.1.0-rc.8/building/verification/addie-socket-mode",
+                  "dist/docs/3.1.0-rc.8/building/verification/grading",
+                  "dist/docs/3.1.0-rc.8/building/verification/get-test-ready",
+                  "dist/docs/3.1.0-rc.8/building/verification/aao-verified"
                 ]
               },
               {
                 "group": "Operating",
                 "expanded": false,
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/building/operating/operating-an-agent",
-                  "dist/docs/3.1.0-rc.7/building/operating/orchestrator-design",
-                  "dist/docs/3.1.0-rc.7/building/operating/transport-errors",
-                  "dist/docs/3.1.0-rc.7/building/operating/seller-integration",
-                  "dist/docs/3.1.0-rc.7/building/operating/storyboard-troubleshooting"
+                  "dist/docs/3.1.0-rc.8/building/operating/operating-an-agent",
+                  "dist/docs/3.1.0-rc.8/building/operating/orchestrator-design",
+                  "dist/docs/3.1.0-rc.8/building/operating/transport-errors",
+                  "dist/docs/3.1.0-rc.8/building/operating/seller-integration",
+                  "dist/docs/3.1.0-rc.8/building/operating/storyboard-troubleshooting"
                 ]
               },
               {
                 "group": "Accounts",
                 "expanded": false,
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/accounts/overview",
-                  "dist/docs/3.1.0-rc.7/accounts/tasks/sync_accounts",
-                  "dist/docs/3.1.0-rc.7/accounts/tasks/list_accounts",
-                  "dist/docs/3.1.0-rc.7/accounts/tasks/report_usage",
-                  "dist/docs/3.1.0-rc.7/accounts/tasks/sync_governance",
-                  "dist/docs/3.1.0-rc.7/accounts/tasks/get_account_financials"
+                  "dist/docs/3.1.0-rc.8/accounts/overview",
+                  "dist/docs/3.1.0-rc.8/accounts/tasks/sync_accounts",
+                  "dist/docs/3.1.0-rc.8/accounts/tasks/list_accounts",
+                  "dist/docs/3.1.0-rc.8/accounts/tasks/report_usage",
+                  "dist/docs/3.1.0-rc.8/accounts/tasks/sync_governance",
+                  "dist/docs/3.1.0-rc.8/accounts/tasks/get_account_financials"
                 ]
               }
             ]
@@ -849,55 +849,55 @@
                 "group": "Media Buy",
                 "expanded": false,
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/media-buy/index",
-                  "dist/docs/3.1.0-rc.7/media-buy/commerce-media",
+                  "dist/docs/3.1.0-rc.8/media-buy/index",
+                  "dist/docs/3.1.0-rc.8/media-buy/commerce-media",
                   {
                     "group": "Concepts",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/media-buy/product-discovery/index",
-                      "dist/docs/3.1.0-rc.7/media-buy/product-discovery/brief-expectations",
-                      "dist/docs/3.1.0-rc.7/media-buy/product-discovery/example-briefs",
-                      "dist/docs/3.1.0-rc.7/media-buy/product-discovery/media-products",
-                      "dist/docs/3.1.0-rc.7/media-buy/product-discovery/collections-and-installments",
-                      "dist/docs/3.1.0-rc.7/media-buy/product-discovery/refinement",
-                      "dist/docs/3.1.0-rc.7/media-buy/media-buys/index",
-                      "dist/docs/3.1.0-rc.7/media-buy/media-buys/lifecycle",
-                      "dist/docs/3.1.0-rc.7/media-buy/media-buys/optimization-reporting",
-                      "dist/docs/3.1.0-rc.7/media-buy/media-buys/policy-compliance",
-                      "dist/docs/3.1.0-rc.7/media-buy/creatives/index",
-                      "dist/docs/3.1.0-rc.7/media-buy/conversion-tracking/index",
-                      "dist/docs/3.1.0-rc.7/media-buy/advanced-topics/pricing-models",
-                      "dist/docs/3.1.0-rc.7/media-buy/advanced-topics/targeting",
-                      "dist/docs/3.1.0-rc.7/media-buy/advanced-topics/accountability",
-                      "dist/docs/3.1.0-rc.7/media-buy/advanced-topics/billing-authority"
+                      "dist/docs/3.1.0-rc.8/media-buy/product-discovery/index",
+                      "dist/docs/3.1.0-rc.8/media-buy/product-discovery/brief-expectations",
+                      "dist/docs/3.1.0-rc.8/media-buy/product-discovery/example-briefs",
+                      "dist/docs/3.1.0-rc.8/media-buy/product-discovery/media-products",
+                      "dist/docs/3.1.0-rc.8/media-buy/product-discovery/collections-and-installments",
+                      "dist/docs/3.1.0-rc.8/media-buy/product-discovery/refinement",
+                      "dist/docs/3.1.0-rc.8/media-buy/media-buys/index",
+                      "dist/docs/3.1.0-rc.8/media-buy/media-buys/lifecycle",
+                      "dist/docs/3.1.0-rc.8/media-buy/media-buys/optimization-reporting",
+                      "dist/docs/3.1.0-rc.8/media-buy/media-buys/policy-compliance",
+                      "dist/docs/3.1.0-rc.8/media-buy/creatives/index",
+                      "dist/docs/3.1.0-rc.8/media-buy/conversion-tracking/index",
+                      "dist/docs/3.1.0-rc.8/media-buy/advanced-topics/pricing-models",
+                      "dist/docs/3.1.0-rc.8/media-buy/advanced-topics/targeting",
+                      "dist/docs/3.1.0-rc.8/media-buy/advanced-topics/accountability",
+                      "dist/docs/3.1.0-rc.8/media-buy/advanced-topics/billing-authority"
                     ]
                   },
                   {
                     "group": "Building",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/media-buy/capability-discovery/index",
-                      "dist/docs/3.1.0-rc.7/media-buy/capability-discovery/implementing-standard-formats",
-                      "dist/docs/3.1.0-rc.7/media-buy/advanced-topics/agentic-execution-engine",
-                      "dist/docs/3.1.0-rc.7/media-buy/advanced-topics/accounts-and-security",
-                      "dist/docs/3.1.0-rc.7/media-buy/advanced-topics/sandbox"
+                      "dist/docs/3.1.0-rc.8/media-buy/capability-discovery/index",
+                      "dist/docs/3.1.0-rc.8/media-buy/capability-discovery/implementing-standard-formats",
+                      "dist/docs/3.1.0-rc.8/media-buy/advanced-topics/agentic-execution-engine",
+                      "dist/docs/3.1.0-rc.8/media-buy/advanced-topics/accounts-and-security",
+                      "dist/docs/3.1.0-rc.8/media-buy/advanced-topics/sandbox"
                     ]
                   },
                   {
                     "group": "Reference",
                     "expanded": false,
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/media-buy/specification",
-                      "dist/docs/3.1.0-rc.7/media-buy/task-reference/index",
-                      "dist/docs/3.1.0-rc.7/media-buy/task-reference/get_products",
-                      "dist/docs/3.1.0-rc.7/media-buy/task-reference/create_media_buy",
-                      "dist/docs/3.1.0-rc.7/media-buy/task-reference/sync_catalogs",
-                      "dist/docs/3.1.0-rc.7/media-buy/task-reference/get_media_buys",
-                      "dist/docs/3.1.0-rc.7/media-buy/task-reference/get_media_buy_delivery",
-                      "dist/docs/3.1.0-rc.7/media-buy/task-reference/update_media_buy",
-                      "dist/docs/3.1.0-rc.7/media-buy/task-reference/provide_performance_feedback",
-                      "dist/docs/3.1.0-rc.7/media-buy/task-reference/sync_event_sources",
-                      "dist/docs/3.1.0-rc.7/media-buy/task-reference/log_event",
-                      "dist/docs/3.1.0-rc.7/media-buy/task-reference/sync_audiences"
+                      "dist/docs/3.1.0-rc.8/media-buy/specification",
+                      "dist/docs/3.1.0-rc.8/media-buy/task-reference/index",
+                      "dist/docs/3.1.0-rc.8/media-buy/task-reference/get_products",
+                      "dist/docs/3.1.0-rc.8/media-buy/task-reference/create_media_buy",
+                      "dist/docs/3.1.0-rc.8/media-buy/task-reference/sync_catalogs",
+                      "dist/docs/3.1.0-rc.8/media-buy/task-reference/get_media_buys",
+                      "dist/docs/3.1.0-rc.8/media-buy/task-reference/get_media_buy_delivery",
+                      "dist/docs/3.1.0-rc.8/media-buy/task-reference/update_media_buy",
+                      "dist/docs/3.1.0-rc.8/media-buy/task-reference/provide_performance_feedback",
+                      "dist/docs/3.1.0-rc.8/media-buy/task-reference/sync_event_sources",
+                      "dist/docs/3.1.0-rc.8/media-buy/task-reference/log_event",
+                      "dist/docs/3.1.0-rc.8/media-buy/task-reference/sync_audiences"
                     ]
                   }
                 ]
@@ -906,69 +906,69 @@
                 "group": "Creative",
                 "expanded": false,
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/creative/index",
+                  "dist/docs/3.1.0-rc.8/creative/index",
                   {
                     "group": "Concepts",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/creative/key-concepts",
-                      "dist/docs/3.1.0-rc.7/creative/ai-creative-overview",
-                      "dist/docs/3.1.0-rc.7/creative/generative-creative",
-                      "dist/docs/3.1.0-rc.7/creative/creative-libraries",
-                      "dist/docs/3.1.0-rc.7/creative/catalogs",
-                      "dist/docs/3.1.0-rc.7/creative/catalog-schemas"
+                      "dist/docs/3.1.0-rc.8/creative/key-concepts",
+                      "dist/docs/3.1.0-rc.8/creative/ai-creative-overview",
+                      "dist/docs/3.1.0-rc.8/creative/generative-creative",
+                      "dist/docs/3.1.0-rc.8/creative/creative-libraries",
+                      "dist/docs/3.1.0-rc.8/creative/catalogs",
+                      "dist/docs/3.1.0-rc.8/creative/catalog-schemas"
                     ]
                   },
                   {
                     "group": "Building Creative Agents",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/creative/implementing-creative-agents",
-                      "dist/docs/3.1.0-rc.7/creative/sales-agent-creative-capabilities",
-                      "dist/docs/3.1.0-rc.7/creative/multi-agent-orchestration",
-                      "dist/docs/3.1.0-rc.7/creative/creative-manifests",
-                      "dist/docs/3.1.0-rc.7/creative/private-assets"
+                      "dist/docs/3.1.0-rc.8/creative/implementing-creative-agents",
+                      "dist/docs/3.1.0-rc.8/creative/sales-agent-creative-capabilities",
+                      "dist/docs/3.1.0-rc.8/creative/multi-agent-orchestration",
+                      "dist/docs/3.1.0-rc.8/creative/creative-manifests",
+                      "dist/docs/3.1.0-rc.8/creative/private-assets"
                     ]
                   },
                   {
                     "group": "Formats and Assets",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/creative/formats",
-                      "dist/docs/3.1.0-rc.7/creative/asset-types",
-                      "dist/docs/3.1.0-rc.7/creative/template-format-ids",
-                      "dist/docs/3.1.0-rc.7/creative/universal-macros"
+                      "dist/docs/3.1.0-rc.8/creative/formats",
+                      "dist/docs/3.1.0-rc.8/creative/asset-types",
+                      "dist/docs/3.1.0-rc.8/creative/template-format-ids",
+                      "dist/docs/3.1.0-rc.8/creative/universal-macros"
                     ]
                   },
                   {
                     "group": "Channel Guides",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/creative/channels/video",
-                      "dist/docs/3.1.0-rc.7/creative/channels/ctv",
-                      "dist/docs/3.1.0-rc.7/creative/channels/broadcast",
-                      "dist/docs/3.1.0-rc.7/creative/channels/display",
-                      "dist/docs/3.1.0-rc.7/creative/channels/audio",
-                      "dist/docs/3.1.0-rc.7/creative/channels/dooh",
-                      "dist/docs/3.1.0-rc.7/creative/channels/carousels",
-                      "dist/docs/3.1.0-rc.7/creative/channels/social-native"
+                      "dist/docs/3.1.0-rc.8/creative/channels/video",
+                      "dist/docs/3.1.0-rc.8/creative/channels/ctv",
+                      "dist/docs/3.1.0-rc.8/creative/channels/broadcast",
+                      "dist/docs/3.1.0-rc.8/creative/channels/display",
+                      "dist/docs/3.1.0-rc.8/creative/channels/audio",
+                      "dist/docs/3.1.0-rc.8/creative/channels/dooh",
+                      "dist/docs/3.1.0-rc.8/creative/channels/carousels",
+                      "dist/docs/3.1.0-rc.8/creative/channels/social-native"
                     ]
                   },
                   {
                     "group": "Compliance",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/creative/accessibility",
-                      "dist/docs/3.1.0-rc.7/creative/provenance"
+                      "dist/docs/3.1.0-rc.8/creative/accessibility",
+                      "dist/docs/3.1.0-rc.8/creative/provenance"
                     ]
                   },
                   {
                     "group": "Reference",
                     "expanded": false,
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/creative/specification",
-                      "dist/docs/3.1.0-rc.7/creative/task-reference/build_creative",
-                      "dist/docs/3.1.0-rc.7/creative/task-reference/preview_creative",
-                      "dist/docs/3.1.0-rc.7/creative/task-reference/preview_creative-advanced",
-                      "dist/docs/3.1.0-rc.7/creative/task-reference/list_creative_formats",
-                      "dist/docs/3.1.0-rc.7/creative/task-reference/list_creatives",
-                      "dist/docs/3.1.0-rc.7/creative/task-reference/sync_creatives",
-                      "dist/docs/3.1.0-rc.7/creative/task-reference/get_creative_delivery"
+                      "dist/docs/3.1.0-rc.8/creative/specification",
+                      "dist/docs/3.1.0-rc.8/creative/task-reference/build_creative",
+                      "dist/docs/3.1.0-rc.8/creative/task-reference/preview_creative",
+                      "dist/docs/3.1.0-rc.8/creative/task-reference/preview_creative-advanced",
+                      "dist/docs/3.1.0-rc.8/creative/task-reference/list_creative_formats",
+                      "dist/docs/3.1.0-rc.8/creative/task-reference/list_creatives",
+                      "dist/docs/3.1.0-rc.8/creative/task-reference/sync_creatives",
+                      "dist/docs/3.1.0-rc.8/creative/task-reference/get_creative_delivery"
                     ]
                   }
                 ]
@@ -977,28 +977,28 @@
                 "group": "Governance",
                 "expanded": false,
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/governance/overview",
-                  "dist/docs/3.1.0-rc.7/governance/rfc-process",
-                  "dist/docs/3.1.0-rc.7/governance/embedded-human-judgment",
-                  "dist/docs/3.1.0-rc.7/governance/policy-registry",
-                  "dist/docs/3.1.0-rc.7/governance/policy-registry-sync",
-                  "dist/docs/3.1.0-rc.7/governance/policy-attribution",
-                  "dist/docs/3.1.0-rc.7/governance/annex-iii-obligations",
-                  "dist/docs/3.1.0-rc.7/governance/working-group-charter",
+                  "dist/docs/3.1.0-rc.8/governance/overview",
+                  "dist/docs/3.1.0-rc.8/governance/rfc-process",
+                  "dist/docs/3.1.0-rc.8/governance/embedded-human-judgment",
+                  "dist/docs/3.1.0-rc.8/governance/policy-registry",
+                  "dist/docs/3.1.0-rc.8/governance/policy-registry-sync",
+                  "dist/docs/3.1.0-rc.8/governance/policy-attribution",
+                  "dist/docs/3.1.0-rc.8/governance/annex-iii-obligations",
+                  "dist/docs/3.1.0-rc.8/governance/working-group-charter",
                   {
                     "group": "Property Governance",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/governance/property/index",
-                      "dist/docs/3.1.0-rc.7/governance/property/adagents",
-                      "dist/docs/3.1.0-rc.7/governance/property/managed-networks",
-                      "dist/docs/3.1.0-rc.7/governance/property/authorized-properties",
-                      "dist/docs/3.1.0-rc.7/governance/property/specification",
+                      "dist/docs/3.1.0-rc.8/governance/property/index",
+                      "dist/docs/3.1.0-rc.8/governance/property/adagents",
+                      "dist/docs/3.1.0-rc.8/governance/property/managed-networks",
+                      "dist/docs/3.1.0-rc.8/governance/property/authorized-properties",
+                      "dist/docs/3.1.0-rc.8/governance/property/specification",
                       {
                         "group": "Tasks",
                         "pages": [
-                          "dist/docs/3.1.0-rc.7/governance/property/tasks/index",
-                          "dist/docs/3.1.0-rc.7/governance/property/tasks/property_lists",
-                          "dist/docs/3.1.0-rc.7/governance/property/tasks/validate_property_delivery"
+                          "dist/docs/3.1.0-rc.8/governance/property/tasks/index",
+                          "dist/docs/3.1.0-rc.8/governance/property/tasks/property_lists",
+                          "dist/docs/3.1.0-rc.8/governance/property/tasks/validate_property_delivery"
                         ]
                       }
                     ]
@@ -1006,26 +1006,26 @@
                   {
                     "group": "Collection Governance",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/governance/collection/index",
-                      "dist/docs/3.1.0-rc.7/governance/collection/tasks/collection_lists"
+                      "dist/docs/3.1.0-rc.8/governance/collection/index",
+                      "dist/docs/3.1.0-rc.8/governance/collection/tasks/collection_lists"
                     ]
                   },
                   {
                     "group": "Content Standards",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/governance/content-standards/index",
-                      "dist/docs/3.1.0-rc.7/governance/content-standards/artifacts",
-                      "dist/docs/3.1.0-rc.7/governance/content-standards/implementation-guide",
+                      "dist/docs/3.1.0-rc.8/governance/content-standards/index",
+                      "dist/docs/3.1.0-rc.8/governance/content-standards/artifacts",
+                      "dist/docs/3.1.0-rc.8/governance/content-standards/implementation-guide",
                       {
                         "group": "Tasks",
                         "pages": [
-                          "dist/docs/3.1.0-rc.7/governance/content-standards/tasks/list_content_standards",
-                          "dist/docs/3.1.0-rc.7/governance/content-standards/tasks/get_content_standards",
-                          "dist/docs/3.1.0-rc.7/governance/content-standards/tasks/create_content_standards",
-                          "dist/docs/3.1.0-rc.7/governance/content-standards/tasks/update_content_standards",
-                          "dist/docs/3.1.0-rc.7/governance/content-standards/tasks/calibrate_content",
-                          "dist/docs/3.1.0-rc.7/governance/content-standards/tasks/get_media_buy_artifacts",
-                          "dist/docs/3.1.0-rc.7/governance/content-standards/tasks/validate_content_delivery"
+                          "dist/docs/3.1.0-rc.8/governance/content-standards/tasks/list_content_standards",
+                          "dist/docs/3.1.0-rc.8/governance/content-standards/tasks/get_content_standards",
+                          "dist/docs/3.1.0-rc.8/governance/content-standards/tasks/create_content_standards",
+                          "dist/docs/3.1.0-rc.8/governance/content-standards/tasks/update_content_standards",
+                          "dist/docs/3.1.0-rc.8/governance/content-standards/tasks/calibrate_content",
+                          "dist/docs/3.1.0-rc.8/governance/content-standards/tasks/get_media_buy_artifacts",
+                          "dist/docs/3.1.0-rc.8/governance/content-standards/tasks/validate_content_delivery"
                         ]
                       }
                     ]
@@ -1033,26 +1033,26 @@
                   {
                     "group": "Creative Governance",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/governance/creative/index",
-                      "dist/docs/3.1.0-rc.7/governance/creative/get_creative_features",
-                      "dist/docs/3.1.0-rc.7/governance/creative/provenance-verification"
+                      "dist/docs/3.1.0-rc.8/governance/creative/index",
+                      "dist/docs/3.1.0-rc.8/governance/creative/get_creative_features",
+                      "dist/docs/3.1.0-rc.8/governance/creative/provenance-verification"
                     ]
                   },
                   {
                     "group": "Campaign Governance",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/governance/campaign/index",
-                      "dist/docs/3.1.0-rc.7/governance/campaign/safety-model",
-                      "dist/docs/3.1.0-rc.7/governance/campaign/specification",
-                      "dist/docs/3.1.0-rc.7/governance/campaign/audit-trail",
+                      "dist/docs/3.1.0-rc.8/governance/campaign/index",
+                      "dist/docs/3.1.0-rc.8/governance/campaign/safety-model",
+                      "dist/docs/3.1.0-rc.8/governance/campaign/specification",
+                      "dist/docs/3.1.0-rc.8/governance/campaign/audit-trail",
                       {
                         "group": "Tasks",
                         "pages": [
-                          "dist/docs/3.1.0-rc.7/governance/campaign/tasks/index",
-                          "dist/docs/3.1.0-rc.7/governance/campaign/tasks/sync_plans",
-                          "dist/docs/3.1.0-rc.7/governance/campaign/tasks/report_plan_outcome",
-                          "dist/docs/3.1.0-rc.7/governance/campaign/tasks/check_governance",
-                          "dist/docs/3.1.0-rc.7/governance/campaign/tasks/get_plan_audit_logs"
+                          "dist/docs/3.1.0-rc.8/governance/campaign/tasks/index",
+                          "dist/docs/3.1.0-rc.8/governance/campaign/tasks/sync_plans",
+                          "dist/docs/3.1.0-rc.8/governance/campaign/tasks/report_plan_outcome",
+                          "dist/docs/3.1.0-rc.8/governance/campaign/tasks/check_governance",
+                          "dist/docs/3.1.0-rc.8/governance/campaign/tasks/get_plan_audit_logs"
                         ]
                       }
                     ]
@@ -1063,35 +1063,35 @@
                 "group": "Sponsored Intelligence",
                 "expanded": false,
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/sponsored-intelligence/overview",
-                  "dist/docs/3.1.0-rc.7/sponsored-intelligence/monetizing-ai",
+                  "dist/docs/3.1.0-rc.8/sponsored-intelligence/overview",
+                  "dist/docs/3.1.0-rc.8/sponsored-intelligence/monetizing-ai",
                   {
                     "group": "Concepts",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/sponsored-intelligence/product-spectrum",
-                      "dist/docs/3.1.0-rc.7/sponsored-intelligence/networks",
-                      "dist/docs/3.1.0-rc.7/sponsored-intelligence/workflow",
-                      "dist/docs/3.1.0-rc.7/sponsored-intelligence/measurement"
+                      "dist/docs/3.1.0-rc.8/sponsored-intelligence/product-spectrum",
+                      "dist/docs/3.1.0-rc.8/sponsored-intelligence/networks",
+                      "dist/docs/3.1.0-rc.8/sponsored-intelligence/workflow",
+                      "dist/docs/3.1.0-rc.8/sponsored-intelligence/measurement"
                     ]
                   },
                   {
                     "group": "SI Chat Protocol",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/sponsored-intelligence/si-chat-protocol",
-                      "dist/docs/3.1.0-rc.7/sponsored-intelligence/implementing-si-agents",
-                      "dist/docs/3.1.0-rc.7/sponsored-intelligence/implementing-si-hosts"
+                      "dist/docs/3.1.0-rc.8/sponsored-intelligence/si-chat-protocol",
+                      "dist/docs/3.1.0-rc.8/sponsored-intelligence/implementing-si-agents",
+                      "dist/docs/3.1.0-rc.8/sponsored-intelligence/implementing-si-hosts"
                     ]
                   },
                   {
                     "group": "Reference",
                     "expanded": false,
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/sponsored-intelligence/specification",
-                      "dist/docs/3.1.0-rc.7/sponsored-intelligence/tasks/index",
-                      "dist/docs/3.1.0-rc.7/sponsored-intelligence/tasks/si_get_offering",
-                      "dist/docs/3.1.0-rc.7/sponsored-intelligence/tasks/si_initiate_session",
-                      "dist/docs/3.1.0-rc.7/sponsored-intelligence/tasks/si_send_message",
-                      "dist/docs/3.1.0-rc.7/sponsored-intelligence/tasks/si_terminate_session"
+                      "dist/docs/3.1.0-rc.8/sponsored-intelligence/specification",
+                      "dist/docs/3.1.0-rc.8/sponsored-intelligence/tasks/index",
+                      "dist/docs/3.1.0-rc.8/sponsored-intelligence/tasks/si_get_offering",
+                      "dist/docs/3.1.0-rc.8/sponsored-intelligence/tasks/si_initiate_session",
+                      "dist/docs/3.1.0-rc.8/sponsored-intelligence/tasks/si_send_message",
+                      "dist/docs/3.1.0-rc.8/sponsored-intelligence/tasks/si_terminate_session"
                     ]
                   }
                 ]
@@ -1100,24 +1100,24 @@
                 "group": "Brand",
                 "expanded": false,
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/brand-protocol/index",
-                  "dist/docs/3.1.0-rc.7/brand-protocol/key-concepts",
-                  "dist/docs/3.1.0-rc.7/brand-protocol/walkthrough-rights-licensing",
-                  "dist/docs/3.1.0-rc.7/brand-protocol/for-advertisers",
-                  "dist/docs/3.1.0-rc.7/brand-protocol/for-rights-holders",
-                  "dist/docs/3.1.0-rc.7/brand-protocol/seller-setup",
-                  "dist/docs/3.1.0-rc.7/brand-protocol/brand-json",
-                  "dist/docs/3.1.0-rc.7/brand-protocol/building-a-brand-agent",
-                  "dist/docs/3.1.0-rc.7/brand-protocol/ui-guidance",
+                  "dist/docs/3.1.0-rc.8/brand-protocol/index",
+                  "dist/docs/3.1.0-rc.8/brand-protocol/key-concepts",
+                  "dist/docs/3.1.0-rc.8/brand-protocol/walkthrough-rights-licensing",
+                  "dist/docs/3.1.0-rc.8/brand-protocol/for-advertisers",
+                  "dist/docs/3.1.0-rc.8/brand-protocol/for-rights-holders",
+                  "dist/docs/3.1.0-rc.8/brand-protocol/seller-setup",
+                  "dist/docs/3.1.0-rc.8/brand-protocol/brand-json",
+                  "dist/docs/3.1.0-rc.8/brand-protocol/building-a-brand-agent",
+                  "dist/docs/3.1.0-rc.8/brand-protocol/ui-guidance",
                   {
                     "group": "Tasks",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/brand-protocol/tasks/get_brand_identity",
-                      "dist/docs/3.1.0-rc.7/brand-protocol/tasks/verify_brand_claim",
-                      "dist/docs/3.1.0-rc.7/brand-protocol/tasks/verify_brand_claims",
-                      "dist/docs/3.1.0-rc.7/brand-protocol/tasks/get_rights",
-                      "dist/docs/3.1.0-rc.7/brand-protocol/tasks/acquire_rights",
-                      "dist/docs/3.1.0-rc.7/brand-protocol/tasks/update_rights"
+                      "dist/docs/3.1.0-rc.8/brand-protocol/tasks/get_brand_identity",
+                      "dist/docs/3.1.0-rc.8/brand-protocol/tasks/verify_brand_claim",
+                      "dist/docs/3.1.0-rc.8/brand-protocol/tasks/verify_brand_claims",
+                      "dist/docs/3.1.0-rc.8/brand-protocol/tasks/get_rights",
+                      "dist/docs/3.1.0-rc.8/brand-protocol/tasks/acquire_rights",
+                      "dist/docs/3.1.0-rc.8/brand-protocol/tasks/update_rights"
                     ]
                   }
                 ]
@@ -1126,17 +1126,17 @@
                 "group": "Signals",
                 "expanded": false,
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/signals/overview",
-                  "dist/docs/3.1.0-rc.7/signals/key-concepts",
-                  "dist/docs/3.1.0-rc.7/signals/ecosystem",
-                  "dist/docs/3.1.0-rc.7/signals/data-providers",
+                  "dist/docs/3.1.0-rc.8/signals/overview",
+                  "dist/docs/3.1.0-rc.8/signals/key-concepts",
+                  "dist/docs/3.1.0-rc.8/signals/ecosystem",
+                  "dist/docs/3.1.0-rc.8/signals/data-providers",
                   {
                     "group": "Reference",
                     "expanded": false,
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/signals/specification",
-                      "dist/docs/3.1.0-rc.7/signals/tasks/get_signals",
-                      "dist/docs/3.1.0-rc.7/signals/tasks/activate_signal"
+                      "dist/docs/3.1.0-rc.8/signals/specification",
+                      "dist/docs/3.1.0-rc.8/signals/tasks/get_signals",
+                      "dist/docs/3.1.0-rc.8/signals/tasks/activate_signal"
                     ]
                   }
                 ]
@@ -1145,24 +1145,24 @@
                 "group": "Trusted Match",
                 "expanded": false,
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/trusted-match/index",
-                  "dist/docs/3.1.0-rc.7/trusted-match/ai-mediation",
-                  "dist/docs/3.1.0-rc.7/trusted-match/buyer-guide",
-                  "dist/docs/3.1.0-rc.7/trusted-match/execution-gap",
-                  "dist/docs/3.1.0-rc.7/trusted-match/context-and-identity",
-                  "dist/docs/3.1.0-rc.7/trusted-match/specification",
-                  "dist/docs/3.1.0-rc.7/trusted-match/router-architecture",
-                  "dist/docs/3.1.0-rc.7/trusted-match/privacy-architecture",
-                  "dist/docs/3.1.0-rc.7/trusted-match/data-protection-roles",
-                  "dist/docs/3.1.0-rc.7/trusted-match/migration-from-axe",
+                  "dist/docs/3.1.0-rc.8/trusted-match/index",
+                  "dist/docs/3.1.0-rc.8/trusted-match/ai-mediation",
+                  "dist/docs/3.1.0-rc.8/trusted-match/buyer-guide",
+                  "dist/docs/3.1.0-rc.8/trusted-match/execution-gap",
+                  "dist/docs/3.1.0-rc.8/trusted-match/context-and-identity",
+                  "dist/docs/3.1.0-rc.8/trusted-match/specification",
+                  "dist/docs/3.1.0-rc.8/trusted-match/router-architecture",
+                  "dist/docs/3.1.0-rc.8/trusted-match/privacy-architecture",
+                  "dist/docs/3.1.0-rc.8/trusted-match/data-protection-roles",
+                  "dist/docs/3.1.0-rc.8/trusted-match/migration-from-axe",
                   {
                     "group": "Surface Guides",
                     "pages": [
-                      "dist/docs/3.1.0-rc.7/trusted-match/surfaces/web",
-                      "dist/docs/3.1.0-rc.7/trusted-match/surfaces/ctv",
-                      "dist/docs/3.1.0-rc.7/trusted-match/surfaces/mobile",
-                      "dist/docs/3.1.0-rc.7/trusted-match/surfaces/retail-media",
-                      "dist/docs/3.1.0-rc.7/trusted-match/surfaces/ai-assistants"
+                      "dist/docs/3.1.0-rc.8/trusted-match/surfaces/web",
+                      "dist/docs/3.1.0-rc.8/trusted-match/surfaces/ctv",
+                      "dist/docs/3.1.0-rc.8/trusted-match/surfaces/mobile",
+                      "dist/docs/3.1.0-rc.8/trusted-match/surfaces/retail-media",
+                      "dist/docs/3.1.0-rc.8/trusted-match/surfaces/ai-assistants"
                     ]
                   }
                 ]
@@ -1172,18 +1172,18 @@
           {
             "group": "FAQ",
             "pages": [
-              "dist/docs/3.1.0-rc.7/faq"
+              "dist/docs/3.1.0-rc.8/faq"
             ]
           },
           {
             "group": "Trust & Security",
             "expanded": false,
             "pages": [
-              "dist/docs/3.1.0-rc.7/trust",
-              "dist/docs/3.1.0-rc.7/verification/overview",
-              "dist/docs/3.1.0-rc.7/ai-disclosure",
-              "dist/docs/3.1.0-rc.7/reference/privacy-considerations",
-              "dist/docs/3.1.0-rc.7/reference/known-limitations"
+              "dist/docs/3.1.0-rc.8/trust",
+              "dist/docs/3.1.0-rc.8/verification/overview",
+              "dist/docs/3.1.0-rc.8/ai-disclosure",
+              "dist/docs/3.1.0-rc.8/reference/privacy-considerations",
+              "dist/docs/3.1.0-rc.8/reference/known-limitations"
             ]
           },
           {
@@ -1194,82 +1194,82 @@
                 "group": "Registry API",
                 "openapi": {
                   "source": "static/openapi/registry.yaml",
-                  "directory": "dist/docs/3.1.0-rc.7/registry/api-reference"
+                  "directory": "dist/docs/3.1.0-rc.8/registry/api-reference"
                 },
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/registry/index",
-                  "dist/docs/3.1.0-rc.7/registry/registering-an-agent",
-                  "dist/docs/3.1.0-rc.7/registry/maintaining-your-agent"
+                  "dist/docs/3.1.0-rc.8/registry/index",
+                  "dist/docs/3.1.0-rc.8/registry/registering-an-agent",
+                  "dist/docs/3.1.0-rc.8/registry/maintaining-your-agent"
                 ]
               },
-              "dist/docs/3.1.0-rc.7/reference/gmsf-reference",
-              "dist/docs/3.1.0-rc.7/reference/media-channel-taxonomy",
-              "dist/docs/3.1.0-rc.7/measurement/taxonomy",
-              "dist/docs/3.1.0-rc.7/reference/roadmap",
-              "dist/docs/3.1.0-rc.7/reference/versions",
-              "dist/docs/3.1.0-rc.7/reference/versioning",
-              "dist/docs/3.1.0-rc.7/reference/specification-lifecycle",
-              "dist/docs/3.1.0-rc.7/reference/url-canonicalization",
-              "dist/docs/3.1.0-rc.7/reference/verifying-protocol-tarballs",
-              "dist/docs/3.1.0-rc.7/reference/test-vectors/index",
-              "dist/docs/3.1.0-rc.7/reference/experimental-status",
-              "dist/docs/3.1.0-rc.7/reference/schema-extensions",
-              "dist/docs/3.1.0-rc.7/reference/v2-sunset",
-              "dist/docs/3.1.0-rc.7/reference/release-notes",
-              "dist/docs/3.1.0-rc.7/reference/changelog",
-              "dist/docs/3.1.0-rc.7/reference/implementor-faq",
-              "dist/docs/3.1.0-rc.7/reference/glossary",
-              "dist/docs/3.1.0-rc.7/community/working-group",
-              "dist/docs/3.1.0-rc.7/community/joining-slack"
+              "dist/docs/3.1.0-rc.8/reference/gmsf-reference",
+              "dist/docs/3.1.0-rc.8/reference/media-channel-taxonomy",
+              "dist/docs/3.1.0-rc.8/measurement/taxonomy",
+              "dist/docs/3.1.0-rc.8/reference/roadmap",
+              "dist/docs/3.1.0-rc.8/reference/versions",
+              "dist/docs/3.1.0-rc.8/reference/versioning",
+              "dist/docs/3.1.0-rc.8/reference/specification-lifecycle",
+              "dist/docs/3.1.0-rc.8/reference/url-canonicalization",
+              "dist/docs/3.1.0-rc.8/reference/verifying-protocol-tarballs",
+              "dist/docs/3.1.0-rc.8/reference/test-vectors/index",
+              "dist/docs/3.1.0-rc.8/reference/experimental-status",
+              "dist/docs/3.1.0-rc.8/reference/schema-extensions",
+              "dist/docs/3.1.0-rc.8/reference/v2-sunset",
+              "dist/docs/3.1.0-rc.8/reference/release-notes",
+              "dist/docs/3.1.0-rc.8/reference/changelog",
+              "dist/docs/3.1.0-rc.8/reference/implementor-faq",
+              "dist/docs/3.1.0-rc.8/reference/glossary",
+              "dist/docs/3.1.0-rc.8/community/working-group",
+              "dist/docs/3.1.0-rc.8/community/joining-slack"
             ]
           },
           {
             "group": "Certification",
             "expanded": false,
             "pages": [
-              "dist/docs/3.1.0-rc.7/learning/overview",
-              "dist/docs/3.1.0-rc.7/learning/instructional-design",
-              "dist/docs/3.1.0-rc.7/learning/failure-mode-scope",
+              "dist/docs/3.1.0-rc.8/learning/overview",
+              "dist/docs/3.1.0-rc.8/learning/instructional-design",
+              "dist/docs/3.1.0-rc.8/learning/failure-mode-scope",
               {
                 "group": "Basics (free)",
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/learning/foundations/a1-agentic-advertising",
-                  "dist/docs/3.1.0-rc.7/learning/foundations/a2-protocol-architecture",
-                  "dist/docs/3.1.0-rc.7/learning/foundations/a2b-testing-your-first-agent",
-                  "dist/docs/3.1.0-rc.7/learning/foundations/a3-ecosystem-governance"
+                  "dist/docs/3.1.0-rc.8/learning/foundations/a1-agentic-advertising",
+                  "dist/docs/3.1.0-rc.8/learning/foundations/a2-protocol-architecture",
+                  "dist/docs/3.1.0-rc.8/learning/foundations/a2b-testing-your-first-agent",
+                  "dist/docs/3.1.0-rc.8/learning/foundations/a3-ecosystem-governance"
                 ]
               },
               {
                 "group": "Role tracks",
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/learning/tracks/publisher",
-                  "dist/docs/3.1.0-rc.7/learning/tracks/buyer",
-                  "dist/docs/3.1.0-rc.7/learning/tracks/platform"
+                  "dist/docs/3.1.0-rc.8/learning/tracks/publisher",
+                  "dist/docs/3.1.0-rc.8/learning/tracks/buyer",
+                  "dist/docs/3.1.0-rc.8/learning/tracks/platform"
                 ]
               },
               {
                 "group": "Specialist modules",
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/learning/specialist/media-buy",
-                  "dist/docs/3.1.0-rc.7/learning/specialist/creative",
-                  "dist/docs/3.1.0-rc.7/learning/specialist/signals",
-                  "dist/docs/3.1.0-rc.7/learning/specialist/governance",
-                  "dist/docs/3.1.0-rc.7/learning/specialist/sponsored-intelligence",
-                  "dist/docs/3.1.0-rc.7/learning/specialist/security"
+                  "dist/docs/3.1.0-rc.8/learning/specialist/media-buy",
+                  "dist/docs/3.1.0-rc.8/learning/specialist/creative",
+                  "dist/docs/3.1.0-rc.8/learning/specialist/signals",
+                  "dist/docs/3.1.0-rc.8/learning/specialist/governance",
+                  "dist/docs/3.1.0-rc.8/learning/specialist/sponsored-intelligence",
+                  "dist/docs/3.1.0-rc.8/learning/specialist/security"
                 ]
               },
               {
                 "group": "Policies",
                 "expanded": false,
                 "pages": [
-                  "dist/docs/3.1.0-rc.7/learning/policies/nondiscrimination",
-                  "dist/docs/3.1.0-rc.7/learning/policies/learner-records",
-                  "dist/docs/3.1.0-rc.7/learning/policies/recertification",
-                  "dist/docs/3.1.0-rc.7/learning/policies/complaints",
-                  "dist/docs/3.1.0-rc.7/learning/policies/conflict-of-interest",
-                  "dist/docs/3.1.0-rc.7/learning/policies/intellectual-property",
-                  "dist/docs/3.1.0-rc.7/learning/policies/personnel-qualifications",
-                  "dist/docs/3.1.0-rc.7/learning/policies/refund"
+                  "dist/docs/3.1.0-rc.8/learning/policies/nondiscrimination",
+                  "dist/docs/3.1.0-rc.8/learning/policies/learner-records",
+                  "dist/docs/3.1.0-rc.8/learning/policies/recertification",
+                  "dist/docs/3.1.0-rc.8/learning/policies/complaints",
+                  "dist/docs/3.1.0-rc.8/learning/policies/conflict-of-interest",
+                  "dist/docs/3.1.0-rc.8/learning/policies/intellectual-property",
+                  "dist/docs/3.1.0-rc.8/learning/policies/personnel-qualifications",
+                  "dist/docs/3.1.0-rc.8/learning/policies/refund"
                 ]
               }
             ]
