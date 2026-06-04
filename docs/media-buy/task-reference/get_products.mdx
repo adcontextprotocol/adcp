@@ -144,6 +144,7 @@ asyncio.run(discover_with_filters())
 | `if_wholesale_feed_version` | string | No | Opaque `wholesale_feed_version` token from a prior `get_products` response. When provided, the seller compares against its current wholesale product feed version and MAY return `unchanged: true` (with `products` omitted) if nothing has changed. Versions are scoped to the (agent, account, filters, `buying_mode`, `property_list`, `catalog`) tuple. See [Wholesale feed versioning](#wholesale-feed-versioning). |
 | `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_wholesale_feed_version`. Evaluation order: `if_wholesale_feed_version` mismatch → full payload; `if_wholesale_feed_version` matches but `if_pricing_version` mismatches → full payload (so the buyer sees updated `pricing_options`); both match → seller MAY return `unchanged: true`. Sellers that don't track pricing separately ignore this. |
 | `time_budget` | Duration | No | Maximum time the buyer will commit to this request. The seller returns the best results achievable within this budget and does not start processes (human approvals, expensive external queries) that cannot complete in time. When omitted, the seller decides timing. Example: `{"interval": 30, "unit": "seconds"}`. |
+| `push_notification_config` | PushNotificationConfig | No | Webhook configuration for async status and completion notifications on `brief` / `refine` curated discovery. If omitted and the seller returns `submitted`, poll `get_task_status` (legacy `tasks/get`) with `task_id`. Ignored for `wholesale`; sellers MUST NOT route wholesale reads through the Submitted arm because this field is present. |
 
 <Note>
 **Property Governance**
@@ -1352,7 +1353,7 @@ POST /api/mcp/call_tool
     "buying_mode": "brief",
     "brief": "Premium inventory across all formats for luxury automotive brand",
     "brand": { "domain": "acmecorp.com" },
-    "pushNotificationConfig": {
+    "push_notification_config": {
       "url": "https://buyer.com/webhooks/adcp/get_products",
       "authentication": {
         "schemes": ["Bearer"],
@@ -1364,12 +1365,11 @@ POST /api/mcp/call_tool
 
 Response (200 OK):
 {
-  "status": "working",
-  "message": "Searching premium inventory across display, video, and audio",
+  "status": "submitted",
+  "message": "Custom curation queued; typical turnaround 10-30 minutes",
   "task_id": "task_456",
   "context_id": "ctx_123",
-  "percentage": 10,
-  "current_step": "searching_inventory"
+  "estimated_completion": "2025-01-22T10:30:00Z"
 }
 
 // Later, webhook POST to https://buyer.com/webhooks/adcp/get_products
@@ -1521,15 +1521,14 @@ Response (200 OK):
   "id": "task_456",
   "contextId": "ctx_789",
   "status": {
-    "state": "working",
+    "state": "submitted",
     "message": {
       "role": "agent",
       "parts": [
-        { "text": "Searching premium inventory across display, video, and audio" },
+        { "text": "Custom curation queued; typical turnaround 10-30 minutes" },
         {
           "data": {
-            "percentage": 10,
-            "current_step": "searching_inventory"
+            "estimated_completion": "2025-01-22T10:30:00Z"
           }
         }
       ]
@@ -1574,8 +1573,8 @@ Response (200 OK):
 |--------|----------------|-------------|
 | `completed` | Search finished successfully | Process the product results |
 | `input-required` | Need clarification on the brief | Answer the question and continue |
-| `working` | Searching across multiple sources | Wait for webhook or poll for updates |
-| `submitted` | Custom curation queued | Wait for webhook notification |
+| `working` | Searching across multiple sources | Wait on the open connection / transport progress stream |
+| `submitted` | Custom curation queued | Wait for webhook notification if `push_notification_config` was provided, or poll `get_task_status` (legacy `tasks/get`) with `task_id` |
 | `failed` | Search couldn't complete | Check error message, adjust brief |
 
 **Note:** For the complete status list see [Task Lifecycle](/docs/building/implementation/task-lifecycle).

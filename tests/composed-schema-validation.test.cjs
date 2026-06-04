@@ -1390,6 +1390,51 @@ async function runTests() {
     },
     'get_signals request rejects unknown signal fields'
   );
+  await testSchemaValidation(
+    '/schemas/signals/get-signals-async-response-submitted.json',
+    {
+      status: 'submitted',
+      task_id: 'task_signal_discovery_001',
+      message: 'Provider discovery queued'
+    },
+    'get_signals submitted async envelope validates'
+  );
+  await testSchemaValidation(
+    '/schemas/signals/get-signals-async-response-working.json',
+    {
+      percentage: 40,
+      current_step: 'querying_providers',
+      step_number: 2,
+      total_steps: 5
+    },
+    'get_signals working async progress validates'
+  );
+  await testSchemaValidation(
+    '/schemas/signals/get-signals-response.json',
+    {
+      status: 'failed',
+      errors: [
+        {
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Signal provider did not respond before the task deadline'
+        }
+      ]
+    },
+    'get_signals failed completion does not require signals or cache_scope'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/get-products-response.json',
+    {
+      status: 'failed',
+      errors: [
+        {
+          code: 'INVENTORY_UNAVAILABLE',
+          message: 'Inventory provider did not respond before the task deadline'
+        }
+      ]
+    },
+    'get_products failed completion does not require products or cache_scope'
+  );
   log('');
 
   // Product `publisher_properties` rejects `publisher_domains[]` compact form (#4508):

@@ -31,6 +31,11 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 | `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_wholesale_feed_version`. Evaluation order: `if_wholesale_feed_version` mismatch → full payload; `if_wholesale_feed_version` matches but `if_pricing_version` mismatches → full payload (so the caller sees updated `pricing_options`); both match → agent MAY return `unchanged: true`. Agents that don't track pricing separately ignore this. |
 | `max_results` | number | No | **Deprecated.** Use `pagination.max_results` instead. When both are present, `pagination.max_results` takes precedence. Will be removed in AdCP 4.0. |
 | `pagination` | object | No | Pagination envelope. `pagination.max_results` (max: 100, default: 50) controls page size; `pagination.cursor` (opaque token from previous response) advances pages. Required for wholesale (signals feeds may be large). |
+| `push_notification_config` | PushNotificationConfig | No | Webhook configuration for async status and completion notifications on `brief` semantic discovery. If omitted and the agent returns `submitted`, poll `get_task_status` (legacy `tasks/get`) with `task_id`. Ignored for `wholesale`; agents MUST NOT route wholesale reads through the Submitted arm because this field is present. |
+
+### Async discovery
+
+`discovery_mode: "brief"` MAY return `submitted` when semantic discovery depends on slow provider queries or review that cannot finish before the initial response. If `push_notification_config` is present, the agent sends status and completion notifications to that webhook. Otherwise, poll `get_task_status` (legacy `tasks/get`) with `task_id`. `discovery_mode: "wholesale"` remains a synchronous feed read and reports partial completion via `incomplete[]`, not `submitted`.
 
 ### Destination Object
 

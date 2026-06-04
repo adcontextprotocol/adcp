@@ -14,12 +14,12 @@ Any AdCP task can return one of these statuses. The server chooses based on what
 |---|---|---|
 | Under 30 seconds | `completed` / `failed` | Result is inline — done |
 | Over 30 seconds, server actively processing | `working` | Out-of-band progress signal. Connection stays open, result arrives when ready. Caller just waits |
-| Blocked on external dependency | `submitted` | Truly async — configure a webhook via `push_notification_config`. Result may take hours or days |
+| Blocked on external dependency | `submitted` | Truly async — receive completion through `push_notification_config` when configured, or poll by `task_id`. Result may take hours or days |
 | Blocked on human input | `input-required` | Caller provides the requested input to continue |
 
 **`working` is not async.** It's a progress signal the server sends out-of-band (via MCP status notifications or SSE) while it continues processing. The caller holds the connection and receives the result when it's ready — no polling, no webhooks. Think of it as "this is taking a moment, but I'm on it."
 
-**`submitted` is async.** The operation is blocked on something outside the server's control — publisher approval, human review, third-party processing. The caller should configure a webhook and move on.
+**`submitted` is async.** The operation is blocked on something outside the server's control — publisher approval, human review, third-party processing. The caller may configure a webhook and move on, or poll the AdCP task status surface with `task_id`.
 
 :::tip Webhooks for `submitted` operations
 **Webhooks** are the recommended approach for `submitted` operations — they work with any transport (MCP, A2A, REST) and handle operations that outlive a single session. See [Push Notifications](/docs/building/by-layer/L3/webhooks).
@@ -53,12 +53,14 @@ Any AdCP task can return one of these statuses. The server chooses based on what
 |-----------|-------------|
 | `create_media_buy` | Publisher approval workflows |
 | `update_media_buy` | Manual seller review for budget, targeting, or creative changes |
+| `get_products` (`brief` / `refine`) | Bespoke curation that depends on upstream inventory queries or HITL review |
+| `get_signals` (`brief`) | Semantic signal discovery that depends on slow provider queries or review |
 | `sync_creatives` | Asset review and transcoding pipelines |
 | `build_creative` (with review) | Human creative review before finalizing |
 | `sync_catalogs` | Large feeds or feeds requiring content policy review |
 | `activate_signal` | Platform deployment pipelines |
 
-These operations integrate with external systems or require human approval.
+These operations integrate with external systems or require human approval. Wholesale feed reads are the exception: `get_products buying_mode: "wholesale"` and `get_signals discovery_mode: "wholesale"` stay synchronous repair/reconciliation reads and report partial completion with `incomplete[]`, not `submitted`.
 
 ## Timeout Configuration
 

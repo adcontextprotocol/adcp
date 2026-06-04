@@ -16,7 +16,7 @@
     "unknown"
   ],
   "enumDescriptions": {
-    "submitted": "Task accepted and queued for long-running execution (hours to days). Client should poll with tasks/get or provide webhook_url at protocol level.",
+    "submitted": "Task accepted and queued for long-running execution (hours to days). Client should provide push_notification_config for webhook delivery or poll get_task_status (legacy tasks/get) with task_id.",
     "working": "Agent is actively processing the task, expect completion within 120 seconds",
     "input-required": "Task is paused and waiting for input from the user (e.g., clarification, approval)",
     "completed": "Task has been successfully completed",
