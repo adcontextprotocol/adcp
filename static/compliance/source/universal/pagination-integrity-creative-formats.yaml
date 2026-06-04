@@ -7,6 +7,9 @@ track: core
 required_tools:
   - list_creative_formats
 
+requires:
+  - controller
+
 narrative: |
   Pagination is cursor-based across AdCP. Every response carrying a
   `pagination` block satisfies one invariant: when `has_more` is true the
