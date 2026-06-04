@@ -1248,15 +1248,17 @@ Publishers can leverage performance indices to:
 
 Delivery data can be broken down across multiple dimensions within each package. Buyers request specific breakdowns via the `reporting_dimensions` parameter on `get_media_buy_delivery`. Each breakdown appears as a `by_*` array within `by_package` items, following the same composition pattern as `by_creative`.
 
-| Dimension | Breakdown field | Key fields | Capability flag |
-|-----------|----------------|------------|-----------------|
-| Geography | `by_geo` | `geo_level`, `geo_code`, `geo_name` | `supports_geo_breakdown` (object — declares available levels/systems) |
-| Device type | `by_device_type` | `device_type` | `supports_device_type_breakdown` |
-| Device platform | `by_device_platform` | `device_platform` | `supports_device_platform_breakdown` |
-| Audience | `by_audience` | `audience_id`, `audience_source`, `audience_name` | `supports_audience_breakdown` |
-| Placement | `by_placement` | `placement_id`, `placement_name` | `supports_placement_breakdown` |
+| Dimension | Breakdown field | Required fields | Additional fields | Capability declaration |
+|-----------|----------------|-----------------|-------------------|------------------------|
+| Geography | `by_geo` | `geo_level`, `geo_code`, `impressions`, `spend` | `system`, `geo_name` | `supports_geo_breakdown` |
+| Device type | `by_device_type` | `device_type`, `impressions`, `spend` | — | `supports_device_type_breakdown` |
+| Device platform | `by_device_platform` | `device_platform`, `impressions`, `spend` | — | `supports_device_platform_breakdown` |
+| Audience | `by_audience` | `audience_id`, `audience_source`, `impressions`, `spend` | `audience_name` | `supports_audience_breakdown` |
+| Placement | `by_placement` | `placement_id`, `impressions`, `spend` | `publisher_domain`, `placement_name` | `supports_placement_breakdown` |
 
-Each breakdown entry inherits all fields from `delivery-metrics` (impressions, spend, clicks, conversions, etc.) plus its dimension-specific identifier fields. Every entry requires at minimum its identifier(s), `impressions`, and `spend`.
+Each breakdown entry inherits all fields from `delivery-metrics` (clicks, conversions, and other optional metrics) plus its dimension-specific fields. Every entry requires the fields shown in the required fields column. Check `reporting_capabilities` on the product to discover which dimensions are available; product-level capabilities are authoritative because different products from the same seller may support different breakdowns. `supports_geo_breakdown` is an object that declares available levels and systems; the other capability declarations in this table are boolean flags. Within `supports_geo_breakdown`, `country` and `region` are booleans, while `metro` and `postal_area` are objects keyed by `metro-system` and `postal-system` enum values with boolean values. Geo rows use `system` for `geo_level: "metro"` and `"postal_area"`: metro rows use the `metro-system` vocabulary, and postal rows use the `postal-system` vocabulary.
+
+Placement identity is publisher-scoped. Placement rows MAY carry `publisher_domain`, the publisher namespace from the product's `placements[]` entry, so buyers can treat `{publisher_domain, placement_id}` as the stable placement identity for multi-publisher products when it is present. Sellers SHOULD emit `publisher_domain` whenever the product placement carries it (always true for `kind: "publisher_ref"`); sellers MAY omit it only for `kind: "seller_inline"` placements in a legacy single-publisher context where the seller agent's own domain is the namespace. When `publisher_domain` is omitted, buyers MAY interpret `placement_id` relative to the seller agent's own publisher domain only in that legacy single-publisher context; otherwise buyers should not infer a cross-publisher placement key. `publisher_domain` is single-valued because each placement belongs to exactly one publisher namespace.
 
 Breakdowns are opt-in — no dimension data is returned unless explicitly requested. Sellers that don't support a requested dimension silently omit it. Each breakdown array has a sibling `by_*_truncated` boolean indicating whether additional rows exist beyond the requested `limit`.
 
