@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.8/enums/action-not-allowed-reason.json",
+  "title": "Action Not Allowed Reason",
+  "description": "Reason a mutation on update_media_buy was rejected with ACTION_NOT_ALLOWED. Lets buyer SDKs offer a structured recovery path without re-fetching the buy.",
+  "type": "string",
+  "enum": [
+    "wrong_status",
+    "not_supported_on_product",
+    "not_supported_on_buy",
+    "mode_mismatch"
+  ],
+  "enumDescriptions": {
+    "wrong_status": "The action is supported by the product and the buy, but the buy's current status does not permit it. Recovery: transition the buy to an allowed status (or wait for one) before retrying.",
+    "not_supported_on_product": "The product does not declare this action in its `allowed_actions[]`. Recovery: not retryable on this buy. Buyer must select a different product for future buys requiring this action.",
+    "not_supported_on_buy": "The product would permit the action in general but the specific buy was negotiated without this capability (account tier, IO terms, or buy-level override). Recovery: not retryable; renegotiate buy terms.",
+    "mode_mismatch": "The action is available but only in a mode the buyer's request did not satisfy (for example, a mutation that requires approval was issued as a direct self-serve update). Recovery is a flow switch, not a retry against the same task: follow the mode indicated by `available_actions[<action>].mode` (e.g. wait for the seller's webhook for `requires_approval`). Requotes are not modeled as an action mode in 3.1; sellers use REQUOTE_REQUIRED when the requested update exceeds the current quoted envelope."
+  }
+}

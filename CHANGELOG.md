@@ -1,5 +1,25 @@
 # Changelog
 
+## 3.1.0-rc.8
+
+### Minor Changes
+
+- 085fa58: Clarify async discovery webhook registration for `get_products` and `get_signals`.
+
+  Adds optional `push_notification_config` to the `get_products` and `get_signals` request schemas for curated/semantic discovery modes, adds the `get_signals` working/submitted async envelopes to the webhook result union, allows failed discovery completions to omit success payload arrays, documents that `submitted` tasks remain pollable via `get_task_status` (legacy `tasks/get`) even when webhook notifications are configured, requires accepted webhook configs to receive at least terminal completion/failure notifications, and preserves the synchronous wholesale feed rule (`get_products` `buying_mode: "wholesale"` and `get_signals` `discovery_mode: "wholesale"` MUST NOT use the Submitted arm).
+
+### Patch Changes
+
+- 6cb5296: Align controller-seeded pagination and canonical-format storyboards with the controller load-phase gate so agents without `comply_test_controller` skip cleanly at storyboard scope.
+- a746adf: fix(db): correct stale catalog planner statistics and debounce health-check alerts.
+
+  `catalog_properties` autoanalyze had never run, leaving the planner statistics frozen near zero (~185 rows) while the table actually held 2.27M. With estimates that wrong, Postgres chose nested-loop/sequential-scan plans sized for a tiny table, so queries that scan the catalog/registry tables (brand enrichment, admin audit, registry reads) ran for tens of seconds.
+
+  - Add migration 505: aggressive per-table autovacuum/analyze tuning for `catalog_properties`, `catalog_identifiers`, and `registry_requests` so statistics can never drift that far again, plus a one-time `ANALYZE`.
+  - Debounce the `/health` database probe: a single transient connect timeout during a rolling deploy or Postgres failover no longer pages the error channel; alerting escalates only after consecutive failures. The 503 load-balancer response is unchanged.
+
+- 2b26d5b: Mark the `pagination_integrity_creative_formats` storyboard as controller-gated so agents that intentionally omit `comply_test_controller` skip the storyboard at load time instead of cascading into mid-storyboard fixture seeding skips.
+
 ## 3.1.0-rc.7
 
 ### Minor Changes
