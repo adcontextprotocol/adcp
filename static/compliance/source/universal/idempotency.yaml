@@ -99,10 +99,26 @@ caller:
 
 prerequisites:
   description: |
-    No special prerequisites. The storyboard uses create_media_buy as the canonical
-    mutating request. Sellers that do not support create_media_buy SHOULD still pass
-    idempotency compliance on whichever mutating task they do implement.
+    The runner seeds the product and pricing option referenced by the
+    create_media_buy payloads below. The storyboard uses create_media_buy as the
+    canonical mutating request. Sellers that do not support create_media_buy SHOULD
+    still pass idempotency compliance on whichever mutating task they do implement.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "test-product"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "test-product"
+      pricing_option_id: "test-pricing"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 1.0
 
 phases:
   - id: capability_discovery

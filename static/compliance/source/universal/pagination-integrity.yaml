@@ -158,6 +158,11 @@ phases:
         sample_request:
           account:
             account_id: "acct_pagination_integrity"
+          filters:
+            creative_ids:
+              - "pagination_integrity_creative_1"
+              - "pagination_integrity_creative_2"
+              - "pagination_integrity_creative_3"
           pagination:
             max_results: 2
 
@@ -227,6 +232,11 @@ phases:
         sample_request:
           account:
             account_id: "acct_pagination_integrity"
+          filters:
+            creative_ids:
+              - "pagination_integrity_creative_1"
+              - "pagination_integrity_creative_2"
+              - "pagination_integrity_creative_3"
           pagination:
             cursor: "$context.next_cursor"
             max_results: 2
