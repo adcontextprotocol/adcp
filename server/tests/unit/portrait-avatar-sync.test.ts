@@ -117,6 +117,11 @@ describe("community profile API", () => {
     );
     expect(updateSection).not.toContain("avatar_url");
   });
+
+  it("does not write removed member_profiles logo_url column", () => {
+    expect(communitySource).not.toContain("SET logo_url");
+    expect(communitySource).not.toContain("logo_url: communityProfile.avatar_url");
+  });
 });
 
 describe("backfill migration", () => {

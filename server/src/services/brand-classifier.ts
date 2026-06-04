@@ -22,6 +22,7 @@ import { createLogger } from '../logger.js';
 import { ModelConfig } from '../config/models.js';
 import type { KellerType } from '../types.js';
 import type { BrandfetchEnrichmentResult } from './brandfetch.js';
+import { canonicalizeBrandDomain } from './identifier-normalization.js';
 
 const logger = createLogger('brand-classifier');
 
@@ -161,10 +162,23 @@ export async function classifyBrand(
     const confidence: 'high' | 'medium' | 'low' = VALID_CONFIDENCE.includes(parsed.confidence as never)
       ? (parsed.confidence as 'high' | 'medium' | 'low')
       : 'low';
+    let houseDomain = parsed.house_domain || null;
+    if (houseDomain) {
+      try {
+        const canonicalDomain = canonicalizeBrandDomain(domain);
+        const canonicalHouseDomain = canonicalizeBrandDomain(houseDomain);
+        houseDomain = canonicalHouseDomain === canonicalDomain ? null : canonicalHouseDomain;
+        if (!houseDomain) {
+          logger.warn({ domain, house_domain: parsed.house_domain }, 'Brand classifier returned self-referential house_domain');
+        }
+      } catch {
+        // Let the DB write-path validator reject malformed house_domain values.
+      }
+    }
 
     return {
       keller_type: parsed.keller_type,
-      house_domain: parsed.house_domain || null,
+      house_domain: houseDomain,
       parent_brand: parsed.parent_brand || null,
       canonical_domain: parsed.canonical_domain || domain,
       related_domains: Array.isArray(parsed.related_domains) ? parsed.related_domains : [],
