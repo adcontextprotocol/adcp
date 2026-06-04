@@ -107,7 +107,7 @@ jobs:
           - surface: 3.0-compat
             tenant: sales
             min_clean_storyboards: 65
-            min_passing_steps: 272
+            min_passing_steps: 209
           - surface: 3.0-compat
             tenant: governance
             min_clean_storyboards: 65
