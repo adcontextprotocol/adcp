@@ -134,6 +134,12 @@ asyncio.run(main())
 
 **Note:** Per-creative async review is surfaced via `creatives[].status` (e.g., `pending_review`) on the synchronous success response. When the *whole* operation is queued (batch ingestion, governance review gating the sync), the response is a submitted envelope with top-level `status: "submitted"` and a `task_id`. See [Async approval workflow](#async-approval-workflow).
 
+## Read-after-write visibility
+
+Creatives accepted via a synchronous `sync_creatives` success response MUST be committed to the creative library before the response is returned. They MUST be immediately visible to subsequent `list_creatives` calls from the same account and authorized caller, including creatives whose review lifecycle status is `processing` or `pending_review`.
+
+Implementations that acknowledge a creative on the synchronous success branch but buffer the library write until a later background commit are not conformant. If the whole sync operation cannot commit before returning, use the submitted task envelope instead; the visibility requirement then applies when the task completes with accepted creatives.
+
 ## Request parameters
 
 | Parameter         | Type       | Required | Description                                                                                                                                                              |
