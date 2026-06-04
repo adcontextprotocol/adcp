@@ -20,7 +20,7 @@
  * target org.
  *
  * This test pins:
- *   1. `classification.*` keys are stripped from caller-supplied
+ *   1. `classification.*` and `brand_context` keys are stripped from caller-supplied
  *      brand_manifest on every community write path (upsert/create/edit).
  *   2. `house_domain` self-references are rejected.
  *   3. Control characters (NUL/CR/LF) and malformed domains are rejected.
@@ -61,7 +61,7 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
   });
 
   describe('upsertDiscoveredBrand', () => {
-    it('strips caller-supplied classification.confidence from brand_manifest', async () => {
+    it('strips caller-supplied classification.confidence and brand_context from brand_manifest', async () => {
       mocks.query.mockResolvedValueOnce({
         rows: [{ domain: 'attacker.example', brand_names: '[]', brand_manifest: null, discovered_at: new Date(), last_validated: new Date() }],
       });
@@ -73,6 +73,7 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
           name: 'Attacker',
           // Adversarial: try to inject the high-confidence trust signal directly.
           classification: { confidence: 'high', reasoning: 'forged' },
+          brand_context: { voice: { summary: 'persist me' } },
         },
         source_type: 'community',
       });
@@ -82,6 +83,7 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
       // brand_manifest is the 12th positional param ($12) in the INSERT.
       const persistedManifest = JSON.parse(params[11] as string);
       expect(persistedManifest).not.toHaveProperty('classification');
+      expect(persistedManifest).not.toHaveProperty('brand_context');
       expect(persistedManifest.name).toBe('Attacker');
     });
 
@@ -161,7 +163,7 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
   });
 
   describe('createDiscoveredBrand', () => {
-    it('strips caller-supplied classification.* from brand_manifest', async () => {
+    it('strips caller-supplied classification.* and brand_context from brand_manifest', async () => {
       const client = makeClient();
       mocks.getClient.mockResolvedValueOnce(client);
       client.query
@@ -180,7 +182,10 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
         {
           domain: 'attacker.example',
           brand_name: 'Attacker',
-          brand_manifest: { classification: { confidence: 'high' } },
+          brand_manifest: {
+            classification: { confidence: 'high' },
+            brand_context: { voice: { summary: 'persist me' } },
+          },
           source_type: 'community',
         },
         { user_id: 'u1', email: 'a@b.c' },
@@ -200,6 +205,7 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
       // failed write attempt with the auth signal removed).
       const parsed = JSON.parse(manifestParam!);
       expect(parsed).not.toHaveProperty('classification');
+      expect(parsed).not.toHaveProperty('brand_context');
     });
 
     it('rejects house_domain self-reference', async () => {
@@ -220,7 +226,7 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
   });
 
   describe('editDiscoveredBrand', () => {
-    it('strips classification from caller-supplied brand_manifest and preserves prior classification', async () => {
+    it('strips classification and brand_context from caller-supplied brand_manifest and preserves prior classification', async () => {
       const client = makeClient();
       mocks.getClient.mockResolvedValueOnce(client);
       // BEGIN
@@ -252,6 +258,7 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
           name: 'New',
           // Adversarial: try to overwrite the high-confidence trust signal.
           classification: { confidence: 'low' },
+          brand_context: { voice: { summary: 'persist me' } },
         },
         edit_summary: 'attacker edit',
         editor_user_id: 'u1',
@@ -268,6 +275,7 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
       expect(manifestJson).toBeDefined();
       const persistedManifest = JSON.parse(manifestJson);
       expect(persistedManifest.name).toBe('New');
+      expect(persistedManifest).not.toHaveProperty('brand_context');
       // Prior trusted classification is preserved (caller cannot demote it
       // by supplying a low-confidence override).
       expect(persistedManifest.classification).toEqual({
@@ -286,6 +294,98 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
           editor_user_id: 'u1',
         }),
       ).rejects.toThrow(/self-reference/i);
+    });
+  });
+
+  describe('rollbackBrand and revision reads', () => {
+    it('strips brand_context and caller-supplied classification when restoring from a revision snapshot', async () => {
+      const client = makeClient();
+      mocks.getClient.mockResolvedValueOnce(client);
+      client.query
+        // BEGIN
+        .mockResolvedValueOnce(undefined)
+        // SELECT target revision
+        .mockResolvedValueOnce({
+          rows: [{
+            snapshot: JSON.stringify({
+              domain: 'attacker.example',
+              brand_name: 'Attacker',
+              brand_names: [],
+              has_brand_manifest: true,
+              brand_manifest: {
+                name: 'Attacker',
+                classification: { confidence: 'high', reasoning: 'forged old snapshot' },
+                brand_context: { voice: { summary: 'legacy context' } },
+              },
+            }),
+          }],
+        })
+        // SELECT current FOR UPDATE
+        .mockResolvedValueOnce({
+          rows: [{
+            domain: 'attacker.example',
+            brand_name: 'Current',
+            brand_names: [],
+            brand_manifest: {
+              name: 'Current',
+              brand_context: { voice: { summary: 'current context' } },
+            },
+          }],
+        })
+        // SELECT next revision
+        .mockResolvedValueOnce({ rows: [{ next_rev: 4 }] })
+        // INSERT rollback revision
+        .mockResolvedValueOnce(undefined)
+        // UPDATE brands
+        .mockResolvedValueOnce({
+          rows: [{ domain: 'attacker.example', brand_names: '[]', brand_manifest: null, discovered_at: new Date() }],
+        })
+        // COMMIT
+        .mockResolvedValueOnce(undefined);
+
+      await db.rollbackBrand('attacker.example', 2, { user_id: 'admin' });
+
+      const updateCall = client.query.mock.calls.find(call =>
+        typeof call[0] === 'string' && (call[0] as string).includes('UPDATE brands SET'),
+      );
+      expect(updateCall).toBeDefined();
+      const params = updateCall![1] as unknown[];
+      const restoredManifest = JSON.parse(params[10] as string);
+      expect(restoredManifest).toEqual({ name: 'Attacker' });
+
+      const insertRevisionCall = client.query.mock.calls.find(call =>
+        typeof call[0] === 'string' && (call[0] as string).includes('INSERT INTO brand_revisions'),
+      );
+      const rollbackSnapshot = JSON.parse((insertRevisionCall![1] as unknown[])[2] as string);
+      expect(rollbackSnapshot.brand_manifest).toEqual({ name: 'Current' });
+    });
+
+    it('redacts brand_context from returned revision snapshots', async () => {
+      mocks.query.mockResolvedValueOnce({
+        rows: [{
+          id: 'rev-1',
+          brand_domain: 'attacker.example',
+          revision_number: 1,
+          snapshot: JSON.stringify({
+            domain: 'attacker.example',
+            brand_manifest: {
+              name: 'Attacker',
+              classification: { confidence: 'high' },
+              brand_context: { voice: { summary: 'legacy context' } },
+            },
+          }),
+          created_at: new Date(),
+        }],
+      });
+
+      const revision = await db.getBrandRevision('attacker.example', 1);
+
+      expect(revision?.snapshot).toMatchObject({
+        domain: 'attacker.example',
+        brand_manifest: { name: 'Attacker' },
+      });
+      expect((revision?.snapshot as Record<string, unknown>).brand_manifest).not.toHaveProperty('classification');
+      expect((revision?.snapshot as Record<string, unknown>).brand_manifest).not.toHaveProperty('brand_context');
     });
   });
 });

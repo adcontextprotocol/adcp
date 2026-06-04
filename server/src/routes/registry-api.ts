@@ -3468,17 +3468,20 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       if (existing?.has_brand_manifest && existing.brand_manifest && existing.last_validated) {
         const ageMs = Date.now() - new Date(existing.last_validated).getTime();
         const manifest = stripLegacyBrandContext(existing.brand_manifest) || {};
+        const company = (manifest as { company?: unknown }).company;
         if (ageMs < ENRICHMENT_CACHE_MAX_AGE_MS) {
           const contextResult = includeContext && isBrandfetchConfigured()
             ? await fetchBrandContext(domain)
             : undefined;
+          const hasContext = contextResult?.success && contextResult.context;
           return res.json({
             success: true,
             domain: existing.domain,
             cached: true,
             manifest,
+            ...(company ? { company } : {}),
             source_type: existing.source_type,
-            ...(contextResult?.success && contextResult.context ? { context: contextResult.context } : {}),
+            ...(hasContext ? { context: contextResult.context, context_source: 'brandfetch', context_scope: 'ephemeral' } : {}),
             ...(contextResult && !contextResult.success ? { context_error: contextResult.error } : {}),
           });
         }
@@ -3525,8 +3528,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         domain: enrichment.domain,
         cached: false,
         manifest,
+        ...(enrichment.company ? { company: enrichment.company } : {}),
         ...(sourceType ? { source_type: sourceType } : {}),
-        ...(includeContext && enrichment.context ? { context: enrichment.context } : {}),
+        ...(includeContext && enrichment.context ? { context: enrichment.context, context_source: 'brandfetch', context_scope: 'ephemeral' } : {}),
         ...(includeContext && enrichment.contextError ? { context_error: enrichment.contextError } : {}),
       });
     } catch (error) {

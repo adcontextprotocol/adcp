@@ -26,6 +26,7 @@ function buildApp(
   brandDb: Pick<RegistryApiConfig['brandDb'], 'getDiscoveredBrandByDomain' | 'upsertDiscoveredBrand'>,
   authenticated = false,
   brandManager: Partial<RegistryApiConfig['brandManager']> = {},
+  staticAdminApiKey = false,
 ): express.Express {
   const app = express();
   app.use(express.json());
@@ -33,6 +34,9 @@ function buildApp(
   const optionalAuth: import('express').RequestHandler = (req, _res, next) => {
     if (authenticated) {
       req.user = { id: 'user_test', email: 'user@test.example' } as typeof req.user;
+    }
+    if (staticAdminApiKey) {
+      (req as typeof req & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey = true;
     }
     next();
   };
@@ -91,6 +95,7 @@ describe('GET /api/brands/enrich', () => {
           name: 'Acme',
           url: 'https://acme.com',
           description: 'Brand API description.',
+          company: { industry: 'Software' },
           brand_context: { brand: { voice: { summary: 'legacy stored context' } } },
         },
         source_type: 'enriched',
@@ -112,10 +117,50 @@ describe('GET /api/brands/enrich', () => {
       name: 'Acme',
       url: 'https://acme.com',
       description: 'Brand API description.',
+      company: { industry: 'Software' },
     });
+    expect(res.body.company).toEqual({ industry: 'Software' });
     expect(res.body.context.brand.voice.summary).toBe('live context');
+    expect(res.body.context_source).toBe('brandfetch');
+    expect(res.body.context_scope).toBe('ephemeral');
     expect(mocks.fetchBrandData).not.toHaveBeenCalled();
     expect(brandDb.upsertDiscoveredBrand).not.toHaveBeenCalled();
+  });
+
+  it('returns live context for static admin API key callers', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        id: 'brand-1',
+        domain: 'acme.com',
+        has_brand_manifest: true,
+        brand_manifest: {
+          name: 'Acme',
+          url: 'https://acme.com',
+          brand_context: { identity: { description: 'legacy stored context' } },
+        },
+        source_type: 'enriched',
+        last_validated: new Date(),
+      }),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+    mocks.fetchBrandContext.mockResolvedValue({
+      success: true,
+      domain: 'acme.com',
+      context: { identity: { description: 'live admin context' } },
+    });
+
+    const res = await request(buildApp(brandDb, false, {}, true)).get('/api/brands/enrich?domain=acme.com');
+
+    expect(res.status).toBe(200);
+    expect(res.body.manifest).toEqual({
+      name: 'Acme',
+      url: 'https://acme.com',
+    });
+    expect(res.body.context.identity.description).toBe('live admin context');
+    expect(res.body.context_source).toBe('brandfetch');
+    expect(res.body.context_scope).toBe('ephemeral');
+    expect(mocks.fetchBrandContext).toHaveBeenCalledWith('acme.com');
+    expect(mocks.fetchBrandData).not.toHaveBeenCalled();
   });
 
   it('persists only Brand API fields while returning Brand Context as ephemeral response context', async () => {
@@ -132,6 +177,7 @@ describe('GET /api/brands/enrich', () => {
         url: 'https://acme.com',
         description: 'Brand API description.',
       },
+      company: { industry: 'Software' },
       context: { identity: { description: 'Context description.' } },
       highQuality: true,
     });
@@ -144,8 +190,12 @@ describe('GET /api/brands/enrich', () => {
       name: 'Acme',
       url: 'https://acme.com',
       description: 'Brand API description.',
+      company: { industry: 'Software' },
     });
+    expect(res.body.company).toEqual({ industry: 'Software' });
     expect(res.body.context.identity.description).toBe('Context description.');
+    expect(res.body.context_source).toBe('brandfetch');
+    expect(res.body.context_scope).toBe('ephemeral');
     expect(brandDb.upsertDiscoveredBrand).toHaveBeenCalledWith(expect.objectContaining({
       domain: 'acme.com',
       brand_name: 'Acme',
@@ -154,6 +204,7 @@ describe('GET /api/brands/enrich', () => {
         name: 'Acme',
         url: 'https://acme.com',
         description: 'Brand API description.',
+        company: { industry: 'Software' },
       },
     }));
   });

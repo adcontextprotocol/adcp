@@ -1765,6 +1765,73 @@ function extractSealedSession(req: Request): string | undefined {
  * Supports both cookie-based auth (web) and Authorization header (native apps)
  */
 export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
+  if (hasValidAdminApiKey(req)) {
+    logger.debug({ path: req.path }, 'Authenticated via static admin API key (optional auth)');
+    req.user = {
+      id: 'admin_api_key',
+      email: 'admin-api-key@internal',
+      firstName: 'Admin',
+      lastName: 'API Key',
+      emailVerified: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    req.accessToken = 'admin-api-key';
+    (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey = true;
+    return next();
+  }
+
+  const apiKey = await validateWorkOSApiKey(req);
+  if (apiKey) {
+    logger.debug({ path: req.path, apiKeyId: apiKey.id }, 'Authenticated via WorkOS API key (optional auth)');
+    req.user = {
+      id: `api_key_${apiKey.id}`,
+      email: `api-key@org-${apiKey.organizationId}`,
+      firstName: 'API',
+      lastName: apiKey.name,
+      emailVerified: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    req.accessToken = 'workos-api-key';
+    (req as Request & { apiKey?: ValidatedApiKey }).apiKey = apiKey;
+    (req.user as unknown as Record<string, unknown>).isMember = true;
+
+    const apiKeyBan = await checkPlatformBan(
+      `apikey:${apiKey.id}`,
+      () => bansDb.checkPlatformBanForApiKey(apiKey.id, apiKey.organizationId)
+    );
+    if (apiKeyBan) {
+      logger.info({ apiKeyId: apiKey.id, banId: apiKeyBan.id }, 'API key optional-auth request blocked by platform ban');
+      return sendBanResponse(res, apiKeyBan);
+    }
+
+    return next();
+  }
+
+  const jwtAuth = await validateWorkOSBearerJWT(req);
+  if (jwtAuth) {
+    logger.debug({ path: req.path, userId: jwtAuth.user.id }, 'Authenticated via OAuth user JWT (optional auth)');
+    req.user = jwtAuth.user;
+    req.accessToken = jwtAuth.rawToken;
+
+    try {
+      const userBan = await checkPlatformBan(
+        `user:${jwtAuth.user.id}`,
+        () => bansDb.checkPlatformBan(jwtAuth.user.id),
+      );
+      if (userBan) {
+        logger.info({ userId: jwtAuth.user.id, banId: userBan.id }, 'User optional-auth request blocked by platform ban');
+        return sendBanResponse(res, userBan);
+      }
+    } catch (banError) {
+      logger.warn({ err: banError, userId: jwtAuth.user.id, path: req.path }, 'Ban check failed — allowing optional-auth request through');
+    }
+
+    await attachIdentityId(req.user);
+    return next();
+  }
+
   // Dev mode: set dev user if logged in via dev-session cookie
   if (DEV_MODE_ENABLED) {
     const devUser = createDevUser(req);
