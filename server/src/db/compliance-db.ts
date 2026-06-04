@@ -122,6 +122,7 @@ export interface TrackSummaryEntry {
   scenario_count: number;
   passed_count: number;
   duration_ms: number;
+  has_coverage_gap_skip?: boolean;
 }
 
 export interface AgentComplianceStatus {
@@ -144,6 +145,8 @@ export interface AgentComplianceStatus {
   last_run_id: string | null;
   /** triggered_by of the most recent non-dry-run in agent_compliance_runs */
   last_triggered_by: TriggeredBy | null;
+  /** tracks_json from the most recent non-dry-run, used for current-run UI details */
+  track_details_json?: TrackSummaryEntry[] | null;
 }
 
 export interface ComplianceStatusWithStoryboardCounts {
@@ -652,11 +655,12 @@ export class ComplianceDatabase {
     const result = await query(
       `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
               r.id AS last_run_id,
-              r.triggered_by AS last_triggered_by
+              r.triggered_by AS last_triggered_by,
+              r.tracks_json AS track_details_json
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
        LEFT JOIN LATERAL (
-         SELECT id, triggered_by FROM agent_compliance_runs
+         SELECT id, triggered_by, tracks_json FROM agent_compliance_runs
          WHERE agent_url = s.agent_url AND dry_run = false
          ORDER BY tested_at DESC LIMIT 1
        ) r ON true
@@ -671,12 +675,13 @@ export class ComplianceDatabase {
       `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
               r.id AS last_run_id,
               r.triggered_by AS last_triggered_by,
+              r.tracks_json AS track_details_json,
               COALESCE(sb_counts.passing, 0)::int AS storyboards_passing,
               COALESCE(sb_counts.total, 0)::int AS storyboards_total
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
        LEFT JOIN LATERAL (
-         SELECT id, triggered_by FROM agent_compliance_runs
+         SELECT id, triggered_by, tracks_json FROM agent_compliance_runs
          WHERE agent_url = s.agent_url AND dry_run = false
          ORDER BY tested_at DESC LIMIT 1
        ) r ON true
@@ -730,11 +735,12 @@ export class ComplianceDatabase {
     const result = await query(
       `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
               r.id AS last_run_id,
-              r.triggered_by AS last_triggered_by
+              r.triggered_by AS last_triggered_by,
+              r.tracks_json AS track_details_json
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
        LEFT JOIN LATERAL (
-         SELECT id, triggered_by FROM agent_compliance_runs
+         SELECT id, triggered_by, tracks_json FROM agent_compliance_runs
          WHERE agent_url = s.agent_url AND dry_run = false
          ORDER BY tested_at DESC LIMIT 1
        ) r ON true
