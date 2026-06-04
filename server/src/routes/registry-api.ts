@@ -467,7 +467,8 @@ const EnrichBrandManifestSchema = z.object({
     role: z.string(),
   }).passthrough()).optional(),
   company: z.object({
-    name: z.string(),
+    name: z.string().optional(),
+    industry: z.string().optional(),
     industries: z.array(z.string()).optional(),
     employees: z.string().optional(),
     founded: z.number().optional(),
