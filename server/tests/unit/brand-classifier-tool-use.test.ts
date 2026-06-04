@@ -145,6 +145,23 @@ describe('classifyBrand: tool_use contract', () => {
     expect(result?.confidence).toBe('low');
   });
 
+  it('normalizes self-referential house_domain to null', async () => {
+    mocks.anthropicCreate.mockResolvedValueOnce(
+      toolUseResponse({
+        keller_type: 'master',
+        house_domain: 'https://www.apple.com/about',
+        parent_brand: 'Apple',
+        canonical_domain: 'apple.com',
+        related_domains: [],
+        confidence: 'high',
+        reasoning: 'Apple is its own house brand',
+      }),
+    );
+
+    const result = await classifyBrand('apple.com', SAMPLE_BRAND_DATA);
+    expect(result?.house_domain).toBeNull();
+  });
+
   it('returns null and skips the LLM call when ANTHROPIC_API_KEY is unset', async () => {
     delete process.env.ANTHROPIC_API_KEY;
     vi.resetModules();

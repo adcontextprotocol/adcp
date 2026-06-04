@@ -286,9 +286,9 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
           if (org?.is_personal) {
             await query(
               `UPDATE member_profiles
-               SET logo_url = $1, portrait_id = NULL, updated_at = NOW()
-               WHERE workos_organization_id = $2`,
-              [avatarUrl, orgId]
+               SET portrait_id = NULL, updated_at = NOW()
+               WHERE workos_organization_id = $1`,
+              [orgId]
             );
           }
         }
@@ -571,7 +571,6 @@ async function syncIndividualMemberProfile(
   // Build mapped fields for member_profiles
   const memberUpdates: Record<string, unknown> = {
     display_name: displayName,
-    logo_url: communityProfile.avatar_url || null,
     linkedin_url: communityProfile.linkedin_url || null,
     twitter_url: communityProfile.twitter_url || null,
   };
