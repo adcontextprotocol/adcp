@@ -987,6 +987,19 @@ For the third-party creative-agent flow: `validate_input` first (cheap pre-fligh
 
 See [`build_creative` task reference](/docs/creative/task-reference/build_creative) for the full request/response shape.
 
+### Duration constraint precedence
+
+Hosted video and hosted audio products can express duration constraints in two modes:
+
+1. `duration_ms_exact` for a fixed required duration
+2. `duration_ms_range` for a bounded or one-sided range
+
+There are no separate min-only or max-only duration fields; one-sided `duration_ms_range` covers those cases without adding a third duration vocabulary.
+
+`duration_ms_range` is `[min, max]` in milliseconds. Either endpoint MAY be `null` to express an unbounded side: `[null, 60000]` means "up to 60 seconds", and `[15000, null]` means "at least 15 seconds". `[null, null]` is invalid because at least one endpoint must be bounded.
+
+When both modes appear on the same declaration, `duration_ms_exact` wins over `duration_ms_range`. Producers SHOULD emit only one mode. SDKs SHOULD lint a warning when both modes ship, but consumers MUST still apply the precedence rule. A fixed 60-second spot can use `duration_ms_exact: 60000` or the equivalent closed range `[60000, 60000]`; prefer `duration_ms_exact` when the product truly requires one duration.
+
 ### Format matching vs product satisfaction
 
 Sellers and SDKs MUST normalize legacy named formats before comparing them to canonical declarations. A legacy `format_id` such as `{ "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }` resolves through the explicit `canonical` annotation, `v1_format_ref`, or the canonical mapping registry to a canonical declaration such as `format_kind: "image"` with `params.width: 300` and `params.height: 250`. After that projection, implementations compare the canonical shape and parameters, not the raw `(agent_url, id)` pair.
@@ -994,9 +1007,9 @@ Sellers and SDKs MUST normalize legacy named formats before comparing them to ca
 Two related checks use different directionality:
 
 - **Equivalence matching** answers whether two declarations identify the same underlying creative shape after normalization. `display_300x250` and `format_kind: "image"` with `width: 300` and `height: 250` are equivalent even though their wire identifiers differ.
-- **Product satisfaction** answers whether a submitted or requested creative is specific enough for a product's accepted format declaration. When the product declares a fixed `width`, `height`, `duration_ms_exact`, or equivalent duration range, the requested creative or package selector MUST declare and match that constraint. An under-specified request is not a wildcard for product gating.
+- **Product satisfaction** answers whether a submitted or requested creative is specific enough for a product's accepted format declaration. When the product declares a fixed `width`, `height`, `duration_ms_exact`, or `duration_ms_range`, the requested creative or package selector MUST declare and match that constraint. An under-specified request is not a wildcard for product gating.
 
-Range constraints use containment, not overlap. A range-based request satisfies a product only when every value the request permits falls within the product's accepted range; overlap alone is insufficient. An exact value, such as `duration_ms_exact`, satisfies a range when that exact value falls inside the accepted range.
+Range constraints use containment, not overlap. A range-based request satisfies a product only when every value the request permits falls within the product's accepted range; overlap alone is insufficient. An exact value, such as `duration_ms_exact`, satisfies a range when that exact value falls inside the accepted interval.
 
 Concrete examples:
 
