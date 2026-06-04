@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/signals/get-signals-async-response-submitted.json",
   "title": "Get Signals - Submitted",
-  "description": "Async task envelope returned when get_signals cannot be confirmed before the response — for example, when semantic discovery depends on slow provider queries or review. This envelope is valid only for `discovery_mode: \"brief\"`; `discovery_mode: \"wholesale\"` is a synchronous wholesale signals feed read and MUST NOT use the Submitted arm. If the originating request carried `push_notification_config`, the agent delivers subsequent task status changes and the completion artifact to that webhook URL. Otherwise, the caller polls `get_task_status` (legacy `tasks/get`) with `task_id`. The signals array lands on the completion artifact, not this envelope.",
+  "description": "Async task envelope returned when get_signals cannot be confirmed before the response — for example, when semantic discovery depends on slow provider queries or review. This envelope is valid only for `discovery_mode: \"brief\"`; `discovery_mode: \"wholesale\"` is a synchronous wholesale signals feed read and MUST NOT use the Submitted arm. The caller can always poll `get_task_status` (legacy `tasks/get`) with `task_id`. If the originating request carried `push_notification_config`, the agent also delivers at least the terminal completion/failure notification to that webhook URL; intermediate progress notifications are MAY. The signals array lands on the completion artifact, not this envelope.",
   "type": "object",
   "properties": {
     "status": {
