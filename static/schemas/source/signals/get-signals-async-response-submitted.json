@@ -43,5 +43,19 @@
     "status",
     "task_id"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "signals"
+        ]
+      },
+      {
+        "required": [
+          "result"
+        ]
+      }
+    ]
+  }
 }

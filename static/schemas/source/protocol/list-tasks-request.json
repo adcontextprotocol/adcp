@@ -10,6 +10,10 @@
     }
   ],
   "properties": {
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account scope for task reconciliation. Sellers MUST only return tasks created for the caller's authenticated account + principal pair. When omitted, the seller MAY use the credential-bound singleton account, but multi-account credentials SHOULD require an explicit account."
+    },
     "filters": {
       "type": "object",
       "description": "Filter criteria for querying tasks",
@@ -134,6 +138,13 @@
     {
       "description": "List all pending tasks across protocols",
       "data": {
+        "account": {
+          "brand": {
+            "domain": "acme-corp.example"
+          },
+          "operator": "acme-corp.example",
+          "sandbox": true
+        },
         "filters": {
           "statuses": [
             "submitted",
