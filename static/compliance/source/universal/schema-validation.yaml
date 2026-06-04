@@ -32,8 +32,26 @@ caller:
 
 prerequisites:
   description: |
-    The caller needs a brand identity for product discovery requests.
+    The caller needs a brand identity for product discovery requests. The runner
+    also seeds the product and pricing option referenced by the temporal
+    create_media_buy requests so date validation is isolated from catalog
+    availability.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "test-product"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "test-product"
+      pricing_option_id: "test-pricing"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 1.0
 
 phases:
   - id: capability_discovery

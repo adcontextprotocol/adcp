@@ -190,6 +190,11 @@ phases:
         sample_request:
           account:
             account_id: "acct_pagination_integrity_formats"
+          format_ids:
+            - agent_url: "https://creative.adcontextprotocol.org"
+              id: "pagination_integrity_format_1"
+            - agent_url: "https://creative.adcontextprotocol.org"
+              id: "pagination_integrity_format_2"
           name_search: "Pagination Integrity Format"
           pagination:
             max_results: 1
@@ -238,6 +243,11 @@ phases:
         sample_request:
           account:
             account_id: "acct_pagination_integrity_formats"
+          format_ids:
+            - agent_url: "https://creative.adcontextprotocol.org"
+              id: "pagination_integrity_format_1"
+            - agent_url: "https://creative.adcontextprotocol.org"
+              id: "pagination_integrity_format_2"
           name_search: "Pagination Integrity Format"
           pagination:
             cursor: "$context.next_cursor"
