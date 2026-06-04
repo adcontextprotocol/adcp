@@ -1,5 +1,4 @@
 ---
-"adcontextprotocol": patch
 ---
 
 Fix `deterministic_testing` media-buy phases by declaring controller seeding and adding the `test-product` / `test-pricing` fixtures referenced by its `create_media_buy` sample requests.
