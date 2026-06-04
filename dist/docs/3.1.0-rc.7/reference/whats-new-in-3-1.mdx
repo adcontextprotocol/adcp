@@ -5,7 +5,7 @@ description: "Adopter overview of AdCP 3.1 — distributed brand.json, dependenc
 ---
 
 <Warning>
-**Status: 3.1 release-candidate validation.** The current published release candidate is `v3.1.0-rc.7`; its wire negotiation value is `adcp_version: "3.1-rc.7"`. The spec is feature-complete for 3.1 and validating through RC artifacts. Use `"3.1"` only after GA.
+**Status: 3.1 release-candidate validation.** Stable today: 3.0, wire pin `"3.0"`. Current validation track: `v3.1.0-rc.7`, wire pin `adcp_version: "3.1-rc.7"`. After GA: 3.1, wire pin `"3.1"`. The spec is feature-complete for 3.1 and validating through RC artifacts.
 </Warning>
 
 AdCP 3.1 is a minor release. Every 3.1 change is **additive** over 3.0: new fields are optional, no required field was removed, no shape changed in a way that breaks a 3.0-conformant client. **No breaking changes for 3.0-conformant agents.** Pre-GA adopters following the 3.1 RC stream should read the RC notes below because a few release-candidate surfaces were tightened before GA. During RC validation, use exact pre-release pins from `supported_versions`; move production pins to `"3.1"` at GA to pick up the new fields.
@@ -15,6 +15,21 @@ This page is the curated adopter overview for the 3.1 minor release. Need the fu
 <Note>
 **Looking for the major v2 → v3 changes instead?** See [What's New in AdCP 3](/dist/docs/3.1.0-rc.7/reference/whats-new-in-v3). This page covers the 3.0 → 3.1 minor delta only.
 </Note>
+
+## Final 3.1 feature set
+
+If you only need the final 3.1 shape after the RC train, read this list first:
+
+- **Versioning and validation.** Release-precision `adcp_version` pins, exact RC wire values such as `"3.1-rc.7"` during validation, `"3.1"` at GA, `supported_versions` advertisement, envelope echo, and version-scoped verification badges.
+- **Brand trust.** Distributed `brand.json`, sub-brand self-publishing through `brand_refs[]`, typed brand constraints, authorized operator scoping, and required signed responses for `verify_brand_claim` / `verify_brand_claims`.
+- **Signals and product targeting.** Enriched signal definitions, `SignalRef`, wholesale signal enumeration, product-scoped `included_signals`, selectable `signal_targeting_options`, grouped buy-time `signal_targeting_groups`, and clarified owned-vs-marketplace conformance.
+- **Wholesale feed mirroring.** Conditional fetch tokens, public/account `cache_scope`, product and signal wholesale-feed webhooks, and repair-by-read semantics for storefronts, registries, and federated marketplaces.
+- **Creative formats.** Canonical `format_kind` declarations, publisher format catalogs, `v1_format_ref` dual-emission, hosted audio/video `duration_ms_exact` plus one-sided `duration_ms_range`, published-post references, and video placement semantics.
+- **Creative generation.** `list_transformers`, account-scoped transformer selection, strict typed `config`, catalog and variant fan-out, advisory evaluator ranking, spend controls, content macros, free-text params, and per-output pricing receipts.
+- **Media-buy operations.** Dependency impairments, buyer-visible `webhook_activity[]`, action discovery, proposal-lifecycle cleanup, currency-scoped product discovery, sponsored/social placement fields, and SI availability status.
+- **Measurement and billing.** Vendor-attested `vendor_metric` goals, reach-window semantics, `viewability.viewed_seconds`, windowed delivery recovery, finality flags on delivery and usage, and out-of-band creative billing declarations.
+- **Runtime hardening.** Request idempotency on every task, `IDEMPOTENCY_IN_FLIGHT`, open error-code decoding with recovery classification, auth error split, credential-in-payload rejection, webhook operation-id echo, and flat MCP envelope tolerance.
+- **SDK and compliance readiness.** Named schemas for code generators, async-response refs, intentionally open payload markers, capability-gated storyboard coverage, packaged compliance bundle closure, and drift checks for release artifacts.
 
 ## Why upgrade
 

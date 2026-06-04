@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
   "banner": {
-    "content": "AdCP 3.1 is in active development — [see what's coming →](/docs/reference/release-notes)",
+    "content": "AdCP 3.1 is in release-candidate validation — [see what's new →](/docs/reference/whats-new-in-3-1)",
     "dismissible": true
   },
   "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
@@ -81,7 +81,7 @@
                 "pages": [
                   "docs/building/index",
                   {
-                    "group": "AdCP 3.0",
+                    "group": "AdCP 3.x",
                     "expanded": false,
                     "pages": [
                       "docs/reference/whats-new-in-v3",
@@ -687,7 +687,7 @@
             "pages": [
               "dist/docs/3.1.0-rc.7/building/index",
               {
-                "group": "AdCP 3.0",
+                "group": "AdCP 3.x",
                 "expanded": false,
                 "pages": [
                   "dist/docs/3.1.0-rc.7/reference/whats-new-in-v3",
@@ -699,6 +699,7 @@
                   "dist/docs/3.1.0-rc.7/reference/migration/pricing",
                   "dist/docs/3.1.0-rc.7/reference/migration/geo-targeting",
                   "dist/docs/3.1.0-rc.7/reference/migration/creatives",
+                  "dist/docs/3.1.0-rc.7/reference/migration/creative-transformers",
                   "dist/docs/3.1.0-rc.7/reference/migration/catalogs",
                   "dist/docs/3.1.0-rc.7/reference/migration/optimization-goals",
                   "dist/docs/3.1.0-rc.7/reference/migration/brand-identity",
@@ -1291,7 +1292,7 @@
             "pages": [
               "docs/building/index",
               {
-                "group": "AdCP 3.0",
+                "group": "AdCP 3.x",
                 "expanded": false,
                 "pages": [
                   "docs/reference/whats-new-in-v3",
