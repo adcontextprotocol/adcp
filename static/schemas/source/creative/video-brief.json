@@ -9,7 +9,7 @@
     "segments": {
       "type": "array",
       "minItems": 1,
-      "description": "Ordered list of per-segment prompts that compose the generated video. The sum of `duration_ms` across segments should match the target video duration declared by the format declaration's `duration_ms_exact` / `duration_ms_range`.",
+      "description": "Ordered list of per-segment prompts that compose the generated video. The sum of `duration_ms` across segments should match the target video duration declared by the format declaration's `duration_ms_exact` or `duration_ms_range`.",
       "items": {
         "type": "object",
         "required": ["order", "duration_ms", "prompt"],
