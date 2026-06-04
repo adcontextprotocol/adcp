@@ -14,17 +14,17 @@ Any AdCP task can return one of these statuses. The server chooses based on what
 |---|---|---|
 | Under 30 seconds | `completed` / `failed` | Result is inline — done |
 | Over 30 seconds, server actively processing | `working` | Out-of-band progress signal. Connection stays open, result arrives when ready. Caller just waits |
-| Blocked on external dependency | `submitted` | Truly async — configure a webhook via `push_notification_config`. Result may take hours or days |
+| Blocked on external dependency | `submitted` | Truly async — poll by `task_id`; `push_notification_config` can also deliver notifications when configured. Result may take hours or days |
 | Blocked on human input | `input-required` | Caller provides the requested input to continue |
 
 **`working` is not async.** It's a progress signal the server sends out-of-band (via MCP status notifications or SSE) while it continues processing. The caller holds the connection and receives the result when it's ready — no polling, no webhooks. Think of it as "this is taking a moment, but I'm on it."
 
-**`submitted` is async.** The operation is blocked on something outside the server's control — publisher approval, human review, third-party processing. The caller should configure a webhook and move on.
+**`submitted` is async.** The operation is blocked on something outside the server's control — publisher approval, human review, third-party processing. The caller can always poll the AdCP task status surface with `task_id`. A configured webhook is an additional notification channel for background workflows, not a replacement for polling.
 
 :::tip Webhooks for `submitted` operations
-**Webhooks** are the recommended approach for `submitted` operations — they work with any transport (MCP, A2A, REST) and handle operations that outlive a single session. See [Push Notifications](/docs/building/by-layer/L3/webhooks).
+**Webhooks** are recommended for background `submitted` operations — they work with any transport (MCP, A2A, REST) and handle operations that outlive a single session. For MCP/REST, the webhook channel is requested with `push_notification_config` on the task request. For A2A, it remains transport configuration at `configuration.pushNotificationConfig`, not a snake_case skill parameter. When a request includes a webhook channel and the server accepts the task by returning `submitted`, the server MUST deliver at least the terminal completion or failure notification to that channel. Intermediate progress notifications are optional unless another operation-specific contract requires them. If the server cannot honor the requested webhook channel, it MUST reject the request with a structured error instead of silently downgrading delivery. See [Push Notifications](/docs/building/by-layer/L3/webhooks).
 
-**Polling** via the AdCP task polling surface works as a simpler alternative or backup. In 3.x, that surface is legacy `tasks/get`, with optional `get_task_status` when the seller advertises the alias. See the [polling pattern](#polling-for-submitted-operations) below.
+**Polling** via the AdCP task polling surface is always valid for `submitted` tasks. In 3.x, that surface is legacy `tasks/get`, with optional `get_task_status` when the seller advertises the alias. See the [polling pattern](#polling-for-submitted-operations) below.
 
 **Transport-native tasks are not the AdCP lifecycle.** MCP Tasks or A2A task updates may carry or stream an AdCP response, but the durable task state is the AdCP payload: `task_id`, `status`, webhook payloads, and AdCP polling/reconciliation. See [MCP Guide](/docs/building/by-layer/L0/mcp-guide#mcp-tasks-as-a-transport-wrapper).
 :::
@@ -53,12 +53,14 @@ Any AdCP task can return one of these statuses. The server chooses based on what
 |-----------|-------------|
 | `create_media_buy` | Publisher approval workflows |
 | `update_media_buy` | Manual seller review for budget, targeting, or creative changes |
+| `get_products` (`brief` / `refine`) | Bespoke curation that depends on upstream inventory queries or HITL review |
+| `get_signals` (`brief`) | Semantic signal discovery that depends on slow provider queries or review |
 | `sync_creatives` | Asset review and transcoding pipelines |
 | `build_creative` (with review) | Human creative review before finalizing |
 | `sync_catalogs` | Large feeds or feeds requiring content policy review |
 | `activate_signal` | Platform deployment pipelines |
 
-These operations integrate with external systems or require human approval.
+These operations integrate with external systems or require human approval. Wholesale feed reads are the exception: `get_products buying_mode: "wholesale"` and `get_signals discovery_mode: "wholesale"` stay synchronous repair/reconciliation reads and report partial completion with `incomplete[]`, not `submitted`.
 
 ## Timeout Configuration
 
@@ -80,7 +82,7 @@ function getTimeout(status) {
 }
 ```
 
-`working` uses a connection timeout (how long to hold open), not a poll interval. The server sends progress out-of-band and delivers the result on the same connection. `submitted` uses a webhook delivery window — if you're also polling as backup, use a 30-second interval.
+`working` uses a connection timeout (how long to hold open), not a poll interval. The server sends progress out-of-band and delivers the result on the same connection. `submitted` uses a polling or webhook delivery window; a 30-second poll interval is a reasonable default even when webhooks are configured as the primary notification path.
 
 ## Human-in-the-Loop Workflows
 
@@ -219,9 +221,9 @@ async function createCampaign(packages, budget) {
   }
 
   // 'working' means the server is actively processing — result will arrive
-  // 'submitted' means blocked on external dependency — need webhook or polling
+  // 'submitted' means blocked on external dependency — poll by task_id;
+  // a webhook may also deliver completion if configured.
   if (response.status === 'submitted') {
-    // Poll as backup (webhook is preferred — see Push Notifications)
     response = await pollForResult(response.task_id);
   }
 
@@ -235,7 +237,7 @@ async function createCampaign(packages, budget) {
 
 ### Polling for `submitted` Operations
 
-Polling is a backup for `submitted` operations when webhooks aren't configured or as a fallback. Don't poll for `working` — the server delivers the result on the open connection.
+Polling is always valid for `submitted` operations. A webhook may also deliver completion when configured, but callers can still reconcile through the task polling surface. Don't poll for `working` — the server delivers the result on the open connection.
 
 ```javascript
 async function pollForResult(taskId, options = {}) {

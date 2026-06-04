@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/get-products-async-response-submitted.json",
   "title": "Get Products - Submitted",
-  "description": "Async task envelope returned when get_products cannot be confirmed before the response — for example, when custom or bespoke product curation is queued for processing. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the products array lands on the completion artifact, not this envelope.",
+  "description": "Async task envelope returned when get_products cannot be confirmed before the response — for example, when custom or bespoke product curation is queued for processing. This envelope is valid only for `buying_mode: \"brief\"` and `buying_mode: \"refine\"`; `buying_mode: \"wholesale\"` is a synchronous wholesale product feed read and MUST NOT use the Submitted arm. The buyer can always poll `get_task_status` (legacy `tasks/get`) with `task_id`. If the originating request carried `push_notification_config`, the seller also delivers at least the terminal completion/failure notification to that webhook URL; intermediate progress notifications are MAY. The products array lands on the completion artifact, not this envelope.",
   "type": "object",
   "properties": {
     "status": {

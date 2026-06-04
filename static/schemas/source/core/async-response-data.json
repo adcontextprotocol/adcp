@@ -25,6 +25,21 @@
       "$ref": "/schemas/media-buy/get-products-async-response-submitted.json"
     },
     {
+      "title": "GetSignalsResponse",
+      "description": "Response for completed or failed get_signals",
+      "$ref": "/schemas/signals/get-signals-response.json"
+    },
+    {
+      "title": "GetSignalsAsyncWorking",
+      "description": "Progress data for working get_signals",
+      "$ref": "/schemas/signals/get-signals-async-response-working.json"
+    },
+    {
+      "title": "GetSignalsAsyncSubmitted",
+      "description": "Acknowledgment for submitted get_signals (semantic discovery)",
+      "$ref": "/schemas/signals/get-signals-async-response-submitted.json"
+    },
+    {
       "title": "CreateMediaBuyResponse",
       "description": "Response for completed or failed create_media_buy",
       "$ref": "/schemas/media-buy/create-media-buy-response.json"
