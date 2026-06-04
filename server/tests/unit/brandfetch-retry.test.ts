@@ -225,13 +225,19 @@ describe('fetchBrandData retry behavior', () => {
     expect(result.manifest?.tone).toBeUndefined();
     expect(mockedAxios.get).toHaveBeenNthCalledWith(
       1,
-      'https://api.brandfetch.io/v2/brands/domain/acme.com',
-      expect.objectContaining({ headers: expect.objectContaining({ Accept: 'application/json' }) })
+      '/domain/acme.com',
+      expect.objectContaining({
+        baseURL: 'https://api.brandfetch.io/v2/brands',
+        headers: expect.objectContaining({ Accept: 'application/json' }),
+      })
     );
     expect(mockedAxios.get).toHaveBeenNthCalledWith(
       2,
-      'https://api.brandfetch.io/v2/context/acme.com',
-      expect.objectContaining({ headers: expect.objectContaining({ Accept: 'application/json' }) })
+      '/acme.com',
+      expect.objectContaining({
+        baseURL: 'https://api.brandfetch.io/v2/context',
+        headers: expect.objectContaining({ Accept: 'application/json' }),
+      })
     );
   });
 
@@ -254,8 +260,11 @@ describe('fetchBrandData retry behavior', () => {
     expect(mockedAxios.get).toHaveBeenCalledTimes(2);
     expect(mockedAxios.get).toHaveBeenNthCalledWith(
       2,
-      'https://api.brandfetch.io/v2/context/acme.com',
-      expect.objectContaining({ headers: expect.objectContaining({ Accept: 'application/json' }) })
+      '/acme.com',
+      expect.objectContaining({
+        baseURL: 'https://api.brandfetch.io/v2/context',
+        headers: expect.objectContaining({ Accept: 'application/json' }),
+      })
     );
   });
 

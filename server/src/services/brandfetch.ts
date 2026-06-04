@@ -256,6 +256,10 @@ function normalizeBrandfetchDomain(domain: string): { domain: string } | { error
   return { domain: normalizedDomain };
 }
 
+function brandfetchDomainPathSegment(domain: string): string {
+  return encodeURIComponent(domain);
+}
+
 /**
  * Fetch brand data from Brandfetch API
  */
@@ -291,10 +295,10 @@ export async function fetchBrandData(domain: string, options: FetchBrandDataOpti
     try {
       logger.info({ domain: normalizedDomain, attempt }, 'Fetching brand data from Brandfetch');
 
-      // CodeQL: BRANDFETCH_BRANDS_API_URL is from constant config, domain is normalized
-      const response = await axios.get( // lgtm[js/request-forgery]
-        `${BRANDFETCH_BRANDS_API_URL}/domain/${normalizedDomain}`,
+      const response = await axios.get(
+        `/domain/${brandfetchDomainPathSegment(normalizedDomain)}`,
         {
+          baseURL: BRANDFETCH_BRANDS_API_URL,
           headers: {
             Authorization: `Bearer ${BRANDFETCH_API_KEY}`,
             Accept: 'application/json',
@@ -426,10 +430,10 @@ export async function fetchBrandContext(domain: string): Promise<BrandfetchConte
     try {
       logger.info({ domain: normalizedDomain, attempt }, 'Fetching brand context from Brandfetch');
 
-      // CodeQL: BRANDFETCH_CONTEXT_API_URL is from constant config, domain is normalized
-      const response = await axios.get( // lgtm[js/request-forgery]
-        `${BRANDFETCH_CONTEXT_API_URL}/${normalizedDomain}`,
+      const response = await axios.get(
+        `/${brandfetchDomainPathSegment(normalizedDomain)}`,
         {
+          baseURL: BRANDFETCH_CONTEXT_API_URL,
           headers: {
             Authorization: `Bearer ${BRANDFETCH_API_KEY}`,
             Accept: 'application/json',
