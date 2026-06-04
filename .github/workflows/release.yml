@@ -103,19 +103,6 @@ jobs:
         env:
           ADCP_RELEASE_BASE_REF: 3.0.x
 
-      - name: Create Release Pull Request or Tag Release
-        if: steps.release-relevance.outputs.relevant == 'true'
-        id: changesets
-        uses: changesets/action@v1
-        with:
-          version: npm run version
-          publish: npx --no-install changeset tag
-          commit: 'Version Packages'
-          title: 'Version Packages'
-          createGithubReleases: true
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-
       - name: Detect committed release artifacts
         if: steps.release-relevance.outputs.relevant == 'true'
         id: release-artifacts
@@ -128,9 +115,12 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           changed_files="$(git show --format= --name-only --no-renames "${GITHUB_SHA}")"
-          if printf '%s\n' "${changed_files}" | grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]"; then
+          if [ -f "dist/protocol/${VERSION}.tgz" ] && [ -f "dist/protocol/${VERSION}.tgz.sha256" ] && [ -d "dist/schemas/${VERSION}" ] && [ -d "dist/compliance/${VERSION}" ]; then
             echo "has_release_artifacts=true" >> "$GITHUB_OUTPUT"
             echo "Detected committed release artifacts for ${VERSION}."
+          elif grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "${changed_files}"; then
+            echo "has_release_artifacts=true" >> "$GITHUB_OUTPUT"
+            echo "Detected committed release artifact changes for ${VERSION}."
           elif [ -f "dist/protocol/${VERSION}.tgz" ] && [ -f "dist/protocol/${VERSION}.tgz.sha256" ] && gh release view "${TAG}" >/dev/null 2>&1; then
             missing_assets=0
             for asset in "${VERSION}.tgz" "${VERSION}.tgz.sha256" "${VERSION}.tgz.sig" "${VERSION}.tgz.crt"; do
@@ -150,6 +140,19 @@ jobs:
             echo "has_release_artifacts=false" >> "$GITHUB_OUTPUT"
             echo "No committed release artifacts detected for ${VERSION}."
           fi
+
+      - name: Create Release Pull Request or Tag Release
+        if: steps.release-relevance.outputs.relevant == 'true' && steps.release-artifacts.outputs.has_release_artifacts != 'true'
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          version: npm run version
+          publish: npx --no-install changeset tag
+          commit: 'Version Packages'
+          title: 'Version Packages'
+          createGithubReleases: true
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Sign local protocol tarball if needed
         if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'
