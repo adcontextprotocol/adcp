@@ -62,7 +62,7 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           changed_files="$(git show --format= --name-only --no-renames "${GITHUB_SHA}")"
-          if printf '%s\n' "${changed_files}" | grep -Eq '^(\.changeset/|package(-lock)?[.]json$|dist/(schemas|compliance|protocol)/|static/(schemas|compliance)/source/|server/src/training-agent/|scripts/(build-schemas[.]cjs|build-compliance[.]cjs|build-protocol-tarball[.]cjs|sign-protocol-tarball[.]sh|run-storyboards-[^/]+[.]sh|run-storyboards-matrix[.]sh|stage-sdk-schema-bundle[.]sh|overlay-compliance-cache[.]sh)|[.]github/workflows/training-agent-storyboards[.]yml$)'; then
+          if grep -Eq '^(\.changeset/|package(-lock)?[.]json$|dist/(schemas|compliance|protocol)/|static/(schemas|compliance)/source/|server/src/training-agent/|scripts/(build-schemas[.]cjs|build-compliance[.]cjs|build-protocol-tarball[.]cjs|sign-protocol-tarball[.]sh|run-storyboards-[^/]+[.]sh|run-storyboards-matrix[.]sh|stage-sdk-schema-bundle[.]sh|overlay-compliance-cache[.]sh)|[.]github/workflows/(release|training-agent-storyboards)[.]yml$)' <<< "${changed_files}"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             echo "Release-relevant files changed."
             exit 0
