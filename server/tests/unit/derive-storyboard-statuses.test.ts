@@ -13,7 +13,7 @@ function makeResult(
   scenarios: Array<{
     scenario: string;
     passed: boolean;
-    steps?: Array<{ passed: boolean; step?: string }>;
+    steps?: Array<{ passed: boolean; step?: string; skipped?: boolean; skip_reason?: string; requirement?: string }>;
   }>,
 ): ComplianceResult {
   return {
@@ -34,6 +34,9 @@ function makeResult(
           steps: s.steps?.map(step => ({
             step: step.step ?? 'step',
             passed: step.passed,
+            ...(step.skipped && { skipped: true }),
+            ...(step.skip_reason && { skip_reason: step.skip_reason }),
+            ...(step.requirement && { requirement: step.requirement }),
             duration_ms: 0,
           })),
           summary: 'fixture',
@@ -106,6 +109,143 @@ describe('deriveStoryboardStatuses', () => {
     ]);
     const [entry] = deriveStoryboardStatuses(result);
     expect(entry).toMatchObject({ status: 'failing', steps_passed: 0, steps_total: 3 });
+  });
+
+  it('keeps comply_test_controller skips as coverage gaps when mixed with executed steps', () => {
+    const result = makeResult([
+      {
+        scenario: 'pagination_integrity_creative_formats/read_pages',
+        passed: true,
+        steps: [
+          { passed: true, step: 'first_page' },
+          { passed: true, step: 'second_page' },
+          { passed: true, step: 'repeat_cursor' },
+          { passed: true, skipped: true, skip_reason: 'missing_test_controller', step: 'seed_cursor_a' },
+          { passed: true, skipped: true, skip_reason: 'missing_test_controller', step: 'seed_cursor_b' },
+        ],
+      },
+    ]);
+
+    const [entry] = deriveStoryboardStatuses(result);
+
+    expect(entry).toEqual({
+      storyboard_id: 'pagination_integrity_creative_formats',
+      status: 'partial',
+      steps_passed: 3,
+      steps_total: 5,
+    });
+  });
+
+  it('marks a storyboard untested when every produced step is a controller skip', () => {
+    const result = makeResult([
+      {
+        scenario: 'delivery_reporting/requirement_unmet',
+        passed: true,
+        steps: [
+          { passed: true, skipped: true, skip_reason: 'missing_test_controller', step: 'requirement_unmet:controller' },
+        ],
+      },
+    ]);
+
+    const [entry] = deriveStoryboardStatuses(result);
+
+    expect(entry).toEqual({
+      storyboard_id: 'delivery_reporting',
+      status: 'untested',
+      steps_passed: 0,
+      steps_total: 0,
+    });
+  });
+
+  it('still counts missing production-tool skips as non-passing coverage gaps', () => {
+    const result = makeResult([
+      {
+        scenario: 'media_buy_seller/delivery',
+        passed: true,
+        steps: [
+          { passed: true, skipped: true, skip_reason: 'missing_tool', step: 'get_delivery' },
+        ],
+      },
+    ]);
+
+    const [entry] = deriveStoryboardStatuses(result);
+
+    expect(entry).toEqual({
+      storyboard_id: 'media_buy_seller',
+      status: 'failing',
+      steps_passed: 0,
+      steps_total: 1,
+    });
+  });
+
+  it('still counts non-controller requirement gaps as non-passing coverage gaps', () => {
+    const result = makeResult([
+      {
+        scenario: 'accounts_baseline/requirement_unmet',
+        passed: true,
+        steps: [
+          { passed: true, skipped: true, skip_reason: 'requirement_unmet', step: 'required_tool_family_missing' },
+        ],
+      },
+    ]);
+
+    const [entry] = deriveStoryboardStatuses(result);
+
+    expect(entry).toEqual({
+      storyboard_id: 'accounts_baseline',
+      status: 'failing',
+      steps_passed: 0,
+      steps_total: 1,
+    });
+  });
+
+  it('treats controller requirement gaps as untested', () => {
+    const result = makeResult([
+      {
+        scenario: 'delivery_reporting/requirement_unmet',
+        passed: true,
+        steps: [
+          {
+            passed: true,
+            skipped: true,
+            skip_reason: 'requirement_unmet',
+            requirement: 'controller',
+            step: 'requirement_unmet:controller',
+          },
+        ],
+      },
+    ]);
+
+    const [entry] = deriveStoryboardStatuses(result);
+
+    expect(entry).toEqual({
+      storyboard_id: 'delivery_reporting',
+      status: 'untested',
+      steps_passed: 0,
+      steps_total: 0,
+    });
+  });
+
+  it('preserves step-less phase failures when other phases have controller skips', () => {
+    const result = makeResult([
+      { scenario: 'mixed_storyboard/resource_resolution', passed: false, steps: [] },
+      {
+        scenario: 'mixed_storyboard/requirement_unmet',
+        passed: true,
+        steps: [
+          { passed: true, skipped: true, skip_reason: 'missing_test_controller', step: 'requirement_unmet:controller' },
+        ],
+      },
+    ]);
+
+    const [entry] = deriveStoryboardStatuses(result);
+
+    expect(entry).toEqual({
+      storyboard_id: 'mixed_storyboard',
+      status: 'failing',
+      steps_passed: 0,
+      steps_total: 2,
+    });
   });
 
   it('falls back to phase-level counts when phases have no steps array', () => {

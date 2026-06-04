@@ -603,6 +603,30 @@ components:
           example:
             core: pass
             products: fail
+        track_details:
+          type: array
+          items:
+            type: object
+            properties:
+              track:
+                type: string
+              status:
+                type: string
+              scenario_count:
+                type: integer
+              passed_count:
+                type: integer
+              duration_ms:
+                type: number
+              has_coverage_gap_skip:
+                type: boolean
+            required:
+              - track
+              - status
+              - scenario_count
+              - passed_count
+              - duration_ms
+          description: Latest-run per-track summary. Skipped tracks with has_coverage_gap_skip=true represent selected coverage gaps, such as missing_test_controller.
         streak_days:
           type: integer
         last_checked_at:
@@ -1437,6 +1461,30 @@ components:
           type: object
           additionalProperties:
             type: string
+        track_details:
+          type: array
+          items:
+            type: object
+            properties:
+              track:
+                type: string
+              status:
+                type: string
+              scenario_count:
+                type: integer
+              passed_count:
+                type: integer
+              duration_ms:
+                type: number
+              has_coverage_gap_skip:
+                type: boolean
+            required:
+              - track
+              - status
+              - scenario_count
+              - passed_count
+              - duration_ms
+          description: Latest-run per-track summary. Skipped tracks with has_coverage_gap_skip=true represent selected coverage gaps, such as missing_test_controller.
         streak_days:
           type: integer
         last_checked_at:
