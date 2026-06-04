@@ -11,7 +11,10 @@ import type {
 } from '../types.js';
 
 /**
- * Brand-manifest keys that the auth path reads as trust signals
+ * Brand-manifest keys that must not be accepted from caller-supplied
+ * manifests or historical snapshots restored through rollback.
+ *
+ * `classification` is a trust signal that the auth path reads
  * (`brand_manifest->'classification'->>'confidence' = 'high'` in
  * `org-filters.ts` gates membership inheritance via `house_domain`).
  *
@@ -30,25 +33,48 @@ import type {
  *
  * See issue #3467 and the architecture follow-up there.
  */
-const TRUSTED_MANIFEST_KEYS: ReadonlySet<string> = new Set(['classification']);
+const DISALLOWED_MANIFEST_KEYS: ReadonlySet<string> = new Set(['classification', 'brand_context']);
 
 /**
  * Strip auth-relevant keys from a caller-supplied brand_manifest. Returns
  * undefined when the input is undefined so caller checks for "provided"
  * still work. Mutates a shallow copy — does not touch the caller's object.
  */
-function sanitizeBrandManifest(
+export function sanitizeBrandManifest(
   manifest: Record<string, unknown> | undefined,
 ): Record<string, unknown> | undefined {
   if (!manifest) return manifest;
   let stripped: Record<string, unknown> | null = null;
-  for (const key of TRUSTED_MANIFEST_KEYS) {
+  for (const key of DISALLOWED_MANIFEST_KEYS) {
     if (key in manifest) {
       stripped ??= { ...manifest };
       delete stripped[key];
     }
   }
   return stripped ?? manifest;
+}
+
+export function sanitizeBrandSnapshot<T extends Record<string, unknown>>(snapshot: T): T {
+  const rawManifest = snapshot.brand_manifest;
+  let manifest: Record<string, unknown> | undefined;
+
+  if (typeof rawManifest === 'string') {
+    try {
+      const parsed = JSON.parse(rawManifest);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        manifest = parsed as Record<string, unknown>;
+      }
+    } catch {
+      return snapshot;
+    }
+  } else if (rawManifest && typeof rawManifest === 'object' && !Array.isArray(rawManifest)) {
+    manifest = rawManifest as Record<string, unknown>;
+  }
+
+  if (!manifest) return snapshot;
+  const sanitized = sanitizeBrandManifest(manifest);
+  if (sanitized === rawManifest) return snapshot;
+  return { ...snapshot, brand_manifest: sanitized } as T;
 }
 
 /**
@@ -1103,7 +1129,7 @@ export class BrandDatabase {
         ) VALUES ($1, 1, $2, $3, $4, $5, 'Initial record')`,
         [
           brand.domain,
-          JSON.stringify(brand),
+          JSON.stringify(sanitizeBrandSnapshot(brand as unknown as Record<string, unknown>)),
           editor.user_id,
           editor.email || null,
           editor.name || null,
@@ -1160,7 +1186,10 @@ export class BrandDatabase {
         if (current.source_type === 'brand_json') {
           throw new Error('Cannot modify agents on authoritative brand (managed via brand.json)');
         }
-        const manifest = (current.brand_manifest as Record<string, unknown>) || {};
+        const currentManifest = typeof current.brand_manifest === 'string'
+          ? JSON.parse(current.brand_manifest)
+          : current.brand_manifest;
+        const manifest = sanitizeBrandManifest((currentManifest as Record<string, unknown>) || {}) || {};
         manifest.agents = agents;
 
         // Create revision snapshot (brand_revisions uses brand_domain, not domain)
@@ -1173,7 +1202,15 @@ export class BrandDatabase {
         await client.query(
           `INSERT INTO brand_revisions (brand_domain, revision_number, snapshot, editor_user_id, editor_email, editor_name, edit_summary)
            VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7)`,
-          [domain.toLowerCase(), revisionNumber, JSON.stringify(current), editor.user_id, editor.email || null, editor.name || null, editor.summary]
+          [
+            domain.toLowerCase(),
+            revisionNumber,
+            JSON.stringify(sanitizeBrandSnapshot(current as unknown as Record<string, unknown>)),
+            editor.user_id,
+            editor.email || null,
+            editor.name || null,
+            editor.summary,
+          ]
         );
 
         await client.query(
@@ -1262,7 +1299,7 @@ export class BrandDatabase {
         [
           domain.toLowerCase(),
           revisionNumber,
-          JSON.stringify(current),
+          JSON.stringify(sanitizeBrandSnapshot(current as unknown as Record<string, unknown>)),
           input.editor_user_id,
           input.editor_email || null,
           input.editor_name || null,
@@ -1410,9 +1447,9 @@ export class BrandDatabase {
         throw new Error(`Revision ${toRevisionNumber} not found for ${domain}`);
       }
 
-      const snapshot = typeof targetResult.rows[0].snapshot === 'string'
+      const snapshot = sanitizeBrandSnapshot((typeof targetResult.rows[0].snapshot === 'string'
         ? JSON.parse(targetResult.rows[0].snapshot)
-        : targetResult.rows[0].snapshot;
+        : targetResult.rows[0].snapshot) as Record<string, unknown>);
 
       // Lock current row and get current state for the new revision snapshot
       const currentResult = await client.query<DiscoveredBrand>(
@@ -1440,7 +1477,7 @@ export class BrandDatabase {
         [
           domain.toLowerCase(),
           revisionNumber,
-          JSON.stringify(currentResult.rows[0]),
+          JSON.stringify(sanitizeBrandSnapshot(currentResult.rows[0] as unknown as Record<string, unknown>)),
           editor.user_id,
           editor.email || null,
           editor.name || null,
@@ -1589,7 +1626,7 @@ export class BrandDatabase {
         [
           canonicalDomain,
           revisionNumber,
-          JSON.stringify(current),
+          JSON.stringify(sanitizeBrandSnapshot(current as unknown as Record<string, unknown>)),
           editor.userId,
           editor.email ?? null,
           editor.name ?? null,
@@ -1627,7 +1664,7 @@ export class BrandDatabase {
     return {
       ...row,
       domain: row.brand_domain || row.domain,
-      snapshot: typeof row.snapshot === 'string' ? JSON.parse(row.snapshot) : row.snapshot,
+      snapshot: sanitizeBrandSnapshot((typeof row.snapshot === 'string' ? JSON.parse(row.snapshot) : row.snapshot) as Record<string, unknown>),
       created_at: new Date(row.created_at),
     };
   }

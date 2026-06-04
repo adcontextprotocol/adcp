@@ -186,8 +186,8 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     const existing = await brandDb.getDiscoveredBrandByDomain(domain);
     if (existing?.has_brand_manifest && existing.brand_manifest && existing.last_validated) {
       const ageMs = Date.now() - new Date(existing.last_validated).getTime();
+      const manifest = existing.brand_manifest as Record<string, unknown>;
       if (ageMs < ENRICHMENT_CACHE_MAX_AGE_MS) {
-        const manifest = existing.brand_manifest as Record<string, unknown>;
         const response: Record<string, unknown> = {
           success: true,
           domain: existing.domain,
@@ -197,6 +197,7 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
           name: manifest.name,
           description: manifest.description,
           url: manifest.url,
+          tone: manifest.tone,
         };
         if (Array.isArray(manifest.logos) && manifest.logos.length > 0) {
           const logos = manifest.logos as Array<{ url: string; tags: string[] }>;
@@ -261,6 +262,7 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
               logos,
               colors: result.manifest!.colors,
               fonts: result.manifest!.fonts,
+              tone: result.manifest!.tone,
               ...(result.company ? { company: result.company } : {}),
               ...(result.raw?.qualityScore !== undefined ? { quality_score: result.raw.qualityScore } : {}),
               ...(result.raw?.isNsfw ? { is_nsfw: true } : {}),
@@ -286,6 +288,7 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
         name: result.manifest.name,
         description: result.manifest.description,
         url: result.manifest.url,
+        tone: result.manifest.tone,
       };
 
       if (result.manifest.logos && result.manifest.logos.length > 0) {
@@ -307,7 +310,6 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     if (result.company) {
       response.company = result.company;
     }
-
     return JSON.stringify(response, null, 2);
   });
 

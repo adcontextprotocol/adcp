@@ -67,6 +67,11 @@ describe('Brandfetch DB caching', () => {
           logos: [{ url: 'https://acme.com/logo.svg', tags: ['logo'] }],
           colors: { primary: '#ff0000' },
           fonts: [{ name: 'Inter', role: 'body' }],
+          tone: 'Plain-spoken and practical.',
+          brand_context: {
+            brand: { voice: { summary: 'Plain-spoken and practical.' } },
+            positioning: { value_proposition: 'Useful fictional tools.' },
+          },
           company: { name: 'Acme Corp', industry: 'Technology' },
         },
         last_validated: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days ago
@@ -84,6 +89,8 @@ describe('Brandfetch DB caching', () => {
       expect(result.logos).toHaveLength(1);
       expect(result.colors.primary).toBe('#ff0000');
       expect(result.company.name).toBe('Acme Corp');
+      expect(result.brand.tone).toBe('Plain-spoken and practical.');
+      expect(result.brand_context).toBeUndefined();
       expect(mockFetchBrandData).not.toHaveBeenCalled();
     });
 
@@ -149,6 +156,7 @@ describe('Brandfetch DB caching', () => {
           url: 'https://save.com',
           logos: [{ url: 'https://save.com/logo.svg', tags: ['logo'] }],
           colors: { primary: '#0000ff' },
+          tone: 'Confident but restrained.',
         },
         company: { name: 'Save Corp' },
       });
@@ -167,6 +175,7 @@ describe('Brandfetch DB caching', () => {
           brand_manifest: expect.objectContaining({
             name: 'Save Corp',
             url: 'https://save.com',
+            tone: 'Confident but restrained.',
             company: { name: 'Save Corp' },
           }),
         })

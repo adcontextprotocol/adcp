@@ -4,16 +4,21 @@
  * When a domain doesn't have a brand.json file, we can use Brandfetch
  * to get brand data (logos, colors, company info) as a fallback.
  *
- * API Docs: https://docs.brandfetch.com/brand-api/overview
+ * API Docs:
+ * - https://docs.brandfetch.com/brand-api/overview
+ * - https://docs.brandfetch.com/brand-context-api/overview
  */
 
 import axios from 'axios';
 import { createLogger } from '../logger.js';
+import { assertValidBrandDomain, canonicalizeBrandDomain } from './identifier-normalization.js';
 
 const logger = createLogger('brandfetch');
 
 const BRANDFETCH_API_KEY = process.env.BRANDFETCH_API_KEY;
-const BRANDFETCH_API_URL = 'https://api.brandfetch.io/v2/brands';
+const BRANDFETCH_API_BASE_URL = 'https://api.brandfetch.io/v2';
+const BRANDFETCH_BRANDS_API_URL = `${BRANDFETCH_API_BASE_URL}/brands`;
+const BRANDFETCH_CONTEXT_API_URL = `${BRANDFETCH_API_BASE_URL}/context`;
 
 const BRANDFETCH_TIMEOUT_MS = 30_000; // 30 seconds
 const BRANDFETCH_MAX_RETRIES = 2;
@@ -106,6 +111,51 @@ export interface BrandfetchResponse {
   company?: BrandfetchCompany;
 }
 
+export interface BrandfetchContextResponse {
+  meta?: {
+    domain?: string;
+    canonical_name?: string;
+    resolved_at?: string;
+  };
+  identity?: {
+    tagline?: string;
+    mission?: string;
+    description?: string;
+    tags?: string[];
+  };
+  positioning?: {
+    value_proposition?: string;
+    target_audience?: Array<{
+      segment?: string;
+      description?: string;
+    }>;
+    products_and_services?: Array<{
+      name?: string;
+      type?: string;
+      description?: string;
+    }>;
+  };
+  brand?: {
+    voice?: {
+      summary?: string;
+      attributes?: string[];
+      avoid?: string[];
+    };
+    style?: {
+      summary?: string;
+      attributes?: string[];
+    };
+  };
+}
+
+export interface BrandfetchContextResult {
+  success: boolean;
+  domain: string;
+  context?: BrandfetchContextResponse;
+  error?: string;
+  cached?: boolean;
+}
+
 /**
  * AdCP Brand Manifest format (subset for enrichment)
  */
@@ -144,13 +194,24 @@ export interface BrandfetchEnrichmentResult {
    * When false, the result should be saved as 'community' rather than 'enriched'. */
   highQuality?: boolean;
   raw?: BrandfetchResponse;
+  context?: BrandfetchContextResponse;
+  contextError?: string;
   error?: string;
   cached?: boolean;
+}
+
+export interface FetchBrandDataOptions {
+  /**
+   * When true, also fetch Brandfetch Brand Context API data and return it as
+   * ephemeral context. Context text must not be persisted into brand_manifest.
+   */
+  includeContext?: boolean;
 }
 
 // Simple in-memory cache with short TTL (rate-limit protection only)
 // Enriched data should be saved to brands table for persistence
 const cache = new Map<string, { data: BrandfetchEnrichmentResult; expiresAt: number }>();
+const contextCache = new Map<string, { data: BrandfetchContextResult; expiresAt: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes (rate-limit protection)
 
 // DB-level cache: callers should check brands.last_validated before hitting the API
@@ -166,10 +227,43 @@ export function isBrandfetchConfigured(): boolean {
   return !!BRANDFETCH_API_KEY;
 }
 
+export function summarizeBrandfetchError(error: unknown): { name?: string; message: string; code?: string; status?: number } {
+  if (!axios.isAxiosError(error)) {
+    return error instanceof Error
+      ? { name: error.name, message: error.message }
+      : { message: String(error) };
+  }
+
+  return {
+    name: error.name,
+    message: error.message,
+    code: error.code,
+    status: error.response?.status,
+  };
+}
+
+function normalizeBrandfetchDomain(domain: string): { domain: string } | { error: string; domain: string } {
+  const normalizedDomain = canonicalizeBrandDomain(domain);
+  try {
+    assertValidBrandDomain(normalizedDomain);
+  } catch {
+    return {
+      domain: normalizedDomain,
+      error: 'Invalid domain format',
+    };
+  }
+
+  return { domain: normalizedDomain };
+}
+
+function brandfetchDomainPathSegment(domain: string): string {
+  return encodeURIComponent(domain);
+}
+
 /**
  * Fetch brand data from Brandfetch API
  */
-export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichmentResult> {
+export async function fetchBrandData(domain: string, options: FetchBrandDataOptions = {}): Promise<BrandfetchEnrichmentResult> {
   if (!BRANDFETCH_API_KEY) {
     return {
       success: false,
@@ -178,15 +272,13 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
     };
   }
 
-  // Normalize domain
-  const normalizedDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
-
-  // Validate domain to prevent SSRF — only allow valid domain characters
-  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(normalizedDomain)) {
+  const normalized = normalizeBrandfetchDomain(domain);
+  const normalizedDomain = normalized.domain;
+  if ('error' in normalized) {
     return {
       success: false,
       domain: normalizedDomain,
-      error: 'Invalid domain format',
+      error: normalized.error,
     };
   }
 
@@ -194,17 +286,19 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
   const cached = cache.get(normalizedDomain);
   if (cached && cached.expiresAt > Date.now()) {
     logger.debug({ domain: normalizedDomain }, 'Brandfetch cache hit');
-    return { ...cached.data, cached: true };
+    const cachedResult = { ...cached.data, cached: true };
+    if (!options.includeContext) return cachedResult;
+    return withBrandContext(cachedResult);
   }
 
   for (let attempt = 0; attempt <= BRANDFETCH_MAX_RETRIES; attempt++) {
     try {
       logger.info({ domain: normalizedDomain, attempt }, 'Fetching brand data from Brandfetch');
 
-      // CodeQL: BRANDFETCH_API_URL is from env config, domain is normalized
-      const response = await axios.get( // lgtm[js/request-forgery]
-        `${BRANDFETCH_API_URL}/domain/${normalizedDomain}`,
+      const response = await axios.get(
+        `/domain/${brandfetchDomainPathSegment(normalizedDomain)}`,
         {
+          baseURL: BRANDFETCH_BRANDS_API_URL,
           headers: {
             Authorization: `Bearer ${BRANDFETCH_API_KEY}`,
             Accept: 'application/json',
@@ -216,6 +310,14 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
       );
 
       if (response.status === 404) {
+        if (options.includeContext) {
+          const contextResult = await fetchBrandContext(normalizedDomain);
+          if (contextResult.success && contextResult.context) {
+            const result = mapContextToEnrichmentResult(normalizedDomain, contextResult.context);
+            return result;
+          }
+        }
+
         const result: BrandfetchEnrichmentResult = {
           success: false,
           domain: normalizedDomain,
@@ -265,7 +367,8 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
         'Brand data fetched successfully'
       );
 
-      return result;
+      if (!options.includeContext) return result;
+      return withBrandContext(result);
     } catch (error) {
       const isTimeout = axios.isAxiosError(error) && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT');
       const isRetryable = isTimeout || (axios.isAxiosError(error) && !error.response);
@@ -278,7 +381,7 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
       }
 
       const message = error instanceof Error ? error.message : 'Unknown error';
-      logger.warn({ error, domain: normalizedDomain, attempt }, 'Brandfetch fetch failed after retries');
+      logger.warn({ error: summarizeBrandfetchError(error), domain: normalizedDomain, attempt }, 'Brandfetch fetch failed after retries');
       return {
         success: false,
         domain: normalizedDomain,
@@ -292,6 +395,165 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
     success: false,
     domain: normalizedDomain,
     error: 'Brandfetch fetch exhausted retries',
+  };
+}
+
+/**
+ * Fetch AI-oriented brand context from Brandfetch Brand Context API.
+ */
+export async function fetchBrandContext(domain: string): Promise<BrandfetchContextResult> {
+  if (!BRANDFETCH_API_KEY) {
+    return {
+      success: false,
+      domain,
+      error: 'BRANDFETCH_API_KEY not configured',
+    };
+  }
+
+  const normalized = normalizeBrandfetchDomain(domain);
+  const normalizedDomain = normalized.domain;
+  if ('error' in normalized) {
+    return {
+      success: false,
+      domain: normalizedDomain,
+      error: normalized.error,
+    };
+  }
+
+  const cached = contextCache.get(normalizedDomain);
+  if (cached && cached.expiresAt > Date.now()) {
+    logger.debug({ domain: normalizedDomain }, 'Brandfetch context cache hit');
+    return { ...cached.data, cached: true };
+  }
+
+  for (let attempt = 0; attempt <= BRANDFETCH_MAX_RETRIES; attempt++) {
+    try {
+      logger.info({ domain: normalizedDomain, attempt }, 'Fetching brand context from Brandfetch');
+
+      const response = await axios.get(
+        `/${brandfetchDomainPathSegment(normalizedDomain)}`,
+        {
+          baseURL: BRANDFETCH_CONTEXT_API_URL,
+          headers: {
+            Authorization: `Bearer ${BRANDFETCH_API_KEY}`,
+            Accept: 'application/json',
+          },
+          timeout: BRANDFETCH_TIMEOUT_MS,
+          validateStatus: () => true,
+          responseType: 'arraybuffer',
+        }
+      );
+
+      if (response.status === 404) {
+        const result: BrandfetchContextResult = {
+          success: false,
+          domain: normalizedDomain,
+          error: 'Brand context not found in Brandfetch',
+        };
+        contextCache.set(normalizedDomain, { data: result, expiresAt: Date.now() + 5 * 60 * 1000 });
+        return result;
+      }
+
+      const isRetryableStatus = response.status === 429 || (response.status >= 500 && response.status < 600);
+      if (isRetryableStatus && attempt < BRANDFETCH_MAX_RETRIES) {
+        const delay = BRANDFETCH_RETRY_DELAY_MS * Math.pow(2, attempt);
+        logger.warn({ status: response.status, domain: normalizedDomain, attempt, delay }, 'Brandfetch context transient error, retrying');
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      if (response.status !== 200) {
+        logger.warn({ status: response.status, domain: normalizedDomain }, 'Brandfetch context API non-2xx response');
+        return {
+          success: false,
+          domain: normalizedDomain,
+          error: `Brandfetch context API error: ${response.status}`,
+        };
+      }
+
+      let context: BrandfetchContextResponse;
+      try {
+        const text = Buffer.from(response.data as Buffer).toString('utf-8');
+        context = JSON.parse(text) as BrandfetchContextResponse;
+      } catch {
+        logger.warn({ domain: normalizedDomain }, 'Brandfetch context returned invalid JSON');
+        return {
+          success: false,
+          domain: normalizedDomain,
+          error: 'Brandfetch context returned invalid JSON',
+        };
+      }
+
+      const result: BrandfetchContextResult = {
+        success: true,
+        domain: normalizedDomain,
+        context,
+      };
+      contextCache.set(normalizedDomain, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
+      return result;
+    } catch (error) {
+      const isTimeout = axios.isAxiosError(error) && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT');
+      const isRetryable = isTimeout || (axios.isAxiosError(error) && !error.response);
+
+      if (isRetryable && attempt < BRANDFETCH_MAX_RETRIES) {
+        const delay = BRANDFETCH_RETRY_DELAY_MS * Math.pow(2, attempt);
+        logger.warn({ domain: normalizedDomain, attempt, delay, code: axios.isAxiosError(error) ? error.code : undefined }, 'Brandfetch context request failed, retrying');
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      logger.warn({ error: summarizeBrandfetchError(error), domain: normalizedDomain, attempt }, 'Brandfetch context fetch failed after retries');
+      return {
+        success: false,
+        domain: normalizedDomain,
+        error: `Failed to fetch Brandfetch context: ${message}`,
+      };
+    }
+  }
+
+  return {
+    success: false,
+    domain: normalizedDomain,
+    error: 'Brandfetch context fetch exhausted retries',
+  };
+}
+
+async function withBrandContext(result: BrandfetchEnrichmentResult): Promise<BrandfetchEnrichmentResult> {
+  const contextResult = await fetchBrandContext(result.domain);
+  if (!contextResult.success || !contextResult.context) {
+    return {
+      ...result,
+      contextError: contextResult.error,
+    };
+  }
+
+  const context = contextResult.context;
+  if (!result.manifest) {
+    return mapContextToEnrichmentResult(result.domain, context);
+  }
+
+  return {
+    ...result,
+    context,
+  };
+}
+
+function mapContextToEnrichmentResult(
+  domain: string,
+  context: BrandfetchContextResponse
+): BrandfetchEnrichmentResult {
+  const name = context.meta?.canonical_name || domain;
+
+  return {
+    success: true,
+    domain,
+    manifest: {
+      name,
+      url: `https://${domain}`,
+    },
+    highQuality: false,
+    context,
   };
 }
 
@@ -408,4 +670,5 @@ function mapToEnrichmentResult(
  */
 export function clearCache(): void {
   cache.clear();
+  contextCache.clear();
 }

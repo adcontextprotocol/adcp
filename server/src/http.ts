@@ -588,6 +588,11 @@ async function getUserFromRequest(
   return null;
 }
 
+function stripLegacyBrandContext(manifest: Record<string, unknown>): Record<string, unknown> {
+  const { brand_context: _brandContext, ...publicManifest } = manifest;
+  return publicManifest;
+}
+
 export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
@@ -1150,10 +1155,11 @@ export class HTTPServer {
         }
 
         const schemaUrl = 'https://adcontextprotocol.org/schemas/v3/brand.json';
+        const publicManifest = stripLegacyBrandContext(manifest);
         const brandJson: Record<string, unknown> =
-          typeof manifest.$schema === 'string' && manifest.$schema.startsWith('https://')
-            ? { ...manifest }
-            : { $schema: schemaUrl, ...manifest };
+          typeof publicManifest.$schema === 'string' && publicManifest.$schema.startsWith('https://')
+            ? { ...publicManifest }
+            : { $schema: schemaUrl, ...publicManifest };
 
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Cache-Control', 'public, max-age=300');
@@ -3066,7 +3072,7 @@ export class HTTPServer {
           editable: true,
           source_type: brand.source_type,
           brand_name: brand.brand_name,
-          brand_manifest: brand.brand_manifest,
+          brand_manifest: stripLegacyBrandContext((brand.brand_manifest as Record<string, unknown>) || {}),
           house_domain: brand.house_domain,
           keller_type: brand.keller_type,
         });
