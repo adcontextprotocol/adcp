@@ -2856,6 +2856,24 @@ paths:
                       - name
                       - url
                     additionalProperties: {}
+                  company:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      industries:
+                        type: array
+                        items:
+                          type: string
+                      employees:
+                        type: string
+                      founded:
+                        type: number
+                      location:
+                        type: string
+                    required:
+                      - name
+                    additionalProperties: {}
                   source_type:
                     type: string
                     enum:
@@ -2866,6 +2884,14 @@ paths:
                     type: object
                     properties: {}
                     additionalProperties: {}
+                  context_source:
+                    type: string
+                    enum:
+                      - brandfetch
+                  context_scope:
+                    type: string
+                    enum:
+                      - ephemeral
                   context_error:
                     type: string
                 required:

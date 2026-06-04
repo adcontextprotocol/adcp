@@ -480,8 +480,11 @@ const EnrichBrandResponseSchema = z.object({
   domain: z.string(),
   cached: z.boolean(),
   manifest: EnrichBrandManifestSchema.optional(),
+  company: EnrichBrandManifestSchema.shape.company.optional(),
   source_type: z.enum(["brand_json", "community", "enriched"]).optional(),
   context: z.object({}).passthrough().optional(),
+  context_source: z.literal("brandfetch").optional(),
+  context_scope: z.literal("ephemeral").optional(),
   context_error: z.string().optional(),
 });
 

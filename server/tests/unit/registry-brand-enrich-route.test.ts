@@ -163,6 +163,50 @@ describe('GET /api/brands/enrich', () => {
     expect(mocks.fetchBrandData).not.toHaveBeenCalled();
   });
 
+  it('returns cached manifest with context_error when live cached Brand Context fetch fails', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        id: 'brand-1',
+        domain: 'acme.com',
+        has_brand_manifest: true,
+        brand_manifest: {
+          name: 'Acme',
+          url: 'https://acme.com',
+          brand_context: { identity: { description: 'legacy stored context' } },
+        },
+        source_type: 'enriched',
+        last_validated: new Date(),
+      }),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+    mocks.fetchBrandContext.mockResolvedValue({
+      success: false,
+      domain: 'acme.com',
+      error: 'Brand Context unavailable',
+    });
+
+    const res = await request(buildApp(brandDb, true)).get('/api/brands/enrich?domain=acme.com');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      domain: 'acme.com',
+      cached: true,
+      manifest: {
+        name: 'Acme',
+        url: 'https://acme.com',
+      },
+      source_type: 'enriched',
+      context_error: 'Brand Context unavailable',
+    });
+    expect(res.body.context).toBeUndefined();
+    expect(res.body.context_source).toBeUndefined();
+    expect(res.body.context_scope).toBeUndefined();
+    expect(mocks.fetchBrandContext).toHaveBeenCalledWith('acme.com');
+    expect(mocks.fetchBrandData).not.toHaveBeenCalled();
+    expect(brandDb.upsertDiscoveredBrand).not.toHaveBeenCalled();
+  });
+
   it('persists only Brand API fields while returning Brand Context as ephemeral response context', async () => {
     const brandDb = {
       getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null),
