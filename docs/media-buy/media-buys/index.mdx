@@ -42,8 +42,8 @@ This phase may involve:
 - **Kevel**: Creates a Campaign with Flights
 - **Triton Digital**: Creates a Campaign with Flights
 
-### 2. Creative Upload Phase
-Once created, the media buy requires creative assets via [`sync_creatives`](/docs/creative/task-reference/sync_creatives):
+### 2. Creative Supply Phase
+Once created, the media buy requires creative assets through the path the seller advertises: [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for library-backed sellers, or inline `packages[].creatives` on [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) for inline-only sellers.
 
 - **Platform-specific format support** (video, audio, display, custom)
 - **Validation and policy review** for creative compliance
@@ -302,7 +302,7 @@ pending_start ──────▶ rejected (terminal)  — seller rejects duri
 Any non-terminal ──── update(canceled: true) ──▶ canceled (terminal)
 ```
 
-- **`pending_creatives`**: Approved but no creatives assigned — **buyer-side action required** (call `sync_creatives`). Not a publisher- or governance-side approval queue: the seller has already accepted the buy; only the buyer's creative submission is missing.
+- **`pending_creatives`**: Approved but no creatives assigned — **buyer-side action required** (use `sync_creatives` for library-backed sellers, or inline `packages[].creatives` for inline-only sellers). Not a publisher- or governance-side approval queue: the seller has already accepted the buy; only the buyer's creative submission is missing.
 - **`pending_start`**: Ready to serve, waiting for flight date
 
 The `pending_X` naming convention names the lifecycle phase that is next required, NOT a state of waiting on seller/operator approval — `pending_creatives` means "creatives are the next phase," `pending_start` means "the flight date start is the next phase." Both are post-seller-acceptance states.
