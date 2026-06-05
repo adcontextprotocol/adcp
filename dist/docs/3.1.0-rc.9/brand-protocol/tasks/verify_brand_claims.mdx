@@ -1,0 +1,161 @@
+---
+title: verify_brand_claims
+description: "verify_brand_claims is the bulk variant of verify_brand_claim — verify many claims against one brand-agent in a single round-trip. Same four claim types (subsidiary, parent, property, trademark); results are returned positionally aligned with the request."
+"og:title": "AdCP — verify_brand_claims"
+testable: true
+---
+
+Bulk variant of [`verify_brand_claim`](/dist/docs/3.1.0-rc.9/brand-protocol/tasks/verify_brand_claim). The agent answers many verification questions in a single round-trip, returning one result per claim in the same order the caller sent them. Use when MCP round-trip cost dominates the per-claim work — crawlers refreshing brand portfolios, creative-clearance pipelines clearing a creative batch against one rights-holder, inventory-onboarding scans verifying a supply-path against a house.
+
+**This is a bulk affordance, not a different operation.** Per-claim semantics — trust model, applicable statuses, authorization tiers, per-claim-type `details` shapes — are identical to the single-target tool. Everything documented on the single-target page applies per-result; this page covers only the bulk-specific concerns.
+
+## When to use the bulk variant
+
+| Workflow | Variant | Why |
+|---|---|---|
+| One-off verification (single page, single creative, single subsidiary check) | [`verify_brand_claim`](/dist/docs/3.1.0-rc.9/brand-protocol/tasks/verify_brand_claim) | No batching benefit; simpler error model. |
+| Portfolio refresh (re-verify all known subsidiaries / properties / marks for one brand) | `verify_brand_claims` | MCP overhead dominates. |
+| Crawler-driven full-portfolio verification (Nike portfolio: ~100 properties across regions) | `verify_brand_claims` | 100 → 1 round-trip. |
+| Creative-clearance batch (clear N creatives against one rights-holder pre-flight) | `verify_brand_claims` | Same rate-limit slot for the batch (see below). |
+| Cross-brand verification (different claims against different agents) | One bulk call per brand-agent | Each agent is a separate addressable endpoint; bulk is intra-agent. |
+
+## Schema
+
+- **Request**: [`verify-brand-claims-request.json`](https://adcontextprotocol.org/schemas/3.1.0-rc.9/brand/verify-brand-claims-request.json)
+- **Response**: [`verify-brand-claims-response.json`](https://adcontextprotocol.org/schemas/3.1.0-rc.9/brand/verify-brand-claims-response.json)
+
+## Capability discovery
+
+Bulk support is advertised separately from the single-target tool. Agents MAY ship the single-target tool only, the bulk tool only, or both. A `supported_claim_types` declaration applies to BOTH tools when both are advertised — the bulk variant cannot accept claim types the agent's single-target implementation cannot answer.
+
+```json
+{
+  "supported_protocols": ["brand"],
+  "supported_tasks": [
+    "get_brand_identity",
+    "verify_brand_claim",
+    "verify_brand_claims"
+  ],
+  "brand": {
+    "verify_brand_claim": {
+      "supported_claim_types": ["subsidiary", "parent", "property", "trademark"]
+    }
+  }
+}
+```
+
+Agents MAY advertise a lower per-call batch ceiling than the spec's 100 cap. When the ceiling differs, advertise it via an `extensions`-style entry on the capability descriptor or document it out-of-band; consumers SHOULD treat 100 as the maximum and SHOULD chunk accordingly when the agent's cap is lower.
+
+## Order is preserved
+
+The agent MUST return `results[]` in the same order as the request's `claims[]` (positional zip-by-index). Callers pass a position-indexed batch and consume results by index. This guarantee lets callers correlate inputs and outputs without re-keying:
+
+```
+request.claims[7]  ↔  response.results[7]
+```
+
+If the batch fails wholesale (auth, rate-limit, malformed request), the response carries top-level `errors[]` and omits `results`. There is no "partial response with results AND batch errors" mode — batch errors and per-result errors are mutually exclusive at the wire.
+
+## Partial failure — per-result errors
+
+Per-claim failures (an `UNSUPPORTED_CLAIM_TYPE` for one of many claims, an `AMBIGUOUS_MATCH` on one trademark query in a portfolio of properties) DO NOT fail the batch. The corresponding entry in `results[]` carries an `error` field instead of `claim_type`/`status`, and the rest of the batch is unaffected:
+
+```json
+{
+  "results": [
+    { "claim_type": "property", "status": "owned", "details": { "regions": ["US"] } },
+    { "error": { "code": "AMBIGUOUS_MATCH", "message": "Multiple registrations match 'CONVERSE'; narrow with registry+number." } },
+    { "claim_type": "subsidiary", "status": "not_ours" }
+  ]
+}
+```
+
+Batch-level errors are reserved for failures that prevent the agent from answering anything:
+
+| Tier | Where it goes | Example codes |
+|---|---|---|
+| Per-result | `results[i].error` | `UNSUPPORTED_CLAIM_TYPE`, `INVALID_INPUT` for one item, `AMBIGUOUS_MATCH` |
+| Batch-level | top-level `errors[]` | `AUTH_INVALID`, `RATE_LIMITED`, malformed request, `claims[]` over the cap |
+
+Full error-code semantics are documented on the [single-target task page § Error handling](/dist/docs/3.1.0-rc.9/brand-protocol/tasks/verify_brand_claim#error-handling).
+
+## Caching
+
+Each result MAY carry its own staleness — `pending_review` is short-lived (≤1h), `owned` is stable (24-72h). Per-status caching guidance is per the single-target page.
+
+Top-level `Cache-Control: max-age` on the bulk response represents the **lowest-common max-age across the batch**: a batch with one `pending_review` and 99 `owned` results SHOULD cache at the `pending_review` ceiling, because consumer-side cache invalidation typically operates at response granularity. Callers that need per-result staleness should either split batches by expected status volatility, or re-verify volatile claims individually.
+
+Agents that support per-result cache hints MAY surface them via `ext` (e.g., `results[i].ext.cache.max_age_seconds`); this remains an extension surface, not part of the normative response.
+
+## Rate-limiting
+
+A bulk call consumes a **single rate-limit slot** per-call, not per-result. A batch of 100 claims hits the per-`{caller, query-target}` limit once, not 100 times. This is the core economic argument for the bulk variant — the limit is on the round-trip, not on the verification work.
+
+Implications:
+
+- Agents SHOULD size rate limits in calls/window rather than claims/window when bulk is advertised. If claim-volume matters operationally, advertise a per-batch claim cap (see Capability discovery).
+- Callers SHOULD prefer one bulk call over N single calls when verifying against the same agent — both for cost and for staying inside the limit.
+- A `RATE_LIMITED` response on a bulk call is a batch-level error; the whole batch is rejected. Retry with `Retry-After` honoured.
+
+## Trust model
+
+Identical to the single-target tool. Per-result `status` follows the same direction-asymmetric rules: rejections (`disputed` / `not_ours`) are authoritative on a single signed response; assertions (`owned` / `pending_review` / `transferring` / `licensed_*`) require reciprocation before extending positive trust.
+
+One top-level `signed_response` envelope attests the full `results[]` array. Its `request_hash` binds the entire `claims[]` request, caller identity, resolved `brand_domain`, and responding `agent_url`; there is no per-result signature. Consumers using signed bulk results for online decisions apply the same freshness rule as the single-target task: use the earlier of HTTP cache expiry and `signed_response.payload.exp`. Audit stores that extract one rejected result from a bulk response MUST also retain the original batch request and result index, because the envelope verifies the whole batch rather than a standalone per-result artifact.
+
+**No "single-call mutual assertion" shortcut.** A bulk call against one agent does NOT establish mutual assertion for the assertion-direction claims in that batch, even if both halves of a relationship pair appear inside the same bulk request. Mutual assertion is a property of two parties agreeing — the leaf-side agent still has to be called separately for any `subsidiary` claim that returns `owned`, the licensor's agent still has to be called for any `licensed_in`, and so on. Batching is about MCP-round-trip economics, not about collapsing the trust model.
+
+See [`brand.json` § Agent-augmented verification](/dist/docs/3.1.0-rc.9/brand-protocol/brand-json#agent-augmented-verification) for the full trust table.
+
+## Example — portfolio refresh
+
+A crawler refreshes a known Nike portfolio (one subsidiary check + three property checks) in one round-trip:
+
+```json
+{
+  "claims": [
+    {
+      "claim_type": "subsidiary",
+      "claim": { "subsidiary_domain": "converse.com", "subsidiary_brand_id": "converse" }
+    },
+    {
+      "claim_type": "property",
+      "claim": { "property": { "type": "website", "identifier": "nike.com" } }
+    },
+    {
+      "claim_type": "property",
+      "claim": { "property": { "type": "website", "identifier": "nike.cn", "region": "CN" } }
+    },
+    {
+      "claim_type": "trademark",
+      "claim": { "mark": "AIR JORDAN", "registry": "USPTO", "number": "1234567" }
+    }
+  ]
+}
+```
+
+```json
+{
+  "results": [
+    { "claim_type": "subsidiary", "status": "owned", "details": { "brand_id": "converse" } },
+    { "claim_type": "property", "status": "owned", "details": { "relationship": "owned", "brand_id": "nike", "regions": ["US", "CA", "GB", "FR", "DE", "JP", "AU"] } },
+    { "claim_type": "property", "status": "owned", "details": { "relationship": "owned", "brand_id": "nike", "regions": ["CN"] }, "context_note": "Regional site for China market" },
+    { "claim_type": "trademark", "status": "owned", "details": { "matched_registration": { "registry": "USPTO", "number": "1234567", "mark": "AIR JORDAN", "registration_status": "active" }, "countries": ["US"], "nice_classes": [25, 41] } }
+  ]
+}
+```
+
+To extend governance trust through the `subsidiary` result, the caller still needs to call Converse's brand-agent with `claim_type: "parent"`. The bulk call is round-trip economy; it is not a trust-model shortcut.
+
+## Batch-level error example
+
+```json
+{
+  "errors": [
+    {
+      "code": "RATE_LIMITED",
+      "message": "Caller has exhausted per-window quota. Retry after the indicated interval."
+    }
+  ]
+}
+```

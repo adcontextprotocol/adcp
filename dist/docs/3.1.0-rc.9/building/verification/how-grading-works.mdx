@@ -1,0 +1,199 @@
+---
+title: How grading works
+sidebarTitle: How grading works
+description: "How the AdCP compliance runner translates specialism declarations into a concrete set of graded storyboards — and how capability flags alter that set."
+"og:title": "AdCP — How compliance grading works"
+---
+
+The [Conformance Specification](/dist/docs/3.1.0-rc.9/building/verification/conformance#conformance-is-layered) defines three obligation layers: Universal, Protocol, and Specialism. This page explains what happens inside the Specialism layer: how a specialism manifest resolves to a set of graded scenarios, and how per-scenario capability gates can narrow or expand that set.
+
+## From declaration to graded scenarios
+
+When your agent declares a specialism in `get_adcp_capabilities`, the runner:
+
+1. Fetches the specialism manifest at `/compliance/{version}/specialisms/{id}/`.
+2. Reads the manifest's `requires_scenarios` list — an ordered set of scenario IDs the runner must grade.
+3. For each scenario, checks whether the scenario declares a `requires_capability` gate.
+4. If a gate is present, reads the named path from your `get_adcp_capabilities` response to decide whether to run or skip the scenario.
+
+The manifest drives the full scenario list; capability gates apply per-scenario on top of it.
+
+## Runner evidence vs. verification policy
+
+The storyboard runner does not decide whether an agent earns a badge or satisfies a particular buyer. It produces evidence: executed assertions, failures, selected-but-skipped steps, not-selected steps, skip reasons, and the endpoint/run mode used. A verification policy consumes that evidence and decides which gaps are acceptable for a named outcome.
+
+| Question | Decided by | Evidence used |
+|----------|------------|---------------|
+| "Did this step match the storyboard?" | Storyboard runner | Step validations and response schemas |
+| "Does this agent earn **Verified (Spec)**?" | AgenticAdvertising.org verification policy | Runner evidence against the registered spec/test endpoint, plus membership and declaration checks |
+| "Does this agent earn **Verified (Sandbox)**?" | AgenticAdvertising.org verification policy | Runner evidence against the production endpoint under `account.sandbox: true`, plus sandbox-isolation checks |
+| "Is this good enough for a specific buyer?" | That buyer's requirement profile | Verified mode, declared protocols/specialisms, optional capabilities they require, and any business or integration requirements outside AdCP |
+
+This is why runner classification matters. "Not selected because this is a sandbox-only run" is a suite-selection fact, not a seller capability gap. "Skipped because the seller did not claim an optional feature" may be acceptable for the badge but unacceptable to a buyer that requires that feature. "Skipped because a declared required tool is missing" is a seller implementation problem.
+
+## Requirement profiles
+
+To answer "what do I need to pass?", start with the profile you are trying to satisfy:
+
+| Target | Minimum question the profile answers |
+|--------|--------------------------------------|
+| **Verified (Spec)** | Does the declared AdCP surface pass the required storyboards on the registered spec/test endpoint, with no blocking missing tools or failed assertions? |
+| **Verified (Sandbox)** | Does the registered production endpoint pass the sandbox verification profile under `account.sandbox: true`, with sandbox isolation enforced and only Sandbox-acceptable skips present? |
+| **Specific buyer requirement** | Which verified modes, protocols, specialisms, optional capabilities, operational behaviors, and skip classes does this buyer require? |
+
+A buyer requirement profile can be stricter than the public badge. For example, the public Sandbox profile can accept a capability-gated proposal storyboard being skipped when `media_buy.supports_proposals: false`; a buyer that requires proposal workflows can treat the same skip as a blocker. Conversely, a production endpoint omitting `comply_test_controller` can be acceptable for the Sandbox badge, while a buyer doing deterministic integration testing may ask for a separate dev/staging endpoint that exposes it.
+
+The storyboard runner should not encode those buyer decisions. It should emit typed evidence that a verification policy or buyer profile can evaluate consistently.
+
+## Specialism manifests
+
+Each specialism's `requires_scenarios` field lists the scenarios the runner will grade. Example — the `sales-guaranteed` manifest declares eight required scenarios:
+
+```yaml
+# /compliance/{version}/specialisms/sales-guaranteed/ (source: static/compliance/source/specialisms/sales-guaranteed/index.yaml)
+id: sales_guaranteed
+requires_scenarios:
+  - media_buy_seller/refine_products
+  - media_buy_seller/delivery_reporting
+  - media_buy_seller/measurement_terms_rejected
+  - media_buy_seller/pending_creatives_to_start
+  - media_buy_seller/inventory_list_targeting
+  - media_buy_seller/inventory_list_no_match
+  - media_buy_seller/invalid_transitions
+  - media_buy_seller/proposal_finalize   # ← capability-gated
+```
+
+Seven of these run unconditionally for any `sales-guaranteed` agent. The eighth — `proposal_finalize` — carries a capability gate.
+
+## Capability gates
+
+A scenario can declare a `requires_capability` block. The runner reads the named path from your `get_adcp_capabilities` response and checks it against the expected value. If the check fails (the capability is absent or false), the scenario is skipped — the `skip` block will appear in runner output with `reason: not_applicable` — and does not contribute to `steps_failed`.
+
+```yaml
+# /compliance/{version}/protocols/media-buy/scenarios/proposal_finalize/ (source: static/compliance/source/protocols/media-buy/scenarios/proposal_finalize.yaml)
+id: media_buy_seller/proposal_finalize
+requires_capability:
+  path: media_buy.supports_proposals
+  equals: true
+```
+
+The gate is evaluated against your agent's live `get_adcp_capabilities` response at run time — the same call the runner makes during the universal `capability_discovery` storyboard.
+
+<Note>
+**Schema status.** `requires_capability` is not yet defined in `storyboard-schema.yaml` — runners recognise it (the TS SDK reads and enforces the block) but scenario-authoring tooling that validates against the storyboard schema will flag it as an unknown field today. Adding it to the schema is tracked separately; until then, treat `requires_capability` as a stable runner-level extension that the schema lints will catch up to.
+</Note>
+
+
+## Worked example
+
+**Scenario:** Priya's StreamHaus platform claims `sales-guaranteed` and declares `media_buy.supports_proposals: true`.
+
+```json
+{
+  "supported_protocols": ["media_buy"],
+  "specialisms": ["sales-guaranteed"],
+  "media_buy": {
+    "supports_proposals": true
+  }
+}
+```
+
+**Runner behavior:** all eight `requires_scenarios` run, including `proposal_finalize`. Priya's platform is graded on the full proposal lifecycle — brief with proposals, refine, finalize, and execute via `create_media_buy`.
+
+---
+
+**Scenario:** StreamHaus Direct is an auction-based PG platform — no proposal abstraction. It claims `sales-guaranteed` and declares `media_buy.supports_proposals: false`.
+
+```json
+{
+  "supported_protocols": ["media_buy"],
+  "specialisms": ["sales-guaranteed"],
+  "media_buy": {
+    "supports_proposals": false
+  }
+}
+```
+
+**Runner behavior:** seven scenarios run; `proposal_finalize` is skipped. The `skip` block in runner output is the authoritative signal:
+
+```json
+{
+  "storyboard_id": "media_buy_seller/proposal_finalize",
+  "skip": {
+    "reason": "not_applicable",
+    "detail": "requires_capability check: media_buy.supports_proposals must equal true — agent declared false"
+  }
+}
+```
+
+When the `skip` block is present, the step was not graded and does not count against `steps_failed`. The `skip.detail` string identifies the specific cause (capability gate, missing specialism declaration, or missing tool).
+
+<Note>
+**Absent = false.** The `supports_proposals` field has `"default": false` in the capabilities schema. Omitting it from your response is equivalent to declaring `false` — the runner skips capability-gated proposal scenarios. Declare `true` explicitly to opt in to grading.
+
+This flag is only the grading gate. Buyer agents should not use it to decide whether a specific proposal is executable. If a seller returns a proposal, `proposal_status` is the source of truth: `draft` requires finalization before create, `committed` can be executed before `expires_at`, and absent status is legacy ready-to-buy.
+</Note>
+
+## Grading verdicts at a glance
+
+| Outcome | Output field | Meaning |
+|---------|--------------|---------|
+| Scenario passed | Step result with no `skip`; `passed: true` | All validations passed |
+| Scenario failed | Step result with no `skip`; `passed: false` | One or more required validations failed; see `validations[]` for the failing field and `json_pointer` |
+| Scenario not selected | `run_summary.not_selected[].reason`, counted in `steps_not_selected` | The caller's selected suite, run mode, version, or verification profile excluded this scenario before execution |
+| Scenario skipped | `skip.reason: not_applicable` | Scenario was selected, but an applicability gate evaluated false, such as an optional capability the seller did not claim |
+| Required tool missing | `skip.reason: missing_tool` | Scenario was selected and the agent declared the specialism, but did not expose a tool listed in `required_tools` |
+
+A run's overall compliance verdict is determined by `steps_failed`. Skipped steps (`skip` block present) and not-selected items (`run_summary.not_selected[]` entries) do not contribute to that counter, but they mean different things. `steps_not_selected` says the runner deliberately excluded those scenarios from this run. `steps_skipped` says the runner selected those scenarios but could not execute them; use `skipped_by_reason` and `skip.detail` to distinguish optional capability choices from missing required surfaces.
+
+A sandbox-only run should therefore look like this when the only excluded work is outside the selected mode:
+
+```json
+{
+  "summary": {
+    "steps_passed": 84,
+    "steps_failed": 0,
+    "steps_skipped": 0,
+    "steps_not_selected": 80,
+    "not_selected_by_reason": {
+      "run_mode_excluded": 80
+    }
+  }
+}
+```
+
+If those 80 items instead appear under `steps_skipped`, they were selected and then skipped; that is a different signal and needs `skipped_by_reason`.
+
+## Pass vs partial coverage
+
+Runner summaries distinguish **failure** from **coverage**:
+
+| Run shape | What it means | Seller action |
+|-----------|---------------|---------------|
+| `steps_failed > 0` | A storyboard assertion failed on a step that ran | Fix the agent before claiming the corresponding protocol or specialism |
+| `steps_failed = 0`, no coverage-gap skips | Full pass for the declared scope | The declared protocols, specialisms, and capability flags were graded cleanly |
+| `steps_failed = 0`, with `steps_not_selected > 0` only | The requested suite or run mode intentionally excluded some probes, such as live-only checks during a sandbox-only run | No implementation ask; label the run mode clearly |
+| `steps_failed = 0`, with only capability-gate `not_applicable` skips | Narrower declared scope, not a failure | The agent honestly declined an optional capability, such as `media_buy.supports_proposals: false` |
+| `steps_failed = 0`, with `missing_test_controller` skips | Deterministic-test-surface coverage gap | Run a dev/staging deterministic pass or publish the skipped lifecycle coverage explicitly |
+| Any `missing_tool`, `requirement_unmet`, or `unsatisfied_contract` skip for a declared protocol or specialism | The seller declared a claim the runner could not fully test | Fix the missing surface or narrow the declaration |
+
+This distinction matters for production-path sandbox runs. A seller can run the storyboard suite against the real production endpoint under sandbox-flagged traffic and get **zero failures** while still seeing a `partial` summary because the production endpoint correctly does not expose `comply_test_controller`. That result says: "the buyer-visible sandbox path passed every assertion the runner could grade, but controller-seeded lifecycle scenarios were skipped." It is useful evidence for sandbox readiness, but it is not the same as full deterministic specialism coverage.
+
+For full coverage, run the same declared scope against a dev or staging endpoint that exposes the controller, or pre-seed the required state and configure the runner to assert seeded-state coverage. For a production-only seller, publish the skipped coverage list alongside the zero-failure result so buyers can see exactly what was and was not graded.
+
+## Where each piece lives
+
+| Artifact | URL path | Source |
+|----------|----------|--------|
+| Specialism manifest | `/compliance/{version}/specialisms/{id}/` | `static/compliance/source/specialisms/{id}/index.yaml` |
+| Scenario YAML | `/compliance/{version}/protocols/{protocol}/scenarios/{name}/` | `static/compliance/source/protocols/{protocol}/scenarios/{name}.yaml` |
+| Universal storyboards | `/compliance/{version}/universal/` | `static/compliance/source/universal/` |
+| Capabilities schema | `/schemas/3.1.0-rc.9/protocol/get-adcp-capabilities-response.json` | `static/schemas/source/protocol/get-adcp-capabilities-response.json` |
+
+The full specialism-to-scenario index is at [Compliance Catalog](/dist/docs/3.1.0-rc.9/building/verification/compliance-catalog). The runner output contract defining every skip reason and verdict shape is at `static/compliance/source/universal/runner-output-contract.yaml`.
+
+## Related
+
+- [Conformance Specification](/dist/docs/3.1.0-rc.9/building/verification/conformance) — the three-layer obligation model and the normative storyboard index
+- [Compliance Catalog](/dist/docs/3.1.0-rc.9/building/verification/compliance-catalog) — full taxonomy of protocols, specialisms, and universal storyboards
+- [Validate Your Agent](/dist/docs/3.1.0-rc.9/building/verification/validate-your-agent) — running the suite locally with `@adcp/sdk`

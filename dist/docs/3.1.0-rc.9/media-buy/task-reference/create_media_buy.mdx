@@ -1,0 +1,1606 @@
+---
+title: create_media_buy
+description: "create_media_buy task — create advertising campaigns in AdCP from discovered products. Handles packages, budgets, flight dates, governance rules, and approval workflows."
+"og:title": "AdCP — create_media_buy"
+testable: true
+---
+
+
+Create a media buy from selected packages or execute a proposal. Handles validation, approval if needed, and campaign creation.
+
+Supports two modes:
+- **Manual Mode**: Provide `packages` array with explicit line item configurations
+- **Proposal Mode**: Provide `proposal_id` and `total_budget` to execute a proposal from `get_products`
+
+**Response Time**: Instant to days (returns `completed`, `working` < 120s, or `submitted` for hours/days)
+
+**Request Schema**: [`/schemas/3.1.0-rc.9/media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/3.1.0-rc.9/media-buy/create-media-buy-request.json)
+**Response Schema**: [`/schemas/3.1.0-rc.9/media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/3.1.0-rc.9/media-buy/create-media-buy-response.json)
+
+## Quick Start
+
+Create a simple media buy with two packages:
+
+<CodeGroup>
+
+```javascript JavaScript test=false
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
+
+// Calculate dates dynamically - start tomorrow, end in 90 days
+const tomorrow = new Date();
+tomorrow.setDate(tomorrow.getDate() + 1);
+tomorrow.setHours(0, 0, 0, 0);
+const endDate = new Date(tomorrow);
+endDate.setDate(endDate.getDate() + 90);
+
+const result = await testAgent.createMediaBuy({
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  packages: [
+    {
+      product_id: 'prod_d979b543',
+      pricing_option_id: 'cpm_usd_auction',
+      format_ids: [
+        {
+          agent_url: 'https://creative.adcontextprotocol.org',
+          id: 'display_300x250_image'
+        }
+      ],
+      budget: 2500,
+      bid_price: 5.00
+    },
+    {
+      product_id: 'prod_e8fd6012',
+      pricing_option_id: 'cpm_usd_auction',
+      format_ids: [
+        {
+          agent_url: 'https://creative.adcontextprotocol.org',
+          id: 'display_300x250_html'
+        }
+      ],
+      budget: 2500,
+      bid_price: 4.50
+    }
+  ],
+  start_time: tomorrow.toISOString(),
+  end_time: endDate.toISOString()
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+// Validate response against schema
+const validated = CreateMediaBuyResponseSchema.parse(result.data);
+
+// Check for errors (discriminated union response)
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Failed to create media buy: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('media_buy_id' in validated) {
+  console.log(`Created media buy ${validated.media_buy_id}`);
+  console.log(`Upload creatives by: ${validated.creative_deadline}`);
+  console.log(`Packages created: ${validated.packages.length}`);
+}
+```
+
+```python Python test=false
+import asyncio
+import time
+from datetime import datetime, timedelta, timezone
+from adcp.testing import test_agent
+
+async def create_campaign():
+    # Calculate dates dynamically - start tomorrow, end in 90 days
+    tomorrow = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    end_date = tomorrow + timedelta(days=90)
+
+    result = await test_agent.simple.create_media_buy(
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        packages=[
+            {
+                'product_id': 'prod_d979b543',
+                'pricing_option_id': 'cpm_usd_auction',
+                'format_ids': [
+                    {
+                        'agent_url': 'https://creative.adcontextprotocol.org',
+                        'id': 'display_300x250_image'
+                    }
+                ],
+                'budget': 2500,
+                'bid_price': 5.00
+            },
+            {
+                'product_id': 'prod_e8fd6012',
+                'pricing_option_id': 'cpm_usd_auction',
+                'format_ids': [
+                    {
+                        'agent_url': 'https://creative.adcontextprotocol.org',
+                        'id': 'display_300x250_html'
+                    }
+                ],
+                'budget': 2500,
+                'bid_price': 4.50
+            }
+        ],
+        start_time=tomorrow.isoformat().replace('+00:00', 'Z'),
+        end_time=end_date.isoformat().replace('+00:00', 'Z')
+    )
+
+    # Check for errors (discriminated union response)
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed to create media buy: {result.errors}")
+
+    print(f"Created media buy {result.media_buy_id}")
+    print(f"Upload creatives by: {result.creative_deadline}")
+    print(f"Packages created: {len(result.packages)}")
+
+asyncio.run(create_campaign())
+```
+
+```bash CLI test=false
+npx @adcp/sdk@latest \
+  https://test-agent.adcontextprotocol.org/sales/mcp \
+  create_media_buy \
+  '{"brand":{"domain":"acmecorp.com"},"packages":[{"product_id":"prod_d979b543","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
+  --auth $ADCP_AUTH_TOKEN
+```
+
+</CodeGroup>
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `account` | [account-ref](/dist/docs/3.1.0-rc.9/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
+| `proposal_id` | string | No* | ID of a committed proposal from `get_products` to execute. Alternative to providing packages. Draft proposals must be finalized first; sellers reject draft proposal execution with `PROPOSAL_NOT_COMMITTED`. |
+| `total_budget` | TotalBudget | No* | Total budget when executing a proposal. Publisher applies allocation percentages. |
+| `packages` | Package[] | No* | Array of package configurations (see below). Required when not using proposal_id. |
+| `brand` | BrandRef | Yes | Brand reference — resolved to full identity at execution time. See [brand.json](/dist/docs/3.1.0-rc.9/brand-protocol/brand-json) |
+| `start_time` | string | Yes | `"asap"` or ISO 8601 date-time |
+| `end_time` | string | Yes | ISO 8601 date-time (UTC unless timezone specified) |
+| `invoice_recipient` | [BusinessEntity](/dist/docs/3.1.0-rc.9/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override the account's default billing entity for this buy. The seller MUST validate the recipient is authorized and include it in `check_governance` when governance agents are configured. |
+| `po_number` | string | No | Purchase order number |
+| `idempotency_key` | string | No | Unique key for safe retries. If a request with the same key and account has already been processed, the seller returns the existing media buy. MUST be unique per (seller, request) pair. Min 16 chars. |
+| `context` | object | No | Opaque correlation data echoed unchanged in the response. Use for internal tracking, trace IDs, or other caller-specific identifiers. |
+| `reporting_webhook` | ReportingWebhook | No | Automated reporting delivery configuration |
+
+\* Either `packages` OR (`proposal_id` + `total_budget`) must be provided.
+
+When executing a proposal, `proposal_status` on the returned proposal determines whether `create_media_buy` is valid. `committed` proposals can be executed before `expires_at`; `draft` proposals require a prior `get_products` refine call with `action: "finalize"`. Finalization is seller commitment to firm terms, not buyer acceptance. This `create_media_buy` call is the acceptance/execution step.
+
+### TotalBudget Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `amount` | number | Yes | Total budget amount |
+| `currency` | string | Yes | ISO 4217 currency code |
+
+### Package Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `product_id` | string | Yes | Product ID from `get_products`. Sellers MUST echo this value on every response package object that represents this requested package. |
+| `pricing_option_id` | string | Yes | Pricing option ID from product's `pricing_options` array |
+| `format_ids` | FormatID[] | No | Legacy named-format selector. Format IDs that will be used — must be supported by product. When omitted (and no 3.1+ format-option selector or direct canonical selector is present), defaults to all formats supported by the product. Format-option-aware buyer SDKs targeting a heterogeneous seller population SHOULD dual-emit this alongside `format_option_refs` so legacy-format-only sellers receive an explicit format set rather than defaulting to all-formats. |
+| `format_option_refs` | FormatOptionRef[] | No | 3.1+ format-option selector. Structured references to entries in the package's target product `format_options[]`: `{scope: "publisher", publisher_domain, format_option_id}` for publisher-catalog-backed options, or `{scope: "product", format_option_id}` for product-local options (see [canonical formats](/dist/docs/3.1.0-rc.9/creative/canonical-formats)). When present, `format_option_refs` wins over both `format_ids` and direct `format_kind`/`params`. Sellers MUST reject with `UNSUPPORTED_FEATURE` (field path `packages[i].format_option_refs[j]`) when an entry doesn't match a `format_options[]` entry, when the product is legacy-format-only, or when the product's `format_options[]` entries don't publish selectable `format_option_id` values. |
+| `format_kind` | CanonicalFormatKind | No | 3.1+ direct canonical selector. Names the canonical format shape this package targets when the buyer is authoring by canonical kind rather than by `format_option_refs[]` or `format_ids[]`. Pair with `params` when the product declaration requires dimensions, duration, sizes, codecs, or other canonical parameters. If `format_ids[]` is also present and `format_option_refs[]` is absent, sellers validate `format_ids[]`; `format_kind` is only an informational echo of the same normalized shape. |
+| `params` | object | No | Parameters for the direct canonical selector in `format_kind`. Follows the selected canonical's parameter vocabulary. Requires `format_kind`; `params` alone is schema-invalid. A broad selector such as `{format_kind: "image"}` does not satisfy a product whose `format_options[]` fixes `params.width` and `params.height`; sellers reject under-specified direct selectors with `UNSUPPORTED_FEATURE` or an equivalent format-selector error. |
+| `budget` | number | Yes | Budget in currency specified by pricing option |
+| `impressions` | number | No | Impression goal for this package |
+| `paused` | boolean | No | Create package in paused state (default: `false`) |
+| `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
+| `bid_price` | number | No | Bid price for auction pricing. This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
+| `optimization_goals` | [OptimizationGoal[]](/dist/docs/3.1.0-rc.9/media-buy/conversion-tracking/#optimization-goals) | No | Optimization targets for this package. Each goal is either `kind: "event"` (conversion events with `event_sources` array, optional `cost_per`, `per_ad_spend`, or `maximize_value` target) or `kind: "metric"` (seller-native metric with optional `cost_per` or `threshold_rate` target). Event goals require `conversion_tracking.supported_targets` on the product; metric goals require `metric_optimization.supported_metrics`. |
+| `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/dist/docs/3.1.0-rc.9/media-buy/advanced-topics/targeting)) |
+| `start_time` | string | No | ISO 8601 date-time for this package's flight start. When omitted, inherits the media buy's `start_time`. Must fall within the media buy's date range. Does not support `"asap"`. |
+| `end_time` | string | No | ISO 8601 date-time for this package's flight end. When omitted, inherits the media buy's `end_time`. Must fall within the media buy's date range. |
+| `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
+| `creatives` | CreativeAsset[] | No | Upload new creative assets inline and assign. Requires `media_buy.features.inline_creative_management: true`; when the seller also advertises `creative.has_creative_library: true`, `creative_id` must not already exist in the library. |
+| `context` | object | No | Opaque correlation data echoed unchanged in the package response, webhooks, and read surfaces. Use to map seller-assigned `package_id` back to your internal line items, campaign structure, or tracking state. Buyers targeting mixed seller populations SHOULD include a per-package correlation value here, commonly `context.buyer_ref`, for legacy sellers that do not echo `product_id`. |
+| `measurement_terms` | [MeasurementTerms](/dist/docs/3.1.0-rc.9/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `measurement_terms` apply. |
+| `performance_standards` | [PerformanceStandard[]](/dist/docs/3.1.0-rc.9/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed performance standards (viewability, IVT, completion rate, brand safety, attention score). Overrides product defaults. Seller accepts, rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `performance_standards` apply. |
+| `committed_metrics` | object[] | No | Buyer's proposed reporting contract — metrics the buyer wants the seller to commit to populating in delivery reports. Same negotiation pattern as `measurement_terms`/`performance_standards`: each entry tags `scope: "standard"` (with `metric_id` from the closed enum) or `scope: "vendor"` (with `vendor` BrandRef + vendor's `metric_id`). Request-side entries do NOT carry `committed_at` — that timestamp is stamped by the seller on accept. Seller accepts (echoes on response with `committed_at`), rejects with `TERMS_REJECTED`, or normalizes (echoes a different but compatible list). When omitted, the seller decides what to commit based on the product's `available_metrics` plus any `required_metrics` filter the buyer passed at discovery. |
+
+## Response
+
+### Success Response
+
+| Field | Description |
+|-------|-------------|
+| `media_buy_id` | Seller's unique identifier |
+| `confirmed_at` | ISO 8601 timestamp when the seller committed to the media buy. Stable after it is set. May be `null` in deferred/manual approval flows until seller commitment occurs. |
+| `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
+| `revision` | Initial media-buy revision. Use this value as the `revision` token on the next `update_media_buy` call intended to change state. |
+| `packages` | Array of created packages with complete state. Packages may include per-package `creative_deadline` when different from the media buy deadline, and SHOULD echo every format selector field supplied on create (`format_option_refs`, `format_ids`, and/or `format_kind`/`params`) so read surfaces are lossless even when one selector wins precedence. |
+
+`confirmed_at` is seller commitment time, not a delivery-status timestamp. Do not update it when a buy later pauses, resumes, starts delivery, completes, or reports performance. A committed synchronous create stamps it immediately. Use the `submitted` response branch when no `media_buy_id` is being returned to the buyer. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment. A provisional buy with `confirmed_at: null` MUST NOT be `active` and MUST NOT include `packages[].committed_metrics`.
+
+#### Reporting contract on confirmed packages
+
+Each package in the response MAY carry `committed_metrics` — the binding reporting contract the seller has agreed to populate in delivery reports for this package. The field is a unified array carrying both standard metrics (from the closed `available-metric.json` enum) and vendor-defined metrics (anchored on a BrandRef), with each entry tagged by an explicit `scope` discriminator and timestamped via `committed_at`:
+
+When `confirmed_at` is `null`, sellers MUST omit `packages[].committed_metrics`. The first response that sets `confirmed_at` MAY include the initial committed-metrics set, and each such entry's `committed_at` MUST equal `confirmed_at`.
+
+```json
+{
+  "package_id": "pkg_001",
+  "committed_metrics": [
+    { "scope": "standard", "metric_id": "impressions",     "committed_at": "2026-04-29T10:53:00Z" },
+    { "scope": "standard", "metric_id": "completed_views", "committed_at": "2026-04-29T10:53:00Z" },
+    { "scope": "vendor",   "vendor": { "domain": "attentionvendor.example" },
+                           "metric_id": "attention_units", "committed_at": "2026-04-29T10:53:00Z" },
+    { "scope": "standard", "metric_id": "viewable_rate",
+                           "qualifier": { "viewability_standard": "mrc" },
+                           "committed_at": "2026-05-30T14:22:00Z" }
+  ]
+}
+```
+
+**How the contract works:**
+
+- **Day-1 entries** share `committed_at = confirmed_at`. The seller stamps the day-1 set on the `create_media_buy` response based on what they're prepared to deliver from the product's `reporting_capabilities`.
+- **Mid-flight additions** are appended via `update_media_buy` — append-only with their own `committed_at` timestamps. This lets a seller honestly say "Adelaide attention is now part of the contract from day 30 onward" without having to cancel and reissue the buy.
+- **Existing entries are immutable.** Sellers MUST reject `update_media_buy` requests that attempt to modify or remove existing entries with a `validation_error` (suggested code: `IMMUTABLE_FIELD`). New entries can be appended.
+- **Qualifiers on standard metrics.** Some metrics have multiple incompatible measurement paths and need disambiguation:
+  - **`viewability_standard`** — when `metric_id` is one of `viewable_impressions`, `viewable_rate`, `measurable_impressions` and the seller commits to a specific viewability standard (MRC and GroupM are materially different thresholds — see the `viewability-standard` enum), the entry MUST carry `qualifier.viewability_standard`. Symmetric on `missing_metrics`: a buyer expecting MRC viewability flags a GroupM-only delivery report as missing the MRC commitment.
+  - **`completion_source`** — when `metric_id` is `completion_rate` and the seller commits to a specific source (the player/ad server's own completion event vs. a third-party measurement vendor anchored on `performance_standard.vendor`), the entry MUST carry `qualifier.completion_source` (`seller_attested` or `vendor_attested`). The two paths can yield materially different rates, particularly in SSAI environments. Symmetric on `missing_metrics`.
+  - **`attribution_methodology`** — when `metric_id` is an outcome metric (`conversions`, `conversion_value`, `roas`, `cost_per_acquisition`, `incremental_sales_lift`, `brand_lift`, `foot_traffic`, `conversion_lift`, `brand_search_lift`, `units_sold`, `new_to_brand_rate`, `new_to_brand_units`, `leads`) and the seller commits to a specific attribution methodology, the entry SHOULD carry `qualifier.attribution_methodology` (`deterministic_purchase` for retail-media closed-loop; `probabilistic`, `panel_based`, or `modeled` for other paths). Two outcome rows under different methodologies are not interchangeable; symmetric on `missing_metrics`.
+  - **`attribution_window`** — when `metric_id` is an outcome metric and the seller commits to a specific lookback window, the entry SHOULD carry `qualifier.attribution_window` as a structured duration (`{ interval: 14, unit: "days" }`). Two outcome rows over different windows are reported as separate rows so buyers don't accidentally aggregate across periods.
+
+  Without the qualifier, the contract is ambiguous and reconciliation falls back to whatever the delivery report happens to carry. The qualifier vocabulary is closed (`additionalProperties: false`); new keys ship explicitly in subsequent minors.
+- **Reconciliation:** `missing_metrics` on `get_media_buy_delivery` filters `committed_metrics` to entries where `committed_at < reporting_period.end`, then flags any that aren't populated in the report. A metric committed mid-flight is only audited from its commitment timestamp forward. Qualifiers are matched verbatim — a committed `{viewable_rate, mrc}` is not satisfied by a delivered `viewable_rate` carrying `viewability.standard: groupm`.
+- **Optional in v1.** Sellers without per-package snapshot infrastructure can adopt incrementally. Absence is conformant but carries a known audit gap: without the snapshot, `missing_metrics` reconciles against the product's live `available_metrics` at report time, which may not reflect what was committed at create time. Sellers that omit `committed_metrics` accept this risk; buyers SHOULD treat absence as "no audit-grade contract" rather than "clean delivery." Expected to become required at the next major.
+
+### Error Response
+
+| Field | Description |
+|-------|-------------|
+| `errors` | Array of error objects explaining failure |
+
+### Submitted Response
+
+Returned when the buy cannot be confirmed synchronously — e.g., guaranteed buys awaiting IO signing, governance review queued, or batched processing. The completion artifact (delivered via `tasks/get` or push-notification webhook) carries `media_buy_id` and `packages`.
+
+There is no proposal-specific acceptance webhook. Proposal execution that needs human approval, IO signing, or asynchronous processing uses this same submitted task envelope and the standard task/webhook completion path.
+
+| Field | Description |
+|-------|-------------|
+| `status` | Literal `"submitted"` — discriminates this shape from the sync success branch, which uses `media_buy_status` for lifecycle state. During the 3.1 migration window, sellers MAY also emit deprecated top-level MediaBuyStatus values on synchronous success for back-compat. |
+| `task_id` | Handle the buyer polls with `tasks/get` or receives on webhook callbacks. |
+| `message` | Optional human-readable explanation (e.g., "Awaiting IO signature from sales team"). |
+| `errors` | Optional advisory warnings (non-blocking). Terminal failures belong in the Error Response. |
+
+**Note**: Responses are mutually exclusive across these three shapes. Dispatch on `status` first: `"submitted"` → async envelope, otherwise check `errors` before accessing success fields.
+
+### When to return Submitted vs synchronous Success (normative)
+
+The choice between `submitted` and synchronous success is **per-call**, driven by per-product attributes and the seller's policy on each specific create — not a uniform per-seller rule. A sales-guaranteed seller may legitimately return synchronous success on some `create_media_buy` calls and `submitted` on others within the same session; conformant SDK skills MUST NOT instruct agents to return `submitted` for every `create_media_buy` regardless of input. Sellers that uniformly return `submitted` fail the non-IO-approval paths in the `sales-guaranteed` compliance storyboard.
+
+Sellers MUST return `submitted` when:
+
+- The request references one or more products with `delivery_type: "guaranteed"` **and** the seller declares the `requires_io_approval` capability — the human-approval handshake cannot complete inside the response. The completion artifact is delivered via `tasks/get` or webhook once IO signing finishes.
+- The request triggers a seller-side governance review that cannot complete synchronously (e.g., manual brand-safety review for a regulated vertical).
+- The request enters a batched-processing queue the seller cannot drain inside the response timeout.
+
+Sellers MUST return synchronous success when:
+
+- All referenced products have `delivery_type: "non_guaranteed"`. The buy is created and acknowledged in-line; `media_buy_id` and `packages` are issued immediately. This applies regardless of the seller's specialism — a sales-guaranteed seller serving a non-guaranteed product returns synchronous success.
+- The request references guaranteed products and the seller does NOT declare `requires_io_approval` (rare; typically retail-SKU or quoted-rate guaranteed flows where the seller has pre-cleared approval).
+- The buy enters a known non-terminal state immediately observable to the buyer (`pending_creatives` / `pending_start` / `active`).
+
+The compliance grader observes both paths against the same seller via separate storyboard scenarios: the `create_buy_submitted` scenario seeds a guaranteed product with `requires_io_approval`; four shared scenarios (`measurement_terms_rejected`, `pending_creatives_to_start`, `inventory_list_targeting`, `invalid_transitions`) seed non-guaranteed products and expect synchronous `media_buy_id` returns. Sellers that return `submitted` on the synchronous-expected scenarios fail compliance — see [`sales-guaranteed` specialism](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/specialisms/sales-guaranteed) for the fixture pattern (non-guaranteed products listed first so open-brief `get_products` calls resolve to a synchronous-create path).
+
+This rule resolves the skill ↔ storyboard contradiction tracked at [#3822](https://github.com/adcontextprotocol/adcp/issues/3822): an SDK skill that instructs agents to "return a task envelope for every `create_media_buy`" is non-conformant; the correct skill instructs agents to dispatch on per-product `delivery_type` and the seller's `requires_io_approval` capability.
+
+## Common Scenarios
+
+### Campaign with Targeting
+
+Add geographic restrictions and frequency capping:
+
+<CodeGroup>
+
+```javascript JavaScript test=false
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
+
+// Calculate end date dynamically - 90 days from now
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 90);
+
+const result = await testAgent.createMediaBuy({
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  packages: [{
+    product_id: 'prod_d979b543',
+    pricing_option_id: 'cpm_usd_auction',
+    format_ids: [{
+      agent_url: 'https://creative.adcontextprotocol.org',
+      id: 'display_300x250_image'
+    }],
+    budget: 2500,
+    bid_price: 5.00,
+    targeting_overlay: {
+      geo_countries: ['US'],
+      geo_regions: ['US-CA', 'US-NY'],
+      frequency_cap: {
+        suppress: { interval: 60, unit: 'minutes' }
+      }
+    }
+  }],
+  start_time: 'asap',
+  end_time: endDate.toISOString()
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = CreateMediaBuyResponseSchema.parse(result.data);
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Creation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('media_buy_id' in validated) {
+  console.log(`Campaign ${validated.media_buy_id} created with targeting`);
+}
+```
+
+```python Python test=false
+import asyncio
+import time
+from datetime import datetime, timedelta, timezone
+from adcp.testing import test_agent
+
+async def create_targeted_campaign():
+    # Calculate end date dynamically - 90 days from now
+    end_date = datetime.now(timezone.utc) + timedelta(days=90)
+
+    result = await test_agent.simple.create_media_buy(
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        packages=[{
+            'product_id': 'prod_d979b543',
+            'pricing_option_id': 'cpm_usd_auction',
+            'format_ids': [{
+                'agent_url': 'https://creative.adcontextprotocol.org',
+                'id': 'display_300x250_image'
+            }],
+            'budget': 2500,
+            'bid_price': 5.00,
+            'targeting_overlay': {
+                'geo_countries': ['US'],
+                'geo_regions': ['US-CA', 'US-NY'],
+                'frequency_cap': {
+                    'suppress': {'interval': 60, 'unit': 'minutes'}
+                }
+            }
+        }],
+        start_time='asap',
+        end_time=end_date.isoformat().replace('+00:00', 'Z')
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Creation failed: {result.errors}")
+
+    print(f"Campaign {result.media_buy_id} created with targeting")
+
+asyncio.run(create_targeted_campaign())
+```
+
+</CodeGroup>
+
+### Campaign with Conversion Optimization
+
+Set a per_ad_spend target for conversion-optimized delivery. The product must declare support in `conversion_tracking.supported_targets`, and you must have an event source configured via `sync_event_sources`:
+
+<CodeGroup>
+
+```javascript JavaScript test=false
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
+
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 90);
+
+const result = await testAgent.createMediaBuy({
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  packages: [{
+    product_id: 'prod_retail_sp',
+    pricing_option_id: 'cpc_usd_auction',
+    budget: 10000,
+    bid_price: 1.20,
+    optimization_goals: [{
+      kind: 'event',
+      event_sources: [
+        { event_source_id: 'retailer_sales', event_type: 'purchase', value_field: 'value' }
+      ],
+      target: { kind: 'per_ad_spend', value: 4.0 },
+      priority: 1
+    }]
+  }],
+  start_time: 'asap',
+  end_time: endDate.toISOString()
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = CreateMediaBuyResponseSchema.parse(result.data);
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Creation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('media_buy_id' in validated) {
+  console.log(`Campaign ${validated.media_buy_id} created with per_ad_spend target`);
+}
+```
+
+```python Python test=false
+import asyncio
+import time
+from datetime import datetime, timedelta, timezone
+from adcp.testing import test_agent
+
+async def create_optimized_campaign():
+    end_date = datetime.now(timezone.utc) + timedelta(days=90)
+
+    result = await test_agent.simple.create_media_buy(
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        packages=[{
+            'product_id': 'prod_retail_sp',
+            'pricing_option_id': 'cpc_usd_auction',
+            'budget': 10000,
+            'bid_price': 1.20,
+            'optimization_goals': [{
+                'kind': 'event',
+                'event_sources': [
+                    { 'event_source_id': 'retailer_sales', 'event_type': 'purchase', 'value_field': 'value' }
+                ],
+                'target': { 'kind': 'per_ad_spend', 'value': 4.0 },
+                'priority': 1
+            }]
+        }],
+        start_time='asap',
+        end_time=end_date.isoformat().replace('+00:00', 'Z')
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Creation failed: {result.errors}")
+
+    print(f"Campaign {result.media_buy_id} created with per_ad_spend target")
+
+asyncio.run(create_optimized_campaign())
+```
+
+</CodeGroup>
+
+### Catalog-driven packages
+
+A catalog-driven package allocates a single budget envelope to an entire catalog of items. Instead of creating separate packages per item, the platform optimizes delivery across all catalog items based on performance. This is the AdCP equivalent of catalog-based campaign types such as Google Performance Max or Meta Dynamic Product Ads.
+
+Include the `catalogs` field in a package to make it catalog-driven. Each catalog should have a distinct type (e.g., one product catalog, one store catalog). The referenced catalogs must already be synced via [`sync_catalogs`](/dist/docs/3.1.0-rc.9/media-buy/task-reference/sync_catalogs).
+
+**Job campaign with synced job catalog:**
+
+```json test=false
+{
+  "brand": { "domain": "acme-restaurants.com" },
+  "packages": [{
+    "product_id": "prod_job_board",
+    "pricing_option_id": "cpc_eur_auction",
+    "budget": 5000,
+    "bid_price": 2.50,
+    "catalogs": [{
+      "catalog_id": "chef-vacancies",
+      "type": "job"
+    }]
+  }],
+  "start_time": "asap",
+  "end_time": "2026-06-30T23:59:59Z"
+}
+```
+
+**Retail media with product catalog and store catchment targeting:**
+
+```json test=false
+{
+  "brand": { "domain": "acmecorp.com" },
+  "packages": [{
+    "product_id": "prod_retail_sp",
+    "pricing_option_id": "cpc_usd_auction",
+    "budget": 10000,
+    "bid_price": 1.20,
+    "catalogs": [{
+      "catalog_id": "gmc-primary",
+      "type": "product",
+      "tags": ["summer"]
+    }],
+    "targeting_overlay": {
+      "store_catchments": [{
+        "catalog_id": "retail-locations",
+        "catchment_ids": ["drive"]
+      }]
+    }
+  }],
+  "start_time": "asap",
+  "end_time": "2026-09-30T23:59:59Z"
+}
+```
+
+The platform distributes budget across catalog items based on performance. For per-item reporting, use [`get_media_buy_delivery`](/dist/docs/3.1.0-rc.9/media-buy/task-reference/get_media_buy_delivery) which returns `by_catalog_item` breakdowns. Creative variants for catalog-driven packages represent individual catalog items rendered as ads.
+
+**Package with explicit signal targeting:**
+
+Use `targeting_overlay.signal_targeting_groups` when the buyer wants seller-offered signals applied to a specific package. The selected product must set `signal_targeting_allowed: true` and make the signal eligible through inline `signal_targeting_options` when present, through `get_signals` for wholesale products that omit inline options, and through `signal_targeting_rules`. The grouped expression shape is always used: top-level `operator: "all"` with child groups using `operator: "any"` for include groups and `operator: "none"` for exclusion groups. For simple include-only targeting, send one `any` group. For binary signals, send `value: true` in both include and exclusion groups; exclusion is expressed by the parent `none` group, not by `value: false`. Signals are referenced with `signal_ref`: use `scope: "product"` for a product-local signal option, `scope: "data_provider"` with `data_provider_domain` for a signal defined in a data provider's published adagents.json `signals[]`, or `scope: "signal_source"` with `signal_source_url` for a source-native signal. This is distinct from `audience_include` / `audience_exclude`, which only reference first-party audiences registered through `sync_audiences`. Send `signal_agent_segment_id` only when the selected product option or `get_signals` result exposed it as a separate execution handle required by the seller.
+
+When a creative carries a build-time `signal_condition` (from `build_creative`'s `signal_conditions` fan-out, [#5240](https://github.com/adcontextprotocol/adcp/issues/5240)), assigning it to a package whose signal targeting is incompatible — e.g. a sun creative to a rain-targeted package — is rejected with `SIGNAL_TARGETING_INCOMPATIBLE`. Compatibility is matched on the same shared `signal_ref` identity used here. See the [signals specification](/dist/docs/3.1.0-rc.9/signals/specification#creative-signal-fan-out-and-trafficking-compatibility) for the normative trafficking-compatibility contract.
+
+```json test=false
+{
+  "brand": { "domain": "acmecorp.com" },
+  "packages": [{
+    "product_id": "retail_video_premium",
+    "pricing_option_id": "media_cpm_usd",
+    "budget": 25000,
+    "targeting_overlay": {
+      "signal_targeting_groups": {
+        "operator": "all",
+        "groups": [{
+          "operator": "any",
+          "signals": [{
+            "signal_ref": {
+              "scope": "data_provider",
+              "data_provider_domain": "pinnacle-data.example",
+              "signal_id": "auto_intenders"
+            },
+            "value_type": "binary",
+            "value": true,
+            "pricing_option_id": "signal_cpm_usd_250",
+            "signal_agent_segment_id": "seller_sig_auto_intenders"
+          }]
+        }]
+      }
+    }
+  }],
+  "start_time": "asap",
+  "end_time": "2026-09-30T23:59:59Z"
+}
+```
+
+Include plus exclusion example:
+
+```json test=false
+{
+  "brand": { "domain": "acmecorp.com" },
+  "packages": [{
+    "product_id": "retail_video_premium",
+    "pricing_option_id": "media_cpm_usd",
+    "budget": 25000,
+    "targeting_overlay": {
+      "signal_targeting_groups": {
+        "operator": "all",
+        "groups": [
+          {
+            "operator": "any",
+            "signals": [
+              {
+                "signal_ref": { "scope": "product", "signal_id": "high_intent_shoppers" },
+                "value_type": "binary",
+                "value": true
+              },
+              {
+                "signal_ref": { "scope": "product", "signal_id": "loyalty_members" },
+                "value_type": "binary",
+                "value": true
+              }
+            ]
+          },
+          {
+            "operator": "none",
+            "signals": [
+              {
+                "signal_ref": { "scope": "product", "signal_id": "recent_purchasers" },
+                "value_type": "binary",
+                "value": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }],
+  "start_time": "asap",
+  "end_time": "2026-09-30T23:59:59Z"
+}
+```
+
+### Campaign with Inline Creatives
+
+Upload creatives at the same time as creating the campaign:
+
+<CodeGroup>
+
+```javascript JavaScript test=false
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
+
+// Calculate end date dynamically - 90 days from now
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 90);
+
+const result = await testAgent.createMediaBuy({
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  packages: [{
+    product_id: 'prod_d979b543',
+    pricing_option_id: 'cpm_usd_auction',
+    format_ids: [{
+      agent_url: 'https://creative.adcontextprotocol.org',
+      id: 'display_300x250_image'
+    }],
+    budget: 2500,
+    bid_price: 5.00,
+    creatives: [{
+      creative_id: 'hero_video_30s',
+      name: 'Hero Video',
+      format_id: {
+        agent_url: 'https://creative.adcontextprotocol.org',
+        id: 'display_300x250_image'
+      },
+      assets: {
+        image: {
+          url: 'https://cdn.example.com/hero-banner.jpg',
+          width: 300,
+          height: 250
+        }
+      }
+    }]
+  }],
+  start_time: 'asap',
+  end_time: endDate.toISOString()
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = CreateMediaBuyResponseSchema.parse(result.data);
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Creation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('packages' in validated) {
+  console.log(`Campaign created with ${validated.packages[0].creative_assignments.length} creatives`);
+}
+```
+
+```python Python test=false
+import asyncio
+import time
+from datetime import datetime, timedelta, timezone
+from adcp.testing import test_agent
+
+async def create_with_creatives():
+    # Calculate end date dynamically - 90 days from now
+    end_date = datetime.now(timezone.utc) + timedelta(days=90)
+
+    result = await test_agent.simple.create_media_buy(
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        packages=[{
+            'product_id': 'prod_d979b543',
+            'pricing_option_id': 'cpm_usd_auction',
+            'format_ids': [{
+                'agent_url': 'https://creative.adcontextprotocol.org',
+                'id': 'display_300x250_image'
+            }],
+            'budget': 2500,
+            'bid_price': 5.00,
+            'creatives': [{
+                'creative_id': 'hero_video_30s',
+                'name': 'Hero Video',
+                'format_id': {
+                    'agent_url': 'https://creative.adcontextprotocol.org',
+                    'id': 'display_300x250_image'
+                },
+                'assets': {
+                    'image': {
+                        'url': 'https://cdn.example.com/hero-banner.jpg',
+                        'width': 300,
+                        'height': 250
+                    }
+                }
+            }]
+        }],
+        start_time='asap',
+        end_time=end_date.isoformat().replace('+00:00', 'Z')
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Creation failed: {result.errors}")
+
+    print(f"Campaign created with {len(result.packages[0].creative_assignments)} creatives")
+
+asyncio.run(create_with_creatives())
+```
+
+</CodeGroup>
+
+### Campaign with Reporting Webhook
+
+Receive automated reporting notifications:
+
+<CodeGroup>
+
+```javascript JavaScript test=false
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
+
+// Calculate end date dynamically - 90 days from now
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 90);
+
+const result = await testAgent.createMediaBuy({
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  packages: [{
+    product_id: 'prod_d979b543',
+    pricing_option_id: 'cpm_usd_auction',
+    format_ids: [{
+      agent_url: 'https://creative.adcontextprotocol.org',
+      id: 'display_300x250_image'
+    }],
+    budget: 2500,
+    bid_price: 5.00
+  }],
+  start_time: 'asap',
+  end_time: endDate.toISOString(),
+  reporting_webhook: {
+    url: 'https://buyer.example.com/webhooks/reporting',
+    authentication: {
+      schemes: ['Bearer'],
+      credentials: 'secret_token_xyz_minimum_32_chars'
+    },
+    reporting_frequency: 'daily',
+    requested_metrics: ['impressions', 'spend', 'completed_views']
+  }
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = CreateMediaBuyResponseSchema.parse(result.data);
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Creation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('media_buy_id' in validated) {
+  console.log(`Campaign created - daily reports will be sent to webhook`);
+}
+```
+
+```python Python test=false
+import asyncio
+import time
+from datetime import datetime, timedelta, timezone
+from adcp.testing import test_agent
+
+async def create_with_reporting():
+    # Calculate end date dynamically - 90 days from now
+    end_date = datetime.now(timezone.utc) + timedelta(days=90)
+
+    result = await test_agent.simple.create_media_buy(
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        packages=[{
+            'product_id': 'prod_d979b543',
+            'pricing_option_id': 'cpm_usd_auction',
+            'format_ids': [{
+                'agent_url': 'https://creative.adcontextprotocol.org',
+                'id': 'display_300x250_image'
+            }],
+            'budget': 2500,
+            'bid_price': 5.00
+        }],
+        start_time='asap',
+        end_time=end_date.isoformat().replace('+00:00', 'Z'),
+        reporting_webhook={
+            'url': 'https://buyer.example.com/webhooks/reporting',
+            'authentication': {
+                'schemes': ['Bearer'],
+                'credentials': 'secret_token_xyz_minimum_32_chars'
+            },
+            'reporting_frequency': 'daily',
+            'requested_metrics': ['impressions', 'spend', 'completed_views']
+        }
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Creation failed: {result.errors}")
+
+    print('Campaign created - daily reports will be sent to webhook')
+
+asyncio.run(create_with_reporting())
+```
+
+</CodeGroup>
+
+### Executing a Proposal
+
+Execute a proposal from `get_products` without manually constructing packages:
+
+<CodeGroup>
+
+```javascript JavaScript test=false
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
+
+// Calculate end date dynamically - 90 days from now
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 90);
+
+const result = await testAgent.createMediaBuy({
+  proposal_id: 'swiss_balanced_v1',  // From get_products response
+  total_budget: {
+    amount: 50000,
+    currency: 'USD'
+  },
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  start_time: 'asap',
+  end_time: endDate.toISOString()
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = CreateMediaBuyResponseSchema.parse(result.data);
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Creation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('media_buy_id' in validated) {
+  // Publisher converted proposal allocations to packages
+  console.log(`Created media buy ${validated.media_buy_id}`);
+  console.log(`Packages created: ${validated.packages.length}`);
+}
+```
+
+```python Python test=false
+import asyncio
+import time
+from datetime import datetime, timedelta, timezone
+from adcp.testing import test_agent
+
+async def execute_proposal():
+    # Calculate end date dynamically - 90 days from now
+    end_date = datetime.now(timezone.utc) + timedelta(days=90)
+
+    result = await test_agent.simple.create_media_buy(
+        proposal_id='swiss_balanced_v1',  # From get_products response
+        total_budget={
+            'amount': 50000,
+            'currency': 'USD'
+        },
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        start_time='asap',
+        end_time=end_date.isoformat().replace('+00:00', 'Z')
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Creation failed: {result.errors}")
+
+    # Publisher converted proposal allocations to packages
+    print(f"Created media buy {result.media_buy_id}")
+    print(f"Packages created: {len(result.packages)}")
+
+asyncio.run(execute_proposal())
+```
+
+</CodeGroup>
+
+When executing a proposal:
+- The publisher converts allocation percentages to actual budgets using `total_budget`
+- Packages are created automatically based on the proposal's allocations
+- All other fields (brand, start_time, end_time, etc.) work the same as manual mode
+
+See [Proposals](/dist/docs/3.1.0-rc.9/media-buy/product-discovery/media-products#proposals) for the complete workflow.
+
+### Context for Correlation
+
+The `context` field is an opaque object that sellers echo unchanged in responses and webhooks. Use it to map seller-assigned IDs back to your internal systems without needing to maintain a separate lookup table.
+
+Context works at two levels:
+- **Media buy level** — echoed in the `create_media_buy` response
+- **Package level** — echoed in each package's response, webhooks, and read surfaces, useful for mapping `package_id` back to your internal line items. For explicit package requests, sellers MUST also echo `product_id`.
+
+When targeting mixed seller populations, include package context such as `context.buyer_ref` as a legacy-safe fallback for older sellers that may not echo `product_id`.
+
+**Mapping to internal campaign and line item IDs:**
+
+```json test=false
+{
+  "brand": { "domain": "acmecorp.com" },
+  "context": {
+    "campaign_id": "camp-2026-q3-awareness",
+    "planner": "media-team-west",
+    "trace_id": "req-8f3a-4b2c"
+  },
+  "packages": [
+    {
+      "product_id": "prod_d979b543",
+      "pricing_option_id": "cpm_usd_auction",
+      "budget": 15000,
+      "bid_price": 5.00,
+      "context": {
+        "line_item_id": "li-001",
+        "flight": "june-awareness"
+      }
+    },
+    {
+      "product_id": "prod_e8fd6012",
+      "pricing_option_id": "cpm_usd_auction",
+      "budget": 10000,
+      "bid_price": 4.50,
+      "context": {
+        "line_item_id": "li-002",
+        "flight": "june-retargeting"
+      }
+    }
+  ],
+  "start_time": "2026-06-01T00:00:00Z",
+  "end_time": "2026-08-31T23:59:59Z"
+}
+```
+
+The seller's response echoes your context back alongside the seller-assigned IDs:
+
+```json test=false
+{
+  "media_buy_id": "mb_12345",
+  "context": {
+    "campaign_id": "camp-2026-q3-awareness",
+    "planner": "media-team-west",
+    "trace_id": "req-8f3a-4b2c"
+  },
+  "packages": [
+    {
+      "package_id": "pkg_001",
+      "product_id": "prod_d979b543",
+      "context": {
+        "line_item_id": "li-001",
+        "flight": "june-awareness"
+      }
+    },
+    {
+      "package_id": "pkg_002",
+      "product_id": "prod_e8fd6012",
+      "context": {
+        "line_item_id": "li-002",
+        "flight": "june-retargeting"
+      }
+    }
+  ]
+}
+```
+
+Sellers must never parse or act on context data — it exists purely for the buyer's internal use.
+
+## Error Handling
+
+Common errors and resolutions:
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `PRODUCT_NOT_FOUND` | Invalid product_id | Verify product exists via `get_products` |
+| `UNSUPPORTED_FEATURE` | Format not supported by the product — covers legacy named-format selectors (`format_ids[]` not in the product's accepted formats), 3.1+ format-option selectors (`format_option_refs[]` entries that do not resolve against the product's `format_options[]`, legacy-format-only products with no `format_options[]`, or product `format_options[]` entries that do not publish selectable `format_option_id` values), and direct canonical selectors (`format_kind`/`params` outside or under-specifying the product declaration) | Check the product's `format_ids` and/or `format_options[]` from `get_products` — re-author against a supported format, add the required canonical parameters, or pick a `format_option_ref` from the product's published `format_options[]` |
+| `BUDGET_TOO_LOW` | Budget below product minimum | Increase budget or choose different product |
+| `TARGETING_TOO_NARROW` | Targeting yields zero inventory | Broaden geographic or audience criteria |
+| `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
+| `INVALID_PRICING_OPTION` | pricing_option_id not found | Use ID from product's `pricing_options` |
+| `CREATIVE_ID_EXISTS` | Creative ID already exists in the seller's creative namespace | For library-backed sellers, assign existing creatives via `creative_assignments` or update via `sync_creatives`; for inline-only sellers, use a different package-scoped `creative_id` |
+
+Example error response:
+
+```json
+{
+  "errors": [{
+    "code": "UNSUPPORTED_FEATURE",
+    "message": "Product 'prod_d979b543' does not support format 'display_728x90'",
+    "field": "packages[0].format_ids[0]",
+    "suggestion": "Use display_300x250_image, display_300x250_html, or display_300x250_generative formats"
+  }]
+}
+```
+
+## Key Concepts
+
+### Format Specification
+
+Each package SHOULD specify the formats it will use, via `format_ids[]` (legacy named-format path — structured `{agent_url, id}` references), `format_option_refs[]` (3.1+ format-option path — references into the product's `format_options[]`), or a direct canonical selector (`format_kind` plus optional `params`). Omitting all format selectors defaults to all formats supported by the product. Specifying lets the system:
+
+- Publish placeholder creatives in ad servers
+- Pin exactly what creative assets are needed
+- Validate that the product supports the requested formats
+- Track which assets are missing
+
+Selector precedence is deterministic: `format_option_refs[]` wins when present; otherwise `format_ids[]` wins when present; otherwise direct `format_kind`/`params` is used; otherwise the package defaults to all product formats. Use `format_option_refs[]` when the buyer's codebase reads `Product.format_options[]` and the product publishes selectable `format_option_id` values; use `format_ids[]` when integrating with legacy-format-only sellers or libraries. Use direct `format_kind` only when the buyer has enough canonical parameters to satisfy the target product declaration without a product-local reference. Dual-emission of `format_option_refs[]` and `format_ids[]` is allowed and recommended for buyer SDKs targeting a mixed seller population — see the `format_ids` row above.
+
+3.1+ format-option example (buyer authoring against a publisher-scoped `Product.format_options[]` entry):
+
+```json test=false
+{
+  "packages": [
+    {
+      "product_id": "prod_d979b543",
+      "pricing_option_id": "cpm_usd_auction",
+      "format_option_refs": [
+        {
+          "scope": "publisher",
+          "publisher_domain": "daily-pulse.example",
+          "format_option_id": "daily_pulse_homepage_image"
+        }
+      ],
+      "budget": 2500,
+      "bid_price": 5.00
+    }
+  ]
+}
+```
+
+See [Format Workflow](#format-workflow) below for complete details.
+
+### Brand reference
+
+The `brand` field identifies the advertiser for policy compliance and business purposes.
+
+```json
+{
+  "brand": {
+    "domain": "acmecorp.com"
+  }
+}
+```
+
+Full brand identity data (colors, fonts, product catalog) is resolved from brand.json at execution time. See [brand.json](/dist/docs/3.1.0-rc.9/brand-protocol/brand-json).
+
+### Pricing & Currency
+
+Each package specifies its `pricing_option_id`, which determines:
+- Currency (USD, EUR, etc.)
+- Pricing model (CPM, CPCV, CPP, etc.)
+- Rate and whether it's fixed or auction-based
+
+Packages can use different currencies when sellers support it. See [Pricing Models](/dist/docs/3.1.0-rc.9/media-buy/advanced-topics/pricing-models).
+
+### Targeting Overlays
+
+**Use sparingly** - most targeting should be in your brief and handled through product selection.
+
+Use overlays only for:
+- Geographic restrictions (RCT testing, regulatory compliance)
+- Frequency capping
+- AXE segment inclusion/exclusion (legacy — new integrations use [TMP](/dist/docs/3.1.0-rc.9/trusted-match))
+
+See [Targeting](/dist/docs/3.1.0-rc.9/media-buy/advanced-topics/targeting) for details.
+
+## Format Workflow
+
+### Why Format Specification Matters
+
+When creating a media buy, format specification enables:
+
+1. **Placeholder Creation** - Publisher creates placeholders in ad server with correct specs
+2. **Validation** - System validates products support requested formats
+3. **Clear Expectations** - Both parties know exactly what's needed
+4. **Progress Tracking** - Track which assets are missing vs. required
+5. **Technical Setup** - Ad server configured before creatives arrive
+
+### Complete Workflow
+
+```
+1. list_creative_formats → Get available format specifications
+2. get_products → Find products (returns format_ids[] and/or format_options[])
+3. Validate compatibility → Ensure products support desired formats
+4. create_media_buy → Specify formats via format_ids[] (v1),
+                       format_option_refs[] (v2 reference), or
+                       format_kind/params (direct canonical);
+                       omit for all-formats default
+   └── Publisher creates placeholders
+   └── Clear creative requirements established
+5. Creative supply → Upload matching files via `sync_creatives` for library-backed sellers, or inline `packages[].creatives` for inline-only sellers
+6. Campaign activation → Replace placeholders with real creatives
+```
+
+### Format Validation
+
+Publishers MUST validate:
+- All formats are supported by the product
+- Format specifications match `list_creative_formats` output
+- Creative requirements can be fulfilled within timeline
+
+Invalid legacy named-format example:
+
+```json
+{
+  "errors": [{
+    "code": "UNSUPPORTED_FEATURE",
+    "message": "Product 'ctv_sports_premium' does not support format 'audio_standard_30s'",
+    "field": "packages[0].format_ids[0]",
+    "supported_formats": [
+      { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_standard_30s" },
+      { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_standard_15s" }
+    ]
+  }]
+}
+```
+
+Invalid 3.1+ format-option example:
+
+```json
+{
+  "errors": [{
+    "code": "UNSUPPORTED_FEATURE",
+    "message": "Product 'ctv_sports_premium' has no format_options[] entry for format option 'audio_standard'",
+    "field": "packages[0].format_option_refs[0]",
+    "supported_format_option_refs": [
+      { "scope": "publisher", "publisher_domain": "streamhaus.example", "format_option_id": "ctv_video_30s_premium" },
+      { "scope": "publisher", "publisher_domain": "streamhaus.example", "format_option_id": "ctv_video_15s_premium" }
+    ]
+  }]
+}
+```
+
+### Flight date validation
+
+When a package specifies `start_time` or `end_time`, sellers SHOULD validate that:
+- Both dates fall within the media buy's date range
+- `start_time` is before `end_time`
+
+Out-of-range or inverted dates SHOULD return an `INVALID_REQUEST` error:
+
+```json
+{
+  "errors": [{
+    "code": "INVALID_REQUEST",
+    "message": "Package 'week_5' end_time 2026-04-05T23:59:59Z is after media buy end_time 2026-03-31T23:59:59Z",
+    "field": "packages[3].end_time"
+  }]
+}
+```
+
+## Asynchronous Operations
+
+This task can complete instantly or take days depending on complexity and approval requirements. The response includes a `status` field that tells you what happened and what to do next.
+
+| Status | Meaning | Your Action |
+|--------|---------|-------------|
+| `completed` | Done immediately | Process the result |
+| `working` | Processing (~2 min) | Poll frequently or wait for webhook |
+| `submitted` | Long-running (hours/days) | Use webhooks or poll infrequently |
+| `input-required` | Needs your input | Read message, respond with info |
+| `failed` | Error occurred | Handle the error |
+
+**Note:** For the complete status list see [Task Lifecycle](/dist/docs/3.1.0-rc.9/building/by-layer/L3/task-lifecycle).
+
+<Tabs>
+  <Tab title="MCP">
+
+### Immediate Success (`completed`)
+
+The task completed synchronously. No async handling needed.
+
+**Request:**
+```javascript test=false
+const response = await session.call('create_media_buy', {
+  brand: { domain: 'acmecorp.com' },
+  packages: [
+    {
+      product_id: 'prod_ctv_sports',
+      pricing_option_id: 'cpm_fixed',
+      budget: 50000
+    }
+  ]
+});
+```
+
+**Response:**
+```json
+{
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "media_buy_status": "active",
+  "confirmed_at": "2025-06-01T10:00:00Z",
+  "creative_deadline": "2025-06-15T23:59:59Z",
+  "revision": 1,
+  "packages": [
+    {
+      "package_id": "pkg_001",
+      "product_id": "prod_ctv_sports"
+    }
+  ]
+}
+```
+
+The top-level `status` is the envelope task-status (TaskStatus) — `completed` on synchronous success. The body-level `media_buy_status` carries the buy's lifecycle state (`pending_creatives`, `pending_start`, or `active`). A 3.0-style response would have collided these two enums at the same root key; in 3.1 they are distinct fields. Sellers MAY continue to emit a deprecated top-level `status: MediaBuyStatus` during the 3.1 deprecation window for back-compat with 3.0 buyers, but 3.1 buyers MUST prefer `media_buy_status`. See [Media-buy status field (3.1 migration)](#media-buy-status-field-3-1-migration) below.
+
+### Long-Running (`submitted`)
+
+The task is queued for manual approval. Configure a webhook to receive updates.
+
+**Request with webhook:**
+```javascript test=false
+const response = await session.call('create_media_buy',
+  {
+    brand: { domain: 'acmecorp.com' },
+    packages: [
+      {
+        product_id: 'prod_premium_ctv',
+        pricing_option_id: 'cpm_fixed',
+        budget: 500000  // Large budget triggers approval
+      }
+    ]
+  },
+  {
+    pushNotificationConfig: {
+      url: 'https://your-app.com/webhooks/adcp',
+      authentication: {
+        schemes: ['bearer'],
+        credentials: 'your_webhook_secret'
+      }
+    }
+  }
+);
+```
+
+**Initial response:**
+```json
+{
+  "status": "submitted",
+  "task_id": "task_abc123",
+  "message": "Budget exceeds auto-approval limit. Sales review required (2-4 hours)."
+}
+```
+
+**Webhook POST when approved:**
+```json
+{
+  "task_id": "task_abc123",
+  "task_type": "create_media_buy",
+  "status": "completed",
+  "timestamp": "2025-01-22T14:30:00Z",
+  "message": "Media buy approved and created",
+  "result": {
+    "media_buy_id": "mb_67890",
+    "confirmed_at": "2025-01-22T14:30:00Z",
+    "creative_deadline": "2025-06-20T23:59:59Z",
+    "revision": 1,
+    "packages": [
+      {
+        "package_id": "pkg_002",
+      }
+    ]
+  }
+}
+```
+
+### Error (`failed`)
+
+**Response:**
+```json
+{
+  "status": "failed",
+  "errors": [
+    {
+      "code": "INSUFFICIENT_INVENTORY",
+      "message": "Requested targeting yields no available impressions",
+      "field": "packages[0].targeting",
+      "suggestion": "Expand geographic targeting or increase CPM bid"
+    }
+  ]
+}
+```
+
+  </Tab>
+  <Tab title="A2A">
+
+### Immediate Success (`completed`)
+
+**Request:**
+```javascript test=false
+const response = await a2a.send({
+  message: {
+    parts: [{
+      kind: 'data',
+      data: {
+        skill: 'create_media_buy',
+        parameters: {
+          brand: { domain: 'acmecorp.com' },
+          packages: [
+            {
+              product_id: 'prod_ctv_sports',
+              pricing_option_id: 'cpm_fixed',
+              budget: 50000
+            }
+          ]
+        }
+      }
+    }]
+  }
+});
+```
+
+**Response:**
+```json
+{
+  "status": "completed",
+  "taskId": "task_123",
+  "contextId": "ctx_456",
+  "artifacts": [{
+    "parts": [
+      { "text": "Media buy created successfully" },
+      {
+        "data": {
+          "media_buy_id": "mb_12345",
+          "confirmed_at": "2025-06-01T10:00:00Z",
+          "creative_deadline": "2025-06-15T23:59:59Z",
+          "revision": 1,
+          "packages": [
+            {
+              "package_id": "pkg_001",
+            }
+          ]
+        }
+      }
+    ]
+  }]
+}
+```
+
+### Processing (`working`)
+
+Task is actively processing. Use SSE streaming or poll for updates.
+
+**Initial response:**
+```json
+{
+  "status": "working",
+  "taskId": "task_789",
+  "contextId": "ctx_456"
+}
+```
+
+**SSE status update:**
+```json
+{
+  "taskId": "task_789",
+  "status": {
+    "state": "working",
+    "message": {
+      "parts": [
+        { "text": "Validating inventory availability..." },
+        {
+          "data": {
+            "percentage": 50,
+            "current_step": "inventory_check"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+### Long-Running (`submitted`)
+
+**Request with push notification:**
+```javascript test=false
+const response = await a2a.send({
+  message: {
+    parts: [{
+      kind: 'data',
+      data: {
+        skill: 'create_media_buy',
+        parameters: {
+          packages: [{ budget: 500000 }]  // Triggers approval
+        }
+      }
+    }]
+  },
+  pushNotificationConfig: {
+    url: 'https://your-app.com/webhooks/a2a',
+    authentication: {
+      schemes: ['bearer'],
+      credentials: 'your_webhook_secret'
+    }
+  }
+});
+```
+
+**Initial response:**
+```json
+{
+  "status": "submitted",
+  "taskId": "task_abc",
+  "contextId": "ctx_456"
+}
+```
+
+**Webhook POST (Task) when completed:**
+```json
+{
+  "id": "task_abc",
+  "contextId": "ctx_456",
+  "status": {
+    "state": "completed",
+    "message": {
+      "parts": [
+        { "text": "Media buy approved and created" },
+        {
+          "data": {
+            "media_buy_id": "mb_67890",
+            "packages": [{ "package_id": "pkg_002" }]
+          }
+        }
+      ]
+    },
+    "timestamp": "2025-01-22T14:30:00Z"
+  }
+}
+```
+
+### Input Required (`input-required`)
+
+Task is paused waiting for clarification or approval.
+
+**Response:**
+```json
+{
+  "status": "input-required",
+  "taskId": "task_def",
+  "contextId": "ctx_456",
+  "artifacts": [{
+    "parts": [
+      { "text": "The requested budget exceeds your pre-approved limit. Please confirm you want to proceed with $500K spend." },
+      {
+        "data": {
+          "reason": "APPROVAL_REQUIRED",
+          "errors": [
+            {
+              "code": "BUDGET_EXCEEDS_LIMIT",
+              "message": "Requested budget exceeds pre-approved limit",
+              "field": "total_budget"
+            }
+          ]
+        }
+      }
+    ]
+  }]
+}
+```
+
+**Follow-up to approve:**
+```javascript test=false
+await a2a.send({
+  contextId: 'ctx_456',  // Continue the conversation
+  message: {
+    parts: [{ kind: 'text', text: 'Yes, I confirm the $500K budget' }]
+  }
+});
+```
+
+### Error (`failed`)
+
+**Response:**
+```json
+{
+  "status": "failed",
+  "taskId": "task_xyz",
+  "artifacts": [{
+    "parts": [
+      { "text": "Failed to create media buy" },
+      {
+        "data": {
+          "errors": [
+            {
+              "code": "INSUFFICIENT_INVENTORY",
+              "message": "Requested targeting yields no available impressions",
+              "suggestion": "Expand geographic targeting"
+            }
+          ]
+        }
+      }
+    ]
+  }]
+}
+```
+
+  </Tab>
+</Tabs>
+
+For complete async handling patterns, see [Async Operations](/dist/docs/3.1.0-rc.9/building/by-layer/L3/async-operations).
+
+## Usage Notes
+
+- Total budget is distributed across packages based on individual `budget` values
+- Creative assets must be uploaded before deadline for campaign activation
+- Impression-time targeting (audience, frequency, suitability) is handled by [TMP](/dist/docs/3.1.0-rc.9/trusted-match)
+- Pending states (`working`, `submitted`) are normal, not errors
+- Orchestrators MUST handle pending states as part of normal workflow
+- **Inline creatives**: The `creatives` array creates or supplies package creatives inline. If the seller advertises `creative.has_creative_library: true`, inline creatives enter the library; use [`sync_creatives`](/dist/docs/3.1.0-rc.9/creative/task-reference/sync_creatives) to update existing library creatives and `creative_assignments` to assign existing library creatives. If the seller advertises `inline_creative_management: true` without a creative library, use `packages[].creatives` on `create_media_buy` and `update_media_buy`; do not call `sync_creatives`.
+- **Inline creative lifecycle**: Library-backed inline creatives enter the library with the same lifecycle as `sync_creatives` uploads. Inline-only sellers may keep the creative package-scoped and do not advertise later reuse by `creative_id`. Creative review is independent of the buy outcome; sellers MUST NOT skip review solely because the buy did not activate. Retention of unassigned library creatives is seller-defined in 3.0. See [Inline creatives on the package](/dist/docs/3.1.0-rc.9/creative/creative-libraries#path-2-inline-creatives-on-the-package).
+
+## Content Standards
+
+When a media buy includes content standards (via the `governance.content_standards` field on `get_products` responses or the media buy request), the buyer is requesting brand suitability enforcement during delivery.
+
+<Note>
+Content standards are created by calling [`create_content_standards`](/dist/docs/3.1.0-rc.9/governance/content-standards/tasks/create_content_standards) on a verification agent (e.g., IAS, DoubleVerify). Standards MUST be [calibrated](/dist/docs/3.1.0-rc.9/governance/content-standards/tasks/calibrate_content) with each seller before use in production to ensure the seller's local evaluation model aligns with the verification agent's interpretation. See the [Content Standards overview](/dist/docs/3.1.0-rc.9/governance/content-standards/index) for the full setup workflow: create → calibrate → activate → validate.
+</Note>
+
+## Policy Compliance
+
+Brand and products are validated during creation. Policy violations return errors:
+
+```json
+{
+  "errors": [{
+    "code": "POLICY_VIOLATION",
+    "message": "Brand or product category not permitted on this publisher",
+    "field": "brand",
+    "suggestion": "Contact publisher for category approval process"
+  }]
+}
+```
+
+Publishers should ensure:
+- Brand/products align with selected packages
+- Creatives match declared brand/products
+- Campaign complies with all advertising policies
+
+## Next Steps
+
+After creating a media buy:
+
+1. **Supply creatives**: Use [`sync_creatives`](/dist/docs/3.1.0-rc.9/creative/task-reference/sync_creatives) for library-backed sellers, or `packages[].creatives` on [`update_media_buy`](/dist/docs/3.1.0-rc.9/media-buy/task-reference/update_media_buy) for inline-only sellers
+2. **Monitor Status**: Use [`get_media_buy_delivery`](/dist/docs/3.1.0-rc.9/media-buy/task-reference/get_media_buy_delivery)
+3. **Optimize**: Use [`provide_performance_feedback`](/dist/docs/3.1.0-rc.9/media-buy/task-reference/provide_performance_feedback)
+4. **Update**: Use [`update_media_buy`](/dist/docs/3.1.0-rc.9/media-buy/task-reference/update_media_buy) to modify campaign
+
+## Media-buy status field (3.1 migration)
+
+3.1 splits two enums that 3.0 collided at the same root key — envelope `status` (TaskStatus) at the top of every response, and body `media_buy_status` (MediaBuyStatus, **new in 3.1**) carrying the buy's lifecycle state alongside. The legacy top-level `status: MediaBuyStatus` form is `deprecated: true` in 3.1 and removed in 3.2 ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)); nested `status` on `get_media_buys`, `get_media_buy_delivery`, and `core/media-buy.json` follow in 4.0 ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)).
+
+3.1 buyers MUST prefer `media_buy_status` when present. 3.1 compliance storyboards assert `path: "media_buy_status"` — a 3.1 seller emitting only the legacy `status` is schema-valid but fails certification; the storyboard is the binding conformance check.
+
+Full migration: [Migration › `media_buy_status`](/dist/docs/3.1.0-rc.9/reference/migration/media-buy-status).
+
+## Learn More
+
+- [Media Buy Lifecycle](/dist/docs/3.1.0-rc.9/media-buy/media-buys/) - Complete campaign workflow
+- [get_products](/dist/docs/3.1.0-rc.9/media-buy/task-reference/get_products) - Discover inventory
+- [Targeting](/dist/docs/3.1.0-rc.9/media-buy/advanced-topics/targeting) - Targeting strategies
+- [Pricing Models](/dist/docs/3.1.0-rc.9/media-buy/advanced-topics/pricing-models) - Currency and pricing
