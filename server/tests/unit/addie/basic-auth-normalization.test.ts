@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { normalizeBasicAuthForStorage, buildAuthOption } from '../../../src/addie/mcp/member-tools.js';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { normalizeBasicAuthForStorage, buildAuthOption, resolveAgentAuth } from '../../../src/addie/mcp/member-tools.js';
+import { AgentContextDatabase } from '../../../src/db/agent-context-db.js';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('normalizeBasicAuthForStorage', () => {
   it('encodes raw "user:password" to base64 for storage', () => {
@@ -28,6 +33,13 @@ describe('normalizeBasicAuthForStorage', () => {
   it('rejects a value that is neither raw user:password nor base64 of one', () => {
     // No colon in the input and the base64 decoding produces no colon either.
     expect(normalizeBasicAuthForStorage('nopairhere').ok).toBe(false);
+  });
+
+  it('rejects raw or encoded basic credentials with a blank side', () => {
+    expect(normalizeBasicAuthForStorage('user:').ok).toBe(false);
+    expect(normalizeBasicAuthForStorage(':pass').ok).toBe(false);
+    expect(normalizeBasicAuthForStorage(Buffer.from('user:', 'utf8').toString('base64')).ok).toBe(false);
+    expect(normalizeBasicAuthForStorage(Buffer.from(':pass', 'utf8').toString('base64')).ok).toBe(false);
   });
 });
 
@@ -62,6 +74,16 @@ describe('buildAuthOption (basic auth)', () => {
     expect(option).toBeUndefined();
   });
 
+  it('returns undefined for an incomplete decoded basic credential', () => {
+    const option = buildAuthOption({
+      authToken: Buffer.from('user:', 'utf8').toString('base64'),
+      authType: 'basic',
+      source: 'saved',
+      resolvedUrl: 'https://example.com',
+    });
+    expect(option).toBeUndefined();
+  });
+
   it('splits on the first colon so passwords may contain colons', () => {
     const stored = Buffer.from('user:pass:with:colons', 'utf8').toString('base64');
     const option = buildAuthOption({
@@ -81,5 +103,28 @@ describe('buildAuthOption (basic auth)', () => {
       resolvedUrl: 'https://example.com',
     });
     expect(option).toEqual({ type: 'bearer', token: 'abc.def.ghi' });
+  });
+});
+
+describe('resolveAgentAuth', () => {
+  it('falls through to OAuth when saved basic auth has an empty password', async () => {
+    const agentUrl = 'https://private-agent.example.com/mcp';
+    vi.spyOn(AgentContextDatabase.prototype, 'getAuthInfoByOrgAndUrl').mockResolvedValueOnce({
+      token: Buffer.from('test-user:', 'utf8').toString('base64'),
+      authType: 'basic',
+    });
+    vi.spyOn(AgentContextDatabase.prototype, 'getOAuthTokensByOrgAndUrl').mockResolvedValueOnce({
+      access_token: 'oauth-access',
+      refresh_token: 'oauth-refresh',
+    });
+
+    const resolved = await resolveAgentAuth(agentUrl, 'org_123');
+
+    expect(resolved).toEqual({
+      authToken: 'oauth-access',
+      authType: 'bearer',
+      source: 'oauth',
+      resolvedUrl: agentUrl,
+    });
   });
 });

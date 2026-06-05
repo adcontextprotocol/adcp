@@ -78,13 +78,47 @@ describe('ComplianceDatabase.resolveOwnerAuth', () => {
     expect(auth).toEqual({ type: 'basic', username, password });
   });
 
-  it('falls back to bearer when basic-typed token has no colon separator', async () => {
+  it('returns undefined when basic-typed token has an empty password', async () => {
+    const malformed = Buffer.from('test-user:', 'utf8').toString('base64');
+    mockRow({ auth_token_encrypted: 'enc_empty_password', auth_token_iv: 'iv_empty_password', auth_type: 'basic' });
+    mockedDecrypt.mockReturnValueOnce(malformed);
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toBeUndefined();
+  });
+
+  it('falls through to OAuth when basic-typed token has an empty password', async () => {
+    const malformed = Buffer.from('test-user:', 'utf8').toString('base64');
+    mockRow({
+      auth_token_encrypted: 'enc_empty_password',
+      auth_token_iv: 'iv_empty_password',
+      auth_type: 'basic',
+      oauth_access_token_encrypted: 'enc_access',
+      oauth_access_token_iv: 'iv_access',
+      oauth_refresh_token_encrypted: 'enc_refresh',
+      oauth_refresh_token_iv: 'iv_refresh',
+    });
+    mockedDecrypt.mockImplementation((encrypted: string) => {
+      if (encrypted === 'enc_empty_password') return malformed;
+      if (encrypted === 'enc_access') return 'access-plaintext';
+      if (encrypted === 'enc_refresh') return 'refresh-plaintext';
+      throw new Error(`unexpected decrypt call: ${encrypted}`);
+    });
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toEqual({
+      type: 'oauth',
+      tokens: { access_token: 'access-plaintext', refresh_token: 'refresh-plaintext' },
+    });
+  });
+
+  it('returns undefined when basic-typed token has no colon separator and no fallback auth exists', async () => {
     const malformed = Buffer.from('no_separator_here').toString('base64');
     mockRow({ auth_token_encrypted: 'enc_mal', auth_token_iv: 'iv_mal', auth_type: 'basic' });
     mockedDecrypt.mockReturnValueOnce(malformed);
 
     const auth = await db.resolveOwnerAuth('https://agent.example.com');
-    expect(auth).toEqual({ type: 'bearer', token: malformed });
+    expect(auth).toBeUndefined();
   });
 
   it('returns the full oauth shape when a refresh token is saved', async () => {

@@ -1,12 +1,12 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/compliance/comply-test-controller-request.json",
+  "$id": "/schemas/3.1.0-rc.6/compliance/comply-test-controller-request.json",
   "title": "Comply Test Controller Request",
   "description": "Request payload for the comply_test_controller tool. Triggers seller-side state transitions for compliance testing. Sandbox only — sellers MUST NOT expose this tool in production. Naturally idempotent: each known `scenario` is either a lookup (`list_scenarios`) or a state-forcing operation whose target state is carried in the payload (`force_*_status`, `simulate_*`), so replays converge to the same observable state without needing an idempotency_key. The compliance harness drives this tool deterministically and does not rely on the seller's at-most-once replay cache.",
   "type": "object",
   "allOf": [
     {
-      "$ref": "/schemas/core/version-envelope.json"
+      "$ref": "/schemas/3.1.0-rc.6/core/version-envelope.json"
     },
     {
       "if": {
@@ -28,7 +28,7 @@
             ],
             "properties": {
               "status": {
-                "$ref": "/schemas/enums/creative-status.json"
+                "$ref": "/schemas/3.1.0-rc.6/enums/creative-status.json"
               }
             }
           }
@@ -76,7 +76,7 @@
             ],
             "properties": {
               "status": {
-                "$ref": "/schemas/enums/account-status.json"
+                "$ref": "/schemas/3.1.0-rc.6/enums/account-status.json"
               }
             }
           }
@@ -103,7 +103,7 @@
             ],
             "properties": {
               "status": {
-                "$ref": "/schemas/enums/media-buy-status.json"
+                "$ref": "/schemas/3.1.0-rc.6/enums/media-buy-status.json"
               }
             }
           }
@@ -580,7 +580,7 @@
           "description": "Purge mode for force_creative_purge. soft retains a list_creatives tombstone; hard removes the creative entirely."
         },
         "reason_code": {
-          "$ref": "/schemas/enums/creative-event-reason-code.json",
+          "$ref": "/schemas/3.1.0-rc.6/enums/creative-event-reason-code.json",
           "description": "Creative lifecycle reason code for force_creative_purge."
         },
         "reason_detail": {
@@ -650,7 +650,7 @@
             "period": {
               "allOf": [
                 {
-                  "$ref": "/schemas/core/duration.json"
+                  "$ref": "/schemas/3.1.0-rc.6/core/duration.json"
                 }
               ],
               "description": "Duration of the measurement window. REQUIRED when kind is `period` or `rolling`. Matches the `period` field in delivery-metrics.json's reach_window block."
@@ -709,7 +709,7 @@
               "description": "Average in-view duration per measurable impression in seconds. Reporting counterpart to the viewed_seconds optimization metric."
             },
             "standard": {
-              "$ref": "/schemas/enums/viewability-standard.json",
+              "$ref": "/schemas/3.1.0-rc.6/enums/viewability-standard.json",
               "description": "Viewability measurement standard governing the threshold for viewable_rate and viewed_seconds."
             }
           },
@@ -745,7 +745,7 @@
           "description": "Creative format ID to seed. Used by seed_creative_format. The seller MUST expose this format ID in list_creative_formats responses for the duration of the compliance session."
         },
         "vendor": {
-          "$ref": "/schemas/core/brand-ref.json",
+          "$ref": "/schemas/3.1.0-rc.6/core/brand-ref.json",
           "description": "Measurement vendor whose catalog is being seeded. Used by seed_measurement_catalog. The seller MUST treat `metrics[]` as this vendor's `get_adcp_capabilities.measurement.metrics[]` snapshot for the duration of the compliance session."
         },
         "metrics": {
@@ -760,7 +760,7 @@
             ],
             "properties": {
               "metric_id": {
-                "$ref": "/schemas/core/vendor-metric-id.json"
+                "$ref": "/schemas/3.1.0-rc.6/core/vendor-metric-id.json"
               }
             },
             "additionalProperties": true
@@ -775,17 +775,17 @@
           "description": "Human-readable identifier for the upstream dependency to force unavailable (e.g., 'inventory-service', 'creative-agent'). Used by force_upstream_unavailable. When omitted, the seller marks its default upstream for the specified tool as unavailable. Sellers MUST include the same name in STALE_RESPONSE error.details.upstream.name on the affected response."
         },
         "result": {
-          "$ref": "/schemas/core/async-response-data.json",
+          "$ref": "/schemas/3.1.0-rc.6/core/async-response-data.json",
           "description": "Completion payload to record against the task. Used by force_task_completion. Validates against the async-response-data union — for create_media_buy this is a CreateMediaBuyResponse with media_buy_id and packages. The seller MUST deliver this verbatim to the buyer's push_notification_config.url (the canonical 3.0 path for completion payload delivery), with all caller-supplied fields preserved (sellers MAY augment with seller-controlled fields like created_at or dsp_* IDs but MUST NOT overwrite caller-supplied values). A typed projection on the polling response is tracked for 3.1 (#3123). Sellers MUST emit INVALID_PARAMS if the payload does not validate against the response branch for the task's original method, and MAY reject payloads exceeding 256 KB with INVALID_PARAMS."
         }
       },
       "additionalProperties": true
     },
     "context": {
-      "$ref": "/schemas/core/context.json"
+      "$ref": "/schemas/3.1.0-rc.6/core/context.json"
     },
     "ext": {
-      "$ref": "/schemas/core/ext.json"
+      "$ref": "/schemas/3.1.0-rc.6/core/ext.json"
     },
     "account": {
       "type": "object",
