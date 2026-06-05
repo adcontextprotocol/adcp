@@ -247,4 +247,46 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     const res = await request(app).get(`/api/creative-agent/translated/${PLATFORM}/adagents.json`);
     expect(res.status).toBe(404);
   });
+
+  it('deletes a superseded mirror and returns the serving route to 404', async () => {
+    await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send(publishBody({ superseded_by: 'https://meta.com/.well-known/adagents.json' }));
+    const del = await request(app).delete(`/api/registry/mirrors/${PLATFORM}`);
+    expect(del.status).toBe(200);
+    expect(del.body.success).toBe(true);
+    expect((await request(app).get(`/api/registry/mirrors/${PLATFORM}`)).status).toBe(404);
+    expect((await request(app).get(`/api/creative-agent/translated/${PLATFORM}/adagents.json`)).status).toBe(404);
+  });
+
+  it('refuses to delete a mirror that has not been superseded (409)', async () => {
+    await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+    const del = await request(app).delete(`/api/registry/mirrors/${PLATFORM}`);
+    expect(del.status).toBe(409);
+    expect(del.body.error).toMatch(/superseded/i);
+    // The mirror is still served — fallback traffic is protected.
+    expect((await request(app).get(`/api/registry/mirrors/${PLATFORM}`)).status).toBe(200);
+  });
+
+  it('force-deletes a non-superseded mirror with ?force=true', async () => {
+    await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+    const del = await request(app).delete(`/api/registry/mirrors/${PLATFORM}?force=true`);
+    expect(del.status).toBe(200);
+    expect((await request(app).get(`/api/registry/mirrors/${PLATFORM}`)).status).toBe(404);
+  });
+
+  it('returns 404 deleting an unknown mirror', async () => {
+    const del = await request(app).delete(`/api/registry/mirrors/${PLATFORM}`);
+    expect(del.status).toBe(404);
+  });
+
+  it('rejects delete from a non-moderator, non-admin caller (403)', async () => {
+    await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send(publishBody({ superseded_by: 'https://meta.com/.well-known/adagents.json' }));
+    isRegistryModerator.mockResolvedValue(false);
+    isWebUserAAOAdmin.mockResolvedValue(false);
+    const del = await request(app).delete(`/api/registry/mirrors/${PLATFORM}`);
+    expect(del.status).toBe(403);
+  });
 });

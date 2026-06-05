@@ -94,4 +94,10 @@ export class CommunityMirrorDatabase {
       total: parseInt(count.rows[0]?.count ?? '0', 10),
     };
   }
+
+  /** Delete a mirror. Returns true if a row was removed, false if absent. */
+  async deleteByPlatform(platform: string): Promise<boolean> {
+    const result = await query('DELETE FROM community_mirrors WHERE platform = $1', [platform]);
+    return (result.rowCount ?? 0) > 0;
+  }
 }
