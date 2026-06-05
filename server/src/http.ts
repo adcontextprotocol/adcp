@@ -123,6 +123,7 @@ import {
 import { createRegistryApiRouters } from "./routes/registry-api.js";
 import { getPublicJwks } from "./services/verification-token.js";
 import { createCatalogApiRouter } from "./routes/catalog-api.js";
+import { createCommunityMirrorRouter } from "./routes/community-mirrors.js";
 import { getLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { BrandLogoDatabase } from "./db/brand-logo-db.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
@@ -1133,6 +1134,11 @@ export class HTTPServer {
     // Mount property catalog API routes (resolve, browse, sync, disputes)
     const catalogApiRouter = createCatalogApiRouter({ requireAuth, requireAdmin });
     this.app.use('/api/registry', catalogApiRouter);
+
+    // Community-mirror catalog lifecycle (#2176): publish/read/list catalog-only
+    // adagents.json mirrors for unadopted platforms (served at /translated/<platform>).
+    const communityMirrorRouter = createCommunityMirrorRouter({ requireAuth });
+    this.app.use('/api/registry', communityMirrorRouter);
 
     // Mount network health API routes (page route is in createAdminRouter)
     const networkHealthApiRouter = createNetworkHealthApiRouter();

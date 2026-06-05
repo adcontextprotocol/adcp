@@ -8,11 +8,13 @@
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
+import { createHash } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createLogger } from '../logger.js';
 import { constantTimeEqual } from '../utils/constant-time-equal.js';
 import { createCreativeAgentServer } from './task-handlers.js';
 import { getPreview, cleanExpiredPreviews } from './preview-store.js';
+import { CommunityMirrorDatabase } from '../db/community-mirror-db.js';
 
 const logger = createLogger('creative-agent-routes');
 
@@ -64,6 +66,7 @@ function getAgentBaseUrl(req: Request): string {
 
 export function createCreativeAgentRouter(): Router {
   const router = Router();
+  const mirrorDb = new CommunityMirrorDatabase();
 
   // Clean expired previews every 5 minutes
   const cleanupInterval = setInterval(() => cleanExpiredPreviews(), 5 * 60 * 1000);
@@ -91,6 +94,53 @@ export function createCreativeAgentRouter(): Router {
       }],
       last_updated: STARTUP_TIME,
     });
+  });
+
+  // Community-mirror serving route (#2176): serves the stored catalog-only
+  // adagents.json for an unadopted platform at the canonical mirror URL
+  // creative.adcontextprotocol.org/translated/<platform>/adagents.json.
+  router.get('/translated/:platform/adagents.json', async (req: Request, res: Response) => {
+    const platform = String(req.params.platform).toLowerCase();
+    if (!/^[a-z0-9_-]{1,64}$/.test(platform)) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      return res.status(400).json({ error: 'Invalid platform identifier' });
+    }
+    try {
+      const mirror = await mirrorDb.getByPlatform(platform);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      if (!mirror) {
+        return res.status(404).json({ error: 'Community mirror not found' });
+      }
+
+      const serialized = JSON.stringify(mirror.adagents_json);
+      // Use catalog_etag only when it is safe to embed in a quoted ETag header
+      // (no quotes / control chars); otherwise fall back to a content hash so a
+      // moderator-supplied token can't produce a malformed ETag.
+      const etagValue =
+        mirror.catalog_etag && /^[A-Za-z0-9_\-:.+=]+$/.test(mirror.catalog_etag)
+          ? mirror.catalog_etag
+          : createHash('sha256').update(serialized).digest('hex').slice(0, 32);
+      const etag = `"${etagValue}"`;
+
+      res.setHeader('ETag', etag);
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      // superseded_by lifecycle: the normative signal is the body field (buyer
+      // SDKs re-fetch the named URL); this Link header is an additive cache hint
+      // for caches keyed on the mirror URL, not the spec-defined mechanism.
+      if (mirror.superseded_by) {
+        res.setHeader('Link', `<${mirror.superseded_by}>; rel="successor-version"`);
+      }
+
+      if (req.headers['if-none-match'] === etag) {
+        return res.status(304).end();
+      }
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      return res.status(200).send(serialized);
+    } catch (error) {
+      logger.error({ error, platform }, 'Failed to serve translated community mirror');
+      return res.status(500).json({ error: 'Failed to serve mirror' });
+    }
   });
 
   // CORS preflight
