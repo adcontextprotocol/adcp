@@ -17,7 +17,7 @@ flowchart TD
     C -->|creatives missing| D[pending_creatives]
     C -->|creatives present,\nflight not yet started| E[pending_start]
     C -->|creatives present,\nflight started| F[active]
-    D --> G[sync_creatives]
+    D --> G[creative supply]
     G --> E
     E --> F
     F --> H{delivery}
@@ -28,7 +28,7 @@ flowchart TD
 
 1. **`get_products`** — discover available inventory matching your brief.
 2. **`create_media_buy`** — submit packages; the seller validates and confirms.
-3. **`sync_creatives`** — assign creative assets to packages that need them.
+3. **Creative supply** — assign creative assets to packages that need them, either through `sync_creatives` and `creative_assignments` or through inline package `creatives` when the seller advertises inline creative management.
 4. **Delivery** — the buy enters `active`, accrues impressions, and eventually reaches a terminal state.
 
 ## State machine
@@ -57,7 +57,7 @@ stateDiagram-v2
     [*] --> pending_start : create_media_buy\n(creatives present,\nflight future)
     [*] --> active : create_media_buy\n(creatives present,\nflight started)
 
-    pending_creatives --> pending_start : sync_creatives
+    pending_creatives --> pending_start : sync_creatives\nor update_media_buy creatives
     pending_start --> active : flight date reached
 
     active --> paused : update_media_buy\n(paused: true)
@@ -94,6 +94,8 @@ Rather than hardcoding the state machine, read `valid_actions` from `get_media_b
 
 Buyers SHOULD pass the latest `revision` in every `update_media_buy` call intended to change state. The field is optional for backward compatibility, but when present the seller rejects with `CONFLICT` if the revision has changed since your last read, and the check must happen atomically with the write so concurrent updates cannot overwrite each other. See [optimistic concurrency](/docs/media-buy/task-reference/update_media_buy#optimistic-concurrency).
 
+For creative changes, `sync_creatives` in `valid_actions` is the legacy action label. Use the creative path the seller advertises: `sync_creatives` and `creative_assignments` for library-backed sellers, or `packages[].creatives` on `update_media_buy` for inline-only sellers.
+
 ## Guaranteed / PG deal variation
 
 Products with `delivery_type: "guaranteed"` require contractual commitment before delivery begins. The flow diverges after `create_media_buy`:
@@ -106,7 +108,7 @@ flowchart TD
     C -->|IO pre-signed| E[pending_creatives\nor pending_start]
     D --> F[IO signed\nout-of-band]
     F --> E
-    E --> G[sync_creatives\nif needed]
+    E --> G[creative supply\nif needed]
     G --> H[active — guaranteed delivery]
     H --> I{performance}
     I -->|standards met| J[completed]
@@ -138,13 +140,13 @@ A seller who accepts without under-delivering earns a favorable accountability s
 
 `create_media_buy` accepts inline `creative_assignments` or `creatives` per package. If you supply them at creation time and the flight date has passed, the buy enters `active` directly. If the flight date is in the future, it enters `pending_start`.
 
-If no creatives are assigned at creation, the buy enters `pending_creatives`. Delivery cannot begin until `sync_creatives` is called to assign at least one creative per package.
+If no creatives are assigned at creation, the buy enters `pending_creatives`. Delivery cannot begin until the buyer supplies at least one creative per package through a path the seller advertises. Sellers with `creative.has_creative_library: true` use `sync_creatives` and `creative_assignments`. Sellers that advertise both `creative.has_creative_library: true` and `inline_creative_management: true` also accept inline `packages[].creatives` on `create_media_buy` and `update_media_buy`. Inline-only sellers use only `packages[].creatives` on `update_media_buy`.
 
 ### The `creative_deadline`
 
 `create_media_buy` returns a `creative_deadline` timestamp on the media buy response. Individual packages may carry their own `creative_deadline`. **Package-level deadlines take precedence over the media buy deadline.** This matters for mixed-channel orders — a print package may have a material deadline days before the digital packages in the same buy.
 
-After the deadline, `sync_creatives` calls for that package return `CREATIVE_REJECTED`. Creative changes are blocked; delivery continues with whatever creatives are currently assigned (or the package remains in `pending_creatives` if none were ever assigned).
+After the deadline, creative submissions for that package return `CREATIVE_REJECTED`, whether they arrive through `sync_creatives` or inline `packages[].creatives` on `update_media_buy`. Creative changes are blocked; delivery continues with whatever creatives are currently assigned (or the package remains in `pending_creatives` if none were ever assigned).
 
 ```
 Deadline hierarchy:
@@ -155,7 +157,7 @@ Deadline hierarchy:
 
 ### Effect on creatives when a buy ends
 
-When a media buy reaches `rejected`, `canceled`, or `completed`, creative assignments are released. The creatives themselves are not deleted — they remain in the library with their existing review status and are available for assignment to other media buys.
+When a media buy reaches `rejected`, `canceled`, or `completed`, creative assignments are released. For library-backed sellers, the creatives themselves are not deleted — they remain in the library with their existing review status and are available for assignment to other media buys. Inline-only sellers may retain package-scoped creative records for audit and reporting without exposing reusable library entries.
 
 ## Health and dependency impairment
 
@@ -228,7 +230,7 @@ Each `reason_code` has a typical buyer remediation path. Sellers don't fill this
 | `consent_expired` | Refresh upstream consent (e.g., hashed-id consent renewal on a clean-room flow), then re-sync the audience via `sync_audiences`. |
 | `ttl_expired` | Re-sync the audience via `sync_audiences` to renew. |
 | `pii_audit_failed` | Address audit findings upstream (hashing, identifier hygiene). Re-sync only **after** the seller signals the audit is cleared — a buyer agent that loops `sync_audiences` against an uncleared audit will not converge. |
-| `content_rejected` | Same path as initial creative approval — fix the issue and resubmit via `sync_creatives`. Campaign-level decision (replace vs. wait for resubmit) depends on creative pool composition and is left to the buyer. |
+| `content_rejected` | Same path as initial creative approval — fix the issue and resubmit via `sync_creatives` for library-backed sellers, or via `packages[].creatives` on `update_media_buy` for inline-only sellers. Campaign-level decision (replace vs. wait for resubmit) depends on creative pool composition and is left to the buyer. |
 | `identity_authorization_revoked` | Restore the downstream identity/post authorization through the seller's connection flow, or replace the affected `published_post` creative if authorization cannot be restored. |
 | `identity_authorization_expired` | Renew the downstream identity/post authorization through the seller's connection flow, then let the seller re-check or re-review the creative. |
 | `source_private` | Restore source post visibility or replace the affected `published_post` reference. |
@@ -270,13 +272,13 @@ Default when absent is `["snapshot"]`. Each surface is independent of the others
 See the [Snapshot and log contract](/docs/protocol/snapshot-and-log) for the read-side rules that tie `impairments[]` (snapshot) to the `impairment` push (log).
 
 <Tip>
-Creative library state and creative assignment state are tracked independently. A creative that was assigned to a canceled buy still has whatever review status it earned and can be immediately assigned to a new buy. See [creative state and assignment state](/docs/creative/creative-libraries#creative-state-and-assignment-state-are-separate).
+For library-backed sellers, creative library state and creative assignment state are tracked independently. A creative that was assigned to a canceled buy still has whatever review status it earned and can be immediately assigned to a new buy. Inline-only sellers expose package-scoped creative status on `get_media_buys` but do not advertise reusable library creatives. See [creative state and assignment state](/docs/creative/creative-libraries#creative-state-and-assignment-state-are-separate).
 </Tip>
 
 ## See also
 
 - [Media Buy Lifecycle](/docs/media-buy/media-buys/) — full lifecycle reference: campaign structure, package model, async operations
 - [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) — task reference with request parameters, response shapes, and examples
-- [`sync_creatives`](/docs/creative/task-reference/sync_creatives) — assign and update creative assets on active packages
+- [`sync_creatives`](/docs/creative/task-reference/sync_creatives) — upload and update library creatives when the seller advertises `creative.has_creative_library: true`
 - [Accountability](/docs/media-buy/advanced-topics/accountability) — performance standards, measurement terms, makegood resolution
 - [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) — delivery monitoring, dimensional reporting, campaign updates

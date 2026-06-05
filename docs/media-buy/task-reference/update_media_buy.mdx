@@ -245,8 +245,8 @@ Configure automated delivery reporting for this media buy:
 | `keyword_targets_remove` | KeywordTarget[] | Keyword targets to remove by (keyword, match_type) identity. |
 | `negative_keywords_add` | NegativeKeyword[] | Negative keywords to append to this package. On create, these are set as `negative_keywords` inside `targeting_overlay`. |
 | `negative_keywords_remove` | NegativeKeyword[] | Negative keywords to remove from this package. |
-| `creative_assignments` | CreativeAssignment[] | Replace assigned creatives with optional weights and placement targeting |
-| `creatives` | CreativeAsset[] | Upload and assign new creatives inline (must not exist in library) |
+| `creative_assignments` | CreativeAssignment[] | Replace assigned library creatives with optional weights and placement targeting |
+| `creatives` | CreativeAsset[] | Replace assigned inline creative bodies for this package. Requires `media_buy.features.inline_creative_management: true`; when the seller also advertises `creative.has_creative_library: true`, new `creative_id` values must not already exist in the library. |
 
 `package_id` is required to identify the package to update.
 
@@ -738,7 +738,7 @@ Common errors and resolutions:
 | `NOT_CANCELLABLE` | Media buy or package cannot be canceled | Check seller's cancellation policy or contact seller |
 | `CREATIVE_REJECTED` | Creative failed content policy review | Revise the creative per the seller's advertising policies |
 | `CREATIVE_DEADLINE_EXCEEDED` | Creative change submitted past the package's `creative_deadline` | Check package `creative_deadline` before submitting creative changes |
-| `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
+| `CREATIVE_ID_EXISTS` | Creative ID already exists in the seller's creative namespace | For library-backed sellers, assign existing creatives via `creative_assignments` or update via `sync_creatives`; for inline-only sellers, use a different package-scoped `creative_id` |
 | `BUDGET_EXCEEDED` | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
 | `CONFLICT` | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
 | `REQUOTE_REQUIRED` | Requested change (budget, dates, volume, targeting, or signal targeting price) falls outside the envelope the original quote was priced against | Adjust the update to fit the current quote, rediscover products/terms, add packages when `add_packages` is available, or create a separate media buy. 3.1 does not define an amendment-quote artifact for `update_media_buy`. Seller's `error.details.envelope_field` names which fields breached. |
@@ -898,7 +898,7 @@ Check `affected_packages` in response to confirm changes were applied correctly.
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
 - `implementation_date` indicates when changes take effect (null if pending approval)
-- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/creative/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` in the Package Update object.
+- **Inline creatives**: The `creatives` array replaces the package's inline creative bodies. If the seller advertises `creative.has_creative_library: true`, use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) to update existing library creatives and `creative_assignments` to assign existing library creatives. If the seller advertises `inline_creative_management: true` without a creative library, use `packages[].creatives` here for inline creative add, replace, and removal workflows.
 
 <Note>
 **Campaign Governance — Modification Phase**
@@ -913,7 +913,7 @@ See the [seller integration guide](/docs/building/implementation/seller-integrat
 After updating a media buy:
 
 1. **Verify Changes**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) to confirm updates
-2. **Upload New Creatives**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) if creative assignments changed
+2. **Supply New Creatives**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for library-backed sellers, or `packages[].creatives` in this task for inline-only sellers
 3. **Monitor Performance**: Track impact of changes on campaign metrics
 4. **Optimize Further**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) for ongoing optimization
 

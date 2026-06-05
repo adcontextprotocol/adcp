@@ -156,10 +156,10 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 - Rejection (`rejected` status) is only valid from `pending_creatives` or `pending_start`. Sales agents MUST NOT reject media buys that have already transitioned to `active`.
 - Seller-initiated cancellation notifications MUST use the `push_notification_config` webhook provided by the orchestrator during `create_media_buy` or `update_media_buy`. The webhook payload MUST include `media_buy_id`, `status: "canceled"`, and a `cancellation` object with `canceled_at`, `canceled_by: "seller"`, and `reason`.
 - The `canceled` field on update requests uses `"const": true` — only `true` is valid. Sending `canceled: false` fails schema validation. Cancellation is irreversible; there is no "uncancel" operation.
-- **Creative assignments are released on buy rejection or cancellation; the creatives themselves remain in the creative library.** When a media buy transitions to `rejected` or `canceled`, all package-creative assignments on that media buy are released. The creatives persist in the creative library per [assignment state and creative state](/docs/creative/creative-libraries#creative-state-and-assignment-state-are-separate) and MAY be referenced by `creative_id` in a subsequent `create_media_buy` or `sync_creatives` call, regardless of submission path (inline creatives submitted on the rejected/canceled `create_media_buy` enter the library on the same lifecycle as `sync_creatives` uploads).
+- **Creative assignments are released on buy rejection or cancellation.** When a media buy transitions to `rejected` or `canceled`, all package-creative assignments on that media buy are released. For sellers that advertise `creative.has_creative_library: true`, the creatives persist in the creative library per [assignment state and creative state](/docs/creative/creative-libraries#creative-state-and-assignment-state-are-separate) and MAY be referenced by `creative_id` in a subsequent `create_media_buy` or `sync_creatives` call. Inline-only sellers that advertise `inline_creative_management` without a creative library MAY keep submitted creatives package-scoped; they do not advertise cross-buy reuse or `list_creatives` readback.
 - **Creative review is independent of buy outcome.** Sales agents MUST NOT implicitly reject a creative because its containing buy was rejected; a creative rejection MUST be a deliberate review decision with its own `rejection_reason`. If the buy was rejected because a creative violated content policy, the sales agent MAY reject that creative — but only via the normal review path with its own `rejection_reason`; the buy's `rejected` status is not itself sufficient.
-- **Observability of released assignments.** The media-buy-level `canceled` or `rejected` transition (surfaced in the buy's `history` and in the webhook notifications required above) IS the audit record for all its released assignments; buyers MUST NOT rely on per-assignment diff observability. Released assignments no longer appear in `get_media_buys` responses for that buy. Buyers confirming reusability SHOULD call `list_creatives` to verify the creative is still in the library and observe its current status. Package-scoped deadlines (`creative_deadline`) on the prior package have no bearing on the creative's eligibility for a new buy.
-- **Retention.** Sales agents SHOULD retain released creatives in the library for at least 90 days after the last assignment is released. A normative retention floor is specified in the creative retention contract tracked under [#2260](https://github.com/adcontextprotocol/adcp/issues/2260); until that contract lands, buyers relying on long-horizon reuse SHOULD verify persistence via `list_creatives` before referencing a released creative on a new buy.
+- **Observability of released assignments.** The media-buy-level `canceled` or `rejected` transition (surfaced in the buy's `history` and in the webhook notifications required above) IS the audit record for all its released assignments; buyers MUST NOT rely on per-assignment diff observability. Released assignments no longer appear in `get_media_buys` responses for that buy. Buyers confirming library reusability SHOULD call `list_creatives` to verify the creative is still in the library and observe its current status. Inline-only buyers should retain their submitted creative bodies because `get_media_buys` surfaces package-level approval state, not full creative-body retrieval. Package-scoped deadlines (`creative_deadline`) on the prior package have no bearing on a library creative's eligibility for a new buy.
+- **Retention.** Sales agents with creative libraries SHOULD retain released creatives in the library for at least 90 days after the last assignment is released. A normative retention floor is specified in the creative retention contract tracked under [#2260](https://github.com/adcontextprotocol/adcp/issues/2260); until that contract lands, buyers relying on long-horizon reuse SHOULD verify persistence via `list_creatives` before referencing a released creative on a new buy.
 
 #### Revision and confirmation semantics
 
@@ -193,11 +193,11 @@ Each package tracks per-creative approval status separately from the creative's 
 | `approved` | Creative approved for delivery on this package |
 | `rejected` | Creative rejected for this package; see `rejection_reason` |
 
-Rejection is not terminal — the buyer fixes the creative and resubmits via `sync_creatives`, which resets the approval to `pending_review`. The resubmission path:
+Rejection is not terminal — the buyer fixes the creative and resubmits through the seller's advertised creative path, which resets the approval to `pending_review`. The resubmission path:
 
 1. Check `rejection_reason` on `get_media_buys` response
 2. Fix the creative (update assets, adjust manifest)
-3. Resubmit via `sync_creatives`
+3. Resubmit via `sync_creatives` for library-backed sellers, or via `packages[].creatives` on `update_media_buy` for inline-only sellers
 4. Approval resets to `pending_review`
 
 **Interaction with `creative_deadline`:** If a creative is rejected after the package's `creative_deadline`, the buyer MAY still resubmit — sellers SHOULD accept resubmissions for rejected creatives even past the deadline, since the buyer is correcting a seller-identified issue. Sellers that cannot accept late resubmissions MUST return `CREATIVE_DEADLINE_EXCEEDED`.
@@ -335,7 +335,7 @@ Synchronize catalogs (products, inventory, stores, and vertical feeds) on a sell
 ### sync_creatives
 
 <Note>
-`sync_creatives` is defined in the [Creative Protocol](/docs/creative/specification#sync_creatives). Any agent that hosts a creative library implements `sync_creatives` as part of the Creative Protocol. See the [`sync_creatives` task reference](/docs/creative/task-reference/sync_creatives).
+`sync_creatives` is defined in the [Creative Protocol](/docs/creative/specification#sync_creatives). Any agent that advertises `creative.has_creative_library: true` implements `sync_creatives` as part of the Creative Protocol. See the [`sync_creatives` task reference](/docs/creative/task-reference/sync_creatives).
 </Note>
 
 ### get_media_buys
@@ -364,6 +364,9 @@ Retrieve operational media buy state, including package status, creative approva
 Sellers MAY omit actions based on business rules (e.g., omit `cancel` when contractual obligations prevent it, omit `add_packages` when the platform does not support mid-flight additions).
 
 `valid_actions` contains only mutation operations — read-only operations (`get_media_buys`, `get_media_buy_delivery`) are always permitted regardless of state. Agents SHOULD use `valid_actions` as an optimization hint but MUST handle `INVALID_STATE` errors gracefully, since `valid_actions` may not reflect real-time state changes from concurrent operations. Absence of an action means "not declared by this seller," not necessarily "forbidden."
+
+For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-change action label, not proof that the `sync_creatives` task exists. Buyers use the creative path the seller advertises: `sync_creatives` and `creative_assignments` for sellers with `creative.has_creative_library: true`, or `packages[].creatives` on `update_media_buy` for inline-only sellers that advertise `media_buy.features.inline_creative_management: true`.
+
 - Orchestrators MAY request revision history by setting `include_history` to the number of most-recent entries desired. Sales agents SHOULD return a `history` array per media buy when `include_history > 0`, containing revision number, timestamp, server-derived actor identity, action type, and optional summary. History entries MUST be ordered most-recent-first.
 - Sales agents MUST include a media-buy currency and MUST denominate monetary fields consistently (`snapshot.currency` -> `package.currency` -> `media_buy.currency`)
 - Sales agents SHOULD include creative approval outcomes and pending format requirements when available
