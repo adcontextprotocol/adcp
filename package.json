@@ -1,6 +1,6 @@
 {
   "name": "adcontextprotocol",
-  "version": "3.1.0-rc.8",
+  "version": "3.1.0-rc.9",
   "private": true,
   "type": "module",
   "scripts": {
@@ -123,7 +123,7 @@
     "docs:json-field-audit": "node scripts/docs-json-field-audit.cjs"
   },
   "dependencies": {
-    "@adcp/sdk": "^9.0.0-beta.23",
+    "@adcp/sdk": "9.0.0-beta.25",
     "@anthropic-ai/sdk": "^0.98.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.5.4",

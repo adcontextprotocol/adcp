@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.9/core/geo-delivery-metrics.json",
+  "title": "Geo Delivery Metrics",
+  "description": "Delivery metrics row for one geographic area within a package.",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-rc.9/core/delivery-metrics.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "geo_level": {
+          "$ref": "/schemas/3.1.0-rc.9/enums/geo-level.json",
+          "description": "Geographic level of this entry (country, region, metro, postal_area)"
+        },
+        "system": {
+          "type": "string",
+          "description": "Classification system for metro or postal_area levels (e.g., 'nielsen_dma', 'us_zip'). Present when geo_level is 'metro' or 'postal_area'."
+        },
+        "geo_code": {
+          "type": "string",
+          "description": "Geographic code within the level and system. Country: ISO 3166-1 alpha-2 ('US'). Region: ISO 3166-2 with country prefix ('US-CA'). Metro/postal: system-specific code ('501', '10001')."
+        },
+        "geo_name": {
+          "type": "string",
+          "description": "Human-readable geographic name (e.g., 'United States', 'California', 'New York DMA')"
+        }
+      },
+      "required": [
+        "geo_level",
+        "geo_code",
+        "impressions",
+        "spend"
+      ]
+    }
+  ]
+}

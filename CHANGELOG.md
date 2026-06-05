@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.0-rc.9
+
+### Patch Changes
+
+- Update `@adcp/sdk` to `9.0.0-beta.25`, align the repo's published RC metadata on AdCP `3.1.0-rc.9`, and keep the training agent's exact-RC version negotiation cumulative through `3.1-rc.8` and `3.1-rc.9`.
+- Convert `available_actions` storyboard assertions to wildcard `field_contains` deep-subset checks so order-insensitive action templates and media-buy action surfaces validate against the SDK runner semantics used by hosted compliance.
+
 ## 3.1.0-rc.8
 
 ### Minor Changes
