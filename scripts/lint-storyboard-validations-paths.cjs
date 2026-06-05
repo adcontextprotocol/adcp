@@ -18,6 +18,7 @@
  *   - field_value_or_absent
  *   - field_absent
  *   - field_pattern
+ *   - field_contains
  *   - envelope_field_present
  *   - envelope_field_absent
  *   - envelope_field_pattern
@@ -48,6 +49,7 @@ const PATH_BEARING_CHECKS = new Set([
   'field_value_or_absent',
   'field_absent',
   'field_pattern',
+  'field_contains',
   'envelope_field_present',
   'envelope_field_absent',
   'envelope_field_pattern',
@@ -83,7 +85,7 @@ function walkYaml(dir) {
 
 function parsePath(raw) {
   if (!raw) return [];
-  return raw.replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
+  return raw.replace(/\[(\d+|\*)\]/g, '.$1').split('.').filter(Boolean);
 }
 
 function schemaRefToPath(ref) {
@@ -190,7 +192,7 @@ function pathResolves(node, segments, seen = new Set()) {
 
   const [seg, ...rest] = segments;
 
-  if (/^\d+$/.test(seg)) {
+  if (/^\d+$/.test(seg) || seg === '*') {
     if (node.items && pathResolves(node.items, rest, seen)) return true;
   } else if (node.properties && Object.prototype.hasOwnProperty.call(node.properties, seg)) {
     if (pathResolves(node.properties[seg], rest, seen)) return true;
@@ -406,6 +408,18 @@ function lintDoc(doc, filePath, allowlist = []) {
       const rawPath = v.path;
       if (typeof rawPath !== 'string' || rawPath.length === 0) continue;
       const segments = parsePath(rawPath);
+      if (segments.includes('*') && v.check !== 'field_contains') {
+        violations.push({
+          rule: 'wildcard_unsupported_check',
+          filePath,
+          stepId: step.stepId,
+          responseRef: step.responseRef,
+          validationPath: rawPath,
+          check: v.check,
+          index: i,
+        });
+        continue;
+      }
       if (
         v.check === 'envelope_field_present' ||
         v.check === 'envelope_field_absent' ||
@@ -483,6 +497,9 @@ const RULE_MESSAGES = {
     `expected_arm \`${expectedArm}\` does not match any oneOf/anyOf branch in \`${responseRef}\`. ` +
     'Match rule: a branch must declare some property with `const: "<expected_arm>"`. ' +
     'Verify the discriminator value against the response schema.',
+  wildcard_unsupported_check: ({ validationPath, check }) =>
+    `validations[].path \`${validationPath}\` uses [*] but check \`${check}\` does not support wildcard ` +
+    'runtime semantics. Use `field_contains` for wildcard membership checks, or use a concrete index.',
 };
 
 function formatMessage(violation) {

@@ -1082,7 +1082,11 @@
 #                protocol-envelope.json / version-envelope.json instead of
 #                response_schema_ref),
 #                "field_value",
-#                "field_value_or_absent", "status_code", "http_status", "http_status_in",
+#                "field_value_or_absent",
+#                "field_contains" (wildcard-aware membership check; `path` may
+#                use `[*]` segments and passes when any resolved value equals
+#                `value` or one of `allowed_values`),
+#                "status_code", "http_status", "http_status_in",
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",
 #                "any_of", "refs_resolve", "a2a_submitted_artifact",
 #                "field_less_than" / "field_equals_context" (compare a field on this
@@ -1200,7 +1204,7 @@
 #             accepted (optional) on "field_less_than" as a literal comparand when
 #             `context_key` is not set)
 # allowed_values: array (acceptable values for "field_value", "field_value_or_absent",
-#                        "http_status_in", "error_code", "any_of")
+#                        "field_contains", "http_status_in", "error_code", "any_of")
 # context_key: string (only meaningful for "field_less_than" / "field_equals_context"
 #                      cross-step comparison checks — names a key populated by a prior
 #                      step's `context_outputs`. Required on "field_equals_context";

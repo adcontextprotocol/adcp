@@ -862,6 +862,29 @@ function sanitizeHeaders(headers: Record<string, string> | undefined): Record<st
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+const SENSITIVE_DIAGNOSTIC_KEY_PATTERN = /(authorization|token|secret|password|cookie|credential|api[_-]?key|access[_-]?key|refresh[_-]?token)/i;
+const SENSITIVE_DIAGNOSTIC_VALUE_PATTERN = /\b(?:sk_(?:live|test)_[A-Za-z0-9_]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{12,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/;
+const SENSITIVE_DIAGNOSTIC_TEXT_PATTERN = /(?:\bbearer\s+\S+|\b(?:authorization|cookie|set-cookie|session|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret|password|credential)\b\s*[:=]\s*\S+)/i;
+
+function redactForDiagnostics(value: unknown, depth = 0): unknown {
+  if (value === undefined || value === null) return value;
+  if (typeof value === 'string') {
+    return SENSITIVE_DIAGNOSTIC_VALUE_PATTERN.test(value) || SENSITIVE_DIAGNOSTIC_TEXT_PATTERN.test(value)
+      ? '[redacted]'
+      : value;
+  }
+  if (typeof value !== 'object') return value;
+  if (depth > 12) return '[redacted]';
+  if (Array.isArray(value)) return value.map(item => redactForDiagnostics(item, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = SENSITIVE_DIAGNOSTIC_KEY_PATTERN.test(key)
+      ? '[redacted]'
+      : redactForDiagnostics(child, depth + 1);
+  }
+  return out;
+}
+
 function capPayload(value: unknown): unknown {
   if (value === undefined || value === null) return value;
   let serialized: string;
@@ -876,62 +899,86 @@ function capPayload(value: unknown): unknown {
     reason: 'size_cap',
     original_bytes: serialized.length,
     cap_bytes: STEP_DIAGNOSTIC_PAYLOAD_BYTE_CAP,
-    preview: serialized.slice(0, 2048),
   };
+}
+
+function capDiagnosticPayload(value: unknown): unknown {
+  return capPayload(redactForDiagnostics(value));
+}
+
+function stripValidationRequestResponse(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const { request: _request, response: _response, ...rest } = value as Record<string, unknown>;
+  return rest;
 }
 
 /**
  * Walk a ComplianceResult and return one StepDiagnosticEntry per failing
- * (non-skipped) step. The SDK populates `request` and `response_record` on
- * every step where the call reached the wire; skipped steps and steps that
- * never made it past local validation will have neither, and we still emit
- * a row so the caller knows why the step failed even without payloads.
+ * (non-skipped) step. Raw storyboard results populate `request` and
+ * `response_record` on every step where the call reached the wire. Full
+ * compliance results may be flattened by the SDK into TestStepResult shape;
+ * in that case we merge in `ComplianceResult.failures[]` attribution and
+ * persist the response preview/first failed validation summary that survived
+ * flattening instead of dropping the row.
  *
  * `failed_validations_jsonb` only includes validations the runner marked
- * not-passed — passing validations would be noise on a step that already
- * failed for a different reason.
+ * not-passed, or the SDK's first failed-validation summary when the raw
+ * validations array is no longer present.
  */
 export function extractFailingStepDiagnostics(result: ComplianceResult): StepDiagnosticEntry[] {
   const out: StepDiagnosticEntry[] = [];
   const tracks = result.tracks ?? [];
+  const failureLookup = buildFailureLookup(result);
   for (const track of tracks) {
     for (const phase of track.scenarios) {
-      const sepIdx = typeof phase.scenario === 'string' ? phase.scenario.indexOf('/') : -1;
-      if (sepIdx <= 0) continue;
-      const storyboardId = phase.scenario.slice(0, sepIdx);
-      const phaseId = phase.scenario.slice(sepIdx + 1);
       const steps = (phase as { steps?: any[] }).steps ?? [];
       for (const step of steps) {
         if (step.passed) continue;
         if (step.skipped === true) continue;
 
+        const matchedFailure = takeMatchingFailure(failureLookup, track.track, phase.scenario, step);
+        const storyboardId = firstString(
+          step.storyboard_id,
+          matchedFailure?.storyboard_id,
+          scenarioStoryboardIdForFallback(phase.scenario),
+        );
+        const phaseId = firstString(
+          step.phase_id,
+          phaseIdFromScenario(phase.scenario, storyboardId),
+          'unknown',
+        );
+        const stepId = firstString(step.step_id, matchedFailure?.step_id, slugifyStepId(step.step));
+        const task = firstString(step.task, matchedFailure?.task, 'unknown');
+        if (!storyboardId || !phaseId || !stepId || !task) continue;
+
         const req = step.request as { url?: string; payload?: unknown } | undefined;
         const resp = step.response_record as
           | { status?: number; headers?: Record<string, string>; payload?: unknown }
           | undefined;
+        const responsePayload = resp && Object.prototype.hasOwnProperty.call(resp, 'payload')
+          ? resp.payload
+          : step.observation_data;
         const extraction = step.extraction as { path?: string; note?: string } | undefined;
-        const failedValidations = Array.isArray(step.validations)
-          ? step.validations.filter((v: { passed?: boolean }) => v?.passed === false)
-          : undefined;
+        const failedValidations = failedValidationsForStep(step, matchedFailure);
 
         out.push({
-          storyboard_id: step.storyboard_id ?? storyboardId,
-          phase_id: step.phase_id ?? phaseId,
-          step_id: step.step_id,
-          task: step.task,
+          storyboard_id: storyboardId,
+          phase_id: phaseId,
+          step_id: stepId,
+          task,
           step_passed: false,
           duration_ms: typeof step.duration_ms === 'number' ? step.duration_ms : undefined,
           request_url: req?.url,
-          request_jsonb: capPayload(req?.payload),
+          request_jsonb: capDiagnosticPayload(req?.payload),
           response_status: typeof resp?.status === 'number' ? resp.status : undefined,
           response_headers_jsonb: sanitizeHeaders(resp?.headers),
-          response_jsonb: capPayload(resp?.payload),
+          response_jsonb: capDiagnosticPayload(responsePayload),
           extraction_path: extraction?.path,
           extraction_note: extraction?.note,
           error_text: typeof step.error === 'string' ? step.error : undefined,
-          adcp_error_jsonb: step.adcp_error,
+          adcp_error_jsonb: capDiagnosticPayload(step.adcp_error),
           failed_validations_jsonb: failedValidations && failedValidations.length > 0
-            ? capPayload(failedValidations)
+            ? capDiagnosticPayload(failedValidations.map(stripValidationRequestResponse))
             : undefined,
           served_by_agent_url: typeof step.agent_url === 'string' ? step.agent_url : undefined,
         });
@@ -939,4 +986,132 @@ export function extractFailingStepDiagnostics(result: ComplianceResult): StepDia
     }
   }
   return out;
+}
+
+type ComplianceFailureSummary = NonNullable<ComplianceResult['failures']>[number];
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  return undefined;
+}
+
+function slugifyStepId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80);
+  return slug || undefined;
+}
+
+function phaseIdFromScenario(scenario: unknown, storyboardId: string | undefined): string | undefined {
+  if (typeof scenario !== 'string' || !storyboardId) return undefined;
+  const prefix = `${storyboardId}/`;
+  if (!scenario.startsWith(prefix)) return undefined;
+  const phaseId = scenario.slice(prefix.length);
+  return phaseId || undefined;
+}
+
+function scenarioStoryboardIdForFallback(scenario: unknown): string | undefined {
+  if (typeof scenario !== 'string' || scenario.length === 0) return undefined;
+  const sepIdx = scenario.lastIndexOf('/');
+  if (sepIdx < 0) return undefined;
+  return scenario.slice(0, sepIdx) || undefined;
+}
+
+function failureMatchesScenario(failure: ComplianceFailureSummary, scenario: unknown): boolean {
+  if (typeof scenario !== 'string' || scenario.length === 0) return true;
+  return scenario === failure.storyboard_id || scenario.startsWith(`${failure.storyboard_id}/`);
+}
+
+function failureKey(track: unknown, stepTitle: unknown, task: unknown, error: unknown): string {
+  return [
+    typeof track === 'string' ? track : '',
+    typeof stepTitle === 'string' ? stepTitle : '',
+    typeof task === 'string' ? task : '',
+    typeof error === 'string' ? error : '',
+  ].join('\u001f');
+}
+
+function buildFailureLookup(result: ComplianceResult): Map<string, ComplianceFailureSummary[]> {
+  const lookup = new Map<string, ComplianceFailureSummary[]>();
+  for (const failure of result.failures ?? []) {
+    addFailureLookupEntry(lookup, failureKey(failure.track, failure.step_title, failure.task, failure.error), failure);
+    addFailureLookupEntry(lookup, failureKey(failure.track, failure.step_title, failure.task, undefined), failure);
+    addFailureLookupEntry(lookup, failureKey(failure.track, failure.step_title, undefined, failure.error), failure);
+  }
+  return lookup;
+}
+
+function addFailureLookupEntry(
+  lookup: Map<string, ComplianceFailureSummary[]>,
+  key: string,
+  failure: ComplianceFailureSummary,
+): void {
+  const bucket = lookup.get(key) ?? [];
+  bucket.push(failure);
+  lookup.set(key, bucket);
+}
+
+function takeMatchingFailure(
+  lookup: Map<string, ComplianceFailureSummary[]>,
+  track: unknown,
+  scenario: unknown,
+  step: { step?: unknown; task?: unknown; error?: unknown },
+): ComplianceFailureSummary | undefined {
+  const exact = lookup.get(failureKey(track, step.step, step.task, step.error));
+  const exactMatch = takeScenarioCompatibleFailure(exact, scenario);
+  if (exactMatch) return consumeFailure(lookup, exactMatch);
+
+  const withoutError = lookup.get(failureKey(track, step.step, step.task, undefined));
+  const withoutErrorMatch = takeScenarioCompatibleFailure(withoutError, scenario);
+  if (withoutErrorMatch) return consumeFailure(lookup, withoutErrorMatch);
+
+  const withoutTask = lookup.get(failureKey(track, step.step, undefined, step.error));
+  const withoutTaskMatch = takeScenarioCompatibleFailure(withoutTask, scenario);
+  if (withoutTaskMatch) return consumeFailure(lookup, withoutTaskMatch);
+
+  return undefined;
+}
+
+function takeScenarioCompatibleFailure(
+  failures: ComplianceFailureSummary[] | undefined,
+  scenario: unknown,
+): ComplianceFailureSummary | undefined {
+  if (!failures?.length) return undefined;
+  return failures.find(failure => failureMatchesScenario(failure, scenario));
+}
+
+function consumeFailure(
+  lookup: Map<string, ComplianceFailureSummary[]>,
+  failure: ComplianceFailureSummary | undefined,
+): ComplianceFailureSummary | undefined {
+  if (!failure) return undefined;
+  for (const [key, bucket] of lookup) {
+    const filtered = bucket.filter(candidate => candidate !== failure);
+    if (filtered.length === 0) {
+      lookup.delete(key);
+    } else if (filtered.length !== bucket.length) {
+      lookup.set(key, filtered);
+    }
+  }
+  return failure;
+}
+
+function failedValidationsForStep(
+  step: { validations?: unknown },
+  matchedFailure?: ComplianceFailureSummary,
+): unknown[] | undefined {
+  if (Array.isArray(step.validations)) {
+    return step.validations.filter((v: { passed?: boolean }) => v?.passed === false);
+  }
+  if (!matchedFailure?.validation) return undefined;
+  return [{
+    ...matchedFailure.validation,
+    passed: false,
+  }];
 }
