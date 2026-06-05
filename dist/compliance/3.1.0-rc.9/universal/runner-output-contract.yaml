@@ -215,7 +215,9 @@ validation_result:
                               #                          the path MAY include [*]
                               #                          wildcard segments and the
                               #                          check passes when any resolved
-                              #                          value matches
+                              #                          value matches; object/array
+                              #                          expectations are matched as
+                              #                          deep subsets
                               #   field_present        → the path that should resolve
                               #   field_absent         → null (the field must not be present)
                               #   field_pattern        → object { pattern } where pattern is
