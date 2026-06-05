@@ -24,6 +24,7 @@ type DeliveryType = Product['delivery_type'];
 type PublisherPropertySelector = Product['publisher_properties'][number];
 type FlatRatePricingOption = Extract<PricingOption, { pricing_model: 'flat_rate' }>;
 type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
+type ProductFormatDeclaration = NonNullable<Product['format_options']>[number];
 type ProductCardImage = NonNullable<NonNullable<Product['product_card']>['image']>;
 type CollectionSelector = {
   publisher_domain: string;
@@ -36,6 +37,7 @@ type ProductCardManifest = {
     assets: Record<string, unknown>;
   };
 };
+type CanonicalFormatKind = ProductFormatDeclaration['format_kind'];
 type TrainingProduct = Omit<Product, 'product_card' | 'product_card_detailed'> & {
   product_card?: Product['product_card'] | ProductCardManifest;
   product_card_detailed?: Product['product_card_detailed'] | ProductCardManifest;
@@ -243,6 +245,56 @@ function formatIdsForChannels(channels: string[], agentUrl: string): FormatID[] 
     }
   }
   return ids;
+}
+
+const CANONICAL_FORMAT_KIND_BY_LEGACY_ID: Partial<Record<string, CanonicalFormatKind>> = {
+  display_static: 'image',
+  display_300x250: 'image',
+  display_728x90: 'image',
+  display_320x50: 'image',
+  video_preroll: 'video_vast',
+  video_outstream: 'video_vast',
+  ctv_fullscreen: 'video_vast',
+  audio_spot: 'audio_daast',
+  dooh_landscape: 'image',
+  dooh_portrait: 'image',
+  social_feed_card: 'image',
+  social_story: 'image',
+  social_video_reel: 'video_hosted',
+  native_content_card: 'native_in_feed',
+  carousel_card: 'image_carousel',
+  email_sponsored: 'image',
+  sponsored_product: 'sponsored_placement',
+  gaming_interstitial: 'image',
+  gaming_rewarded_video: 'video_vast',
+  search_text_ad: 'responsive_creative',
+  search_shopping: 'sponsored_placement',
+  radio_spot: 'audio_hosted',
+  broadcast_30s: 'video_hosted',
+  broadcast_15s: 'video_hosted',
+  ssai_30s: 'video_hosted',
+  preroll_15s: 'video_hosted',
+  native_feed: 'native_in_feed',
+  display_300x250_generative: 'image',
+  video_30s_generative: 'video_hosted',
+  video_30s: 'video_hosted',
+  native_post: 'native_in_feed',
+  native_content: 'native_in_feed',
+  product_carousel_3_to_10: 'image_carousel',
+};
+
+function formatOptionsForFormatIds(formatIds: FormatID[]): ProductFormatDeclaration[] {
+  return formatIds.flatMap(formatId => {
+    // Omitted ids stay legacy-only until they have a clean canonical projection.
+    const formatKind = CANONICAL_FORMAT_KIND_BY_LEGACY_ID[formatId.id];
+    if (!formatKind) return [];
+    return {
+      format_kind: formatKind,
+      format_option_id: `${formatId.id}_${formatKind}`,
+      params: {},
+      v1_format_ref: [formatId],
+    } as ProductFormatDeclaration;
+  });
 }
 
 function publisherPropertySelectors(pub: PublisherProfile, channels?: string[]): PublisherPropertySelector[] {
@@ -565,13 +617,16 @@ function buildProduct(
     }
   }
 
+  const formatIds = formatIdsForChannels(template.channels, agentUrl);
+  const formatOptions = formatOptionsForFormatIds(formatIds);
   const product: TrainingProduct = {
     product_id: productId,
     name: template.name,
     description: template.description,
     publisher_properties: publisherPropertySelectors(pub, template.channels),
     channels: template.channels as MediaChannel[],
-    format_ids: formatIdsForChannels(template.channels, agentUrl),
+    format_ids: formatIds,
+    ...(formatOptions.length > 0 ? { format_options: formatOptions } : {}),
     delivery_type: template.deliveryType as DeliveryType,
     delivery_measurement: {
       provider: pub.measurementProvider,
