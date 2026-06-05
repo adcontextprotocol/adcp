@@ -15,7 +15,7 @@
  */
 
 import { Router } from 'express';
-import type { RequestHandler } from 'express';
+import type { RequestHandler, Response } from 'express';
 import { z } from 'zod';
 import { CommunityMirrorDatabase } from '../db/community-mirror-db.js';
 import { isRegistryModerator } from '../services/brand-logo-auth.js';
@@ -62,6 +62,35 @@ const MirrorBodySchema = z
 
 export interface CommunityMirrorRouterConfig {
   requireAuth?: RequestHandler;
+}
+
+/**
+ * Resolve the authenticated caller and confirm they may manage community
+ * mirrors — a registry moderator or AAO admin (the static ADMIN_API_KEY
+ * sentinel always passes). Returns the user id, or null after sending the
+ * 401/403 response. `req.user` has no isAdmin field — admin status is resolved
+ * via isWebUserAAOAdmin, not the request.
+ */
+async function resolvePublisher(
+  req: { user?: { id?: string; email?: string } },
+  res: Response
+): Promise<string | null> {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ error: 'Authentication required' });
+    return null;
+  }
+  if (userId !== 'admin_api_key') {
+    const [isAaoAdmin, isModerator] = await Promise.all([
+      isWebUserAAOAdmin(userId),
+      isRegistryModerator(userId),
+    ]);
+    if (!isAaoAdmin && !isModerator) {
+      res.status(403).json({ error: 'Only registry moderators or AAO admins can manage community mirrors' });
+      return null;
+    }
+  }
+  return userId;
 }
 
 export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig): Router {
@@ -121,22 +150,8 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
       return res.status(400).json({ error: 'Invalid platform identifier (expected ^[a-z0-9_-]{1,64}$)' });
     }
 
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-    // The static ADMIN_API_KEY sentinel always passes; otherwise the caller
-    // must be a registry moderator or an AAO admin. (req.user has no isAdmin
-    // field — admin status is resolved via isWebUserAAOAdmin, not the request.)
-    if (userId !== 'admin_api_key') {
-      const [isAaoAdmin, isModerator] = await Promise.all([
-        isWebUserAAOAdmin(userId),
-        isRegistryModerator(userId),
-      ]);
-      if (!isAaoAdmin && !isModerator) {
-        return res.status(403).json({ error: 'Only registry moderators or AAO admins can publish community mirrors' });
-      }
-    }
+    const userId = await resolvePublisher(req, res);
+    if (!userId) return;
 
     const parsed = MirrorBodySchema.safeParse(req.body);
     if (!parsed.success) {
@@ -211,6 +226,42 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
     } catch (err) {
       logger.error({ err, platform }, 'Failed to publish community mirror');
       return res.status(500).json({ error: 'Failed to publish community mirror' });
+    }
+  });
+
+  // ── DELETE /api/registry/mirrors/:platform — retire ─────────────
+  router.delete('/mirrors/:platform', ...writeMiddleware, async (req, res) => {
+    const platform = String(req.params.platform).toLowerCase();
+    if (!PLATFORM_RE.test(platform)) {
+      return res.status(400).json({ error: 'Invalid platform identifier (expected ^[a-z0-9_-]{1,64}$)' });
+    }
+    const userId = await resolvePublisher(req, res);
+    if (!userId) return;
+
+    try {
+      const mirror = await mirrorDb.getByPlatform(platform);
+      if (!mirror) {
+        return res.status(404).json({ error: 'Community mirror not found' });
+      }
+      // Buyer caches key on the mirror URL and fall back to it until the
+      // platform self-adopts. Refuse to remove a mirror that has not published
+      // a `superseded_by` migration signal unless explicitly forced, so live
+      // fallback traffic isn't yanked out from under buyers. (404 is the
+      // documented "no mirror" state buyers already handle, so a hard delete
+      // is safe once the deprecation window has been signalled.)
+      const force = req.query.force === 'true';
+      if (!mirror.superseded_by && !force) {
+        return res.status(409).json({
+          error:
+            'Refusing to delete a mirror that has not been superseded. Set superseded_by first (so buyers get a migration signal), or pass ?force=true to delete anyway.',
+        });
+      }
+      await mirrorDb.deleteByPlatform(platform);
+      logger.info({ platform, by: userId, force }, 'Deleted community mirror');
+      return res.json({ success: true, platform });
+    } catch (err) {
+      logger.error({ err, platform }, 'Failed to delete community mirror');
+      return res.status(500).json({ error: 'Failed to delete community mirror' });
     }
   });
 
