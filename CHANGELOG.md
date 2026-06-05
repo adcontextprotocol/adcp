@@ -1,5 +1,52 @@
 # Changelog
 
+## 3.1.0-rc.9
+
+### Minor Changes
+
+- 630599e: Clarify that `inline_creative_management` covers inline package creatives on
+  `create_media_buy` and `update_media_buy` independently of Creative Protocol
+  support, and add compliance coverage for sellers that accept inline creatives
+  without `sync_creatives`.
+- cf0857e: adagents.json: allow catalog-only community mirrors (empty `authorized_agents`).
+
+  The inline `adagents.json` variant required `authorized_agents` with `minItems: 1`, which made the community-mirror use case the spec itself describes — catalog-only files (e.g. at `creative.adcontextprotocol.org/translated/<platform>/adagents.json`) for platforms that haven't adopted AdCP — impossible to express, since such a mirror has no sales agent to authorize. It is also the exact `authorized_agents: []` shape the SDK's `buildCommunityMirrorAdagents()` emits, which `POST /api/adagents/create` rejected with a 400.
+
+  - **Schema:** `authorized_agents` may now be empty (`[]`); `minItems: 1` is dropped. A new content guard requires a file to carry either sales authorization or a non-empty catalog array (`formats`/`properties`/`placements`/`collections`/`signals`), so a file with neither is still invalid. `catalog_etag` remains recommended-not-required at the schema layer (the mirror contract is enforced by the producer/SDK, consistent with "SDK is canon for wire contracts"); the schema only widens what was previously rejected, so every file valid today stays valid.
+  - **Registry:** `POST /api/adagents/create` and the proposed-file validator accept an empty `authorized_agents` when catalog content is present.
+  - **Consumer semantics:** an empty `authorized_agents` asserts _no sales authorization_ — validators MUST NOT read it as deny-all, authorize-all, or a revocation, MUST NOT treat it as an error, and MUST still consume the catalog arrays.
+  - The Meta community-mirror example now uses `authorized_agents: []` instead of a fabricated advisory agent.
+
+- 5a0a792: Add compliance storyboards for async `get_products` and `get_signals` discovery. The new optional cases force submitted discovery envelopes, verify task visibility through `list_tasks`, force deterministic completion, poll `get_task_status` with terminal results, and assert terminal webhook delivery. Also adds `get_products` to the task-type enum, documents the new controller directives `force_get_products_arm` and `force_get_signals_arm`, and aligns account scoping across legacy and alias task polling schemas.
+- 45089c6: Integrate Brandfetch Brand Context API as authenticated ephemeral enrichment context.
+- a88d106: Registry: community-mirror catalog lifecycle (#2176).
+
+  Makes AAO catalog-only adagents.json mirrors first-class registry resources. A community mirror is the catalog-only adagents.json (`authorized_agents: []` + formats/properties/placements) AAO publishes on behalf of a platform that hasn't adopted AdCP, served at `creative.adcontextprotocol.org/translated/<platform>/adagents.json`. Builds on #5352/#5353, which made `authorized_agents: []` valid.
+
+  - **Store:** new `community_mirrors` table (migration 506) keyed by `platform`, with the adagents.json body, `catalog_etag`, `superseded_by`, and provenance.
+  - **Endpoints** (`/api/registry/mirrors`):
+    - `GET /api/registry/mirrors` — list mirrors with their `catalog_etag` (public).
+    - `GET /api/registry/mirrors/:platform` — read one mirror (public).
+    - `PUT /api/registry/mirrors/:platform` — idempotent publish/upsert (registry moderators or admins). Forces `authorized_agents: []`, requires catalog content, validates the proposal.
+  - **Serving:** `GET /translated/:platform/adagents.json` on the creative agent serves the stored mirror with an `ETag` (from `catalog_etag`, falling back to a content hash), `If-None-Match` → `304`, `Cache-Control`, and a `superseded_by` → `Link: rel="successor-version"` header.
+
+  Read-back by platform and listing close the gap where published mirrors could not be retrieved; the idempotent upsert lets audit fixes update in place instead of duplicating.
+
+- d6e94f4: Registry: add `DELETE /api/registry/mirrors/:platform` to retire a community mirror.
+
+  Completes the #2176 community-mirror lifecycle with a moderator/admin-gated retire endpoint, closing the post-supersession deprecation window. Because buyers cache the mirror URL and fall back to it until the platform self-adopts, deletion refuses a mirror that has not published a `superseded_by` migration signal unless `?force=true` is passed — so live fallback traffic isn't yanked out from under buyers. After deletion the serving route returns 404, the documented "no mirror" state. The publish/delete authorization check is factored into a shared helper.
+
+### Patch Changes
+
+- d9b0cad: Fix inline creative conformance coverage so the training catalog only dual-emits faithful canonical format projections, the inline creative scenario selects `format_options[]` through `format_option_refs[]`, and inline creatives accepted by library-capable sellers are persisted for later creative lookup.
+- 9863d4f: Fix release-blocking compliance storyboards by preloading a creative before media buy state-machine pause/resume checks and removing stale proposal flight start dates from proposal probes.
+- 95fb4ee: Bump `@adcp/sdk` to `9.0.0-beta.23`, update the training agent to import
+  `CreativeManifestSchema` from the public `@adcp/sdk/schemas` export, pass
+  `context` through the list_transformers tenant tool, advertise `3.1-rc.7`
+  support, and remove manual list_transformers storyboard skips now covered by the
+  SDK. Align the 3.0 compatibility sales storyboard step floor with the beta.23
+  runner's skip accounting.
+
 ## 3.1.0-rc.8
 
 ### Minor Changes
