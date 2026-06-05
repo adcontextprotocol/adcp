@@ -36,9 +36,9 @@ narrative: |
 
   The scenario exercises both product format representations when the seller
   dual-emits them. The first path uses the 3.1+ format_options[] path with a
-  canonical format_kind; the second uses the legacy format_ids[] path. Each
-  path creates its own media buy so the readback checks prove both replacements
-  persisted independently.
+  product-local format_option_ref; the second uses the legacy format_ids[] path.
+  Each path creates its own media buy so the readback checks prove both
+  replacements persisted independently.
 
 agent:
   interaction_model: media_buy_seller
@@ -100,8 +100,8 @@ phases:
     title: "Inline creative path using format_options"
     narrative: |
       A 3.1+ seller may publish products through format_options[]. This path
-      submits the inline creative with the product's canonical format_kind and
-      verifies create/update acceptance.
+      selects the product's format option with format_option_refs[] and submits
+      the inline creative with the matching canonical format_kind.
 
     steps:
       - id: get_products_canonical_format
@@ -131,6 +131,8 @@ phases:
             key: "canonical_product_id"
           - path: "products[0].pricing_options[0].pricing_option_id"
             key: "canonical_pricing_option_id"
+          - path: "products[0].format_options[0].format_option_id"
+            key: "canonical_format_option_id"
           - path: "products[0].format_options[0].format_kind"
             key: "canonical_format_kind"
         validations:
@@ -139,6 +141,9 @@ phases:
           - check: field_present
             path: "products[0].format_options[0].format_kind"
             description: "Product declares a canonical format option for inline creative validation"
+          - check: field_present
+            path: "products[0].format_options[0].format_option_id"
+            description: "Product publishes a selectable product-local format option id"
           - check: field_present
             path: "products[0].pricing_options[0].fixed_price"
             description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
@@ -172,6 +177,9 @@ phases:
             - product_id: "$context.canonical_product_id"
               budget: 7500
               pricing_option_id: "$context.canonical_pricing_option_id"
+              format_option_refs:
+                - scope: "product"
+                  format_option_id: "$context.canonical_format_option_id"
               context:
                 buyer_ref: "inline-creative-canonical-line-001"
               creatives:

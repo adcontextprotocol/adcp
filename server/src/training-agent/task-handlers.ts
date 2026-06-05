@@ -69,7 +69,14 @@ export function adcpError(code: string, opts: { message: string; details?: unkno
 }
 
 // Derive types from SDK request types that aren't re-exported from main entry
-type InlineCreativeInput = { creative_id?: string };
+type InlineCreativeInput = {
+  creative_id?: string;
+  name?: string;
+  format_id?: FormatID;
+  format_kind?: string;
+  assets?: Record<string, unknown>;
+  manifest?: CreativeManifest;
+};
 type PackageUpdate = NonNullable<UpdateMediaBuyRequest['packages']>[number];
 type PackageUpdateExt = PackageUpdate & {
   canceled?: boolean;
@@ -306,6 +313,49 @@ function collectInlineCreativeIds(
     creativeIds.push(creativeId);
   }
   return { creativeIds, errors };
+}
+
+function formatIdForInlineCreative(creative: InlineCreativeInput): FormatID {
+  if (creative.format_id && typeof creative.format_id === 'object') {
+    return creative.format_id;
+  }
+  return {
+    agent_url: getAgentUrl(),
+    id: creative.format_kind || 'inline_creative',
+  };
+}
+
+function persistInlineCreatives(
+  session: SessionState,
+  rawCreatives: InlineCreativeInput[] | undefined,
+  accountRef: AccountRef | undefined,
+  accountId: string | undefined,
+  syncedAt: string,
+) {
+  if (!Array.isArray(rawCreatives)) return;
+
+  for (const creative of rawCreatives) {
+    if (!creative.creative_id) continue;
+    const creativeId = creative.creative_id;
+    const existing = session.creatives.get(creativeId);
+    const formatId = formatIdForInlineCreative(creative);
+    session.creatives.set(creativeId, {
+      creativeId,
+      accountId: accountId ?? existing?.accountId,
+      accountRef: accountRef ?? existing?.accountRef,
+      formatId,
+      name: creative.name ?? existing?.name,
+      status: existing?.status ?? 'approved',
+      syncedAt,
+      manifest: creative.manifest ?? (creative.assets ? {
+        format_id: formatId,
+        assets: creative.assets as CreativeManifest['assets'],
+      } : existing?.manifest),
+      pricingOptionId: existing?.pricingOptionId,
+      purge: existing?.purge,
+      webhookActivity: existing?.webhookActivity,
+    });
+  }
 }
 
 function validateDirectCanonicalPackageSelector(pkg: PackageInput, product: Product, index: number): TaskError | undefined {
@@ -4480,6 +4530,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // Validate all packages and collect errors before returning
   const errors: TaskError[] = [];
   const createdPackages: PackageState[] = [];
+  const inlineCreativesToPersist: InlineCreativeInput[] = [];
   for (let i = 0; i < req.packages.length; i++) {
     const pkg = req.packages[i] as unknown as PackageInput;
     const pkgLabel = `Package ${i}`;
@@ -4633,6 +4684,9 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     errors.push(...inlineCreatives.errors);
     creativeAssignments.push(...inlineCreatives.creativeIds);
     if (errors.length > 0) continue;
+    if (Array.isArray(pkg.creatives)) {
+      inlineCreativesToPersist.push(...pkg.creatives);
+    }
 
     createdPackages.push({
       packageId: `pkg-${i}`,
@@ -4669,6 +4723,13 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     : `mb_${randomUUID().slice(0, 8)}`;
   const now = new Date().toISOString();
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
+  persistInlineCreatives(
+    session,
+    inlineCreativesToPersist,
+    req.account as AccountRef | undefined,
+    resolveAccountIdForRef(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId), ctx.principal, req.account),
+    now,
+  );
 
   // Persist governance_context if provided (spec: sellers MUST persist and return on get_media_buys)
   const governanceContext = govCtx && govCtx.length <= 4096 ? govCtx : undefined;
@@ -5721,6 +5782,13 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       }
       if (update.creatives !== undefined) {
         const creativeIds = collectInlineCreativeIds(update.creatives, `packages[${pkgId}].creatives`).creativeIds;
+        persistInlineCreatives(
+          session,
+          update.creatives,
+          req.account as AccountRef | undefined,
+          resolveAccountIdForRef(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId), ctx.principal, req.account),
+          now,
+        );
         pkg.creativeAssignments = creativeIds;
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'inline_creatives_updated', summary: `Package ${pkgId} inline creatives replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
