@@ -25,7 +25,7 @@ If you only need the final 3.1 shape after the RC train, read this list first:
 - **Signals and product targeting.** Enriched signal definitions, `SignalRef`, wholesale signal enumeration, product-scoped `included_signals`, selectable `signal_targeting_options`, grouped buy-time `signal_targeting_groups`, and clarified owned-vs-marketplace conformance.
 - **Wholesale feed mirroring.** Conditional fetch tokens, public/account `cache_scope`, product and signal wholesale-feed webhooks, and repair-by-read semantics for storefronts, registries, and federated marketplaces.
 - **Creative formats.** Canonical `format_kind` declarations, publisher format catalogs, `v1_format_ref` dual-emission, hosted audio/video `duration_ms_exact` plus one-sided `duration_ms_range`, published-post references, and video placement semantics.
-- **Creative generation.** `list_transformers`, account-scoped transformer selection, strict typed `config`, catalog and variant fan-out, advisory evaluator ranking, spend controls, content macros, free-text params, and per-output pricing receipts.
+- **Creative generation.** `list_transformers`, account-scoped transformer selection, strict typed `config`, catalog and variant fan-out, advisory evaluator ranking over `creative-feature-result[]`, spend controls, content macros, free-text params, and per-output pricing receipts.
 - **Media-buy operations.** Dependency impairments, buyer-visible `webhook_activity[]`, action discovery, proposal-lifecycle cleanup, currency-scoped product discovery, sponsored/social placement fields, and SI availability status.
 - **Measurement and billing.** Vendor-attested `vendor_metric` goals, reach-window semantics, `viewability.viewed_seconds`, windowed delivery recovery, finality flags on delivery and usage, and out-of-band creative billing declarations.
 - **Runtime hardening.** Request idempotency on every task, `IDEMPOTENCY_IN_FLIGHT`, open error-code decoding with recovery classification, auth error split, credential-in-payload rejection, webhook operation-id echo, and flat MCP envelope tolerance.
@@ -196,13 +196,15 @@ Live in 3.1, additive over 3.0. Products carry `format_options[]`: a list of `Pr
 
 - **Best-of-N is variants + `keep_mode` + `recommended`/`rank`.** `build_variant_id` is its own namespace — never reuse `preview_id` (preview renders) or served `variant_id` (delivery). You **pay for all produced variants** (`per_unit` × N); keeping is a client act of trafficking the chosen `build_variant_id`(s). A kept variant lazily earns a `creative_id` (added to the library / first trafficked) which flows to `report_usage`. Per-**format** generation is atomic; per-**item** (catalog fan-out) is non-atomic.
 
+- **Evaluator ranking reuses creative-feature discovery.** Agents with `creative.supports_evaluator: true` use the existing `get_adcp_capabilities.governance.creative_features` catalog as the evaluator feature-discovery surface. `rank_by`, `feature_requirement`, and `variants[].eval.features[]` all refer to that same feature vocabulary; `evaluator_id` is a pre-provisioned account preset, not an ID from that catalog. `feature_agent.agent_url` selects an allowlisted external scoring path and `feature_id` disambiguates the requested feature subject to the seller's accepted-verifier entry. Sellers SHOULD echo external judge usage per leaf with fields such as `eval.calls_used` / `eval.seconds_used` when `agent_url` evaluation runs under an `eval_budget`.
+
 - **Pricing moves onto the transformer.** The rate lives on `transformer.pricing_options` (`per_unit`), echoed inline as a per-leaf receipt on `build_creative`, and settled via `report_usage`. `Format.pricing_options` is **deprecated** in favor of `transformer.pricing_options`.
 
 <Warning>
 **Deprecations (3.1, removed in 4.0).** `Format.input_format_ids`, `Format.output_format_ids`, and `Format.pricing_options`, plus the `input_format_ids` / `output_format_ids` filters on `list_creative_formats`, are deprecated and all redirect to `list_transformers`. SDKs honor them through 3.1–3.x; they are removed at 4.0. Migrate format-attached input/output/pricing reads to `list_transformers`. Full migration (incl. the discovery-degradation, per-output-pricing, and best-of-N spend hazards): [Migration › Creative transformers](/docs/reference/migration/creative-transformers).
 </Warning>
 
-→ Spec: [`list_transformers`](/docs/creative/task-reference/list_transformers) · [`build_creative`](/docs/creative/task-reference/build_creative) · [`get_adcp_capabilities` § `creative.supports_transformers`](/docs/protocol/get_adcp_capabilities)
+→ Spec: [`list_transformers`](/docs/creative/task-reference/list_transformers) · [`build_creative`](/docs/creative/task-reference/build_creative) · [`get_adcp_capabilities` § creative features / evaluator support](/docs/protocol/get_adcp_capabilities)
 
 ### Release-precision version negotiation — pin your release
 
