@@ -45,12 +45,13 @@ const MirrorBodySchema = z
       .refine(
         (v) => {
           try {
-            return ['http:', 'https:'].includes(new URL(v).protocol);
+            // adagents.json requires superseded_by to be https (^https://).
+            return new URL(v).protocol === 'https:';
           } catch {
             return false;
           }
         },
-        { message: 'superseded_by must be an http(s) URL' }
+        { message: 'superseded_by must be an https URL' }
       )
       .optional(),
   })
@@ -167,8 +168,9 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
     }
 
     // Assemble the served document: forced authorized_agents:[] + $schema.
-    // Any caller-supplied authorized_agents is dropped — a mirror never asserts
-    // sales authorization.
+    // authorized_agents is dropped so a mirror never asserts sales
+    // authorization; $schema and last_updated are also stripped from the caller
+    // body and regenerated below so both stay server-controlled.
     const { authorized_agents: _ignored, $schema: _schema, last_updated: _lu, ...rest } = body;
     const adagentsJson: Record<string, unknown> = {
       $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',

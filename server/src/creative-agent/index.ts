@@ -113,8 +113,11 @@ export function createCreativeAgentRouter(): Router {
       }
 
       const serialized = JSON.stringify(mirror.adagents_json);
+      // Use catalog_etag only when it is safe to embed in a quoted ETag header
+      // (no quotes / control chars); otherwise fall back to a content hash so a
+      // moderator-supplied token can't produce a malformed ETag.
       const etagValue =
-        mirror.catalog_etag && mirror.catalog_etag.trim()
+        mirror.catalog_etag && /^[A-Za-z0-9_\-:.+=]+$/.test(mirror.catalog_etag)
           ? mirror.catalog_etag
           : createHash('sha256').update(serialized).digest('hex').slice(0, 32);
       const etag = `"${etagValue}"`;

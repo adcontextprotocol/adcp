@@ -13,9 +13,14 @@ import Ajv, { type ValidateFunction } from 'ajv';
 import addFormats from 'ajv-formats';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('adagents-schema-validator');
+
+// ESM has no __dirname; derive it (matches http.ts / mcp-tools.ts).
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // static/ is shipped in the image (Dockerfile COPY static ./static). Resolve
 // the source schema tree relative to this module, mirroring the NODE_ENV split
@@ -28,12 +33,20 @@ const SOURCE_DIR =
 
 let compiled: Promise<ValidateFunction> | null = null;
 
+const SOURCE_ROOT = path.resolve(SOURCE_DIR);
+
 function loadLocalSchema(uri: string): object {
   if (!uri.startsWith('/schemas/')) {
     throw new Error(`Cannot resolve non-local $ref: ${uri}`);
   }
   const rel = uri.replace('/schemas/', '');
-  return JSON.parse(readFileSync(path.join(SOURCE_DIR, rel), 'utf8'));
+  // Defense-in-depth: $refs come from our trusted schema tree today, but never
+  // resolve outside SOURCE_DIR even if a future ref carries `../`.
+  const full = path.resolve(SOURCE_ROOT, rel);
+  if (full !== SOURCE_ROOT && !full.startsWith(SOURCE_ROOT + path.sep)) {
+    throw new Error(`Refusing to resolve $ref outside the schema tree: ${uri}`);
+  }
+  return JSON.parse(readFileSync(full, 'utf8'));
 }
 
 function getValidator(): Promise<ValidateFunction> {
