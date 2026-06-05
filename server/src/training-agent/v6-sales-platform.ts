@@ -94,6 +94,9 @@ export const TRAINING_SALES_CAPABILITIES = {
 
 export function salesCapabilityProjection() {
   return {
+    features: {
+      inline_creative_management: true,
+    },
     supported_optimization_metrics: [...TRAINING_SALES_CAPABILITIES.supported_optimization_metrics],
     vendor_metric_optimization: {
       supported_targets: [...TRAINING_SALES_CAPABILITIES.vendor_metric_optimization.supported_targets],

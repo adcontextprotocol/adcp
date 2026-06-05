@@ -69,8 +69,15 @@ export function adcpError(code: string, opts: { message: string; details?: unkno
 }
 
 // Derive types from SDK request types that aren't re-exported from main entry
+type InlineCreativeInput = { creative_id?: string };
 type PackageUpdate = NonNullable<UpdateMediaBuyRequest['packages']>[number];
-type PackageUpdateExt = PackageUpdate & { canceled?: boolean; cancellation_reason?: string; targeting?: PackageTargeting; targeting_overlay?: PackageTargeting };
+type PackageUpdateExt = PackageUpdate & {
+  canceled?: boolean;
+  cancellation_reason?: string;
+  targeting?: PackageTargeting;
+  targeting_overlay?: PackageTargeting;
+  creatives?: InlineCreativeInput[];
+};
 type Destination = NonNullable<ActivateSignalRequest['destinations']>[number];
 type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
 type PricingOption = Product['pricing_options'][number];
@@ -268,6 +275,7 @@ interface PackageInput {
   targeting?: PackageTargeting;
   targeting_overlay?: PackageTargeting;
   creative_assignments?: Array<{ creative_id?: string }>;
+  creatives?: InlineCreativeInput[];
   context?: Record<string, unknown>;
 }
 
@@ -275,6 +283,29 @@ interface CreativeAssignmentInput {
   creative_id: string;
   package_id: string;
   media_buy_id: string;
+}
+
+function collectInlineCreativeIds(
+  rawCreatives: InlineCreativeInput[] | undefined,
+  fieldPrefix: string,
+): { creativeIds: string[]; errors: TaskError[] } {
+  const creativeIds: string[] = [];
+  const errors: TaskError[] = [];
+  if (!Array.isArray(rawCreatives)) return { creativeIds, errors };
+
+  for (let i = 0; i < rawCreatives.length; i++) {
+    const creativeId = rawCreatives[i]?.creative_id;
+    if (!creativeId) {
+      errors.push({
+        code: 'VALIDATION_ERROR',
+        message: `${fieldPrefix}[${i}].creative_id is required`,
+        field: `${fieldPrefix}[${i}].creative_id`,
+      });
+      continue;
+    }
+    creativeIds.push(creativeId);
+  }
+  return { creativeIds, errors };
 }
 
 function validateDirectCanonicalPackageSelector(pkg: PackageInput, product: Product, index: number): TaskError | undefined {
@@ -4598,6 +4629,9 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       }
       creativeAssignments.push(creativeId);
     }
+    const inlineCreatives = collectInlineCreativeIds(pkg.creatives, `packages[${i}].creatives`);
+    errors.push(...inlineCreatives.errors);
+    creativeAssignments.push(...inlineCreatives.creativeIds);
     if (errors.length > 0) continue;
 
     createdPackages.push({
@@ -5594,6 +5628,10 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     // pkg[0..N-1] with partially-applied assignments.
     for (const update of req.packages as PackageUpdateExt[]) {
       const assignments = (update as PackageUpdate & { creative_assignments?: Array<{ creative_id: string }> }).creative_assignments;
+      const inlineCreatives = collectInlineCreativeIds(update.creatives, `packages[${update.package_id || '?'}].creatives`);
+      if (inlineCreatives.errors.length) {
+        return { errors: inlineCreatives.errors };
+      }
       if (assignments === undefined) continue;
       const pkgId = update.package_id || '';
       if (assignments.length === 0) {
@@ -5681,6 +5719,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         pkg.creativeAssignments = creativeIds;
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'creative_assignments_updated', summary: `Package ${pkgId} creative assignments replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
+      if (update.creatives !== undefined) {
+        const creativeIds = collectInlineCreativeIds(update.creatives, `packages[${pkgId}].creatives`).creativeIds;
+        pkg.creativeAssignments = creativeIds;
+        mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'inline_creatives_updated', summary: `Package ${pkgId} inline creatives replaced (${creativeIds.length} creatives)`, packageId: pkgId });
+      }
     }
 
     // Recompute open impairments: a creative-impairment is cleared when no
@@ -5753,6 +5796,21 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   mb.updatedAt = now;
 
   const status = deriveStatus(mb);
+  const updatedPackages = mb.packages.map(pkg => ({
+    package_id: pkg.packageId,
+    product_id: pkg.productId,
+    budget: pkg.budget,
+    pricing_option_id: pkg.pricingOptionId,
+    paused: pkg.paused,
+    start_time: pkg.startTime,
+    end_time: pkg.endTime,
+    ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
+    ...(pkg.context && { context: pkg.context }),
+    creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
+    ...(pkg.canceledAt && {
+      cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
+    }),
+  }));
   // `media_buy_status` is the canonical 3.1 body field (#4895); legacy
   // body `status: MediaBuyStatus` removed in 3.2 (#4906).
   const result = {
@@ -5766,19 +5824,8 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     ...(mb.canceledAt && {
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
     }),
-    packages: mb.packages.map(pkg => ({
-      package_id: pkg.packageId,
-      product_id: pkg.productId,
-      budget: pkg.budget,
-      pricing_option_id: pkg.pricingOptionId,
-      paused: pkg.paused,
-      start_time: pkg.startTime,
-      end_time: pkg.endTime,
-      ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
-      ...(pkg.canceledAt && {
-        cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
-      }),
-    })),
+    affected_packages: updatedPackages,
+    packages: updatedPackages,
     ...(warnings.length > 0 && { warnings }),
     ...(req.context !== undefined && { context: req.context }),
   };
