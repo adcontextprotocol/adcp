@@ -21,6 +21,8 @@ AdCP's creative management system handles:
 ### Creative Synchronization
 Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) to upload and manage creative assets in the creative library hosted by your seller or creative platform. This ensures your creatives are available for assignment across platforms and campaigns.
 
+For sellers that advertise `inline_creative_management: true` without `creative.has_creative_library: true`, creatives are supplied as package-scoped `packages[].creatives` on `create_media_buy` or `update_media_buy` instead of through a reusable library.
+
 ### Creative Library Management
 Use [`list_creatives`](/docs/creative/task-reference/list_creatives) to view and manage your creative asset library, including status tracking and performance metadata.
 

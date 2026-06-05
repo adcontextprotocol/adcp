@@ -6338,7 +6338,7 @@
           },
           "creatives": {
             "type": "array",
-            "description": "Upload new creative assets and assign to this package (creatives will be added to library). Use creative_assignments instead for existing library creatives.",
+            "description": "Upload creative assets inline and assign to this package. When the seller also advertises creative.has_creative_library: true, these creatives enter the seller's creative library and can be reused by creative_id while retained; inline-only sellers may store them as package-scoped assets. Use creative_assignments instead for existing library creatives.",
             "items": {
               "title": "Creative Asset",
               "description": "Creative asset for upload to library — supports static assets, generative formats, and third-party snippets. Identifies which format this creative conforms to via EITHER a legacy `format_id` (structured `{agent_url, id}`) OR a 3.1+ `format_kind` (canonical format name), with optional `format_option_ref` when the target product needs disambiguation. Mutually exclusive — see the `oneOf` at the schema root.",
@@ -26721,7 +26721,7 @@
     }
   },
   "_bundled": {
-    "generatedAt": "2026-06-05T19:28:55.462Z",
+    "generatedAt": "2026-06-05T20:13:17.420Z",
     "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

@@ -17,7 +17,7 @@
     },
     "account": {
       "$ref": "/schemas/3.1.0-rc.9/core/account-ref.json",
-      "description": "Account scope for the task lookup. Sellers MUST return NOT_FOUND for a task_id that exists only under a different account or principal. When omitted, the seller MAY use the credential-bound singleton account, but multi-account credentials SHOULD require an explicit account."
+      "description": "Account scope for the task lookup. Sellers MUST return REFERENCE_NOT_FOUND for a task_id that exists only under a different account or principal. When omitted, the seller MAY use the credential-bound singleton account, but multi-account credentials SHOULD require an explicit account."
     },
     "include_history": {
       "type": "boolean",

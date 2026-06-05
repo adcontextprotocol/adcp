@@ -42,7 +42,7 @@ One brief. Three sellers. Same JSON structure back.
 | Campaign brief | `brief` field on `get_products` |
 | Media plan | Products returned from `get_products` |
 | IO / insertion order | `create_media_buy` |
-| Trafficking creatives | `sync_creatives` to each seller |
+| Trafficking creatives | `sync_creatives` for library-backed sellers, or inline `packages[].creatives` for inline-only sellers |
 | Campaign report | `get_media_buy_delivery` across agents |
 | Flight dates | `start_time` / `end_time` on the media buy or packages |
 | Viewability / IVT / completion SLAs | `performance_standards` on packages — see [Accountability](/docs/media-buy/advanced-topics/accountability) |

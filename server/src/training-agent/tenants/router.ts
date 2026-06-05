@@ -581,9 +581,18 @@ function projectSalesCapabilities(
       const mediaBuy = structured.media_buy && typeof structured.media_buy === 'object'
         ? structured.media_buy
         : {};
+      const salesProjection = salesCapabilityProjection();
       structured.media_buy = {
         ...mediaBuy,
-        ...salesCapabilityProjection(),
+        ...salesProjection,
+        features: {
+          ...(
+            mediaBuy.features && typeof mediaBuy.features === 'object'
+              ? mediaBuy.features as Record<string, unknown>
+              : {}
+          ),
+          ...salesProjection.features,
+        },
       };
       const creative = structured.creative && typeof structured.creative === 'object'
         ? structured.creative

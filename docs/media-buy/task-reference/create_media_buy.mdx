@@ -201,7 +201,7 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 | `start_time` | string | No | ISO 8601 date-time for this package's flight start. When omitted, inherits the media buy's `start_time`. Must fall within the media buy's date range. Does not support `"asap"`. |
 | `end_time` | string | No | ISO 8601 date-time for this package's flight end. When omitted, inherits the media buy's `end_time`. Must fall within the media buy's date range. |
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
-| `creatives` | CreativeAsset[] | No | Upload new creative assets and assign (`creative_id` must not already exist in library) |
+| `creatives` | CreativeAsset[] | No | Upload new creative assets inline and assign. Requires `media_buy.features.inline_creative_management: true`; when the seller also advertises `creative.has_creative_library: true`, `creative_id` must not already exist in the library. |
 | `context` | object | No | Opaque correlation data echoed unchanged in the package response, webhooks, and read surfaces. Use to map seller-assigned `package_id` back to your internal line items, campaign structure, or tracking state. Buyers targeting mixed seller populations SHOULD include a per-package correlation value here, commonly `context.buyer_ref`, for legacy sellers that do not echo `product_id`. |
 | `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `measurement_terms` apply. |
 | `performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed performance standards (viewability, IVT, completion rate, brand safety, attention score). Overrides product defaults. Seller accepts, rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `performance_standards` apply. |
@@ -1021,7 +1021,7 @@ Common errors and resolutions:
 | `TARGETING_TOO_NARROW` | Targeting yields zero inventory | Broaden geographic or audience criteria |
 | `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
 | `INVALID_PRICING_OPTION` | pricing_option_id not found | Use ID from product's `pricing_options` |
-| `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
+| `CREATIVE_ID_EXISTS` | Creative ID already exists in the seller's creative namespace | For library-backed sellers, assign existing creatives via `creative_assignments` or update via `sync_creatives`; for inline-only sellers, use a different package-scoped `creative_id` |
 
 Example error response:
 
@@ -1131,7 +1131,7 @@ When creating a media buy, format specification enables:
                        omit for all-formats default
    └── Publisher creates placeholders
    └── Clear creative requirements established
-5. sync_creatives → Upload actual files matching formats
+5. Creative supply → Upload matching files via `sync_creatives` for library-backed sellers, or inline `packages[].creatives` for inline-only sellers
 6. Campaign activation → Replace placeholders with real creatives
 ```
 
@@ -1550,8 +1550,8 @@ For complete async handling patterns, see [Async Operations](/docs/building/impl
 - Impression-time targeting (audience, frequency, suitability) is handled by [TMP](/docs/trusted-match)
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
-- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/creative/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` instead.
-- **Inline creative lifecycle**: Inline creatives enter the library with the same lifecycle as `sync_creatives` uploads. If the `create_media_buy` task resolves as `pending_manual` and the buy never activates, or if the buy is rejected or canceled, only the package assignments are released — the creatives remain in the library and can be reused by `creative_id` on a later `create_media_buy` call. Creative review is independent of the buy outcome; sellers MUST NOT skip review solely because the buy did not activate. Retention of unassigned creatives is seller-defined in 3.0. See [Inline creatives on the package](/docs/creative/creative-libraries#path-2-inline-creatives-on-the-package).
+- **Inline creatives**: The `creatives` array creates or supplies package creatives inline. If the seller advertises `creative.has_creative_library: true`, inline creatives enter the library; use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) to update existing library creatives and `creative_assignments` to assign existing library creatives. If the seller advertises `inline_creative_management: true` without a creative library, use `packages[].creatives` on `create_media_buy` and `update_media_buy`; do not call `sync_creatives`.
+- **Inline creative lifecycle**: Library-backed inline creatives enter the library with the same lifecycle as `sync_creatives` uploads. Inline-only sellers may keep the creative package-scoped and do not advertise later reuse by `creative_id`. Creative review is independent of the buy outcome; sellers MUST NOT skip review solely because the buy did not activate. Retention of unassigned library creatives is seller-defined in 3.0. See [Inline creatives on the package](/docs/creative/creative-libraries#path-2-inline-creatives-on-the-package).
 
 ## Content Standards
 
@@ -1585,7 +1585,7 @@ Publishers should ensure:
 
 After creating a media buy:
 
-1. **Upload Creatives**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) before deadline
+1. **Supply creatives**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for library-backed sellers, or `packages[].creatives` on [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) for inline-only sellers
 2. **Monitor Status**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 3. **Optimize**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback)
 4. **Update**: Use [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) to modify campaign

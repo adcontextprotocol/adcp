@@ -48,18 +48,17 @@ describe('agentReadRateLimiter 429 body', () => {
   // from zero regardless of what ran earlier in the suite.
   function buildApp() {
     const app = express();
+    app.use((req, _res, next) => {
+      (req as any).user = { id: RATE_LIMIT_TEST_USER_ID };
+      next();
+    });
     app.get('/ping', agentReadRateLimiter, (_req, res) => res.status(200).json({ ok: true }));
     return app;
   }
 
-  // Supertest hits loopback; the limiter's keyGenerator falls back to
-  // `::ffff:127.0.0.1` (IPv4-mapped IPv6) when no req.user is present.
-  const LOOPBACK_KEY = '::ffff:127.0.0.1';
+  const RATE_LIMIT_TEST_USER_ID = 'rate-limit-retry-after-test-user';
   beforeEach(async () => {
-    await agentReadRateLimiter.resetKey(LOOPBACK_KEY);
-    // Also clear the raw IPv4 key as a belt-and-braces in case
-    // Node/Express ever flips the default representation.
-    await agentReadRateLimiter.resetKey('127.0.0.1');
+    await agentReadRateLimiter.resetKey(RATE_LIMIT_TEST_USER_ID);
   });
 
   it('includes `retryAfter` (seconds) in the body matching the Retry-After header', async () => {

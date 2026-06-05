@@ -5113,6 +5113,49 @@ describe('update_media_buy handler', () => {
     expect(updateResult.media_buy_status).toBe('pending_creatives');
   });
 
+  it('accepts inline package creatives on create and update without sync_creatives', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'inline-create-update.example' }, operator: 'inline-create-update.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'inline-create-update.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+        creatives: [{ creative_id: 'inline_cr_v1', name: 'Inline v1' }],
+      }],
+    });
+    expect(createResult.code).toBeUndefined();
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgId = ((createResult.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+
+    const { result: updateResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{ package_id: pkgId, creatives: [{ creative_id: 'inline_cr_v2', name: 'Inline v2' }] }],
+    });
+    expect(updateResult.code).toBeUndefined();
+    expect(updateResult.media_buy_id).toBe(mediaBuyId);
+    expect(((updateResult.affected_packages as Array<Record<string, unknown>>)[0]).package_id).toBe(pkgId);
+
+    const { result: buyResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const buy = (buyResult.media_buys as Array<Record<string, unknown>>)[0];
+    const pkg = (buy.packages as Array<Record<string, unknown>>)[0];
+    const approvals = pkg.creative_approvals as Array<Record<string, unknown>>;
+    expect(approvals[0].creative_id).toBe('inline_cr_v2');
+    expect(approvals[0].approval_status).toBe('approved');
+  });
+
   it('rejects all creative_assignments atomically when any creative_id is missing', async () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;

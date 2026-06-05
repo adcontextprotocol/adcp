@@ -24,6 +24,7 @@ type DeliveryType = Product['delivery_type'];
 type PublisherPropertySelector = Product['publisher_properties'][number];
 type FlatRatePricingOption = Extract<PricingOption, { pricing_model: 'flat_rate' }>;
 type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
+type ProductFormatDeclaration = NonNullable<Product['format_options']>[number];
 type ProductCardImage = NonNullable<NonNullable<Product['product_card']>['image']>;
 type CollectionSelector = {
   publisher_domain: string;
@@ -35,6 +36,10 @@ type ProductCardManifest = {
     format_id: FormatID;
     assets: Record<string, unknown>;
   };
+};
+type CanonicalFormatProjection = {
+  format_kind: ProductFormatDeclaration['format_kind'];
+  params: ProductFormatDeclaration['params'];
 };
 type TrainingProduct = Omit<Product, 'product_card' | 'product_card_detailed'> & {
   product_card?: Product['product_card'] | ProductCardManifest;
@@ -243,6 +248,27 @@ function formatIdsForChannels(channels: string[], agentUrl: string): FormatID[] 
     }
   }
   return ids;
+}
+
+const CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID: Partial<Record<string, CanonicalFormatProjection>> = {
+  display_300x250: {
+    format_kind: 'image',
+    params: { width: 300, height: 250 },
+  },
+};
+
+function formatOptionsForFormatIds(formatIds: FormatID[]): ProductFormatDeclaration[] {
+  return formatIds.flatMap(formatId => {
+    // Omitted ids stay legacy-only until they have a clean canonical projection.
+    const projection = CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID[formatId.id];
+    if (!projection) return [];
+    return {
+      format_kind: projection.format_kind,
+      format_option_id: `${formatId.id}_${projection.format_kind}`,
+      params: projection.params,
+      v1_format_ref: [formatId],
+    } as ProductFormatDeclaration;
+  });
 }
 
 function publisherPropertySelectors(pub: PublisherProfile, channels?: string[]): PublisherPropertySelector[] {
@@ -565,13 +591,16 @@ function buildProduct(
     }
   }
 
+  const formatIds = formatIdsForChannels(template.channels, agentUrl);
+  const formatOptions = formatOptionsForFormatIds(formatIds);
   const product: TrainingProduct = {
     product_id: productId,
     name: template.name,
     description: template.description,
     publisher_properties: publisherPropertySelectors(pub, template.channels),
     channels: template.channels as MediaChannel[],
-    format_ids: formatIdsForChannels(template.channels, agentUrl),
+    format_ids: formatIds,
+    ...(formatOptions.length > 0 ? { format_options: formatOptions } : {}),
     delivery_type: template.deliveryType as DeliveryType,
     delivery_measurement: {
       provider: pub.measurementProvider,

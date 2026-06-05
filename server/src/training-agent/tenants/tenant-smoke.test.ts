@@ -236,6 +236,7 @@ describe('tenant routing smoke', () => {
             adcp_version?: string;
             adcp?: { major_versions?: number[]; supported_versions?: string[] };
             media_buy?: {
+              features?: { inline_creative_management?: boolean };
               supported_optimization_metrics?: string[];
               vendor_metric_optimization?: { supported_targets?: string[] };
             };
@@ -247,6 +248,7 @@ describe('tenant routing smoke', () => {
       expect(body.result?.structuredContent?.adcp_version).toBe('3.0');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
       expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9']);
+      expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
       expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(

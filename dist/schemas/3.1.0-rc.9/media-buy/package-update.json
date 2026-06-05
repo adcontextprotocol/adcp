@@ -167,7 +167,7 @@
     },
     "creatives": {
       "type": "array",
-      "description": "Upload new creative assets and assign to this package (creatives will be added to library). Use creative_assignments instead for existing library creatives.",
+      "description": "Replace this package's inline creative assets. When the seller also advertises creative.has_creative_library: true, new inline creatives enter the seller's creative library and can be reused by creative_id while retained; inline-only sellers may store them as package-scoped assets. Use creative_assignments instead for existing library creatives.",
       "items": {
         "$ref": "/schemas/3.1.0-rc.9/core/creative-asset.json"
       },

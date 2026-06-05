@@ -39,7 +39,7 @@
     },
     "account": {
       "title": "Account Reference",
-      "description": "Account scope for the task lookup. Sellers MUST return NOT_FOUND for a task_id that exists only under a different account or principal. When omitted, the seller MAY use the credential-bound singleton account, but multi-account credentials SHOULD require an explicit account.",
+      "description": "Account scope for the task lookup. Sellers MUST return REFERENCE_NOT_FOUND for a task_id that exists only under a different account or principal. When omitted, the seller MAY use the credential-bound singleton account, but multi-account credentials SHOULD require an explicit account.",
       "type": "object",
       "oneOf": [
         {
@@ -752,7 +752,7 @@
     }
   ],
   "_bundled": {
-    "generatedAt": "2026-06-05T19:28:54.927Z",
+    "generatedAt": "2026-06-05T20:13:16.854Z",
     "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

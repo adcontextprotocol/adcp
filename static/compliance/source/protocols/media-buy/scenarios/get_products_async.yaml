@@ -344,9 +344,9 @@ phases:
         comply_scenario: get_products_async
         stateful: true
         expected: |
-          Return NOT_FOUND when the same task_id is polled from a different
-          sandbox account. Sellers MUST NOT reveal whether the task exists under
-          another account or principal.
+          Return REFERENCE_NOT_FOUND when the same task_id is polled from a
+          different sandbox account. Sellers MUST NOT reveal whether the task
+          exists under another account or principal.
         sample_request:
           task_id: "$context.products_task_id"
           include_result: true
@@ -359,8 +359,8 @@ phases:
             correlation_id: "get_products_async--wrong_account_task_status"
         validations:
           - check: error_code
-            allowed_values: ["NOT_FOUND"]
-            description: "Cross-account task lookup is hidden as NOT_FOUND"
+            allowed_values: ["REFERENCE_NOT_FOUND"]
+            description: "Cross-account task lookup is hidden as REFERENCE_NOT_FOUND"
 
       - id: get_products_task_status_completed
         title: "Poll completed get_products task with result"
