@@ -101,6 +101,64 @@ test('path_not_in_schema does not fire for field_present on a defined property',
   assert.deepEqual(violations, []);
 });
 
+test('field_contains accepts wildcard paths that resolve through array items', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'get_buy',
+            task: 'get_media_buys',
+            response_schema_ref: 'media-buy/get-media-buys-response.json',
+            validations: [
+              {
+                check: 'field_contains',
+                path: 'media_buys[0].impairments[0].package_ids[*]',
+                value: 'package_a',
+                description: 'package appears anywhere',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.deepEqual(violations, []);
+});
+
+test('wildcard paths are rejected for checks without wildcard runtime semantics', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'get_buy',
+            task: 'get_media_buys',
+            response_schema_ref: 'media-buy/get-media-buys-response.json',
+            validations: [
+              {
+                check: 'field_value',
+                path: 'media_buys[0].impairments[0].package_ids[*]',
+                value: 'package_a',
+                description: 'unsupported wildcard',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'wildcard_unsupported_check');
+  assert.equal(violations[0].check, 'field_value');
+});
+
 test('non-path-bearing checks are silently skipped', () => {
   const doc = {
     phases: [
@@ -370,6 +428,7 @@ test('PATH_BEARING_CHECKS is the documented set', () => {
   assert.ok(PATH_BEARING_CHECKS.has('field_value_or_absent'));
   assert.ok(PATH_BEARING_CHECKS.has('field_absent'));
   assert.ok(PATH_BEARING_CHECKS.has('field_pattern'));
+  assert.ok(PATH_BEARING_CHECKS.has('field_contains'));
   assert.ok(PATH_BEARING_CHECKS.has('envelope_field_present'));
   assert.ok(PATH_BEARING_CHECKS.has('envelope_field_absent'));
   assert.ok(PATH_BEARING_CHECKS.has('envelope_field_pattern'));

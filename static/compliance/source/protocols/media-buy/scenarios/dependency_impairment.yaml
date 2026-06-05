@@ -447,8 +447,8 @@ phases:
             path: "media_buys[0].impairments[0].resource_id"
             value: "acme_dep_banner_001"
             description: "Impairment entry's resource_id matches the rejected creative (forward rule)"
-          - check: field_value
-            path: "media_buys[0].impairments[0].package_ids[0]"
+          - check: field_contains
+            path: "media_buys[0].impairments[0].package_ids[*]"
             value: "$context.package_id"
             description: "Impairment entry's package_ids[] contains the buy's package — without this, a seller could list a different package and still pass the impairment-present check"
           - check: field_value

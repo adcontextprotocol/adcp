@@ -175,8 +175,102 @@ describe('extractFailingStepDiagnostics', () => {
     expect(body.__truncated).toBe(true);
     expect(body.reason).toBe('size_cap');
     expect(typeof body.original_bytes).toBe('number');
+    expect(body.preview).toBeUndefined();
     expect(out[0].request_jsonb).toEqual({ ok: true });
   });
+
+  it('redacts diagnostic payload secrets and strips validation wire captures', () => {
+    const failing = step({
+      passed: false,
+      request: {
+        transport: 'mcp_http',
+        url: 'https://x/mcp',
+        payload: {
+          authorization: 'Bearer should-not-persist',
+          account: { brand: { domain: 'acmeoutdoor.example' } },
+        },
+      },
+      response_record: {
+        transport: 'mcp_http',
+        status: 200,
+        payload: {
+          access_token: 'should-not-persist',
+          nested: { public_value: 'ok' },
+        },
+      },
+      validations: [
+        {
+          check: 'field_value',
+          path: 'errors[0].code',
+          passed: false,
+          expected: 'INVALID_REQUEST',
+          actual: 'sk_live_1234567890abcdefghijkl',
+          request: { payload: { password: 'should-not-persist' } },
+          response: { payload: { cookie: 'should-not-persist' } },
+        },
+        {
+          check: 'field_value',
+          path: 'errors[0].message',
+          passed: false,
+          expected: 'safe message',
+          actual: 'Authorization: Bearer secret-token',
+          error: 'cookie=session=abc',
+        },
+      ],
+    });
+
+    const out = extractFailingStepDiagnostics(
+      resultWith([
+        { track: 'creative', status: 'fail', duration_ms: 100, scenarios: [phase('sb/phase', [failing])] },
+      ]) as any,
+    );
+
+    expect(out).toHaveLength(1);
+    expect(out[0].request_jsonb).toEqual({
+      authorization: '[redacted]',
+      account: { brand: { domain: 'acmeoutdoor.example' } },
+    });
+    expect(out[0].response_jsonb).toEqual({
+      access_token: '[redacted]',
+      nested: { public_value: 'ok' },
+    });
+    expect(out[0].failed_validations_jsonb).toEqual([
+      {
+        check: 'field_value',
+        path: 'errors[0].code',
+        passed: false,
+        expected: 'INVALID_REQUEST',
+        actual: '[redacted]',
+      },
+      {
+        check: 'field_value',
+        path: 'errors[0].message',
+        passed: false,
+        expected: 'safe message',
+        actual: '[redacted]',
+        error: '[redacted]',
+      },
+    ]);
+  });
+
+  it('preserves explicit null wire response payloads instead of falling back to observation data', () => {
+    const failing = step({
+      passed: false,
+      response_record: { transport: 'mcp_http', status: 204, payload: null },
+      observation_data: { should_not_replace_null: true },
+    });
+
+    const out = extractFailingStepDiagnostics(
+      resultWith([
+        { track: 'creative', status: 'fail', duration_ms: 100, scenarios: [phase('sb/phase', [failing])] },
+      ]) as any,
+    );
+
+    expect(out).toHaveLength(1);
+    expect(out[0].response_status).toBe(204);
+    expect(out[0].response_jsonb).toBeNull();
+  });
+
 
   it('drops disallowed response headers (Set-Cookie, Authorization) and keeps content-type', () => {
     const failing = step({
@@ -209,14 +303,304 @@ describe('extractFailingStepDiagnostics', () => {
     expect(headers).not.toHaveProperty('authorization');
   });
 
-  it('skips phases whose scenario key has no storyboard/phase separator', () => {
+  it('uses step identity when the scenario key has no storyboard/phase separator', () => {
+    const failing = step({ passed: false });
+    const out = extractFailingStepDiagnostics(
+      resultWith([
+        { track: 'creative', status: 'fail', duration_ms: 10, scenarios: [phase('bare_legacy_scenario', [failing])] },
+      ]) as any,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].storyboard_id).toBe('creative_lifecycle');
+    expect(out[0].phase_id).toBe('list_and_filter');
+    expect(out[0].step_id).toBe('list_all');
+  });
+
+  it('skips unidentified failed steps whose scenario key has no storyboard/phase separator', () => {
     const orphan = step({ passed: false });
+    delete (orphan as any).storyboard_id;
+    delete (orphan as any).phase_id;
+    delete (orphan as any).step_id;
     const out = extractFailingStepDiagnostics(
       resultWith([
         { track: 'creative', status: 'fail', duration_ms: 10, scenarios: [phase('bare_legacy_scenario', [orphan])] },
       ]) as any,
     );
     expect(out).toEqual([]);
+  });
+
+  it('derives fallback coordinates from slash-bearing scenarios when attribution is unavailable', () => {
+    const flattenedStep = {
+      step: 'Check agent capabilities',
+      task: 'get_adcp_capabilities',
+      passed: false,
+      duration_ms: 50,
+      error: 'Capability check failed',
+    };
+
+    const out = extractFailingStepDiagnostics(
+      resultWith([
+        { track: 'creative', status: 'fail', duration_ms: 50, scenarios: [phase('creative/native_in_feed/phase_one', [flattenedStep])] },
+      ]) as any,
+    );
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      storyboard_id: 'creative/native_in_feed',
+      phase_id: 'phase_one',
+      step_id: 'check_agent_capabilities',
+    });
+  });
+
+  it('persists flattened compliance-step failures using ComplianceResult.failures attribution', () => {
+    const flattenedStep = {
+      step: 'Read allowed_actions from get_products',
+      task: 'get_products',
+      passed: false,
+      duration_ms: 456,
+      error: 'Probe validations failed.',
+      details: '✗ Product declares extend_flight as approval-routed: Field missing',
+      observation_data: {
+        products: [{ product_id: 'available_actions_display', allowed_actions: [] }],
+      },
+    };
+    const result = resultWith([
+      {
+        track: 'media_buy',
+        status: 'partial',
+        duration_ms: 456,
+        scenarios: [phase('media_buy_seller/available_actions/discover_product_action_template', [flattenedStep])],
+      },
+    ]) as any;
+    result.failures = [
+      {
+        track: 'media_buy',
+        storyboard_id: 'media_buy_seller/available_actions',
+        step_id: 'get_product_allowed_actions',
+        step_title: 'Read allowed_actions from get_products',
+        task: 'get_products',
+        error: 'Probe validations failed.',
+        validation: {
+          check: 'field_value',
+          description: 'Product declares extend_flight as approval-routed',
+          json_pointer: '/products/0/allowed_actions/1/mode',
+          expected: 'requires_approval',
+          actual: undefined,
+        },
+        fix_command: 'adcp storyboard step https://x media_buy_seller/available_actions get_product_allowed_actions --json',
+      },
+    ];
+
+    const out = extractFailingStepDiagnostics(result);
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      storyboard_id: 'media_buy_seller/available_actions',
+      phase_id: 'discover_product_action_template',
+      step_id: 'get_product_allowed_actions',
+      task: 'get_products',
+      duration_ms: 456,
+      error_text: 'Probe validations failed.',
+      response_jsonb: {
+        products: [{ product_id: 'available_actions_display', allowed_actions: [] }],
+      },
+    });
+    expect(out[0].failed_validations_jsonb).toEqual([
+      {
+        check: 'field_value',
+        description: 'Product declares extend_flight as approval-routed',
+        json_pointer: '/products/0/allowed_actions/1/mode',
+        expected: 'requires_approval',
+        actual: undefined,
+        passed: false,
+      },
+    ]);
+  });
+
+  it('matches flattened failures when the step error text differs from the failure summary', () => {
+    const result = resultWith([
+      {
+        track: 'media_buy',
+        status: 'partial',
+        duration_ms: 123,
+        scenarios: [phase('media_buy_seller/available_actions/discover_product_action_template', [
+          {
+            step: 'Read allowed_actions from get_products',
+            task: 'get_products',
+            passed: false,
+            duration_ms: 123,
+            error: 'Different wrapper error',
+          },
+        ])],
+      },
+    ]) as any;
+    result.failures = [
+      {
+        track: 'media_buy',
+        storyboard_id: 'media_buy_seller/available_actions',
+        step_id: 'get_product_allowed_actions',
+        step_title: 'Read allowed_actions from get_products',
+        task: 'get_products',
+        error: 'Probe validations failed.',
+        validation: {
+          check: 'field_value',
+          description: 'Product advertises the self-serve budget action',
+          expected: 'increase_budget',
+          actual: 'cancel',
+        },
+        fix_command: 'adcp storyboard step https://x media_buy_seller/available_actions get_product_allowed_actions --json',
+      },
+    ];
+
+    const out = extractFailingStepDiagnostics(result);
+
+    expect(out).toHaveLength(1);
+    expect(out[0].storyboard_id).toBe('media_buy_seller/available_actions');
+    expect(out[0].step_id).toBe('get_product_allowed_actions');
+    expect(out[0].failed_validations_jsonb).toEqual([
+      {
+        check: 'field_value',
+        description: 'Product advertises the self-serve budget action',
+        expected: 'increase_budget',
+        actual: 'cancel',
+        passed: false,
+      },
+    ]);
+  });
+
+  it('does not reuse one flattened failure attribution across repeated step titles', () => {
+    const result = resultWith([
+      {
+        track: 'media_buy',
+        status: 'partial',
+        duration_ms: 246,
+        scenarios: [phase('media_buy_seller/available_actions/enforce_available_actions', [
+          {
+            step: 'Validate action rejection',
+            task: 'update_media_buy',
+            passed: false,
+            duration_ms: 100,
+            error: 'Different wrapper error',
+          },
+          {
+            step: 'Validate action rejection',
+            task: 'update_media_buy',
+            passed: false,
+            duration_ms: 146,
+            error: 'Different wrapper error',
+          },
+        ])],
+      },
+    ]) as any;
+    result.failures = [
+      {
+        track: 'media_buy',
+        storyboard_id: 'media_buy_seller/available_actions',
+        step_id: 'reject_direct_extend',
+        step_title: 'Validate action rejection',
+        task: 'update_media_buy',
+        error: 'Probe validations failed.',
+        validation: {
+          check: 'error_code',
+          description: 'Direct extend rejects',
+          expected: 'ACTION_NOT_ALLOWED',
+          actual: 'INVALID_REQUEST',
+        },
+        fix_command: 'adcp storyboard step https://x media_buy_seller/available_actions reject_direct_extend --json',
+      },
+      {
+        track: 'media_buy',
+        storyboard_id: 'media_buy_seller/available_actions',
+        step_id: 'reject_direct_cancel',
+        step_title: 'Validate action rejection',
+        task: 'update_media_buy',
+        error: 'Probe validations failed.',
+        validation: {
+          check: 'error_code',
+          description: 'Direct cancel rejects',
+          expected: 'ACTION_NOT_ALLOWED',
+          actual: 'INVALID_STATE',
+        },
+        fix_command: 'adcp storyboard step https://x media_buy_seller/available_actions reject_direct_cancel --json',
+      },
+    ];
+
+    const out = extractFailingStepDiagnostics(result);
+
+    expect(out).toHaveLength(2);
+    expect(out.map(d => d.step_id)).toEqual(['reject_direct_extend', 'reject_direct_cancel']);
+    expect(out.map(d => (d.failed_validations_jsonb as any[])[0].actual)).toEqual([
+      'INVALID_REQUEST',
+      'INVALID_STATE',
+    ]);
+  });
+
+  it('does not attach failure attribution from a different slash-bearing storyboard', () => {
+    const sharedStep = {
+      step: 'Check agent capabilities',
+      task: 'get_adcp_capabilities',
+      passed: false,
+      duration_ms: 50,
+      error: 'Capability check failed',
+      observation_data: { scenario_payload: 'native' },
+    };
+    const result = resultWith([
+      {
+        track: 'creative',
+        status: 'partial',
+        duration_ms: 100,
+        scenarios: [
+          phase('creative/native_in_feed/phase_one', [sharedStep]),
+          phase('creative/canonical_supported_formats/phase_one', [{
+            ...sharedStep,
+            observation_data: { scenario_payload: 'canonical' },
+          }]),
+        ],
+      },
+    ]) as any;
+    result.failures = [
+      {
+        track: 'creative',
+        storyboard_id: 'creative/canonical_supported_formats',
+        step_id: 'check_canonical_caps',
+        step_title: 'Check agent capabilities',
+        task: 'get_adcp_capabilities',
+        error: 'Capability check failed',
+        validation: {
+          check: 'field_present',
+          description: 'Canonical formats advertised',
+          expected: 'formats',
+          actual: undefined,
+        },
+        fix_command: 'adcp storyboard step https://x creative/canonical_supported_formats check_canonical_caps --json',
+      },
+    ];
+
+    const out = extractFailingStepDiagnostics(result);
+
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({
+      storyboard_id: 'creative/native_in_feed',
+      phase_id: 'phase_one',
+      step_id: 'check_agent_capabilities',
+      response_jsonb: { scenario_payload: 'native' },
+    });
+    expect(out[0].failed_validations_jsonb).toBeUndefined();
+    expect(out[1]).toMatchObject({
+      storyboard_id: 'creative/canonical_supported_formats',
+      phase_id: 'phase_one',
+      step_id: 'check_canonical_caps',
+      response_jsonb: { scenario_payload: 'canonical' },
+    });
+    expect(out[1].failed_validations_jsonb).toEqual([
+      {
+        check: 'field_present',
+        description: 'Canonical formats advertised',
+        expected: 'formats',
+        actual: undefined,
+        passed: false,
+      },
+    ]);
   });
 
   it('is wired into complianceResultToDbInput', () => {

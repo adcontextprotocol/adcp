@@ -28,7 +28,7 @@ import {
   ConformanceNotConnectedError,
   StoryboardNotFoundError,
 } from '../../conformance/index.js';
-import type { StoryboardResult } from '@adcp/sdk/testing';
+import type { StoryboardResult, ValidationResult } from '@adcp/sdk/testing';
 import { createLogger } from '../../logger.js';
 
 const logger = createLogger('addie-conformance-tools');
@@ -79,6 +79,122 @@ function notConnectedHint(orgId: string): string {
   ].join('\n');
 }
 
+const MAX_VALIDATIONS_PER_STEP = 8;
+const MAX_VALIDATIONS_JSON_CHARS = 4000;
+const MAX_VALIDATION_STRING_CHARS = 200;
+
+type PublicValidationValue = string | number | boolean | null | '[undefined]' | '[redacted]';
+
+interface PublicValidationResult {
+  check: string;
+  passed: false;
+  description: string;
+  path?: string;
+  json_pointer?: string | null;
+  expected?: PublicValidationValue;
+  actual?: PublicValidationValue;
+  error?: PublicValidationValue;
+  remediation?: string;
+}
+
+interface FormattedFailedValidations {
+  json: string;
+  note?: string;
+}
+
+const SENSITIVE_VALIDATION_PATTERN = /(authorization|token|secret|password|cookie|credential|api[_-]?key|access[_-]?key|refresh[_-]?token)/i;
+const SENSITIVE_VALUE_PATTERN = /\b(?:sk_(?:live|test)_[A-Za-z0-9_]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{12,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/;
+const PROMPT_INJECTION_PATTERN = /(ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions|system\s+prompt|developer\s+message|tool\s+result|reveal\s+(?:the\s+)?(?:secret|prompt)|exfiltrate|<\s*system\b)/i;
+
+function cleanValidationText(value: string, max = MAX_VALIDATION_STRING_CHARS): string | '[redacted]' {
+  const cleaned = value
+    .replace(/[\r\n`\u0000-\u001f\u007f\u0085\u2028\u2029]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+  if (!cleaned) return '[redacted]';
+  if (
+    SENSITIVE_VALIDATION_PATTERN.test(cleaned) ||
+    SENSITIVE_VALUE_PATTERN.test(cleaned) ||
+    PROMPT_INJECTION_PATTERN.test(cleaned)
+  ) {
+    return '[redacted]';
+  }
+  return cleaned;
+}
+
+function sanitizeValidationString(value: string): PublicValidationValue {
+  return cleanValidationText(value);
+}
+
+function sanitizeValidationValue(value: unknown): PublicValidationValue {
+  if (value === undefined) return '[undefined]';
+  if (value === null || typeof value === 'boolean' || typeof value === 'number') return value;
+  if (typeof value === 'string') return sanitizeValidationString(value);
+  return '[redacted]';
+}
+
+function optionalSanitizedString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const sanitized = sanitizeValidationString(value);
+  return typeof sanitized === 'string' ? sanitized : undefined;
+}
+
+function safeAgentText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const sanitized = cleanValidationText(value, 160);
+  return sanitized === '[redacted]' ? sanitized : `"${sanitized}"`;
+}
+
+function hasOwn(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function compactValidationForOutput(validation: ValidationResult): PublicValidationResult {
+  const remediation = optionalSanitizedString(validation.remediation);
+  return {
+    check: safeAgentText(validation.check) ?? 'validation',
+    passed: false,
+    description: safeAgentText(validation.description) ?? 'Validation failed',
+    ...(validation.path && { path: safeAgentText(validation.path) ?? '[redacted]' }),
+    ...(validation.json_pointer !== undefined && { json_pointer: safeAgentText(validation.json_pointer) ?? '[redacted]' }),
+    ...(hasOwn(validation, 'expected') && { expected: sanitizeValidationValue(validation.expected) }),
+    ...(hasOwn(validation, 'actual') && { actual: sanitizeValidationValue(validation.actual) }),
+    ...(hasOwn(validation, 'error') && { error: typeof validation.error === 'string' ? safeAgentText(validation.error) ?? '[redacted]' : sanitizeValidationValue(validation.error) }),
+    ...(remediation && { remediation }),
+  };
+}
+
+function formatFailedValidations(validations: ValidationResult[] | undefined): FormattedFailedValidations | null {
+  if (!Array.isArray(validations)) return null;
+  const failed = validations.filter(validation => validation?.passed === false);
+  if (failed.length === 0) return null;
+
+  const compact = failed.slice(0, MAX_VALIDATIONS_PER_STEP).map(compactValidationForOutput);
+  let json: string;
+  let note: string | undefined;
+  try {
+    json = JSON.stringify(compact, null, 2);
+  } catch {
+    json = JSON.stringify([
+      {
+        check: 'validation_output',
+        passed: false,
+        description: 'Failed validation details could not be serialized for display',
+      },
+    ], null, 2);
+  }
+  if (json.length > MAX_VALIDATIONS_JSON_CHARS) {
+    json = JSON.stringify([{ truncated: true, reason: 'validation_output_too_large' }], null, 2);
+    note = `Validation details were truncated for chat display (${MAX_VALIDATIONS_JSON_CHARS} character cap).`;
+  }
+  if (failed.length > compact.length) {
+    const omitted = `${failed.length - compact.length} additional failed validation(s) omitted.`;
+    note = note ? `${note} ${omitted}` : omitted;
+  }
+  return { json, note };
+}
+
 function formatStoryboardResult(result: StoryboardResult): string {
   const overall = result.overall_passed ? '✅ PASSED' : '❌ FAILED';
   const lines = [
@@ -100,6 +216,16 @@ function formatStoryboardResult(result: StoryboardResult): string {
         if (errMsg) {
           const trimmed = errMsg.length > 240 ? errMsg.slice(0, 240) + '…' : errMsg;
           lines.push(`  - error: ${trimmed}`);
+        }
+        const failedValidations = formatFailedValidations(step.validations);
+        if (failedValidations) {
+          lines.push('  - failed validations:');
+          lines.push('    ```json');
+          lines.push(failedValidations.json.split('\n').map(line => `    ${line}`).join('\n'));
+          lines.push('    ```');
+          if (failedValidations.note) {
+            lines.push(`  - note: ${failedValidations.note}`);
+          }
         }
       }
     }

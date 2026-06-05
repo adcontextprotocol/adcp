@@ -49,6 +49,7 @@ authored_check_kinds:
   - envelope_field_pattern
   - field_value
   - field_value_or_absent
+  - field_contains
   - status_code
   - http_status
   - http_status_in
@@ -152,8 +153,9 @@ validation_result:
                               # envelope_field_present |
                               # envelope_field_absent |
                               # envelope_field_pattern | field_value |
-                              # field_value_or_absent | status_code | http_status |
-                              # http_status_in | error_code | on_401_require_header |
+                              # field_value_or_absent | field_contains |
+                              # status_code | http_status | http_status_in |
+                              # error_code | on_401_require_header |
                               # resource_equals_agent_url | any_of | refs_resolve |
                               # a2a_submitted_artifact | field_less_than |
                               # field_equals_context | upstream_traffic |
@@ -208,6 +210,12 @@ validation_result:
                               #   field_value          → expected value (any JSON type)
                               #   field_value_or_absent → value or allowed_values array
                               #                          from the storyboard validation
+                              #   field_contains       → value or allowed_values array
+                              #                          from the storyboard validation;
+                              #                          the path MAY include [*]
+                              #                          wildcard segments and the
+                              #                          check passes when any resolved
+                              #                          value matches
                               #   field_present        → the path that should resolve
                               #   field_absent         → null (the field must not be present)
                               #   field_pattern        → object { pattern } where pattern is
@@ -274,6 +282,9 @@ validation_result:
                               #   field_value          → actual value (any JSON type)
                               #   field_value_or_absent → actual value (any JSON type);
                               #                          null when the field was absent
+                              #   field_contains       → array of values resolved at
+                              #                          path; empty when the path
+                              #                          produced no terminal values
                               #   field_present        → null (the field was missing)
                               #                          or the observed non-object
                               #                          value
