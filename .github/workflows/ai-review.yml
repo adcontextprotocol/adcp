@@ -353,7 +353,8 @@ jobs:
           claude_args: |
             --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Bash(gh api repos/*/pulls/*),Bash(gh api repos/*/contents/*),Bash(gh api repos/*/issues/*),Read,Glob,Grep,Task"
             --max-turns 60
-            --model claude-opus-4-7
+            --model claude-opus-4-8
+            --effort high
 
       - name: Verify Argus posted a review
         id: verify
