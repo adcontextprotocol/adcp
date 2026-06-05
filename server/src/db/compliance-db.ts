@@ -50,8 +50,10 @@ export type ResolvedOwnerAuth =
 
 /**
  * Decode an HTTP Basic Authorization credential (base64(`username:password`))
- * into a typed shape. Returns null when the payload has no `:` separator —
- * callers should fall back to treating the raw token as bearer.
+ * into a typed shape. Returns null when the payload is not complete
+ * base64(`username:password`). The storyboard runner requires complete Basic
+ * credentials, and passing through malformed rows turns saved-credential
+ * issues into platform-looking heartbeat failures.
  */
 export function decodeBasicCredentials(
   token: string,
@@ -59,10 +61,13 @@ export function decodeBasicCredentials(
   const decoded = Buffer.from(token, 'base64').toString();
   const colonIndex = decoded.indexOf(':');
   if (colonIndex < 0) return null;
+  const username = decoded.slice(0, colonIndex);
+  const password = decoded.slice(colonIndex + 1);
+  if (!username || !password) return null;
   return {
     type: 'basic',
-    username: decoded.slice(0, colonIndex),
-    password: decoded.slice(colonIndex + 1),
+    username,
+    password,
   };
 }
 
@@ -1203,9 +1208,13 @@ export class ComplianceDatabase {
         if (row.auth_type === 'basic') {
           const basic = decodeBasicCredentials(token);
           if (basic) return basic;
+          logger.warn(
+            { agentUrl, orgId: row.organization_id },
+            'Ignoring malformed saved Basic auth credentials while resolving owner auth',
+          );
+        } else {
+          return { type: 'bearer', token };
         }
-
-        return { type: 'bearer', token };
       }
 
       if (row.oauth_access_token_encrypted && row.oauth_access_token_iv) {

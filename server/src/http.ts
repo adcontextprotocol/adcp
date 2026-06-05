@@ -154,6 +154,14 @@ const __dirname = path.dirname(__filename);
 
 const logger = createLogger('http-server');
 
+function isPendingWorkOSMembershipError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return candidate.code === 'cannot_reactivate_pending_organization_membership' ||
+    (typeof candidate.message === 'string' &&
+      candidate.message.includes('Pending organization memberships cannot be reactivated'));
+}
+
 /**
  * Consecutive failed DB health probes on this machine. A single transient
  * connect timeout — common during a rolling deploy or a Managed Postgres
@@ -7886,9 +7894,16 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         const memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
           organizationId: organization_id,
+          statuses: ['active', 'inactive', 'pending'],
         });
 
         if (memberships.data.length > 0) {
+          if (memberships.data.some(m => m.status === 'pending')) {
+            return res.status(409).json({
+              error: 'Pending invitation exists',
+              message: 'You already have a pending invitation to this organization. Accept the invitation instead of requesting to join again.',
+            });
+          }
           return res.status(400).json({
             error: 'Already a member',
             message: 'You are already a member of this organization',
@@ -7919,11 +7934,22 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             });
             const roleSlug = hasAdmin ? 'member' : 'owner';
 
-            const membership = await workos!.userManagement.createOrganizationMembership({
-              userId: user.id,
-              organizationId: organization_id,
-              roleSlug,
-            });
+            let membership: any;
+            try {
+              membership = await workos!.userManagement.createOrganizationMembership({
+                userId: user.id,
+                organizationId: organization_id,
+                roleSlug,
+              });
+            } catch (membershipError) {
+              if (isPendingWorkOSMembershipError(membershipError)) {
+                return res.status(409).json({
+                  error: 'Pending invitation exists',
+                  message: 'You already have a pending invitation to this organization. Accept the invitation instead of requesting to join again.',
+                });
+              }
+              throw membershipError;
+            }
 
             // Get org name for response
             let orgName = 'Organization';
@@ -8001,14 +8027,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           logger.warn({ err, userId: user.id }, 'Failed to get user details from WorkOS');
         }
 
-        // Create the join request
-        const request = await joinRequestDb.createRequest({
+        const joinRequestInput = {
           workos_user_id: user.id,
           user_email: user.email,
           first_name: firstName,
           last_name: lastName,
           workos_organization_id: organization_id,
-        });
+        };
 
         // Get org name for response
         let orgName = 'Organization';
@@ -8019,25 +8044,30 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           // Org may not exist
         }
 
-        logger.info({
-          userId: user.id,
-          orgId: organization_id,
-          requestId: request.id,
-        }, 'Join request created');
+        const createAndAuditJoinRequest = async () => {
+          const request = await joinRequestDb.createRequest(joinRequestInput);
 
-        // Record audit log for join request
-        await orgDb.recordAuditLog({
-          workos_organization_id: organization_id,
-          workos_user_id: user.id,
-          action: 'join_request_created',
-          resource_type: 'join_request',
-          resource_id: request.id,
-          details: {
-            user_email: user.email,
-            first_name: firstName,
-            last_name: lastName,
-          },
-        });
+          logger.info({
+            userId: user.id,
+            orgId: organization_id,
+            requestId: request.id,
+          }, 'Join request created');
+
+          await orgDb.recordAuditLog({
+            workos_organization_id: organization_id,
+            workos_user_id: user.id,
+            action: 'join_request_created',
+            resource_type: 'join_request',
+            resource_id: request.id,
+            details: {
+              user_email: user.email,
+              first_name: firstName,
+              last_name: lastName,
+            },
+          });
+
+          return request;
+        };
 
         // Check if org has any existing members
         const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
@@ -8064,16 +8094,27 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             logger.info({
               userId: user.id,
               orgId: organization_id,
-              requestId: request.id,
               domain: userDomain,
             }, 'Ownerless org with matching domain — auto-approving join request as owner');
 
             // Add user as owner
-            await workos!.userManagement.createOrganizationMembership({
-              userId: user.id,
-              organizationId: organization_id,
-              roleSlug: 'owner',
-            });
+            try {
+              await workos!.userManagement.createOrganizationMembership({
+                userId: user.id,
+                organizationId: organization_id,
+                roleSlug: 'owner',
+              });
+            } catch (membershipError) {
+              if (isPendingWorkOSMembershipError(membershipError)) {
+                return res.status(409).json({
+                  error: 'Pending invitation exists',
+                  message: 'You already have a pending invitation to this organization. Accept the invitation instead of requesting to join again.',
+                });
+              }
+              throw membershipError;
+            }
+
+            const request = await createAndAuditJoinRequest();
 
             // Mark join request as approved
             await joinRequestDb.approveRequest(request.id, user.id);
@@ -8113,6 +8154,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             orgDomains,
           }, 'Ownerless org but domain mismatch — treating as normal join request');
         }
+
+        const request = await createAndAuditJoinRequest();
 
         // Org has members — notify admins via Slack group DM (fire-and-forget)
         (async () => {

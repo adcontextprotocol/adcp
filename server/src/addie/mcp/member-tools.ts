@@ -28,6 +28,11 @@ import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { isUuid } from '../../utils/uuid.js';
 import { neutralizeAndTruncate } from './untrusted-input.js';
 import { coerceStringArray } from './input-coercion.js';
+import {
+  isCompleteStoredBasicCredential,
+  normalizeBasicAuthForStorage,
+} from '../../utils/basic-auth-credentials.js';
+export { normalizeBasicAuthForStorage } from '../../utils/basic-auth-credentials.js';
 import { createEscalation } from '../../db/escalation-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import {
@@ -393,7 +398,7 @@ interface ResolvedAgentAuth {
  * explicit token > saved token > OAuth token > none.
  * Also handles legacy URL redirect.
  */
-async function resolveAgentAuth(
+export async function resolveAgentAuth(
   agentUrl: string,
   organizationId: string | undefined,
   explicitToken?: string,
@@ -447,7 +452,14 @@ async function resolveAgentAuth(
     try {
       const savedInfo = await agentContextDb.getAuthInfoByOrgAndUrl(organizationId, resolvedUrl);
       if (savedInfo) {
-        return { authToken: savedInfo.token, authType: savedInfo.authType, source: 'saved', resolvedUrl };
+        if (savedInfo.authType === 'basic' && !isCompleteStoredBasicCredential(savedInfo.token)) {
+          logger.warn(
+            { agentUrl: resolvedUrl, organizationId },
+            'Addie: ignoring incomplete saved Basic auth credentials while resolving agent auth',
+          );
+        } else {
+          return { authToken: savedInfo.token, authType: savedInfo.authType, source: 'saved', resolvedUrl };
+        }
       }
     } catch (error) {
       logger.debug({ error, agentUrl: resolvedUrl }, 'Could not lookup saved auth token');
@@ -517,26 +529,6 @@ function validateAgentUrl(agentUrl: string): string | null {
 }
 
 /**
- * Normalize a Basic auth_token submitted to `save_agent` into the base64
- * `user:password` form that gets persisted. Accepts either raw `user:password`
- * or the already-base64-encoded form; the `:` character is not in the base64
- * alphabet, so its presence unambiguously identifies the raw form. Returns
- * `{ ok: true, stored }` on success and `{ ok: false }` when the value is
- * neither shape (used to reject at the save_agent boundary so a malformed
- * credential never lands in the DB).
- *
- * Exported for unit testing.
- */
-export function normalizeBasicAuthForStorage(token: string): { ok: true; stored: string } | { ok: false } {
-  if (token.includes(':')) {
-    return { ok: true, stored: Buffer.from(token, 'utf8').toString('base64') };
-  }
-  const decoded = Buffer.from(token, 'base64').toString('utf8');
-  if (!decoded.includes(':')) return { ok: false };
-  return { ok: true, stored: token };
-}
-
-/**
  * Build auth options for the SDK from resolved auth. Exported for unit testing.
  */
 export function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined {
@@ -545,7 +537,7 @@ export function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; 
   if (resolved.authType === 'basic') {
     const decoded = Buffer.from(resolved.authToken, 'base64').toString();
     const colonIndex = decoded.indexOf(':');
-    if (colonIndex >= 0) {
+    if (isCompleteStoredBasicCredential(resolved.authToken)) {
       return { type: 'basic', username: decoded.slice(0, colonIndex), password: decoded.slice(colonIndex + 1) };
     }
     // Stored basic credential is malformed — likely a legacy row saved

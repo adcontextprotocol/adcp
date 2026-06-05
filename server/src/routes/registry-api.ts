@@ -110,6 +110,7 @@ import { adaptAuthForSdk, type SdkAuth } from "../services/sdk-auth-adapter.js";
 import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credentials-input.js";
 import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
 import { AgentContextDatabase, validateAuthTokenChars } from "../db/agent-context-db.js";
+import { normalizeBasicAuthForStorage } from "../utils/basic-auth-credentials.js";
 import { getRequestLog, getRequestCount, logOutboundRequest } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
@@ -6017,6 +6018,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(400).json({ error: `Invalid auth_type. Valid types: ${validAuthTypes.join(", ")}` });
       }
       const resolvedAuthType = validAuthTypes.includes(auth_type) ? auth_type : "bearer";
+      let authTokenToStore = auth_token;
+      if (authTokenToStore && resolvedAuthType === "basic") {
+        const normalized = normalizeBasicAuthForStorage(authTokenToStore);
+        if (!normalized.ok) {
+          return res.status(400).json({
+            error: 'Basic auth_token must be "user:password" or base64("user:password") with non-empty username and password',
+          });
+        }
+        authTokenToStore = normalized.stored;
+      }
 
       // Verify ownership and get org ID in a single query
       const orgResult = await query(
@@ -6047,8 +6058,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
 
       // Save auth token if provided
-      if (auth_token) {
-        await agentContextDb.saveAuthToken(context.id, auth_token, resolvedAuthType);
+      if (authTokenToStore) {
+        await agentContextDb.saveAuthToken(context.id, authTokenToStore, resolvedAuthType);
       }
 
       // Re-probe with the freshly-saved credentials so the stored `oauth_required`
@@ -6059,7 +6070,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // Refresh failure does NOT fail /connect: the credentials are saved
       // correctly either way, and a follow-up manual refresh can recover.
       let refreshed: Awaited<ReturnType<typeof crawler.refreshSingleAgent>> | null = null;
-      if (auth_token) {
+      if (authTokenToStore) {
         try {
           const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
           const resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `connect:${agentUrl}` });
@@ -6074,7 +6085,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       res.json({
         connected: true,
-        has_auth: !!auth_token || context.has_auth_token,
+        has_auth: !!authTokenToStore || context.has_auth_token,
         agent_context_id: context.id,
         ...(refreshed ? { refresh: refreshed } : {}),
       });
