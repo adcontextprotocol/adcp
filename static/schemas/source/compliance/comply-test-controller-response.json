@@ -216,7 +216,7 @@
     },
     {
       "title": "ForcedDirectiveSuccess",
-      "description": "A force_create_media_buy_arm directive was registered. The directive shapes the next create_media_buy call from this caller's authenticated sandbox account into the requested arm, then is consumed. No entity transitioned — there is no media buy yet — so this branch carries 'forced' rather than previous_state/current_state.",
+      "description": "A forced response-arm directive was registered. The directive shapes the next matching operation call from this caller's authenticated sandbox account into the requested arm, then is consumed. No entity transitioned yet, so this branch carries 'forced' rather than previous_state/current_state.",
       "type": "object",
       "properties": {
         "success": {
@@ -225,7 +225,7 @@
         },
         "forced": {
           "type": "object",
-          "description": "Echo of the registered directive. The next create_media_buy call from this sandbox account will return the named arm.",
+          "description": "Echo of the registered directive. The next matching operation call from this sandbox account will return the named arm.",
           "properties": {
             "arm": {
               "type": "string",
@@ -233,7 +233,7 @@
                 "submitted",
                 "input-required"
               ],
-              "description": "Arm the seller will emit on the next create_media_buy response."
+              "description": "Arm the seller will emit on the next forced operation response."
             },
             "task_id": {
               "type": "string",

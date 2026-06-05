@@ -66,13 +66,17 @@ Sellers that implement compliance test controller MUST:
         "enum": [
           "list_scenarios",
           "force_creative_status",
+          "force_creative_purge",
           "force_account_status",
           "force_media_buy_status",
           "force_create_media_buy_arm",
+          "force_get_products_arm",
+          "force_get_signals_arm",
           "force_task_completion",
           "force_session_status",
           "simulate_delivery",
           "simulate_budget_spend",
+          "seed_account",
           "seed_product",
           "seed_pricing_option",
           "seed_creative",
@@ -88,7 +92,7 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} — task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?}. seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, tool?, purpose_filter?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?}. seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
       }
     },
     "required": ["scenario"]
@@ -222,9 +226,88 @@ The submitted-arm wire shape is otherwise implementation-dependent: most sellers
 
 **Consumption and idempotency.** The directive is keyed to the caller's authenticated sandbox account (account + principal pair) and is consumed by the next `create_media_buy` call from that account. Subsequent calls without a fresh directive return the seller's default arm. Buyer-side `idempotency_key` semantics are unchanged: if the caller replays a `create_media_buy` request that already consumed a directive, the seller MUST replay the cached response (the request idempotency cache wins) and MUST NOT re-evaluate against the now-empty directive slot. Sellers MUST NOT match a directive against a `create_media_buy` call from a different account or principal, even within the same transport connection. A second `force_create_media_buy_arm` call before the directive is consumed overwrites the prior one.
 
+### `force_get_products_arm` / `force_get_signals_arm`
+
+Shape the next curated discovery call from the caller's authenticated sandbox
+account (account + principal pair) into a submitted task envelope.
+`force_get_products_arm` applies only to `get_products` with
+`buying_mode: "brief"` or `"refine"`.
+`force_get_signals_arm` applies only to `get_signals` with
+`discovery_mode: "brief"` (or omitted, where brief is the default). Wholesale
+feed reads are synchronous feed access and MUST NOT consume these directives or
+return the Submitted arm solely because a directive exists.
+
+The directive exists for the same reason as `force_create_media_buy_arm`:
+buyers cannot reliably trigger async discovery from request shape alone, but
+conformance needs a deterministic way to prove clients and sellers honor the
+task-result path. The submitted envelope carries only `status` and `task_id`
+(plus optional advisory fields such as `message`); terminal `products[]`,
+`proposals[]`, or `signals[]` land on task completion through `get_task_status`
+(legacy `tasks/get`) and any registered push notification.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `arm` | `submitted` | Yes | Target response arm for the next matching discovery call. |
+| `task_id` | string | When `arm` = `submitted` | Deterministic task handle (max 128 chars) the seller MUST emit verbatim on the submitted envelope and MUST accept on subsequent polling. |
+| `message` | string | No | Human-readable explanation surfaced verbatim on the submitted discovery response. Plain text, max 2000 characters. |
+
+**Examples:**
+
+```json
+{
+  "scenario": "force_get_products_arm",
+  "account": {
+    "brand": {
+      "domain": "acmeoutdoor.example"
+    },
+    "operator": "pinnacle-agency.example",
+    "sandbox": true
+  },
+  "params": {
+    "arm": "submitted",
+    "task_id": "task_async_products_acme_q3",
+    "message": "Custom product curation queued; typical turnaround 10 minutes"
+  }
+}
+```
+
+```json
+{
+  "scenario": "force_get_signals_arm",
+  "account": {
+    "brand": {
+      "domain": "novamotors.example"
+    },
+    "operator": "pinnacle-agency.example",
+    "sandbox": true
+  },
+  "params": {
+    "arm": "submitted",
+    "task_id": "task_async_signals_nova_ev",
+    "message": "Signal discovery queued; typical turnaround 10 minutes"
+  }
+}
+```
+
+**Response.** Both scenarios return the same `ForcedDirectiveSuccess` shape as
+`force_create_media_buy_arm`, carrying `forced.arm` and `forced.task_id`.
+
+**Consumption and idempotency.** The directive is keyed to the caller's
+authenticated sandbox account (account + principal pair) and consumed by the
+next matching discovery call from that same account. The seller MUST NOT match a
+product directive against `get_signals`, a signal directive against
+`get_products`, a brief/refine directive against wholesale mode, or any
+directive against a different account or principal. A second directive for the
+same operation before consumption overwrites the prior directive. Request
+idempotency replay semantics are unchanged: if the discovery request that
+consumed the directive is replayed, the seller returns the cached submitted
+envelope and does not consume a fresh directive.
+
 ### `force_task_completion`
 
-Resolves a previously-submitted async task to `completed` with a buyer-supplied result payload. The companion to `force_create_media_buy_arm`: that scenario drives the seller into the submitted envelope; this one closes the loop by transitioning the task store entry to `completed` and stamping the registered result. The buyer observes completion via the seller's push notification to `push_notification_config.url` (the canonical 3.0 delivery path for completion payloads) and via subsequent [`tasks/get`](/docs/building/by-layer/L3/async-operations#polling-for-submitted-operations) calls reporting `status: "completed"`. A typed result projection on the polling response is tracked for 3.1 in [#3123](https://github.com/adcontextprotocol/adcp/issues/3123).
+Resolves a previously-submitted async task to `completed` with a buyer-supplied result payload. The companion to the `force_*_arm` scenarios: those scenarios drive the seller into a submitted envelope; this one closes the loop by transitioning the task store entry to `completed` and stamping the registered result. The buyer observes completion via the seller's push notification to `push_notification_config.url` and via subsequent `get_task_status` calls reporting `status: "completed"`. When the caller requests `include_result: true`, `get_task_status` returns the typed terminal result payload that matches the original async operation.
 
 The submitted → completed lifecycle is otherwise non-deterministic — real task completions ride on out-of-band signals (IO countersignature, batch processor cron, governance human review). Storyboards cannot wait. This scenario lets a runner pin the completion deterministically immediately after registering the directive, so the buyer-side polling assertion fires on the same wire shape buyers will observe in production.
 

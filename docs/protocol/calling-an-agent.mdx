@@ -73,13 +73,21 @@ A mutating tool can return one of three shapes:
 
 AdCP task state is an **application-layer** contract. MCP and A2A may wrap, stream, or transport an AdCP response, but their native task mechanisms do not replace the AdCP `task_id`, status values, webhook payloads, or polling/reconciliation surfaces. A transport task can complete after delivering an AdCP response whose payload still says `status: 'submitted'`.
 
-When you see `status: 'submitted'`, the work is **not** complete. In 3.x, poll via the legacy AdCP `tasks/get` surface using the returned `task_id`. Sellers MAY also advertise the non-colliding `get_task_status` alias; callers MAY use that alias when it appears in discovery. Both AdCP polling names use the same snake_case payload shape. Do not confuse either AdCP polling shape with transport-native MCP/A2A `tasks/get`, which uses the transport's own task wire shape.
+When you see `status: 'submitted'`, the work is **not** complete. In 3.x, poll via the legacy AdCP `tasks/get` surface using the returned `task_id`. Sellers MAY also advertise the non-colliding `get_task_status` alias; callers MAY use that alias when it appears in discovery. Both AdCP polling names use the same snake_case payload shape, including the optional `account` scope for multi-account credentials. Do not confuse either AdCP polling shape with transport-native MCP/A2A `tasks/get`, which uses the transport's own task wire shape.
 
 Pass `include_result: true` when polling so the seller includes the completion payload once status transitions to `completed`:
 
 ```json
 // tasks/get request (same payload as optional get_task_status alias)
-{ "task_id": "task_456", "include_result": true }
+{
+  "task_id": "task_456",
+  "include_result": true,
+  "account": {
+    "brand": { "domain": "acmeoutdoor.example" },
+    "operator": "pinnacle-agency.example",
+    "sandbox": true
+  }
+}
 
 // tasks/get response — completed
 {
