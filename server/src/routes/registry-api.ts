@@ -1170,7 +1170,7 @@ registry.registerPath({
   path: "/api/adagents/create",
   operationId: "createAdagents",
   summary: "Generate adagents.json",
-  description: "Generate a valid adagents.json file from a list of authorized agents.",
+  description: "Generate a valid adagents.json file from authorized agents and/or catalog content. `authorized_agents` may be empty for a catalog-only community mirror that publishes formats/properties/placements for a platform that has not adopted AdCP.",
   tags: ["Validation Tools"],
   request: {
     body: {
@@ -4219,10 +4219,27 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         });
       }
 
-      if (authorized_agents.length === 0) {
+      // An empty authorized_agents array is valid for a catalog-only community
+      // mirror — a file that publishes catalog content (formats/properties/
+      // placements) for a platform that has not adopted AdCP, where there is no
+      // sales agent to authorize. Reject only when the file would carry neither
+      // sales authorization nor catalog content.
+      //
+      // Scope: this generator accepts formats/properties/placements as catalog
+      // content — the shapes the SDK's buildCommunityMirrorAdagents() emits. The
+      // adagents.json schema and the proposed-file validator additionally accept
+      // collections/signals as catalog content (e.g. crawled data-provider
+      // files), but signals-/collections-only mirrors are out of scope for this
+      // endpoint's request body and intentionally not counted here.
+      const hasCatalogContent =
+        (Array.isArray(properties) && properties.length > 0) ||
+        (Array.isArray(formats) && formats.length > 0) ||
+        (Array.isArray(placements) && placements.length > 0);
+      if (authorized_agents.length === 0 && !hasCatalogContent) {
         return res.status(400).json({
           success: false,
-          error: "At least one authorized agent is required",
+          error:
+            "Provide at least one authorized agent, or catalog content (formats, properties, or placements) for a catalog-only community mirror",
           timestamp: new Date().toISOString(),
         });
       }

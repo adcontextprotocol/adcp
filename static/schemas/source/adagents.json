@@ -224,7 +224,7 @@
         },
         "authorized_agents": {
           "type": "array",
-          "description": "Array of sales agents authorized to make inventory from this file available to buyers. Authorization can be scoped to specific properties, collections, countries, and time windows, with optional delegation metadata indicating whether the path is direct, delegated, or network-mediated.",
+          "description": "Array of sales agents authorized to make inventory from this file available to buyers. Authorization can be scoped to specific properties, collections, countries, and time windows, with optional delegation metadata indicating whether the path is direct, delegated, or network-mediated. MAY be empty (`[]`) for a catalog-only community mirror — a file that publishes `formats`/`properties`/`placements` (with `catalog_etag`) for a platform that has not adopted AdCP, where there is no sales agent to authorize (see `catalog_etag`, `formats`, `superseded_by`). An empty array asserts *no sales authorization*: validators MUST NOT read it as deny-all, authorize-all, or a revocation, MUST NOT treat its presence as an error, and MUST still consume the catalog arrays.",
           "items": {
             "discriminator": {
               "propertyName": "authorization_type"
@@ -635,8 +635,7 @@
                 ]
               }
             ]
-          },
-          "minItems": 1
+          }
         },
         "last_updated": {
           "type": "string",
@@ -713,7 +712,20 @@
       "required": [
         "authorized_agents"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "$comment": "A file MUST carry either sales authorization or catalog content. `authorized_agents` MAY be empty ([]) for a catalog-only community mirror that publishes formats/properties/placements/collections/signals (see catalog_etag, formats, superseded_by); a file with neither sales authorization nor non-empty catalog content is rejected. Each arm asserts non-emptiness directly so the guard does not depend on the per-field minItems of the catalog arrays.",
+          "anyOf": [
+            { "properties": { "authorized_agents": { "minItems": 1 } } },
+            { "properties": { "formats": { "minItems": 1 } }, "required": ["formats"] },
+            { "properties": { "properties": { "minItems": 1 } }, "required": ["properties"] },
+            { "properties": { "placements": { "minItems": 1 } }, "required": ["placements"] },
+            { "properties": { "collections": { "minItems": 1 } }, "required": ["collections"] },
+            { "properties": { "signals": { "minItems": 1 } }, "required": ["signals"] }
+          ]
+        }
+      ]
     }
   ],
   "examples": [

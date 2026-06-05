@@ -349,16 +349,6 @@
       "description": "Ephemeral full-screen story surface"
     }
   },
-  "authorized_agents": [
-    {
-      "url": "https://creative.adcontextprotocol.org/translated/meta/agent",
-      "authorized_for": "Community-registry advisory only \u2014 not a Meta-authorized sales path. Routes buyers to the Meta-direct API. Once Meta publishes their own adagents.json at facebook.com/.well-known/adagents.json with real authorized_agents[], this file deprecates.",
-      "authorization_type": "property_tags",
-      "property_tags": [
-        "meta_network"
-      ],
-      "delegation_type": "ad_network"
-    }
-  ],
+  "authorized_agents": [],
   "last_updated": "2026-05-17T00:00:00Z"
 }

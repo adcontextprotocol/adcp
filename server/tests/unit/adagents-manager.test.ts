@@ -1884,6 +1884,52 @@ describe('AdAgentsManager', () => {
       expect(result.valid).toBe(false);
       expect(result.errors.some(e => e.field.includes('.signing_keys') && e.message.includes('kid'))).toBe(true);
     });
+
+    it('accepts an empty authorized_agents array when catalog content is present (catalog-only mirror)', () => {
+      const result = manager.validateProposed({
+        agents: [],
+        catalogEtag: 'meta-community-2026-06-04',
+        properties: [
+          {
+            property_id: 'example_site',
+            property_type: 'website',
+            name: 'Example Site',
+            identifiers: [{ type: 'domain', value: 'example.com' }],
+            publisher_domain: 'example.com',
+          },
+        ] as any,
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+      // The "no authorized agents" advisory must not fire for a catalog-only mirror.
+      expect(result.warnings.some(w => w.field === 'authorized_agents')).toBe(false);
+    });
+
+    it('suppresses the no-agents warning for a formats-only catalog mirror', () => {
+      const result = manager.validateProposed({
+        agents: [],
+        catalogEtag: 'meta-community-2026-06-04',
+        formats: [
+          {
+            format_option_id: 'example_image',
+            display_name: 'Example Image',
+            format_kind: 'image',
+          },
+        ] as any,
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.field === 'authorized_agents')).toBe(false);
+    });
+
+    it('warns when authorized_agents is empty and there is no catalog content', () => {
+      const result = manager.validateProposed({ agents: [] });
+
+      // A file carrying neither sales authorization nor catalog content is
+      // structurally valid but meaningless, so it warns (not errors).
+      expect(result.warnings.some(w => w.field === 'authorized_agents')).toBe(true);
+    });
   });
 
   describe('Signals Support', () => {
