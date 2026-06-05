@@ -4473,7 +4473,7 @@ paths:
     post:
       operationId: createAdagents
       summary: Generate adagents.json
-      description: Generate a valid adagents.json file from a list of authorized agents.
+      description: Generate a valid adagents.json file from authorized agents and/or catalog content. `authorized_agents` may be empty for a catalog-only community mirror that publishes formats/properties/placements for a platform that has not adopted AdCP.
       tags:
         - Validation Tools
       requestBody:

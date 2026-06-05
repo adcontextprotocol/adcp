@@ -1347,13 +1347,24 @@ export class AdAgentsManager {
       }
     });
 
-    // Check if no agents are defined
+    // An empty authorized_agents array is the expected shape for a catalog-only
+    // community mirror (formats/properties/placements/collections/signals
+    // present). Only warn when the file carries neither sales authorization nor
+    // catalog content.
     if (data.authorized_agents.length === 0) {
-      result.warnings.push({
-        field: 'authorized_agents',
-        message: 'No authorized agents defined',
-        suggestion: 'Add at least one authorized agent'
-      });
+      const hasCatalogContent =
+        (Array.isArray(data.formats) && data.formats.length > 0) ||
+        (Array.isArray(data.properties) && data.properties.length > 0) ||
+        (Array.isArray(data.placements) && data.placements.length > 0) ||
+        (Array.isArray(data.collections) && data.collections.length > 0) ||
+        (Array.isArray(data.signals) && data.signals.length > 0);
+      if (!hasCatalogContent) {
+        result.warnings.push({
+          field: 'authorized_agents',
+          message: 'No authorized agents and no catalog content',
+          suggestion: 'Add at least one authorized agent, or catalog content (formats/properties/placements) for a catalog-only community mirror'
+        });
+      }
     }
 
     // Validate signals content if present

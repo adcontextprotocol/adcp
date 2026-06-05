@@ -254,7 +254,7 @@ Common internal cases:
 
 These internal mappings can produce public `placements[]` entries, but the mapping details themselves remain out of `adagents.json`.
 
-**`authorized_agents`** *(required)*: Array of authorized sales agents
+**`authorized_agents`** *(required)*: Array of authorized sales agents. MAY be empty (`[]`) for a **catalog-only community mirror** — a file that publishes `formats`/`properties`/`placements` (typically with a `catalog_etag`) for a platform that has not adopted AdCP, where there is no sales agent to authorize (see [Community mirror lifecycle](#community-mirror-lifecycle)). An empty array asserts **no sales authorization**: validators MUST NOT read it as deny-all, authorize-all, or a revocation, MUST NOT treat its presence as an error, and MUST still consume the catalog arrays. A file with neither sales authorization nor catalog content is invalid. The per-entry fields below apply only when the array is non-empty:
   - **`url`** *(required)*: Agent's API endpoint URL
   - **`authorized_for`** *(required)*: Human-readable authorization description
   - **`authorization_type`** *(required)*: Discriminator naming which selector field carries the scope. One of `property_ids`, `property_tags`, `inline_properties`, `publisher_properties` (for properties) or `signal_ids`, `signal_tags` (for signal providers). The corresponding selector field must be present and non-empty — see [Authorization Patterns](#authorization-patterns) below.
@@ -280,6 +280,18 @@ These internal mappings can produce public `placements[]` entries, but the mappi
   - **`publisher_id`** *(optional)*: Publisher's identifier at this agent (for lookup)
 
 This field enables **governance agent discovery** - buyers can find which agents have compliance, sustainability, or quality data for properties without querying every possible agent.
+
+## Community mirror lifecycle
+
+When a platform has not adopted AdCP (e.g., a walled garden that hasn't published its own `adagents.json`), the AdCP community registry can publish a **catalog-only community mirror** on the platform's behalf — typically hosted at `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json`. A mirror exists to publish discovery metadata (`formats`, `properties`, `placements`) so buyers can reason about the platform's inventory shapes before the platform self-adopts.
+
+A community mirror:
+
+- Sets **`authorized_agents: []`** — there is no sales agent to authorize, and the mirror MUST NOT fabricate one. An empty array asserts *no sales authorization*; validators MUST NOT read it as deny-all, authorize-all, or a revocation, and MUST still consume the catalog arrays.
+- MUST carry at least one non-empty catalog array (`formats`/`properties`/`placements`/`collections`/`signals`) and SHOULD carry a **`catalog_etag`** cache validator (the validator enforces the array, not `catalog_etag`). A file with neither sales authorization nor catalog content is invalid.
+- Sets **`superseded_by`** once the platform publishes its own authoritative `adagents.json`. Buyer SDKs encountering `superseded_by` SHOULD re-fetch from the named URL rather than serving the stale mirror. The mirror SHOULD continue serving with `superseded_by` set for at least one minor release so buyer caches keyed on the mirror URL get an explicit migration signal.
+
+See the worked example at [`static/examples/adagents/community/meta.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/examples/adagents/community/meta.json).
 
 ## URL Reference Pattern
 
