@@ -5629,6 +5629,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   }
 
   const now = new Date().toISOString();
+  const affectedPackageIds = new Set<string>();
 
   // Increment revision once before mutations
   mb.revision += 1;
@@ -5727,6 +5728,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         pkg.canceledAt = now;
         pkg.canceledBy = 'buyer';
         pkg.cancellationReason = (update as PackageUpdateExt).cancellation_reason;
+        affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_canceled', summary: `Package ${pkgId} canceled`, packageId: pkgId });
         continue;
       }
@@ -5734,6 +5736,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       // Package pause/resume
       if (update.paused !== undefined && update.paused !== pkg.paused) {
         pkg.paused = update.paused;
+        affectedPackageIds.add(pkgId);
         const action = update.paused ? 'package_paused' : 'package_resumed';
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action, summary: `Package ${pkgId} ${update.paused ? 'paused' : 'resumed'}`, packageId: pkgId });
       }
@@ -5744,6 +5747,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         }
         const oldBudget = pkg.budget;
         pkg.budget = update.budget;
+        affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'budget_updated', summary: `Package ${pkgId} budget changed from ${oldBudget} to ${update.budget}`, packageId: pkgId });
       }
 
@@ -5752,6 +5756,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
           warnings.push(`Invalid end_time for package ${pkgId}: "${update.end_time}". Skipped.`);
         } else {
           pkg.endTime = update.end_time;
+          affectedPackageIds.add(pkgId);
         }
       }
 
@@ -5765,6 +5770,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         pkg.targeting = targetingResult.targeting;
         const changed = JSON.stringify(before ?? null) !== JSON.stringify(pkg.targeting ?? null);
         if (changed) {
+          affectedPackageIds.add(pkgId);
           const action = pkg.targeting ? 'targeting_updated' : 'targeting_cleared';
           const summary = pkg.targeting ? `Package ${pkgId} targeting updated` : `Package ${pkgId} targeting cleared`;
           mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action, summary, packageId: pkgId });
@@ -5778,6 +5784,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       if (creativeAssignments !== undefined) {
         const creativeIds = creativeAssignments.map(a => a.creative_id);
         pkg.creativeAssignments = creativeIds;
+        affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'creative_assignments_updated', summary: `Package ${pkgId} creative assignments replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
       if (update.creatives !== undefined) {
@@ -5790,6 +5797,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
           now,
         );
         pkg.creativeAssignments = creativeIds;
+        affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'inline_creatives_updated', summary: `Package ${pkgId} inline creatives replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
     }
@@ -5851,6 +5859,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         targeting: targetingResult.targeting,
       };
       mb.packages.push(newPkg);
+      affectedPackageIds.add(pkgId);
       mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_added', summary: `New package ${pkgId} added (product: ${productId})`, packageId: pkgId });
     }
     const updatedAllowedActions = deriveProductAllowedActionsForPackages(mb.packages, productMap);
@@ -5879,6 +5888,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
     }),
   }));
+  const affectedPackages = updatedPackages.filter(pkg => affectedPackageIds.has(pkg.package_id));
   // `media_buy_status` is the canonical 3.1 body field (#4895); legacy
   // body `status: MediaBuyStatus` removed in 3.2 (#4906).
   const result = {
@@ -5892,7 +5902,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     ...(mb.canceledAt && {
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
     }),
-    affected_packages: updatedPackages,
+    affected_packages: affectedPackages,
     packages: updatedPackages,
     ...(warnings.length > 0 && { warnings }),
     ...(req.context !== undefined && { context: req.context }),
