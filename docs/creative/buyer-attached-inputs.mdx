@@ -14,7 +14,7 @@ The boundary is deliberate and matches the rest of the protocol: capabilities ar
 | | Enforced capability input | Advisory context pointer |
 |---|---|---|
 | **Examples** | `transformer_id`, `config` | `signal_ref` ([#5240](https://github.com/adcontextprotocol/adcp/issues/5240)), `evaluator` ([#5241](https://github.com/adcontextprotocol/adcp/issues/5241)), rights / provenance pointers |
-| **Status** | Normative now | Rights/provenance advisory now; signal/evaluator are RFCs |
+| **Status** | Normative now | Rights/provenance advisory now; signal/evaluator are experimental |
 | **What it does** | Selects and parameterizes the build; the agent MUST validate it | Informs or steers production toward buyer context |
 | **On bad/unknown input** | Reject with a field-attributed error | Does not hard-block at the AdCP layer |
 | **Where enforcement lives** | The creative agent, at build time | Elsewhere — the credential layer, trafficking-compatibility checks, or the seller's own verification |
@@ -65,9 +65,9 @@ Buyer-attached provenance follows the same [seller-publishes / buyer-represents 
 **Settled position vs. [#5261](https://github.com/adcontextprotocol/adcp/issues/5261).** A proposal to treat buyer-attached `rights_tokens[]` as a hard creative-agent gate is resolved against this page. Hard-gating at the buyer pointer re-invents the `generation_credentials` enforcement that already ships at the synthesis layer plus `verification_url` live revocation at the serve layer. The pointer stays advisory; enforcement stays in the credential layer. The one real gap is structural, not a missing gate: `voice_synthesis` carries `provider` / `voice_id` / `settings` but no `rights_id` back-reference today. Adding that back-reference is a forward item — it would extend the advisory/audit trail, not introduce a build-time gate.
 </Note>
 
-## Forward pointers (not yet normative)
+## Experimental advisory pointers
 
-The following advisory pointers belong to this contract's second class but are not yet in the schema. They are referenced here by governance class only — no fields are defined.
+The following advisory pointers belong to this contract's second class and remain experimental while interop hardens. They inherit the shared shape above: account-scoped discovery where applicable, per-account pricing where applicable, and the same result envelope. They do not inherit the enforced class's build-time gate — that is reserved for typed contracts the creative agent owns, like `config`.
 
 - **Signal-driven creative fan-out ([#5240](https://github.com/adcontextprotocol/adcp/issues/5240), RFC).** A buyer fans out over `signal_conditions: SignalTargeting[]` on `build_creative`, producing one creative group per condition, each tagged with the `signal_condition` it is FOR. Advisory at the AdCP layer; trafficking-compatibility (a sun creative MUST NOT serve into a rain-targeted package) is enforced sales-side via `SIGNAL_TARGETING_INCOMPATIBLE`. #5240 **reuses the existing signals-domain `SignalTargeting` / `signal-ref.json`** — no new creative-context `signal_ref` is minted — so the creative's condition and the sales-side package targeting share one `signal_ref` identity.
 
@@ -75,6 +75,4 @@ The following advisory pointers belong to this contract's second class but are n
 Do not mint a SECOND `x-entity: signal` creative schema. #5240's resolution is to **reuse** the existing signals-domain `signal-ref.json` (`x-entity: signal`, `scope` discriminator) and `signal-targeting.json` for the creative `signal_condition` rather than create a parallel signal vocabulary — that shared identity is what lets the sales agent match a creative's condition against package targeting. The signal pointer stays in the advisory class (no build-time gate); enforcement lives at the trafficking boundary.
 </Warning>
 
-- **`evaluator` / `evaluator_id` ([#5241](https://github.com/adcontextprotocol/adcp/issues/5241), RFC).** A creative evaluator/oracle the buyer attaches so the agent can explore and rank alternatives (the `best_of_n` dimension is where it would plug in, surfacing `recommended` / `rank` on leaves). Advisory — a preference signal, not a gate. No evaluator schema exists yet.
-
-When these merge, they inherit the shared shape above: account-scoped discovery, per-account pricing, and the same result envelope. They do not inherit the enforced class's gate — that is reserved for typed contracts the creative agent owns, like `config`.
+- **`evaluator` / `evaluator_id` ([#5241](https://github.com/adcontextprotocol/adcp/issues/5241), experimental).** A creative evaluator/oracle the buyer attaches so the agent can explore and rank alternatives on the `best_of_n` axis, surfacing `recommended` / `rank` on leaves. Advisory — a preference signal, not a seller-enforced gate. Only the feature vocabulary and result envelope are discovered on-wire: evaluator feature discovery reuses `get_adcp_capabilities.governance.creative_features`, and evaluator results use the same `creative-feature-result[]` vocabulary as `get_creative_features`. `evaluator_id` itself is a pre-provisioned, account-arranged house preset, not an ID from the creative-feature catalog.
