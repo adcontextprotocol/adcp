@@ -134,6 +134,13 @@
       "maximum": 2.0,
       "default": 1.0,
       "description": "Narration speed multiplier."
+    },
+    {
+      "field": "negative_prompt",
+      "type": "string",
+      "value_source": "free_text",
+      "max_length": 500,
+      "description": "Open buyer-authored guidance for what the generative agent should avoid (e.g. \"no text overlays, no humans\")."
     }
   ]
 }

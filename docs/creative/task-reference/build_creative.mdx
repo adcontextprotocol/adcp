@@ -580,6 +580,8 @@ When the request uses `max_creatives`, `max_variants` > 1, `variant_axis`, or `r
 }
 ```
 
+_The `creatives[]` array above is abbreviated to one of the 5 returned groups; the aggregate `vendor_cost` of $4.00 covers all 5 groups × 2 variants × $0.40 — it equals the sum of every produced leaf's `vendor_cost`, not just the leaves shown._
+
 - **creatives[]**: One entry per built creative group. With `max_creatives`, there is one entry per sampled catalog item (`catalog_item_ref` identifies which item); without catalog fan-out there is a single entry. Treat this as the produced group set; choose among alternatives inside each group's `variants[]`.
 - **creatives[].build_creative_id**: Identifies a built creative within this response.
 - **creatives[].catalog_item_ref**: Present on catalog fan-out — an object identifying the source catalog item via `item_id` (plus optional `catalog_type`).
