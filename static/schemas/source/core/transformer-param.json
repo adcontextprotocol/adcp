@@ -80,6 +80,31 @@
   },
   "required": ["field", "type", "value_source"],
   "additionalProperties": true,
+  "allOf": [
+    {
+      "if": { "properties": { "value_source": { "const": "inline" } }, "required": ["value_source"] },
+      "then": { "required": ["allowed_values"] }
+    },
+    {
+      "if": { "properties": { "value_source": { "const": "range" } }, "required": ["value_source"] },
+      "then": { "required": ["minimum", "maximum"] }
+    },
+    {
+      "if": { "properties": { "value_source": { "const": "free_text" } }, "required": ["value_source"] },
+      "then": {
+        "properties": { "type": { "const": "string" } },
+        "not": {
+          "anyOf": [
+            { "required": ["allowed_values"] },
+            { "required": ["minimum"] },
+            { "required": ["maximum"] },
+            { "required": ["options"] },
+            { "required": ["options_cursor"] }
+          ]
+        }
+      }
+    }
+  ],
   "examples": [
     {
       "field": "voice",
