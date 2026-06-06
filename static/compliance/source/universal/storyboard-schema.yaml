@@ -1071,6 +1071,14 @@
 # runner-output-contract.yaml > validation_result. Add new kinds to that
 # enum AND document semantics here in the same PR.
 #
+# id: string (optional stable machine-readable identifier for this validation.
+#                Use when a step declares multiple validations that need a
+#                durable cross-reference in runner output, dashboards, support
+#                requests, or SDK adapters. The value is author-chosen and
+#                stable across description/path edits; it SHOULD be unique
+#                within the containing step's `validations` array. Runners
+#                echo this value in `validation_result.id`; see
+#                runner-output-contract.yaml > validation_result.)
 # check: string (what to validate: "response_schema", "field_present",
 #                "field_pattern" (path MUST resolve to a string matching
 #                `pattern`, a JavaScript regular expression source),

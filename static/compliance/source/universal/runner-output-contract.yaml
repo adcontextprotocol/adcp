@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.5.0"
+version: "2.6.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -514,6 +514,17 @@ validation_result:
       Any runner correctly implementing draft-07 JSON Schema validation
       already satisfies it.
   optional_fields:
+    - id                      # Stable machine-readable identifier copied from
+                              # the storyboard validation entry's optional
+                              # `id` field. When the authored validation has
+                              # an id, runners MUST echo it unchanged so
+                              # dashboards, support requests, and SDK adapters
+                              # can reference a specific assertion without
+                              # depending on mutable description text, path
+                              # values, or array position. Runner-synthesized
+                              # validations MAY omit this field unless they
+                              # define a stable generated id in the runner
+                              # contract.
     - remediation             # runner-suggested fix when the failure maps to
                               # a well-known cause (e.g., "agent did not echo
                               # context.correlation_id — see
