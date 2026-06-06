@@ -219,6 +219,43 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     expect(mine[0].catalog_etag).toBe('v2');
   });
 
+  it('publishes when property_id collides with an existing differently named property', async () => {
+    await pool.query(
+      `INSERT INTO discovered_properties
+         (property_id, publisher_domain, property_type, name, identifiers, tags, source_type, last_validated)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, 'adagents_json', NOW())`,
+      [
+        MINIMAL_PROPERTY.property_id,
+        PUBLISHER_DOMAIN,
+        'website',
+        'First-party Instagram',
+        JSON.stringify([{ type: 'domain', value: PUBLISHER_DOMAIN }]),
+        ['verified'],
+      ],
+    );
+
+    const res = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+    expect(res.status).toBe(200);
+
+    const { rows } = await pool.query(
+      `SELECT property_id, publisher_domain, property_type, name, source_type, tags
+         FROM discovered_properties
+        WHERE publisher_domain = $1
+          AND property_id = $2`,
+      [PUBLISHER_DOMAIN, MINIMAL_PROPERTY.property_id],
+    );
+    expect(rows).toEqual([
+      {
+        property_id: MINIMAL_PROPERTY.property_id,
+        publisher_domain: PUBLISHER_DOMAIN,
+        property_type: 'website',
+        name: 'First-party Instagram',
+        source_type: 'adagents_json',
+        tags: ['verified'],
+      },
+    ]);
+  });
+
   it('re-publish replaces the projected publisher rows for that platform', async () => {
     await request(app)
       .put(`/api/registry/mirrors/${PLATFORM}`)

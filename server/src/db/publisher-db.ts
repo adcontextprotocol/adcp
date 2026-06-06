@@ -635,30 +635,79 @@ export class PublisherDatabase {
     const tags = Array.isArray(property.tags)
       ? property.tags.filter((tag): tag is string => typeof tag === 'string')
       : [];
+    const propertyId = typeof property.property_id === 'string' && property.property_id.length > 0
+      ? property.property_id
+      : null;
+    let updatedByPropertyId = false;
 
-    await client.query(
-      `INSERT INTO discovered_properties (
-         property_id, publisher_domain, property_type, name,
-         identifiers, tags, source_type, last_validated
-       ) VALUES ($1, $2, $3, $4, $5::jsonb, $6, 'community', NOW())
-       ON CONFLICT (publisher_domain, name, property_type) DO UPDATE SET
-         property_id = COALESCE(EXCLUDED.property_id, discovered_properties.property_id),
-         identifiers = EXCLUDED.identifiers,
-         tags = EXCLUDED.tags,
-         source_type = CASE
-           WHEN discovered_properties.source_type IN ('adagents_json', 'aao_hosted') THEN discovered_properties.source_type
-           ELSE 'community'
-         END,
-         last_validated = NOW()`,
-      [
-        property.property_id ?? null,
-        publisherDomain,
-        propertyType,
-        name,
-        JSON.stringify(identifiers),
-        tags,
-      ],
-    );
+    if (propertyId) {
+      const byPropertyId = await client.query(
+        `UPDATE discovered_properties
+            SET identifiers = CASE
+                  WHEN source_type IN ('adagents_json', 'aao_hosted') THEN identifiers
+                  ELSE $3::jsonb
+                END,
+                tags = CASE
+                  WHEN source_type IN ('adagents_json', 'aao_hosted') THEN tags
+                  ELSE $4
+                END,
+                source_type = CASE
+                  WHEN source_type IN ('adagents_json', 'aao_hosted') THEN source_type
+                  ELSE 'community'
+                END,
+                last_validated = CASE
+                  WHEN source_type IN ('adagents_json', 'aao_hosted') THEN last_validated
+                  ELSE NOW()
+                END
+          WHERE publisher_domain = $1
+            AND property_id = $2`,
+        [
+          publisherDomain,
+          propertyId,
+          JSON.stringify(identifiers),
+          tags,
+        ],
+      );
+      updatedByPropertyId = (byPropertyId.rowCount ?? 0) > 0;
+    }
+
+    if (!updatedByPropertyId) {
+      await client.query(
+        `INSERT INTO discovered_properties (
+           property_id, publisher_domain, property_type, name,
+           identifiers, tags, source_type, last_validated
+         ) VALUES ($1, $2, $3, $4, $5::jsonb, $6, 'community', NOW())
+         ON CONFLICT (publisher_domain, name, property_type) DO UPDATE SET
+           property_id = CASE
+             WHEN discovered_properties.source_type IN ('adagents_json', 'aao_hosted') THEN discovered_properties.property_id
+             ELSE COALESCE(EXCLUDED.property_id, discovered_properties.property_id)
+           END,
+           identifiers = CASE
+             WHEN discovered_properties.source_type IN ('adagents_json', 'aao_hosted') THEN discovered_properties.identifiers
+             ELSE EXCLUDED.identifiers
+           END,
+           tags = CASE
+             WHEN discovered_properties.source_type IN ('adagents_json', 'aao_hosted') THEN discovered_properties.tags
+             ELSE EXCLUDED.tags
+           END,
+           source_type = CASE
+             WHEN discovered_properties.source_type IN ('adagents_json', 'aao_hosted') THEN discovered_properties.source_type
+             ELSE 'community'
+           END,
+           last_validated = CASE
+             WHEN discovered_properties.source_type IN ('adagents_json', 'aao_hosted') THEN discovered_properties.last_validated
+             ELSE NOW()
+           END`,
+        [
+          propertyId,
+          publisherDomain,
+          propertyType,
+          name,
+          JSON.stringify(identifiers),
+          tags,
+        ],
+      );
+    }
 
     const rawIdentifiers = identifiers
       .filter((i): i is { type: string; value: string } =>

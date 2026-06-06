@@ -38,20 +38,28 @@ WITH raw_properties AS (
     cm.adagents_json,
     cm.created_by_email,
     prop,
-    lower(trim(coalesce(
-      nullif(prop->>'publisher_domain', ''),
-      (
-        SELECT ident->>'value'
-          FROM jsonb_array_elements(
-            CASE WHEN jsonb_typeof(prop->'identifiers') = 'array'
-                 THEN prop->'identifiers'
-                 ELSE '[]'::jsonb END
-          ) AS ident
-         WHERE ident->>'type' IN ('domain', 'subdomain')
-           AND nullif(ident->>'value', '') IS NOT NULL
-         LIMIT 1
-      )
-    ))) AS publisher_domain
+    regexp_replace(
+      regexp_replace(
+        lower(trim(coalesce(
+          nullif(prop->>'publisher_domain', ''),
+          (
+            SELECT ident->>'value'
+              FROM jsonb_array_elements(
+                CASE WHEN jsonb_typeof(prop->'identifiers') = 'array'
+                     THEN prop->'identifiers'
+                     ELSE '[]'::jsonb END
+              ) AS ident
+             WHERE ident->>'type' IN ('domain', 'subdomain')
+               AND nullif(ident->>'value', '') IS NOT NULL
+             LIMIT 1
+          )
+        ))),
+        '^https?://',
+        ''
+      ),
+      '[/.]+$',
+      ''
+    ) AS publisher_domain
   FROM community_mirrors cm
   CROSS JOIN LATERAL jsonb_array_elements(
     CASE WHEN jsonb_typeof(cm.adagents_json->'properties') = 'array'
@@ -131,31 +139,94 @@ ON CONFLICT (domain) DO UPDATE SET
   END,
   updated_at = NOW();
 
+WITH incoming AS (
+  SELECT
+    prop->>'property_id' AS property_id,
+    publisher_domain,
+    coalesce(nullif(prop->>'property_type', ''), 'website') AS property_type,
+    coalesce(nullif(prop->>'name', ''), nullif(prop->>'property_id', ''), publisher_domain) AS name,
+    CASE WHEN jsonb_typeof(prop->'identifiers') = 'array'
+         THEN prop->'identifiers'
+         ELSE '[]'::jsonb END AS identifiers,
+    ARRAY(
+      SELECT jsonb_array_elements_text(
+        CASE WHEN jsonb_typeof(prop->'tags') = 'array'
+             THEN prop->'tags'
+             ELSE '[]'::jsonb END
+      )
+    ) AS tags
+  FROM tmp_community_mirror_properties
+)
+UPDATE discovered_properties dp
+   SET identifiers = CASE
+         WHEN dp.source_type IN ('adagents_json', 'aao_hosted') THEN dp.identifiers
+         ELSE incoming.identifiers
+       END,
+       tags = CASE
+         WHEN dp.source_type IN ('adagents_json', 'aao_hosted') THEN dp.tags
+         ELSE incoming.tags
+       END,
+       source_type = CASE
+         WHEN dp.source_type IN ('adagents_json', 'aao_hosted') THEN dp.source_type
+         ELSE 'community'
+       END,
+       last_validated = dp.last_validated
+  FROM incoming
+ WHERE incoming.property_id IS NOT NULL
+   AND dp.publisher_domain = incoming.publisher_domain
+   AND dp.property_id = incoming.property_id;
+
+WITH incoming AS (
+  SELECT
+    prop->>'property_id' AS property_id,
+    publisher_domain,
+    coalesce(nullif(prop->>'property_type', ''), 'website') AS property_type,
+    coalesce(nullif(prop->>'name', ''), nullif(prop->>'property_id', ''), publisher_domain) AS name,
+    CASE WHEN jsonb_typeof(prop->'identifiers') = 'array'
+         THEN prop->'identifiers'
+         ELSE '[]'::jsonb END AS identifiers,
+    ARRAY(
+      SELECT jsonb_array_elements_text(
+        CASE WHEN jsonb_typeof(prop->'tags') = 'array'
+             THEN prop->'tags'
+             ELSE '[]'::jsonb END
+      )
+    ) AS tags
+  FROM tmp_community_mirror_properties
+)
 INSERT INTO discovered_properties
   (property_id, publisher_domain, property_type, name,
    identifiers, tags, source_type, last_validated)
 SELECT
-  prop->>'property_id',
+  property_id,
   publisher_domain,
-  coalesce(nullif(prop->>'property_type', ''), 'website'),
-  coalesce(nullif(prop->>'name', ''), nullif(prop->>'property_id', ''), publisher_domain),
-  CASE WHEN jsonb_typeof(prop->'identifiers') = 'array'
-       THEN prop->'identifiers'
-       ELSE '[]'::jsonb END,
-  ARRAY(
-    SELECT jsonb_array_elements_text(
-      CASE WHEN jsonb_typeof(prop->'tags') = 'array'
-           THEN prop->'tags'
-           ELSE '[]'::jsonb END
-    )
-  ),
+  property_type,
+  name,
+  identifiers,
+  tags,
   'community',
   NULL
-FROM tmp_community_mirror_properties
+FROM incoming
+WHERE NOT EXISTS (
+  SELECT 1
+    FROM discovered_properties dp
+   WHERE incoming.property_id IS NOT NULL
+     AND dp.publisher_domain = incoming.publisher_domain
+     AND dp.property_id = incoming.property_id
+)
 ON CONFLICT (publisher_domain, name, property_type) DO UPDATE SET
-  property_id = COALESCE(EXCLUDED.property_id, discovered_properties.property_id),
-  identifiers = EXCLUDED.identifiers,
-  tags = EXCLUDED.tags,
+  property_id = CASE
+    WHEN discovered_properties.source_type IN ('adagents_json', 'aao_hosted') THEN discovered_properties.property_id
+    ELSE COALESCE(EXCLUDED.property_id, discovered_properties.property_id)
+  END,
+  identifiers = CASE
+    WHEN discovered_properties.source_type IN ('adagents_json', 'aao_hosted') THEN discovered_properties.identifiers
+    ELSE EXCLUDED.identifiers
+  END,
+  tags = CASE
+    WHEN discovered_properties.source_type IN ('adagents_json', 'aao_hosted') THEN discovered_properties.tags
+    ELSE EXCLUDED.tags
+  END,
   source_type = CASE
     WHEN discovered_properties.source_type IN ('adagents_json', 'aao_hosted') THEN discovered_properties.source_type
     ELSE 'community'
