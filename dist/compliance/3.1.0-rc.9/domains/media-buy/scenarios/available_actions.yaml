@@ -120,9 +120,8 @@ phases:
             path: "products[0].product_id"
             value: "available_actions_display"
             description: "The seeded product is discoverable through get_products"
-          # Correlation-preserving object checks are the only available runner
-          # primitive until adcontextprotocol/adcp-client#2182 adds a keyed
-          # subset matcher for allowed_actions[].
+          # Correlation-preserving subset checks keep allowed_actions[] order
+          # independent without splitting fields across different actions.
           - check: field_contains
             path: "products[0].allowed_actions[*]"
             value:
@@ -208,42 +207,28 @@ phases:
           - check: field_present
             path: "packages[0].package_id"
             description: "Seller returns the created package ID for later updates"
-          - check: field_value
-            path: "available_actions[0].action"
-            value: "increase_budget"
-            description: "Created buy carries increase_budget from product allowed_actions"
-          - check: field_value
-            path: "available_actions[0].mode"
-            value: "self_serve"
-            description: "Created buy resolves increase_budget to self_serve"
-          - check: field_value
-            path: "available_actions[0].sla.response_max"
-            value: "PT5M"
-            description: "Created buy preserves response_max SLA duration"
-          - check: field_value
-            path: "available_actions[0].sla.completion_max"
-            value: "PT1H"
-            description: "Created buy preserves completion_max SLA duration"
-          - check: field_value
-            path: "available_actions[1].action"
-            value: "extend_flight"
-            description: "Created buy carries extend_flight from product allowed_actions"
-          - check: field_value
-            path: "available_actions[1].mode"
-            value: "requires_approval"
-            description: "Created buy resolves extend_flight to requires_approval"
-          - check: field_value
-            path: "available_actions[1].terms_ref"
-            value: "terms://available-actions/extension"
-            description: "Created buy preserves the action terms reference"
-          - check: field_value
-            path: "available_actions[2].action"
-            value: "cancel"
-            description: "Created buy carries cancel from product allowed_actions"
-          - check: field_value
-            path: "available_actions[2].mode"
-            value: "requires_approval"
-            description: "Created buy resolves cancel to requires_approval"
+          - check: field_contains
+            path: "available_actions[*]"
+            value:
+              action: "increase_budget"
+              mode: "self_serve"
+              sla:
+                response_max: "PT5M"
+                completion_max: "PT1H"
+            description: "Created buy carries the self-serve budget action from product allowed_actions"
+          - check: field_contains
+            path: "available_actions[*]"
+            value:
+              action: "extend_flight"
+              mode: "requires_approval"
+              terms_ref: "terms://available-actions/extension"
+            description: "Created buy carries the approval-routed flight extension action"
+          - check: field_contains
+            path: "available_actions[*]"
+            value:
+              action: "cancel"
+              mode: "requires_approval"
+            description: "Created buy carries the approval-routed cancellation action"
           - check: field_present
             path: "valid_actions"
             description: "Legacy valid_actions may still be present during the 3.x deprecation window"
@@ -283,30 +268,24 @@ phases:
             path: "media_buys[0].media_buy_id"
             value: "$context.available_actions_media_buy_id"
             description: "Seller returns the created media buy"
-          - check: field_value
-            path: "media_buys[0].available_actions[0].action"
-            value: "increase_budget"
+          - check: field_contains
+            path: "media_buys[0].available_actions[*]"
+            value:
+              action: "increase_budget"
+              mode: "self_serve"
             description: "Persisted buy carries the self-serve budget action"
-          - check: field_value
-            path: "media_buys[0].available_actions[0].mode"
-            value: "self_serve"
-            description: "Persisted buy keeps the self-serve mode"
-          - check: field_value
-            path: "media_buys[0].available_actions[1].action"
-            value: "extend_flight"
-            description: "Persisted buy carries the approval-routed action"
-          - check: field_value
-            path: "media_buys[0].available_actions[1].mode"
-            value: "requires_approval"
-            description: "Persisted buy keeps the approval mode"
-          - check: field_value
-            path: "media_buys[0].available_actions[2].action"
-            value: "cancel"
-            description: "Persisted buy carries the approval-routed action"
-          - check: field_value
-            path: "media_buys[0].available_actions[2].mode"
-            value: "requires_approval"
-            description: "Persisted buy keeps the approval mode"
+          - check: field_contains
+            path: "media_buys[0].available_actions[*]"
+            value:
+              action: "extend_flight"
+              mode: "requires_approval"
+            description: "Persisted buy carries the approval-routed flight extension action"
+          - check: field_contains
+            path: "media_buys[0].available_actions[*]"
+            value:
+              action: "cancel"
+              mode: "requires_approval"
+            description: "Persisted buy carries the approval-routed cancellation action"
           - check: field_value
             path: "context.correlation_id"
             value: "available_actions--get_buy"
@@ -352,9 +331,10 @@ phases:
             path: "media_buy_id"
             value: "$context.available_actions_media_buy_id"
             description: "Seller updates the requested media buy"
-          - check: field_value
-            path: "available_actions[0].action"
-            value: "increase_budget"
+          - check: field_contains
+            path: "available_actions[*]"
+            value:
+              action: "increase_budget"
             description: "Update response carries the post-update action surface"
           - check: field_value
             path: "context.correlation_id"
@@ -402,9 +382,11 @@ phases:
             path: "errors[0].recovery"
             value: "correctable"
             description: "Mode mismatch is a correctable flow-switch recovery"
-          - check: field_value
-            path: "errors[0].details.currently_available_actions[1].mode"
-            value: "requires_approval"
+          - check: field_contains
+            path: "errors[0].details.currently_available_actions[*]"
+            value:
+              action: "extend_flight"
+              mode: "requires_approval"
             description: "Recovery details echo the current approval-routed action surface"
           - check: field_value
             path: "context.correlation_id"
@@ -453,9 +435,11 @@ phases:
             path: "errors[0].recovery"
             value: "correctable"
             description: "Approval mode mismatch is a correctable flow-switch recovery"
-          - check: field_value
-            path: "errors[0].details.currently_available_actions[2].mode"
-            value: "requires_approval"
+          - check: field_contains
+            path: "errors[0].details.currently_available_actions[*]"
+            value:
+              action: "cancel"
+              mode: "requires_approval"
             description: "Recovery details echo the current approval-routed action surface"
           - check: field_value
             path: "context.correlation_id"
@@ -506,9 +490,10 @@ phases:
             path: "errors[0].recovery"
             value: "correctable"
             description: "Wrong-status action rejection is correctable by waiting for or transitioning status"
-          - check: field_value
-            path: "errors[0].details.currently_available_actions[0].action"
-            value: "increase_budget"
+          - check: field_contains
+            path: "errors[0].details.currently_available_actions[*]"
+            value:
+              action: "increase_budget"
             description: "Recovery details echo the currently available buy actions"
           - check: field_value
             path: "context.correlation_id"
@@ -557,9 +542,10 @@ phases:
             path: "errors[0].recovery"
             value: "terminal"
             description: "Unsupported product action is terminal for this buy"
-          - check: field_value
-            path: "errors[0].details.currently_available_actions[0].action"
-            value: "increase_budget"
+          - check: field_contains
+            path: "errors[0].details.currently_available_actions[*]"
+            value:
+              action: "increase_budget"
             description: "Recovery details echo the currently available buy actions"
           - check: field_value
             path: "context.correlation_id"

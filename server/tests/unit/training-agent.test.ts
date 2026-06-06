@@ -18,6 +18,8 @@ import {
 import {
   createTrainingAgentServer,
   executeTrainingAgentTool,
+  handleBuildCreative,
+  handleListTransformers,
   invalidateCache,
   clearTaskStore,
 } from '../../src/training-agent/task-handlers.js';
@@ -46,7 +48,7 @@ const VALID_PRICING_MODELS = [
 ] as const;
 
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
-const CURRENT_ADCP_VERSION = '3.1-rc.7';
+const CURRENT_ADCP_VERSION = '3.1-rc.9';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 
@@ -1581,6 +1583,45 @@ describe('list_creative_formats handler', () => {
     const formats = result.formats as Array<Record<string, unknown>>;
     expect(formats).toHaveLength(1);
     expect((formats[0].format_id as Record<string, unknown>).id).toBe('display_300x250');
+  });
+});
+
+// ── list_transformers / transformer build handler ──────────────────
+
+describe('creative transformers handler', () => {
+  beforeEach(() => {
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns no expanded enumerable options when a brief has no matches', async () => {
+    const result = await handleListTransformers({
+      brief: 'klingon voiceover',
+      expand_params: ['voice'],
+    }, DEFAULT_CTX) as { transformers: Array<{ params?: Array<{ field?: string; options?: unknown[] }> }> };
+
+    const voiceParam = result.transformers[0].params?.find(param => param.field === 'voice');
+    expect(voiceParam?.options).toEqual([]);
+  });
+
+  it('rejects plural transformer targets outside the transformer output set', async () => {
+    const result = await handleBuildCreative({
+      transformer_id: 'audiostack_voiceover',
+      target_format_ids: [{ agent_url: TEST_AGENT_URL, id: 'display_300x250' }],
+      max_variants: 2,
+      variant_axis: { dimension: 'best_of_n' },
+      idempotency_key: 'test-transformer-plural-target',
+    }, DEFAULT_CTX) as Record<string, unknown>;
+
+    const errors = result.errors as Array<Record<string, unknown>>;
+    expect(result.status).toBe('completed');
+    expect(errors?.[0]).toMatchObject({
+      code: 'INVALID_REQUEST',
+      field: 'target_format_ids[0]',
+    });
   });
 });
 
@@ -7478,7 +7519,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toMatchObject({
       major_versions: [3],
-      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7'],
+      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9'],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
     });
     expect(result.adcp_version).toBe('3.0');
@@ -8393,7 +8434,7 @@ describe('MCP Tasks protocol', () => {
         code: -32602,
         data: {
           adcp_version: '99.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9'],
           supported_majors: [3],
           context: { correlation_id: 'task-version-unsupported' },
           adcp_error: {
@@ -10216,7 +10257,7 @@ describe('AdCP protocol compliance', () => {
     expect(parsed.adcp_version).toBe('3.0');
     expect(parsed.adcp).toMatchObject({
       major_versions: [3],
-      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7'],
+      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9'],
     });
   });
 
@@ -10237,7 +10278,7 @@ describe('AdCP protocol compliance', () => {
   it('echoes exact supported pre-release adcp_version pins', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
-    for (const adcpVersion of ['3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7']) {
+    for (const adcpVersion of ['3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9']) {
       const { parsed, isError } = await simulateCallToolRaw(server, 'get_products', {
         adcp_version: adcpVersion,
         adcp_major_version: 3,
@@ -10281,7 +10322,7 @@ describe('AdCP protocol compliance', () => {
       details: {
         adcp_version: '4.0',
         adcp_major_version: 4,
-        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7'],
+        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9'],
         supported_majors: [3],
       },
     });
@@ -10302,7 +10343,7 @@ describe('AdCP protocol compliance', () => {
       field: 'adcp_version',
       details: {
         adcp_version: '3.1-beta',
-        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7'],
+        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9'],
         supported_majors: [3],
       },
     });

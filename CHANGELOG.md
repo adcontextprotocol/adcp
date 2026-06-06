@@ -38,6 +38,8 @@
 
 ### Patch Changes
 
+- Update `@adcp/sdk` to `9.0.0-beta.25`, align the repo's published RC metadata on AdCP `3.1.0-rc.9`, and keep the training agent's exact-RC version negotiation cumulative through `3.1-rc.8` and `3.1-rc.9`.
+- Convert `available_actions` storyboard assertions to wildcard `field_contains` deep-subset checks so order-insensitive action templates and media-buy action surfaces validate against the SDK runner semantics used by hosted compliance.
 - d9b0cad: Fix inline creative conformance coverage so the training catalog only dual-emits faithful canonical format projections, the inline creative scenario selects `format_options[]` through `format_option_refs[]`, and inline creatives accepted by library-capable sellers are persisted for later creative lookup.
 - 9863d4f: Fix release-blocking compliance storyboards by preloading a creative before media buy state-machine pause/resume checks and removing stale proposal flight start dates from proposal probes.
 - 95fb4ee: Bump `@adcp/sdk` to `9.0.0-beta.23`, update the training agent to import

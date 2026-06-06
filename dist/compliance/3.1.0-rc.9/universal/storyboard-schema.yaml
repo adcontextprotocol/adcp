@@ -1084,8 +1084,9 @@
 #                "field_value",
 #                "field_value_or_absent",
 #                "field_contains" (wildcard-aware membership check; `path` may
-#                use `[*]` segments and passes when any resolved value equals
-#                `value` or one of `allowed_values`),
+#                use `[*]` segments and passes when any resolved value matches
+#                `value` or one of `allowed_values`; object/array expectations
+#                are matched as deep subsets),
 #                "status_code", "http_status", "http_status_in",
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",
 #                "any_of", "refs_resolve", "a2a_submitted_artifact",
