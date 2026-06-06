@@ -18,6 +18,8 @@ import {
 import {
   createTrainingAgentServer,
   executeTrainingAgentTool,
+  handleBuildCreative,
+  handleListTransformers,
   invalidateCache,
   clearTaskStore,
 } from '../../src/training-agent/task-handlers.js';
@@ -1581,6 +1583,45 @@ describe('list_creative_formats handler', () => {
     const formats = result.formats as Array<Record<string, unknown>>;
     expect(formats).toHaveLength(1);
     expect((formats[0].format_id as Record<string, unknown>).id).toBe('display_300x250');
+  });
+});
+
+// ── list_transformers / transformer build handler ──────────────────
+
+describe('creative transformers handler', () => {
+  beforeEach(() => {
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns no expanded enumerable options when a brief has no matches', async () => {
+    const result = await handleListTransformers({
+      brief: 'klingon voiceover',
+      expand_params: ['voice'],
+    }, DEFAULT_CTX) as { transformers: Array<{ params?: Array<{ field?: string; options?: unknown[] }> }> };
+
+    const voiceParam = result.transformers[0].params?.find(param => param.field === 'voice');
+    expect(voiceParam?.options).toEqual([]);
+  });
+
+  it('rejects plural transformer targets outside the transformer output set', async () => {
+    const result = await handleBuildCreative({
+      transformer_id: 'audiostack_voiceover',
+      target_format_ids: [{ agent_url: TEST_AGENT_URL, id: 'display_300x250' }],
+      max_variants: 2,
+      variant_axis: { dimension: 'best_of_n' },
+      idempotency_key: 'test-transformer-plural-target',
+    }, DEFAULT_CTX) as Record<string, unknown>;
+
+    const errors = result.errors as Array<Record<string, unknown>>;
+    expect(result.status).toBe('completed');
+    expect(errors?.[0]).toMatchObject({
+      code: 'INVALID_REQUEST',
+      field: 'target_format_ids[0]',
+    });
   });
 });
 

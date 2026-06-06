@@ -3407,7 +3407,7 @@ export async function handleListTransformers(args: ToolArgs, _ctx: TrainingConte
         // Brief-filter enumerable values (e.g. "spanish" narrows a voice catalog).
         if (briefNeedle) {
           const filtered = options.filter(o => JSON.stringify(o).toLowerCase().includes(briefNeedle));
-          if (filtered.length > 0) options = filtered;
+          options = filtered;
         }
         // Page the (filtered) option set per (transformer, field).
         const cursor = optionCursorByKey.get(`${t.transformer_id}::${p.field}`) ?? optionCursorByKey.get(`::${p.field}`);
@@ -6781,8 +6781,12 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
         return buildCreativeCompleted({ errors: [configError] });
       }
       // A build_creative target MUST be a subset of the transformer's outputs.
-      if (req.target_format_id && !transformer.output_format_ids.some(f => f.id === req.target_format_id!.id)) {
-        return buildCreativeCompleted({ errors: [{ code: 'INVALID_REQUEST', message: `target_format_id "${req.target_format_id.id}" is not an output format of transformer "${req.transformer_id}".`, field: 'target_format_id', recovery: 'correctable' }] });
+      const transformerOutputIds = transformer.output_format_ids;
+      const invalidTargetIndex = targetIds.findIndex(targetId => !transformerOutputIds.some(f => f.id === targetId.id));
+      if (invalidTargetIndex >= 0) {
+        const invalidTarget = targetIds[invalidTargetIndex];
+        const field = req.target_format_ids?.length ? `target_format_ids[${invalidTargetIndex}]` : 'target_format_id';
+        return buildCreativeCompleted({ errors: [{ code: 'INVALID_REQUEST', message: `Target format "${invalidTarget.id}" is not an output format of transformer "${req.transformer_id}".`, field, recovery: 'correctable' }] });
       }
     }
 
@@ -6791,7 +6795,8 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       return buildCreativeCompleted({ errors: [{ code: 'UNSUPPORTED_FEATURE', message: 'This agent does not retain prior builds for refinement. Drop refine_from_build_variant_id and resend, or use the transform path (creative_manifest + message).', field: 'refine_from_build_variant_id', recovery: 'correctable' }] });
     }
 
-    const target: FormatID = req.target_format_id
+    const target: FormatID = targetIds[0]
+      ?? req.target_format_id
       ?? transformer?.output_format_ids?.[0]
       ?? { agent_url: agentUrl, id: 'audio_vo' };
 
