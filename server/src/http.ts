@@ -2690,13 +2690,8 @@ export class HTTPServer {
     });
 
     // POST /api/brands/discovered - Save a discovered/enriched brand (admin only)
-    this.app.post('/api/brands/discovered', requireAuth, async (req, res) => {
+    this.app.post('/api/brands/discovered', requireAuth, requireAdmin, async (req, res) => {
       try {
-        const isAdmin = await isWebUserAAOAdmin(req.user!.id);
-        if (!isAdmin) {
-          return res.status(403).json({ error: 'Admin access required' });
-        }
-
         const { domain, brand_name, brand_manifest, source_type } = req.body;
         if (!domain) {
           return res.status(400).json({ error: 'domain required' });

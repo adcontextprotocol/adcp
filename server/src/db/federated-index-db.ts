@@ -71,7 +71,7 @@ export interface AgentPublisherDetailRow {
   source: 'adagents_json' | 'agent_claim';
   authz_last_validated: Date | null;
   publisher_last_validated: Date | null;
-  discovery_method: 'direct' | 'authoritative_location' | 'ads_txt_managerdomain' | 'adagents_authoritative' | null;
+  discovery_method: 'direct' | 'authoritative_location' | 'ads_txt_managerdomain' | 'adagents_authoritative' | 'community_catalog' | null;
   manager_domain: string | null;
   properties_total: number;
   properties_authorized: number;
@@ -99,7 +99,7 @@ export interface DiscoveredProperty {
   name: string;
   identifiers: PropertyIdentifier[];
   tags?: string[];
-  source_type?: 'adagents_json' | 'aao_hosted';
+  source_type?: 'adagents_json' | 'aao_hosted' | 'community';
   discovered_at?: Date;
   last_validated?: Date;
   expires_at?: Date;
@@ -502,17 +502,20 @@ export class FederatedIndexDatabase {
    * Reads from both the catalog-side `publishers` overlay (PR 1 of #3177)
    * and the legacy `discovered_publishers` table during the dual-write
    * window. A presence in `publishers` with `source_type='adagents_json'`
-   * means the crawler successfully validated and cached the file — that
-   * always wins. Otherwise fall back to bool_or over discovered_publishers
-   * so the historical three-state contract (true / false / null) is
-   * preserved when only the legacy path has data.
+   * means the crawler successfully validated and cached the publisher-origin
+   * file. Community catalog rows are intentionally excluded here: they are
+   * valid registry documents, but not origin validation, and must not suppress
+   * crawl-on-view or turn hosting.mode into `self`.
    */
   async hasValidAdagents(domain: string): Promise<boolean | null> {
     const result = await query<{ catalog_present: boolean; legacy_or: boolean | null }>(
       `SELECT
          EXISTS(
            SELECT 1 FROM publishers
-            WHERE domain = $1 AND source_type = 'adagents_json'
+            WHERE domain = $1
+              AND adagents_json IS NOT NULL
+              AND source_type = 'adagents_json'
+              AND review_status = 'approved'
          ) AS catalog_present,
          (SELECT bool_or(has_valid_adagents)
             FROM discovered_publishers
@@ -993,7 +996,11 @@ export class FederatedIndexDatabase {
          SELECT id, property_id, publisher_domain, property_type, name,
                 identifiers, tags, discovered_at, last_validated, expires_at,
                 source_type,
-                0 AS src_priority
+                CASE
+                  WHEN source_type IN ('adagents_json', 'aao_hosted') THEN 0
+                  WHEN source_type = 'community' THEN 2
+                  ELSE 3
+                END AS src_priority
            FROM discovered_properties
           WHERE publisher_domain = $1
          UNION ALL
@@ -1017,11 +1024,14 @@ export class FederatedIndexDatabase {
            cp.created_at AS discovered_at,
            p.last_validated AS last_validated,
            p.expires_at AS expires_at,
-           -- Catalog rows here come from publishers.adagents_json JSONB
-           -- (see WHERE p.source_type = 'adagents_json' below). They are
-           -- by construction adagents_json-sourced.
-           'adagents_json'::text AS source_type,
-           1 AS src_priority
+           CASE
+             WHEN p.source_type = 'community' THEN 'community'
+             ELSE 'adagents_json'
+           END AS source_type,
+           CASE
+             WHEN p.source_type = 'community' THEN 2
+             ELSE 0
+           END AS src_priority
            FROM publishers p
           CROSS JOIN LATERAL jsonb_array_elements(
             CASE WHEN jsonb_typeof(p.adagents_json->'properties') = 'array'
@@ -1030,9 +1040,16 @@ export class FederatedIndexDatabase {
           ) AS prop
            LEFT JOIN catalog_properties cp
                   ON cp.property_id = prop->>'property_id'
-                 AND cp.created_by = 'adagents_json:' || p.domain
+                 AND cp.created_by = CASE
+                   WHEN p.source_type = 'community'
+                    AND p.discovery_method = 'community_catalog'
+                    AND p.created_by_user_id IS NOT NULL
+                   THEN p.created_by_user_id
+                   ELSE 'adagents_json:' || p.domain
+                 END
           WHERE p.domain = $1
-            AND p.source_type = 'adagents_json'
+            AND p.source_type IN ('adagents_json', 'community')
+            AND p.review_status = 'approved'
             AND prop->>'name' IS NOT NULL
             AND prop->>'property_type' IS NOT NULL
        ), deduped AS (

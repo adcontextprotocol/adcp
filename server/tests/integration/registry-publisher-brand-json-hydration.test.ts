@@ -95,6 +95,9 @@ const DOMAIN_SUFFIX = '.registry-baseline.example';
 const DOMAIN_PREFIX = 'brand-hydrate-';
 const PUB_BRAND_ONLY = `${DOMAIN_PREFIX}sasha${DOMAIN_SUFFIX}`;
 const PUB_AAO_HOSTED = `${DOMAIN_PREFIX}aao-hosted${DOMAIN_SUFFIX}`;
+const PUB_COMMUNITY = `${DOMAIN_PREFIX}community-catalog${DOMAIN_SUFFIX}`;
+const COMMUNITY_PLATFORM = 'test-community-publisher';
+const TEST_DATABASE_URL = process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test';
 
 describe('Registry publisher endpoint — brand.json hydration', () => {
   let server: HTTPServer;
@@ -107,6 +110,16 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
   const DOMAIN_LIKE = `${DOMAIN_PREFIX}%${DOMAIN_SUFFIX}`;
 
   async function clearFixtures() {
+    await pool.query(
+      `DELETE FROM catalog_identifiers ci
+        WHERE ci.property_rid IN (
+          SELECT cp.property_rid
+            FROM catalog_properties cp
+           WHERE cp.created_by = $1
+        )`,
+      [`community_adagents:${COMMUNITY_PLATFORM}`],
+    );
+    await pool.query('DELETE FROM catalog_properties WHERE created_by = $1', [`community_adagents:${COMMUNITY_PLATFORM}`]);
     await pool.query('DELETE FROM hosted_properties WHERE publisher_domain LIKE $1', [DOMAIN_LIKE]);
     await pool.query('DELETE FROM brands WHERE domain LIKE $1', [DOMAIN_LIKE]);
     await pool.query(
@@ -117,9 +130,9 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
   }
 
   beforeAll(async () => {
+    process.env.DATABASE_URL = TEST_DATABASE_URL;
     pool = initializeDatabase({
-      connectionString:
-        process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
+      connectionString: TEST_DATABASE_URL,
     });
     await runMigrations();
     brandDb = new BrandDatabase();
@@ -283,6 +296,51 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
       expected_url: `https://${PUB_BRAND_ONLY}/.well-known/adagents.json`,
     });
     expect(res.body.hosting.hosted_url).toBeUndefined();
+  });
+
+  it('reports community catalogs without self-hosted origin state', async () => {
+    await publisherDb.upsertCommunityAdagentsCatalog({
+      platform: COMMUNITY_PLATFORM,
+      manifest: {
+        authorized_agents: [],
+        properties: [{
+          property_id: 'community-site',
+          property_type: 'website',
+          name: 'Community Catalog Site',
+          identifiers: [{ type: 'domain', value: PUB_COMMUNITY }],
+          publisher_domain: PUB_COMMUNITY,
+        }],
+        formats: [
+          {
+            format_option_id: 'community_site_square',
+            display_name: 'Community Site Square',
+            format_kind: 'image',
+            params: { width: 1080, height: 1080 },
+            applies_to_property_ids: ['community-site'],
+          },
+          {
+            format_option_id: 'other_site_video',
+            display_name: 'Other Site Video',
+            format_kind: 'video_hosted',
+            params: { duration_ms_exact: 15000 },
+            applies_to_property_ids: ['other-site'],
+          },
+        ],
+      },
+      catalogUrl: `/api/creative-agent/translated/${COMMUNITY_PLATFORM}/adagents.json`,
+    });
+
+    const res = await request(app).get(
+      `/api/registry/publisher?domain=${encodeURIComponent(PUB_COMMUNITY)}`
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.files.adagents_json.status).toBe('community');
+    expect(res.body.files.adagents_json.registry_url).toMatch(/^http:\/\//);
+    expect(new URL(res.body.files.adagents_json.registry_url).pathname).toBe(`/api/creative-agent/translated/${COMMUNITY_PLATFORM}/adagents.json`);
+    expect(res.body.hosting.mode).toBe('none');
+    expect(res.body.hosting.last_validated).toBeNull();
+    expect(res.body.formats).toHaveLength(1);
+    expect(res.body.formats[0].format_option_id).toBe('community_site_square');
   });
 
   it('does NOT auto-crawl when validateCrawlDomain rejects (SSRF gate)', async () => {

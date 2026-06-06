@@ -1,4 +1,4 @@
-import { getClient } from './client.js';
+import { getClient, query } from './client.js';
 import { uuidv7 } from './uuid.js';
 import { normalizeIdentifier } from '../services/identifier-normalization.js';
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
@@ -92,10 +92,31 @@ export interface UpsertAdagentsCacheInput {
   managerDomain?: string;
 }
 
+export interface UpsertCommunityAdagentsCatalogInput {
+  platform: string;
+  manifest: AdagentsManifest;
+  previousManifest?: AdagentsManifest | Record<string, unknown> | null;
+  catalogUrl?: string;
+  createdByUserId?: string | null;
+  createdByEmail?: string | null;
+}
+
 const ADAGENTS_CREATED_BY_PREFIX = 'adagents_json:';
+const COMMUNITY_CATALOG_CREATED_BY_PREFIX = 'community_adagents:';
+
+interface CommunityCatalogPropertyKey {
+  publisherDomain: string;
+  propertyId: string | null;
+  name: string;
+  propertyType: string;
+}
 
 function adagentsCreatedBy(publisherDomain: string): string {
   return `${ADAGENTS_CREATED_BY_PREFIX}${publisherDomain}`;
+}
+
+function communityCatalogCreatedBy(platform: string): string {
+  return `${COMMUNITY_CATALOG_CREATED_BY_PREFIX}${platform}`;
 }
 
 /**
@@ -338,6 +359,338 @@ export class PublisherDatabase {
       );
     } finally {
       client.release();
+    }
+  }
+
+  /**
+   * Project an approved community catalog-only adagents.json into the normal
+   * publisher registry read model. This is the compatibility bridge that keeps
+   * the legacy "community mirror" storage table from becoming a separate public
+   * concept: each property.publisher_domain gets its own community-sourced
+   * publishers row and property records.
+   */
+  async upsertCommunityAdagentsCatalog(input: UpsertCommunityAdagentsCatalogInput): Promise<string[]> {
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      const updatedDomains = await this.replaceCommunityAdagentsCatalogWithClient(client, input);
+      await client.query('COMMIT');
+      return updatedDomains;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async replaceCommunityAdagentsCatalogWithClient(
+    client: PoolClient,
+    input: UpsertCommunityAdagentsCatalogInput,
+  ): Promise<string[]> {
+    const platform = input.platform.toLowerCase();
+    const properties = Array.isArray(input.manifest.properties) ? input.manifest.properties : [];
+    const byDomain = new Map<string, AdagentsProperty[]>();
+
+    for (const property of properties) {
+      const domain = this.readCommunityCatalogPublisherDomain(property);
+      if (!domain) continue;
+      const bucket = byDomain.get(domain) ?? [];
+      bucket.push(property);
+      byDomain.set(domain, bucket);
+    }
+
+    const updatedDomains: string[] = [];
+    await this.retireCommunityAdagentsCatalogWithClient(client, platform, input.previousManifest);
+
+    for (const [domain, domainProperties] of byDomain.entries()) {
+      const scopedManifest: AdagentsManifest = {
+        ...input.manifest,
+        properties: domainProperties,
+        authorized_agents: Array.isArray(input.manifest.authorized_agents)
+          ? input.manifest.authorized_agents
+          : [],
+      };
+
+      const publisherWrite = await client.query<{ source_type: string }>(
+        `INSERT INTO publishers
+           (domain, adagents_json, source_type, review_status, is_public,
+            last_validated, resolved_url, discovery_method,
+            created_by_user_id, created_by_email)
+         VALUES ($1, $2::jsonb, 'community', 'approved', TRUE,
+                 NULL, $3, 'community_catalog', $4, $5)
+           ON CONFLICT (domain) DO UPDATE SET
+             adagents_json = CASE
+               WHEN publishers.source_type = 'adagents_json' THEN publishers.adagents_json
+               ELSE EXCLUDED.adagents_json
+             END,
+             source_type = CASE
+               WHEN publishers.source_type = 'adagents_json' THEN publishers.source_type
+               ELSE 'community'
+             END,
+             review_status = CASE
+               WHEN publishers.source_type = 'adagents_json' THEN publishers.review_status
+               ELSE 'approved'
+             END,
+             is_public = TRUE,
+             last_validated = CASE
+               WHEN publishers.source_type = 'adagents_json' THEN publishers.last_validated
+               ELSE NULL
+             END,
+             resolved_url = CASE
+               WHEN publishers.source_type = 'adagents_json' THEN publishers.resolved_url
+               ELSE EXCLUDED.resolved_url
+             END,
+             discovery_method = CASE
+               WHEN publishers.source_type = 'adagents_json' THEN publishers.discovery_method
+               ELSE 'community_catalog'
+             END,
+             created_by_user_id = CASE
+               WHEN publishers.source_type = 'adagents_json' THEN publishers.created_by_user_id
+               ELSE EXCLUDED.created_by_user_id
+             END,
+             created_by_email = CASE
+               WHEN publishers.source_type = 'adagents_json' THEN publishers.created_by_email
+               ELSE EXCLUDED.created_by_email
+             END,
+             updated_at = NOW()
+         RETURNING source_type`,
+        [
+          domain,
+          JSON.stringify(scopedManifest),
+          input.catalogUrl ?? null,
+          communityCatalogCreatedBy(platform),
+          input.createdByEmail ?? null,
+        ],
+      );
+
+      if (publisherWrite.rows[0]?.source_type === 'adagents_json') {
+        updatedDomains.push(domain);
+        continue;
+      }
+
+      for (const property of domainProperties) {
+        await this.upsertCommunityCatalogProperty(client, platform, domain, property, input.catalogUrl);
+      }
+      updatedDomains.push(domain);
+    }
+
+    return updatedDomains;
+  }
+
+  async retireCommunityAdagentsCatalog(
+    platform: string,
+    manifest?: AdagentsManifest | Record<string, unknown> | null,
+  ): Promise<void> {
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      await this.retireCommunityAdagentsCatalogWithClient(client, platform, manifest);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async retireCommunityAdagentsCatalogWithClient(
+    client: PoolClient,
+    platform: string,
+    manifest?: AdagentsManifest | Record<string, unknown> | null,
+  ): Promise<void> {
+    const createdBy = communityCatalogCreatedBy(platform.toLowerCase());
+    await client.query(
+      `DELETE FROM catalog_identifiers ci
+        WHERE ci.property_rid IN (
+          SELECT cp.property_rid
+            FROM catalog_properties cp
+           WHERE cp.created_by = $1
+        )`,
+      [createdBy],
+    );
+    await client.query(
+      `DELETE FROM catalog_properties
+        WHERE created_by = $1`,
+      [createdBy],
+    );
+    const manifestKeys = this.readCommunityCatalogPropertyKeys(manifest);
+    if (manifestKeys.length > 0) {
+      await this.deleteCommunityDiscoveredPropertiesForKeys(client, manifestKeys);
+    } else {
+      await client.query(
+        `DELETE FROM discovered_properties dp
+          WHERE dp.source_type = 'community'
+            AND EXISTS (
+              SELECT 1
+                FROM publishers p
+                CROSS JOIN LATERAL jsonb_array_elements(
+                  CASE WHEN jsonb_typeof(p.adagents_json->'properties') = 'array'
+                       THEN p.adagents_json->'properties'
+                       ELSE '[]'::jsonb END
+                ) AS prop
+               WHERE p.source_type = 'community'
+                 AND p.discovery_method = 'community_catalog'
+                 AND p.created_by_user_id = $1
+                 AND p.domain = dp.publisher_domain
+                 AND (
+                   (prop->>'property_id' IS NOT NULL AND prop->>'property_id' = dp.property_id)
+                   OR (
+                     prop->>'property_id' IS NULL
+                     AND prop->>'name' = dp.name
+                     AND prop->>'property_type' = dp.property_type
+                   )
+                 )
+            )`,
+        [createdBy],
+      );
+    }
+    await client.query(
+      `DELETE FROM publishers
+        WHERE source_type = 'community'
+          AND discovery_method = 'community_catalog'
+          AND created_by_user_id = $1`,
+      [createdBy],
+    );
+  }
+
+  private readCommunityCatalogPublisherDomain(property: AdagentsProperty): string | null {
+    const explicit = (property as AdagentsProperty & { publisher_domain?: unknown }).publisher_domain;
+    if (typeof explicit === 'string' && explicit.trim()) {
+      return canonicalizePublisherDomain(explicit);
+    }
+
+    const identifiers = Array.isArray(property.identifiers) ? property.identifiers : [];
+    const domainIdentifier = identifiers.find((i) =>
+      (i?.type === 'domain' || i?.type === 'subdomain')
+      && typeof i.value === 'string'
+      && i.value.trim().length > 0
+    );
+    return domainIdentifier?.value ? canonicalizePublisherDomain(domainIdentifier.value) : null;
+  }
+
+  private readCommunityCatalogPropertyKeys(
+    manifest?: AdagentsManifest | Record<string, unknown> | null,
+  ): CommunityCatalogPropertyKey[] {
+    const properties = Array.isArray(manifest?.properties) ? manifest.properties : [];
+    const keys: CommunityCatalogPropertyKey[] = [];
+    for (const property of properties as AdagentsProperty[]) {
+      const publisherDomain = this.readCommunityCatalogPublisherDomain(property);
+      if (!publisherDomain) continue;
+      const propertyType = typeof property.property_type === 'string' && property.property_type
+        ? property.property_type
+        : 'website';
+      const name = typeof property.name === 'string' && property.name
+        ? property.name
+        : property.property_id ?? publisherDomain;
+      keys.push({
+        publisherDomain,
+        propertyId: typeof property.property_id === 'string' && property.property_id ? property.property_id : null,
+        name,
+        propertyType,
+      });
+    }
+    return keys;
+  }
+
+  private async deleteCommunityDiscoveredPropertiesForKeys(
+    client: PoolClient,
+    keys: CommunityCatalogPropertyKey[],
+  ): Promise<void> {
+    if (keys.length === 0) return;
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    for (const key of keys) {
+      if (key.propertyId) {
+        params.push(key.publisherDomain, key.propertyId);
+        conditions.push(`(publisher_domain = $${params.length - 1} AND property_id = $${params.length})`);
+      } else {
+        params.push(key.publisherDomain, key.name, key.propertyType);
+        conditions.push(`(publisher_domain = $${params.length - 2} AND name = $${params.length - 1} AND property_type = $${params.length})`);
+      }
+    }
+    await client.query(
+      `DELETE FROM discovered_properties
+        WHERE source_type = 'community'
+          AND (${conditions.join(' OR ')})`,
+      params,
+    );
+  }
+
+  private async upsertCommunityCatalogProperty(
+    client: PoolClient,
+    platform: string,
+    publisherDomain: string,
+    property: AdagentsProperty,
+    catalogUrl?: string,
+  ): Promise<void> {
+    const propertyType = typeof property.property_type === 'string' && property.property_type
+      ? property.property_type
+      : 'website';
+    const name = typeof property.name === 'string' && property.name
+      ? property.name
+      : property.property_id ?? publisherDomain;
+    const identifiers = Array.isArray(property.identifiers) ? property.identifiers : [];
+    const tags = Array.isArray(property.tags)
+      ? property.tags.filter((tag): tag is string => typeof tag === 'string')
+      : [];
+
+    await client.query(
+      `INSERT INTO discovered_properties (
+         property_id, publisher_domain, property_type, name,
+         identifiers, tags, source_type, last_validated
+       ) VALUES ($1, $2, $3, $4, $5::jsonb, $6, 'community', NOW())
+       ON CONFLICT (publisher_domain, name, property_type) DO UPDATE SET
+         property_id = COALESCE(EXCLUDED.property_id, discovered_properties.property_id),
+         identifiers = EXCLUDED.identifiers,
+         tags = EXCLUDED.tags,
+         source_type = CASE
+           WHEN discovered_properties.source_type IN ('adagents_json', 'aao_hosted') THEN discovered_properties.source_type
+           ELSE 'community'
+         END,
+         last_validated = NOW()`,
+      [
+        property.property_id ?? null,
+        publisherDomain,
+        propertyType,
+        name,
+        JSON.stringify(identifiers),
+        tags,
+      ],
+    );
+
+    const rawIdentifiers = identifiers
+      .filter((i): i is { type: string; value: string } =>
+        typeof i?.type === 'string' && typeof i?.value === 'string' && i.type.length > 0 && i.value.length > 0
+      )
+      .map((i) => {
+        const norm = normalizeIdentifier(i.type, i.value);
+        return { type: norm.type, value: norm.value.toLowerCase() };
+      });
+    if (rawIdentifiers.length === 0) return;
+
+    const propertyRid = uuidv7();
+    await client.query(
+      `INSERT INTO catalog_properties
+         (property_rid, property_id, classification, source, status, adagents_url, created_by)
+       VALUES ($1, $2, 'property', 'contributed', 'active', $3, $4)`,
+      [
+        propertyRid,
+        property.property_id ?? null,
+        catalogUrl ?? null,
+        communityCatalogCreatedBy(platform),
+      ],
+    );
+
+    for (const ident of rawIdentifiers) {
+      await client.query(
+        `INSERT INTO catalog_identifiers
+           (id, property_rid, identifier_type, identifier_value, evidence, confidence)
+         VALUES ($1, $2, $3, $4, 'community', 'strong')
+         ON CONFLICT (identifier_type, identifier_value) DO NOTHING`,
+        [uuidv7(), propertyRid, ident.type, ident.value],
+      );
     }
   }
 

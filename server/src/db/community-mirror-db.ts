@@ -1,4 +1,5 @@
 import { query } from './client.js';
+import type { PoolClient } from 'pg';
 
 /**
  * A stored AAO catalog-only community mirror (#2176). The body is a
@@ -64,8 +65,40 @@ export class CommunityMirrorDatabase {
     return result.rows[0];
   }
 
+  async upsertWithClient(client: PoolClient, input: UpsertCommunityMirrorInput): Promise<CommunityMirror> {
+    const result = await client.query<CommunityMirror>(
+      `INSERT INTO community_mirrors
+         (platform, adagents_json, catalog_etag, superseded_by,
+          created_by_user_id, created_by_email)
+       VALUES ($1, $2::jsonb, $3, $4, $5, $6)
+       ON CONFLICT (platform) DO UPDATE SET
+         adagents_json = EXCLUDED.adagents_json,
+         catalog_etag = EXCLUDED.catalog_etag,
+         superseded_by = EXCLUDED.superseded_by,
+         updated_at = NOW()
+       RETURNING *`,
+      [
+        input.platform,
+        JSON.stringify(input.adagents_json),
+        input.catalog_etag ?? null,
+        input.superseded_by ?? null,
+        input.created_by_user_id ?? null,
+        input.created_by_email ?? null,
+      ]
+    );
+    return result.rows[0];
+  }
+
   async getByPlatform(platform: string): Promise<CommunityMirror | null> {
     const result = await query<CommunityMirror>(
+      `SELECT * FROM community_mirrors WHERE platform = $1`,
+      [platform]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async getByPlatformWithClient(client: PoolClient, platform: string): Promise<CommunityMirror | null> {
+    const result = await client.query<CommunityMirror>(
       `SELECT * FROM community_mirrors WHERE platform = $1`,
       [platform]
     );
@@ -98,6 +131,11 @@ export class CommunityMirrorDatabase {
   /** Delete a mirror. Returns true if a row was removed, false if absent. */
   async deleteByPlatform(platform: string): Promise<boolean> {
     const result = await query('DELETE FROM community_mirrors WHERE platform = $1', [platform]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async deleteByPlatformWithClient(client: PoolClient, platform: string): Promise<boolean> {
+    const result = await client.query('DELETE FROM community_mirrors WHERE platform = $1', [platform]);
     return (result.rowCount ?? 0) > 0;
   }
 }

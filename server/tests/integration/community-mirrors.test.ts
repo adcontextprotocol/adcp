@@ -52,16 +52,28 @@ vi.mock('../../src/addie/admin-status-lookup.js', async () => {
 import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
+import { PublisherDatabase } from '../../src/db/publisher-db.js';
+import { FederatedIndexDatabase } from '../../src/db/federated-index-db.js';
 
 const PLATFORM = 'test-meta';
 const PLATFORM_LIKE = 'test-%';
+const PUBLISHER_DOMAIN = 'community-mirror-test.example';
+const REMOVED_PUBLISHER_DOMAIN = 'removed-community-mirror-test.example';
+const TEST_DATABASE_URL = process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test';
 
 const MINIMAL_PROPERTY = {
   property_id: 'instagram',
   property_type: 'mobile_app',
   name: 'Instagram',
-  identifiers: [{ type: 'domain', value: 'instagram.com' }],
-  publisher_domain: 'instagram.com',
+  identifiers: [{ type: 'domain', value: PUBLISHER_DOMAIN }],
+  publisher_domain: PUBLISHER_DOMAIN,
+};
+const REMOVED_PROPERTY = {
+  property_id: 'threads',
+  property_type: 'website',
+  name: 'Threads',
+  identifiers: [{ type: 'domain', value: REMOVED_PUBLISHER_DOMAIN }],
+  publisher_domain: REMOVED_PUBLISHER_DOMAIN,
 };
 // A valid ProductFormatDeclaration: format_kind + params are both required.
 const MINIMAL_FORMAT = {
@@ -84,17 +96,34 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
   let server: HTTPServer;
   let app: unknown;
   let pool: Pool;
+  let publisherDb: PublisherDatabase;
+  let federatedDb: FederatedIndexDatabase;
 
   async function clear() {
+    await pool.query(
+      `DELETE FROM catalog_identifiers ci
+        WHERE ci.property_rid IN (
+          SELECT cp.property_rid
+            FROM catalog_properties cp
+           WHERE cp.created_by = $1
+        )`,
+      [`community_adagents:${PLATFORM}`],
+    );
+    await pool.query('DELETE FROM catalog_properties WHERE created_by = $1', [`community_adagents:${PLATFORM}`]);
+    await pool.query('DELETE FROM discovered_properties WHERE publisher_domain = ANY($1::text[])', [[PUBLISHER_DOMAIN, REMOVED_PUBLISHER_DOMAIN]]);
+    await pool.query('DELETE FROM publishers WHERE domain = ANY($1::text[])', [[PUBLISHER_DOMAIN, REMOVED_PUBLISHER_DOMAIN]]);
     await pool.query('DELETE FROM community_mirrors WHERE platform LIKE $1', [PLATFORM_LIKE]);
   }
 
   beforeAll(async () => {
+    process.env.DATABASE_URL = TEST_DATABASE_URL;
     pool = initializeDatabase({
-      connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
+      connectionString: TEST_DATABASE_URL,
     });
     await runMigrations();
     server = new HTTPServer();
+    publisherDb = new PublisherDatabase();
+    federatedDb = new FederatedIndexDatabase();
     await server.start(0);
     app = (server as unknown as { app: unknown }).app;
   });
@@ -119,6 +148,39 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     expect(res.body.success).toBe(true);
     expect(res.body.platform).toBe(PLATFORM);
     expect(res.body.catalog_etag).toBe('test-etag-1');
+    expect(res.body.publisher_domains).toEqual([PUBLISHER_DOMAIN]);
+
+    const publishers = await pool.query(
+      `SELECT source_type, review_status, discovery_method, created_by_user_id, resolved_url, adagents_json
+         FROM publishers
+        WHERE domain = $1`,
+      [PUBLISHER_DOMAIN],
+    );
+    expect(publishers.rows).toHaveLength(1);
+    expect(publishers.rows[0]).toMatchObject({
+      source_type: 'community',
+      review_status: 'approved',
+      discovery_method: 'community_catalog',
+      created_by_user_id: `community_adagents:${PLATFORM}`,
+      resolved_url: `/api/creative-agent/translated/${PLATFORM}/adagents.json`,
+    });
+    expect(publishers.rows[0].adagents_json.properties).toHaveLength(1);
+    expect(publishers.rows[0].adagents_json.formats).toHaveLength(1);
+
+    const projected = await pool.query(
+      `SELECT source_type, property_id, publisher_domain, name
+         FROM discovered_properties
+        WHERE publisher_domain = $1`,
+      [PUBLISHER_DOMAIN],
+    );
+    expect(projected.rows).toEqual([
+      {
+        source_type: 'community',
+        property_id: 'instagram',
+        publisher_domain: PUBLISHER_DOMAIN,
+        name: 'Instagram',
+      },
+    ]);
 
     const read = await request(app).get(`/api/registry/mirrors/${PLATFORM}`);
     expect(read.status).toBe(200);
@@ -155,6 +217,19 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     const mine = list.body.mirrors.filter((m: { platform: string }) => m.platform === PLATFORM);
     expect(mine).toHaveLength(1);
     expect(mine[0].catalog_etag).toBe('v2');
+  });
+
+  it('re-publish replaces the projected publisher rows for that platform', async () => {
+    await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send(publishBody({ properties: [MINIMAL_PROPERTY, REMOVED_PROPERTY] }));
+    expect((await pool.query('SELECT 1 FROM publishers WHERE domain = $1', [REMOVED_PUBLISHER_DOMAIN])).rows).toHaveLength(1);
+
+    await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody({ properties: [MINIMAL_PROPERTY] }));
+
+    expect((await pool.query('SELECT 1 FROM publishers WHERE domain = $1', [PUBLISHER_DOMAIN])).rows).toHaveLength(1);
+    expect((await pool.query('SELECT 1 FROM publishers WHERE domain = $1', [REMOVED_PUBLISHER_DOMAIN])).rows).toHaveLength(0);
+    expect((await pool.query('SELECT 1 FROM discovered_properties WHERE publisher_domain = $1', [REMOVED_PUBLISHER_DOMAIN])).rows).toHaveLength(0);
   });
 
   it('preserves created_by_* across a re-publish by a different user', async () => {
@@ -273,6 +348,40 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     const del = await request(app).delete(`/api/registry/mirrors/${PLATFORM}?force=true`);
     expect(del.status).toBe(200);
     expect((await request(app).get(`/api/registry/mirrors/${PLATFORM}`)).status).toBe(404);
+    expect((await pool.query('SELECT 1 FROM publishers WHERE domain = $1', [PUBLISHER_DOMAIN])).rows).toHaveLength(0);
+    expect((await pool.query('SELECT 1 FROM discovered_properties WHERE publisher_domain = $1', [PUBLISHER_DOMAIN])).rows).toHaveLength(0);
+    expect((await pool.query('SELECT 1 FROM catalog_properties WHERE created_by = $1', [`community_adagents:${PLATFORM}`])).rows).toHaveLength(0);
+  });
+
+  it('retiring after first-party self-host takeover removes stale community properties', async () => {
+    await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+    await publisherDb.upsertAdagentsCache({
+      domain: PUBLISHER_DOMAIN,
+      manifest: {
+        authorized_agents: [],
+        properties: [{
+          property_id: 'self-hosted',
+          property_type: 'website',
+          name: 'Self Hosted Site',
+          identifiers: [{ type: 'domain', value: PUBLISHER_DOMAIN }],
+        }],
+      },
+      statusCode: 200,
+      responseBytes: 512,
+      resolvedUrl: `https://${PUBLISHER_DOMAIN}/.well-known/adagents.json`,
+      discoveryMethod: 'direct',
+    });
+
+    const del = await request(app).delete(`/api/registry/mirrors/${PLATFORM}?force=true`);
+    expect(del.status).toBe(200);
+
+    const properties = await federatedDb.getPropertiesForDomain(PUBLISHER_DOMAIN);
+    expect(properties.map(p => p.name)).toEqual(['Self Hosted Site']);
+    expect(properties[0]?.source_type).toBe('adagents_json');
+    expect((await pool.query(
+      'SELECT 1 FROM discovered_properties WHERE publisher_domain = $1 AND source_type = $2',
+      [PUBLISHER_DOMAIN, 'community'],
+    )).rows).toHaveLength(0);
   });
 
   it('returns 404 deleting an unknown mirror', async () => {

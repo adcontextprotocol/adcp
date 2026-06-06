@@ -18,6 +18,8 @@ import { Router } from 'express';
 import type { RequestHandler, Response } from 'express';
 import { z } from 'zod';
 import { CommunityMirrorDatabase } from '../db/community-mirror-db.js';
+import { PublisherDatabase } from '../db/publisher-db.js';
+import { getClient } from '../db/client.js';
 import { isRegistryModerator } from '../services/brand-logo-auth.js';
 import { isWebUserAAOAdmin } from '../addie/admin-status-lookup.js';
 import { validateAdagentsDocument } from '../services/adagents-schema-validator.js';
@@ -97,6 +99,7 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
   const router = Router();
   const { requireAuth: authMiddleware } = config;
   const mirrorDb = new CommunityMirrorDatabase();
+  const publisherDb = new PublisherDatabase();
 
   const writeMiddleware: RequestHandler[] = authMiddleware
     ? [authMiddleware, brandCreationRateLimiter]
@@ -206,8 +209,11 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
       });
     }
 
+    const client = await getClient();
     try {
-      const mirror = await mirrorDb.upsert({
+      await client.query('BEGIN');
+      const previousMirror = await mirrorDb.getByPlatformWithClient(client, platform);
+      const mirror = await mirrorDb.upsertWithClient(client, {
         platform,
         adagents_json: adagentsJson,
         catalog_etag: body.catalog_etag ?? null,
@@ -215,17 +221,30 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
         created_by_user_id: userId,
         created_by_email: req.user?.email ?? null,
       });
+      const publisher_domains = await publisherDb.replaceCommunityAdagentsCatalogWithClient(client, {
+        platform,
+        manifest: adagentsJson,
+        previousManifest: previousMirror?.adagents_json ?? null,
+        catalogUrl: `/api/creative-agent/translated/${platform}/adagents.json`,
+        createdByUserId: userId,
+        createdByEmail: req.user?.email ?? null,
+      });
+      await client.query('COMMIT');
       logger.info({ platform, by: userId }, 'Published community mirror');
       return res.json({
         success: true,
         platform: mirror.platform,
         catalog_etag: mirror.catalog_etag,
         superseded_by: mirror.superseded_by,
+        publisher_domains,
         updated_at: mirror.updated_at,
       });
     } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
       logger.error({ err, platform }, 'Failed to publish community mirror');
       return res.status(500).json({ error: 'Failed to publish community mirror' });
+    } finally {
+      client.release();
     }
   });
 
@@ -238,9 +257,12 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
     const userId = await resolvePublisher(req, res);
     if (!userId) return;
 
+    const client = await getClient();
     try {
-      const mirror = await mirrorDb.getByPlatform(platform);
+      await client.query('BEGIN');
+      const mirror = await mirrorDb.getByPlatformWithClient(client, platform);
       if (!mirror) {
+        await client.query('ROLLBACK');
         return res.status(404).json({ error: 'Community mirror not found' });
       }
       // Buyer caches key on the mirror URL and fall back to it until the
@@ -251,17 +273,23 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
       // is safe once the deprecation window has been signalled.)
       const force = req.query.force === 'true';
       if (!mirror.superseded_by && !force) {
+        await client.query('ROLLBACK');
         return res.status(409).json({
           error:
             'Refusing to delete a mirror that has not been superseded. Set superseded_by first (so buyers get a migration signal), or pass ?force=true to delete anyway.',
         });
       }
-      await mirrorDb.deleteByPlatform(platform);
+      await publisherDb.retireCommunityAdagentsCatalogWithClient(client, platform, mirror.adagents_json);
+      await mirrorDb.deleteByPlatformWithClient(client, platform);
+      await client.query('COMMIT');
       logger.info({ platform, by: userId, force }, 'Deleted community mirror');
       return res.json({ success: true, platform });
     } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
       logger.error({ err, platform }, 'Failed to delete community mirror');
       return res.status(500).json({ error: 'Failed to delete community mirror' });
+    } finally {
+      client.release();
     }
   });
 
