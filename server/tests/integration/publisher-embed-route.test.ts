@@ -81,7 +81,7 @@ describe('Partner-storefront embed widget — /publisher/:domain/embed', () => {
     expect(res.headers['content-type']).toMatch(/^text\/html/);
     // Distinguish the embed shell from the canonical publisher-home
     // (which has a different title).
-    expect(res.text).toContain('<title>Publisher | AAO embed</title>');
+    expect(res.text).toContain('<title>Publisher | AgenticAdvertising.org embed</title>');
     expect(res.text).toContain('class="embed-root"');
   });
 
@@ -97,7 +97,7 @@ describe('Partner-storefront embed widget — /publisher/:domain/embed', () => {
   it('omits the global site nav script (visual stripping)', async () => {
     const res = await request(app).get(`/publisher/${encodeURIComponent(TEST_DOMAIN)}/embed`);
     expect(res.status).toBe(200);
-    // The canonical publisher-home pulls /nav.js to render the AAO
+    // The canonical publisher-home pulls /nav.js to render the AgenticAdvertising.org
     // global header. Embed must not — partner sites have their own
     // chrome and the page is iframed.
     expect(res.text).not.toContain('/nav.js');
