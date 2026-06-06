@@ -83,6 +83,15 @@ import {
   CredentialSaveValidationErrorSchema,
   StoryboardSummarySchema,
   StoryboardDetailSchema,
+  CreateAdagentsResponseSchema,
+  CommunityMirrorPublishRequestSchema,
+  CommunityMirrorListResponseSchema,
+  CommunityMirrorGetResponseSchema,
+  CommunityMirrorPublishResponseSchema,
+  CommunityMirrorDeleteResponseSchema,
+  CommunityMirrorPublishErrorSchema,
+  AdagentsAuthorizedAgentSchema,
+  RateLimitErrorSchema,
 } from "../schemas/registry.js";
 
 import type { BrandManager } from "../brand-manager.js";
@@ -1352,7 +1361,7 @@ registry.registerPath({
       content: {
         "application/json": {
           schema: z.object({
-            authorized_agents: z.array(z.object({ url: z.string(), authorized_for: z.string().optional() })),
+            authorized_agents: z.array(AdagentsAuthorizedAgentSchema),
             include_schema: z.boolean().optional(),
             include_timestamp: z.boolean().optional(),
             properties: z.array(z.unknown()).optional(),
@@ -1366,7 +1375,127 @@ registry.registerPath({
     },
   },
   responses: {
-    200: { description: "Generated adagents.json", content: { "application/json": { schema: z.object({ success: z.boolean(), data: z.object({ success: z.boolean(), adagents_json: z.unknown(), validation: z.unknown() }), timestamp: z.string() }) } } },
+    200: { description: "Generated adagents.json", content: { "application/json": { schema: CreateAdagentsResponseSchema } } },
+  },
+});
+
+// Community Mirrors
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/mirrors",
+  operationId: "listCommunityMirrors",
+  summary: "List community mirrors",
+  description:
+    "List persisted catalog-only adagents.json community mirrors. The list projection includes presence and freshness metadata but omits the full `adagents_json` body; fetch a platform-specific mirror for the full document.",
+  tags: ["Community Mirrors"],
+  request: {
+    query: z.object({
+      limit: z.number().int().optional().openapi({
+        description: "Maximum mirrors to return. The service defaults to 100 and clamps values to the 1-500 range.",
+      }),
+      offset: z.number().int().optional().openapi({
+        description: "Zero-based result offset. Defaults to 0; negative values are clamped to 0.",
+      }),
+    }),
+  },
+  responses: {
+    200: { description: "Community mirror list", content: { "application/json": { schema: CommunityMirrorListResponseSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to list community mirrors", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/mirrors/{platform}",
+  operationId: "getCommunityMirror",
+  summary: "Get community mirror",
+  description:
+    "Fetch one persisted community mirror by platform. A present mirror returns the platform metadata plus the stored catalog-only `adagents_json` document; absent mirrors return 404.",
+  tags: ["Community Mirrors"],
+  request: {
+    params: z.object({
+      platform: z.string().regex(/^[a-z0-9_-]{1,64}$/).openapi({
+        description: "Lowercase platform identifier.",
+        example: "example_platform",
+      }),
+    }),
+  },
+  responses: {
+    200: { description: "Community mirror", content: { "application/json": { schema: CommunityMirrorGetResponseSchema } } },
+    400: { description: "Invalid platform identifier", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Community mirror not found", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to read community mirror", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "put",
+  path: "/api/registry/mirrors/{platform}",
+  operationId: "publishCommunityMirror",
+  summary: "Publish community mirror",
+  description:
+    "Publish or update a catalog-only adagents.json community mirror. Requires a registry moderator or AgenticAdvertising.org admin. The service validates the assembled document against adagents.json, forces `authorized_agents: []`, regenerates `$schema` and `last_updated`, and updates derived publisher-domain catalog rows.",
+  tags: ["Community Mirrors"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      platform: z.string().regex(/^[a-z0-9_-]{1,64}$/).openapi({
+        description: "Lowercase platform identifier.",
+        example: "example_platform",
+      }),
+    }),
+    body: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: CommunityMirrorPublishRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: { description: "Community mirror published", content: { "application/json": { schema: CommunityMirrorPublishResponseSchema } } },
+    400: { description: "Invalid platform, request body, or adagents.json conformance failure", content: { "application/json": { schema: CommunityMirrorPublishErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Only registry moderators or AgenticAdvertising.org admins can manage community mirrors", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to publish community mirror", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "delete",
+  path: "/api/registry/mirrors/{platform}",
+  operationId: "deleteCommunityMirror",
+  summary: "Delete community mirror",
+  description:
+    "Delete a persisted community mirror and retire derived publisher-domain catalog rows. Requires a registry moderator or AgenticAdvertising.org admin. Without `force=true`, the service refuses to delete a mirror that has not first published a `superseded_by` migration URL.",
+  tags: ["Community Mirrors"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      platform: z.string().regex(/^[a-z0-9_-]{1,64}$/).openapi({
+        description: "Lowercase platform identifier.",
+        example: "example_platform",
+      }),
+    }),
+    query: z.object({
+      force: z.string().optional().openapi({
+        description: "Set to `true` to delete a mirror without a `superseded_by` migration URL.",
+      }),
+    }),
+  },
+  responses: {
+    200: { description: "Community mirror deleted", content: { "application/json": { schema: CommunityMirrorDeleteResponseSchema } } },
+    400: { description: "Invalid platform identifier", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Only registry moderators or AgenticAdvertising.org admins can manage community mirrors", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Community mirror not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Mirror has not been superseded and force was not set", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to delete community mirror", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 

@@ -23,6 +23,259 @@ export const ErrorSchema = z
   .object({ error: z.string() })
   .openapi("Error");
 
+export const RateLimitErrorSchema = z
+  .object({
+    error: z.string(),
+    message: z.string().optional(),
+    retryAfter: z.number().int().optional().openapi({ description: "Seconds to wait before retrying." }),
+  })
+  .openapi("RateLimitError");
+
+const AdagentsCatalogItemSchema = z
+  .record(z.string(), z.unknown())
+  .openapi({ description: "Protocol-defined catalog object. See the adagents.json JSON Schema for the authoritative nested shape." });
+
+const HttpsUrlSchema = z
+  .string()
+  .url()
+  .regex(/^https:\/\//)
+  .openapi({
+    description: "HTTPS URL.",
+  });
+
+export const AdagentsAuthorizedAgentSchema = z
+  .object({
+    url: z.string().url().openapi({ description: "Agent endpoint URL." }),
+    authorized_for: z.string().optional(),
+    authorization_type: z.enum([
+      "property_ids",
+      "property_tags",
+      "inline_properties",
+      "publisher_properties",
+      "signal_ids",
+      "signal_tags",
+    ]).optional(),
+    property_ids: z.array(z.string()).optional(),
+    property_tags: z.array(z.string()).optional(),
+    properties: z.array(AdagentsCatalogItemSchema).optional(),
+    publisher_properties: z.array(z.object({
+      publisher_domain: z.string().optional(),
+      publisher_domains: z.array(z.string()).optional(),
+      selection_type: z.enum(["all", "by_id", "by_tag"]),
+      property_ids: z.array(z.string()).optional(),
+      property_tags: z.array(z.string()).optional(),
+    })).optional(),
+    collections: z.array(z.object({
+      publisher_domain: z.string(),
+      collection_ids: z.array(z.string()),
+    })).optional(),
+    placement_ids: z.array(z.string()).optional(),
+    placement_tags: z.array(z.string()).optional(),
+    delegation_type: z.enum(["direct", "delegated", "ad_network"]).optional(),
+    exclusive: z.boolean().optional(),
+    countries: z.array(z.string()).optional(),
+    effective_from: z.string().optional(),
+    effective_until: z.string().optional(),
+    signal_ids: z.array(z.string()).optional(),
+    signal_tags: z.array(z.string()).optional(),
+    signing_keys: z.array(z.record(z.string(), z.unknown())).optional(),
+  })
+  .passthrough()
+  .openapi("AdagentsAuthorizedAgent");
+
+export const AdagentsJsonSchema = z
+  .object({
+    $schema: z.string().url().optional(),
+    authorized_agents: z.array(AdagentsAuthorizedAgentSchema),
+    properties: z.array(AdagentsCatalogItemSchema).optional(),
+    catalog_etag: z.string().optional(),
+    formats: z.array(AdagentsCatalogItemSchema).optional(),
+    placements: z.array(AdagentsCatalogItemSchema).optional(),
+    placement_tags: z.record(z.string(), z.unknown()).optional(),
+    collections: z.array(AdagentsCatalogItemSchema).optional(),
+    signals: z.array(AdagentsCatalogItemSchema).optional(),
+    signal_tags: z.record(z.string(), z.unknown()).optional(),
+    contact: z.unknown().optional(),
+    superseded_by: HttpsUrlSchema.optional().openapi({
+      description:
+        "HTTPS URL for the canonical successor adagents.json document. Clients should re-fetch the successor and update cached mirror references before retiring use of this mirror.",
+    }),
+    last_updated: z.string().datetime().optional(),
+  })
+  .passthrough()
+  .openapi("AdagentsJson");
+
+export const CommunityMirrorAdagentsJsonSchema = z
+  .object({
+    $schema: z.string().url().optional(),
+    authorized_agents: z.array(AdagentsAuthorizedAgentSchema).max(0).openapi({
+      description: "Always empty for community mirrors; these catalogs never assert sales authorization.",
+    }),
+    properties: z.array(AdagentsCatalogItemSchema).optional(),
+    catalog_etag: z.string().optional(),
+    formats: z.array(AdagentsCatalogItemSchema).optional(),
+    placements: z.array(AdagentsCatalogItemSchema).optional(),
+    placement_tags: z.record(z.string(), z.unknown()).optional(),
+    collections: z.array(AdagentsCatalogItemSchema).optional(),
+    signals: z.array(AdagentsCatalogItemSchema).optional(),
+    signal_tags: z.record(z.string(), z.unknown()).optional(),
+    contact: z.unknown().optional(),
+    superseded_by: HttpsUrlSchema.optional().openapi({
+      description:
+        "HTTPS URL for the canonical successor adagents.json document. Clients should re-fetch the successor and update cached mirror references before retiring use of this mirror.",
+    }),
+    last_updated: z.string().datetime().optional(),
+  })
+  .passthrough()
+  .openapi("CommunityMirrorAdagentsJson");
+
+const AdagentsValidationIssueSchema = z
+  .object({
+    field: z.string(),
+    message: z.string(),
+    severity: z.literal("error"),
+  })
+  .openapi("AdagentsValidationIssue");
+
+const AdagentsValidationWarningSchema = z
+  .object({
+    field: z.string(),
+    message: z.string(),
+    suggestion: z.string().optional(),
+  })
+  .openapi("AdagentsValidationWarning");
+
+export const AdagentsValidationResultSchema = z
+  .object({
+    valid: z.boolean(),
+    errors: z.array(AdagentsValidationIssueSchema),
+    warnings: z.array(AdagentsValidationWarningSchema),
+    domain: z.string(),
+    url: z.string(),
+    status_code: z.number().int().optional(),
+    response_bytes: z.number().int().nonnegative().optional(),
+    resolved_url: z.string().optional(),
+    raw_data: z.unknown().optional(),
+    discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain", "adagents_authoritative"]),
+    manager_domain: z.string().optional(),
+  })
+  .openapi("AdagentsValidationResult");
+
+export const CreateAdagentsResponseSchema = z
+  .object({
+    success: z.literal(true),
+    data: z.object({
+      success: z.literal(true),
+      adagents_json: z.string().openapi({
+        description: "Pretty-printed adagents.json document generated by the service.",
+      }),
+      validation: AdagentsValidationResultSchema,
+    }),
+    timestamp: z.string().datetime(),
+  })
+  .openapi("CreateAdagentsResponse");
+
+const CommunityMirrorPlatformSchema = z
+  .string()
+  .regex(/^[a-z0-9_-]{1,64}$/)
+  .openapi({
+    description: "Lowercase platform identifier, normalized by the service.",
+    example: "example_platform",
+  });
+
+const CommunityMirrorPublishBaseShape = {
+  catalog_etag: z.string().min(1).max(255).optional(),
+  formats: z.array(AdagentsCatalogItemSchema).optional(),
+  properties: z.array(AdagentsCatalogItemSchema).optional(),
+  placements: z.array(AdagentsCatalogItemSchema).optional(),
+  placement_tags: z.record(z.string(), z.unknown()).optional(),
+  collections: z.array(AdagentsCatalogItemSchema).optional(),
+  signals: z.array(AdagentsCatalogItemSchema).optional(),
+  signal_tags: z.record(z.string(), z.unknown()).optional(),
+  contact: z.unknown().optional(),
+  superseded_by: HttpsUrlSchema.optional().openapi({
+    description:
+      "HTTPS URL for the canonical successor adagents.json document. Set this before deleting a mirror so buyers can migrate cached references.",
+  }),
+};
+
+const CommunityMirrorCatalogContentSchema = z.array(AdagentsCatalogItemSchema).min(1);
+
+export const CommunityMirrorPublishRequestSchema = z
+  .union([
+    z.object({ ...CommunityMirrorPublishBaseShape, formats: CommunityMirrorCatalogContentSchema }).passthrough(),
+    z.object({ ...CommunityMirrorPublishBaseShape, properties: CommunityMirrorCatalogContentSchema }).passthrough(),
+    z.object({ ...CommunityMirrorPublishBaseShape, placements: CommunityMirrorCatalogContentSchema }).passthrough(),
+    z.object({ ...CommunityMirrorPublishBaseShape, collections: CommunityMirrorCatalogContentSchema }).passthrough(),
+    z.object({ ...CommunityMirrorPublishBaseShape, signals: CommunityMirrorCatalogContentSchema }).passthrough(),
+  ])
+  .openapi("CommunityMirrorPublishRequest", {
+    description:
+      "Catalog-only adagents.json body for a community mirror. At least one of `formats`, `properties`, `placements`, `collections`, or `signals` must be present and non-empty. The service regenerates `$schema` and `last_updated` before persisting.",
+  });
+
+export const CommunityMirrorSummarySchema = z
+  .object({
+    platform: CommunityMirrorPlatformSchema,
+    catalog_etag: z.string().nullable(),
+    superseded_by: HttpsUrlSchema.nullable().openapi({
+      description: "HTTPS successor document URL, when this mirror has been superseded.",
+    }),
+    updated_at: z.string().datetime(),
+  })
+  .openapi("CommunityMirrorSummary");
+
+export const CommunityMirrorListResponseSchema = z
+  .object({
+    mirrors: z.array(CommunityMirrorSummarySchema),
+    total: z.number().int().nonnegative(),
+  })
+  .openapi("CommunityMirrorListResponse");
+
+export const CommunityMirrorGetResponseSchema = z
+  .object({
+    platform: CommunityMirrorPlatformSchema,
+    catalog_etag: z.string().nullable(),
+    superseded_by: HttpsUrlSchema.nullable().openapi({
+      description: "HTTPS successor document URL, when this mirror has been superseded.",
+    }),
+    adagents_json: CommunityMirrorAdagentsJsonSchema,
+    created_at: z.string().datetime(),
+    updated_at: z.string().datetime(),
+  })
+  .openapi("CommunityMirrorGetResponse");
+
+export const CommunityMirrorPublishResponseSchema = z
+  .object({
+    success: z.literal(true),
+    platform: CommunityMirrorPlatformSchema,
+    catalog_etag: z.string().nullable(),
+    superseded_by: HttpsUrlSchema.nullable().openapi({
+      description: "HTTPS successor document URL, when this mirror has been superseded.",
+    }),
+    publisher_domains: z.array(z.string()).openapi({
+      description: "Publisher domains updated from this community mirror catalog.",
+    }),
+    updated_at: z.string().datetime(),
+  })
+  .openapi("CommunityMirrorPublishResponse");
+
+export const CommunityMirrorPublishErrorSchema = z
+  .object({
+    error: z.string(),
+    details: z.array(z.unknown()).optional().openapi({
+      description: "Validation details for request-body parse failures or adagents.json conformance errors.",
+    }),
+  })
+  .openapi("CommunityMirrorPublishError");
+
+export const CommunityMirrorDeleteResponseSchema = z
+  .object({
+    success: z.literal(true),
+    platform: CommunityMirrorPlatformSchema,
+  })
+  .openapi("CommunityMirrorDeleteResponse");
+
 /**
  * Extended error shape for endpoints whose parser can tag rejections with
  * a stable `code` + `field` pointer (see `parseOAuthClientCredentialsInput`).

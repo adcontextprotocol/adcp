@@ -12,18 +12,22 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROUTES_FILE = path.join(__dirname, "../../src/routes/registry-api.ts");
+const OPENAPI_FILE = path.join(__dirname, "../../src/routes/registry-api.ts");
+const ROUTE_SOURCES = [
+  { file: OPENAPI_FILE, mountPrefix: "/api" },
+  { file: path.join(__dirname, "../../src/routes/community-mirrors.ts"), mountPrefix: "/api/registry" },
+];
 
 /**
  * Extract route registrations from source code using regex.
  * Matches: router.get("/path", ...), router.post("/path", ...)
  */
-function extractExpressRoutes(source: string): Array<{ method: string; path: string }> {
+function extractExpressRoutes(source: string, mountPrefix: string): Array<{ method: string; path: string }> {
   const routeRegex = /router\.(get|post|put|delete|patch)\(\s*["'`]([^"'`]+)["'`]/g;
   const routes: Array<{ method: string; path: string }> = [];
   let match;
   while ((match = routeRegex.exec(source)) !== null) {
-    const raw = `/api${match[2]}`;
+    const raw = `${mountPrefix}${match[2]}`;
     routes.push({
       method: match[1],
       path: raw === "/api/" ? "/api" : raw, // normalize root path
@@ -55,9 +59,11 @@ function normalizeParamSyntax(path: string): string {
 }
 
 describe("OpenAPI Coverage", () => {
-  const source = fs.readFileSync(ROUTES_FILE, "utf-8");
-  const expressRoutes = extractExpressRoutes(source);
-  const openApiPaths = extractOpenApiPaths(source);
+  const openApiSource = fs.readFileSync(OPENAPI_FILE, "utf-8");
+  const expressRoutes = ROUTE_SOURCES.flatMap(({ file, mountPrefix }) =>
+    extractExpressRoutes(fs.readFileSync(file, "utf-8"), mountPrefix),
+  );
+  const openApiPaths = extractOpenApiPaths(openApiSource);
 
   it("should find Express routes in source", () => {
     expect(expressRoutes.length).toBeGreaterThan(0);
