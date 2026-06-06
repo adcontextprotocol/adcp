@@ -128,6 +128,179 @@ import {
 } from "../db/authorization-snapshot-db.js";
 import { createHash, randomUUID } from "crypto";
 import { createGzip, constants as zlibConstants } from "zlib";
+
+type PublisherBrandSummary = {
+  name?: string;
+  description?: string;
+  logo_url?: string;
+  colors?: string[];
+  industries?: string[];
+};
+
+type PublisherFormatSummary = {
+  format_option_id?: string;
+  display_name: string;
+  format_kind: string;
+  params?: Record<string, unknown>;
+  applies_to_property_ids?: string[];
+  applies_to_property_tags?: string[];
+  seller_preference?: string;
+  experimental?: boolean;
+};
+
+function recordOrNull(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function stringArray(value: unknown, cap = 8): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, cap)
+    : [];
+}
+
+function collectBrandColors(value: unknown, cap = 6): string[] {
+  const colors = recordOrNull(value);
+  if (!colors) return [];
+  const out: string[] = [];
+  for (const raw of Object.values(colors)) {
+    const candidates = Array.isArray(raw) ? raw : [raw];
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && /^#[0-9A-Fa-f]{6}$/.test(candidate) && !out.includes(candidate)) {
+        out.push(candidate);
+        if (out.length >= cap) return out;
+      }
+    }
+  }
+  return out;
+}
+
+function firstLogoUrl(value: unknown): string | undefined {
+  const logos = Array.isArray(value) ? value : [];
+  for (const logo of logos) {
+    const url = stringOrUndefined(recordOrNull(logo)?.url);
+    if (url && /^https:\/\//i.test(url)) return url;
+  }
+  return undefined;
+}
+
+function publicBaseUrl(req: Request): string {
+  const configured = process.env.PUBLIC_BASE_URL || process.env.BASE_URL;
+  if (configured && /^https?:\/\//i.test(configured)) return configured;
+  const host = req.get("host");
+  if (host) return `${req.protocol || "http"}://${host}`;
+  return "https://agenticadvertising.org";
+}
+
+function absoluteRegistryUrl(value: string, req: Request): string {
+  try {
+    return new URL(value, publicBaseUrl(req)).toString();
+  } catch {
+    return value;
+  }
+}
+
+function summarizeBrandManifest(
+  manifest: Record<string, unknown> | null | undefined,
+  fallbackName?: string,
+): PublisherBrandSummary | undefined {
+  if (!manifest) {
+    return fallbackName ? { name: fallbackName } : undefined;
+  }
+
+  const house = recordOrNull(manifest.house);
+  const company = recordOrNull(manifest.company);
+  const firstBrand = Array.isArray(manifest.brands)
+    ? recordOrNull(manifest.brands[0])
+    : null;
+
+  const name =
+    fallbackName
+    ?? stringOrUndefined(manifest.name)
+    ?? stringOrUndefined(house?.name)
+    ?? stringOrUndefined(firstBrand?.name);
+  const description =
+    stringOrUndefined(manifest.description)
+    ?? stringOrUndefined(manifest.summary)
+    ?? stringOrUndefined(house?.description)
+    ?? stringOrUndefined(firstBrand?.description)
+    ?? stringOrUndefined(company?.description);
+  const logo_url =
+    firstLogoUrl(manifest.logos)
+    ?? firstLogoUrl(house?.logos)
+    ?? firstLogoUrl(firstBrand?.logos);
+  const colors = [
+    ...collectBrandColors(manifest.colors),
+    ...collectBrandColors(house?.colors),
+    ...collectBrandColors(firstBrand?.colors),
+  ].filter((color, index, all) => all.indexOf(color) === index).slice(0, 6);
+  const industries =
+    stringArray(company?.industries)
+      .concat(stringArray(firstBrand?.industries))
+      .filter((industry, index, all) => all.indexOf(industry) === index)
+      .slice(0, 6);
+
+  const summary: PublisherBrandSummary = {};
+  if (name) summary.name = name;
+  if (description) summary.description = description;
+  if (logo_url) summary.logo_url = logo_url;
+  if (colors.length) summary.colors = colors;
+  if (industries.length) summary.industries = industries;
+  return Object.keys(summary).length ? summary : undefined;
+}
+
+function humanizeIdentifier(value: string): string {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function summarizeFormats(
+  manifest: Record<string, unknown> | null | undefined,
+  properties: Array<{ id?: string; tags?: string[] }>,
+): PublisherFormatSummary[] {
+  const rawFormats = Array.isArray(manifest?.formats) ? manifest.formats : [];
+  const propertyIds = new Set(properties.map(p => p.id).filter((id): id is string => !!id));
+  const propertyTags = new Set(properties.flatMap(p => Array.isArray(p.tags) ? p.tags : []));
+  return rawFormats
+    .map((raw): PublisherFormatSummary | null => {
+      const format = recordOrNull(raw);
+      if (!format) return null;
+      const formatKind = stringOrUndefined(format.format_kind);
+      const params = recordOrNull(format.params);
+      if (!formatKind || !params) return null;
+      const appliesToPropertyIds = stringArray(format.applies_to_property_ids);
+      const appliesToPropertyTags = stringArray(format.applies_to_property_tags);
+      const hasPropertyScope = appliesToPropertyIds.length > 0;
+      const hasTagScope = appliesToPropertyTags.length > 0;
+      const propertyScopeMatches = !hasPropertyScope || appliesToPropertyIds.some(id => propertyIds.has(id));
+      const tagScopeMatches = !hasTagScope || appliesToPropertyTags.some(tag => propertyTags.has(tag));
+      if (!propertyScopeMatches || !tagScopeMatches) return null;
+      const optionId = stringOrUndefined(format.format_option_id);
+      const displayName =
+        stringOrUndefined(format.display_name)
+        ?? (optionId ? humanizeIdentifier(optionId) : humanizeIdentifier(formatKind));
+      return {
+        format_option_id: optionId,
+        display_name: displayName,
+        format_kind: formatKind,
+        params,
+        applies_to_property_ids: appliesToPropertyIds,
+        applies_to_property_tags: appliesToPropertyTags,
+        seller_preference: stringOrUndefined(format.seller_preference),
+        experimental: typeof format.experimental === "boolean" ? format.experimental : undefined,
+      };
+    })
+    .filter((format): format is PublisherFormatSummary => !!format)
+    .slice(0, 100);
+}
 import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
 
 const logger = createLogger("registry-api");
@@ -877,7 +1050,7 @@ registry.registerPath({
 
 const AgentPublishersEntrySchema = z.object({
   publisher_domain: z.string(),
-  discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain", "adagents_authoritative"]),
+  discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain", "adagents_authoritative", "community_catalog"]),
   manager_domain: z.string().nullable(),
   properties_authorized: z.number().int().min(0),
   properties_total: z.number().int().min(0),
@@ -1008,9 +1181,10 @@ registry.registerPath({
     "Compare to `/api/registry/operator`, where AAO membership tier and profile ownership unlock " +
     "additional agent visibility (`members_only`, `private`). AAO membership does not change the " +
     "`/publisher` response today.\n\n" +
-    "**Property source precedence:** authoritative adagents.json properties win over crawler-discovered " +
-    "rows; both win over brand.json hydration. Each property carries a `source` field (`adagents_json` / " +
-    "`discovered` / `brand_json`).\n\n" +
+    "**Property source precedence:** publisher-attested adagents.json properties win first. When no " +
+    "publisher-attested adagents properties exist for the domain, brand.json properties supplement and " +
+    "override lower-trust rows, followed by approved community catalogs, then crawler-discovered rows. " +
+    "Each property carries a `source` field (`adagents_json` / `brand_json` / `community` / `discovered`).\n\n" +
     "**Per-agent rollup:** each entry in `authorized_agents` may carry `properties_authorized` + " +
     "`properties_total` + `publisher_wide`. The rollup is suppressed (fields absent) when (a) properties " +
     "are entirely brand.json-hydrated — no adagents.json claim has been made — or (b) the publisher has " +
@@ -7045,6 +7219,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           resolved_url: string | null;
           discovery_method: string | null;
           manager_domain: string | null;
+          source_type: string | null;
         }>(
           // Drop the source_type='adagents_json' filter. Phase B writes
           // failed-fetch metadata onto rows with source_type='community',
@@ -7053,7 +7228,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           // domains. Read whatever row exists; downstream code handles
           // null adagents_json gracefully.
           `SELECT adagents_json, last_validated, last_http_status, last_response_bytes, resolved_url,
-                  discovery_method, manager_domain
+                  discovery_method, manager_domain, source_type
              FROM publishers WHERE domain = $1 LIMIT 1`,
           [domain],
         ).then(r => r.rows[0] ?? null),
@@ -7065,6 +7240,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       const cachedResolvedUrl = cachedAdagentsRow?.resolved_url ?? null;
       const cachedDiscoveryMethod = cachedAdagentsRow?.discovery_method ?? null;
       const cachedManagerDomain = cachedAdagentsRow?.manager_domain ?? null;
+      const cachedSourceType = cachedAdagentsRow?.source_type ?? null;
 
       // Auto-crawl on view: if we've never crawled this domain (adagents
       // never seen, brand never seen), kick off background fetches so a
@@ -7336,7 +7512,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         name?: string;
         identifiers?: Array<{ type: string; value: string }>;
         tags?: string[];
-        source: "adagents_json" | "discovered" | "brand_json";
+        source: "adagents_json" | "community" | "discovered" | "brand_json";
         delegation_type?: "direct" | "delegated" | "ad_network";
       };
 
@@ -7351,9 +7527,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // falls back to `discovered` — crawler-derived data without a
       // first-party provenance claim.
       let projectedProperties: ProjectedProperty[] = properties.map(p => {
-        const source: "adagents_json" | "discovered" =
+        const source: "adagents_json" | "community" | "discovered" =
           p.source_type === "adagents_json" || p.source_type === "aao_hosted"
             ? "adagents_json"
+            : p.source_type === "community"
+              ? "community"
             : "discovered";
         return {
           id: p.property_id,
@@ -7365,17 +7543,41 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         };
       });
 
-      // Fallback: if the federated index has nothing for this domain, hydrate
-      // from the publisher's brand.json so that publishers who already
-      // declared their properties there don't see "0 properties". Hosted
-      // brand wins over discovered (hosted is owner-curated).
-      if (projectedProperties.length === 0) {
-        const hostedBrand = await brandDb.getHostedBrandByDomain(domain);
-        const manifest = hostedBrand?.brand_json
-          ?? (await brandDb.getDiscoveredBrandByDomain(domain))?.brand_manifest;
-        projectedProperties = extractPublisherPropertiesFromBrandJson(
-          manifest as Record<string, unknown> | null | undefined,
+      const hostedBrand = await brandDb.getHostedBrandByDomain(domain);
+      const brandManifest = hostedBrand?.brand_json
+        ?? (brandRow?.brand_manifest as Record<string, unknown> | null | undefined)
+        ?? null;
+
+      // Fallback/merge: if there is no publisher-attested adagents row for
+      // this domain, hydrate from brand.json too. Brand-attested properties
+      // should not be suppressed by lower-trust community/discovered rows,
+      // but first-party adagents.json remains the strongest property source.
+      if (!projectedProperties.some(p => p.source === "adagents_json")) {
+        const brandProperties = extractPublisherPropertiesFromBrandJson(
+          brandManifest,
         );
+        if (brandProperties.length > 0) {
+          const sourceRank = (source: ProjectedProperty["source"]): number => {
+            if (source === "adagents_json") return 0;
+            if (source === "brand_json") return 1;
+            if (source === "community") return 2;
+            return 3;
+          };
+          const propertyKey = (property: ProjectedProperty): string => {
+            const identifier = property.identifiers?.[0];
+            if (identifier) return `${identifier.type}:${identifier.value.toLowerCase()}`;
+            return `${property.type ?? ""}:${(property.name ?? "").toLowerCase()}`;
+          };
+          const merged = new Map<string, ProjectedProperty>();
+          for (const property of [...projectedProperties, ...brandProperties]) {
+            const key = propertyKey(property);
+            const existing = merged.get(key);
+            if (!existing || sourceRank(property.source) < sourceRank(existing.source)) {
+              merged.set(key, property);
+            }
+          }
+          projectedProperties = [...merged.values()];
+        }
       }
 
       // Per-agent property authorization rollup. For each authorized agent
@@ -7430,7 +7632,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // cocktail of nullable flags.
       const files = {
         adagents_json: {
-          status: adagentsNeverCrawled
+          status: cachedSourceType === 'community' && cachedAdagentsManifest
+            ? 'community'
+            : adagentsNeverCrawled
             ? (autoCrawlTriggered ? 'checking' : 'unknown')
             : adagentsValid === true
               ? 'valid'
@@ -7439,7 +7643,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
                 : 'unknown',
           // url where the publisher's own /.well-known sits
           expected_url: hosting.expected_url,
-        } as { status: 'valid' | 'invalid' | 'unknown' | 'checking'; expected_url: string },
+          registry_url: cachedSourceType === 'community' && cachedResolvedUrl
+            ? absoluteRegistryUrl(cachedResolvedUrl, req)
+            : undefined,
+        } as { status: 'valid' | 'community' | 'invalid' | 'unknown' | 'checking'; expected_url: string; registry_url?: string },
         brand_json: {
           // `present` = a row exists with a manifest. `checking` =
           // we just kicked off a crawl (either no row, or a stub
@@ -7464,6 +7671,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         hosting,
         files,
         properties: projectedProperties,
+        brand: summarizeBrandManifest(brandManifest, files.brand_json.name),
+        formats: summarizeFormats(cachedAdagentsManifest, projectedProperties),
         authorized_agents: authorizations.map(a => {
           if (skipRollup) {
             return {
@@ -7792,7 +8001,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // returning `new Date()` would lie to caching clients.
       const shaped: Array<{
         publisher_domain: string;
-        discovery_method: 'direct' | 'authoritative_location' | 'ads_txt_managerdomain' | 'adagents_authoritative';
+        discovery_method: 'direct' | 'authoritative_location' | 'ads_txt_managerdomain' | 'adagents_authoritative' | 'community_catalog';
         manager_domain: string | null;
         properties_authorized: number;
         properties_total: number;
@@ -7821,7 +8030,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // otherwise we'd silently mint direct-discovery provenance for a
         // managed-network row, which is the strongest trust profile. Skip
         // ambiguous rows.
-        let discoveryMethod: 'direct' | 'authoritative_location' | 'ads_txt_managerdomain' | 'adagents_authoritative';
+        let discoveryMethod: 'direct' | 'authoritative_location' | 'ads_txt_managerdomain' | 'adagents_authoritative' | 'community_catalog';
         if (r.discovery_method) {
           discoveryMethod = r.discovery_method;
         } else if (!r.manager_domain) {

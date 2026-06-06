@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Publisher | AAO embed</title>
+    <title>Publisher | AgenticAdvertising.org embed</title>
     <link id="api-alternate" rel="alternate" type="application/json" href="" />
     <link rel="stylesheet" href="/design-system.css" />
     <style>
@@ -44,7 +44,8 @@
       .publisher-hero[data-state="healthy"]         { border-color: var(--color-success-200);
         background: linear-gradient(180deg, var(--color-success-50) 0, var(--color-bg-card) 80%); }
       .publisher-hero[data-state="aao_hosted"],
-      .publisher-hero[data-state="self_redirected"] { border-color: var(--color-primary-200);
+      .publisher-hero[data-state="self_redirected"],
+      .publisher-hero[data-state="community"]       { border-color: var(--color-primary-200);
         background: linear-gradient(180deg, var(--color-primary-50) 0, var(--color-bg-card) 80%); }
       .publisher-hero[data-state="setup_needed"]    { border-color: var(--color-warning-200);
         background: linear-gradient(180deg, var(--color-warning-50) 0, var(--color-bg-card) 80%); }
@@ -192,7 +193,7 @@
       <div id="content" class="hidden">
         <header class="publisher-hero" id="hero" data-state="healthy">
           <h1 class="publisher-hero__domain" id="domain-title"></h1>
-          <dl class="publisher-hero__verification" id="verification" aria-label="AAO verification"></dl>
+          <dl class="publisher-hero__verification" id="verification" aria-label="AgenticAdvertising.org verification"></dl>
           <p class="publisher-hero__status" id="status"></p>
         </header>
 
@@ -213,7 +214,7 @@
 
         <footer class="embed-footer">
           <a id="view-canonical" class="embed-footer__view" href="#" target="_top" rel="noopener">View on AgenticAdvertising.org →</a>
-          <span>Powered by <a href="https://agenticadvertising.org" target="_top" rel="noopener">AAO</a></span>
+          <span>Powered by <a href="https://agenticadvertising.org" target="_top" rel="noopener">AgenticAdvertising.org</a></span>
         </footer>
       </div>
     </div>
@@ -258,6 +259,7 @@
       }
 
       function deriveHeroState(data) {
+        if (data.files && data.files.adagents_json && data.files.adagents_json.status === 'community') return 'community';
         if (data.auto_crawl_triggered === true) return 'checking';
         const mode = data.hosting && data.hosting.mode;
         if (mode === 'self')             return 'healthy';
@@ -269,8 +271,9 @@
 
       const STATE_LINES = {
         healthy:         { dot: 'success', line: 'Self-hosted and validated' },
-        aao_hosted:      { dot: 'info',    line: 'AAO-hosted via authoritative_location' },
+        aao_hosted:      { dot: 'info',    line: 'AgenticAdvertising.org-hosted via authoritative_location' },
         self_redirected: { dot: 'info',    line: 'Self-hosted via redirect' },
+        community:       { dot: 'info',    line: 'Community-approved catalog' },
         setup_needed:    { dot: 'warning', line: 'Setup needed' },
         invalid:         { dot: 'error',   line: 'adagents.json failed validation' },
         checking:        { dot: 'info',    line: 'Checking now…' },

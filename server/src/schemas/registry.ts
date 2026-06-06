@@ -623,14 +623,33 @@ const PublisherPropertySchema = z.object({
     description:
       "Arbitrary string tags on this property. The `relationship:` prefix tag (e.g. `relationship:owned`) is deprecated in favour of the `delegation_type` field and will be removed in a future release.",
   }),
-  source: z.enum(["adagents_json", "discovered", "brand_json"]).optional().openapi({
+  source: z.enum(["adagents_json", "community", "discovered", "brand_json"]).optional().openapi({
     description:
-      "Where this property came from. `adagents_json`/`discovered` come from the federated index (publisher's own adagents.json or crawler discovery). `brand_json` is hydrated from the publisher's brand.json when no federated-index data exists yet.",
+      "Where this property came from. `adagents_json` comes from the publisher's own adagents.json, `community` from an approved community adagents.json catalog, `discovered` from crawler or third-party signals, and `brand_json` from the publisher's brand.json when no federated-index data exists yet.",
   }),
   delegation_type: z.enum(["direct", "delegated", "ad_network"]).optional().openapi({
     description:
       "Delegation relationship declared in brand.json. Populated only when `source` is `brand_json` — for `adagents_json` and `discovered` sources the authoritative value is on the matching `authorized_agents` entry. Mirrors adagents.json `delegation_type` for bilateral verification: `direct` = publisher treats this as a direct buying path, even if a third party operates the software; `delegated` = a rep firm or manager is authorized to sell on the publisher's behalf (operator-declared, unilateral until corroborated by the publisher's adagents.json); `ad_network` = sold as part of a network/exchange package. `owned` properties have no `delegation_type` — ownership is implicit and has no adagents.json counterpart.",
   }),
+});
+
+const PublisherBrandSummarySchema = z.object({
+  name: z.string().optional().openapi({ description: "Display name from brand.json or the registered brand row." }),
+  description: z.string().optional().openapi({ description: "Short brand or house description when present in brand.json." }),
+  logo_url: z.string().optional().openapi({ description: "First usable logo URL from brand.json." }),
+  colors: z.array(z.string()).optional().openapi({ description: "Representative hex colors from brand.json, capped for display." }),
+  industries: z.array(z.string()).optional().openapi({ description: "Industry labels from brand.json when present." }),
+});
+
+const PublisherFormatSummarySchema = z.object({
+  format_option_id: z.string().optional().openapi({ description: "Stable format option identifier from adagents.json `formats[]`." }),
+  display_name: z.string().openapi({ description: "Human-readable format label for catalog and publisher UI display." }),
+  format_kind: z.string().openapi({ description: "Canonical format discriminator, such as `image`, `video_hosted`, `native_in_feed`, or `custom`." }),
+  params: z.record(z.string(), z.unknown()).optional().openapi({ description: "Canonical format params from the publisher's adagents.json declaration." }),
+  applies_to_property_ids: z.array(z.string()).optional().openapi({ description: "Property IDs this format applies to; absent means all properties." }),
+  applies_to_property_tags: z.array(z.string()).optional().openapi({ description: "Property tags this format applies to; absent means all properties." }),
+  seller_preference: z.string().optional().openapi({ description: "Seller preference hint from the format declaration, when present." }),
+  experimental: z.boolean().optional().openapi({ description: "Whether this seller's format declaration is marked experimental." }),
 });
 
 const PublisherAuthorizedAgentSchema = z.object({
@@ -686,11 +705,12 @@ const PublisherHostingSchema = z.object({
 
 const PublisherFilesSchema = z.object({
   adagents_json: z.object({
-    status: z.enum(["valid", "invalid", "unknown", "checking"]).openapi({
+    status: z.enum(["valid", "community", "invalid", "unknown", "checking"]).openapi({
       description:
-        "What we know about the publisher's adagents.json right now. `valid` = crawler fetched a parsing-and-shape-valid file. `invalid` = crawler fetched a file that failed validation. `unknown` = never crawled or last result is stale. `checking` = an auto-crawl was kicked off by this request; the page should poll for fresh data shortly.",
+        "What we know about the publisher's adagents.json right now. `valid` = crawler fetched a parsing-and-shape-valid file from the publisher origin. `community` = moderators approved a community adagents.json catalog for this domain. `invalid` = crawler fetched a file that failed validation. `unknown` = never crawled or last result is stale. `checking` = an auto-crawl was kicked off by this request; the page should poll for fresh data shortly.",
     }),
     expected_url: z.string().openapi({ description: "Where adagents.json should live on the publisher's own origin." }),
+    registry_url: z.string().optional().openapi({ description: "Registry-served adagents.json URL when the document is community or AgenticAdvertising.org hosted rather than served by the publisher origin." }),
   }),
   brand_json: z.object({
     status: z.enum(["present", "unknown", "checking"]).openapi({
@@ -706,9 +726,9 @@ export const PublisherLookupResultSchema = z
     domain: z.string().openapi({ example: "voxmedia.com" }),
     member: MemberRefSchema.nullable(),
     adagents_valid: z.boolean().nullable(),
-    discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain"]).nullable().optional().openapi({
+    discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain", "adagents_authoritative", "community_catalog"]).nullable().optional().openapi({
       description:
-        "How the publisher's adagents.json was discovered on the most recent successful crawl. `direct`: publisher's own /.well-known/ served the document. `authoritative_location`: publisher's stub redirected to a canonical URL. `ads_txt_managerdomain`: manifest was discovered via ads.txt MANAGERDOMAIN delegation — see `manager_domain` for which manager served it. Null until first crawl after migration 470.",
+        "How the publisher's adagents.json was discovered on the most recent successful crawl or registry write. `direct`: publisher's own /.well-known/ served the document. `authoritative_location`: publisher's stub redirected to a canonical URL. `ads_txt_managerdomain`: manifest was discovered via ads.txt MANAGERDOMAIN delegation. `adagents_authoritative`: manager file named this publisher through publisher_properties fan-out. `community_catalog`: moderator-approved community catalog. Null until first crawl after migration 470.",
     }),
     manager_domain: z.string().nullable().optional().openapi({
       description:
@@ -720,6 +740,14 @@ export const PublisherLookupResultSchema = z
         "Plain-English summary of what AAO has found at the publisher's origin. The publisher page leads with this — `you have a valid adagents.json` is the primary signal, not `mode === self`. Optional in the schema for backwards compatibility; the handler always populates it.",
     }),
     properties: z.array(PublisherPropertySchema),
+    brand: PublisherBrandSummarySchema.optional().openapi({
+      description:
+        "Display-oriented brand identity summary from brand.json. The full raw document remains available from the publisher's /.well-known/brand.json or hosted registry URL.",
+    }),
+    formats: z.array(PublisherFormatSummarySchema).optional().openapi({
+      description:
+        "Display-oriented summary of top-level adagents.json `formats[]`, normalized for publisher pages and agent discovery clients. Each entry preserves `format_kind`, `format_option_id`, and canonical params.",
+    }),
     authorized_agents: z.array(PublisherAuthorizedAgentSchema),
     rollup_truncated: z.object({
       cap: z.number().int().positive().openapi({ description: "Maximum number of agents for which the rollup is computed in a single response." }),

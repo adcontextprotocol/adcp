@@ -48,7 +48,8 @@
       .publisher-hero[data-state="healthy"]         { border-color: var(--color-success-200);
         background: linear-gradient(180deg, var(--color-success-50) 0, var(--color-bg-card) 80%); }
       .publisher-hero[data-state="aao_hosted"],
-      .publisher-hero[data-state="self_redirected"] { border-color: var(--color-primary-200);
+      .publisher-hero[data-state="self_redirected"],
+      .publisher-hero[data-state="community"]       { border-color: var(--color-primary-200);
         background: linear-gradient(180deg, var(--color-primary-50) 0, var(--color-bg-card) 80%); }
       .publisher-hero[data-state="setup_needed"]    { border-color: var(--color-warning-200);
         background: linear-gradient(180deg, var(--color-warning-50) 0, var(--color-bg-card) 80%); }
@@ -173,7 +174,7 @@
         margin: 0; padding-left: var(--space-4);
       }
 
-      /* On-file panel: the canonical "what AAO sees about this
+      /* On-file panel: the canonical "what AgenticAdvertising.org sees about this
          publisher" section. adagents.json + brand.json paired as
          co-equal cards (per protocol expert: they answer different
          questions and shouldn't be visually demoted), then properties
@@ -302,6 +303,273 @@
         font-style: italic;
       }
 
+      .publisher-profile,
+      .publisher-formats {
+        margin-bottom: var(--space-6);
+      }
+      .publisher-profile__grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+        gap: var(--space-5);
+      }
+      .publisher-profile__brand {
+        min-width: 0;
+      }
+      .publisher-profile__brand-head {
+        display: flex;
+        gap: var(--space-4);
+        align-items: flex-start;
+        margin-bottom: var(--space-4);
+      }
+      .publisher-profile__logo {
+        width: 64px;
+        height: 64px;
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-subtle);
+        object-fit: contain;
+        padding: var(--space-2);
+        flex: 0 0 auto;
+      }
+      .publisher-profile__logo-fallback {
+        display: grid;
+        place-items: center;
+        width: 64px;
+        height: 64px;
+        border-radius: var(--radius-md);
+        border: var(--border-1) solid var(--color-border);
+        background: var(--color-bg-subtle);
+        font-family: var(--font-mono);
+        font-weight: var(--font-bold);
+        font-size: var(--text-xl);
+        color: var(--color-text-secondary);
+        flex: 0 0 auto;
+      }
+      .publisher-profile__brand h2,
+      .publisher-formats h2 {
+        margin: 0 0 var(--space-1);
+        font-size: var(--text-xl);
+        font-weight: var(--font-bold);
+      }
+      .publisher-profile__brand p,
+      .publisher-formats__intro {
+        margin: 0;
+        color: var(--color-text-secondary);
+        line-height: 1.55;
+      }
+      .publisher-profile__chips,
+      .format-card__chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-top: var(--space-4);
+      }
+      .publisher-chip,
+      .format-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-pill);
+        background: var(--color-bg-subtle);
+        padding: 3px 9px;
+        font-size: var(--text-xs);
+        color: var(--color-text-secondary);
+      }
+      .publisher-swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-top: var(--space-4);
+      }
+      .publisher-swatch {
+        width: 28px;
+        height: 28px;
+        border-radius: var(--radius-sm);
+        border: var(--border-1) solid var(--color-border);
+      }
+      .publisher-profile__stats {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--space-3);
+      }
+      .publisher-stat {
+        min-width: 0;
+        padding: var(--space-4);
+        border: var(--border-1) solid var(--color-border-light);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-subtle);
+      }
+      .publisher-stat__value {
+        display: block;
+        font-size: var(--text-xl);
+        font-weight: var(--font-bold);
+        font-variant-numeric: tabular-nums;
+        line-height: 1.15;
+        overflow-wrap: anywhere;
+      }
+      .publisher-stat__label {
+        display: block;
+        margin-top: 2px;
+        font-size: var(--text-xs);
+        color: var(--color-text-secondary);
+      }
+      .publisher-stat[data-tone="warning"] {
+        border-color: var(--color-warning-200);
+        background: var(--color-warning-50);
+      }
+
+      .publisher-catalog-note {
+        grid-column: 1 / -1;
+        margin: 0 0 var(--space-4);
+        padding: var(--space-3) var(--space-4);
+        border: var(--border-1) solid var(--color-warning-200);
+        border-radius: var(--radius-md);
+        background: var(--color-warning-50);
+        color: var(--color-warning-900);
+        font-size: var(--text-sm);
+      }
+
+      .publisher-formats__header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: var(--space-4);
+        margin-bottom: var(--space-4);
+      }
+      .publisher-formats__grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: var(--space-4);
+      }
+      .format-card {
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-bg-card);
+        overflow: hidden;
+      }
+      .format-preview {
+        display: grid;
+        place-items: center;
+        min-height: 150px;
+        padding: var(--space-5);
+        background:
+          linear-gradient(135deg, var(--color-bg-subtle), var(--color-bg-card));
+        border-bottom: var(--border-1) solid var(--color-border-light);
+      }
+      .format-preview__frame {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: min(170px, 100%);
+        aspect-ratio: 1 / 1;
+        border: var(--border-2) solid var(--color-text);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-card);
+        box-shadow: var(--shadow-sm);
+        overflow: hidden;
+      }
+      .format-preview__frame[data-shape="wide"] { aspect-ratio: 16 / 9; width: min(190px, 100%); }
+      .format-preview__frame[data-shape="vertical"] { aspect-ratio: 9 / 16; width: 92px; }
+      .format-preview__frame[data-shape="banner"] { aspect-ratio: 4 / 1; width: min(210px, 100%); }
+      .format-preview__frame[data-shape="audio"] {
+        aspect-ratio: 2.4 / 1;
+        width: min(210px, 100%);
+        border-radius: var(--radius-pill);
+      }
+      .format-preview__frame[data-shape="feed"] {
+        aspect-ratio: 1.2 / 1;
+        width: min(170px, 100%);
+      }
+      .format-preview__label {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--color-text-secondary);
+        text-align: center;
+        padding: 0 var(--space-2);
+      }
+      .format-preview__play {
+        width: 0;
+        height: 0;
+        border-top: 18px solid transparent;
+        border-bottom: 18px solid transparent;
+        border-left: 28px solid var(--color-brand);
+        margin-left: 6px;
+      }
+      .format-preview__bars {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        height: 56px;
+      }
+      .format-preview__bars span {
+        width: 6px;
+        border-radius: var(--radius-pill);
+        background: var(--color-brand);
+      }
+      .format-preview__bars span:nth-child(1) { height: 18px; opacity: .45; }
+      .format-preview__bars span:nth-child(2) { height: 38px; opacity: .7; }
+      .format-preview__bars span:nth-child(3) { height: 52px; }
+      .format-preview__bars span:nth-child(4) { height: 32px; opacity: .7; }
+      .format-preview__bars span:nth-child(5) { height: 22px; opacity: .45; }
+      .format-preview__feed {
+        width: 76%;
+      }
+      .format-preview__feed div {
+        height: 10px;
+        border-radius: var(--radius-pill);
+        background: var(--color-border);
+        margin: 8px 0;
+      }
+      .format-preview__feed div:first-child {
+        height: 54px;
+        border-radius: var(--radius-sm);
+        background: var(--color-primary-100);
+      }
+      .format-card__body {
+        padding: var(--space-4);
+      }
+      .format-card__title {
+        margin: 0;
+        font-size: var(--text-base);
+        font-weight: var(--font-semibold);
+      }
+      .format-card__kind {
+        margin-top: 2px;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--color-text-secondary);
+        overflow-wrap: anywhere;
+      }
+      .format-card__scope {
+        margin-top: var(--space-3);
+        font-size: var(--text-xs);
+        color: var(--color-text-secondary);
+        overflow-wrap: anywhere;
+      }
+
+      @media (max-width: 760px) {
+        .publisher-profile__grid {
+          grid-template-columns: 1fr;
+        }
+        .publisher-profile__brand-head {
+          display: block;
+        }
+        .publisher-profile__logo,
+        .publisher-profile__logo-fallback {
+          margin-bottom: var(--space-3);
+        }
+        .publisher-profile__stats {
+          grid-template-columns: 1fr;
+        }
+        .publisher-formats__header {
+          display: block;
+        }
+        .publisher-formats__intro {
+          margin-top: var(--space-2);
+        }
+      }
+
       /* Contextual relationship line — single line, dismissible, no
          panel chrome. Only appears when the visitor is logged in and
          the publisher isn't a member yet. */
@@ -410,7 +678,7 @@
           <h1 class="publisher-hero__domain" id="domain-title"></h1>
           <p class="publisher-hero__member-line" id="member-line"></p>
 
-          <dl class="publisher-hero__verification" id="verification-chrome" aria-label="AAO verification"></dl>
+          <dl class="publisher-hero__verification" id="verification-chrome" aria-label="AgenticAdvertising.org verification"></dl>
 
           <p class="publisher-hero__status" id="hero-status"></p>
           <p class="publisher-hero__detail" id="hero-detail"></p>
@@ -423,10 +691,27 @@
              unhidden by JS when conditions match. -->
         <div id="contextual-line" class="publisher-context hidden"></div>
 
+        <section class="publisher-profile ds-card" aria-labelledby="publisher-profile-heading">
+          <div class="publisher-profile__grid">
+            <div class="publisher-profile__brand" id="publisher-brand"></div>
+            <div class="publisher-profile__stats" id="publisher-stats"></div>
+          </div>
+        </section>
+
+        <section class="publisher-formats" aria-labelledby="publisher-formats-heading">
+          <div class="publisher-formats__header">
+            <div>
+              <h2 id="publisher-formats-heading">Creative formats</h2>
+              <p class="publisher-formats__intro" id="publisher-formats-intro"></p>
+            </div>
+          </div>
+          <div class="publisher-formats__grid" id="publisher-formats-grid"></div>
+        </section>
+
         <!-- On-file panel: adagents.json + brand.json + properties + agents. -->
         <section class="ds-card" aria-labelledby="on-file-heading" style="padding: 0;">
           <header class="on-file__header">
-            <h2 id="on-file-heading">On file at AAO</h2>
+            <h2 id="on-file-heading">On file at AgenticAdvertising.org</h2>
             <p>What buy-side agents will see when they look up this domain.</p>
           </header>
 
@@ -452,7 +737,7 @@
             </a>
             <a class="cross-link-card" href="/publishers">
               <h3>All publishers</h3>
-              <p>Browse the full registry of publishers indexed at AAO.</p>
+              <p>Browse the full registry of publishers indexed at AgenticAdvertising.org.</p>
             </a>
             <a class="cross-link-card" href="/agents">
               <h3>Buy-side agents</h3>
@@ -538,9 +823,11 @@
         adagents_json: { tier: 'publisher',    label: 'Publisher-attested',
           tooltip: "Publisher-attested · adagents.json on the publisher's own origin" },
         aao_hosted:    { tier: 'publisher',    label: 'Publisher-attested',
-          tooltip: 'Publisher-attested · hosted by AAO with publisher consent' },
+          tooltip: 'Publisher-attested · hosted by AgenticAdvertising.org with publisher consent' },
         brand_json:    { tier: 'brand',        label: 'Brand-attested',
           tooltip: 'Brand-attested · published in /.well-known/brand.json' },
+        community:     { tier: 'counterparty', label: 'Community-approved',
+          tooltip: 'Community-approved · maintained in the AgenticAdvertising.org registry' },
         agent_claim:   { tier: 'counterparty', label: 'Agent-claimed',
           tooltip: 'Agent-claimed · publisher has not confirmed' },
         discovered:    { tier: 'counterparty', label: 'Discovered',
@@ -554,6 +841,7 @@
 
       // ─── Hero state derivation + render ─────────────────────────
       function deriveHeroState(data) {
+        if (data.files && data.files.adagents_json && data.files.adagents_json.status === 'community') return 'community';
         if (data.auto_crawl_triggered === true) return 'checking';
         const mode = data.hosting && data.hosting.mode;
         if (mode === 'self')             return 'healthy';
@@ -647,16 +935,18 @@
         const STATE_COPY = {
           healthy:         { dot: 'success', line: 'Self-hosted and validated',
                              detail: 'Buyers fetch this domain’s adagents.json directly from the publisher’s own origin.' },
-          aao_hosted:      { dot: 'info',    line: 'AAO-hosted via authoritative_location',
-                             detail: 'The publisher’s /.well-known/adagents.json points at AAO’s canonical document.' },
+          aao_hosted:      { dot: 'info',    line: 'AgenticAdvertising.org-hosted via authoritative_location',
+                             detail: 'The publisher’s /.well-known/adagents.json points at AgenticAdvertising.org’s canonical document.' },
           self_redirected: { dot: 'info',    line: 'Self-hosted via authoritative_location redirect',
                              detail: 'The publisher’s /.well-known stub points the canonical document to a third-party HTTPS origin. Verifiers should pin trust to the resolved URL above.' },
           setup_needed:    { dot: 'warning', line: 'Setup needed',
                              detail: 'No adagents.json has been published for this domain yet. Publishers tell buy-side agents which AI sales agents may sell their inventory by hosting this file.' },
+          community:       { dot: 'info',    line: 'Community-approved adagents.json',
+                             detail: 'AgenticAdvertising.org has an approved community catalog for this domain. The publisher has not yet served it from its own origin.' },
           invalid:         { dot: 'error',   line: 'adagents.json failed validation',
                              detail: 'A file exists at the publisher’s /.well-known but didn’t pass schema validation. Buyers will treat this as missing.' },
           checking:        { dot: 'info',    line: 'Checking now…',
-                             detail: 'AAO is fetching this domain. The page will refresh in a few seconds.' },
+                             detail: 'AgenticAdvertising.org is fetching this domain. The page will refresh in a few seconds.' },
         };
         const copy = STATE_COPY[state] || STATE_COPY.setup_needed;
         statusEl.innerHTML = `<span class="ds-status-dot ds-status-dot-${copy.dot}"></span><span>${escapeHtml(copy.line)}</span>`;
@@ -674,6 +964,8 @@
         }
         if (state === 'healthy' || state === 'aao_hosted' || state === 'self_redirected') {
           items.push(`<a class="ds-btn ${ret ? 'ds-btn-secondary' : 'ds-btn-primary'}" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Authorize an agent</a>`);
+        } else if (state === 'community') {
+          items.push(`<a class="ds-btn ${ret ? 'ds-btn-secondary' : 'ds-btn-primary'}" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Publish your own adagents.json</a>`);
         } else if (state === 'setup_needed') {
           items.push(`<a class="ds-btn ${ret ? 'ds-btn-secondary' : 'ds-btn-primary'}" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Generate adagents.json</a>`);
         } else if (state === 'invalid') {
@@ -682,9 +974,12 @@
         }
         // Always-available "View raw file" — ghost button, never primary
         // (per UX expert: opening your own JSON is not progress).
-        const rawUrl = state === 'aao_hosted' && hosting.hosted_url
-          ? hosting.hosted_url
-          : (hosting.expected_url || `https://${data.domain}/.well-known/adagents.json`);
+        const communityRawUrl = data.files?.adagents_json?.registry_url || '';
+        const rawUrl = state === 'community' && communityRawUrl
+          ? communityRawUrl
+          : state === 'aao_hosted' && hosting.hosted_url
+            ? hosting.hosted_url
+            : (hosting.expected_url || `https://${data.domain}/.well-known/adagents.json`);
         if (state !== 'checking') {
           items.push(`<a class="ds-btn ds-btn-ghost" href="${escapeHtml(rawUrl)}" target="_blank" rel="noopener">View raw file</a>`);
         }
@@ -827,7 +1122,7 @@
         if (data.member && data.member.display_name) {
           el.innerHTML = `Registered as <a href="/m/${escapeHtml(data.member.slug)}">${escapeHtml(data.member.display_name)}</a>`;
         } else {
-          el.textContent = 'Not yet registered as an AAO member.';
+          el.textContent = 'Not yet registered as an AgenticAdvertising.org member.';
         }
       }
 
@@ -843,7 +1138,7 @@
         const dismissed = (() => { try { return sessionStorage.getItem('publisher-wg-dismissed') === '1'; } catch { return false; } })();
         if (!user || publisherIsMember || dismissed) { el.classList.add('hidden'); return; }
         el.innerHTML = `
-          <p>AAO is run by working groups of publishers. <a href="/community/working-groups">Join the publisher working group</a> to shape the spec.</p>
+          <p>AgenticAdvertising.org is run by working groups of publishers. <a href="/community/working-groups">Join the publisher working group</a> to shape the spec.</p>
           <button class="publisher-context__close" type="button" aria-label="Dismiss">×</button>
         `;
         el.classList.remove('hidden');
@@ -852,6 +1147,236 @@
           try { sessionStorage.setItem('publisher-wg-dismissed', '1'); } catch { /* noop */ }
           el.classList.add('hidden');
         });
+      }
+
+      function formatCount(n, singular, plural = `${singular}s`) {
+        return `${Number(n || 0).toLocaleString('en-US')} ${Number(n || 0) === 1 ? singular : plural}`;
+      }
+
+      function brandInitial(name, domain) {
+        const source = String(name || domain || '?').trim();
+        return escapeHtml(source.charAt(0).toUpperCase() || '?');
+      }
+
+      function displayStatValue(value) {
+        if (typeof value === 'number') return value.toLocaleString('en-US');
+        const text = String(value || 'unknown').replace(/[_-]+/g, ' ');
+        return text.charAt(0).toUpperCase() + text.slice(1);
+      }
+
+      function displayStatus(value) {
+        const map = {
+          community: 'Community catalog',
+          valid: 'Origin verified',
+          invalid: 'Needs repair',
+          unknown: 'Not found',
+          checking: 'Checking',
+          present: 'On file',
+          community_catalog: 'Community catalog',
+        };
+        return map[value] || displayStatValue(value);
+      }
+
+      function renderPublisherProfile(data, props, agents, formats) {
+        const brandEl = document.getElementById('publisher-brand');
+        const statsEl = document.getElementById('publisher-stats');
+        const brand = data.brand || {};
+        const name = brand.name || data.member?.display_name || data.domain;
+        const description = brand.description
+          || 'Publisher inventory and agent authorization profile from the registry.';
+        const logoInitial = brandInitial(name, data.domain);
+        const fallbackLogo = `<span class="publisher-profile__logo-fallback" aria-hidden="true">${logoInitial}</span>`;
+        const logo = brand.logo_url
+          ? `<img class="publisher-profile__logo" src="${escapeHtml(brand.logo_url)}" alt="" data-logo-initial="${escapeHtml(logoInitial)}">`
+          : fallbackLogo;
+        const industries = Array.isArray(brand.industries) ? brand.industries : [];
+        const colors = Array.isArray(brand.colors) ? brand.colors : [];
+
+        brandEl.innerHTML = `
+          <div class="publisher-profile__brand-head">
+            ${logo}
+            <div>
+              <h2 id="publisher-profile-heading">${escapeHtml(name)}</h2>
+              <p>${escapeHtml(description)}</p>
+            </div>
+          </div>
+          ${industries.length ? `<div class="publisher-profile__chips">${
+            industries.map((industry) => `<span class="publisher-chip">${escapeHtml(industry)}</span>`).join('')
+          }</div>` : ''}
+          ${colors.length ? `<div class="publisher-swatches" aria-label="Brand colors">${
+            colors.map((color) => `<span class="publisher-swatch" title="${escapeHtml(color)}" aria-label="${escapeHtml(color)}" style="background:${escapeHtml(color)}"></span>`).join('')
+          }</div>` : ''}
+        `;
+        const logoImg = brandEl.querySelector('.publisher-profile__logo');
+        if (logoImg) {
+          logoImg.addEventListener('error', () => {
+            const fallback = document.createElement('span');
+            fallback.className = 'publisher-profile__logo-fallback';
+            fallback.setAttribute('aria-hidden', 'true');
+            fallback.textContent = logoImg.getAttribute('data-logo-initial') || brandInitial(name, data.domain);
+            logoImg.replaceWith(fallback);
+          }, { once: true });
+        }
+
+        const adagentsStatus = data.files?.adagents_json?.status || 'unknown';
+        const brandStatus = data.files?.brand_json?.status || 'unknown';
+        const hasAuthorizedAgents = agents.length > 0;
+        statsEl.innerHTML = [
+          { value: props.length, label: 'Properties' },
+          { value: formats.length, label: 'Creative formats' },
+          { value: hasAuthorizedAgents ? agents.length : 'No agents yet', label: 'Authorized agents', tone: hasAuthorizedAgents ? '' : 'warning' },
+          { value: displayStatus(adagentsStatus), label: 'adagents.json' },
+          { value: displayStatus(brandStatus), label: 'brand.json' },
+          { value: displayStatus(data.discovery_method || 'unknown'), label: 'Catalog source' },
+        ].map((stat) => `
+          <div class="publisher-stat" ${stat.tone ? `data-tone="${escapeHtml(stat.tone)}"` : ''}>
+            <span class="publisher-stat__value">${escapeHtml(displayStatValue(stat.value))}</span>
+            <span class="publisher-stat__label">${escapeHtml(stat.label)}</span>
+          </div>
+        `).join('');
+      }
+
+      function compactKind(kind) {
+        return String(kind || 'unknown').replace(/_/g, ' ');
+      }
+
+      function compactIdentifier(id) {
+        return String(id || '').replace(/[_-]+/g, ' ');
+      }
+
+      function firstNumber(...values) {
+        for (const value of values) {
+          if (typeof value === 'number' && Number.isFinite(value)) return value;
+        }
+        return null;
+      }
+
+      function durationLabel(params) {
+        const exact = firstNumber(params.duration_ms_exact, params.duration_ms);
+        if (exact != null) return `${Math.round(exact / 1000)}s`;
+        const range = Array.isArray(params.duration_ms_range) ? params.duration_ms_range : null;
+        if (range) {
+          const lo = typeof range[0] === 'number' ? Math.round(range[0] / 1000) : null;
+          const hi = typeof range[1] === 'number' ? Math.round(range[1] / 1000) : null;
+          if (lo != null && hi != null) return `${lo}-${hi}s`;
+          if (lo != null) return `${lo}s+`;
+          if (hi != null) return `up to ${hi}s`;
+        }
+        return null;
+      }
+
+      function dimensionLabel(params) {
+        const width = firstNumber(params.width, params.min_width);
+        const height = firstNumber(params.height, params.min_height);
+        if (width && height) return `${width}×${height}`;
+        if (typeof params.aspect_ratio === 'string') return params.aspect_ratio;
+        if (Array.isArray(params.sizes) && params.sizes.length) {
+          const first = params.sizes[0] || {};
+          if (typeof first.width === 'number' && typeof first.height === 'number') {
+            return `${first.width}×${first.height}${params.sizes.length > 1 ? ` +${params.sizes.length - 1}` : ''}`;
+          }
+          if (typeof first.w === 'number' && typeof first.h === 'number') {
+            return `${first.w}×${first.h}${params.sizes.length > 1 ? ` +${params.sizes.length - 1}` : ''}`;
+          }
+        }
+        return null;
+      }
+
+      function formatChips(format) {
+        const params = format.params || {};
+        const chips = [];
+        const dimensions = dimensionLabel(params);
+        const duration = durationLabel(params);
+        if (dimensions) chips.push(dimensions);
+        if (duration) chips.push(duration);
+        if (typeof params.orientation === 'string') chips.push(params.orientation);
+        if (typeof params.aspect_ratio === 'string' && params.aspect_ratio !== dimensions) chips.push(params.aspect_ratio);
+        if (Array.isArray(params.cta_values) && params.cta_values.length) chips.push(`${params.cta_values.length} CTAs`);
+        if (format.experimental) chips.push('experimental');
+        if (format.seller_preference) chips.push(format.seller_preference);
+        return chips.slice(0, 5);
+      }
+
+      function previewShape(format) {
+        const kind = format.format_kind || '';
+        const params = format.params || {};
+        const ratio = String(params.aspect_ratio || '');
+        if (kind.includes('audio')) return 'audio';
+        if (kind.includes('native') || kind.includes('sponsored') || kind.includes('agent')) return 'feed';
+        if (kind.includes('video') || kind.includes('vast')) {
+          return ratio === '9:16' || params.orientation === 'vertical' ? 'vertical' : 'wide';
+        }
+        const width = firstNumber(params.width, params.min_width);
+        const height = firstNumber(params.height, params.min_height);
+        if (width && height && width / height > 2.4) return 'banner';
+        if (width && height && height / width > 1.2) return 'vertical';
+        return 'square';
+      }
+
+      function renderFormatPreview(format) {
+        const shape = previewShape(format);
+        const label = dimensionLabel(format.params || {}) || compactKind(format.format_kind);
+        if (shape === 'audio') {
+          return `<div class="format-preview__frame" data-shape="audio" aria-label="${escapeHtml(label)}">
+            <div class="format-preview__bars" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+          </div>`;
+        }
+        if (shape === 'feed') {
+          return `<div class="format-preview__frame" data-shape="feed" aria-label="${escapeHtml(label)}">
+            <div class="format-preview__feed" aria-hidden="true"><div></div><div></div><div></div></div>
+          </div>`;
+        }
+        if ((format.format_kind || '').includes('video') || (format.format_kind || '').includes('vast')) {
+          return `<div class="format-preview__frame" data-shape="${escapeHtml(shape)}" aria-label="${escapeHtml(label)}">
+            <span class="format-preview__play" aria-hidden="true"></span>
+          </div>`;
+        }
+        return `<div class="format-preview__frame" data-shape="${escapeHtml(shape)}" aria-label="${escapeHtml(label)}">
+          <span class="format-preview__label">${escapeHtml(label)}</span>
+        </div>`;
+      }
+
+      function renderFormats(formats, props, agents) {
+        const intro = document.getElementById('publisher-formats-intro');
+        const grid = document.getElementById('publisher-formats-grid');
+        const section = document.querySelector('.publisher-formats');
+        if (!intro || !grid || !section) return;
+        intro.textContent = formats.length
+          ? `${formatCount(formats.length, 'canonical format')} declared across ${formatCount(props.length, 'property', 'properties')}.`
+          : 'No canonical formats are declared yet.';
+        const note = !agents.length && formats.length
+          ? '<p class="publisher-catalog-note"><strong>Catalog preview only.</strong> These formats describe accepted creative shapes, but no sales agent is authorized for this publisher yet.</p>'
+          : '';
+        if (!formats.length) {
+          grid.innerHTML = `${note}<div class="on-file__empty">No creative format declarations recorded yet.</div>`;
+          return;
+        }
+        const propertyNames = new Map(
+          props
+            .filter((p) => p.id)
+            .map((p) => [p.id, p.name || p.id])
+        );
+        grid.innerHTML = note + formats.map((format) => {
+          const chips = formatChips(format);
+          const scopedIds = Array.isArray(format.applies_to_property_ids) ? format.applies_to_property_ids : [];
+          const scopedTags = Array.isArray(format.applies_to_property_tags) ? format.applies_to_property_tags : [];
+          const scope = scopedIds.length
+            ? `Applies to ${scopedIds.map((id) => escapeHtml(propertyNames.get(id) || compactIdentifier(id))).join(', ')}`
+            : scopedTags.length
+              ? `Applies to ${scopedTags.map((tag) => escapeHtml(compactIdentifier(tag))).join(', ')} properties`
+              : 'Applies to all listed properties';
+          return `<article class="format-card">
+            <div class="format-preview">${renderFormatPreview(format)}</div>
+            <div class="format-card__body">
+              <h3 class="format-card__title">${escapeHtml(format.display_name || format.format_option_id || compactKind(format.format_kind))}</h3>
+              <div class="format-card__kind">${format.format_option_id ? `${escapeHtml(compactIdentifier(format.format_option_id))} · ` : ''}${escapeHtml(compactKind(format.format_kind))}</div>
+              ${chips.length ? `<div class="format-card__chips">${
+                chips.map((chip) => `<span class="format-chip">${escapeHtml(chip)}</span>`).join('')
+              }</div>` : ''}
+              <div class="format-card__scope">${scope}</div>
+            </div>
+          </article>`;
+        }).join('');
       }
 
       // ─── On-file: adagents.json + brand.json file cards ─────────
@@ -863,6 +1388,7 @@
         const hosting = data.hosting || {};
         const adagUrl = hosting.expected_url
           || (adag.expected_url || `https://${data.domain}/.well-known/adagents.json`);
+        const registryUrl = adag.registry_url || '';
         const brandUrl = `https://${data.domain}/.well-known/brand.json`;
 
         const adagCard = (() => {
@@ -871,6 +1397,13 @@
               <h3>adagents.json</h3>
               <p>Valid. Buyers fetch <code>${escapeHtml(adagUrl)}</code> to learn which AI sales agents are authorized to sell this publisher’s inventory.</p>
               <a class="ds-link-subtle" href="${escapeHtml(adagUrl)}" target="_blank" rel="noopener">View raw →</a>
+            </article>`;
+          }
+          if (adag.status === 'community') {
+            return `<article class="on-file__file" data-status="present">
+              <h3>adagents.json ${provenanceBadge('community')}</h3>
+              <p>Approved community catalog. Buyers can use the registry-served document while this publisher does not host <code>${escapeHtml(adagUrl)}</code>.</p>
+              ${registryUrl ? `<a class="ds-link-subtle" href="${escapeHtml(registryUrl)}" target="_blank" rel="noopener">View raw →</a>` : ''}
             </article>`;
           }
           if (adag.status === 'invalid') {
@@ -1024,6 +1557,9 @@
 
           const props = Array.isArray(data.properties) ? data.properties : [];
           const agents = Array.isArray(data.authorized_agents) ? data.authorized_agents : [];
+          const formats = Array.isArray(data.formats) ? data.formats : [];
+          renderPublisherProfile(data, props, agents, formats);
+          renderFormats(formats, props, agents);
           renderProperties(props);
           renderAgents(data.domain, agents);
         } catch (err) {
