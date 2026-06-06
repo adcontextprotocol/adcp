@@ -448,6 +448,11 @@
           "format": "uri",
           "description": "Primary brand URL for context and asset discovery"
         },
+        "identity_relying_parties": {
+          "type": "array",
+          "description": "Verified-identity relying parties (rp_ids) scoped to this brand/property, for attestation provenance in TMP Identity Match. Use when a brand or property runs its own rp_id (per-property pseudonyms); entity-wide rp_ids live on the house object. See specs/tmp-verified-identity-attestation.md.",
+          "items": { "$ref": "#/definitions/identity_relying_party" }
+        },
         "names": {
           "type": "array",
           "description": "Localized brand names. Multiple entries per language allowed for aliases.",
@@ -671,10 +676,40 @@
         "data_subject_contestation": {
           "$ref": "#/definitions/data_subject_contestation",
           "description": "House-level fallback contestation contact. Governance agents resolve in order: brand.data_subject_contestation → house.data_subject_contestation → missing (critical finding when human review required)."
+        },
+        "identity_relying_parties": {
+          "type": "array",
+          "description": "Verified-identity relying parties (rp_ids) this house/entity operates, so a buyer can verify that a forwarded TMP identity attestation's rp_id genuinely belongs to this entity (provenance) rather than being replayed under another owner. For network-as-RP, the network publishes its own rp_id here. See specs/tmp-verified-identity-attestation.md.",
+          "items": { "$ref": "#/definitions/identity_relying_party" }
         }
       },
       "required": ["domain", "name"],
       "additionalProperties": true
+    },
+    "identity_relying_party": {
+      "type": "object",
+      "description": "A verified-identity relying party (rp_id) an entity or brand operates. Used for attestation provenance in TMP Identity Match (the buyer checks a forwarded attestation's rp_id against the owner's published list). Issuer-agnostic; World ID is the first issuer.",
+      "properties": {
+        "issuer": {
+          "type": "string",
+          "description": "Identity issuer, e.g. \"world_id\"."
+        },
+        "scheme": {
+          "type": "string",
+          "description": "Proof scheme and version, e.g. \"world_id_v4\"."
+        },
+        "rp_id": {
+          "type": "string",
+          "description": "The relying-party id registered with the issuer (and, for on-chain issuers like World ID, with the issuer's registry)."
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["entity", "property"],
+          "description": "Whether this rp_id is shared across the entity's properties (entity → a within-entity unique-human graph) or scoped to a single property (property → per-property pseudonyms, unlinkable across the entity)."
+        }
+      },
+      "required": ["issuer", "rp_id"],
+      "additionalProperties": false
     },
     "brand_agent": {
       "type": "object",

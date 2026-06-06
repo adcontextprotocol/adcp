@@ -14,6 +14,7 @@
     "maid",
     "hashed_email",
     "publisher_first_party",
+    "world_id_nullifier",
     "other"
   ],
   "enumDescriptions": {
@@ -26,6 +27,7 @@
     "maid": "Mobile Advertising ID (IDFA/GAID)",
     "hashed_email": "SHA-256 hashed email address. Pseudonymous PII, not anonymous — unsalted SHA-256 of the email namespace is recoverable via precomputed dictionaries; treat as PII. See docs/reference/privacy-considerations#unsalted-hashed-identifiers-are-pseudonymous-not-anonymous.",
     "publisher_first_party": "Publisher's own first-party identifier, opaque to buyers",
+    "world_id_nullifier": "World ID nullifier — a Sybil-resistant, relying-party-scoped, unlinkable pseudonym. Carries NO personhood or age assertion on its own; trust comes only from an accompanying verified `attestation`, never from this type tag. Distinct from the `world_id` value in the age-verification-method enum, which names a method, not an identifier.",
     "other": "Other universal ID type (specify in ext)"
   }
 }

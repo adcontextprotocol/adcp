@@ -186,13 +186,15 @@ Sent by the publisher (via router) to buyer agents. Contains the seller agent UR
 | `consent` | Consent | No | Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process identity tokens without consent information. |
 | `package_ids` | List\<string\> | No | When omitted, the buyer evaluates eligibility against the full set of active packages it has registered for `seller_agent_url`. When provided, composition MUST be statistically independent of the current placement. Two acceptable modes: **all-active** (every active package for this buyer at this publisher) or **fuzzed** (a random sample of active packages, optionally padded with synthetic non-existent IDs, drawn from a distribution that does not depend on the current placement). The page-specific subset is forbidden — it would let the buyer correlate with Context Match by comparing package sets. |
 | `country` | string | No | ISO 3166-1 alpha-2 country code. Routing directive — the router uses this to select the correct regional provider. The router MUST strip this field before forwarding to the buyer agent. Not an identity signal. |
+| `sealed_credentials` | List\<SealedCredential\> | No | **Experimental (`trusted_match.verified_identity`).** HPKE-sealed verified-identity credentials addressed to specific audiences — the network-as-RP carrier. Opaque pass-through for the publisher. See [Verified Identity Attestation](#verified-identity-attestation). |
 
-Each entry in `identities` is an `{user_token, uid_type}` pair:
+Each entry in `identities` is a `{user_token, uid_type, attestation?}` triple:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `user_token` | string | Yes | Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII. |
-| `uid_type` | enum | Yes | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `other`. Tells the buyer which identity graph to resolve against. See `uid-type` enum. |
+| `uid_type` | enum | Yes | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `world_id_nullifier`, `other`. Tells the buyer which identity graph to resolve against. See `uid-type` enum. |
+| `attestation` | Attestation | No | **Experimental (`trusted_match.verified_identity`).** Verifiable proof *about* this identity (proof-of-personhood and/or age). The receiver MUST verify it and treat an unverifiable attestation as absent — never as asserted-true. See [Verified Identity Attestation](#verified-identity-attestation). |
 
 ### IdentityMatchResponse
 
@@ -235,6 +237,62 @@ Privacy consent signals for the identity match. Publishers MUST include consent 
 | `tcf_consent` | string | No | IAB TCF v2.2 consent string. Present when `gdpr` is true. |
 | `gpp` | string | No | IAB Global Privacy Platform string. |
 | `us_privacy` | string | No | US Privacy string (CCPA). Deprecated in favor of GPP but still widely used. |
+
+### Verified Identity Attestation
+
+**Experimental — declare `trusted_match.verified_identity` in `experimental_features`** (separate from `trusted_match.core`, so buyers can detect support independently). Lets a publisher — or a network/issuer acting as the relying party — carry a **verifiable** proof *about* a user (proof-of-personhood and/or age) so the buyer verifies the claim cryptographically rather than trusting an assertion. Issuer-agnostic: World ID is the first scheme; mDL / VC-style issuers use the same shape. Design rationale: `specs/tmp-verified-identity-attestation.md`.
+
+This widens `identity-match-request.json`, which is otherwise `additionalProperties: false`. The widening is deliberate: an attestation is proof on the **identity** side of the privacy boundary — not page context — so it does not breach the boundary the strict schema protects.
+
+#### Topologies
+
+| Topology | Relying party | Carrier |
+|---|---|---|
+| Publisher-as-RP | Publisher | `attestation` on an `identities[]` entry (per-publisher pseudonym) |
+| Network-as-RP / issuer-as-RP | A network, or the issuer itself | `sealed_credentials[]` (HPKE-sealed to the audience's key) |
+
+#### Attestation
+
+Optional object on each `identities[]` entry.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `issuer` | string | Yes | Identity issuer, e.g. `world_id`. Free-form (no central scheme registry yet); selects the verifier. |
+| `scheme` | string | Yes | Proof scheme and version, e.g. `world_id_v4`. |
+| `rp_id` | string | No | Relying-party id the proof was minted for. Checked against the rp_id owner's published `identity_relying_parties[]` in `brand.json` (provenance). |
+| `action` | string | No | Issuer action/scope the proof was bound to. |
+| `claims` | List\<enum\> | Yes | Closed, issuer-agnostic set: `unique_human`, `age_over_13`, `age_over_16`, `age_over_18`, `age_over_21`. See `attestation-claim` enum. |
+| `verification_level` | enum | No | `orb` \| `device` \| `document`. Credential strength. |
+| `signal_binding` | string | No | Hash of the signal the proof commits to (replay defense). |
+| `proof` | object | Yes | Scheme-specific verifiable proof material; opaque to this schema. |
+| `expires_at` | string (date-time) | No | Validity horizon; receivers MUST reject when past. |
+
+#### SealedCredential
+
+Entry in the top-level `sealed_credentials[]`.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `audience_kid` | string | Yes | Key id of the recipient (network / relying party) whose HPKE private key opens `payload`. |
+| `payload` | string | Yes | HPKE-sealed attestation in the TMPX envelope format `kid.base64url_nopad(ciphertext)`. Opaque pass-through for the publisher. |
+
+#### Conformance invariants (verified attestation)
+
+A receiver that accepts attestations MUST:
+
+1. **Verify before trust.** Verify the proof for every `scheme` it accepts. An attestation that fails verification — or `signal_binding`, or `rp_id` provenance, or `expires_at` — MUST be treated as **absent** (no attestation), never as an asserted-true claim.
+2. **No silent upgrade.** Never treat an unverified or unverifiable attestation as `true`.
+3. **rp_id provenance.** Confirm the attestation's `rp_id` is published in the owning entity's `brand.json` `identity_relying_parties[]` before trusting it, so a genuine proof cannot be replayed under a different owner.
+4. **Sealed credentials.** Decrypt only `sealed_credentials[]` entries whose `audience_kid` the receiver holds a key for; ignore the rest.
+5. **Bound resources.** Bound attestation and sealed-credential count and size to prevent DoS.
+
+#### Router handling of `sealed_credentials[]`
+
+The router MUST: forward each `sealed_credentials[]` entry only to the provider that owns its `audience_kid` (route-by-audience, not broadcast); fold `sealed_credentials` into the per-provider re-signature canonical bytes so an injected or swapped blob breaks the request signature; and include a `sealed_credentials_hash` in its dedup cache key so a network-credential-driven eligibility change invalidates a cached response.
+
+#### Age as eligibility
+
+A verified age claim (`age_over_N`) resolves to `eligible_package_ids` — it is **never** carried as a cleartext age or date of birth. The verifying party maps `(required age policy, geo) → required threshold claim` and includes a package only when the attestation carries a claim ≥ the required threshold. The jurisdiction → threshold tables are maintained in the [AdCP Policy Registry](/docs/governance/policy-registry) (a package requires an age policy via `required_policies`); sub-country (e.g. US state) resolution happens where finer geo is available, since the Identity Match `country` field is coarse and stripped before forwarding.
 
 ### Error Response
 
