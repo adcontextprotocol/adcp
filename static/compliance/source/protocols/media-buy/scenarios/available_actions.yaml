@@ -4,8 +4,19 @@ title: "Seller carries product allowed actions into per-buy available actions"
 category: media_buy_seller
 summary: "Validates the AdCP 3.1 media-buy action-discovery flow: product allowed_actions[], buy available_actions[], SLAWindow duration fields, self-serve mutation, and ACTION_NOT_ALLOWED enforcement."
 track: media_buy
+default_agent: sales
+
+# This scenario drives a synced creative straight into an active media buy so
+# pause-shaped negative probes test available_actions, not pending creative
+# review. Sellers with manual creative review grade not_applicable instead of
+# false-failing on the lifecycle prerequisite.
+requires_capability:
+  path: media_buy.creative_approval_mode
+  equals: auto_approve
+
 required_tools:
   - get_products
+  - sync_creatives
   - create_media_buy
   - get_media_buys
   - update_media_buy
@@ -29,8 +40,9 @@ agent:
   interaction_model: stateful_preloaded
   capabilities:
     - sells_media
+    - accepts_creatives
   examples:
-    - "Any AdCP media buy seller exposing the 3.1 action-discovery surface"
+    - "Any auto-approval media buy seller exposing the 3.1 action-discovery surface"
 
 caller:
   role: buyer_agent
@@ -73,7 +85,7 @@ fixtures:
             completion_max: "P1D"
         - action: "decrease_budget"
           modes: ["self_serve"]
-          allowed_statuses: ["active"]
+          allowed_statuses: ["paused"]
   pricing_options:
     - product_id: "available_actions_display"
       pricing_option_id: "available_actions_cpm"
@@ -155,16 +167,58 @@ phases:
             value:
               action: "decrease_budget"
               modes: ["self_serve"]
-              allowed_statuses: ["active"]
+              allowed_statuses: ["paused"]
             description: "Product advertises a status-scoped budget decrease action"
+        context_outputs:
+          - path: "products[0].format_ids[0]"
+            key: "available_actions_format_id"
 
   - id: create_buy_from_product
     title: "Resolve product actions onto the buy"
     narrative: |
-      The buyer creates a media buy from the discovered product. The seller
-      must materialize the product-level template into buy-level
-      available_actions[] on the create response.
+      The buyer syncs a creative, then creates a media buy from the discovered
+      product with that creative assigned and start_time: asap. The seller must
+      materialize the product-level template into buy-level available_actions[]
+      on the create response while the buy is active.
     steps:
+      - id: sync_available_actions_creative
+        title: "Sync a creative for the action-enabled buy"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Accept the creative into the account library so the create_media_buy
+          request can assign it immediately and reach active state.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "available_actions_display_creative"
+              name: "Acme Outdoor Available Actions Display Creative"
+              format_id: "$context.available_actions_format_id"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/available-actions-display.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+          idempotency_key: "$generate:uuid_v4#available_actions_sync_creative"
+          context:
+            correlation_id: "available_actions--sync_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "available_actions--sync_creative"
+            description: "Context correlation_id returned unchanged"
+
       - id: create_media_buy_with_available_actions
         title: "Create a buy from the action-enabled product"
         task: create_media_buy
@@ -174,7 +228,7 @@ phases:
         comply_scenario: media_buy_action_discovery
         stateful: true
         expected: |
-          Create the buy and return available_actions[] resolved from the
+          Create an active buy and return available_actions[] resolved from the
           product's allowed_actions[] template.
         sample_request:
           account:
@@ -184,12 +238,14 @@ phases:
           brand:
             domain: "acmeoutdoor.example"
           media_buy_id: "available_actions_product_mb"
-          start_time: "2026-05-01T00:00:00Z"
-          end_time: "2027-07-31T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-07-31T23:59:59Z"
           packages:
             - product_id: "available_actions_display"
               pricing_option_id: "available_actions_cpm"
               budget: 10000
+              creative_assignments:
+                - creative_id: "available_actions_display_creative"
           idempotency_key: "$generate:uuid_v4#available_actions_create_buy"
           context:
             correlation_id: "available_actions--create_buy"
@@ -207,6 +263,14 @@ phases:
           - check: field_present
             path: "packages[0].package_id"
             description: "Seller returns the created package ID for later updates"
+          - check: field_value
+            path: "media_buy_status"
+            value: "active"
+            description: "Created buy is active before available_actions mutation probes"
+          - check: field_value_or_absent
+            path: "status"
+            value: "active"
+            description: "Legacy status, when present alongside media_buy_status, mirrors active"
           - check: field_contains
             path: "available_actions[*]"
             value:
@@ -268,6 +332,10 @@ phases:
             path: "media_buys[0].media_buy_id"
             value: "$context.available_actions_media_buy_id"
             description: "Seller returns the created media buy"
+          - check: field_value
+            path: "media_buys[0].status"
+            value: "active"
+            description: "Persisted buy is active before available_actions mutation probes"
           - check: field_contains
             path: "media_buys[0].available_actions[*]"
             value:
@@ -362,7 +430,7 @@ phases:
           brand:
             domain: "acmeoutdoor.example"
           media_buy_id: "$context.available_actions_media_buy_id"
-          end_time: "2027-08-31T23:59:59Z"
+          end_time: "2099-08-31T23:59:59Z"
           idempotency_key: "$generate:uuid_v4#available_actions_extend_direct"
           context:
             correlation_id: "available_actions--extend_direct"
@@ -458,8 +526,8 @@ phases:
         stateful: true
         expected: |
           Reject with ACTION_NOT_ALLOWED because decrease_budget is supported
-          by the product, but only for active buys. The created buy is still
-          pending_creatives, so the action is not currently available.
+          by the product, but only for paused buys. The created buy is active,
+          so the action is not currently available.
         sample_request:
           account:
             brand:

@@ -2497,6 +2497,44 @@ describe('create_media_buy handler', () => {
     expect(buys[0].status).toBe('pending_start');
   });
 
+  it('creates an active media buy when start_time is asap and creatives are assigned', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'asap-active.example' }, operator: 'asap-active.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_asap_active',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'ASAP Active Creative',
+      }],
+    });
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'asap-active.example' },
+      start_time: 'asap',
+      end_time: '2099-07-31T23:59:59Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+        creative_assignments: [{ creative_id: 'cr_asap_active' }],
+      }],
+    });
+
+    expect(created.media_buy_status).toBe('active');
+
+    const mediaBuyId = created.media_buy_id as string;
+    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const buys = buyResult.media_buys as Array<Record<string, unknown>>;
+    expect(buys[0].status).toBe('active');
+  });
+
   it('returns package with required fields', async () => {
     const { productId, pricingOptionId } = getFirstProductAndPricing();
     const server = createTrainingAgentServer(DEFAULT_CTX);

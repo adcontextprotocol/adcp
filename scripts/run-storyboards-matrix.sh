@@ -168,8 +168,8 @@ NODE
 fi
 
 restore_sdk_generated_schema
+trap restore_sdk_generated_schema EXIT
 if [ "${OVERLAY}" -eq 1 ]; then
-  trap restore_sdk_generated_schema EXIT
   # Mirror CI's overlay step before running tenants: copies in-repo
   # compliance source onto the SDK's bundled cache so the runner grades
   # against current-PR fixtures, not the SDK-published snapshot. Without
