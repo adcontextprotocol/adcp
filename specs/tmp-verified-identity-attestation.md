@@ -1,6 +1,6 @@
 # TMP Verified Identity Attestation — Design Proposal
 
-**Status**: proposed (draft for review).
+**Status**: shipped as experimental (`trusted_match.verified_identity`) in PR #5387 — this document is the design rationale; the normative spec lives in `docs/trusted-match/specification.mdx`.
 **Target surface**: TMP Identity Match (`identity_match_request`), experimental.
 **Relates to**: [`docs/trusted-match/context-and-identity.mdx`](../docs/trusted-match/context-and-identity.mdx), [`docs/trusted-match/data-protection-roles.mdx`](../docs/trusted-match/data-protection-roles.mdx), [`docs/trusted-match/specification.mdx`](../docs/trusted-match/specification.mdx).
 
@@ -184,7 +184,7 @@ The jurisdiction → threshold rule ("alcohol means 21 in the US, 18 in the UK, 
 2. The policy definition holds the jurisdiction → threshold table.
 3. At eligibility time the verifying party resolves `(policy, geo) → required threshold claim` — `(legal-drinking-age, US) → age_over_21`, `(legal-drinking-age, GB) → age_over_18` — checks the verified attestation carries a claim ≥ that threshold, and includes/excludes the package in `eligible_package_ids`.
 
-This keeps the wire to a single threshold claim, puts the jurisdiction table where it can change without a protocol revision, and lets a buyer express "make my alcohol campaign compliant everywhere" instead of encoding law per region. The age policies and their jurisdiction → threshold tables are maintained centrally in the **AAO Policy Registry** — one shared source of truth, not per-network tables — so every network resolves against the same compliance data. The verifying party owns the runtime assertion that it resolved and enforced them correctly; in the network-as-RP model that is the network (already the controller).
+This keeps the wire to a single threshold claim, puts the jurisdiction table where it can change without a protocol revision, and lets a buyer express "make my alcohol campaign compliant everywhere" instead of encoding law per region. The age policies and their jurisdiction → threshold tables are maintained centrally in the **AdCP Policy Registry** — one shared source of truth, not per-network tables — so every network resolves against the same compliance data. The verifying party owns the runtime assertion that it resolved and enforced them correctly; in the network-as-RP model that is the network (already the controller).
 
 **Expression.** Prefer the policy reference (declarative; resolves per geo) as the way a campaign requests an age gate, with an explicit minimum threshold claim as an override for a buyer that wants a fixed floor regardless of geo.
 
@@ -214,7 +214,7 @@ The division is therefore **control plane vs. data plane**: XAA / RFC 8693 is ho
 
 **Adjacent, not addressed here.** XAA is also emerging as the pattern for agent-to-agent cross-domain authorization (agents calling APIs on behalf of a user across domains). That is relevant to how TMP *agents* authenticate across domains (buyer agent ↔ router ↔ network) — a separate layer from the personhood/age attestation in this proposal, tracked separately.
 
-## Conformance (proposed)
+## Conformance
 
 An implementation claiming verified-attestation support MUST:
 

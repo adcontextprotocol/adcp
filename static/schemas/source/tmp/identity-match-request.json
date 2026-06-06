@@ -80,7 +80,10 @@
                 "description": "Claims this attestation establishes. Closed, issuer-agnostic set.",
                 "items": {
                   "$ref": "/schemas/enums/attestation-claim.json"
-                }
+                },
+                "minItems": 1,
+                "uniqueItems": true,
+                "maxItems": 16
               },
               "verification_level": {
                 "type": "string",
@@ -97,7 +100,7 @@
               },
               "proof": {
                 "type": "object",
-                "description": "Scheme-specific verifiable proof material. Opaque to this schema; validated by the scheme's verifier.",
+                "description": "Scheme-specific verifiable proof material. Opaque to this schema; validated by the scheme's verifier. MUST carry only scheme-defined verification material — never page context or additional user identifiers.",
                 "additionalProperties": true
               },
               "expires_at": {
@@ -163,15 +166,18 @@
     "sealed_credentials": {
       "type": "array",
       "description": "Optional HPKE-sealed credentials addressed to specific audiences — the network-as-RP (\"issuer-as-RP\"/Mechanism B) carrier. Each payload is opaque to the publisher, who relays it untouched; the inner plaintext is an `attestation` (see identities[].attestation) scoped to the audience's relying party. Reuses the TMPX envelope format. Router handling (normative — see docs/trusted-match/specification.mdx): the router forwards each entry only to the provider that owns its `audience_kid` (not broadcast), folds `sealed_credentials` into the per-provider re-signature canonical bytes so an injected/swapped blob breaks the signature, and includes a `sealed_credentials_hash` in the dedup cache key. Receivers decrypt only entries whose `audience_kid` they hold a key for and ignore the rest. Receivers MUST bound count and size to prevent DoS amplification.",
+      "maxItems": 8,
       "items": {
         "type": "object",
         "properties": {
           "audience_kid": {
             "type": "string",
+            "maxLength": 128,
             "description": "Key id identifying the recipient (network / relying party) whose HPKE private key opens `payload`."
           },
           "payload": {
             "type": "string",
+            "maxLength": 8192,
             "description": "HPKE-sealed attestation in the TMPX envelope format: `kid.base64url_nopad(ciphertext)` — unpadded base64url per RFC 4648 §5. Opaque pass-through for the publisher."
           }
         },

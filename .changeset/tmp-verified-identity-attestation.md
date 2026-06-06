@@ -15,4 +15,4 @@ Add an experimental verified-identity attestation surface to TMP Identity Match,
 
 **Router handling of `sealed_credentials[]` (normative):** forward each entry only to the provider owning its `audience_kid` (not broadcast); fold `sealed_credentials` into the per-provider re-signature canonical bytes; include a `sealed_credentials_hash` in the dedup cache key.
 
-rp_id ownership is published in `brand.json` `identity_relying_parties[]`; age jurisdiction→threshold tables live in the AAO Policy Registry and resolve to `eligible_package_ids`. Advertised via a new `trusted_match.verified_identity` experimental feature id. Full design: `specs/tmp-verified-identity-attestation.md`.
+rp_id ownership is published in `brand.json` `identity_relying_parties[]`; age jurisdiction→threshold tables live in the AdCP Policy Registry and resolve to `eligible_package_ids`. Advertised via a new `trusted_match.verified_identity` experimental feature id. Full design: `specs/tmp-verified-identity-attestation.md`.
