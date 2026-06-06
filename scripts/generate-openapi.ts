@@ -106,6 +106,7 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
   "Change Feed": "Poll cursor-based registry change events for local sync.",
   "Lookups & Authorization": "Look up agents by domain or property, and validate ad-serving authorization.",
   "Validation Tools": "Validate publisher adagents.json files and generate compliant configurations.",
+  "Community Mirrors": "Publish, fetch, list, and retire catalog-only adagents.json mirrors for platforms that have not adopted AdCP.",
   "Search": "Cross-entity search across brands, publishers, agents, and properties.",
   "Agent Probing": "Connect to live agents and inspect their capabilities, formats, and inventory.",
   "Brand Discovery": "Discover and crawl brand.json files across domains.",
