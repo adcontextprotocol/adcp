@@ -1,4 +1,4 @@
-import { getClient, query } from './client.js';
+import { getClient } from './client.js';
 import { uuidv7 } from './uuid.js';
 import { normalizeIdentifier } from '../services/identifier-normalization.js';
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
