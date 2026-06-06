@@ -139,7 +139,6 @@ function patchFile(file) {
 
 patchFile('node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js');
 NODE
-  node "$(dirname "$0")/patch-sdk-storyboard-request-builder.cjs"
 
   echo "Building development compliance bundle for SDK cache overlay"
   node scripts/build-compliance.cjs
