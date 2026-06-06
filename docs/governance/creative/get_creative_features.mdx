@@ -43,6 +43,16 @@ Evaluates a creative manifest and returns feature values from a creative governa
 | `creative_manifest` | object | Yes | Creative manifest with `format_id` and `assets` |
 | `feature_ids` | string[] | No | Filter to specific features. If omitted, evaluates all features the agent supports. |
 
+### Authentication when used as a build evaluator
+
+`get_creative_features` is also the evaluator contract used when `build_creative.evaluator.agent_url` or `build_creative.evaluator.feature_agent.agent_url` points at an external evaluator. In that flow, the creative/seller agent is the caller and the evaluator authenticates it on the transport: RFC 9421 request signing with JWKS discovery is preferred, and mTLS or a pre-provisioned Bearer/API-key credential are acceptable when both parties have arranged them.
+
+The request payload is not an authentication channel. Evaluators MUST NOT treat `agent_url`, `account`, `context`, `ext`, or fields inside `creative_manifest` as proof of caller identity, and callers MUST NOT put evaluator credentials or caller-supplied trust material in those fields. Credential- or trust-material payload keys such as `api_key`, `client_secret`, `bearer`, `authorization`, `jwk`, `jwks`, or `jwks_uri` are non-conforming and should be rejected with [`CREDENTIAL_IN_ARGS`](/docs/building/by-layer/L3/error-handling#authentication-and-access).
+
+After authenticating the transport, the evaluator maps the caller to its allowed creative agent/account configuration. A request signed by, or carrying credentials for, an unrecognized creative agent should fail authentication or authorization; it should not be accepted because the payload names an expected account.
+
+When this call was initiated by `build_creative` and the evaluator is unreachable or rejects the producing agent's transport authentication, the buyer-visible build should fall back to seller-default ranking with an advisory `errors[]` note rather than failing solely because evaluation was unavailable.
+
 ## Response
 
 <CodeGroup>
