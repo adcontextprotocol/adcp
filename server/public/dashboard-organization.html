@@ -1610,7 +1610,8 @@
       let pts = 0;
       if (profile.display_name)  pts += 15;
       if (profile.description)   pts += 20;
-      if (profile.logo_light_url || profile.logo_url) pts += 15;
+      const logoUrl = profile.logo_light_url || profile.logo_url || profile.resolved_brand?.logo_url || null;
+      if (logoUrl) pts += 15;
       if (profile.offerings?.length > 0) pts += 15;
       if (profile.contact_email) pts += 10;
       if (profile.contact_website) pts += 10;
@@ -1620,7 +1621,6 @@
       const pct = Math.min(pts, 100);
       const fillClass = pct === 100 ? 'profile-completeness-fill--full' : '';
 
-      const logoUrl = profile.logo_light_url || profile.logo_url || null;
       const logoHtml = logoUrl
         ? `<img src="${escapeHtml(logoUrl)}" alt="Logo">`
         : `<div class="profile-logo-placeholder">No logo</div>`;
