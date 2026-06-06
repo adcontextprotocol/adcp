@@ -43,6 +43,7 @@ test('scanner finds the expected high-risk SDK reach-ins', () => {
   const findings = collectFindings();
   assert.ok(findings.some((f) => f.file === 'scripts/stage-sdk-schema-bundle.sh' && f.term.includes('schemas-data')));
   assert.ok(findings.some((f) => f.file === 'scripts/overlay-compliance-cache.sh' && f.term.includes('schemas.generated.js')));
+  assert.ok(findings.some((f) => f.file === 'scripts/patch-sdk-storyboard-request-builder.cjs' && f.term.includes('request-builder.js')));
 });
 
 test('matchingPrivateTerm ignores comment-only lines but catches private SDK code', () => {

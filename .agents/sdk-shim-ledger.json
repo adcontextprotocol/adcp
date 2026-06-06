@@ -23,18 +23,21 @@
     "status": "temporary",
     "owner": "compliance",
     "upstream": "adcontextprotocol/adcp-client#2105",
-    "problem": "The SDK package ships a snapshot of compliance bundles, schema bundles, and generated validators. Current PR storyboard runs need to grade current repo source before a new SDK package exists.",
-    "localBehavior": "Build current compliance/schema bundles, copy them into the SDK cache, and patch generated validator enum literals for same-PR comply_test_controller additions.",
+    "problem": "The SDK package ships a snapshot of compliance bundles, schema bundles, generated validators, and storyboard request-builder behavior. Current PR storyboard runs need to grade current repo source before a new SDK package exists, including preserving sample_request.start_time: \"asap\" until the upstream request-builder fix is released.",
+    "localBehavior": "Build current compliance/schema bundles, copy them into the SDK cache, patch generated validator enum literals for same-PR comply_test_controller additions, and temporarily patch the installed storyboard request builder to preserve start_time: \"asap\".",
     "removalCondition": "Remove when the storyboard matrix passes current compliance and schema roots through public SDK options instead of overlaying the SDK cache.",
     "paths": [
       "scripts/overlay-compliance-cache.sh",
-      "scripts/run-storyboards-matrix.sh"
+      "scripts/run-storyboards-matrix.sh",
+      "scripts/patch-sdk-storyboard-request-builder.cjs"
     ],
     "terms": [
       "node_modules/@adcp/sdk/compliance/cache",
       "node_modules/@adcp/sdk/ADCP_VERSION",
       "node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js",
-      "schemas.generated.js"
+      "schemas.generated.js",
+      "node_modules/@adcp/sdk/dist/lib/testing/storyboard/request-builder.js",
+      "request-builder.js"
     ]
   }
 ]

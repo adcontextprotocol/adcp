@@ -762,7 +762,7 @@ function main() {
     console.log(`   ✓ ${index.universal.length} universal, ${index.protocols.length} protocols, ${index.specialisms.length} specialisms`);
 
     console.log(`📋 Updating latest/ to match release`);
-    buildTo(path.join(DIST_DIR, 'latest'), 'latest', SOURCE_DIR);
+    buildTo(path.join(DIST_DIR, 'latest'), version, SOURCE_DIR);
 
     console.log(`📝 Staging dist/compliance/${version}/ for git commit`);
     try {
@@ -779,7 +779,7 @@ function main() {
   } else {
     const latestDir = path.join(DIST_DIR, 'latest');
     console.log(`📋 Building compliance to dist/compliance/latest/`);
-    const index = buildTo(latestDir, 'latest', SOURCE_DIR);
+    const index = buildTo(latestDir, version, SOURCE_DIR);
     console.log(`   ✓ ${index.universal.length} universal, ${index.protocols.length} protocols, ${index.specialisms.length} specialisms`);
 
     console.log('');

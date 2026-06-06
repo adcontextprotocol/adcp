@@ -24,13 +24,17 @@ else
 fi
 export ADCP_RELEASE_GIT_REF="${RELEASE_GIT_REF}"
 SDK_GENERATED_SCHEMA_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js"
+SDK_STORYBOARD_REQUEST_BUILDER_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/testing/storyboard/request-builder.js"
 
 restore_sdk_generated_schema() {
-  local backup="${SDK_GENERATED_SCHEMA_FILE}.adcp-overlay-backup"
-  if [ -f "${backup}" ]; then
-    cp "${backup}" "${SDK_GENERATED_SCHEMA_FILE}"
-    rm -f "${backup}"
-  fi
+  local file
+  for file in "${SDK_GENERATED_SCHEMA_FILE}" "${SDK_STORYBOARD_REQUEST_BUILDER_FILE}"; do
+    local backup="${file}.adcp-overlay-backup"
+    if [ -f "${backup}" ]; then
+      cp "${backup}" "${file}"
+      rm -f "${backup}"
+    fi
+  done
 }
 
 usage() {
@@ -168,8 +172,9 @@ NODE
 fi
 
 restore_sdk_generated_schema
+trap restore_sdk_generated_schema EXIT
+node "${SCRIPT_DIR}/patch-sdk-storyboard-request-builder.cjs"
 if [ "${OVERLAY}" -eq 1 ]; then
-  trap restore_sdk_generated_schema EXIT
   # Mirror CI's overlay step before running tenants: copies in-repo
   # compliance source onto the SDK's bundled cache so the runner grades
   # against current-PR fixtures, not the SDK-published snapshot. Without
