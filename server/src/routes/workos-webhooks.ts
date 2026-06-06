@@ -216,9 +216,12 @@ async function upsertMembership(
     }
   }
 
-  // Only sync active memberships
   if (membership.status !== 'active') {
-    logger.debug({ membershipId: membership.id, status: membership.status }, 'Skipping non-active membership');
+    logger.info(
+      { membershipId: membership.id, status: membership.status, userId: membership.user_id, orgId: membership.organization_id },
+      'Removing non-active organization membership from local cache',
+    );
+    await deleteMembership(membership);
     return;
   }
 
