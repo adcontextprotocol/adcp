@@ -420,7 +420,7 @@ asyncio.run(main())
 
 </CodeGroup>
 
-You pay for all three takes (`per_unit` × 3); `keep_mode` is advisory. Keeping is a separate trafficking step on the chosen `build_variant_id` — the kept variant then lazily earns a `creative_id` that flows to [`report_usage`](/docs/accounts/tasks/report_usage).
+You pay for all three takes (`per_unit` × 3); `keep_mode` is advisory. Keeping is a separate trafficking step on the chosen `build_variant_id` — use that id as the `creative_id` when promoting the produced manifest through [`sync_creatives`](/docs/creative/task-reference/sync_creatives). The kept variant then lazily earns a creative record whose `creative_id` is the build leaf id and flows to [`report_usage`](/docs/accounts/tasks/report_usage) and delivery reporting.
 
 ### Paid build with pricing
 
@@ -616,7 +616,7 @@ _The `creatives[]` array above is abbreviated to one of the 5 returned groups; t
 - **errors[]**: Advisory (non-terminal) entries on an otherwise-successful build — e.g. a `BUDGET_CAP_REACHED` notice when `budget_status` is `capped`.
 
 <Warning>
-You pay for **every produced variant** (`per_unit` × N), not just the ones you keep. Keeping is a separate client act of trafficking the chosen `build_variant_id`(s). A kept variant lazily earns a `creative_id` when it is added to the library or first trafficked; that `creative_id` is what flows to [`report_usage`](/docs/accounts/tasks/report_usage). An unkept variant is still billed but never earns a `creative_id`.
+You pay for **every produced variant** (`per_unit` × N), not just the ones you keep. Keeping is a separate client act of trafficking the chosen `build_variant_id`(s), typically by using each kept leaf as `creative_id` on [`sync_creatives`](/docs/creative/task-reference/sync_creatives). A kept variant lazily earns a creative record when it is added to the library or first trafficked; that `creative_id` is what flows to [`report_usage`](/docs/accounts/tasks/report_usage) and delivery reporting. An unkept variant is still billed but never earns a `creative_id`.
 </Warning>
 
 <Note>
