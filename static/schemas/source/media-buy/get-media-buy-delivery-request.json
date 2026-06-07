@@ -102,7 +102,7 @@
               "description": "Geographic granularity level for the breakdown"
             },
             "system": {
-              "oneOf": [
+              "anyOf": [
                 {
                   "$ref": "/schemas/enums/metro-system.json"
                 },

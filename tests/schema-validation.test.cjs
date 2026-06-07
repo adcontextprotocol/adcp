@@ -764,6 +764,10 @@ async function runTests() {
       return 'postal-system enum must include native country-local systems such as postal_code and zip';
     }
 
+    if (!postalSystemSchema.enum?.includes('us_zip')) {
+      return 'postal-system enum must retain legacy country-fused systems for 3.x additive enum compatibility';
+    }
+
     const legacyPostalSystemSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'enums/legacy-postal-system.json'));
     if (!legacyPostalSystemSchema.enum?.includes('us_zip')) {
       return 'legacy-postal-system enum must retain deprecated fused aliases such as us_zip';

@@ -101,6 +101,8 @@ Registered metro systems are `nielsen_dma`, `uk_itl1`, `uk_itl2`, `eurostat_nuts
 
 Use `postal_code` for the normal postal code string in countries without a more specific registered local system. Deprecated country-fused aliases such as `us_zip` remain accepted for compatibility and SDK backfill.
 
+Registered country/system pairings are defined in `postal-country-system.json`; the published `postal-system.json` enum remains additive and also contains deprecated country-fused aliases for 3.x compatibility.
+
 ## Exclusion targeting
 
 v3 adds `_exclude` variants for metro and postal targeting:
