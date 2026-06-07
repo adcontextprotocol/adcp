@@ -936,6 +936,48 @@ async function runTests() {
     );
     if (result !== true) return result;
 
+    result = assertValid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: {}
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with empty postal support map'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: { NG: ['postal_code'] }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with unknown-country fallback postal system'
+    );
+    if (result !== true) return result;
+
     result = assertInvalid(
       validateCapabilities,
       {
@@ -975,6 +1017,20 @@ async function runTests() {
       validateGeoBreakdownSupport,
       { postal_area: { us_zip: true, US: ['zip', 'zip_plus_four'], ZA: ['postal_code'] } },
       'geo breakdown support with native postal systems'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateGeoBreakdownSupport,
+      { postal_area: {} },
+      'geo breakdown support with empty postal support map'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateGeoBreakdownSupport,
+      { postal_area: { NG: ['postal_code'] } },
+      'geo breakdown support with unknown-country fallback postal system'
     );
     if (result !== true) return result;
 
@@ -1072,7 +1128,28 @@ async function runTests() {
           }
         }
       },
-      'get_adcp_capabilities targeting declaration with unregistered native postal system'
+      'get_adcp_capabilities targeting declaration with registered country invalid postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: { NG: ['zip'] }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with unknown-country invalid postal system'
     );
     if (result !== true) return result;
 

@@ -94,6 +94,5 @@
     "items": { "enum": ["postal_code", "custom"] },
     "minItems": 1,
     "uniqueItems": true
-  },
-  "minProperties": 1
+  }
 }
