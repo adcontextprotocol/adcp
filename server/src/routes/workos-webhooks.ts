@@ -216,9 +216,12 @@ async function upsertMembership(
     }
   }
 
-  // Only sync active memberships
   if (membership.status !== 'active') {
-    logger.debug({ membershipId: membership.id, status: membership.status }, 'Skipping non-active membership');
+    logger.info(
+      { membershipId: membership.id, status: membership.status, userId: membership.user_id, orgId: membership.organization_id },
+      'Removing non-active organization membership from local cache',
+    );
+    await deleteInactiveMembershipCache(membership);
     return;
   }
 
@@ -347,6 +350,25 @@ async function upsertMembership(
   } catch (err) {
     logger.warn({ err, userId: membership.user_id }, 'primary_organization_id backfill failed during membership upsert');
   }
+}
+
+/**
+ * Delete a non-active membership from the local cache only.
+ *
+ * WorkOS membership.updated events can mark a membership inactive. That should
+ * remove local access immediately, but it must not run owner-succession logic:
+ * promotion is reserved for explicit organization_membership.deleted events.
+ */
+async function deleteInactiveMembershipCache(membership: OrganizationMembershipData): Promise<void> {
+  const deletedRole = await deleteOrganizationMembership(membership.user_id, membership.organization_id);
+
+  logger.info({
+    membershipId: membership.id,
+    userId: membership.user_id,
+    orgId: membership.organization_id,
+    role: deletedRole,
+    status: membership.status,
+  }, 'Deleted non-active organization membership from local cache');
 }
 
 /**

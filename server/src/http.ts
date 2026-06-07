@@ -93,6 +93,7 @@ import { createOrganizationsRouter } from "./routes/organizations.js";
 import { createReferralsRouter } from "./routes/referrals.js";
 import { createInvitesRouter } from "./routes/invites.js";
 import { convertReferral, listAllReferralCodes } from "./db/referral-codes-db.js";
+import { CurrentUserOrganizationsUnavailableError, getCurrentUserOrganizations } from "./routes/current-user-organizations.js";
 import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
 import { createDigestRouter } from "./routes/digest.js";
@@ -7320,39 +7321,23 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           });
         }
 
-        // Get user's WorkOS organization memberships
-        let memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          statuses: ['active'],
-        });
-
-        // Auto-link any verified-domain orgs the user isn't yet in.
-        // Helper short-circuits when the user is already a cached member.
-        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-        if (linked) {
-          memberships = await workos!.userManagement.listOrganizationMemberships({
+        let organizations;
+        try {
+          organizations = await getCurrentUserOrganizations({
             userId: user.id,
-            statuses: ['active'],
+            email: user.email,
+            workos,
+            orgDb,
+            autoLinkByVerifiedDomain,
           });
+        } catch (error) {
+          if (error instanceof CurrentUserOrganizationsUnavailableError) {
+            return res.status(503).json({
+              error: 'Organization membership temporarily unavailable',
+            });
+          }
+          throw error;
         }
-
-        // Map memberships to organization details with roles
-        // Fetch organization details separately since membership.organization may be undefined
-        const organizations = await Promise.all(
-          memberships.data.map(async (membership) => {
-            const [workosOrg, localOrg] = await Promise.all([
-              workos!.organizations.getOrganization(membership.organizationId),
-              orgDb.getOrganization(membership.organizationId),
-            ]);
-            return {
-              id: membership.organizationId,
-              name: workosOrg.name,
-              role: membership.role?.slug || 'member',
-              status: membership.status,
-              is_personal: localOrg?.is_personal || false,
-            };
-          })
-        );
 
         // Check if user is admin via aao-admin working group (primary) or
         // ADMIN_EMAILS env var (fallback). Must match requireAdmin middleware
