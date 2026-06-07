@@ -62,6 +62,12 @@ When the creative agent charges and `account` is provided, the response includes
 
 For async builds (`status: "working"` with `context_id` polling), pricing fields appear on the final completed response only.
 
+### Recipe identity
+
+Agents MAY return a top-level `recipe_hash` on single-format success responses, and MAY return `variants[].recipe_hash` on multiplicity/refinement leaves. Multi-format `creative_manifests[]` responses do not carry `recipe_hash` in this revision; request the variant shape (`max_variants`) when you need per-output recipe identities. The value is an ETag-style identity for the build-determining inputs: agent-computed, opaque, and scoped to that agent. Buyers can compare it only across responses from the same agent.
+
+`recipe_hash` identifies the input recipe, not the output bytes or legal/disclosure envelope. A nondeterministic build can return different pixels, tags, or variants with the same `recipe_hash`; the value means "same instructions," not "same creative." For fan-out responses, best-of-N leaves produced from the same recipe SHOULD share the same value so clients can group alternatives by their shared source. When both `recipe_hash` and `build_variant_id` appear, `build_variant_id` identifies the output leaf and lineage while `recipe_hash` identifies the input recipe; neither implies the other. The build-to-delivery performance join still uses the lineage identifiers that survive trafficking, not `recipe_hash` alone.
+
 **Important**: Required input assets should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires. Catalog context for dynamic creatives should be provided via the `creative_manifest.assets` map.
 
 ### Evaluator authentication
@@ -202,6 +208,7 @@ Retrieve a creative from the agent's library and resolve it into a manifest with
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
   "status": "completed",
+  "recipe_hash": "rh_scope3_9f2c7a1d5b3e",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.example.com",
@@ -224,6 +231,8 @@ Retrieve a creative from the agent's library and resolve it into a manifest with
 ```
 
 The `CLICK_URL` macro was substituted with the provided value; `CACHEBUSTER` remains as a placeholder for the sales agent to resolve at serve time.
+
+Do not use `recipe_hash` to deduplicate ad tags, prove legal/disclosure equivalence, or join build results to served delivery data. Use `build_variant_id` and the promoted `creative_id` for lineage and reporting.
 
 <Note>
 **Cross-agent workflow**: When creative generation and media buying are handled by different agents, use `build_creative` on the creative agent to produce a manifest with tags, then [`sync_creatives`](/docs/creative/task-reference/sync_creatives) on the sales agent to upload it. When the sales agent implements both protocols, this happens on a single endpoint — see [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
@@ -481,6 +490,7 @@ When the request uses `target_format_id`, the response contains a single creativ
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
   "status": "completed",
+  "recipe_hash": "rh_winter_300x250_4c2a",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -550,8 +560,9 @@ When the request uses `max_creatives`, `max_variants` > 1, `variant_axis`, or `r
       "variants": [
         {
           "build_variant_id": "bv_card01_a",
+          "recipe_hash": "rh_card01_bestofn_7b91",
           "creative_manifest": { "format_id": { "agent_url": "https://creative.example.com", "id": "display_300x250" }, "assets": { "...": "..." } },
-          "variant_axis_value": "studio",
+          "variant_axis_value": "take_1",
           "recommended": true,
           "rank": 1,
           "pricing_option_id": "po_per_image",
@@ -561,8 +572,9 @@ When the request uses `max_creatives`, `max_variants` > 1, `variant_axis`, or `r
         },
         {
           "build_variant_id": "bv_card01_b",
+          "recipe_hash": "rh_card01_bestofn_7b91",
           "creative_manifest": { "format_id": { "agent_url": "https://creative.example.com", "id": "display_300x250" }, "assets": { "...": "..." } },
-          "variant_axis_value": "lifestyle",
+          "variant_axis_value": "take_2",
           "recommended": false,
           "rank": 2,
           "pricing_option_id": "po_per_image",
@@ -589,6 +601,7 @@ _The `creatives[]` array above is abbreviated to one of the 5 returned groups; t
 - **creatives[].errors[]**: Present only on a *failed* catalog item — catalog fan-out is non-atomic, so a failed item is returned as a `creatives[]` entry carrying `errors[]` and no `variants[]`, without failing the batch.
 - **creatives[].variants[]**: The choose-among alternatives produced for this creative group. Length is at most `max_variants`. Each variant carries its own complete `creative_manifest`.
 - **variants[].build_variant_id**: Identifies a single variant — the leaf-level **lineage anchor**. This is its **own namespace** — never reuse a `preview_id` (a `preview_creative` render) or a served `variant_id` (a delivery-time identifier) here. You traffic a chosen build by passing its `build_variant_id`.
+- **variants[].recipe_hash**: Optional ETag-style identity for the build-determining inputs that produced the leaf. It is agent-computed, opaque, and comparable only within the same agent. Best-of-N leaves from the same source recipe SHOULD share a value. It is useful for cache transparency, cost-avoidance hints, and recipe-level grouping, but it is not output equality, not legal/disclosure equivalence, and not the build-to-delivery join.
 - **variants[].parent_build_variant_id**: Present only on a refined variant ([Refinement](#refinement)) — the `build_variant_id` of the source it was refined from. Absent for first-generation builds.
 - **variants[].variant_axis_value**: The value of the `variant_axis` dimension this variant represents (e.g. a voice, a theme).
 - **variants[].recommended** / **variants[].rank**: Best-of-N signals — `recommended` flags the agent's top pick; `rank` orders the variants. These plus `variant_axis` and `keep_mode` are how best-of-N is expressed.

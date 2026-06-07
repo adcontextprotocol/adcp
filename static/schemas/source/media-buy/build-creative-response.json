@@ -27,6 +27,10 @@
           "x-entity": "build_variant",
           "description": "Leaf handle for this produced creative — present when the agent supports refinement (creative.supports_refinement). Pass it as refine_from_build_variant_id to refine this build. Same namespace as BuildCreativeVariantSuccess leaves; distinct from served variant_id / preview_id. Lazily earns a creative_id on trafficking."
         },
+        "recipe_hash": {
+          "type": "string",
+          "description": "Optional agent-computed, opaque, agent-scoped identity for the build-determining inputs that produced this creative. Stable for identical inputs as defined by the agent, and comparable only within the same agent. ETag-style semantics: the protocol defines the field and contract, not the hash algorithm or canonical input set. Identifies generative-input identity, not output equality, legal/disclosure equivalence, or the build-to-delivery join."
+        },
         "sandbox": {
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
@@ -323,6 +327,10 @@
                       "type": "string",
                       "x-entity": "build_variant",
                       "description": "Build-time handle for this produced variant — the leaf-level lineage anchor for the creative. Minted per produced variant. Its OWN namespace — MUST NOT reuse a `preview_id` (preview renders) or a served `variant_id` (delivery). Lineage and joins (refinement parentage, build→delivery learning, QA re-rolls) anchor on this leaf id, NOT on the call-level `build_creative_id`. A leaf lazily earns a durable `creative_id` only when trafficked / added to the library; that `creative_id` is what flows into `report_usage`. An untrafficked leaf has no `report_usage` key — it is billed via the inline per-leaf `vendor_cost` only, and `report_usage` reconciliation applies once the leaf earns a `creative_id`."
+                    },
+                    "recipe_hash": {
+                      "type": "string",
+                      "description": "Optional agent-computed, opaque, agent-scoped identity for the build-determining inputs that produced this variant leaf. Stable for identical inputs as defined by the agent, and comparable only within the same agent. Multiple leaves from the same best-of-N recipe SHOULD carry the same value so clients can group alternative outputs by their shared source recipe. ETag-style semantics: the protocol defines the field and contract, not the hash algorithm or canonical input set. Identifies generative-input identity, not output equality, legal/disclosure equivalence, or the build-to-delivery join."
                     },
                     "parent_build_variant_id": {
                       "type": "string",
