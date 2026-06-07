@@ -1,8 +1,8 @@
 id: webhook_emission
-version: "1.1.0"
-title: "Webhook emission — outbound webhook conformance (operation ID + signing + idempotency)"
+version: "1.2.0"
+title: "Webhook emission — outbound webhook conformance (operation ID + signing + idempotency + sync silence)"
 category: core
-summary: "Any agent that emits webhooks MUST echo the caller-supplied operation_id in every payload, carry a stable idempotency_key across retries, and — when the buyer has not opted into the deprecated HMAC fallback — MUST sign deliveries under the RFC 9421 webhook profile. Graded by a runner hosting a webhook receiver during storyboard execution."
+summary: "Any agent that emits webhooks MUST echo the caller-supplied operation_id in every payload, carry a stable idempotency_key across retries, and — when the buyer has not opted into the deprecated HMAC fallback — MUST sign deliveries under the RFC 9421 webhook profile. Sellers MUST NOT emit task webhooks for inline terminal responses; any future sync-completion notification mode would be explicit and capability-advertised. Graded by a runner hosting a webhook receiver during storyboard execution."
 track: core
 
 narrative: |
@@ -13,7 +13,9 @@ narrative: |
   Every agent that accepts `push_notification_config` on any operation is in
   scope for this universal — no capability flag, no opt-in.
 
-  Three load-bearing conformance requirements apply to every outbound webhook:
+  Four load-bearing conformance requirements apply across this universal. The
+  first three apply to emitted outbound webhooks; the fourth guards the absence
+  of task webhooks on synchronous completions:
 
   1. **`operation_id` echoes the caller-supplied value from
      `push_notification_config.operation_id`.** The webhook URL is opaque to
@@ -30,6 +32,17 @@ narrative: |
      Required by adcontextprotocol/adcp#2423. Signatures carry
      `tag="adcp/webhook-signing/v1"`, cover `content-digest`, and verify
      against the seller's brand.json-published JWKS.
+
+  4. **Synchronous completions do not emit task webhooks.**
+     `push_notification_config` registers a notification channel for operations
+     whose initial response is non-terminal (`working` or `submitted`); it does
+     not ask the seller to duplicate an inline terminal result onto the webhook
+     channel. Buyer SDKs may normalize synchronous responses into local
+     callbacks, promises, or handler invocations, but those local conveniences
+     are not AdCP webhooks. In particular, advertised guaranteed-sync wholesale
+     discovery requests either reject `push_notification_config` as a
+     well-formed but unsupported runtime condition or stay synchronous without
+     firing a completion webhook.
 
   Grading is observable-behavior only. The runner hosts a webhook receiver per
   the contract at `test-kits/webhook-receiver-runner.yaml`, drives storyboards
@@ -267,6 +280,142 @@ phases:
           acceptable because every webhook for the operation must echo the
           registered operation_id.
 
+  - id: synchronous_completion_success_path
+    title: "Synchronous-only reads stay terminal when accepted"
+    narrative: |
+      The runner calls a guaranteed-sync operation with
+      `push_notification_config` present. Because wholesale `get_products` is
+      a synchronous repair and reconciliation read, a conformant seller may
+      accept the request only if it remains synchronous and does not treat the
+      webhook registration as an opt-in sync-completion notification mode.
+
+      This branch uses `get_products` with `buying_mode: "wholesale"` as the
+      canonical conformance probe because wholesale product feed reads are
+      explicitly synchronous repair and reconciliation reads. The webhook
+      channel is meaningful only if curated `brief` or `refine` discovery
+      enters the async lifecycle. A seller MUST NOT route advertised wholesale
+      discovery through Submitted in response to an unsupported
+      `push_notification_config`.
+
+      Runners skip this phase unless the agent exposes `get_products` and
+      advertises `media_buy.buying_modes` including `"wholesale"`.
+    optional: true
+    branch_set:
+      id: synchronous_completion_handled
+      semantics: any_of
+
+    steps:
+      - id: sync_get_products_with_webhook_config_success
+        title: "Keep wholesale discovery synchronous when webhook config is present"
+        narrative: |
+          Runner sends a wholesale get_products request with an explicit
+          operation_id and a receiver URL. The request is schema-valid; if the
+          seller accepts it, the response must remain a terminal synchronous
+          get_products response with no task_id. The load-bearing assertion is
+          that the sync-only read did not become an async task.
+        task: get_products
+        requires_tool: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        contributes: true
+        sample_request:
+          buying_mode: "wholesale"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          push_notification_config:
+            url: "{{runner.webhook_url:sync_get_products_with_webhook_config_success}}"
+            operation_id: "op_sync_get_products_no_webhook"
+          context:
+            correlation_id: "webhook_emission--sync_get_products_no_webhook"
+        validations:
+          - check: response_schema
+            description: "Accepted wholesale get_products response matches get-products-response.json"
+          - check: field_value
+            path: "status"
+            value: "completed"
+            description: "Accepted wholesale get_products response is terminal and synchronous"
+          - check: field_absent
+            path: "task_id"
+            description: "Accepted wholesale get_products response does not mint an async task_id"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "webhook_emission--sync_get_products_no_webhook"
+            description: "Context correlation_id returned unchanged"
+
+  - id: synchronous_completion_rejection_path
+    title: "Synchronous-only reads may reject webhook registration"
+    narrative: |
+      Some sellers choose to reject `push_notification_config` on the wholesale
+      `get_products` path rather than accepting it inertly. That is conformant
+      only as a structured runtime rejection of a schema-valid request; the
+      payload is not a malformed JSON Schema instance.
+    optional: true
+    branch_set:
+      id: synchronous_completion_handled
+      semantics: any_of
+
+    steps:
+      - id: sync_get_products_with_webhook_config_reject
+        title: "Reject webhook registration as a well-formed runtime error"
+        narrative: |
+          Runner sends the same wholesale get_products request with an explicit
+          operation_id and a receiver URL. A seller may reject the webhook
+          registration, but because the request payload is schema-valid the
+          rejection must be a structured INVALID_REQUEST-class runtime error,
+          not a schema-invalid branch. This branch also fails if the seller
+          returns a Submitted envelope instead of an error.
+        task: get_products
+        requires_tool: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        contributes: true
+        sample_request:
+          buying_mode: "wholesale"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          push_notification_config:
+            url: "{{runner.webhook_url:sync_get_products_with_webhook_config_reject}}"
+            operation_id: "op_sync_get_products_no_webhook"
+          context:
+            correlation_id: "webhook_emission--sync_get_products_no_webhook"
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
+            description: "Webhook registration on wholesale get_products may be rejected as a structured well-formed runtime error"
+
+  - id: synchronous_completion_assertion
+    title: "Synchronous-only reads do not enter async lifecycle"
+    narrative: |
+      Synthetic assertion over the two optional branches. A seller passes when
+      it either returns a terminal synchronous get_products response without a
+      task_id or rejects the schema-valid request with a structured runtime
+      error. A Submitted envelope satisfies neither branch.
+
+    steps:
+      - id: assert_synchronous_completion_handled
+        title: "Require synchronous handling or well-formed rejection"
+        task: assert_contribution
+        comply_scenario: webhook_emission
+        stateful: false
+        expected: |
+          At least one of synchronous_completion_success_path or
+          synchronous_completion_rejection_path contributed
+          `synchronous_completion_handled`.
+        validations:
+          - check: any_of
+            allowed_values: ["synchronous_completion_handled"]
+            description: "Wholesale get_products with push_notification_config must either complete synchronously without task_id or reject as a well-formed runtime error; it must not enter Submitted async lifecycle."
+
   - id: idempotency_key_stability
     title: "idempotency_key is byte-identical across retries of the same event"
     narrative: |
@@ -477,7 +626,10 @@ grading:
     Phases idempotency_key_presence, operation_id_echo,
     idempotency_key_stability, signing_keys_published, and
     signature_validity MUST pass when the agent advertises any
-    webhook-emitting operation and the runner hosts a webhook receiver.
+    webhook-emitting operation and the runner hosts a webhook receiver. The
+    synchronous completion branch set MUST pass for agents that expose
+    get_products and advertise `media_buy.buying_modes` including `"wholesale"`;
+    otherwise the branch steps grade not_applicable.
     Agents without a published webhook-signing JWKS fail
     signing_keys_published — there is no exemption for "HMAC legacy mode."
     Agents that advertise no webhook-emitting operations grade the entire
