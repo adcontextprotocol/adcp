@@ -1,0 +1,153 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.10/core/signal-coverage-forecast.json",
+  "title": "Signal Coverage Forecast",
+  "description": "Forecast-shaped availability guidance for a signal. Use this when a seller or signal source can expose how much of a declared inventory denominator has a signal present, absent, or present with specific values. This object intentionally omits DeliveryForecast.currency because signal coverage can be unitless.",
+  "x-adcp-validation": {
+    "required_point_dimension_kind": "signal",
+    "enclosing_signal_identity_match": {
+      "description": "When SignalCoverageForecast is nested under a get_signals signal item or wholesale signal object, every point's signal dimension MUST resolve to the enclosing signal identity. If a point uses signal_ref, compare it to the enclosing signal_ref when present. If it uses signal_id shorthand, compare it to the enclosing signal_ref.signal_id or legacy signal_id.id. Mismatches are conformance failures."
+    },
+    "complete_exclusive_partition": {
+      "description": "When bucket_completeness is 'complete' and bucket_semantics is 'exclusive', returned points are declared to cover the full denominator. Conformance tooling SHOULD verify coverage_rate mid values sum to 1.0 when all points provide mid values, and SHOULD apply equivalent low/high partition checks when ranges are supplied."
+    }
+  },
+  "type": "object",
+  "properties": {
+    "points": {
+      "type": "array",
+      "description": "Coverage or availability points. Each point reuses the standard ForecastPoint shape, MUST include a signal dimension, and MUST include metrics.coverage_rate. Use metrics.impressions for count denominators and metrics.coverage_rate for the fraction of the declared scope represented by the point.",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "/schemas/3.1.0-rc.10/core/forecast-point.json"
+          },
+          {
+            "required": ["dimensions"],
+            "properties": {
+              "dimensions": {
+                "contains": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "signal"
+                    }
+                  },
+                  "required": ["kind"]
+                }
+              },
+              "metrics": {
+                "required": ["coverage_rate"]
+              }
+            }
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "forecast_range_unit": {
+      "type": "string",
+      "const": "availability",
+      "description": "How to interpret the points array. Signal coverage forecasts always use 'availability' because the points describe available inventory or population coverage, not spend curves or temporal pacing."
+    },
+    "method": {
+      "$ref": "/schemas/3.1.0-rc.10/enums/forecast-method.json",
+      "description": "Method used to produce this coverage forecast."
+    },
+    "scope": {
+      "type": "object",
+      "description": "Explicit denominator for the coverage forecast. This identifies the inventory, product, account, or custom universe that coverage_rate values are relative to. Additional seller-specific qualifiers are allowed for scopes such as line item type, ad server, inventory class, country, or flight window.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["inventory", "product", "account", "custom"],
+          "description": "Denominator family for the coverage forecast."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable denominator label, such as 'network price-priority inventory'."
+        },
+        "product_id": {
+          "type": "string",
+          "description": "Product denominator when kind is 'product'.",
+          "x-entity": "product"
+        },
+        "countries": {
+          "type": "array",
+          "description": "Countries included in the denominator, as ISO 3166-1 alpha-2 codes.",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "line_item_types": {
+          "type": "array",
+          "description": "Seller or ad-server line item types included in the denominator.",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "date_range": {
+          "$ref": "/schemas/3.1.0-rc.10/core/date-range.json",
+          "description": "Historical or planned date window used to compute the denominator."
+        }
+      },
+      "required": ["kind", "label"],
+      "additionalProperties": true
+    },
+    "bucket_semantics": {
+      "type": "string",
+      "enum": ["exclusive", "overlapping"],
+      "description": "'exclusive' means the returned signal-value buckets do not overlap with each other. 'overlapping' means one impression or user can appear in multiple returned buckets, so coverage_rate values may sum above 1.0. This field describes overlap among returned buckets; bucket_completeness declares whether the returned buckets cover the full denominator."
+    },
+    "bucket_completeness": {
+      "type": "string",
+      "enum": ["complete", "partial"],
+      "description": "'complete' means the returned buckets cover the declared denominator. For complete + exclusive forecasts, count metrics and coverage_rate values can be treated as a full partition, subject to metric additivity rules. 'partial' means omitted denominator share represents undisclosed, other, or unsupported buckets; buyers MUST NOT infer totals by summing returned points."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this coverage forecast was computed."
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this coverage forecast expires."
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-rc.10/core/ext.json"
+    }
+  },
+  "required": ["points", "forecast_range_unit", "method", "scope", "bucket_semantics", "bucket_completeness"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "scope": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "product"
+              }
+            },
+            "required": ["kind"]
+          }
+        },
+        "required": ["scope"]
+      },
+      "then": {
+        "properties": {
+          "scope": {
+            "required": ["product_id"]
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}
