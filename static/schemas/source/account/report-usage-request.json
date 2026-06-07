@@ -83,7 +83,7 @@
           "build_variant_id": {
             "type": "string",
             "x-entity": "build_variant",
-            "description": "Optional. When the reported creative_id was promoted from a specific build_creative variant leaf (a fan-out or best-of-N produce), the source build_variant_id — lets billing reconciliation link this usage record back to the exact produced leaf for audit (pricing_option_id alone is not unique across leaves). Omit for creatives with no build-variant lineage."
+            "description": "Optional. When the reported creative_id was promoted from a specific build_creative variant leaf but the creative_id differs from the source build_variant_id, carry that source build_variant_id so billing reconciliation can link this usage record back to the exact produced leaf for audit (pricing_option_id alone is not unique across leaves). On the canonical path where creative_id is the build_variant_id, omit this field and use creative_id as the join key. Omit for creatives with no build-variant lineage."
           },
           "property_list_id": {
             "type": "string",

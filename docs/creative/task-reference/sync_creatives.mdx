@@ -167,6 +167,41 @@ Implementations that acknowledge a creative on the synchronous success branch bu
 
 Provide either the legacy `format_id` or the canonical `format_kind` path, never both. New 3.1+ integrations should prefer `format_kind` with `format_option_ref` when routing depends on a product's declared format option.
 
+### Promoting a build_creative variant
+
+When a buyer keeps a produced build leaf, the canonical promotion is to use the kept `build_variant_id` as the new `creative_id`. The seller does not need to hold a separate lineage mapping; delivery reporting can join back to the build leaf through the normal `creative_id`.
+
+```json test=false
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+  "account": { "account_id": "acct_acmecorp" },
+  "creatives": [
+    {
+      "creative_id": "bv_card01_a",
+      "name": "Summer card - studio take",
+      "format_id": {
+        "agent_url": "https://creative.example.com",
+        "id": "display_300x250"
+      },
+      "assets": {
+        "headline_0_text": {
+          "asset_type": "text",
+          "content": "Summer Sale - 50% Off"
+        },
+        "image_0_url": {
+          "asset_type": "image",
+          "url": "https://cdn.example.com/beach-hero.jpg",
+          "width": 300,
+          "height": 250
+        }
+      }
+    }
+  ]
+}
+```
+
+Later, [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) uses `creative_id` as the join key. A workflow that mints a different library id instead of using the kept `build_variant_id` loses this protocol-visible join unless a future scoped lineage field is adopted.
+
 ### Asset structure
 
 Assets are keyed by role name. Each role contains the asset details:

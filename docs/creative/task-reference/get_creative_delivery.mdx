@@ -104,6 +104,8 @@ Each variant represents a specific execution: a fixed creative (Tier 1), an asse
 | `ext` | (Optional) Platform-specific data. Social platforms use this for engagement metrics (upvotes, comments, shares) that vary by platform. |
 | Standard metrics | All [Delivery metrics fields](#delivery-metrics-fields) — same shape as `creative.totals` |
 
+`creative_id` and `variant_id` are separate namespaces. The canonical build-to-delivery join is `build_creative.variants[].build_variant_id` → promoted `creative_id` → delivery `creative_id`. `variant_id` remains the platform's served execution variant id.
+
 Derived metrics like `ctr`, `completion_rate`, `roas`, and `cost_per_click` are platform-calculated and may not equal naive division of their component fields due to rounding, attribution windows, or filtered impressions.
 
 ## Tier Behavior

@@ -25,7 +25,7 @@
         "build_variant_id": {
           "type": "string",
           "x-entity": "build_variant",
-          "description": "Leaf handle for this produced creative — present when the agent supports refinement (creative.supports_refinement). Pass it as refine_from_build_variant_id to refine this build. Same namespace as BuildCreativeVariantSuccess leaves; distinct from served variant_id / preview_id. Lazily earns a creative_id on trafficking."
+          "description": "Leaf handle for this produced creative — present when the agent supports refinement (creative.supports_refinement). Pass it as refine_from_build_variant_id to refine this build. Same namespace as BuildCreativeVariantSuccess leaves; distinct from served variant_id / preview_id. On the canonical promotion path, this value becomes the creative_id when the produced leaf is trafficked or added to the library."
         },
         "sandbox": {
           "type": "boolean",
@@ -322,7 +322,7 @@
                     "build_variant_id": {
                       "type": "string",
                       "x-entity": "build_variant",
-                      "description": "Build-time handle for this produced variant — the leaf-level lineage anchor for the creative. Minted per produced variant. Its OWN namespace — MUST NOT reuse a `preview_id` (preview renders) or a served `variant_id` (delivery). Lineage and joins (refinement parentage, build→delivery learning, QA re-rolls) anchor on this leaf id, NOT on the call-level `build_creative_id`. A leaf lazily earns a durable `creative_id` only when trafficked / added to the library; that `creative_id` is what flows into `report_usage`. An untrafficked leaf has no `report_usage` key — it is billed via the inline per-leaf `vendor_cost` only, and `report_usage` reconciliation applies once the leaf earns a `creative_id`."
+                      "description": "Build-time handle for this produced variant — the leaf-level lineage anchor for the creative. Minted per produced variant. Its OWN namespace — MUST NOT reuse a `preview_id` (preview renders) or a served `variant_id` (delivery). Refinement parentage and build-time QA re-rolls anchor on this leaf id, NOT on the call-level `build_creative_id`. On the canonical promotion path, this value becomes the durable `creative_id` when the leaf is trafficked / added to the library; delivery outcomes and `report_usage` then join by `creative_id`. An untrafficked leaf has no `report_usage` key — it is billed via the inline per-leaf `vendor_cost` only, and `report_usage` reconciliation applies once the leaf earns a `creative_id`."
                     },
                     "parent_build_variant_id": {
                       "type": "string",
