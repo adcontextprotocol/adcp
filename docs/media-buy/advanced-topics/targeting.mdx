@@ -274,7 +274,7 @@ Use geo fields **only** for:
 - `geo_countries`: ISO 3166-1 alpha-2 country codes (e.g., `["US", "GB"]`)
 - `geo_regions`: ISO 3166-2 subdivision codes (e.g., `["US-CA", "GB-SCT"]`)
 - `geo_metros`: Structured metro areas with explicit system (e.g., `nielsen_dma`, `uk_itl2`) — not all publishers support metro-level targeting
-- `geo_postal_areas`: Structured postal areas with explicit system (e.g., `us_zip`, `gb_outward`) — not all publishers support postal-level targeting
+- `geo_postal_areas`: Structured postal areas with explicit country and system (e.g., `US` / `zip`, `GB` / `outward`, `ZA` / `postal_code`) — not all publishers support postal-level targeting
 
 **Exclusion fields** (exclude these locations from delivery):
 - `geo_countries_exclude`: Same format as `geo_countries`
@@ -535,18 +535,18 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 
 ### geo_postal_areas
 - **Description**: Restrict delivery to specific postal areas
-- **Format**: Array of objects, each with a `system` and `values`
-- **Systems**: `us_zip`, `us_zip_plus_four`, `gb_outward`, `gb_full`, `ca_fsa`, `ca_full`, `de_plz`, `fr_code_postal`, `au_postcode`, `ch_plz`, `at_plz`
-- **Example**: `[{ "system": "us_zip", "values": ["10001", "10002"] }]`
+- **Format**: Array of objects, each with a `country`, `system`, and `values`
+- **Systems**: country-local values such as `zip`, `zip_plus_four`, `outward`, `full`, `fsa`, `plz`, `code_postal`, `postcode`, `pin`, and `postal_code`
+- **Example**: `[{ "country": "US", "system": "zip", "values": ["10001", "10002"] }]`
 - **Use cases**: Hyper-local campaigns, postal-level restrictions
-- **Note**: Seller must declare supported systems in `get_adcp_capabilities`
+- **Note**: Seller must declare supported systems in `get_adcp_capabilities`. During the 3.x migration, deprecated country-fused systems such as `us_zip` remain accepted for compatibility and SDK backfill.
 
 ### geo_postal_areas_exclude
 - **Description**: Exclude specific postal areas from delivery
-- **Format**: Array of objects, each with a `system` and `values`
-- **Example**: `[{ "system": "us_zip", "values": ["90210"] }]`
+- **Format**: Array of objects, each with a `country`, `system`, and `values`
+- **Example**: `[{ "country": "US", "system": "zip", "values": ["90210"] }]`
 - **Use cases**: RCT holdout zip codes, restricted delivery areas
-- **Note**: Seller must declare supported systems in `get_adcp_capabilities`
+- **Note**: Seller must declare supported systems in `get_adcp_capabilities`; the deprecated legacy form remains accepted during the 3.x migration.
 
 ### axe_include_segment
 - **Description**: Segment ID for inclusion targeting (legacy AXE field)

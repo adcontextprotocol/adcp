@@ -274,6 +274,18 @@
           "$ref": "/schemas/core/offering-asset-group.json",
           "description": "A structured group of creative assets within an offering, identified by group ID and asset type"
         },
+        "postal-area": {
+          "$ref": "/schemas/core/postal-area.json",
+          "description": "Reusable postal area value for targeting, product filtering, and catalog scope"
+        },
+        "postal-country-system": {
+          "$ref": "/schemas/core/postal-country-system.json",
+          "description": "Valid country and local postal system pairings"
+        },
+        "postal-area-support": {
+          "$ref": "/schemas/core/postal-area-support.json",
+          "description": "Reusable postal area support map for capabilities and reporting"
+        },
         "asset-group-vocabulary": {
           "$ref": "/schemas/core/asset-group-vocabulary.json",
           "description": "Canonical registry of asset_group_id values with descriptions and v1 alias mapping (e.g., landing_page_url replaces 6 v1 alias names)"
@@ -918,7 +930,11 @@
         },
         "postal-system": {
           "$ref": "/schemas/enums/postal-system.json",
-          "description": "Postal code systems for geographic targeting. System names encode country and precision (us_zip, gb_outward, ca_fsa, etc.)"
+          "description": "Country-local postal code systems for geographic targeting (zip, zip_plus_four, outward, plz, postal_code, etc.)"
+        },
+        "legacy-postal-system": {
+          "$ref": "/schemas/enums/legacy-postal-system.json",
+          "description": "Deprecated country-fused postal code systems for compatibility (us_zip, gb_outward, ca_fsa, etc.)"
         },
         "age-verification-method": {
           "$ref": "/schemas/enums/age-verification-method.json",

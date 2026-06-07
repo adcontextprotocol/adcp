@@ -757,6 +757,405 @@ async function runTests() {
     return true;
   });
 
+  // Test 11C: Validate native postal systems and deprecated legacy aliases across geo surfaces
+  await test('Postal systems support native country-local form and deprecated legacy aliases', async () => {
+    const postalSystemSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'enums/postal-system.json'));
+    if (!postalSystemSchema.enum?.includes('postal_code') || !postalSystemSchema.enum?.includes('zip')) {
+      return 'postal-system enum must include native country-local systems such as postal_code and zip';
+    }
+
+    if (!postalSystemSchema.enum?.includes('us_zip')) {
+      return 'postal-system enum must retain legacy country-fused systems for 3.x additive enum compatibility';
+    }
+
+    const legacyPostalSystemSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'enums/legacy-postal-system.json'));
+    if (!legacyPostalSystemSchema.enum?.includes('us_zip')) {
+      return 'legacy-postal-system enum must retain deprecated fused aliases such as us_zip';
+    }
+
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validateTargeting = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/targeting.json')));
+    const validateProductFilters = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/product-filters.json')));
+    const validateCapabilities = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-response.json')));
+    const validateDimensions = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-point-dimensions.json')));
+    const validateGeoBreakdownSupport = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/geo-breakdown-support.json')));
+    const validateDeliveryRequest = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/get-media-buy-delivery-request.json')));
+    const validateGeoDeliveryMetrics = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/geo-delivery-metrics.json')));
+
+    const assertValid = (validate, value, label) => {
+      if (!validate(value)) {
+        return `${label} unexpectedly failed validation: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+      }
+      return true;
+    };
+
+    const assertInvalid = (validate, value, label) => {
+      if (validate(value)) {
+        return `${label} unexpectedly passed validation`;
+      }
+      return true;
+    };
+
+    let result = assertValid(
+      validateTargeting,
+      {
+        geo_postal_areas: [{ country: 'ZA', system: 'postal_code', values: ['2196'] }],
+        geo_postal_areas_exclude: [{ country: 'US', system: 'zip', values: ['10001'] }]
+      },
+      'targeting overlay with native postal areas'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateTargeting,
+      {
+        geo_postal_areas: [{ system: 'us_zip', values: ['10001'] }]
+      },
+      'targeting overlay with deprecated legacy postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateTargeting,
+      {
+        geo_postal_areas: [{ system: 'postal_code', values: ['2196'] }]
+      },
+      'targeting overlay with native postal system but no country'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateTargeting,
+      {
+        geo_postal_areas: [{ country: 'GB', system: 'zip', values: ['SW1A'] }]
+      },
+      'targeting overlay with wrong country-local postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateTargeting,
+      {
+        geo_postal_areas: [{ country: 'US', system: 'plz', values: ['10001'] }]
+      },
+      'targeting overlay with another country postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateProductFilters,
+      {
+        required_geo_targeting: [
+          { level: 'postal_area', country: 'US', system: 'zip' }
+        ],
+        postal_areas: [
+          { country: 'ZA', system: 'postal_code', values: ['2196'] }
+        ]
+      },
+      'product filters with native postal systems'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateProductFilters,
+      {
+        required_geo_targeting: [
+          { level: 'postal_area', system: 'us_zip' }
+        ],
+        postal_areas: [
+          { system: 'us_zip', values: ['10001'] }
+        ]
+      },
+      'product filters with deprecated legacy postal systems'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateProductFilters,
+      {
+        required_geo_targeting: [
+          { level: 'metro' },
+          { level: 'postal_area' }
+        ]
+      },
+      'product filters preserve level-only geo targeting requests'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: {
+                us_zip: true,
+                US: ['zip', 'zip_plus_four'],
+                ZA: ['postal_code']
+              }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with native postal areas'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: { us_zip: true }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with deprecated legacy postal areas'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: {}
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with empty postal support map'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: { NG: ['postal_code'] }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with unknown-country fallback postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: { GB: ['zip'] }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with wrong country-local postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateDimensions,
+      [{ kind: 'geo', geo_level: 'postal_area', country: 'ZA', system: 'postal_code', geo_code: '2196' }],
+      'forecast geo dimension with native postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateDimensions,
+      [{ kind: 'geo', geo_level: 'postal_area', country: 'GB', system: 'zip', geo_code: 'SW1A' }],
+      'forecast geo dimension with wrong country-local postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateGeoBreakdownSupport,
+      { postal_area: { us_zip: true, US: ['zip', 'zip_plus_four'], ZA: ['postal_code'] } },
+      'geo breakdown support with native postal systems'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateGeoBreakdownSupport,
+      { postal_area: {} },
+      'geo breakdown support with empty postal support map'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateGeoBreakdownSupport,
+      { postal_area: { NG: ['postal_code'] } },
+      'geo breakdown support with unknown-country fallback postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateGeoBreakdownSupport,
+      { postal_area: { GB: ['zip'] } },
+      'geo breakdown support with wrong country-local postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateDeliveryRequest,
+      { reporting_dimensions: { geo: { geo_level: 'postal_area', country: 'US', system: 'zip' } } },
+      'delivery reporting request with native postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateDeliveryRequest,
+      { reporting_dimensions: { geo: { geo_level: 'postal_area' } } },
+      'delivery reporting request preserves level-only postal requests'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateDeliveryRequest,
+      { reporting_dimensions: { geo: { geo_level: 'metro' } } },
+      'delivery reporting request preserves level-only metro requests'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateGeoDeliveryMetrics,
+      { geo_level: 'postal_area', country: 'US', system: 'zip', geo_code: '10001', impressions: 1000, spend: 12.5 },
+      'geo delivery metrics with native postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateGeoDeliveryMetrics,
+      { geo_level: 'postal_area', system: 'us_zip', geo_code: '10001', impressions: 1000, spend: 12.5 },
+      'geo delivery metrics with deprecated legacy postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateGeoDeliveryMetrics,
+      { geo_level: 'postal_area', system: 'zip', geo_code: '10001', impressions: 1000, spend: 12.5 },
+      'geo delivery metrics with native postal system but no country'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateGeoDeliveryMetrics,
+      { geo_level: 'metro', country: 'US', system: 'nielsen_dma', geo_code: '501', impressions: 1000, spend: 12.5 },
+      'geo delivery metrics with country on metro row'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: { za_postcode: true }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with unregistered legacy-like postal key'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: { ZA: ['za_postcode'] }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with registered country invalid postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: { NG: ['zip'] }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with unknown-country invalid postal system'
+    );
+    if (result !== true) return result;
+
+    return true;
+  });
+
   // Test 12: Validate ForecastPoint dimension and viewability compatibility gates
   await test('ForecastPoint dimension and viewability compatibility gates behave as intended', async () => {
     const dimensionsSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-point-dimensions.json'));
@@ -797,7 +1196,7 @@ async function runTests() {
 
     for (const [value, label] of [
       [[{ kind: 'geo', geo_level: 'metro', system: 'nielsen_dma', geo_code: '501' }], 'metro dimension with metro-system'],
-      [[{ kind: 'geo', geo_level: 'postal_area', system: 'us_zip', geo_code: '10001' }], 'postal dimension with postal-system'],
+      [[{ kind: 'geo', geo_level: 'postal_area', system: 'us_zip', geo_code: '10001' }], 'postal dimension with deprecated legacy postal-system'],
       [[{ kind: 'geo', geo_level: 'country', geo_code: 'US' }], 'country dimension without system'],
       [[{ kind: 'placement', placement_ref: { publisher_domain: 'publisher.example', placement_id: 'header_bidding' } }, { kind: 'geo', geo_level: 'country', geo_code: 'US' }], 'placement x country intersection'],
       [[{ kind: 'signal', signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' }, signal_value: 'hot', presence: 'present' }], 'signal value dimension with signal_ref'],
@@ -809,7 +1208,7 @@ async function runTests() {
     }
 
     for (const [value, label] of [
-      [[{ kind: 'geo', geo_level: 'metro', system: 'us_zip', geo_code: '10001' }], 'metro dimension with postal-system'],
+      [[{ kind: 'geo', geo_level: 'metro', system: 'us_zip', geo_code: '10001' }], 'metro dimension with deprecated legacy postal-system'],
       [[{ kind: 'geo', geo_level: 'postal_area', system: 'nielsen_dma', geo_code: '501' }], 'postal dimension with metro-system'],
       [[{ kind: 'geo', geo_level: 'country', system: 'nielsen_dma', geo_code: 'US' }], 'country dimension with system'],
       [[{ kind: 'geo', geo_level: 'country', geo_code: 'USA' }], 'country dimension with non-alpha2 code'],

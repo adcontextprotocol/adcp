@@ -16,7 +16,12 @@
     },
     "system": {
       "type": "string",
-      "description": "Classification system for metro or postal_area levels. Required when geo_level is 'metro' or 'postal_area'. Metro rows use metro-system enum values such as 'nielsen_dma'; postal rows use postal-system enum values such as 'us_zip'. Omit for country and region rows."
+      "description": "Classification system for metro or postal_area levels. Required when geo_level is 'metro' or 'postal_area'. Metro rows use metro-system enum values such as 'nielsen_dma'; native postal rows use country-local postal-system enum values such as 'zip' with country 'US'; deprecated legacy postal rows may use legacy-postal-system enum values such as 'us_zip'. Omit for country and region rows."
+    },
+    "country": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2 country code. Required for native postal_area rows and omitted for legacy postal rows, metro rows, country rows, and region rows."
     },
     "geo_code": {
       "type": "string",
@@ -42,7 +47,12 @@
             "description": "ISO 3166-1 alpha-2 country code."
           }
         },
-        "not": { "required": ["system"] }
+        "not": {
+          "anyOf": [
+            { "required": ["system"] },
+            { "required": ["country"] }
+          ]
+        }
       }
     },
     {
@@ -58,7 +68,12 @@
             "description": "ISO 3166-2 subdivision code."
           }
         },
-        "not": { "required": ["system"] }
+        "not": {
+          "anyOf": [
+            { "required": ["system"] },
+            { "required": ["country"] }
+          ]
+        }
       }
     },
     {
@@ -70,7 +85,8 @@
         "properties": {
           "system": { "$ref": "/schemas/enums/metro-system.json" }
         },
-        "required": ["system"]
+        "required": ["system"],
+        "not": { "required": ["country"] }
       }
     },
     {
@@ -79,10 +95,19 @@
         "required": ["geo_level"]
       },
       "then": {
-        "properties": {
-          "system": { "$ref": "/schemas/enums/postal-system.json" }
-        },
-        "required": ["system"]
+        "anyOf": [
+          {
+            "$ref": "/schemas/core/postal-country-system.json",
+            "required": ["country", "system"]
+          },
+          {
+            "properties": {
+              "system": { "$ref": "/schemas/enums/legacy-postal-system.json" }
+            },
+            "required": ["system"],
+            "not": { "required": ["country"] }
+          }
+        ]
       }
     }
   ],

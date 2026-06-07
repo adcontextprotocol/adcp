@@ -625,6 +625,17 @@ When a format declares catalog asset types, the buying agent syncs the required 
 An Offering is an individual promotable item within an `offering`-type catalog — a campaign, product, service, promotion, or vacancy. Each offering is a semantic unit with its own name, validity window, landing URL, creative assets, and geographic scope.
 
 ```typescript test=false
+type PostalArea =
+  | {
+      country: string;  // ISO 3166-1 alpha-2
+      system: string;   // Country-local postal system, e.g. 'zip', 'plz', 'postal_code'
+      values: string[];
+    }
+  | {
+      system: string;   // Deprecated country-fused alias, e.g. 'us_zip'
+      values: string[];
+    };
+
 interface Offering {
   // Identity (required)
   offering_id: string;
@@ -650,7 +661,7 @@ interface Offering {
     countries?: string[];
     regions?: string[];
     metros?: { system: string; values: string[] }[];
-    postal_areas?: { system: string; values: string[] }[];
+    postal_areas?: PostalArea[];
   };
 
   // Discovery

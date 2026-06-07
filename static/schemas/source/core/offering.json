@@ -97,25 +97,9 @@
         },
         "postal_areas": {
           "type": "array",
-          "description": "Postal areas where this offering is relevant. Each entry specifies the postal system and target values.",
+          "description": "Postal areas where this offering is relevant. Prefer the native country + postal system form. Deprecated legacy country-fused postal-system tokens remain accepted for compatibility.",
           "items": {
-            "type": "object",
-            "properties": {
-              "system": {
-                "$ref": "/schemas/enums/postal-system.json",
-                "description": "Postal code system (e.g., 'us_zip', 'de_plz')"
-              },
-              "values": {
-                "type": "array",
-                "description": "Postal codes within the system",
-                "items": {
-                  "type": "string"
-                },
-                "minItems": 1
-              }
-            },
-            "required": ["system", "values"],
-            "additionalProperties": true
+            "$ref": "/schemas/core/postal-area.json"
           },
           "minItems": 1
         }

@@ -91,49 +91,17 @@
     },
     "geo_postal_areas": {
       "type": "array",
-      "description": "Restrict delivery to specific postal areas. Each entry specifies the postal system and target values. Seller must declare supported systems in get_adcp_capabilities.",
+      "description": "Restrict delivery to specific postal areas. Prefer the native country + postal system form. The deprecated legacy country-fused postal-system tokens remain accepted for compatibility. Seller must declare supported systems in get_adcp_capabilities.",
       "items": {
-        "type": "object",
-        "properties": {
-          "system": {
-            "$ref": "/schemas/enums/postal-system.json",
-            "description": "Postal code system (e.g., 'us_zip', 'gb_outward'). System name encodes country and precision."
-          },
-          "values": {
-            "type": "array",
-            "description": "Postal codes within the system (e.g., ['10001', '10002'] for us_zip)",
-            "items": {
-              "type": "string"
-            },
-            "minItems": 1
-          }
-        },
-        "required": ["system", "values"],
-        "additionalProperties": false
+        "$ref": "/schemas/core/postal-area.json"
       },
       "minItems": 1
     },
     "geo_postal_areas_exclude": {
       "type": "array",
-      "description": "Exclude specific postal areas from delivery. Each entry specifies the postal system and excluded values. Seller must declare supported systems in get_adcp_capabilities.",
+      "description": "Exclude specific postal areas from delivery. Prefer the native country + postal system form. The deprecated legacy country-fused postal-system tokens remain accepted for compatibility. Seller must declare supported systems in get_adcp_capabilities.",
       "items": {
-        "type": "object",
-        "properties": {
-          "system": {
-            "$ref": "/schemas/enums/postal-system.json",
-            "description": "Postal code system (e.g., 'us_zip', 'gb_outward'). System name encodes country and precision."
-          },
-          "values": {
-            "type": "array",
-            "description": "Postal codes to exclude within the system (e.g., ['10001', '10002'] for us_zip)",
-            "items": {
-              "type": "string"
-            },
-            "minItems": 1
-          }
-        },
-        "required": ["system", "values"],
-        "additionalProperties": false
+        "$ref": "/schemas/core/postal-area.json"
       },
       "minItems": 1
     },

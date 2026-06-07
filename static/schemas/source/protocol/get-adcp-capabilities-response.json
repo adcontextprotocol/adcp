@@ -373,44 +373,8 @@
                   "additionalProperties": false
                 },
                 "geo_postal_areas": {
-                  "type": "object",
-                  "description": "Postal area targeting. Properties indicate which postal code systems are supported.",
-                  "properties": {
-                    "us_zip": {
-                      "type": "boolean"
-                    },
-                    "us_zip_plus_four": {
-                      "type": "boolean"
-                    },
-                    "gb_outward": {
-                      "type": "boolean"
-                    },
-                    "gb_full": {
-                      "type": "boolean"
-                    },
-                    "ca_fsa": {
-                      "type": "boolean"
-                    },
-                    "ca_full": {
-                      "type": "boolean"
-                    },
-                    "de_plz": {
-                      "type": "boolean"
-                    },
-                    "fr_code_postal": {
-                      "type": "boolean"
-                    },
-                    "au_postcode": {
-                      "type": "boolean"
-                    },
-                    "ch_plz": {
-                      "type": "boolean"
-                    },
-                    "at_plz": {
-                      "type": "boolean"
-                    }
-                  },
-                  "additionalProperties": false
+                  "description": "Postal area targeting. Prefer the native country-keyed map where each ISO 3166-1 alpha-2 country lists supported country-local postal systems. Deprecated legacy country-fused postal-system boolean aliases may be emitted alongside native country keys during migration.",
+                  "$ref": "/schemas/core/postal-area-support.json"
                 },
                 "age_restriction": {
                   "type": "object",
