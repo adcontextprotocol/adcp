@@ -237,6 +237,10 @@
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
+    "push_notification_config": {
+      "$ref": "/schemas/core/push-notification-config.json",
+      "description": "Optional webhook configuration for async terminal completion/failure notifications on build_creative. Meaningful only when the request enters the async lifecycle and returns a Submitted envelope. Submitted envelopes with `task_id` remain pollable through `get_task_status` (legacy `tasks/get`) whether or not this field is present. If a request includes this field and the agent returns a Submitted envelope, the agent MUST deliver at least the terminal completion/failure notification to the configured URL; intermediate progress notifications are MAY. If the agent cannot honor the webhook channel, it MUST reject the request with a structured error instead of silently accepting. This field does not change response timing semantics: agents MUST NOT route a request through the async/Submitted arm or emit async delivery solely because `push_notification_config` is present; requests that can be completed inline still return the synchronous success shape."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
