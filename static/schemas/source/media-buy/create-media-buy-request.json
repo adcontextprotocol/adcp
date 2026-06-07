@@ -119,6 +119,11 @@
       "format": "date-time",
       "description": "Campaign end date/time in ISO 8601 format"
     },
+    "paused": {
+      "type": "boolean",
+      "description": "Create the media buy in a paused delivery state. When true, and the buy would otherwise be active because creatives are assigned and the flight has started, the seller returns media_buy_status 'paused'. Setup blockers still take precedence: a buy with no creatives remains 'pending_creatives', and a future-dated buy remains 'pending_start' until its flight can start. Defaults to false.",
+      "default": false
+    },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",
       "description": "Optional webhook configuration for async task status notifications. Publisher will send webhooks when status changes (working, input-required, completed, failed, canceled). Buyers SHOULD supply `push_notification_config.operation_id` as the canonical correlation value; publishers echo that field back verbatim in webhook payloads and MUST NOT parse the URL to derive it."

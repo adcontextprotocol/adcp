@@ -164,6 +164,7 @@ npx @adcp/sdk@latest \
 | `brand` | BrandRef | Yes | Brand reference — resolved to full identity at execution time. See [brand.json](/docs/brand-protocol/brand-json) |
 | `start_time` | string | Yes | `"asap"` or ISO 8601 date-time |
 | `end_time` | string | Yes | ISO 8601 date-time (UTC unless timezone specified) |
+| `paused` | boolean | No | Create the media buy with delivery held. When true and the buy would otherwise be active, `media_buy_status` is `paused`. Setup blockers still take precedence: missing creatives yield `pending_creatives`, and future flights yield `pending_start`; the hold becomes visible as `paused` after those blockers clear. |
 | `invoice_recipient` | [BusinessEntity](/docs/building/integration/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override the account's default billing entity for this buy. The seller MUST validate the recipient is authorized and include it in `check_governance` when governance agents are configured. |
 | `po_number` | string | No | Purchase order number |
 | `idempotency_key` | string | No | Unique key for safe retries. If a request with the same key and account has already been processed, the seller returns the existing media buy. MUST be unique per (seller, request) pair. Min 16 chars. |
@@ -292,7 +293,7 @@ Sellers MUST return synchronous success when:
 
 - All referenced products have `delivery_type: "non_guaranteed"`. The buy is created and acknowledged in-line; `media_buy_id` and `packages` are issued immediately. This applies regardless of the seller's specialism — a sales-guaranteed seller serving a non-guaranteed product returns synchronous success.
 - The request references guaranteed products and the seller does NOT declare `requires_io_approval` (rare; typically retail-SKU or quoted-rate guaranteed flows where the seller has pre-cleared approval).
-- The buy enters a known non-terminal state immediately observable to the buyer (`pending_creatives` / `pending_start` / `active`).
+- The buy enters a known non-terminal state immediately observable to the buyer (`pending_creatives` / `pending_start` / `active` / `paused`).
 
 The compliance grader observes both paths against the same seller via separate storyboard scenarios: the `create_buy_submitted` scenario seeds a guaranteed product with `requires_io_approval`; four shared scenarios (`measurement_terms_rejected`, `pending_creatives_to_start`, `inventory_list_targeting`, `invalid_transitions`) seed non-guaranteed products and expect synchronous `media_buy_id` returns. Sellers that return `submitted` on the synchronous-expected scenarios fail compliance — see [`sales-guaranteed` specialism](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/specialisms/sales-guaranteed) for the fixture pattern (non-guaranteed products listed first so open-brief `get_products` calls resolve to a synchronous-create path).
 
@@ -1245,7 +1246,7 @@ const response = await session.call('create_media_buy', {
 }
 ```
 
-The top-level `status` is the envelope task-status (TaskStatus) — `completed` on synchronous success. The body-level `media_buy_status` carries the buy's lifecycle state (`pending_creatives`, `pending_start`, or `active`). A 3.0-style response would have collided these two enums at the same root key; in 3.1 they are distinct fields. Sellers MAY continue to emit a deprecated top-level `status: MediaBuyStatus` during the 3.1 deprecation window for back-compat with 3.0 buyers, but 3.1 buyers MUST prefer `media_buy_status`. See [Media-buy status field (3.1 migration)](#media-buy-status-field-3-1-migration) below.
+The top-level `status` is the envelope task-status (TaskStatus) — `completed` on synchronous success. The body-level `media_buy_status` carries the buy's lifecycle state (`pending_creatives`, `pending_start`, `active`, or `paused`). A 3.0-style response would have collided these two enums at the same root key; in 3.1 they are distinct fields. Sellers MAY continue to emit a deprecated top-level `status: MediaBuyStatus` during the 3.1 deprecation window for back-compat with 3.0 buyers, but 3.1 buyers MUST prefer `media_buy_status`. See [Media-buy status field (3.1 migration)](#media-buy-status-field-3-1-migration) below.
 
 ### Long-Running (`submitted`)
 

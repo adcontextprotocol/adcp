@@ -322,8 +322,8 @@ The `valid_actions` array tells agents what operations are permitted on a media 
 
 | Status | Expected `valid_actions` |
 |--------|------------------------|
-| `pending_creatives` | `cancel`, `sync_creatives` |
-| `pending_start` | `cancel`, `sync_creatives` |
+| `pending_creatives` | `pause`, `cancel`, `sync_creatives` |
+| `pending_start` | `pause`, `cancel`, `sync_creatives` |
 | `active` | `pause`, `cancel`, `update_budget`, `update_dates`, `update_packages`, `add_packages`, `sync_creatives` |
 | `paused` | `resume`, `cancel`, `update_budget`, `update_dates`, `update_packages`, `add_packages`, `sync_creatives` |
 | `completed` | *(empty array)* |

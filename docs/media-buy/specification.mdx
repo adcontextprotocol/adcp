@@ -122,15 +122,12 @@ Media buys progress through a defined set of states. Terminal states (`completed
 
 ```
 create_media_buy ──┬──▶ pending_creatives ──▶ pending_start ──▶ active
-                   │                                              ▲
-                   └──▶ active                                    │ resume
-                        │    ▲                                    │
-               (pause)  │    │ (resume)                           │
-                        ▼    │                                    │
-                       paused ────────────────────────────────────┘
-                        │
-          active ───────┼──────────────▶ completed (terminal)
-          paused ───────┘                ▲ flight ends / goal met / budget exhausted
+                   ├──▶ active ──(pause)──▶ paused
+                   └──▶ paused (when created with paused: true)
+
+paused ──(resume)──▶ active
+active ─────────────▶ completed (terminal)
+paused ─────────────▶ completed (terminal)
 
 pending_creatives ──▶ rejected (terminal)  — seller rejects during setup
 pending_start ──────▶ rejected (terminal)  — seller rejects during setup
@@ -140,11 +137,13 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 
 **Rules:**
 
-- Sales agents MAY return `active`, `pending_creatives`, or `pending_start` from `create_media_buy` (seller's choice based on platform setup time)
+- Sales agents MAY return `active`, `paused`, `pending_creatives`, or `pending_start` from `create_media_buy` (seller's choice based on platform setup time and the buyer's create-time `paused` request)
 - Sales agents MUST transition media buys from `pending_start` to `active` when the flight date arrives. Sales agents SHOULD notify orchestrators via webhook when this transition occurs.
 - A successful committed `create_media_buy` response constitutes **order confirmation**. Sales agents MUST include `confirmed_at` in create/get responses; the value is the seller commitment timestamp, or `null` for a provisional buy that exists but is still waiting for seller commitment.
 - Sales agents MUST include `revision` in create, get, and update responses. The revision number MUST increment on every mutating state change or update.
 - `active` ↔ `paused` transitions use `update_media_buy` with `paused: true` or `paused: false`
+- `create_media_buy` with top-level `paused: true` creates a held media buy when it would otherwise be `active`. Setup blockers still take precedence: no creatives yields `pending_creatives`, and a future flight yields `pending_start` until the start condition is satisfied. The hold is latent while those blockers are visible; once creatives are present and the flight can start, the buy enters `paused` instead of `active`.
+- `update_media_buy` with `paused: false` resumes a buy that is currently `paused` or clears a latent create-time hold while the visible state is still `pending_creatives` or `pending_start`. Clearing a latent hold does not bypass setup blockers; the visible status remains pending until creatives are supplied and the flight can start.
 - `active` or `paused` → `completed` when the flight ends, goal is met, or budget is exhausted (seller-initiated)
 - Buyer-initiated cancellation uses `update_media_buy` with `canceled: true` and optional `cancellation_reason`
 - Seller-initiated cancellation (e.g., policy violation, inventory withdrawal) transitions the media buy to `canceled` with `cancellation.canceled_by: "seller"`. Sellers MUST notify orchestrators via webhook when performing seller-initiated cancellation.
@@ -355,13 +354,15 @@ Retrieve operational media buy state, including package status, creative approva
 
 | Status | Expected `valid_actions` |
 |--------|------------------------|
-| `pending_creatives` | `cancel`, `sync_creatives` |
-| `pending_start` | `cancel`, `sync_creatives` |
+| `pending_creatives` | `pause`, `cancel`, `sync_creatives` |
+| `pending_start` | `pause`, `cancel`, `sync_creatives` |
 | `active` | `pause`, `cancel`, `update_budget`, `update_dates`, `update_packages`, `add_packages`, `sync_creatives` |
 | `paused` | `resume`, `cancel`, `update_budget`, `update_dates`, `update_packages`, `add_packages`, `sync_creatives` |
 | `completed` / `rejected` / `canceled` | *(empty array)* |
 
 Sellers MAY omit actions based on business rules (e.g., omit `cancel` when contractual obligations prevent it, omit `add_packages` when the platform does not support mid-flight additions).
+
+When `pending_creatives` or `pending_start` is masking a create-time hold from `paused: true`, sellers SHOULD also include `resume` so buyers can clear the hold before the setup blocker clears.
 
 `valid_actions` contains only mutation operations — read-only operations (`get_media_buys`, `get_media_buy_delivery`) are always permitted regardless of state. Agents SHOULD use `valid_actions` as an optimization hint but MUST handle `INVALID_STATE` errors gracefully, since `valid_actions` may not reflect real-time state changes from concurrent operations. Absence of an action means "not declared by this seller," not necessarily "forbidden."
 
