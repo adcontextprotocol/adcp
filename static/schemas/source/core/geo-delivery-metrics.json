@@ -16,7 +16,12 @@
         },
         "system": {
           "type": "string",
-          "description": "Classification system for metro or postal_area levels (e.g., 'nielsen_dma', 'us_zip'). Present when geo_level is 'metro' or 'postal_area'."
+          "description": "Classification system for metro or postal_area levels. Metro rows use metro-system values. Native postal rows use country-local postal-system values with country; deprecated legacy postal rows may use legacy-postal-system values."
+        },
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO 3166-1 alpha-2 country code for native postal_area rows."
         },
         "geo_code": {
           "type": "string",
@@ -32,6 +37,81 @@
         "geo_code",
         "impressions",
         "spend"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "geo_level": { "const": "country" } },
+            "required": ["geo_level"]
+          },
+          "then": {
+            "properties": {
+              "geo_code": {
+                "type": "string",
+                "pattern": "^[A-Z]{2}$"
+              }
+            },
+            "not": {
+              "anyOf": [
+                { "required": ["system"] },
+                { "required": ["country"] }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "geo_level": { "const": "region" } },
+            "required": ["geo_level"]
+          },
+          "then": {
+            "properties": {
+              "geo_code": {
+                "type": "string",
+                "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+              }
+            },
+            "not": {
+              "anyOf": [
+                { "required": ["system"] },
+                { "required": ["country"] }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "geo_level": { "const": "metro" } },
+            "required": ["geo_level"]
+          },
+          "then": {
+            "properties": {
+              "system": { "$ref": "/schemas/enums/metro-system.json" }
+            },
+            "required": ["system"],
+            "not": { "required": ["country"] }
+          }
+        },
+        {
+          "if": {
+            "properties": { "geo_level": { "const": "postal_area" } },
+            "required": ["geo_level"]
+          },
+          "then": {
+            "anyOf": [
+              {
+                "$ref": "/schemas/core/postal-country-system.json"
+              },
+              {
+                "properties": {
+                  "system": { "$ref": "/schemas/enums/legacy-postal-system.json" }
+                },
+                "required": ["system"],
+                "not": { "required": ["country"] }
+              }
+            ]
+          }
+        }
       ]
     }
   ]

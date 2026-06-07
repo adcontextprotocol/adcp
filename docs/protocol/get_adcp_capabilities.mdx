@@ -309,21 +309,20 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 | `uk_itl2` | UK ITL Level 2 regions |
 | `eurostat_nuts2` | Eurostat NUTS Level 2 regions (EU) |
 
-**geo_postal_areas** specifies which postal code systems are supported:
+**geo_postal_areas** specifies which country-local postal code systems are supported. The preferred shape is keyed by ISO 3166-1 alpha-2 country, with each country listing supported systems:
 
-| System | Description |
-|--------|-------------|
-| `us_zip` | US 5-digit ZIP codes (e.g., `10001`) |
-| `us_zip_plus_four` | US 9-digit ZIP+4 codes (e.g., `10001-1234`) |
-| `gb_outward` | UK postcode district (e.g., `SW1`, `EC1`) |
-| `gb_full` | UK full postcode (e.g., `SW1A 1AA`) |
-| `ca_fsa` | Canadian Forward Sortation Area (e.g., `K1A`) |
-| `ca_full` | Canadian full postal code (e.g., `K1A 0B1`) |
-| `de_plz` | German Postleitzahl (e.g., `10115`) |
-| `fr_code_postal` | French code postal (e.g., `75001`) |
-| `au_postcode` | Australian postcode (e.g., `2000`) |
-| `ch_plz` | Swiss Postleitzahl (e.g., `8000`) |
-| `at_plz` | Austrian Postleitzahl (e.g., `1010`) |
+```json
+{
+  "us_zip": true,
+  "us_zip_plus_four": true,
+  "US": ["zip", "zip_plus_four"],
+  "GB": ["outward", "full"],
+  "CA": ["fsa", "full"],
+  "ZA": ["postal_code"]
+}
+```
+
+Use `postal_code` for the normal postal code string in countries without a more specific registered local system. During the 3.x migration, sellers SHOULD emit equivalent deprecated aliases such as `us_zip` alongside native country keys where an alias exists. Buyers and SDKs SHOULD normalize both shapes before making capability decisions.
 
 #### audience_targeting
 
@@ -664,7 +663,9 @@ Agents that declare `supported: true` MUST apply the same account/caller authori
 
 **If a capability is declared, the seller MUST honor it.**
 
-- `media_buy.execution.targeting.geo_postal_areas.us_zip: true` → Buyer can send US ZIP codes, seller MUST honor them
+- `media_buy.execution.targeting.geo_postal_areas.US` contains `zip` → Buyer can send `{ country: "US", system: "zip", values: [...] }`, seller MUST honor it
+- `media_buy.execution.targeting.geo_postal_areas.us_zip: true` → Buyer can send the deprecated `{ system: "us_zip", values: [...] }` form, and SDKs can backfill the native `{ country: "US", system: "zip", values: [...] }` form
+- `media_buy.execution.targeting.geo_postal_areas.ZA` contains `postal_code` → Buyer can send normal South African postal codes, seller MUST honor them
 - `media_buy.execution.targeting.geo_metros.nielsen_dma: true` → Buyer can send DMA codes, seller MUST honor them
 - `media_buy.content_standards` object present → Seller MUST apply content standards when provided
 - `media_buy.audience_targeting` object present → Seller MUST support `sync_audiences` and audience targeting overlays
@@ -707,8 +708,9 @@ if (result.supported_protocols.includes('media_buy')) {
     console.log('AXE integration available');
   }
 
-  // Check geo targeting
-  if (mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip) {
+  // Check geo targeting (normalize native country keys and deprecated aliases)
+  const postalSupport = mediaBuy.execution?.targeting?.geo_postal_areas;
+  if (postalSupport?.US?.includes('zip') || postalSupport?.us_zip === true) {
     console.log('US ZIP code targeting supported');
   }
 
@@ -762,7 +764,8 @@ async function findCompatibleSellers(sellers, requirements) {
 
     // Check geo targeting requirement
     if (requirements.postalCodeTargeting) {
-      if (!mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip) {
+      const postalSupport = mediaBuy.execution?.targeting?.geo_postal_areas;
+      if (!(postalSupport?.US?.includes('zip') || postalSupport?.us_zip === true)) {
         continue;
       }
     }
@@ -804,6 +807,7 @@ if (!caps.supported_protocols.includes('media_buy')) {
 }
 
 const mediaBuy = caps.media_buy;
+const postalSupport = mediaBuy.execution?.targeting?.geo_postal_areas;
 
 // Filter products to sellers with specific geo targeting capabilities
 const products = await client.getProducts({
@@ -814,7 +818,7 @@ const products = await client.getProducts({
     // Require seller supports ZIP targeting (capability filter - no actual ZIPs needed)
     // level = granularity, system = classification taxonomy
     required_geo_targeting: [
-      { level: 'postal_area', system: 'us_zip' }
+      { level: 'postal_area', country: 'US', system: 'zip' }
     ],
     // Only include if seller supports this AXE (legacy — new integrations use TMP)
     required_axe_integrations: ['https://axe.example.com']
@@ -833,9 +837,10 @@ const buy = await client.createMediaBuy({
     targeting_overlay: {
       geo_countries: ['US'],
       // Only specify ZIP targeting if seller supports it
-      ...(mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip && {
+      ...((postalSupport?.US?.includes('zip') || postalSupport?.us_zip === true) && {
         geo_postal_areas: [{
-          system: 'us_zip',
+          country: 'US',
+          system: 'zip',
           values: ['10001', '10002', '10003', '10004', '10005']
         }]
       })
@@ -926,8 +931,11 @@ const buy = await client.createMediaBuy({
         },
         "geo_postal_areas": {
           "us_zip": true,
-          "gb_outward": true,
-          "ca_fsa": true
+          "us_zip_plus_four": true,
+          "US": ["zip", "zip_plus_four"],
+          "GB": ["outward", "full"],
+          "CA": ["fsa", "full"],
+          "ZA": ["postal_code"]
         },
         "language": true,
         "keyword_targets": {
@@ -1035,11 +1043,11 @@ When `supported_protocols` includes `"creative"`, the buyer can call Creative Pr
 | Metro (US) | `nielsen_dma` | `501` (NYC), `803` (LA), `602` (Chicago) |
 | Metro (UK) | `uk_itl2` | `UKI` (London), `UKD` (North West) |
 | Metro (EU) | `eurostat_nuts2` | `DE30` (Berlin), `FR10` (Île-de-France) |
-| Postal (US) | `us_zip` | `10001`, `90210` |
-| Postal (US) | `us_zip_plus_four` | `10001-1234` |
-| Postal (UK) | `gb_outward` | `SW1`, `EC1`, `M1` |
-| Postal (UK) | `gb_full` | `SW1A 1AA` |
-| Postal (CA) | `ca_fsa` | `K1A`, `M5V` |
+| Postal (US) | `US` / `zip` | `10001`, `90210` |
+| Postal (US) | `US` / `zip_plus_four` | `10001-1234` |
+| Postal (UK) | `GB` / `outward` | `SW1`, `EC1`, `M1` |
+| Postal (UK) | `GB` / `full` | `SW1A 1AA` |
+| Postal (CA) | `CA` / `fsa` | `K1A`, `M5V` |
 
 ## Migration from list_authorized_properties (v2)
 

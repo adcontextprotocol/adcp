@@ -858,7 +858,7 @@ Brand schema extensions (`border_radius`, `elevation`, `spacing`, extended color
 
 9. **Metric Optimization Capabilities** — Products declare `metric_optimization` block with `supported_metrics`, `supported_view_durations`, and `supported_targets`. `max_optimization_goals` on products. Conversion tracking declares `supported_targets`. `multi_source_event_dedup` flag in `get_adcp_capabilities`.
 
-10. **Swiss & Austrian Postal Codes** — `ch_plz` and `at_plz` added to the postal-system enum, with corresponding updates to `get_adcp_capabilities`.
+10. **Swiss & Austrian Postal Codes** — Swiss and Austrian `plz` postal targeting added, with deprecated `ch_plz` and `at_plz` aliases retained for compatibility.
 
 11. **Brand Identity Unification** — `brand-manifest.json` deleted. Task schemas now reference brands by `{ domain, brand_id }` (BrandRef) instead of passing inline manifests. Brand data is resolved from `brand.json` or the registry at execution time.
 
@@ -1071,7 +1071,7 @@ Version 3.0.0 is a **major release** that expands AdCP beyond media buying into 
 | Channels | 9 values | 19 planning-oriented values |
 | Creative assignment | `creative_ids: [...]` | `creative_assignments: [{...}]` |
 | Metro targeting | `geo_metros: ["501"]` | `geo_metros: [{ system, code }]` |
-| Postal targeting | `geo_postal_codes` | `geo_postal_areas` with system |
+| Postal targeting | `geo_postal_codes` | `geo_postal_areas` with country and system |
 | Asset discovery | `assets_required: [...]` | `assets: [{ asset_id, required }]` |
 
 See [AdCP 3.0 overview](/docs/reference/whats-new-in-v3) for detailed before/after examples and migration steps.

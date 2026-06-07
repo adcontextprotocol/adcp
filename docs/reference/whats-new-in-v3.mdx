@@ -489,12 +489,12 @@ These fields map to standard deal types: `fixed_price` corresponds to Programmat
 
 ### Geo targeting with named systems
 
-Metro and postal targeting now require explicit system specification, supporting global markets. Values are grouped by system using `{ "system": "...", "values": [...] }` objects.
+Metro and postal targeting values now carry explicit system information, supporting global markets. Metro values are grouped by system using `{ "system": "...", "values": [...] }` objects; native postal values use `{ "country": "...", "system": "...", "values": [...] }`.
 
 | v2 field | v3 field |
 |----------|----------|
 | `geo_metros` (string array) | `geo_metros` (system/values objects) |
-| `geo_postal_codes` (string array) | `geo_postal_areas` (system/values objects) |
+| `geo_postal_codes` (string array) | `geo_postal_areas` (country/system/values objects) |
 
 v3 also adds `geo_metros_exclude` and `geo_postal_areas_exclude` for negative targeting (e.g., target the US except the New York DMA).
 

@@ -7,14 +7,14 @@ testable: true
 
 # Migrating geo targeting
 
-AdCP 3.0 replaces implicit US-centric geo targeting with named systems that support global markets. Metro and postal targeting now require explicit system specification, and codes are grouped by system.
+AdCP 3.0 replaces implicit US-centric geo targeting with named systems that support global markets. Metro targeting values are grouped by system, and postal targeting values are grouped by country plus the country-local postal system.
 
 ## What changed
 
 | v2 field | v3 field | Change type |
 |----------|----------|-------------|
 | `geo_metros` (string array) | `geo_metros` (system/values objects) | Restructured |
-| `geo_postal_codes` (string array) | `geo_postal_areas` (system/values objects) | Renamed and restructured |
+| `geo_postal_codes` (string array) | `geo_postal_areas` (country/system/values objects) | Renamed and restructured |
 
 Fields that didn't change: `geo_countries`, `geo_countries_exclude`, `geo_regions`, `geo_regions_exclude` all remain simple string arrays using ISO codes.
 
@@ -61,7 +61,7 @@ Each entry specifies a system and the codes within that system. Multiple systems
 | `eurostat_nuts2` | EU statistical regions | `DE11` (Stuttgart), `FR10` (Ile-de-France) |
 | `custom` | Publisher-defined areas | Publisher-specific codes |
 
-Supported systems are defined in the `metro-system.json` enum: `nielsen_dma`, `uk_itl1`, `uk_itl2`, `eurostat_nuts2`, `custom`.
+Registered metro systems are `nielsen_dma`, `uk_itl1`, `uk_itl2`, `eurostat_nuts2`, and `custom`.
 
 ## Postal targeting
 
@@ -74,33 +74,32 @@ Supported systems are defined in the `metro-system.json` enum: `nielsen_dma`, `u
 }
 ```
 
-**v3** — renamed to `geo_postal_areas`, codes grouped by system:
+**v3** — renamed to `geo_postal_areas`, codes grouped by country-local system:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/targeting.json",
   "geo_postal_areas": [
-    { "system": "us_zip", "values": ["10001", "90210"] }
+    { "country": "US", "system": "zip", "values": ["10001", "90210"] }
   ]
 }
 ```
 
 ### Postal systems
 
-| System | Coverage | Precision | Example codes |
-|--------|----------|-----------|---------------|
-| `us_zip` | US | 5-digit ZIP | `10001`, `90210` |
-| `us_zip_plus_four` | US | ZIP+4 | `10001-1234` |
-| `gb_outward` | UK | Area-level | `SW1`, `EC2` |
-| `gb_full` | UK | Full postcode | `SW1A 1AA` |
-| `ca_fsa` | Canada | Forward sortation area | `M5V`, `V6B` |
-| `ca_full` | Canada | Full postal code | `M5V 2T6` |
-| `de_plz` | Germany | Postleitzahl | `10115`, `80331` |
-| `fr_code_postal` | France | Code postal | `75001`, `13001` |
-| `au_postcode` | Australia | Postcode | `2000`, `3000` |
-| `ch_plz` | Switzerland | Postleitzahl | `8000`, `3000` |
-| `at_plz` | Austria | Postleitzahl | `1010`, `6020` |
+| Country | System | Precision | Example codes |
+|---------|--------|-----------|---------------|
+| `US` | `zip` | 5-digit ZIP | `10001`, `90210` |
+| `US` | `zip_plus_four` | ZIP+4 | `10001-1234` |
+| `GB` | `outward` | Outward postcode | `SW1`, `EC2` |
+| `GB` | `full` | Full postcode | `SW1A 1AA` |
+| `CA` | `fsa` | Forward sortation area | `M5V`, `V6B` |
+| `CA` | `full` | Full postal code | `M5V 2T6` |
+| `DE` | `plz` | Postleitzahl | `10115`, `80331` |
+| `FR` | `code_postal` | Code postal | `75001`, `13001` |
+| `AU` | `postcode` | Postcode | `2000`, `3000` |
+| `ZA` | `postal_code` | Normal postal code | `2196` |
 
-Supported systems are defined in the `postal-system.json` enum: `us_zip`, `us_zip_plus_four`, `gb_outward`, `gb_full`, `ca_fsa`, `ca_full`, `de_plz`, `fr_code_postal`, `au_postcode`, `ch_plz`, `at_plz`.
+Use `postal_code` for the normal postal code string in countries without a more specific registered local system. Deprecated country-fused aliases such as `us_zip` remain accepted for compatibility and SDK backfill.
 
 ## Exclusion targeting
 
@@ -143,7 +142,10 @@ Before sending geo targeting, buyers should verify the seller supports the reque
           "nielsen_dma": true
         },
         "geo_postal_areas": {
-          "us_zip": true
+          "us_zip": true,
+          "us_zip_plus_four": true,
+          "US": ["zip", "zip_plus_four"],
+          "ZA": ["postal_code"]
         }
       }
     }
@@ -151,7 +153,7 @@ Before sending geo targeting, buyers should verify the seller supports the reque
 }
 ```
 
-The `geo_metros` and `geo_postal_areas` objects use boolean properties to indicate which systems are supported. If you request a system the seller doesn't declare, expect a validation error.
+The `geo_metros` object uses boolean properties to indicate which metro systems are supported. The `geo_postal_areas` object is keyed by country and lists the supported country-local postal systems; during the 3.x migration, sellers SHOULD also emit equivalent deprecated aliases such as `us_zip` where one exists. Buyers and SDKs should normalize both shapes. If you request a system the seller doesn't declare, expect a validation error.
 
 ## Full targeting example
 
@@ -166,7 +168,7 @@ A v3 targeting overlay combining geo restrictions:
     { "system": "nielsen_dma", "values": ["501", "803"] }
   ],
   "geo_postal_areas": [
-    { "system": "us_zip", "values": ["10001", "10002", "90210"] }
+    { "country": "US", "system": "zip", "values": ["10001", "10002", "90210"] }
   ]
 }
 ```
@@ -183,10 +185,10 @@ Inclusion fields are combined with AND logic — delivery must match all specifi
     `geo_postal_codes` becomes `geo_postal_areas`.
   </Step>
   <Step title="Restructure values">
-    Wrap flat arrays into `{ "system": "...", "values": [...] }` objects.
+    Wrap metro arrays into `{ "system": "...", "values": [...] }` objects and postal arrays into `{ "country": "...", "system": "...", "values": [...] }` objects.
   </Step>
   <Step title="Choose systems">
-    For US-only code, use `nielsen_dma` and `us_zip`. For international, add the appropriate systems.
+    For US-only code, use `nielsen_dma` and `country: "US", system: "zip"`. For international, add the appropriate country-local systems.
   </Step>
   <Step title="Verify capabilities">
     Call `get_adcp_capabilities` to check what systems each seller supports.

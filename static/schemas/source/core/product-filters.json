@@ -224,7 +224,7 @@
     },
     "required_geo_targeting": {
       "type": "array",
-      "description": "Filter to products from sellers supporting specific geo targeting capabilities. Each entry specifies a targeting level (country, region, metro, postal_area) and optionally a system for levels that have multiple classification systems.",
+      "description": "Filter to products from sellers supporting specific geo targeting capabilities. Each entry specifies a targeting level (country, region, metro, postal_area) and optionally a system for levels that have multiple classification systems. For native postal_area filters, include country plus the country-local postal system.",
       "items": {
         "type": "object",
         "properties": {
@@ -232,12 +232,81 @@
             "$ref": "/schemas/enums/geo-level.json",
             "description": "Geographic targeting level (country, region, metro, postal_area)"
           },
+          "country": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$",
+            "description": "ISO 3166-1 alpha-2 country code. Required for native postal_area system filters; not applicable to country, region, or metro filters."
+          },
           "system": {
             "type": "string",
-            "description": "Classification system within the level. Required for metro (e.g., 'nielsen_dma') and postal_area (e.g., 'us_zip'). Not applicable for country/region which use ISO standards."
+            "description": "Optional classification system within the level. Use for a specific metro system (e.g., 'nielsen_dma'), native postal_area system (e.g., 'zip' with country 'US'), or deprecated legacy postal alias (e.g., 'us_zip'). Not applicable for country/region which use ISO standards."
           }
         },
         "required": ["level"],
+        "allOf": [
+          {
+            "if": {
+              "properties": { "level": { "enum": ["country", "region"] } },
+              "required": ["level"]
+            },
+            "then": {
+              "not": {
+                "anyOf": [
+                  { "required": ["country"] },
+                  { "required": ["system"] }
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": { "level": { "const": "metro" } },
+              "required": ["level"]
+            },
+            "then": {
+              "anyOf": [
+                {
+                  "not": { "required": ["system"] }
+                },
+                {
+                  "properties": {
+                    "system": { "$ref": "/schemas/enums/metro-system.json" }
+                  },
+                  "required": ["system"]
+                }
+              ],
+              "not": { "required": ["country"] }
+            }
+          },
+          {
+            "if": {
+              "properties": { "level": { "const": "postal_area" } },
+              "required": ["level"]
+            },
+            "then": {
+              "anyOf": [
+                {
+                  "not": {
+                    "anyOf": [
+                      { "required": ["country"] },
+                      { "required": ["system"] }
+                    ]
+                  }
+                },
+                {
+                  "$ref": "/schemas/core/postal-country-system.json"
+                },
+                {
+                  "properties": {
+                    "system": { "$ref": "/schemas/enums/legacy-postal-system.json" }
+                  },
+                  "required": ["system"],
+                  "not": { "required": ["country"] }
+                }
+              ]
+            }
+          }
+        ],
         "additionalProperties": false
       },
       "minItems": 1
@@ -268,25 +337,9 @@
     },
     "postal_areas": {
       "type": "array",
-      "description": "Filter by postal area coverage for locally-bound inventory (direct mail, DOOH, local campaigns). Use when products have postal-area-specific coverage. For digital inventory where products have broad coverage, use required_geo_targeting instead to filter by seller capability.",
+      "description": "Filter by postal area coverage for locally-bound inventory (direct mail, DOOH, local campaigns). Prefer the native country + postal system form. Deprecated legacy country-fused postal-system tokens remain accepted for compatibility. For digital inventory where products have broad coverage, use required_geo_targeting instead to filter by seller capability.",
       "items": {
-        "type": "object",
-        "properties": {
-          "system": {
-            "$ref": "/schemas/enums/postal-system.json",
-            "description": "Postal code system (e.g., 'us_zip', 'gb_outward')"
-          },
-          "values": {
-            "type": "array",
-            "description": "Postal codes within the system (e.g., ['10001', '10002'] for us_zip)",
-            "items": {
-              "type": "string"
-            },
-            "minItems": 1
-          }
-        },
-        "required": ["system", "values"],
-        "additionalProperties": false
+        "$ref": "/schemas/core/postal-area.json"
       },
       "minItems": 1
     },
