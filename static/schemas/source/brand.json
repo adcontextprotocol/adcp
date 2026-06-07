@@ -450,7 +450,7 @@
         },
         "identity_relying_parties": {
           "type": "array",
-          "description": "Verified-identity relying parties (rp_ids) scoped to this brand/property, for attestation provenance in TMP Identity Match. Use when a brand or property runs its own rp_id (per-property pseudonyms); entity-wide rp_ids live on the house object. See specs/tmp-verified-identity-attestation.md.",
+          "description": "Verified-identity relying parties scoped to this brand/property, for attestation provenance in TMP Identity Match. Use when a brand or property runs its own relying_party_id (per-property pseudonyms); entity-wide relying parties live on the house object. See specs/tmp-verified-identity-attestation.md.",
           "items": { "$ref": "#/definitions/identity_relying_party" }
         },
         "names": {
@@ -679,7 +679,7 @@
         },
         "identity_relying_parties": {
           "type": "array",
-          "description": "Verified-identity relying parties (rp_ids) this house/entity operates, so a buyer can verify that a forwarded TMP identity attestation's rp_id genuinely belongs to this entity (provenance) rather than being replayed under another owner. For network-as-RP, the network publishes its own rp_id here. See specs/tmp-verified-identity-attestation.md.",
+          "description": "Verified-identity relying parties this house/entity operates, so a buyer can verify that a forwarded TMP identity attestation's relying_party_id genuinely belongs to this entity (provenance) rather than being replayed under another owner. For network-as-RP, the network publishes its own relying_party_id here. See specs/tmp-verified-identity-attestation.md.",
           "items": { "$ref": "#/definitions/identity_relying_party" }
         }
       },
@@ -688,27 +688,28 @@
     },
     "identity_relying_party": {
       "type": "object",
-      "description": "A verified-identity relying party (rp_id) an entity or brand operates. Used for attestation provenance in TMP Identity Match (the buyer checks a forwarded attestation's rp_id against the owner's published list). Issuer-agnostic; World ID is the first issuer.",
+      "description": "A verified-identity relying party an entity or brand operates. Used for attestation provenance in TMP Identity Match (the buyer checks a forwarded attestation's relying_party_id against the owner's published list). Issuer-agnostic; World ID is the first issuer.",
       "properties": {
         "issuer": {
-          "type": "string",
-          "description": "Identity issuer, e.g. \"world_id\"."
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Identity issuer / attestation authority, referenced as a vendor BrandRef (e.g. {\"domain\": \"world.org\"}) — the same vendor-reference shape AdCP uses for measurement and signals vendors. The issuer's canonical domain is the anchor; it need not host a brand.json, but if it does, that is where its verifier metadata (scheme versions, verify endpoint, JWKs) lives. Issuer-agnostic: World ID, ISO 18013-5 mDL, and W3C-VC issuers all reference by domain. The relying party is namespaced by the issuer — identity is the tuple (issuer.domain, issuer.brand_id, relying_party_id), mirroring (vendor.domain, vendor.brand_id, metric_id)."
         },
         "scheme": {
           "type": "string",
           "description": "Proof scheme and version, e.g. \"world_id_v4\"."
         },
-        "rp_id": {
+        "relying_party_id": {
           "type": "string",
-          "description": "The relying-party id registered with the issuer (and, for on-chain issuers like World ID, with the issuer's registry)."
+          "x-entity": "identity_relying_party",
+          "description": "The relying-party id registered with the issuer (and, for on-chain issuers like World ID, with the issuer's registry). One entity may operate many relying parties (scope=entity vs scope=property); this is the attestation's audience / linkability boundary, not an entity identifier."
         },
         "scope": {
           "type": "string",
           "enum": ["entity", "property"],
-          "description": "Whether this rp_id is shared across the entity's properties (entity → a within-entity unique-human graph) or scoped to a single property (property → per-property pseudonyms, unlinkable across the entity)."
+          "description": "Whether this relying_party_id is shared across the entity's properties (entity → a within-entity unique-human graph) or scoped to a single property (property → per-property pseudonyms, unlinkable across the entity)."
         }
       },
-      "required": ["issuer", "rp_id"],
+      "required": ["issuer", "relying_party_id"],
       "additionalProperties": false
     },
     "brand_agent": {

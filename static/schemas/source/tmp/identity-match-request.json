@@ -60,16 +60,17 @@
             "description": "Optional verifiable proof ABOUT this identity (e.g. World ID proof-of-personhood and/or age). The receiver MUST verify it (see conformance) and MUST treat an absent-or-unverifiable attestation as 'no attestation' — never as an asserted-true claim. Issuer-agnostic: World ID is the first scheme; mDL / VC-style issuers use the same shape. Receivers MUST bound attestation size to prevent DoS.",
             "properties": {
               "issuer": {
-                "type": "string",
-                "description": "Attestation authority / identity issuer, e.g. \"world_id\". Free-form for v1 (no central scheme registry yet); selects the verifier."
+                "$ref": "/schemas/core/brand-ref.json",
+                "description": "Attestation authority / identity issuer, referenced as a vendor BrandRef (e.g. {\"domain\": \"world.org\"}) — the same vendor-reference shape AdCP uses for measurement and signals vendors. The issuer's canonical domain is the anchor; brand.json hosting is optional. `scheme` selects the verifier version within the issuer."
               },
               "scheme": {
                 "type": "string",
                 "description": "Proof scheme and version, e.g. \"world_id_v4\". Selects how `proof` is verified."
               },
-              "rp_id": {
+              "relying_party_id": {
                 "type": "string",
-                "description": "Relying-party id the proof was minted for. The receiver checks this against the rp_id's published owner (brand.json `identity_relying_parties[]`) so a forwarded proof cannot be replayed under a different owner."
+                "x-entity": "identity_relying_party",
+                "description": "Relying-party id the proof was minted for. The receiver checks this against the relying_party_id's published owner (brand.json `identity_relying_parties[]`) so a forwarded proof cannot be replayed under a different owner."
               },
               "action": {
                 "type": "string",

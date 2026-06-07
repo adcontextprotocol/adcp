@@ -258,9 +258,9 @@ Optional object on each `identities[]` entry.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `issuer` | string | Yes | Identity issuer, e.g. `world_id`. Free-form (no central scheme registry yet); selects the verifier. |
+| `issuer` | BrandRef | Yes | Identity issuer / attestation authority as a vendor BrandRef (e.g. `{"domain": "world.org"}`) — the same shape AdCP uses for measurement/signals vendors. Domain is the anchor; `brand.json` hosting is optional. `scheme` selects the verifier version. |
 | `scheme` | string | Yes | Proof scheme and version, e.g. `world_id_v4`. |
-| `rp_id` | string | No | Relying-party id the proof was minted for. Checked against the rp_id owner's published `identity_relying_parties[]` in `brand.json` (provenance). |
+| `relying_party_id` | string | No | Relying-party id the proof was minted for. Checked against the `relying_party_id` owner's published `identity_relying_parties[]` in `brand.json` (provenance). |
 | `action` | string | No | Issuer action/scope the proof was bound to. |
 | `claims` | List\<enum\> | Yes | Closed, issuer-agnostic set: `unique_human`, `age_over_13`, `age_over_16`, `age_over_18`, `age_over_21`. See `attestation-claim` enum. |
 | `verification_level` | enum | No | `orb` \| `device` \| `document`. Credential strength. |
@@ -281,9 +281,9 @@ Entry in the top-level `sealed_credentials[]`.
 
 A receiver that accepts attestations MUST:
 
-1. **Verify before trust.** Verify the proof for every `scheme` it accepts. An attestation that fails verification — or `signal_binding`, or `rp_id` provenance, or `expires_at` — MUST be treated as **absent** (no attestation), never as an asserted-true claim.
+1. **Verify before trust.** Verify the proof for every `scheme` it accepts. An attestation that fails verification — or `signal_binding`, or `relying_party_id` provenance, or `expires_at` — MUST be treated as **absent** (no attestation), never as an asserted-true claim.
 2. **No silent upgrade.** Never treat an unverified or unverifiable attestation as `true`.
-3. **rp_id provenance.** Confirm the attestation's `rp_id` belongs to the entity claiming the traffic before trusting it. The owner's `brand.json` `identity_relying_parties[]` is the v1 discovery surface, but it is self-published over HTTPS — the authoritative root is the issuer's own relying-party registry (e.g. World ID's on-chain registry), against which `brand.json` is a cross-check. A receiver MUST NOT trust an `rp_id` solely because some `brand.json` lists it absent an issuer-side anchor; the bidirectional issuer-metadata cross-check is a tracked open item.
+3. **relying_party_id provenance.** Confirm the attestation's `relying_party_id` belongs to the entity claiming the traffic before trusting it. The owner's `brand.json` `identity_relying_parties[]` is the v1 discovery surface, but it is self-published over HTTPS — the authoritative root is the issuer's own relying-party registry (e.g. World ID's on-chain registry), against which `brand.json` is a cross-check. A receiver MUST NOT trust a `relying_party_id` solely because some `brand.json` lists it absent an issuer-side anchor; the bidirectional issuer-metadata cross-check is a tracked open item.
 4. **Sealed credentials.** Decrypt only `sealed_credentials[]` entries whose `audience_kid` the receiver holds a key for; ignore the rest.
 5. **Bound resources.** Bound attestation and sealed-credential count and size to prevent DoS.
 

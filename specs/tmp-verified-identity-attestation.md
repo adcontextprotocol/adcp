@@ -49,9 +49,9 @@ The publisher is the relying party. It runs the issuer's verification flow, obta
   "user_token": "<nullifier_hash>",      // the identifier the proof attests
   "uid_type": "other",                   // see "uid_type choice" below
   "attestation": {
-    "issuer": "world_id",                // attestation authority
+    "issuer": { "domain": "world.org" }, // attestation authority (vendor BrandRef)
     "scheme": "world_id_v4",             // proof scheme + version (verifier selection)
-    "rp_id": "<publisher rp_id>",        // audience the proof is bound to
+    "relying_party_id": "<publisher rp_id>", // audience the proof is bound to (World ID rp_id)
     "action": "<action string>",         // scope within the rp_id
     "claims": ["unique_human", "age_over_18"],
     "verification_level": "orb",         // credential strength (orb | device | document)
@@ -96,9 +96,9 @@ So the scope decision is also a privacy-scope decision: larger `rp_id` scope = m
 // in the entity's brand.json
 "identity_relying_parties": [
   {
-    "issuer": "world_id",
+    "issuer": { "domain": "world.org" },
     "scheme": "world_id_v4",
-    "rp_id": "<entity rp_id>",
+    "relying_party_id": "<entity rp_id>",
     "scope": "entity"          // "entity" (links across the entity's properties) | "property"
   }
 ]
@@ -225,7 +225,7 @@ An implementation claiming verified-attestation support MUST:
 
 ## Open questions
 
-- **`scheme` registry.** A small registry of verifier schemes (`world_id_v4`, `mdl_18013_5`, …) vs. free-form `issuer`/`scheme` strings with out-of-band verifier selection. Recommendation: free-form strings for v1 (issuer-agnostic, defers registry governance) with a documented recommended set. The same `issuer`/`scheme` pair appears in the `brand.json` `identity_relying_parties` descriptor, so the decision spans both surfaces.
+- **`scheme` registry.** A small registry of verifier schemes (`world_id_v4`, `mdl_18013_5`, …) vs. free-form `issuer`/`scheme` strings with out-of-band verifier selection. Recommendation: free-form strings for v1 (issuer-agnostic, defers registry governance) with a documented recommended set. The same `issuer`/`scheme` pair appears in the `brand.json` `identity_relying_parties` descriptor, so the decision spans both surfaces. Note `issuer` is a **vendor BrandRef** (`core/brand-ref.json`, e.g. `{"domain": "world.org"}`) — the same vendor-reference shape AdCP uses for measurement and signals vendors. An identity issuer is effectively an *identity vendor*, anchored on its canonical domain; it need not host a `brand.json`, but that domain is where its verifier metadata (scheme versions, verify endpoint, JWKs) would live if it does. The relying party is then namespaced by the issuer, `(issuer.domain, issuer.brand_id, relying_party_id)`, exactly mirroring `(vendor.domain, vendor.brand_id, metric_id)`. The open question is narrower than issuer identity: whether `scheme` (the verifier-version selector, e.g. `world_id_v4`) should be promoted to a shared, WG-governed enum (e.g. `enums/attestation-scheme.json`) rather than a free-form string.
 - **`identity_relying_parties` in `brand.json`** — confirm the field shape and the `entity` vs `property` scope marker, and the bidirectional issuer-metadata cross-check that hardens the self-assertion. Coordinate with the brand.json schema owners.
 - **Router handling of `sealed_credentials[]`** — **decided (all three).** The router filters identities per provider and re-signs each forward over the filtered identities + `request_id`; a top-level `sealed_credentials[]` is covered by neither that signature nor the dedup cache key, so: (a) forward by `audience_kid` to the owning provider (not broadcast); (b) fold `sealed_credentials` into the per-provider re-signature canonical bytes so an injected/swapped blob breaks the signature; (c) add a `sealed_credentials_hash` to the dedup cache key so a network-credential-driven eligibility change invalidates a cached response. Must land in the same bundle as the field.
 - **Mechanism B consent composition.** How the network's own legal basis composes with the request-level `consent` object: the network-as-RP graph is a distinct processing purpose, and the user's in-ceremony selective disclosure is the consent event for the network claim. State this normatively — it is the consent basis for persisting the cross-publisher nullifier graph.
