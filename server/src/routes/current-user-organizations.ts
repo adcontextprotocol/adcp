@@ -62,6 +62,8 @@ export async function getCachedOrganizationsForUser(userId: string): Promise<Cur
     [userId],
   );
 
+  // The local membership table has no status column. It is an active-membership
+  // cache; non-active WorkOS webhook updates must delete rows from this table.
   return result.rows.map(row => ({
     id: row.workos_organization_id,
     name: row.name?.trim() || row.workos_organization_id,
