@@ -17,6 +17,7 @@ flowchart TD
     C -->|creatives missing| D[pending_creatives]
     C -->|creatives present,\nflight not yet started| E[pending_start]
     C -->|creatives present,\nflight started| F[active]
+    C -->|paused: true,\notherwise active| J[paused]
     D --> G[creative supply]
     G --> E
     E --> F
@@ -24,12 +25,13 @@ flowchart TD
     H -->|budget exhausted /\ngoal met / flight ended| I[completed]
     H -->|buyer or seller action| J[paused]
     J --> F
+    J -->|flight ended| I
 ```
 
 1. **`get_products`** — discover available inventory matching your brief.
 2. **`create_media_buy`** — submit packages; the seller validates and confirms.
 3. **Creative supply** — assign creative assets to packages that need them, either through `sync_creatives` and `creative_assignments` or through inline package `creatives` when the seller advertises inline creative management.
-4. **Delivery** — the buy enters `active`, accrues impressions, and eventually reaches a terminal state.
+4. **Delivery** — the buy enters `active` and accrues impressions, or enters `paused` when created with delivery held. It eventually reaches a terminal state.
 
 ## State machine
 
@@ -46,7 +48,7 @@ flowchart TD
 | `canceled` | Buyer or seller terminated before completion | Yes |
 
 <Note>
-`pending_manual` and `pending_permission` are **task-level** statuses — they describe whether the *operation* (e.g., `create_media_buy`) is queued for human review, not the media buy's own state. The media buy enters `pending_creatives`, `pending_start`, or `active` once the operation completes. See [Asynchronous Operations](/docs/media-buy/media-buys/#asynchronous-operations-and-human-in-the-loop).
+`pending_manual` and `pending_permission` are **task-level** statuses — they describe whether the *operation* (e.g., `create_media_buy`) is queued for human review, not the media buy's own state. The media buy enters `pending_creatives`, `pending_start`, `active`, or `paused` once the operation completes. See [Asynchronous Operations](/docs/media-buy/media-buys/#asynchronous-operations-and-human-in-the-loop).
 </Note>
 
 ### Transitions
@@ -56,9 +58,12 @@ stateDiagram-v2
     [*] --> pending_creatives : create_media_buy\n(no creatives)
     [*] --> pending_start : create_media_buy\n(creatives present,\nflight future)
     [*] --> active : create_media_buy\n(creatives present,\nflight started)
+    [*] --> paused : create_media_buy\n(paused: true,\notherwise active)
 
     pending_creatives --> pending_start : sync_creatives\nor update_media_buy creatives
+    pending_creatives --> paused : sync_creatives\nor update_media_buy creatives\n(create held)
     pending_start --> active : flight date reached
+    pending_start --> paused : flight date reached\n(create held)
 
     active --> paused : update_media_buy\n(paused: true)
     paused --> active : update_media_buy\n(paused: false)
@@ -138,9 +143,11 @@ A seller who accepts without under-delivering earns a favorable accountability s
 
 ### When creatives are required
 
-`create_media_buy` accepts inline `creative_assignments` or `creatives` per package. If you supply them at creation time and the flight date has passed, the buy enters `active` directly. If the flight date is in the future, it enters `pending_start`.
+`create_media_buy` accepts inline `creative_assignments` or `creatives` per package. If you supply them at creation time and the flight date has passed, the buy enters `active` directly, or `paused` when the request carries top-level `paused: true`. If the flight date is in the future, it enters `pending_start`; with top-level `paused: true`, the hold is latent and the buy enters `paused` when the flight date arrives.
 
-If no creatives are assigned at creation, the buy enters `pending_creatives`. Delivery cannot begin until the buyer supplies at least one creative per package through a path the seller advertises. Sellers with `creative.has_creative_library: true` use `sync_creatives` and `creative_assignments`. Sellers that advertise both `creative.has_creative_library: true` and `inline_creative_management: true` also accept inline `packages[].creatives` on `create_media_buy` and `update_media_buy`. Inline-only sellers use only `packages[].creatives` on `update_media_buy`.
+If no creatives are assigned at creation, the buy enters `pending_creatives`. With top-level `paused: true`, the hold is latent and the buy enters `paused` after required creatives are supplied and any future start date has arrived. Delivery cannot begin until the buyer supplies at least one creative per package through a path the seller advertises. Sellers with `creative.has_creative_library: true` use `sync_creatives` and `creative_assignments`. Sellers that advertise both `creative.has_creative_library: true` and `inline_creative_management: true` also accept inline `packages[].creatives` on `create_media_buy` and `update_media_buy`. Inline-only sellers use only `packages[].creatives` on `update_media_buy`.
+
+Create-time holds may be cleared before delivery is otherwise ready. `update_media_buy` with `paused: false` clears the stored hold; if creatives are still missing or the flight date is still in the future, the visible status remains `pending_creatives` or `pending_start` until that blocker clears.
 
 ### The `creative_deadline`
 

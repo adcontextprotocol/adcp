@@ -2535,6 +2535,235 @@ describe('create_media_buy handler', () => {
     expect(buys[0].status).toBe('active');
   });
 
+  it('creates a paused media buy when start_time is asap, creatives are assigned, and paused is true', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'asap-paused.example' }, operator: 'asap-paused.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_asap_paused',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'ASAP Paused Creative',
+      }],
+    });
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'asap-paused.example' },
+      start_time: 'asap',
+      end_time: '2099-07-31T23:59:59Z',
+      paused: true,
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+        creative_assignments: [{ creative_id: 'cr_asap_paused' }],
+      }],
+    });
+
+    expect(created.media_buy_status).toBe('paused');
+    expect(created.valid_actions).toContain('resume');
+
+    const mediaBuyId = created.media_buy_id as string;
+    const { result: buyResult } = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const buys = buyResult.media_buys as Array<Record<string, unknown>>;
+    expect(buys[0].status).toBe('paused');
+    expect(buys[0].valid_actions).toContain('resume');
+  });
+
+  it('keeps future start dates visible as pending_start even when create_media_buy paused is true', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'paused-pending-start.example' }, operator: 'paused-pending-start.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_paused_pending_start',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Paused Pending Start Creative',
+      }],
+    });
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'paused-pending-start.example' },
+      start_time: '2099-07-01T00:00:00Z',
+      end_time: '2099-07-31T23:59:59Z',
+      paused: true,
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+        creative_assignments: [{ creative_id: 'cr_paused_pending_start' }],
+      }],
+    });
+
+    expect(created.media_buy_status).toBe('pending_start');
+    expect(created.valid_actions).toContain('sync_creatives');
+    expect(created.valid_actions).toContain('resume');
+
+    const { result: resumed } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: created.media_buy_id,
+      paused: false,
+    });
+    expect(resumed.media_buy_status).toBe('pending_start');
+    expect(resumed.valid_actions).not.toContain('resume');
+  });
+
+  it('keeps missing creatives visible as pending_creatives even when create_media_buy paused is true', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'paused-pending-creatives.example' }, operator: 'paused-pending-creatives.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'paused-pending-creatives.example' },
+      start_time: 'asap',
+      end_time: '2099-07-31T23:59:59Z',
+      paused: true,
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+      }],
+    });
+
+    expect(created.media_buy_status).toBe('pending_creatives');
+    expect(created.valid_actions).toContain('sync_creatives');
+    expect(created.valid_actions).toContain('resume');
+
+    const mediaBuyId = created.media_buy_id as string;
+    const packageId = ((created.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_pending_then_paused',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Pending Then Paused Creative',
+      }],
+    });
+
+    const { result: updated } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{
+        package_id: packageId,
+        creative_assignments: [{ creative_id: 'cr_pending_then_paused' }],
+      }],
+    });
+
+    expect(updated.media_buy_status).toBe('paused');
+  });
+
+  it('can clear a create-time pause while a buy is still pending_creatives', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'clear-paused-pending-creatives.example' }, operator: 'clear-paused-pending-creatives.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'clear-paused-pending-creatives.example' },
+      start_time: 'asap',
+      end_time: '2099-07-31T23:59:59Z',
+      paused: true,
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+      }],
+    });
+
+    const mediaBuyId = created.media_buy_id as string;
+    const packageId = ((created.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+
+    const { result: resumed } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      paused: false,
+    });
+    expect(resumed.media_buy_status).toBe('pending_creatives');
+    expect(resumed.valid_actions).not.toContain('resume');
+
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_cleared_pending_then_active',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Cleared Pending Then Active Creative',
+      }],
+    });
+
+    const { result: updated } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{
+        package_id: packageId,
+        creative_assignments: [{ creative_id: 'cr_cleared_pending_then_active' }],
+      }],
+    });
+
+    expect(updated.media_buy_status).toBe('active');
+    expect(updated.valid_actions).toContain('pause');
+  });
+
+  it('can pause a buy while it is still pending_creatives', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'pause-pending-creatives.example' }, operator: 'pause-pending-creatives.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'pause-pending-creatives.example' },
+      start_time: 'asap',
+      end_time: '2099-07-31T23:59:59Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+      }],
+    });
+
+    const mediaBuyId = created.media_buy_id as string;
+    const packageId = ((created.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+
+    const { result: pauseResult } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      paused: true,
+    });
+
+    expect(pauseResult.media_buy_status).toBe('pending_creatives');
+    expect(pauseResult.valid_actions).toContain('resume');
+
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_paused_pending_creatives',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Paused Pending Creatives Creative',
+      }],
+    });
+
+    const { result: updated } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{
+        package_id: packageId,
+        creative_assignments: [{ creative_id: 'cr_paused_pending_creatives' }],
+      }],
+    });
+
+    expect(updated.media_buy_status).toBe('paused');
+  });
+
   it('returns package with required fields', async () => {
     const { productId, pricingOptionId } = getFirstProductAndPricing();
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -5489,6 +5718,133 @@ describe('paused package delivery', () => {
     expect(byPackage[0].pricing_model).toBeDefined();
     expect(byPackage[0].rate).toBeDefined();
     expect(byPackage[0].currency).toBeDefined();
+  });
+
+  it('suppresses media-buy-level delivery while preserving package pause state', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'buy-paused-delivery.example' }, operator: 'buy-paused-delivery.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_buy_paused_delivery',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Buy Paused Delivery Creative',
+      }],
+    });
+
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'buy-paused-delivery.example' },
+      start_time: 'asap',
+      end_time: '2027-07-01T00:00:00Z',
+      paused: true,
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+        creative_assignments: [{ creative_id: 'cr_buy_paused_delivery' }],
+      }],
+    });
+
+    const mediaBuyId = createResult.media_buy_id as string;
+
+    await simulateCallTool(server, 'comply_test_controller', {
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: mediaBuyId,
+        impressions: 200000,
+        clicks: 1200,
+        reported_spend: { amount: 3000, currency: 'USD' },
+      },
+      account,
+      brand: { domain: 'buy-paused-delivery.example' },
+    });
+
+    const { result: delivery } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: mediaBuyId,
+    });
+
+    const buyDelivery = (delivery.media_buy_deliveries as Array<Record<string, unknown>>)[0];
+    const totals = buyDelivery.totals as Record<string, unknown>;
+    const byPackage = buyDelivery.by_package as Array<Record<string, unknown>>;
+
+    expect(buyDelivery.status).toBe('paused');
+    expect(totals.spend).toBe(0);
+    expect(totals.impressions).toBe(0);
+    expect(totals.clicks).toBe(0);
+    expect(byPackage[0].spend).toBe(0);
+    expect(byPackage[0].impressions).toBe(0);
+    expect(byPackage[0].clicks).toBe(0);
+    expect(byPackage[0].paused).toBe(false);
+  });
+
+  it('keeps delivery at zero for paused buys after the flight has ended', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'ended-paused-delivery.example' }, operator: 'ended-paused-delivery.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_ended_paused_delivery',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        name: 'Ended Paused Delivery Creative',
+      }],
+    });
+
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'ended-paused-delivery.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2025-01-31T23:59:59Z',
+      paused: true,
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+        creative_assignments: [{ creative_id: 'cr_ended_paused_delivery' }],
+      }],
+    });
+
+    const mediaBuyId = createResult.media_buy_id as string;
+    expect(createResult.media_buy_status).toBe('completed');
+
+    await simulateCallTool(server, 'comply_test_controller', {
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: mediaBuyId,
+        impressions: 200000,
+        clicks: 1200,
+        reported_spend: { amount: 3000, currency: 'USD' },
+      },
+      account,
+      brand: { domain: 'ended-paused-delivery.example' },
+    });
+
+    const { result: delivery } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: mediaBuyId,
+    });
+
+    const buyDelivery = (delivery.media_buy_deliveries as Array<Record<string, unknown>>)[0];
+    const totals = buyDelivery.totals as Record<string, unknown>;
+    const byPackage = buyDelivery.by_package as Array<Record<string, unknown>>;
+
+    expect(buyDelivery.status).toBe('completed');
+    expect(totals.spend).toBe(0);
+    expect(totals.impressions).toBe(0);
+    expect(totals.clicks).toBe(0);
+    expect(byPackage[0].spend).toBe(0);
+    expect(byPackage[0].impressions).toBe(0);
+    expect(byPackage[0].clicks).toBe(0);
+    expect(byPackage[0].paused).toBe(false);
   });
 });
 

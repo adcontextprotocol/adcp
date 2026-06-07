@@ -1258,7 +1258,7 @@ function validActionsForStatus(status: string): string[] {
   switch (status) {
     case 'pending_creatives':
     case 'pending_start':
-      return ['cancel', 'sync_creatives'];
+      return ['pause', 'cancel', 'sync_creatives'];
     case 'active':
       return ['pause', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
     case 'paused':
@@ -1277,6 +1277,16 @@ function availableActionsForStatus(status: string, explicit?: MediaBuyAvailableA
 }
 
 const NON_TERMINAL_MEDIA_BUY_STATUSES = new Set(['pending_creatives', 'pending_start', 'active', 'paused']);
+
+function hasLatentMediaBuyPause(mb: MediaBuyState, status: string): boolean {
+  return mb.status === 'paused' && status !== 'paused' && NON_TERMINAL_MEDIA_BUY_STATUSES.has(status);
+}
+
+function validActionsForMediaBuy(mb: MediaBuyState, status: string): string[] {
+  const actions = validActionsForStatus(status);
+  if (!hasLatentMediaBuyPause(mb, status) || actions.includes('resume')) return actions;
+  return ['resume', ...actions];
+}
 
 function allowedActionAppliesToStatus(action: MediaBuyProductAllowedActionState, status: string): boolean {
   if (action.allowed_statuses?.length) return action.allowed_statuses.includes(status);
@@ -1355,8 +1365,11 @@ function deriveAvailableActionsFromProductAllowedActions(
 
 function availableActionsForMediaBuy(mb: MediaBuyState, status: string): MediaBuyAvailableActionState[] {
   const productDerived = deriveAvailableActionsFromProductAllowedActions(mb.productAllowedActions, status);
-  if (productDerived !== undefined) return productDerived;
-  return availableActionsForStatus(status, mb.availableActions);
+  const actions = productDerived !== undefined
+    ? productDerived
+    : availableActionsForStatus(status, mb.availableActions);
+  if (!hasLatentMediaBuyPause(mb, status) || actions.some(action => action.action === 'resume')) return actions;
+  return [{ action: 'resume', mode: 'self_serve' }, ...actions];
 }
 
 type AttemptedMediaBuyAction =
@@ -2462,6 +2475,7 @@ const TOOLS = [
         total_budget: { type: 'object', properties: { amount: { type: 'number' }, currency: { type: 'string' } } },
         start_time: { type: 'string', description: 'ISO 8601 date-time or "asap"' },
         end_time: { type: 'string' },
+        paused: { type: 'boolean', description: 'Create the media buy with delivery held once activation prerequisites are satisfied.' },
         channel: { type: 'string', description: 'Primary channel for governance compliance (display, video, native, audio)' },
         channels: { type: 'array', items: { type: 'string' }, description: 'Channels for governance compliance' },
         countries: { type: 'array', items: { type: 'string' }, description: 'Target countries (ISO 3166-1 alpha-2) for governance compliance' },
@@ -4001,7 +4015,7 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
 }
 
 export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as CreateMediaBuyRequest & ToolArgs;
+  const req = args as unknown as CreateMediaBuyRequest & ToolArgs & { paused?: boolean };
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   // Consume any single-shot directive registered by
@@ -4739,7 +4753,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     mediaBuyId,
     accountRef: req.account,
     brandRef: req.brand,
-    status: 'active',
+    status: req.paused === true ? 'paused' : 'active',
     currency: 'USD',
     packages: createdPackages,
     ...(productAllowedActions && { productAllowedActions }),
@@ -4751,7 +4765,15 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     ...(isRecord(req.context) && { context: req.context }),
     createdAt: now,
     updatedAt: now,
-    history: [{ revision: 1, timestamp: now, actor: 'buyer', action: 'created', summary: `Media buy created with ${createdPackages.length} package(s)` }],
+    history: [{
+      revision: 1,
+      timestamp: now,
+      actor: 'buyer',
+      action: 'created',
+      summary: req.paused === true
+        ? `Media buy created paused with ${createdPackages.length} package(s)`
+        : `Media buy created with ${createdPackages.length} package(s)`,
+    }],
   };
 
   session.mediaBuys.set(mediaBuyId, mediaBuy);
@@ -4767,11 +4789,10 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   return {
     media_buy_id: mediaBuyId,
     ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
-    status,
     media_buy_status: status,
     revision: mediaBuy.revision,
     confirmed_at: mediaBuy.confirmedAt,
-    valid_actions: validActionsForStatus(status),
+    valid_actions: validActionsForMediaBuy(mediaBuy, status),
     available_actions: availableActionsForMediaBuy(mediaBuy, status),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
@@ -4873,7 +4894,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
         confirmed_at: mb.confirmedAt,
         created_at: mb.createdAt,
         updated_at: mb.updatedAt,
-        valid_actions: validActionsForStatus(status),
+        valid_actions: validActionsForMediaBuy(mb, status),
         available_actions: availableActionsForMediaBuy(mb, status),
         currency: mb.currency,
         total_budget: totalBudget,
@@ -4986,9 +5007,13 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   let totalReach = 0;
   let totalReachUnit: string | undefined;
 
+  const mediaBuyPaused = mb.status === 'paused';
+  const simDelivery = mediaBuyPaused ? undefined : simDeliveryEarly;
+
   const byPackage = mb.packages.map(pkg => {
-    // Paused or canceled packages stop accruing delivery
-    if (pkg.paused || pkg.canceled) {
+    const packagePaused = pkg.paused === true;
+    const deliverySuppressed = mediaBuyPaused || packagePaused || pkg.canceled;
+    if (deliverySuppressed) {
       const { model, rate } = derivePricing(pkg, productMap);
       return {
         package_id: pkg.packageId,
@@ -4999,7 +5024,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
         model, // #1525: alias for @adcp/sdk < 4.11.0
         rate,
         currency: mb.currency,
-        paused: true,
+        paused: packagePaused,
         delivery_status: 'delivering' as const,
       };
     }
@@ -5055,11 +5080,11 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
           : {}),
       }
       : {};
-    const byCreative = simDeliveryEarly?.conversions && pkg.creativeAssignments.length > 0
+    const byCreative = simDelivery?.conversions && pkg.creativeAssignments.length > 0
       ? {
         by_creative: pkg.creativeAssignments.map((creativeId, index) => {
-          const base = Math.floor(simDeliveryEarly.conversions / pkg.creativeAssignments.length);
-          const remainder = simDeliveryEarly.conversions % pkg.creativeAssignments.length;
+          const base = Math.floor(simDelivery.conversions / pkg.creativeAssignments.length);
+          const remainder = simDelivery.conversions % pkg.creativeAssignments.length;
           const impressionBase = Math.floor(impressions / pkg.creativeAssignments.length);
           const impressionRemainder = impressions % pkg.creativeAssignments.length;
           const spendBase = Math.floor((spend / pkg.creativeAssignments.length) * 100) / 100;
@@ -5093,23 +5118,22 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       model: pricingModel, // #1525: alias for @adcp/sdk < 4.11.0
       rate,
       currency: mb.currency,
-      ...(includeThreeOneFields(ctx) && simDeliveryEarly?.isFinal !== undefined ? { is_final: simDeliveryEarly.isFinal } : {}),
-      ...(includeThreeOneFields(ctx) && simDeliveryEarly?.isFinal === true && simDeliveryEarly.finalizedAt ? { finalized_at: simDeliveryEarly.finalizedAt } : {}),
-      ...(includeThreeOneFields(ctx) && simDeliveryEarly?.measurementWindow ? { measurement_window: simDeliveryEarly.measurementWindow } : {}),
+      ...(includeThreeOneFields(ctx) && simDelivery?.isFinal !== undefined ? { is_final: simDelivery.isFinal } : {}),
+      ...(includeThreeOneFields(ctx) && simDelivery?.isFinal === true && simDelivery.finalizedAt ? { finalized_at: simDelivery.finalizedAt } : {}),
+      ...(includeThreeOneFields(ctx) && simDelivery?.measurementWindow ? { measurement_window: simDelivery.measurementWindow } : {}),
       paused: false,
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
       // vendor_metric_values are media-buy-scoped in simulate_delivery, so they
       // propagate to all active packages. Multi-package buys will echo the same
       // array across packages — known training-agent limitation, acceptable for
       // single-package storyboard scenarios.
-      ...(simDeliveryEarly?.vendorMetricValues?.length
-        ? { vendor_metric_values: simDeliveryEarly.vendorMetricValues }
+      ...(simDelivery?.vendorMetricValues?.length
+        ? { vendor_metric_values: simDelivery.vendorMetricValues }
         : {}),
     };
   });
 
   // Add simulated delivery data from comply_test_controller
-  const simDelivery = simDeliveryEarly;
   if (simDelivery) {
     totalImpressions += simDelivery.impressions;
     totalClicks += simDelivery.clicks;
@@ -5622,6 +5646,20 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   const actionRejection = rejectUnavailableAction(mb, req, currentStatus, productMap);
   if (actionRejection) return actionRejection;
 
+  const pausedValue = req.paused;
+  if (pausedValue === true && !NON_TERMINAL_MEDIA_BUY_STATUSES.has(currentStatus)) {
+    return {
+      errors: [{ code: 'INVALID_STATE', message: `Cannot pause media buy in ${currentStatus} state` }] as TaskError[],
+      ...(req.context !== undefined && { context: req.context }),
+    };
+  }
+  if (pausedValue === false && mb.status !== 'paused') {
+    return {
+      errors: [{ code: 'INVALID_STATE', message: `Cannot resume media buy in ${currentStatus} state` }] as TaskError[],
+      ...(req.context !== undefined && { context: req.context }),
+    };
+  }
+
   // Revision check for optimistic concurrency
   const reqRevision = req.revision;
   if (reqRevision !== undefined && reqRevision !== mb.revision) {
@@ -5652,7 +5690,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       status,
       media_buy_status: status,
       revision: mb.revision,
-      valid_actions: validActionsForStatus(status),
+      valid_actions: validActionsForMediaBuy(mb, status),
       available_actions: availableActionsForMediaBuy(mb, status),
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
       ...(req.context !== undefined && { context: req.context }),
@@ -5660,7 +5698,6 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   }
 
   // Pause/resume at media buy level
-  const pausedValue = req.paused;
   if (pausedValue === true) {
     mb.status = 'paused';
     mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'paused', summary: 'Media buy paused' });
@@ -5887,7 +5924,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     status,
     media_buy_status: status,
     revision: mb.revision,
-    valid_actions: validActionsForStatus(status),
+    valid_actions: validActionsForMediaBuy(mb, status),
     available_actions: availableActionsForMediaBuy(mb, status),
     ...(mb.canceledAt && {
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },

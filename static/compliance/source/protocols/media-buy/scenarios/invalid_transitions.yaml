@@ -199,7 +199,7 @@ phases:
           idempotency_key: "$generate:uuid_v4#update_unknown_package"
           packages:
             - package_id: "does-not-exist-package-invalid-transitions-v1"
-              paused: true
+              budget: 5001
           context:
             correlation_id: "invalid_transitions--update_unknown_package"
         validations:
