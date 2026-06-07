@@ -5007,7 +5007,6 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   let totalReach = 0;
   let totalReachUnit: string | undefined;
 
-  const mediaBuyStatus = deriveStatus(mb);
   const mediaBuyPaused = mb.status === 'paused';
   const simDelivery = mediaBuyPaused ? undefined : simDeliveryEarly;
 
