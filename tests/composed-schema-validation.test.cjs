@@ -416,6 +416,22 @@ async function runTests() {
 
   log('');
 
+  log('Build Creative Request Schema (push_notification_config field):', 'info');
+  await testSchemaValidation(
+    '/schemas/media-buy/build-creative-request.json',
+    {
+      idempotency_key: 'build-creative-webhook-001',
+      message: 'Create a short video ad for a fictional outdoor brand',
+      push_notification_config: {
+        url: 'https://buyer.example.com/webhooks/adcp',
+        operation_id: 'build-creative-webhook-001'
+      }
+    },
+    'Build creative request accepts operation-scoped push_notification_config'
+  );
+
+  log('');
+
   // Test 5: Get Media Buy Delivery Response (allOf with delivery-metrics.json)
   log('Get Media Buy Delivery Response Schema (allOf with delivery-metrics.json):', 'info');
   const deliveryResponseWithBreakdowns = {
@@ -840,6 +856,71 @@ async function runTests() {
     for (const f of driftOffenders) log(`      ${f}`, 'error');
     failedTests++;
   }
+
+  log('');
+
+  log('Task listing accepts creative-domain build_creative tasks:', 'info');
+  const creativeBuildTaskList = {
+    status: 'completed',
+    query_summary: {
+      total_matching: 1,
+      returned: 1,
+      domain_breakdown: {
+        creative: 1
+      }
+    },
+    tasks: [
+      {
+        task_id: 'task_build_creative_001',
+        task_type: 'build_creative',
+        domain: 'creative',
+        status: 'submitted',
+        created_at: '2026-06-07T19:00:00Z',
+        updated_at: '2026-06-07T19:01:00Z',
+        has_webhook: true
+      }
+    ],
+    pagination: {
+      has_more: false
+    }
+  };
+
+  await testSchemaValidation(
+    '/schemas/core/tasks-list-response.json',
+    creativeBuildTaskList,
+    'Legacy tasks/list response accepts build_creative task with creative domain'
+  );
+  await testSchemaValidation(
+    '/schemas/protocol/list-tasks-response.json',
+    creativeBuildTaskList,
+    'Protocol list_tasks response accepts build_creative task with creative domain'
+  );
+  await testSchemaRejection(
+    '/schemas/core/tasks-list-response.json',
+    {
+      ...creativeBuildTaskList,
+      query_summary: {
+        ...creativeBuildTaskList.query_summary,
+        domain_breakdown: {
+          creative: -1
+        }
+      }
+    },
+    'Legacy tasks/list response rejects negative creative domain breakdown'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/list-tasks-response.json',
+    {
+      ...creativeBuildTaskList,
+      query_summary: {
+        ...creativeBuildTaskList.query_summary,
+        domain_breakdown: {
+          creative: -1
+        }
+      }
+    },
+    'Protocol list_tasks response rejects negative creative domain breakdown'
+  );
 
   log('');
 
