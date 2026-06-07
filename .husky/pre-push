@@ -35,7 +35,7 @@ esac
 UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
 RANGE="${UPSTREAM:-origin/main}...HEAD"
 
-DOC_PATHS='^(docs/|dist/docs/|mintlify-docs/|mint\.json|README\.md|server/src/addie/rules/|server/src/addie/.*\.ts$|scripts/check-owned-links\.js|\.markdown-link-check\.json)'
+DOC_PATHS='^(docs/|dist/docs/|mintlify-docs/|docs\.json|mint\.json|README\.md|server/src/addie/rules/|scripts/check-owned-links\.js|\.markdown-link-check\.json|\.github/workflows/broken-links\.yml)'
 
 CHANGED=$(git diff --name-only "$RANGE" 2>/dev/null || echo "")
 
