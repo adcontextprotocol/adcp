@@ -1,5 +1,54 @@
 # Changelog
 
+## 3.1.0-rc.10
+
+### Minor Changes
+
+- 3281278: Document the live community-mirror lifecycle endpoints in the registry OpenAPI
+  spec so SDKs can generate typed request and response models instead of
+  hand-rolling DTOs.
+- a4a51bc: Add operation-scoped `push_notification_config` to `build_creative` requests and include `build_creative` in task-type enum values so async build webhooks and task polling can name the task.
+- fa64db9: Add optional `recipe_hash` fields to `build_creative` success responses so creative agents can expose an opaque, agent-scoped identity for build-determining inputs without standardizing a cross-agent hash algorithm.
+- 313e3a9: Add top-level `paused` to `create_media_buy` so buyers can create campaigns with
+  delivery held from the outset. A start-paused buy returns `media_buy_status:
+"paused"` once activation prerequisites are satisfied; missing creatives and
+  future start dates still surface as `pending_creatives` and `pending_start`.
+- 72b79ac: Replace country-fused postal targeting as the preferred shape with country-local postal systems:
+
+  - `postal-system` now adds country-local system names such as `zip`, `zip_plus_four`, `outward`, `plz`, and the fallback `postal_code`; the published enum retains existing country-fused values for 3.x compatibility.
+  - New postal area objects use `{ country, system, values }`.
+  - Country/system pairs are validated so known countries only accept their registered local systems; unknown countries use `postal_code` or `custom`.
+  - `get_adcp_capabilities.media_buy.execution.targeting.geo_postal_areas` now prefers an ISO 3166-1 alpha-2 country-keyed map such as `{ "US": ["zip"], "ZA": ["postal_code"] }`.
+  - During the 3.x migration, sellers SHOULD emit equivalent deprecated aliases such as `us_zip` alongside native country keys where an alias exists. Buyers and SDKs SHOULD normalize both forms.
+  - Deprecated country-fused aliases remain accepted through legacy branches for SDK backfill and existing integrations.
+  - Delivery geo rows now require native postal rows to include `country`.
+
+  Refs #5383.
+
+### Patch Changes
+
+- 402062c: Document the `build_creative.evaluator` authentication boundary: evaluator credentials and caller-supplied trust material stay on the transport/account-provisioning channel, off-list evaluator URLs are rejected before outbound calls, accepted evaluator auth failures degrade to seller-default ranking, and the new evaluator-auth storyboard covers direct `agent_url`, nested `feature_agent`, credential-in-payload, accepted-call, and unavailable-evaluator paths.
+- b2e3f90: spec(creative): harden the unreleased 3.1 creative-transformer surface — make three already-documented normative rules schema-enforceable, and fix a self-contradictory `leaves_total` formula.
+
+  These refine the 3.1 transformer / `build_creative` multiplicity feature before GA. No new surface; each change makes an existing MUST checkable or corrects a description.
+
+  - **Per-leaf pricing receipt is now enforced when a build reports cost.** `BuildCreativeVariantSuccess` documents that untrafficked best-of-N / fan-out leaves are billed via the inline per-leaf `vendor_cost` _only_ (they never earn a `creative_id`, so never reach `report_usage`), and that the aggregate `vendor_cost` MUST equal the sum of the per-leaf values — but the leaf only required `[build_variant_id, creative_manifest]`, so a paid agent could bill N leaves and return no machine-readable cost for any of them. Added: (a) a branch-level `if (aggregate vendor_cost present) then` each produced leaf requires `vendor_cost` + `currency`; (b) per-leaf `dependencies` so a leaf can't carry a partial receipt (`vendor_cost`↔`currency` co-required; `pricing_option_id` ⇒ both). A genuinely free build omits the aggregate and is unaffected; a CPM-deferred leaf reports `vendor_cost: 0` (a value, not an omission).
+
+  - **`transformer-param.json` `value_source` now binds to its descriptor.** The prose already stated the rules (`inline` ⇒ `allowed_values`; `range` ⇒ `minimum`/`maximum`; `free_text` ⇒ `type: string` and `allowed_values`/`minimum`/`maximum`/`options`/`options_cursor` absent), but nothing enforced them. Added `allOf` `if/then` blocks. `enumerable` is intentionally unconstrained — its `options[]` are returned only when expanded via `expand_params`.
+
+  - **Fixed the `leaves_total` formula.** The `conditions_total` field documented the three-factor product (`items_to_produce × conditions_total × variants_per_item`) while the `leaves_total` field two lines down — and the `BuildCreativeVariantSuccess.leaves_total` description — stated the two-factor product, so an agent computing expected leaves from the field's own description under-counted by a factor of `conditions_total` whenever `signal_conditions` was present. All three now state the conditions factor consistently. Docs (`build_creative.mdx`, `creative-transformers.mdx` migration guide) updated to match.
+
+- 725b241: Clarify that task webhooks are not emitted for synchronous completions and add
+  webhook-emission storyboard coverage for the sync-only invariant. Sellers MUST
+  NOT replay an inline terminal result to `push_notification_config.url` or invent
+  a `task_id`; buyer SDKs may still normalize synchronous responses into local
+  callbacks or handlers because those local conveniences are not AdCP webhooks.
+  The canonical probe sends an advertised wholesale `get_products` request with
+  `push_notification_config` and accepts either a terminal synchronous response
+  without `task_id` or a structured well-formed runtime rejection. A Submitted
+  async handoff is non-conformant. Any future sync-completion notification mode
+  would need an explicit, capability-advertised opt-in.
+
 ## 3.1.0-rc.9
 
 ### Minor Changes
