@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.11/core/package-signal-targeting-groups.json",
+  "title": "Package Signal Targeting Groups",
+  "description": "Top-level basic Boolean composition for package signal targeting. The groups-level operator is required; v1 supports operator 'all', meaning every child group must be satisfied. This represents the portable baseline: (any of include group 1) AND (any of include group 2) AND NOT (any of exclude group N).",
+  "type": "object",
+  "properties": {
+    "operator": {
+      "type": "string",
+      "enum": ["all"],
+      "description": "Groups-level operator. Required even though v1 only supports 'all': every child group must be satisfied."
+    },
+    "groups": {
+      "type": "array",
+      "description": "Signal targeting groups to evaluate. Use operator 'any' for include groups and 'none' for exclusion groups.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.11/core/package-signal-targeting-group.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "operator",
+    "groups"
+  ],
+  "additionalProperties": true
+}
