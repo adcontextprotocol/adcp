@@ -21,7 +21,7 @@ required_tools:
 
 narrative: |
   When a buyer creates a media buy without creative_assignments, the seller cannot start
-  delivery until creatives are supplied. The seller must report status: pending_creatives
+  delivery until creatives are supplied. The seller must report media_buy_status: pending_creatives
   and, after sync_creatives attaches the required assets, transition the buy to
   pending_start (awaiting flight start) or active (if already in flight).
 
@@ -94,7 +94,7 @@ phases:
     title: "Create media buy without creative_assignments"
     narrative: |
       The buyer intentionally omits creative_assignments. The seller must accept the
-      buy, persist it, and return status: pending_creatives with valid_actions
+      buy, persist it, and return media_buy_status: pending_creatives with valid_actions
       including sync_creatives.
 
     steps:
@@ -109,7 +109,8 @@ phases:
         expected: |
           Media buy created with:
           - media_buy_id assigned
-          - status: pending_creatives
+          - media_buy_status: pending_creatives
+          - status: completed (task envelope)
           - valid_actions including sync_creatives
 
         sample_request:
@@ -146,10 +147,10 @@ phases:
             path: "media_buy_status"
             value: "pending_creatives"
             description: "media_buy_status is pending_creatives because no creatives supplied"
-          - check: field_value_or_absent
+          - check: field_value
             path: "status"
-            value: "pending_creatives"
-            description: "Legacy status, when present alongside media_buy_status, MUST carry the same value (3.1 deprecation window — see #4908)"
+            value: "completed"
+            description: "Envelope task-status is completed on synchronous success (protocol-envelope.json required: [status])"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
@@ -241,10 +242,10 @@ phases:
             path: "media_buy_status"
             allowed_values: ["pending_start", "active"]
             description: "media_buy_status advances out of pending_creatives once creatives attached"
-          - check: field_value_or_absent
+          - check: field_value
             path: "status"
-            allowed_values: ["pending_start", "active"]
-            description: "Legacy status, when present alongside media_buy_status, MUST carry the same value (3.1 deprecation window — see #4908)"
+            value: "completed"
+            description: "Envelope task-status is completed on synchronous update success (protocol-envelope.json required: [status])"
 
   - id: verify_transition
     title: "Verify the status transition"

@@ -267,10 +267,10 @@ phases:
             path: "media_buy_status"
             value: "active"
             description: "Created buy is active before available_actions mutation probes"
-          - check: field_value_or_absent
+          - check: field_value
             path: "status"
-            value: "active"
-            description: "Legacy status, when present alongside media_buy_status, mirrors active"
+            value: "completed"
+            description: "Envelope task-status is completed on synchronous success (protocol-envelope.json required: [status])"
           - check: field_contains
             path: "available_actions[*]"
             value:
