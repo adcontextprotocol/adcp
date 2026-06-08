@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.11/core/keyword-delivery-metrics.json",
+  "title": "Keyword Delivery Metrics",
+  "description": "Delivery metrics row for one keyword and match-type pair within a package.",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-rc.11/core/delivery-metrics.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "keyword": {
+          "type": "string",
+          "description": "The targeted keyword"
+        },
+        "match_type": {
+          "$ref": "/schemas/3.1.0-rc.11/enums/match-type.json"
+        }
+      },
+      "required": [
+        "keyword",
+        "match_type",
+        "impressions",
+        "spend"
+      ]
+    }
+  ]
+}

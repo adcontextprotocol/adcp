@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.11/enums/social-placement-surface.json",
+  "title": "Social Placement Surface",
+  "description": "Declared social-placement surface classification for social inventory, distinguishing the in-app surface where a social placement renders. Values name the semantic surface, not platform brands. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+  "type": "string",
+  "enum": [
+    "feed",
+    "stories",
+    "short_video",
+    "explore",
+    "search"
+  ],
+  "enumDescriptions": {
+    "feed": "The primary scrolling home or timeline surface where posts and ads are interleaved with followed and recommended content.",
+    "stories": "The full-screen, ephemeral tap-through surface presented between or alongside users' story content.",
+    "short_video": "The full-screen, sound-on, swipe-past, algorithmically-recommended vertical short-video surface. Subsumes the platform brand names for this surface (Reels, Shorts, Spotlight, and TikTok's For You short-video experience) — platform identity belongs to a property/publisher axis, not here.",
+    "explore": "The discovery or browse surface presenting recommended content outside the user's followed graph.",
+    "search": "The in-app search-results surface, keyed to the user's query."
+  }
+}
