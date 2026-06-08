@@ -5464,6 +5464,59 @@ describe('update_media_buy handler', () => {
     expect(approvals[0].approval_status).toBe('approved');
   });
 
+  it('limits affected_packages to packages changed by inline creative updates', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'inline-affected.example' }, operator: 'inline-affected.example' };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'inline-affected.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [
+        {
+          product_id: product.product_id,
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 10000,
+          creatives: [{ creative_id: 'inline_affected_pkg0_v1', name: 'Inline package 0 v1' }],
+        },
+        {
+          product_id: product.product_id,
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 10000,
+          creatives: [{ creative_id: 'inline_affected_pkg1_v1', name: 'Inline package 1 v1' }],
+        },
+      ],
+    });
+    expect(createResult.code).toBeUndefined();
+
+    const mediaBuyId = createResult.media_buy_id as string;
+    const packages = createResult.packages as Array<Record<string, unknown>>;
+    const unchangedPkgId = packages[0].package_id as string;
+    const changedPkgId = packages[1].package_id as string;
+
+    const { result: updateResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{
+        package_id: changedPkgId,
+        creatives: [{ creative_id: 'inline_affected_pkg1_v2', name: 'Inline package 1 v2' }],
+      }],
+    });
+
+    expect(updateResult.code).toBeUndefined();
+    expect((updateResult.packages as Array<Record<string, unknown>>).map(pkg => pkg.package_id)).toEqual([
+      unchangedPkgId,
+      changedPkgId,
+    ]);
+    expect((updateResult.affected_packages as Array<Record<string, unknown>>).map(pkg => pkg.package_id)).toEqual([
+      changedPkgId,
+    ]);
+  });
+
   it('rejects all creative_assignments atomically when any creative_id is missing', async () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
