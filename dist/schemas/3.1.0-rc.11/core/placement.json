@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.11/core/placement.json",
+  "title": "Placement",
+  "description": "Represents a specific public ad placement within a product's inventory. Placement IDs are scoped by publisher domain, matching placement definitions in that publisher's adagents.json. `kind` is the structural discriminator: `publisher_ref` means this product placement is a reference to `{publisher_domain, placement_id}`; `seller_inline` means the seller is defining public buyer-facing placement metadata inline. The schema accepts either `name` or `publisher_domain` because publisher-referenced placements can omit `name` only when the publisher declaration supplies it; seller-inline placements carry `name` directly. Whether a reference was resolved from publisher-hosted adagents.json or a community-maintained fallback is resolver metadata, not placement structure. Buyers reference placements in creative assignments with structured PlacementRef objects (`publisher_domain` + `placement_id`) when a product spans multiple publishers or the namespace is otherwise ambiguous. Reusing a registered placement preserves the registry's semantic identity; product-level placement objects may narrow format_ids/format_options or add operational detail, but SHOULD NOT redefine the placement's meaning incompatibly.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": ["publisher_ref", "seller_inline"],
+      "description": "Placement structure discriminator. `publisher_ref` identifies a placement by `{publisher_domain, placement_id}` and resolves public metadata from the named publisher's adagents.json placement declarations; `seller_inline` identifies buyer-facing placement metadata defined inline by the sales agent (still in the named publisher namespace when `publisher_domain` is present, or the seller's own namespace in legacy single-publisher contexts)."
+    },
+    "placement_id": {
+      "type": "string",
+      "description": "Placement identifier in the publisher namespace. When `publisher_domain` is present, this matches a placement ID in that publisher's adagents.json catalog or a seller-defined inline placement in that publisher namespace. Buyers use this with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `creative_assignments[].placement_ids` strings are only unambiguous in single-publisher contexts.",
+      "x-entity": "placement"
+    },
+    "publisher_domain": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "description": "Publisher domain whose adagents.json placement declarations define this placement. Required for `kind: \"publisher_ref\"`. Omitted only for `kind: \"seller_inline\"` in legacy single-publisher seller contexts where the seller agent's own publisher domain is the namespace."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for the placement (e.g., 'Homepage Banner', 'Article Sidebar'). Required for `kind: \"seller_inline\"`. May be omitted for publisher-referenced placements because buyers resolve the name from the publisher declaration identified by `{publisher_domain, placement_id}`."
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of where and how the placement appears"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["targetable", "included"],
+      "description": "Required product-level relationship to this placement. `targetable` means the buyer may reference this placement_id when assigning creatives or otherwise selecting placements within the product. `included` means the placement is part of the product's public delivery composition but the buyer cannot cherry-pick it by placement_id. During the migration window ending 2026-11-25, buyers MAY tolerate legacy products that omit `mode` and treat them as targetable; after that date buyers SHOULD fail closed. Seller-private delivery objects MUST NOT be exposed here; keep those mappings in seller-internal systems."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Optional tags for grouping placements within a product (e.g., 'homepage', 'native', 'premium'). When the placement_id comes from the publisher registry, these should align with the registry tags unless the product is narrowing scope.",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Format IDs supported by this specific placement. Can include: (1) concrete format_ids (fixed dimensions), (2) template format_ids without parameters (accepts any dimensions/duration), or (3) parameterized format_ids (specific dimension/duration constraints). When present on a product placement, this field narrows the product-level `format_ids` contract for this placement and MUST NOT introduce formats the product does not accept.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.11/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "format_options": {
+      "type": "array",
+      "description": "3.1+ canonical format-option declarations supported by this specific product placement. When present, this field narrows the product-level `format_options` contract for this placement and MUST NOT introduce formats the product does not accept. Buyers compute the effective accepted formats for a placement as the intersection of product-level and placement-level declarations; placements without a format declaration inherit the product-level formats.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.11/core/product-format-declaration.json"
+      },
+      "minItems": 1
+    },
+    "video_placement_types": {
+      "type": "array",
+      "description": "Declared video placement types for this product placement, using IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions with AdCP-native names. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.11/enums/video-placement-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "sponsored_placement_types": {
+      "type": "array",
+      "description": "Declared sponsored-placement types for this product placement, distinguishing where the catalog-driven retail-media placement renders on the retailer surface. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.11/enums/sponsored-placement-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "social_placement_surfaces": {
+      "type": "array",
+      "description": "Declared social-placement surfaces for this product placement, distinguishing the in-app surface where the social placement renders. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.11/enums/social-placement-surface.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    }
+  },
+  "required": [
+    "kind",
+    "placement_id",
+    "mode"
+  ],
+  "$comment": "The anyOf(name OR publisher_domain) is a schema-local proxy for the cross-document invariant: publisher-referenced placements can omit name only because {publisher_domain, placement_id} resolves to an adagents.json placement that supplies the name. Seller-inline placements carry name directly.",
+  "anyOf": [
+    {
+      "required": ["name"]
+    },
+    {
+      "required": ["publisher_domain"]
+    }
+  ],
+  "allOf": [
+    {
+      "$comment": "Public product placements must not leak seller-private delivery mapping fields. Consumers that detect this leak should surface PRIVATE_FIELD_IN_PUBLIC_PLACEMENT for monitoring.",
+      "not": {
+        "anyOf": [
+          { "required": ["visibility"] },
+          { "required": ["source"] },
+          { "required": ["origin"] },
+          { "required": ["delivery_mappings"] }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": { "type": "string", "const": "publisher_ref" }
+        },
+        "required": ["kind"]
+      },
+      "then": {
+        "required": ["publisher_domain"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": { "type": "string", "const": "seller_inline" }
+        },
+        "required": ["kind"]
+      },
+      "then": {
+        "required": ["name"]
+      }
+    }
+  ],
+  "additionalProperties": true
+}
