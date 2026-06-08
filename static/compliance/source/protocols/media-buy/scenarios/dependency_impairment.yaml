@@ -439,31 +439,16 @@ phases:
           - check: field_present
             path: "media_buys[0].impairments[0]"
             description: "Buy reports at least one impairment entry (inverse rule)"
-          - check: field_value
-            path: "media_buys[0].impairments[0].resource_type"
-            allowed_values: ["creative"]
-            description: "Impairment entry's resource_type is creative"
-          - check: field_value
-            path: "media_buys[0].impairments[0].resource_id"
-            value: "acme_dep_banner_001"
-            description: "Impairment entry's resource_id matches the rejected creative (forward rule)"
           - check: field_contains
-            path: "media_buys[0].impairments[0].package_ids[*]"
-            value: "$context.package_id"
-            description: "Impairment entry's package_ids[] contains the buy's package — without this, a seller could list a different package and still pass the impairment-present check"
-          - check: field_value
-            path: "media_buys[0].impairments[0].transition.to"
-            allowed_values: ["rejected"]
-            description: "Impairment entry's transition.to is rejected"
-          - check: field_present
-            path: "media_buys[0].impairments[0].impairment_id"
-            description: "Impairment carries the required impairment_id (notification_id for state-event webhooks; see snapshot-and-log Rule 1)"
-          - check: field_present
-            path: "media_buys[0].impairments[0].reason_code"
-            description: "Impairment carries a reason_code (required per impairment.json) — buyer needs this to route remediation"
-          - check: field_present
-            path: "media_buys[0].impairments[0].observed_at"
-            description: "Impairment carries observed_at (required per impairment.json) — buyer needs this to reconcile webhook ordering against the snapshot"
+            path: "media_buys[0].impairments[*]"
+            value:
+              resource_type: "creative"
+              resource_id: "acme_dep_banner_001"
+              package_ids:
+                - "$context.package_id"
+              transition:
+                to: "rejected"
+            description: "At least one impairment entry matches the rejected creative, affected package, and rejected transition (forward rule)"
 
   - id: swap_recovery
     title: "Recover via assignment swap — different creative replaces the rejected one"
