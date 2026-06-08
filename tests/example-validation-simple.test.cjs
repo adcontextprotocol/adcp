@@ -532,6 +532,7 @@ async function runTests() {
       "property_rid": "01916f3a-9c4e-7000-8000-000000000010",
       "property_type": "website",
       "placement_id": "article-sidebar",
+      "seller_agent_url": "https://streamhaus.example",
       "artifact_refs": [
         { "type": "url", "value": "https://streamhaus.example/articles/hiking-gear-2026" }
       ]
@@ -595,6 +596,7 @@ async function runTests() {
       "property_rid": "01916f3a-f8cb-7000-8000-000000000051",
       "property_type": "ai_assistant",
       "placement_id": "chat-inline-recommendation",
+      "seller_agent_url": "https://streamhaus.example",
       "context_signals": {
         "topics": ["596", "477"],
         "taxonomy_source": "iab",
