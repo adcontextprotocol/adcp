@@ -329,12 +329,14 @@
 #                         that a later assert_contribution step can require)
 # contributes: boolean (optional — shorthand for `contributes_to: <enclosing phase's branch_set.id>`
 #                       introduced alongside first-class `branch_set:` declarations.
-#                       Legal only inside a phase that declares `branch_set:`; the runner's
-#                       loader resolves `contributes: true` to the phase's branch_set.id
-#                       and raises a storyboard-load error on `contributes: true` outside
+#                       Legal only inside a phase that declares `branch_set:`; current
+#                       SDK runners resolve `contributes: true` to the phase's branch_set.id
+#                       and raise a storyboard-load error on `contributes: true` outside
 #                       a branch_set phase or on a step that also declares `contributes_to`.
-#                       See adcp-client#693 and `lint:storyboard-branch-sets` for the
-#                       full rule set.)
+#                       Use explicit `contributes_to` when a storyboard must remain
+#                       compatible with older runners that grade before loader
+#                       normalization. See adcp-client#693 and
+#                       `lint:storyboard-branch-sets` for the full rule set.)
 # contributes_if: string (optional — runner-evaluated expression gating the contribution)
 #   Supported grammar (single form; not a general-purpose DSL):
 #     "prior_step.<step_id>.passed"   → true if the named prior step in the same storyboard passed
@@ -551,10 +553,11 @@
 #   `@adcp/client` 5.8.0+ also accepts the boolean shorthand
 #   `contributes: true` on a step inside a branch_set phase — the runner's
 #   loader resolves it to the enclosing phase's `branch_set.id`. The two
-#   forms are semantically identical; `contributes: true` is preferred
-#   inside a branch_set phase because it eliminates the typo surface (the
-#   string form must equal `branch_set.id` exactly). Authors may use
-#   either; the lint enforces both.
+#   forms are semantically identical in current SDK runners. Use explicit
+#   `contributes_to: <branch_set.id>` for storyboards that need to run against
+#   older graders that may inspect the field before loader normalization;
+#   use `contributes: true` only when the target runner line is known to
+#   support shorthand normalization. The lint enforces both forms.
 #
 #   New storyboards MUST declare branch-set membership with a `branch_set:`
 #   object. The implicit-detection fallback below exists only so pre-#2633
@@ -570,11 +573,13 @@
 #   Per-step contribution signalling is REQUIRED on each contributing step —
 #   the phase-level `branch_set:` declares membership but does not replace
 #   the step-level flag. Runners accumulate contributions at the step level.
-#   Two equivalent forms:
-#     - `contributes: true` (preferred inside a branch_set phase; resolves
-#       to the enclosing phase's `branch_set.id`)
-#     - `contributes_to: <branch_set.id>` (string form; required outside a
-#       branch_set phase and must equal `branch_set.id` inside one)
+#   Two equivalent forms in current SDK runners:
+#     - `contributes_to: <branch_set.id>` (compatibility-safe string form;
+#       required outside a branch_set phase and must equal `branch_set.id`
+#       inside one)
+#     - `contributes: true` (shorthand inside a branch_set phase; resolves
+#       to the enclosing phase's `branch_set.id` on runners that support
+#       shorthand normalization)
 #
 #   Authoring rules (enforced by `lint:storyboard-branch-sets`):
 #     - A phase with `branch_set:` MUST set `optional: true`. A
@@ -938,8 +943,9 @@
 # for the reference contract (endpoint modes, retry-replay shape, client-primitive
 # hooks). Storyboard authors MUST declare the contract in prerequisites; the
 # webhook-emission universal (universal/webhook-emission.yaml) is the reference
-# consumer, and universal/idempotency.yaml uses it for the "no duplicate webhooks
-# on replay" assertion.
+# consumer, including idempotency replay side-effect assertions that need
+# webhook observation. Keep those assertions on webhook-specific storyboards so
+# core idempotency requests do not depend on runner-only URL templating.
 #
 # --- Substitution variables (webhook-receiver enabled) ---
 #
