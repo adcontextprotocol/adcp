@@ -11,6 +11,7 @@ import { BrandDatabase } from '../db/brand-db.js';
 import { BansDatabase } from '../db/bans-db.js';
 import { canReviewBrandLogos, isRegistryModerator, isVerifiedBrandOwner } from '../services/brand-logo-auth.js';
 import { enrichUserWithMembership } from '../utils/html-config.js';
+import { resolvePrimaryOrganization } from '../db/users-db.js';
 import {
   validateLogoTags,
   detectContentType,
@@ -19,6 +20,7 @@ import {
   computeSha256,
   rebuildManifestLogos,
 } from '../services/brand-logo-service.js';
+import { getBrandAssetUrl } from '../services/logo-cdn.js';
 import { createLogger } from '../logger.js';
 import { isUuid } from '../utils/uuid.js';
 import { notifyPendingBrandLogo, notifyBrandLogoReviewed } from '../notifications/registry.js';
@@ -98,10 +100,10 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         // bad actor swap the storefront logo on a brand someone has actually
         // claimed. When no owner has verified yet, community uploads stay
         // allowed but queue for moderation (see review_status below).
+        const hostedForOwnership = await brandDb.getHostedBrandByDomain(domain);
         const isOwner = await isVerifiedBrandOwner(user.id, domain, brandDb);
         if (!isOwner) {
-          const hosted = await brandDb.getHostedBrandByDomain(domain);
-          if (hosted?.domain_verified && hosted.workos_organization_id) {
+          if (hostedForOwnership?.domain_verified && hostedForOwnership.workos_organization_id) {
             return res.status(403).json({
               error: `This brand is verified-owned. Only members of the owning organization can change its logo. If you believe you own ${domain}, start a brand-claim challenge to prove DNS control.`,
               code: 'verified_owner_required',
@@ -204,6 +206,12 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
 
         // Original filename
         const originalFilename = req.file.originalname?.slice(0, 255);
+        const uploaderOrgId = isOwner
+          ? hostedForOwnership?.workos_organization_id ?? null
+          : await resolvePrimaryOrganization(user.id).catch((err) => {
+            logger.warn({ err, userId: user.id }, 'Failed to resolve uploader org for brand-logo provenance');
+            return null;
+          });
 
         // Verified owners are auto-approved — domain control is the attestation.
         // Community uploads (only allowed when no owner has verified yet) queue
@@ -225,9 +233,17 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           source,
           review_status: reviewStatus,
           uploaded_by_user_id: user.id,
+          uploaded_by_org_id: uploaderOrgId ?? undefined,
           uploaded_by_email: user.email,
           upload_note: note,
           original_filename: originalFilename,
+          source_flow: isOwner ? 'brand_builder_owner_upload' : 'community_logo_upload',
+          provenance: {
+            approval_path: isOwner ? 'owner_auto_approved' : 'moderator_review_required',
+            source_flow: isOwner ? 'brand_builder_owner_upload' : 'community_logo_upload',
+            intended_use: 'brand_json',
+            uploader_path: isOwner ? 'owner' : 'community',
+          },
         });
 
         if (!logo) {
@@ -257,8 +273,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
 
         // Rebuild manifest so the new logo shows immediately. Verified hosted brands
         // manage their manifest via brand.json — skip the rebuild for those.
-        const hosted = await brandDb.getHostedBrandByDomain(domain);
-        if (!hosted || !hosted.domain_verified) {
+        if (!hostedForOwnership || !hostedForOwnership.domain_verified) {
           await rebuildManifestLogos(domain, brandLogoDb, brandDb);
         }
 
@@ -311,7 +326,8 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
             message: `Logo queued for moderator review (typically within ${PENDING_REVIEW_SLA_HOURS}h). It will appear on the brand viewer once approved.`,
             review_sla_hours: PENDING_REVIEW_SLA_HOURS,
           }),
-          url: `/logos/brands/${domain}/${logo.id}`,
+          url: getBrandAssetUrl(domain, logo.id, logo.content_type),
+          legacy_url: `/logos/brands/${domain}/${logo.id}`,
         });
       } catch (error) {
         logger.error({ err: error, domain: req.params.domain }, 'Logo upload failed');
@@ -358,13 +374,16 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
             source: l.source,
             review_status: l.review_status,
             tags: l.tags,
-            url: `/logos/brands/${domain}/${l.id}`,
+            url: getBrandAssetUrl(domain, l.id, l.content_type),
+            legacy_url: `/logos/brands/${domain}/${l.id}`,
           };
           if (l.width) base.width = l.width;
           if (l.height) base.height = l.height;
           if (canReview) {
             base.uploaded_by_email = l.uploaded_by_email;
+            base.uploaded_by_org_id = l.uploaded_by_org_id;
             base.upload_note = l.upload_note;
+            base.source_flow = l.source_flow;
             base.created_at = l.created_at;
           }
           return base;

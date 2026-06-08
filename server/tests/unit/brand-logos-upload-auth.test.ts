@@ -69,6 +69,10 @@ vi.mock('../../src/db/brand-logo-db.js', () => ({
   },
 }));
 
+vi.mock('../../src/db/users-db.js', () => ({
+  resolvePrimaryOrganization: vi.fn().mockResolvedValue('org_test'),
+}));
+
 vi.mock('../../src/services/brand-logo-service.js', async () => {
   const actual = await vi.importActual<typeof import('../../src/services/brand-logo-service.js')>(
     '../../src/services/brand-logo-service.js',
@@ -160,7 +164,11 @@ describe('POST /api/brands/:domain/logos write authority', () => {
     expect(res.status).toBe(201);
     expect(res.body.review_status).toBe('approved');
     expect(mocks.insertLogo).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'brand_owner', review_status: 'approved' }),
+      expect.objectContaining({
+        source: 'brand_owner',
+        review_status: 'approved',
+        uploaded_by_org_id: 'org_owner',
+      }),
     );
     // Owner-attested uploads don't need a moderator nudge.
     expect(mocks.notifyPendingBrandLogo).not.toHaveBeenCalled();

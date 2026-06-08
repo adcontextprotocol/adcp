@@ -67,6 +67,10 @@ vi.mock('../../src/db/brand-logo-db.js', () => ({
   },
 }));
 
+vi.mock('../../src/db/users-db.js', () => ({
+  resolvePrimaryOrganization: vi.fn().mockResolvedValue('org_test'),
+}));
+
 vi.mock('../../src/services/brand-logo-service.js', async () => {
   const actual = await vi.importActual<typeof import('../../src/services/brand-logo-service.js')>(
     '../../src/services/brand-logo-service.js',

@@ -11,9 +11,12 @@ export interface InsertBrandLogoInput {
   source: 'brandfetch' | 'community' | 'brand_owner' | 'brand_json';
   review_status?: 'pending' | 'approved' | 'rejected' | 'deleted';
   uploaded_by_user_id?: string;
+  uploaded_by_org_id?: string;
   uploaded_by_email?: string;
   upload_note?: string;
   original_filename?: string;
+  source_flow?: string;
+  provenance?: Record<string, unknown>;
 }
 
 export interface BrandLogoRow {
@@ -30,9 +33,12 @@ export interface BrandLogoRow {
   source: string;
   review_status: string;
   uploaded_by_user_id: string | null;
+  uploaded_by_org_id: string | null;
   uploaded_by_email: string | null;
   upload_note: string | null;
   original_filename: string | null;
+  source_flow: string | null;
+  provenance: Record<string, unknown> | null;
   review_note: string | null;
   reviewed_by_user_id: string | null;
   reviewed_at: Date | null;
@@ -45,9 +51,10 @@ export interface BrandLogoRow {
 export type BrandLogoSummary = Omit<BrandLogoRow, 'data'>;
 
 const SUMMARY_COLUMNS = `id, domain, content_type, storage_type, storage_key, sha256,
-  tags, width, height, source, review_status, uploaded_by_user_id, uploaded_by_email,
-  upload_note, original_filename, review_note, reviewed_by_user_id, reviewed_at,
-  deleted_at, slack_thread_ts, created_at, updated_at`;
+  tags, width, height, source, review_status, uploaded_by_user_id, uploaded_by_org_id,
+  uploaded_by_email, upload_note, original_filename, source_flow, provenance,
+  review_note, reviewed_by_user_id, reviewed_at, deleted_at, slack_thread_ts,
+  created_at, updated_at`;
 
 export interface ListBrandLogosOptions {
   tags?: string[];
@@ -60,9 +67,9 @@ export class BrandLogoDatabase {
     const result = await query<BrandLogoRow>(
       `INSERT INTO brand_logos (
         domain, content_type, data, sha256, tags, width, height,
-        source, review_status, uploaded_by_user_id, uploaded_by_email,
-        upload_note, original_filename
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        source, review_status, uploaded_by_user_id, uploaded_by_org_id,
+        uploaded_by_email, upload_note, original_filename, source_flow, provenance
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       ON CONFLICT (domain, sha256) WHERE review_status IN ('pending', 'approved')
       DO NOTHING
       RETURNING *`,
@@ -77,9 +84,12 @@ export class BrandLogoDatabase {
         input.source,
         input.review_status ?? 'approved',
         input.uploaded_by_user_id ?? null,
+        input.uploaded_by_org_id ?? null,
         input.uploaded_by_email ?? null,
         input.upload_note ?? null,
         input.original_filename ?? null,
+        input.source_flow ?? null,
+        JSON.stringify(input.provenance ?? {}),
       ]
     );
     return result.rows[0] ?? null;
