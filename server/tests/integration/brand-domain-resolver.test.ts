@@ -109,18 +109,12 @@ describe('getBrandPrimaryDomain', () => {
     expect(await getBrandPrimaryDomainRecord(ORG_A)).toBeNull();
   });
 
-  it('returns the first row but does not throw when multiple is_primary=true rows exist (data anomaly)', async () => {
-    // The invariant is exactly one is_primary=true row per org. If a
-    // future bug regresses it, the resolver should still produce a valid
-    // primary (some primary is better than none) and surface the anomaly
-    // via logger.error. This test documents the don't-crash contract;
-    // the log assertion isn't checked here.
+  it('prevents multiple is_primary=true rows for the same org', async () => {
     await seedOrg(pool, ORG_A, 'A Co');
     await seedDomain(pool, ORG_A, 'a-1.example', true);
-    await seedDomain(pool, ORG_A, 'a-2.example', true);
 
-    const result = await getBrandPrimaryDomain(ORG_A);
-    expect(result === 'a-1.example' || result === 'a-2.example').toBe(true);
+    await expect(seedDomain(pool, ORG_A, 'a-2.example', true)).rejects.toThrow();
+    await expect(getBrandPrimaryDomain(ORG_A)).resolves.toBe('a-1.example');
   });
 });
 
