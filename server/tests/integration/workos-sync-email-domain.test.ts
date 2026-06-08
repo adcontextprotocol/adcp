@@ -89,12 +89,133 @@ describe('syncOrganizationDomains email_domain sourcing', () => {
     expect(org.rows[0].email_domain).toBe('wkos-sync-email-root.test');
   });
 
+  it('does NOT create a second primary when WorkOS lists a new domain first', async () => {
+    await pool.query(
+      `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source, created_at, updated_at)
+       VALUES ($1, 'wkos-sync-email-existing.test', true, true, 'workos', NOW(), NOW())`,
+      [TEST_ORG],
+    );
+    await pool.query(
+      `UPDATE organizations SET email_domain = 'wkos-sync-email-existing.test'
+       WHERE workos_organization_id = $1`,
+      [TEST_ORG],
+    );
+
+    await syncOrganizationDomains({
+      id: TEST_ORG,
+      name: 'Sync Email Domain Test Co',
+      domains: [
+        { domain: 'wkos-sync-email-new-first.test', state: 'verified' },
+        { domain: 'wkos-sync-email-existing.test', state: 'verified' },
+      ],
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-05-12T00:00:00Z',
+    });
+
+    const rows = await pool.query<{ domain: string; is_primary: boolean }>(
+      `SELECT domain, is_primary FROM organization_domains
+        WHERE workos_organization_id = $1
+        ORDER BY domain`,
+      [TEST_ORG],
+    );
+    expect(rows.rows).toEqual([
+      { domain: 'wkos-sync-email-existing.test', is_primary: true },
+      { domain: 'wkos-sync-email-new-first.test', is_primary: false },
+    ]);
+
+    const org = await pool.query<{ email_domain: string | null }>(
+      `SELECT email_domain FROM organizations WHERE workos_organization_id = $1`,
+      [TEST_ORG],
+    );
+    expect(org.rows[0].email_domain).toBe('wkos-sync-email-existing.test');
+  });
+
+  it('promotes a replacement when the previous WorkOS primary is removed', async () => {
+    await pool.query(
+      `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source, created_at, updated_at)
+       VALUES ($1, 'wkos-sync-email-removed.test', true, true, 'workos', NOW(), NOW())`,
+      [TEST_ORG],
+    );
+    await pool.query(
+      `UPDATE organizations SET email_domain = 'wkos-sync-email-removed.test'
+       WHERE workos_organization_id = $1`,
+      [TEST_ORG],
+    );
+
+    await syncOrganizationDomains({
+      id: TEST_ORG,
+      name: 'Sync Email Domain Test Co',
+      domains: [
+        { domain: 'wkos-sync-email-replacement.test', state: 'verified' },
+      ],
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-05-12T00:00:00Z',
+    });
+
+    const rows = await pool.query<{ domain: string; is_primary: boolean }>(
+      `SELECT domain, is_primary FROM organization_domains
+        WHERE workos_organization_id = $1
+        ORDER BY domain`,
+      [TEST_ORG],
+    );
+    expect(rows.rows).toEqual([
+      { domain: 'wkos-sync-email-replacement.test', is_primary: true },
+    ]);
+
+    const org = await pool.query<{ email_domain: string | null }>(
+      `SELECT email_domain FROM organizations WHERE workos_organization_id = $1`,
+      [TEST_ORG],
+    );
+    expect(org.rows[0].email_domain).toBe('wkos-sync-email-replacement.test');
+  });
+
+  it('uses the oldest verified remaining domain when the previous primary is removed', async () => {
+    await pool.query(
+      `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source, created_at, updated_at)
+       VALUES
+         ($1, 'wkos-sync-email-removed.test', true,  true, 'workos', '2024-01-01T00:00:00Z', NOW()),
+         ($1, 'wkos-sync-email-older.test',   false, true, 'workos', '2024-02-01T00:00:00Z', NOW())`,
+      [TEST_ORG],
+    );
+    await pool.query(
+      `UPDATE organizations SET email_domain = 'wkos-sync-email-removed.test'
+       WHERE workos_organization_id = $1`,
+      [TEST_ORG],
+    );
+
+    await syncOrganizationDomains({
+      id: TEST_ORG,
+      name: 'Sync Email Domain Test Co',
+      domains: [
+        { domain: 'wkos-sync-email-newer-first.test', state: 'verified' },
+        { domain: 'wkos-sync-email-older.test', state: 'verified' },
+      ],
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-05-12T00:00:00Z',
+    });
+
+    const rows = await pool.query<{ domain: string; is_primary: boolean }>(
+      `SELECT domain, is_primary FROM organization_domains
+        WHERE workos_organization_id = $1
+        ORDER BY domain`,
+      [TEST_ORG],
+    );
+    expect(rows.rows).toEqual([
+      { domain: 'wkos-sync-email-newer-first.test', is_primary: false },
+      { domain: 'wkos-sync-email-older.test', is_primary: true },
+    ]);
+
+    const org = await pool.query<{ email_domain: string | null }>(
+      `SELECT email_domain FROM organizations WHERE workos_organization_id = $1`,
+      [TEST_ORG],
+    );
+    expect(org.rows[0].email_domain).toBe('wkos-sync-email-older.test');
+  });
+
   it('initial sync (no is_primary row yet) falls back to org.domains[0]', async () => {
     // Cold start: no organization_domains rows exist. The upsert loop
-    // inside the function inserts both, and the first one (i===0) is
-    // upserted with isPrimary=true — so by the time the email_domain
-    // UPDATE runs, the SELECT finds a primary row. Either way, the
-    // initial-sync expectation is that email_domain matches org.domains[0].
+    // inside the function inserts the verified domain, and then the
+    // oldest-verified fallback promotes it because no primary exists.
     await syncOrganizationDomains({
       id: TEST_ORG,
       name: 'Sync Email Domain Test Co',

@@ -102,6 +102,68 @@ describe('organization-domains-db (#4159 Stage 3a)', () => {
       expect(org.rows[0].email_domain).toBe(D1);
     });
 
+    it('with isPrimary=true demotes the existing primary for that org', async () => {
+      await linkDomain({
+        orgId: ORG_A,
+        domain: D1,
+        source: 'email_verification',
+        verified: true,
+        isPrimary: true,
+      });
+
+      await linkDomain({
+        orgId: ORG_A,
+        domain: D2,
+        source: 'email_verification',
+        verified: true,
+        isPrimary: true,
+      });
+
+      const rows = await getPool().query(
+        `SELECT domain, is_primary FROM organization_domains
+          WHERE workos_organization_id = $1 ORDER BY domain`,
+        [ORG_A],
+      );
+      expect(rows.rows).toEqual([
+        { domain: D1, is_primary: false },
+        { domain: D2, is_primary: true },
+      ]);
+
+      const org = await getPool().query(
+        `SELECT email_domain FROM organizations WHERE workos_organization_id = $1`,
+        [ORG_A],
+      );
+      expect(org.rows[0].email_domain).toBe(D2);
+    });
+
+    it('with isPrimary=true promotes an existing same-org row idempotently', async () => {
+      await linkDomain({
+        orgId: ORG_A,
+        domain: D1,
+        source: 'manual',
+        verified: false,
+        isPrimary: false,
+      });
+
+      const result = await linkDomain({
+        orgId: ORG_A,
+        domain: D1,
+        source: 'email_verification',
+        verified: true,
+        isPrimary: true,
+      });
+
+      expect(result).toEqual({ inserted: false, conflictOrgId: null });
+
+      const row = await getPool().query(
+        `SELECT is_primary, verified, source FROM organization_domains WHERE workos_organization_id = $1 AND domain = $2`,
+        [ORG_A, D1],
+      );
+      expect(row.rows[0].is_primary).toBe(true);
+      expect(row.rows[0].verified).toBe(true);
+      expect(row.rows[0].source).toBe('email_verification');
+    });
+
     it('does NOT touch email_domain when isPrimary=false', async () => {
       await getPool().query(
         `UPDATE organizations SET email_domain = 'pre-existing.test' WHERE workos_organization_id = $1`,
@@ -306,6 +368,23 @@ describe('organization-domains-db (#4159 Stage 3a)', () => {
         workos_organization_id: ORG_A,
         is_primary: false,
       });
+    });
+
+    it('on cross-org conflict, demotes a transferred primary row for the new org', async () => {
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D1, verified: true, isPrimary: true });
+      await upsertWorkosDomain({ orgId: ORG_B, domain: D_TAKEN, verified: true, isPrimary: true });
+
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D_TAKEN, verified: true });
+
+      const rows = await getPool().query(
+        `SELECT domain, is_primary FROM organization_domains
+          WHERE workos_organization_id = $1 ORDER BY domain`,
+        [ORG_A],
+      );
+      expect(rows.rows).toEqual([
+        { domain: D1, is_primary: true },
+        { domain: D_TAKEN, is_primary: false },
+      ]);
     });
   });
 

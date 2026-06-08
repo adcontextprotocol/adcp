@@ -587,6 +587,13 @@ export async function syncOrganizationDomains(org: OrganizationData): Promise<vo
   try {
     await client.query('BEGIN');
 
+    await client.query(
+      `SELECT 1 FROM organizations
+        WHERE workos_organization_id = $1
+        FOR UPDATE`,
+      [org.id],
+    );
+
     // Get current domains for this org
     const currentDomainsResult = await client.query(
       `SELECT domain FROM organization_domains WHERE workos_organization_id = $1`,
@@ -598,20 +605,14 @@ export async function syncOrganizationDomains(org: OrganizationData): Promise<vo
     // can verify and own a brand domain; we record that fact. Squeeze
     // prevention happens at the seat-cap layer, not by hiding ownership.
     const workOSDomains = new Set<string>();
-    for (let i = 0; i < org.domains.length; i++) {
-      const domainData = org.domains[i];
+    for (const domainData of org.domains) {
       workOSDomains.add(domainData.domain);
-
-      // is_primary + the email_domain update below drive auto-membership
-      // inference and only apply to non-personal orgs.
-      const isPrimaryEligible = !isPersonal && i === 0;
 
       await upsertWorkosDomain(
         {
           orgId: org.id,
           domain: domainData.domain,
           verified: domainData.state === 'verified',
-          isPrimary: isPrimaryEligible,
         },
         client,
       );
@@ -629,6 +630,23 @@ export async function syncOrganizationDomains(org: OrganizationData): Promise<vo
       }
     }
 
+    if (!isPersonal) {
+      const fallbackPrimary = await client.query<{ domain: string }>(
+        `SELECT domain FROM organization_domains
+          WHERE workos_organization_id = $1 AND verified = true
+          ORDER BY created_at ASC
+          LIMIT 1`,
+        [org.id],
+      );
+      const fallbackPrimaryDomain = fallbackPrimary.rows[0]?.domain ?? null;
+      if (fallbackPrimaryDomain) {
+        await autoPromotePrimaryIfNone(
+          { orgId: org.id, domain: fallbackPrimaryDomain },
+          client,
+        );
+      }
+    }
+
     // Update organizations.email_domain only for non-personal orgs — this
     // column is the auto-membership inference key and applying it to
     // personal-tier orgs would let `@vastlint.org` users auto-resolve to a
@@ -641,14 +659,16 @@ export async function syncOrganizationDomains(org: OrganizationData): Promise<vo
     // can have WorkOS list the failed one first, which would otherwise
     // overwrite the correct email_domain on every webhook fire. The
     // `upsertWorkosDomain` loop above doesn't change `is_primary` on
-    // conflict, so our table preserves the canonical choice; reading from
+    // same-org conflict, and `autoPromotePrimaryIfNone` only fills a missing
+    // primary, so our table preserves the canonical choice; reading from
     // there keeps `email_domain` in lockstep with what auto-membership
     // inference and brand-registry lookups already use.
     //
     // Fallback to `org.domains[0]` covers the initial-sync case (this is
-    // the first webhook for this org, no `organization_domains` rows are
-    // is_primary=true yet — the upsert above set `i===0` as primary, so
-    // the query usually picks it up, but the fallback is a safety net).
+    // the first webhook for this org and none of its domains are verified
+    // yet, no `organization_domains` rows are is_primary=true. The fallback
+    // preserves the legacy email_domain behavior without manufacturing a
+    // brand-primary row from an unverified domain.
     let primaryDomain: string | null = null;
     if (!isPersonal) {
       const primaryRow = await client.query<{ domain: string }>(
@@ -866,6 +886,13 @@ async function deleteSingleOrganizationDomain(domainData: OrganizationDomainEven
 
     // Normalize domain to lowercase
     const normalizedDomain = domainData.domain.toLowerCase();
+
+    await client.query(
+      `SELECT 1 FROM organizations
+        WHERE workos_organization_id = $1
+        FOR UPDATE`,
+      [domainData.organization_id],
+    );
 
     const result = await removeWorkosDomainAndReselectPrimary(
       { orgId: domainData.organization_id, domain: normalizedDomain },
