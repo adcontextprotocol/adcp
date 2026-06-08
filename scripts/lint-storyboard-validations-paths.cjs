@@ -110,6 +110,10 @@ function loadSchema(ref) {
   return doc;
 }
 
+function isRuntimeSchemaRef(ref) {
+  return typeof ref === 'string' && ref.startsWith('$test_kit.');
+}
+
 /**
  * `core/protocol-envelope.json` and `core/version-envelope.json` define
  * fields wrapping or mixed into every task response — `status`, `task_id`,
@@ -379,8 +383,34 @@ function lintDoc(doc, filePath, allowlist = []) {
   const violations = [];
   if (!doc) return violations;
   for (const step of findStepsWithValidations(doc, [])) {
+    const pathValidations = step.validations
+      .map((v, index) => ({ v, index }))
+      .filter(({ v }) => {
+        if (!v || typeof v !== 'object') return false;
+        if (!PATH_BEARING_CHECKS.has(v.check)) return false;
+        return typeof v.path === 'string' && v.path.length > 0;
+      });
+    if (pathValidations.length === 0) continue;
+
     const fullSchema = loadSchema(step.responseRef);
     if (!fullSchema) {
+      if (isRuntimeSchemaRef(step.responseRef)) {
+        for (const { v, index } of pathValidations) {
+          const segments = parsePath(v.path);
+          if (pathResolvesAgainstAnyEnvelope(segments)) continue;
+          if (isAllowlisted(allowlist, filePath, step.stepId, v.path)) continue;
+          violations.push({
+            rule: 'runtime_response_schema_unresolved_path',
+            filePath,
+            stepId: step.stepId,
+            responseRef: step.responseRef,
+            validationPath: v.path,
+            check: v.check,
+            index,
+          });
+        }
+        continue;
+      }
       violations.push({
         rule: 'response_schema_not_found',
         filePath,
@@ -401,12 +431,8 @@ function lintDoc(doc, filePath, allowlist = []) {
       continue;
     }
     const schema = armResult.schema;
-    for (let i = 0; i < step.validations.length; i++) {
-      const v = step.validations[i];
-      if (!v || typeof v !== 'object') continue;
-      if (!PATH_BEARING_CHECKS.has(v.check)) continue;
+    for (const { v, index: i } of pathValidations) {
       const rawPath = v.path;
-      if (typeof rawPath !== 'string' || rawPath.length === 0) continue;
       const segments = parsePath(rawPath);
       if (segments.includes('*') && v.check !== 'field_contains') {
         violations.push({
@@ -493,6 +519,10 @@ const RULE_MESSAGES = {
     '`scripts/storyboard-validations-paths-allowlist.json` with a `reason` string.',
   response_schema_not_found: ({ responseRef }) =>
     `response_schema_ref \`${responseRef}\` could not be loaded — fix the ref or the schema path.`,
+  runtime_response_schema_unresolved_path: ({ validationPath, responseRef, check }) =>
+    `validations[].path \`${validationPath}\` (check: \`${check}\`) uses runtime response_schema_ref ` +
+    `\`${responseRef}\`, so the source-tree lint can only validate protocol envelope fields. ` +
+    'Use an envelope field, a concrete response_schema_ref, or add a documented allowlist entry.',
   unknown_expected_arm: ({ expectedArm, responseRef }) =>
     `expected_arm \`${expectedArm}\` does not match any oneOf/anyOf branch in \`${responseRef}\`. ` +
     'Match rule: a branch must declare some property with `const: "<expected_arm>"`. ' +

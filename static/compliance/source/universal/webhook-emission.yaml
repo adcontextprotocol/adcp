@@ -1,8 +1,8 @@
 id: webhook_emission
-version: "1.2.0"
+version: "1.3.0"
 title: "Webhook emission — outbound webhook conformance (operation ID + signing + idempotency + sync silence)"
 category: core
-summary: "Any agent that emits webhooks MUST echo the caller-supplied operation_id in every payload, carry a stable idempotency_key across retries, and — when the buyer has not opted into the deprecated HMAC fallback — MUST sign deliveries under the RFC 9421 webhook profile. Sellers MUST NOT emit task webhooks for inline terminal responses; any future sync-completion notification mode would be explicit and capability-advertised. Graded by a runner hosting a webhook receiver during storyboard execution."
+summary: "Any agent that emits webhooks MUST echo the caller-supplied operation_id in every payload, carry a stable idempotency_key across retries, avoid duplicate webhook side effects on request replay, and — when the buyer has not opted into the deprecated HMAC fallback — MUST sign deliveries under the RFC 9421 webhook profile. Sellers MUST NOT emit task webhooks for inline terminal responses; any future sync-completion notification mode would be explicit and capability-advertised. Graded by a runner hosting a webhook receiver during storyboard execution."
 track: core
 
 narrative: |
@@ -13,8 +13,8 @@ narrative: |
   Every agent that accepts `push_notification_config` on any operation is in
   scope for this universal — no capability flag, no opt-in.
 
-  Four load-bearing conformance requirements apply across this universal. The
-  first three apply to emitted outbound webhooks; the fourth guards the absence
+  Five load-bearing conformance requirements apply across this universal. The
+  first four apply to emitted outbound webhooks; the fifth guards the absence
   of task webhooks on synchronous completions:
 
   1. **`operation_id` echoes the caller-supplied value from
@@ -27,13 +27,17 @@ narrative: |
      a sender that regenerates the key on retry breaks at-least-once delivery
      semantics and creates duplicate side effects downstream.
 
-  3. **RFC 9421 webhook signing is baseline in 3.0** unless the buyer opts into
+  3. **Idempotency replay does not duplicate outbound webhook side effects.**
+     Replaying the same operation request with the same idempotency_key MUST
+     return the cached response and MUST NOT emit a second logical webhook.
+
+  4. **RFC 9421 webhook signing is baseline in 3.0** unless the buyer opts into
      the deprecated HMAC fallback via `push_notification_config.authentication`.
      Required by adcontextprotocol/adcp#2423. Signatures carry
      `tag="adcp/webhook-signing/v1"`, cover `content-digest`, and verify
      against the seller's brand.json-published JWKS.
 
-  4. **Synchronous completions do not emit task webhooks.**
+  5. **Synchronous completions do not emit task webhooks.**
      `push_notification_config` registers a notification channel for operations
      whose initial response is non-terminal (`working` or `submitted`); it does
      not ask the seller to duplicate an inline terminal result onto the webhook
@@ -279,6 +283,98 @@ phases:
           status, and result shape required by the schema; any task status is
           acceptable because every webhook for the operation must echo the
           registered operation_id.
+
+  - id: idempotency_replay_side_effects
+    title: "Idempotency replay does not duplicate webhook side effects"
+    narrative: |
+      The runner triggers a webhook-emitting operation, then replays the exact
+      same request with the same idempotency_key and same webhook registration.
+      The seller MUST return the cached task response and MUST NOT re-execute
+      outbound webhook side effects on replay.
+
+      This check lives in the webhook-emission universal rather than the core
+      idempotency universal because it depends on runner-hosted webhook URL
+      substitution. Core idempotency remains runnable by agents and runners
+      that do not host a webhook receiver; webhook side-effect idempotency is
+      graded here when the receiver contract is in scope.
+
+    steps:
+      - id: trigger_idempotent_webhook_initial
+        title: "Trigger a webhook-emitting operation with a fresh idempotency key"
+        narrative: |
+          Runner calls a webhook-emitting operation with a fresh idempotency_key
+          and a receiver URL. This first request establishes the cached response
+          and the single logical webhook event that the replay below must not
+          duplicate.
+        task: "$test_kit.operations.primary_webhook_emitter"
+        task_default: create_media_buy
+        schema_ref: "$test_kit.schemas.primary_request"
+        response_schema_ref: "$test_kit.schemas.primary_response"
+        doc_ref: "/building/implementation/webhooks"
+        comply_scenario: webhook_idempotency_replay_trigger
+        stateful: true
+        sample_request:
+          push_notification_config:
+            url: "{{runner.webhook_url:trigger_idempotent_webhook_initial}}"
+            operation_id: "op_webhook_idempotency_replay"
+          idempotency_key: "$generate:uuid_v4#webhook_emission_replay_key"
+          context:
+            correlation_id: "webhook_emission--idempotent_replay_initial"
+        expected: |
+          Agent accepts the request and emits at most one logical webhook event
+          for this operation.
+
+      - id: trigger_idempotent_webhook_replay
+        title: "Replay the same request with the same idempotency key"
+        narrative: |
+          Runner re-sends the same logical request: same idempotency_key, same
+          payload, same webhook receiver URL, and same explicit operation_id.
+          The seller must return the cached response and must not emit another
+          webhook for the replay.
+        task: "$test_kit.operations.primary_webhook_emitter"
+        task_default: create_media_buy
+        schema_ref: "$test_kit.schemas.primary_request"
+        response_schema_ref: "$test_kit.schemas.primary_response"
+        doc_ref: "/building/implementation/webhooks"
+        comply_scenario: webhook_idempotency_replay_trigger
+        stateful: true
+        sample_request:
+          push_notification_config:
+            url: "{{runner.webhook_url:trigger_idempotent_webhook_initial}}"
+            operation_id: "op_webhook_idempotency_replay"
+          idempotency_key: "$generate:uuid_v4#webhook_emission_replay_key"
+          context:
+            correlation_id: "webhook_emission--idempotent_replay_replay"
+        validations:
+          - check: field_value
+            path: "replayed"
+            value: true
+            description: "Replay resolves from the idempotency cache"
+        expected: |
+          Agent returns the cached response for the original operation without
+          re-executing outbound webhook side effects.
+
+      - id: expect_no_duplicate_webhook_on_replay
+        title: "Assert replay did not duplicate the logical webhook"
+        narrative: |
+          The runner counts webhooks arriving at the initial request's receiver
+          URL across both the initial and replay windows. A conformant seller
+          emits the logical webhook at most once; a seller that re-executes on
+          replay emits a second event and fails this step.
+        task: expect_webhook
+        triggered_by: trigger_idempotent_webhook_initial
+        filter:
+          body:
+            operation_id: "op_webhook_idempotency_replay"
+        timeout_seconds: 30
+        expect_max_deliveries_per_logical_event: 1
+        webhook_payload_schema_ref: "core/mcp-webhook-payload.json"
+        stateful: true
+        expected: |
+          At most one logical webhook event is delivered for the operation
+          across the initial request and idempotency replay. Duplicate delivery
+          with a distinct webhook idempotency_key but the same operation_id
+          fails as duplicate_webhook_on_replay.
 
   - id: synchronous_completion_success_path
     title: "Synchronous-only reads stay terminal when accepted"

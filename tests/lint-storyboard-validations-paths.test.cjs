@@ -297,6 +297,61 @@ test('envelope-aware resolution: replayed and adcp_error resolve via protocol-en
   );
 });
 
+test('runtime test-kit response refs allow envelope-only path assertions', () => {
+  const violations = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'webhook_replay',
+            task: '$test_kit.operations.primary_webhook_emitter',
+            response_schema_ref: '$test_kit.schemas.primary_response',
+            validations: [
+              {
+                check: 'field_value',
+                path: 'replayed',
+                value: true,
+                description: 'Replay resolves from the idempotency cache',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/test.yaml');
+
+  assert.deepEqual(violations, []);
+});
+
+test('runtime test-kit response refs still flag non-envelope path assertions', () => {
+  const violations = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'webhook_replay',
+            task: '$test_kit.operations.primary_webhook_emitter',
+            response_schema_ref: '$test_kit.schemas.primary_response',
+            validations: [
+              {
+                check: 'field_present',
+                path: 'media_buy_id',
+                description: 'Body fields require a concrete response schema',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/test.yaml');
+
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'runtime_response_schema_unresolved_path');
+  assert.equal(violations[0].validationPath, 'media_buy_id');
+});
+
 test('source tree allows envelope_field_absent for protocol-envelope forbidden fields', () => {
   const violations = lintDoc({
     phases: [
