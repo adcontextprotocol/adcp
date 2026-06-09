@@ -125,7 +125,7 @@ import { createRegistryApiRouters } from "./routes/registry-api.js";
 import { getPublicJwks } from "./services/verification-token.js";
 import { createCatalogApiRouter } from "./routes/catalog-api.js";
 import { createCommunityMirrorRouter } from "./routes/community-mirrors.js";
-import { getLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
+import { extensionForLogoContentType, getBrandAssetUrl, getLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { BrandLogoDatabase } from "./db/brand-logo-db.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
@@ -1214,26 +1214,12 @@ export class HTTPServer {
       }
     }
 
-    this.app.get('/logos/brands/:domain/:id', async (req, res) => {
-      const domain = req.params.domain.toLowerCase();
-      const id = req.params.id;
+    const serveApprovedLogoAsset = async (domain: string, id: string, res: express.Response, requestedExt?: string) => {
       if (!logoDomainPattern.test(domain)) {
         return res.status(400).json({ error: 'Invalid domain' });
       }
 
       try {
-        // Integer fallback: old /:idx URLs redirect to UUID
-        if (/^\d+$/.test(id)) {
-          const oldIdx = parseInt(id, 10);
-          const newId = await brandLogoDb.getLogoRedirect(domain, oldIdx);
-          if (!newId) {
-            return res.status(404).json({ error: 'Logo not found' });
-          }
-          res.setHeader('Content-Security-Policy', "default-src 'none'");
-          res.setHeader('Content-Disposition', 'inline');
-          return res.redirect(301, `/logos/brands/${domain}/${newId}`);
-        }
-
         if (!isUuid(id)) {
           return res.status(400).json({ error: 'Invalid logo ID' });
         }
@@ -1245,6 +1231,11 @@ export class HTTPServer {
           // Move to end (most recently used)
           logoCache.delete(cacheKey);
           logoCache.set(cacheKey, cached);
+
+          const expectedExt = extensionForLogoContentType(cached.content_type);
+          if (requestedExt && requestedExt.toLowerCase() !== expectedExt) {
+            return res.redirect(301, getBrandAssetUrl(domain, id, cached.content_type));
+          }
 
           res.setHeader('Content-Type', cached.content_type);
           res.setHeader('Cache-Control', 'public, max-age=2592000');
@@ -1262,6 +1253,10 @@ export class HTTPServer {
           logger.error({ domain, id, contentType: logo.content_type }, 'Logo has disallowed content-type');
           return res.status(500).json({ error: 'Failed to retrieve logo' });
         }
+        const expectedExt = extensionForLogoContentType(logo.content_type);
+        if (requestedExt && requestedExt.toLowerCase() !== expectedExt) {
+          return res.redirect(301, getBrandAssetUrl(domain, id, logo.content_type));
+        }
 
         // Add to LRU cache
         logoCacheTotalBytes += logo.data.length;
@@ -1278,6 +1273,34 @@ export class HTTPServer {
         logger.error({ err: error, domain, id }, 'Failed to serve logo');
         return res.status(500).json({ error: 'Failed to retrieve logo' });
       }
+    };
+
+    this.app.get('/assets/brands/:domain/:asset', async (req, res) => {
+      const domain = req.params.domain.toLowerCase();
+      const match = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([a-z0-9]+)$/i.exec(req.params.asset);
+      if (!match) {
+        return res.status(400).json({ error: 'Invalid asset ID' });
+      }
+      return serveApprovedLogoAsset(domain, match[1], res, match[2]);
+    });
+
+    this.app.get('/logos/brands/:domain/:id', async (req, res) => {
+      const domain = req.params.domain.toLowerCase();
+      const id = req.params.id;
+
+      // Integer fallback: old /:idx URLs redirect to UUID.
+      if (/^\d+$/.test(id)) {
+        const oldIdx = parseInt(id, 10);
+        const newId = await brandLogoDb.getLogoRedirect(domain, oldIdx);
+        if (!newId) {
+          return res.status(404).json({ error: 'Logo not found' });
+        }
+        res.setHeader('Content-Security-Policy', "default-src 'none'");
+        res.setHeader('Content-Disposition', 'inline');
+        return res.redirect(301, `/logos/brands/${domain}/${newId}`);
+      }
+
+      return serveApprovedLogoAsset(domain, id, res);
     });
 
     // Mount brand logo routes (upload, list, review)

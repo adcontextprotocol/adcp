@@ -11,7 +11,7 @@ import { BrandManager } from '../../brand-manager.js';
 import { BrandDatabase } from '../../db/brand-db.js';
 import { registryRequestsDb } from '../../db/registry-requests-db.js';
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from '../../services/brandfetch.js';
-import { downloadAndCacheLogos, isBrandfetchUrl } from '../../services/logo-cdn.js';
+import { downloadAndCacheLogos, getBrandAssetUrl, isBrandfetchUrl } from '../../services/logo-cdn.js';
 import { BrandLogoDatabase } from '../../db/brand-logo-db.js';
 import { safeFetch } from '../../utils/url-security.js';
 import { detectContentType, sanitizeSvg, validateLogoTags, computeSha256, extractDimensions, rebuildManifestLogos } from '../../services/brand-logo-service.js';
@@ -139,8 +139,8 @@ export const BRAND_TOOLS: AddieTool[] = [
   },
   {
     name: 'upload_brand_logo',
-    description: 'Upload a logo file for a brand in the registry. The upload queues for moderator review (community contribution). Blocked when a brand has a verified DNS owner — only that org can change its logo, and the human must use the brand-builder UI for owner-attested uploads.',
-    usage_hints: 'Use when a user shares a logo URL (press kit, brand portal) and wants to upload it for a brand.',
+    description: 'Fetch and promote a logo file for a brand in the registry. The upload queues for moderator review (community contribution) and, when approved, receives an AAO-hosted public /assets/brands URL suitable for brand.json. Blocked when a brand has a verified DNS owner — only that org can change its logo, and the human must use the brand-builder UI for owner-attested uploads.',
+    usage_hints: 'Use when a user shares a logo URL (press kit, brand portal) and explicitly wants AAO to host it for brand.json. Show the pending public URL/diff and wait for confirmation before treating it as publishable.',
     input_schema: {
       type: 'object',
       properties: {
@@ -533,9 +533,10 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     }
 
     // HTTPS only
+    let parsedLogoUrl: URL;
     try {
-      const parsed = new URL(logoUrl);
-      if (parsed.protocol !== 'https:') {
+      parsedLogoUrl = new URL(logoUrl);
+      if (parsedLogoUrl.protocol !== 'https:') {
         return JSON.stringify({ error: 'Only HTTPS URLs are accepted' });
       }
     } catch {
@@ -644,7 +645,17 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       // verified owners in #4743) doesn't apply.
       review_status: 'pending',
       uploaded_by_user_id: 'system:addie',
+      source_flow: 'addie_brand_json_asset_promotion',
       upload_note: note,
+      original_filename: parsedLogoUrl.pathname.split('/').filter(Boolean).pop()?.slice(0, 255),
+      provenance: {
+        original_url_host: parsedLogoUrl.hostname,
+        original_url_path: parsedLogoUrl.pathname,
+        source_flow: 'addie_brand_json_asset_promotion',
+        approval_path: 'moderator_review_required',
+        intended_use: 'brand_json',
+        uploader_path: 'community',
+      },
     });
 
     if (!logo) {
@@ -692,9 +703,10 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       domain,
       logo_id: logo.id,
       review_status: 'pending',
-      message: 'Logo queued for moderator review (typically within 48h). It will not appear on the brand viewer until approved.',
+      message: 'Logo queued for moderator review (typically within 48h). The public asset URL will not resolve or appear in brand.json until approved.',
       review_sla_hours: 48,
-      url: `/logos/brands/${domain}/${logo.id}`,
+      url: getBrandAssetUrl(domain, logo.id, logo.content_type),
+      legacy_url: `/logos/brands/${domain}/${logo.id}`,
       content_type: contentType,
       tags,
     }, null, 2);
