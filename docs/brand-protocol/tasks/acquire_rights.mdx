@@ -212,7 +212,7 @@ Two campaign-field validations are normative for `acquire_rights`. Both produce 
 
 Brand agents MUST reject with `INVALID_REQUEST` and `field: "campaign.end_date"` when `campaign.end_date` is in the past at the time of the request. Acquiring rights for a window that has already elapsed produces a zero-duration grant and is almost always a buyer-side bug — surfacing it deterministically is more useful than silently issuing credentials that immediately expire.
 
-Unlike [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy), which supports an `any_of` past-start auto-adjust pattern (a flight can be time-shifted forward without re-licensing), rights grants are not time-shiftable: the contract attaches to the requested period, so reject-only is the correct contract for `acquire_rights`.
+Like [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy), rights grants are not time-shiftable for elapsed windows: the contract attaches to the requested period, so reject-only is the correct contract for `acquire_rights`.
 
 Brand agents MAY also reject when `campaign.start_date` is more than the rights agent's configured grace window in the past (typically the rights agent rejects start dates earlier than `now - 24h` since rights cannot be retroactively granted); that decision is contract-specific and SHOULD use `field: "campaign.start_date"`. The `end_date < now` check is the normative floor.
 

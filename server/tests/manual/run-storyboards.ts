@@ -29,6 +29,11 @@ import {
   InMemoryRevocationStore,
 } from '@adcp/sdk/signing';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
+import {
+  authForStoryboard,
+  testKitOptionsFromKit,
+  type LoadedTestKit,
+} from '../../src/compliance/storyboard-runner-options.js';
 
 // Set auth env BEFORE loading the training-agent router. The router captures
 // PUBLIC_TEST_AGENT_TOKEN / TRAINING_AGENT_TOKEN into its authenticator at
@@ -384,15 +389,6 @@ function isApplicable(sb: Storyboard): boolean {
  * brand into options.brand forces every outgoing request onto the same
  * session key.
  */
-interface LoadedTestKit {
-  brand?: { house?: { domain?: string }; brand_id?: string };
-  auth?: {
-    api_key?: string;
-    basic?: { username?: string; password?: string; credentials?: string };
-    probe_task?: string;
-  };
-}
-
 function loadTestKit(sb: Storyboard): LoadedTestKit | undefined {
   const kitRef = sb.prerequisites?.test_kit;
   if (!kitRef) return undefined;
@@ -404,55 +400,6 @@ function loadTestKit(sb: Storyboard): LoadedTestKit | undefined {
 function brandFromKit(kit: LoadedTestKit | undefined): StoryboardRunOptions['brand'] | undefined {
   const domain = kit?.brand?.house?.domain;
   return domain ? { domain } : undefined;
-}
-
-/**
- * Per-tenant probe-task override for security_baseline's auth probes.
- *
- * Most shared test-kits declare `auth.probe_task: list_creatives`, but cached
- * prerelease kits can lag the allowlist. Sales/creative explicitly pin the
- * allowlisted protected read they serve. /signals and /governance serve
- * different SDK-allowlisted protected reads. /creative-builder and /brand
- * have no 3.0-compatible allowlisted protected read task, so the 3.0 compat
- * path marks only the final mechanism assertion skipped below.
- */
-const PROBE_TASK_BY_TENANT: Record<string, string> = {
-  sales: 'list_creatives',
-  creative: 'list_creatives',
-  signals: 'get_signals',
-  governance: 'list_content_standards',
-};
-
-/**
- * Thread the test-kit's `auth.api_key` / `auth.probe_task` through to the
- * runner so `api_key_path` in security_baseline (and any future kit-gated
- * phase) executes instead of being skipped by `skip_if: "!test_kit.auth.api_key"`.
- * `probe_task` is required by the runner whenever `auth` is declared — surface
- * missing values as a hard failure rather than silently defaulting.
- *
- * When `TENANT_PATH` matches a known tenant, override `probe_task` with a
- * tool that tenant actually serves (see `PROBE_TASK_BY_TENANT`).
- */
-function testKitOptionsFromKit(kit: LoadedTestKit | undefined): StoryboardRunOptions['test_kit'] | undefined {
-  const auth = kit?.auth;
-  if (!auth?.api_key && !auth?.basic && !auth?.probe_task) return undefined;
-  if (!auth.probe_task) {
-    throw new Error('test kit declares auth credentials without auth.probe_task — required by runner');
-  }
-  const tenantPath = process.env.TENANT_PATH;
-  const probeTask = (tenantPath && PROBE_TASK_BY_TENANT[tenantPath]) ?? auth.probe_task;
-  return {
-    auth: {
-      ...(auth.api_key !== undefined && { api_key: auth.api_key }),
-      ...(auth.basic !== undefined && { basic: auth.basic }),
-      probe_task: probeTask,
-    },
-  };
-}
-
-function authTokenForStoryboard(storyboard: Storyboard, kit: LoadedTestKit | undefined): string {
-  if (storyboard.id === 'billing_gate_dispatch' && kit?.auth?.api_key) return kit.auth.api_key;
-  return AUTH_TOKEN;
 }
 
 /**
@@ -620,7 +567,7 @@ async function main() {
     const kit = loadTestKit(storyboard);
     const brand = brandFromKit(kit);
     const testKit = testKitOptionsFromKit(kit);
-    const authToken = authTokenForStoryboard(storyboard, kit);
+    const auth = authForStoryboard(storyboard.id, kit, AUTH_TOKEN);
     const previousTrainingAgentUrl = process.env.TRAINING_AGENT_URL;
     if (storyboard.id === 'webhook_emission') {
       process.env.TRAINING_AGENT_URL = localAgentBaseUrl;
@@ -692,7 +639,7 @@ async function main() {
           const targetUrl = agentUrl.replace(/\/mcp$/, variant.routeSuffix);
           const result = await runStoryboard(targetUrl, storyboard, {
             ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
-            auth: { type: 'bearer', token: authToken },
+            auth,
             allow_http: true,
             contracts: ['webhook_receiver_runner'],
             webhook_receiver: { mode: 'loopback_mock' },
@@ -737,7 +684,7 @@ async function main() {
         // calls keep working.
         const result = await runStoryboard(agentUrl, storyboard, {
           ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
-          auth: { type: 'bearer', token: authToken },
+          auth,
           allow_http: true,
           contracts: ['webhook_receiver_runner'],
           webhook_receiver: { mode: 'loopback_mock' },
