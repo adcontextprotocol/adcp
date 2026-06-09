@@ -4531,11 +4531,9 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   if (buyStart !== 'asap' && new Date(buyStart) >= new Date(buyEnd)) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'start_time must be before end_time' }] as TaskError[] };
   }
-  // NOTE: the conformance storyboard now requires INVALID_REQUEST for a
-  // concrete start_time in the past. The reference training-agent still keeps
-  // this legacy path temporarily because several status-derivation and delivery
-  // fixtures construct historical buys. Migrate those fixtures before enabling
-  // the production conformance behavior here.
+  if (buyStart !== 'asap' && new Date(buyStart) < new Date()) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'start_time must not be in the past' }] as TaskError[] };
+  }
 
   // Validate all packages and collect errors before returning
   const errors: TaskError[] = [];

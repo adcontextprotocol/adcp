@@ -48,6 +48,17 @@ describe('storyboard runner option helpers', () => {
     });
   });
 
+  it('rejects Basic credentials pairs with an empty username', () => {
+    const kit: LoadedTestKit = {
+      auth: {
+        basic: { credentials: ':agent-pass' },
+        probe_task: 'list_creatives',
+      },
+    };
+
+    expect(() => authForStoryboard('security_baseline', kit, 'default-token')).toThrow(/auth\.basic/);
+  });
+
   it('fails fast for dual-credential security_baseline kits until runs are split by mechanism', () => {
     const kit: LoadedTestKit = {
       auth: {

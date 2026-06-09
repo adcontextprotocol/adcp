@@ -2390,6 +2390,30 @@ describe('create_media_buy handler', () => {
     expect(result.errors).toBeUndefined();
   });
 
+  it('rejects a concrete start_time in the past', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const pastStart = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    const futureEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account: { brand: { domain: 'past-start.example' }, operator: 'past-start.example' },
+      brand: { domain: 'past-start.example' },
+      start_time: pastStart,
+      end_time: futureEnd,
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 50000,
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.media_buy_id).toBeUndefined();
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.message).toMatch(/start_time must not be in the past/);
+  });
+
   it('creates a media buy from fixed-price discovery without bid_price', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: discovery } = await simulateCallTool(server, 'get_products', {
@@ -2450,21 +2474,22 @@ describe('create_media_buy handler', () => {
     const { productId, pricingOptionId } = getFirstProductAndPricing();
     const account = { brand: { domain: 'status.example' }, operator: 'status.example' };
 
-    // Without creatives, all non-terminal buys are pending_creatives
-    const server1 = createTrainingAgentServer(DEFAULT_CTX);
-    const { result: past } = await simulateCallTool(server1, 'create_media_buy', {
-      account,
-      brand: { domain: 'status.example' },
-      start_time: '2020-01-01T00:00:00Z',
-      end_time: '2020-01-31T23:59:59Z',
-      packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget: 50000 }],
-    });
-    expect(past.media_buy_status).toBe('pending_creatives');
-
-    // With creatives assigned, date-based derivation applies
     const now = new Date();
     const futureStart = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const futureEnd = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
+
+    // Without creatives, all non-terminal buys are pending_creatives
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: pendingCreatives } = await simulateCallTool(server1, 'create_media_buy', {
+      account,
+      brand: { domain: 'status.example' },
+      start_time: futureStart,
+      end_time: futureEnd,
+      packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget: 50000 }],
+    });
+    expect(pendingCreatives.media_buy_status).toBe('pending_creatives');
+
+    // With creatives assigned, date-based derivation applies
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
     const { result: created } = await simulateCallTool(server2, 'create_media_buy', {
       account,
@@ -5295,7 +5320,7 @@ describe('update_media_buy handler', () => {
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'assign-clear-active.example' },
-      start_time: '2025-01-01T00:00:00Z',
+      start_time: 'asap',
       end_time: '2027-12-31T00:00:00Z',
       packages: [{
         product_id: product.product_id,
@@ -5342,7 +5367,7 @@ describe('update_media_buy handler', () => {
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'assign-clear-paused.example' },
-      start_time: '2025-01-01T00:00:00Z',
+      start_time: 'asap',
       end_time: '2027-12-31T00:00:00Z',
       packages: [{
         product_id: product.product_id,
@@ -5855,7 +5880,7 @@ describe('paused package delivery', () => {
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'ended-paused-delivery.example' },
-      start_time: '2025-01-01T00:00:00Z',
+      start_time: 'asap',
       end_time: '2025-01-31T23:59:59Z',
       paused: true,
       packages: [{
@@ -6400,8 +6425,8 @@ describe('get_media_buy_delivery handler', () => {
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'deliveryref.example' },
-      start_time: '2025-01-01T00:00:00Z',
-      end_time: '2025-12-31T00:00:00Z',
+      start_time: 'asap',
+      end_time: '2027-12-31T00:00:00Z',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
@@ -6430,8 +6455,8 @@ describe('get_media_buy_delivery handler', () => {
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'cpa-delivery.example' },
-      start_time: '2025-01-01T00:00:00Z',
-      end_time: '2025-12-31T00:00:00Z',
+      start_time: 'asap',
+      end_time: '2027-12-31T00:00:00Z',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
@@ -6478,8 +6503,8 @@ describe('get_media_buy_delivery handler', () => {
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'cpc-delivery.example' },
-      start_time: '2025-01-01T00:00:00Z',
-      end_time: '2025-12-31T00:00:00Z',
+      start_time: 'asap',
+      end_time: '2027-12-31T00:00:00Z',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
@@ -6521,8 +6546,8 @@ describe('get_media_buy_delivery handler', () => {
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'no-clicks.example' },
-      start_time: '2025-01-01T00:00:00Z',
-      end_time: '2025-12-31T00:00:00Z',
+      start_time: 'asap',
+      end_time: '2027-12-31T00:00:00Z',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
@@ -6567,8 +6592,8 @@ describe('get_media_buy_delivery handler', () => {
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'reach-delivery.example' },
-      start_time: '2025-01-01T00:00:00Z',
-      end_time: '2025-12-31T00:00:00Z',
+      start_time: 'asap',
+      end_time: '2027-12-31T00:00:00Z',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
@@ -6620,8 +6645,8 @@ describe('get_media_buy_delivery handler', () => {
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'cv-delivery.example' },
-      start_time: '2025-01-01T00:00:00Z',
-      end_time: '2025-12-31T00:00:00Z',
+      start_time: 'asap',
+      end_time: '2027-12-31T00:00:00Z',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
@@ -6670,8 +6695,8 @@ describe('get_media_buy_delivery handler', () => {
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'no-conversions.example' },
-      start_time: '2025-01-01T00:00:00Z',
-      end_time: '2025-12-31T00:00:00Z',
+      start_time: 'asap',
+      end_time: '2027-12-31T00:00:00Z',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
@@ -6698,8 +6723,8 @@ describe('get_media_buy_delivery handler', () => {
     const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'deliverymulti.example' },
-      start_time: '2025-01-01T00:00:00Z',
-      end_time: '2025-12-31T00:00:00Z',
+      start_time: 'asap',
+      end_time: '2027-12-31T00:00:00Z',
       packages: [
         {
           product_id: product.product_id,
@@ -7740,8 +7765,8 @@ describe('get_creative_delivery handler', () => {
     const { result: buyResult } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'creativedel.example' },
-      start_time: '2025-01-01T00:00:00Z',
-      end_time: '2025-12-31T00:00:00Z',
+      start_time: 'asap',
+      end_time: '2027-12-31T00:00:00Z',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
@@ -7814,8 +7839,8 @@ describe('get_creative_delivery handler', () => {
     await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'deterministic.example' },
-      start_time: '2025-01-01T00:00:00Z',
-      end_time: '2025-12-31T00:00:00Z',
+      start_time: 'asap',
+      end_time: '2027-12-31T00:00:00Z',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
@@ -7871,8 +7896,8 @@ describe('get_creative_delivery handler', () => {
     await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'buyerref.example' },
-      start_time: '2025-01-01T00:00:00Z',
-      end_time: '2025-12-31T00:00:00Z',
+      start_time: 'asap',
+      end_time: '2027-12-31T00:00:00Z',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
@@ -8874,7 +8899,7 @@ describe('MCP Tasks protocol', () => {
       buyer_ref: 'test',
       account: { account_id: 'test' },
       brand: { domain: 'test.com' },
-      start_time: '2025-01-01T00:00:00Z',
+      start_time: 'asap',
       end_time: '2025-02-01T00:00:00Z',
       // Missing packages — structured INVALID_REQUEST response, not a task failure
     });
@@ -9991,7 +10016,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         signal_activation: { amount: 100000 },
       },
     },
-    flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+    flight: { start: '2027-04-01T00:00:00Z', end: '2027-06-30T23:59:59Z' },
     countries: ['US'],
   };
 
@@ -10010,8 +10035,8 @@ describe('storyboard governance sample_requests accepted by training agent', () 
       tool: 'create_media_buy',
       payload: {
         account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
-        start_time: '2026-04-01T00:00:00Z',
-        end_time: '2026-06-30T23:59:59Z',
+        start_time: '2027-04-01T00:00:00Z',
+        end_time: '2027-06-30T23:59:59Z',
         packages: [
           { product_id: 'sports_preroll_q2', budget: 25000 },
           { product_id: 'lifestyle_display_q2', budget: 15000 },
@@ -10101,7 +10126,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         brand: { domain: 'acmeoutdoor.com' },
         right_type: 'image_generation',
         pricing_option_id: 'standard_monthly',
-        campaign: { name: 'Acme Outdoor Summer 2026', countries: ['US'], start_date: '2026-04-01', end_date: '2026-06-30' },
+        campaign: { name: 'Acme Outdoor Summer 2027', countries: ['US'], start_date: '2027-04-01', end_date: '2027-06-30' },
       },
     });
 
@@ -10198,7 +10223,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
           reallocation_threshold: 1000000,
           allocations: { media_buy: { amount: 10000 } },
         },
-        flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+        flight: { start: '2027-04-01T00:00:00Z', end: '2027-06-30T23:59:59Z' },
       }],
     });
 
@@ -10209,8 +10234,8 @@ describe('storyboard governance sample_requests accepted by training agent', () 
       tool: 'create_media_buy',
       payload: {
         account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
-        start_time: '2026-04-01T00:00:00Z',
-        end_time: '2026-06-30T23:59:59Z',
+        start_time: '2027-04-01T00:00:00Z',
+        end_time: '2027-06-30T23:59:59Z',
         packages: [
           { product_id: 'sports_ctv_q2', budget: 30000 },
           { product_id: 'outdoor_video_q2', budget: 20000 },
@@ -10237,7 +10262,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         brand: { domain: 'gov-denied.example' },
         objectives: 'strict budget',
         budget: { total: 10000, currency: 'USD', reallocation_threshold: 5000 },
-        flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+        flight: { start: '2027-04-01T00:00:00Z', end: '2027-06-30T23:59:59Z' },
       }],
     });
 
@@ -10245,8 +10270,8 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'gov-denied.example' },
-      start_time: '2026-04-01T00:00:00Z',
-      end_time: '2026-06-30T23:59:59Z',
+      start_time: '2027-04-01T00:00:00Z',
+      end_time: '2027-06-30T23:59:59Z',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
@@ -10273,7 +10298,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         brand: { domain: 'gov-ctx-denied.example' },
         objectives: 'strict budget',
         budget: { total: 10000, currency: 'USD', reallocation_threshold: 5000 },
-        flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+        flight: { start: '2027-04-01T00:00:00Z', end: '2027-06-30T23:59:59Z' },
       }],
     });
 
@@ -10294,8 +10319,8 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'gov-ctx-denied.example' },
-      start_time: '2026-04-01T00:00:00Z',
-      end_time: '2026-06-30T23:59:59Z',
+      start_time: '2027-04-01T00:00:00Z',
+      end_time: '2027-06-30T23:59:59Z',
       governance_context: 'gc-for-deny-test',
       packages: [{
         product_id: product.product_id,
@@ -10323,7 +10348,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         brand: { domain: 'gov-ok.example' },
         objectives: 'large budget',
         budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
-        flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+        flight: { start: '2027-04-01T00:00:00Z', end: '2027-06-30T23:59:59Z' },
       }],
     });
 
@@ -10340,8 +10365,8 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'gov-ok.example' },
-      start_time: '2026-04-01T00:00:00Z',
-      end_time: '2026-06-30T23:59:59Z',
+      start_time: '2027-04-01T00:00:00Z',
+      end_time: '2027-06-30T23:59:59Z',
       governance_context: checkResult.governance_context,
       packages: [{
         product_id: product.product_id,
@@ -10369,7 +10394,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         brand: { domain: 'gov-fake.example' },
         objectives: 'strict budget',
         budget: { total: 10000, currency: 'USD', reallocation_threshold: 5000 },
-        flight: { start: '2026-04-01T00:00:00Z', end: '2026-06-30T23:59:59Z' },
+        flight: { start: '2027-04-01T00:00:00Z', end: '2027-06-30T23:59:59Z' },
       }],
     });
 
@@ -10377,8 +10402,8 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'gov-fake.example' },
-      start_time: '2026-04-01T00:00:00Z',
-      end_time: '2026-06-30T23:59:59Z',
+      start_time: '2027-04-01T00:00:00Z',
+      end_time: '2027-06-30T23:59:59Z',
       governance_context: 'totally-made-up-context',
       packages: [{
         product_id: product.product_id,
