@@ -329,7 +329,8 @@ Generate preview renderings of creative manifests.
 **Requirements:**
 - Creative agents MUST validate manifests before generating previews
 - Creative agents MUST return preview URLs or HTML for valid manifests
-- Creative agents MUST include `expires_at` for preview URLs
+- Creative agents MUST keep preview URLs dereferenceable until their `expires_at` timestamp. When `expires_at` is omitted, preview URLs do not expire at the protocol layer and remain valid until the agent explicitly revokes them out of band.
+- Creative agents SHOULD include `expires_at` for time-limited preview URLs
 - Creative agents SHOULD support batch preview for multiple creatives
 - Creative agents MAY support multiple output formats (URL, HTML, image)
 
@@ -413,6 +414,7 @@ All Creative Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 ### Preview security
 
 - Preview URLs SHOULD be time-limited (indicated by `expires_at`)
+- Preview URLs MUST NOT depend on pod-local or process-local state unless the agent can guarantee that state for the advertised lifetime of the URL
 - Creative agents SHOULD sandbox HTML previews to prevent script execution
 - Consumers of `output_format: "html"` MUST only use trusted creative agents
 
