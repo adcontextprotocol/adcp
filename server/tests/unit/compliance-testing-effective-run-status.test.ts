@@ -208,4 +208,52 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
       expect.objectContaining({ track: 'reporting', status: 'skip', has_coverage_gap_skip: true }),
     ]);
   });
+
+  it('promotes an active clean track that carries step-level controller-gated skips (regression #5429)', () => {
+    // #5429: a signals-only agent's active `core` track carries step-level
+    // `missing_test_controller` skips on universal pagination storyboards that
+    // require a test controller. Those skips are expected and every executed
+    // scenario passes, so the run must promote to `passing` — the coverage-gap
+    // guard only blocks promotion for track-level-skipped tracks, not active ones.
+    const result = makeResult([
+      {
+        track: 'core',
+        label: 'Core',
+        status: 'silent',
+        duration_ms: 1000,
+        scenarios: [
+          {
+            scenario: 'discovery/basic',
+            overall_passed: true,
+            steps: [{ step: 'get_signals', passed: true, skipped: false, duration_ms: 5 }],
+          },
+          {
+            scenario: 'pagination_integrity/requirement_unmet',
+            overall_passed: true,
+            steps: [
+              {
+                step: 'requirement_unmet:controller',
+                passed: true,
+                skipped: true,
+                skip_reason: 'missing_test_controller',
+                duration_ms: 0,
+              },
+            ],
+          },
+        ],
+      },
+    ] as any);
+
+    const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
+
+    expect(out.overall_status).toBe('passing');
+    expect(out.tracks_passed).toBe(1);
+    expect(out.tracks_failed).toBe(0);
+    expect(out.tracks_partial).toBe(0);
+    // The coverage gap is still surfaced on the track; it just no longer
+    // degrades an otherwise all-pass run.
+    expect(out.tracks_json).toEqual([
+      expect.objectContaining({ track: 'core', status: 'silent', has_coverage_gap_skip: true }),
+    ]);
+  });
 });
