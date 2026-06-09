@@ -3147,6 +3147,7 @@ registry.registerPath({
           schema: z.object({
             domain: z.string().openapi({ example: "acmecorp.com" }),
             brand_name: z.string(),
+            brand_json: z.record(z.string(), z.any()).optional().openapi({ description: "Optional full brand.json draft to host in the registry" }),
             logo_url: z.string().optional(),
             brand_color: z.string().optional(),
           }),
@@ -8530,7 +8531,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   const setupBrandMiddleware = authMiddleware ? [authMiddleware, brandCreationRateLimiter] : [brandCreationRateLimiter];
 
   router.post("/brands/setup-my-brand", ...setupBrandMiddleware, async (req, res) => {
-    const { brand_name, logo_url, brand_color } = req.body;
+    const { brand_name, logo_url, brand_color, brand_json } = req.body;
     const rawDomain = req.body.domain as string;
 
     if (!rawDomain || typeof rawDomain !== "string") {
@@ -8538,6 +8539,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
     if (!brand_name || typeof brand_name !== "string") {
       return res.status(400).json({ error: "brand_name is required" });
+    }
+    if (
+      brand_json !== undefined
+      && (typeof brand_json !== "object" || brand_json === null || Array.isArray(brand_json))
+    ) {
+      return res.status(400).json({ error: "brand_json must be a JSON object" });
+    }
+    if (brand_json !== undefined && JSON.stringify(brand_json).length > 100 * 1024) {
+      return res.status(400).json({ error: "brand_json exceeds maximum size (100KB)" });
     }
 
     const domain = extractDomain(rawDomain).replace(/^www\./, "");
@@ -8563,7 +8573,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // Verify the requested domain belongs to this org (matches a WorkOS-verified domain or subdomain).
       // Skipped in dev mode (DEV_USER_EMAIL set) since dev orgs are not in WorkOS.
       const devMode = !!(process.env.DEV_USER_EMAIL && process.env.DEV_USER_ID);
-      if (!devMode && orgId) {
+      if (!devMode && !orgId) {
+        return res.status(403).json({
+          error: 'A verified organization is required to set up a brand',
+        });
+      }
+      if (!devMode) {
         const orgDomainsResult = await query<{ domain: string }>(
           'SELECT domain FROM organization_domains WHERE workos_organization_id = $1 AND verified = true',
           [orgId]
@@ -8587,7 +8602,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // Otherwise build a minimal entry from the request params.
         let brandJson: Record<string, unknown>;
         const manifest = discovered?.brand_manifest as Record<string, unknown> | undefined;
-        if (manifest && discovered!.review_status !== 'pending' && typeof manifest.house === 'object' && manifest.house !== null) {
+        if (brand_json) {
+          brandJson = brand_json as Record<string, unknown>;
+        } else if (manifest && discovered!.review_status !== 'pending' && typeof manifest.house === 'object' && manifest.house !== null) {
           brandJson = manifest;
         } else {
           const brandId = brand_name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');

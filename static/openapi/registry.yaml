@@ -8920,6 +8920,10 @@ paths:
                   example: acmecorp.com
                 brand_name:
                   type: string
+                brand_json:
+                  type: object
+                  additionalProperties: {}
+                  description: Optional full brand.json draft to host in the registry
                 logo_url:
                   type: string
                 brand_color:
