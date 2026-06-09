@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.12/error-details/stale-response.json",
+  "title": "Stale Response Details",
+  "description": "Recommended `error.details` shape for STALE_RESPONSE errors. Emitted alongside a populated success payload when the seller served cached data past its freshness target because an upstream or sub-agent fetch failed. Lets buyer agents dispatch on cache age and identify the stale upstream without parsing prose. One details entry per affected upstream — when multiple upstreams are stale, the seller emits one STALE_RESPONSE error per upstream rather than aggregating.",
+  "type": "object",
+  "required": ["served_from_cache", "cache_age_seconds"],
+  "properties": {
+    "served_from_cache": {
+      "type": "boolean",
+      "const": true,
+      "description": "Always true for STALE_RESPONSE. Acts as a positive shape sentinel so consumers can validate the details payload matches the code."
+    },
+    "cache_age_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Age of the cached payload in seconds at the time of the response. Informational — buyer agents MAY use this to decide whether to immediately retry for fresh data or accept the cached value."
+    },
+    "freshness_target_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The seller's freshness target for this surface, in seconds. `cache_age_seconds - freshness_target_seconds` is how far beyond target the cached entry is. Optional — sellers MAY omit when no public freshness contract is declared."
+    },
+    "upstream": {
+      "type": "object",
+      "description": "Identifies the upstream or sub-agent whose fetch failed and triggered cache fallback. When N upstreams are stale, the seller emits N separate STALE_RESPONSE entries (one per upstream) rather than aggregating into a single entry — mirrors the per-asset advisory precedent set by PIXEL_TRACKER_LOSSY_DOWNGRADE.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the unreachable upstream, when the upstream is HTTP-addressable. Sellers MUST omit when the upstream is an internal (non-URL) dependency."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable identifier for the upstream, e.g., 'creative-agent-foo' or 'inventory-service'. Used when the upstream is internal or when the URL is not informative on its own."
+        }
+      },
+      "additionalProperties": true
+    },
+    "original_error": {
+      "type": "object",
+      "description": "Minimal subset of the underlying failure that triggered cache fallback. Sellers MUST NOT include internal stack traces, credentials, or connection strings.",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Error code from the underlying failure, e.g., SERVICE_UNAVAILABLE, or a transport-level identifier like 'TIMEOUT' / 'CONNECTION_REFUSED' when the underlying call did not produce an AdCP error code."
+        },
+        "message": {
+          "type": "string",
+          "description": "Short human-readable description of the underlying failure (e.g., 'Connection timeout after 20s'). MUST NOT include credentials, internal hostnames, or stack traces."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
