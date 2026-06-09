@@ -8573,7 +8573,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // Verify the requested domain belongs to this org (matches a WorkOS-verified domain or subdomain).
       // Skipped in dev mode (DEV_USER_EMAIL set) since dev orgs are not in WorkOS.
       const devMode = !!(process.env.DEV_USER_EMAIL && process.env.DEV_USER_ID);
-      if (!devMode && orgId) {
+      if (!devMode && !orgId) {
+        return res.status(403).json({
+          error: 'A verified organization is required to set up a brand',
+        });
+      }
+      if (!devMode) {
         const orgDomainsResult = await query<{ domain: string }>(
           'SELECT domain FROM organization_domains WHERE workos_organization_id = $1 AND verified = true',
           [orgId]
