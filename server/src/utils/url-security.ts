@@ -391,7 +391,8 @@ export async function safeFetch(
   // Response body is a stream the caller consumes after this function returns;
   // closing here would tear down the underlying socket mid-stream. Connections
   // are reaped by undici's idle timeout (the same lifecycle as the global agent).
-  let response = await fetchWithDispatcher(sanitizeUrl(parsedUrl), {
+  let currentUrl = parsedUrl;
+  let response = await fetchWithDispatcher(sanitizeUrl(currentUrl), {
     method,
     headers,
     body,
@@ -405,7 +406,7 @@ export async function safeFetch(
     const location = response.headers.get('location');
     if (!location) throw new Error('Redirect with no Location header');
     // Pre-flight check on the redirect hop, then dial through the same SSRF-safe dispatcher.
-    const redirectUrl = await validateRedirectTarget(location, parsedUrl);
+    const redirectUrl = await validateRedirectTarget(location, currentUrl);
     // Per RFC 7231 §6.4.4 a 303 ALWAYS rewrites to GET; for 301/302 most
     // clients also rewrite for non-idempotent verbs even though the spec
     // only mandates user confirmation. We rewrite POST→GET on 301/302/303
@@ -433,6 +434,7 @@ export async function safeFetch(
       signal,
       dispatcher,
     } as RequestInit & { dispatcher: Dispatcher });
+    currentUrl = redirectUrl;
   }
 
   return response;

@@ -4,6 +4,7 @@ import { safeFetchAxiosLike, classifySafeFetchError } from './utils/url-security
 import { canonicalizePublisherDomain } from './services/publisher-domain.js';
 
 const MCP_ACCEPT_HEADER = 'application/json, text/event-stream';
+const ADS_TXT_MAX_REDIRECTS = 5;
 const MCP_PREFLIGHT_INITIALIZE_BODY = {
   jsonrpc: '2.0',
   method: 'initialize',
@@ -390,7 +391,7 @@ export class AdAgentsManager {
     try {
       const response = await safeFetchAxiosLike(adsTxtUrl, {
         timeoutMs: 10000,
-        maxRedirects: 1,
+        maxRedirects: ADS_TXT_MAX_REDIRECTS,
         headers: {
           'Accept': 'text/plain',
           'User-Agent': AAO_UA_VALIDATOR,
