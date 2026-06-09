@@ -1,0 +1,203 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.12/core/package.json",
+  "title": "Package",
+  "description": "A specific product within a media buy (line item)",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "Seller's unique identifier for the package",
+      "x-entity": "package"
+    },
+    "product_id": {
+      "type": "string",
+      "description": "ID of the product this package is based on. For packages created from an explicit create_media_buy package request, sellers MUST echo the request package's product_id on every response package object that represents that requested package.",
+      "x-entity": "product"
+    },
+    "budget": {
+      "type": "number",
+      "description": "Budget allocation for this package in the currency specified by the pricing option",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "/schemas/3.1.0-rc.12/enums/pacing.json"
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "ID of the selected pricing option from the product's pricing_options array",
+      "x-entity": "product_pricing_option"
+    },
+    "bid_price": {
+      "type": "number",
+      "description": "Bid price for auction-based pricing. This is the exact bid/price to honor unless the selected pricing option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "minimum": 0
+    },
+    "price_breakdown": {
+      "description": "Breakdown of the effective price for this package. On fixed-price packages, echoes the pricing option's breakdown. On auction packages, shows the clearing price breakdown including any commission or settlement terms.",
+      "$ref": "/schemas/3.1.0-rc.12/pricing-options/price-breakdown.json"
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Impression goal for this package",
+      "minimum": 0
+    },
+    "catalogs": {
+      "type": "array",
+      "description": "Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., one product catalog, one store catalog). This constraint is enforced at the application level — sellers MUST reject requests containing multiple catalogs of the same type with a validation_error. Echoed from the create_media_buy request.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.12/core/catalog.json"
+      }
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Legacy named-format IDs supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including dual-emission cases where `format_option_refs` was the winning selector, so read surfaces preserve the original wire contract. Omitted means the request did not carry legacy format_ids unless the seller cannot reconstruct legacy requests created before this field was persisted.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.12/core/format-id.json"
+      }
+    },
+    "format_option_refs": {
+      "type": "array",
+      "description": "Structured 3.1+ format option references supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it. Publisher-catalog-backed options are identified by `{ scope: \"publisher\", publisher_domain, format_option_id }`; product-local options are identified by `{ scope: \"product\", format_option_id }` and resolve only against this package's target product. Omitted means the request did not carry format_option_refs unless the seller cannot reconstruct legacy requests created before this field was persisted.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.12/core/format-option-ref.json"
+      },
+      "minItems": 1
+    },
+    "format_kind": {
+      "$ref": "/schemas/3.1.0-rc.12/core/canonical-format-kind.json",
+      "description": "Direct canonical selector supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including informational-echo cases where `format_ids` was the winning selector, so read surfaces preserve the original wire contract."
+    },
+    "params": {
+      "type": "object",
+      "description": "Parameters for the direct canonical selector in `format_kind`, echoed from the create_media_buy request whenever the request included it. Requires `format_kind`; omitted only when the request did not carry direct canonical params or when the seller cannot reconstruct legacy requests created before this field was persisted.",
+      "additionalProperties": true
+    },
+    "targeting_overlay": {
+      "$ref": "/schemas/3.1.0-rc.12/core/targeting.json"
+    },
+    "measurement_terms": {
+      "$ref": "/schemas/3.1.0-rc.12/core/measurement-terms.json",
+      "description": "Agreed billing measurement and makegood terms for this package. Reflects what was negotiated — may differ from the buyer's proposal or the product's defaults. When present, these terms are binding for the package's duration."
+    },
+    "performance_standards": {
+      "type": "array",
+      "description": "Agreed performance standards for this package. When any entry specifies a vendor, creatives assigned to this package MUST include corresponding tracker_script or tracker_pixel assets from that vendor.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.12/core/performance-standard.json"
+      },
+      "minItems": 1
+    },
+    "committed_metrics": {
+      "type": "array",
+      "description": "The binding reporting contract for this package — what the seller has agreed to populate in delivery reports. Each entry carries an explicit `committed_at` timestamp, so the array also serves as the contract amendment ledger: day-1 commitments share `committed_at = create_media_buy.confirmed_at`; mid-flight additions carry their own timestamps. When `create_media_buy.confirmed_at` is null for a provisional buy, sellers MUST omit `committed_metrics` until commitment. The first response that sets `confirmed_at` MAY include the initial committed-metrics set, and each such entry's `committed_at` MUST equal `confirmed_at`. The `missing_metrics` field on `get_media_buy_delivery` reconciles against this list, filtering to entries where `committed_at < reporting_period.end` (a metric committed mid-flight is only audited from its commitment timestamp forward). Sellers stamp the day-1 set on the `create_media_buy` response; mid-flight additions are appended via `update_media_buy` (append-only — sellers MUST reject attempts to modify or remove existing entries with `validation_error`, suggested code: `IMMUTABLE_FIELD`). Optional in v1; absence means the seller does not provide an audit-grade contract and `missing_metrics` falls back to the product's live `available_metrics` (a known audit gap — buyers SHOULD treat absence as 'no audit-grade contract' rather than 'clean delivery'). Each entry uses an explicit `scope` discriminator: `standard` for entries from the closed `available-metric.json` enum, `vendor` for vendor-defined metrics anchored on a BrandRef. The unified shape is symmetric with `missing_metrics` and `aggregated_totals.metric_aggregates` — same atomic unit `(scope, metric_id, qualifier)` across contract, diff, and delivery, so reconciliation collapses to a row-level join on the tuple. Replaces the parallel-array design that shipped briefly in #3510.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.12/core/committed-metric.json"
+      },
+      "minItems": 1,
+      "examples": [
+        [
+          { "scope": "standard", "metric_id": "impressions",     "committed_at": "2026-04-29T10:53:00Z" },
+          { "scope": "standard", "metric_id": "spend",           "committed_at": "2026-04-29T10:53:00Z" },
+          { "scope": "standard", "metric_id": "completed_views", "committed_at": "2026-04-29T10:53:00Z" },
+          { "scope": "vendor",   "vendor": { "domain": "attentionvendor.example" }, "metric_id": "attention_units", "committed_at": "2026-04-29T10:53:00Z" },
+          { "scope": "standard", "metric_id": "viewable_rate",   "qualifier": { "viewability_standard": "mrc" }, "committed_at": "2026-05-30T14:22:00Z" }
+        ]
+      ]
+    },
+    "creative_assignments": {
+      "type": "array",
+      "description": "Creative assets assigned to this package",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.12/core/creative-assignment.json"
+      }
+    },
+    "format_ids_to_provide": {
+      "type": "array",
+      "description": "Format IDs that creative assets will be provided for this package",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.12/core/format-id.json"
+      }
+    },
+    "optimization_goals": {
+      "type": "array",
+      "description": "Optimization targets for this package. The seller optimizes delivery toward these goals in priority order. Common pattern: event goals (purchase, install) as primary targets at priority 1; metric goals (clicks, views) as secondary proxy signals at priority 2+.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.12/core/optimization-goal.json"
+      },
+      "minItems": 1
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "not": { "const": "asap" },
+      "description": "Flight start date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's start_time. Sellers SHOULD always include the resolved value in responses, even when inherited."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Flight end date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's end_time. Sellers SHOULD always include the resolved value in responses, even when inherited."
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Whether this package is paused by the buyer. Paused packages do not deliver impressions. Defaults to false.",
+      "default": false
+    },
+    "canceled": {
+      "type": "boolean",
+      "description": "Whether this package has been canceled. Canceled packages stop delivery and cannot be reactivated. Defaults to false.",
+      "default": false
+    },
+    "cancellation": {
+      "type": "object",
+      "description": "Cancellation metadata. Present only when canceled is true.",
+      "required": ["canceled_at", "canceled_by"],
+      "properties": {
+        "canceled_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this package was canceled."
+        },
+        "canceled_by": {
+          "$ref": "/schemas/3.1.0-rc.12/enums/canceled-by.json",
+          "description": "Which party initiated the package cancellation."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason the package was canceled.",
+          "maxLength": 500
+        },
+        "acknowledged_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the seller acknowledged the cancellation. Confirms inventory has been released and billing stopped. Absent until the seller processes the cancellation."
+        }
+      },
+      "additionalProperties": false
+    },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Agency estimate or authorization number for this package. Echoed from the buyer's request. When present on the package, takes precedence over the media buy-level estimate number."
+    },
+    "creative_deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp for creative upload or change deadline for this package. After this deadline, creative changes are rejected. When absent, the media buy's creative_deadline applies."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-rc.12/core/context.json",
+      "description": "Opaque package-level correlation data echoed unchanged in responses, webhooks, and read surfaces. Buyers targeting mixed seller populations SHOULD include a per-package correlation value here, commonly context.buyer_ref, so responses from legacy sellers that do not echo product_id can still be mapped back to the requested product or line item. Sellers MUST preserve this object unchanged and MUST NOT parse it for business logic."
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-rc.12/core/ext.json"
+    }
+  },
+  "required": [
+    "package_id"
+  ],
+  "dependencies": {
+    "params": ["format_kind"]
+  },
+  "additionalProperties": true
+}

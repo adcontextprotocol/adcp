@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.12/core/postal-area-support.json",
+  "title": "Postal Area Support",
+  "description": "Declares supported postal area systems. Native support is keyed by ISO 3166-1 alpha-2 country with arrays of country-local postal systems. Deprecated country-fused boolean aliases may be included during migration.",
+  "type": "object",
+  "properties": {
+    "US": {
+      "type": "array",
+      "items": { "enum": ["zip", "zip_plus_four"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "GB": {
+      "type": "array",
+      "items": { "enum": ["outward", "full"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "CA": {
+      "type": "array",
+      "items": { "enum": ["fsa", "full"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "DE": {
+      "type": "array",
+      "items": { "const": "plz" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "CH": {
+      "type": "array",
+      "items": { "const": "plz" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "AT": {
+      "type": "array",
+      "items": { "const": "plz" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "FR": {
+      "type": "array",
+      "items": { "const": "code_postal" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "AU": {
+      "type": "array",
+      "items": { "const": "postcode" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "BR": {
+      "type": "array",
+      "items": { "const": "cep" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "IN": {
+      "type": "array",
+      "items": { "const": "pin" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ZA": {
+      "type": "array",
+      "items": { "const": "postal_code" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "us_zip": { "type": "boolean", "deprecated": true },
+    "us_zip_plus_four": { "type": "boolean", "deprecated": true },
+    "gb_outward": { "type": "boolean", "deprecated": true },
+    "gb_full": { "type": "boolean", "deprecated": true },
+    "ca_fsa": { "type": "boolean", "deprecated": true },
+    "ca_full": { "type": "boolean", "deprecated": true },
+    "de_plz": { "type": "boolean", "deprecated": true },
+    "fr_code_postal": { "type": "boolean", "deprecated": true },
+    "au_postcode": { "type": "boolean", "deprecated": true },
+    "ch_plz": { "type": "boolean", "deprecated": true },
+    "at_plz": { "type": "boolean", "deprecated": true }
+  },
+  "propertyNames": {
+    "anyOf": [
+      { "pattern": "^[A-Z]{2}$" },
+      { "$ref": "/schemas/3.1.0-rc.12/enums/legacy-postal-system.json" }
+    ]
+  },
+  "additionalProperties": {
+    "type": "array",
+    "items": { "enum": ["postal_code", "custom"] },
+    "minItems": 1,
+    "uniqueItems": true
+  }
+}

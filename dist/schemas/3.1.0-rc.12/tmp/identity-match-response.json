@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.12/tmp/identity-match-response.json",
+  "title": "Identity Match Response",
+  "description": "Response indicating which packages the user is eligible for. The serve_window_sec field defines a per-package single-shot fcap: after serving the user one impression on each eligible package, the publisher MUST re-query Identity Match before serving from those packages again. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-rc.12/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/3.1.0-rc.12/core/protocol-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "identity_match_response",
+      "description": "Message type discriminator for deserialization."
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Echoed request identifier from the identity match request"
+    },
+    "eligible_package_ids": {
+      "type": "array",
+      "description": "Package IDs the user is eligible for. Packages not listed are ineligible.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "serve_window_sec": {
+      "type": "integer",
+      "description": "Per-package single-shot fcap window, in seconds. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. This is NOT a router response cache TTL — it is a buyer-asserted serve throttle. Multi-impression frequency caps are handled separately by the buyer's impression tracker, which writes cap-fire events to the IdentityMatch cap-state store at the boundary regardless of this window. Maximum 300 — longer windows reduce IdentityMatch load but coarsen fcap granularity below what most campaigns require.",
+      "minimum": 1,
+      "maximum": 300
+    },
+    "tmpx": {
+      "type": "string",
+      "description": "HPKE-encrypted exposure token containing the resolved user identity tokens. The publisher substitutes this into creative tracking URLs as {TMPX}. The buyer's impression pixel receives the token at serve time, enabling real-time per-user frequency state updates. Wire format: kid.base64url_nopad(ciphertext) — unpadded base64url per RFC 4648 section 5 (no = characters). Publishers MUST treat this value as opaque pass-through data."
+    }
+  },
+  "required": [
+    "type",
+    "request_id",
+    "eligible_package_ids",
+    "serve_window_sec"
+  ],
+  "additionalProperties": true
+}
