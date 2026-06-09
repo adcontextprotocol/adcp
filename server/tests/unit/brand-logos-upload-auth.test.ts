@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   listLogos: vi.fn().mockResolvedValue([]),
   rebuildManifestLogos: vi.fn().mockResolvedValue(undefined),
   notifyPendingBrandLogo: vi.fn().mockResolvedValue(null),
+  resolvePrimaryOrganization: vi.fn().mockResolvedValue('org_test'),
 }));
 
 vi.mock('../../src/notifications/registry.js', () => ({
@@ -49,7 +50,24 @@ vi.mock('../../src/middleware/rate-limit.js', () => ({
 
 vi.mock('../../src/middleware/auth.js', () => ({
   requireAuth: (req: any, _res: unknown, next: () => void) => {
-    req.user = { id: 'user_test', email: 'test@example.com', isMember: true };
+    const apiKeyOrgId = req.headers['x-test-api-key-org-id'];
+    if (typeof apiKeyOrgId === 'string') {
+      req.apiKey = {
+        id: 'key_test',
+        organizationId: apiKeyOrgId,
+        name: 'Test API key',
+        permissions: [],
+      };
+      req.user = {
+        id: 'api_key_key_test',
+        email: `api-key@org-${apiKeyOrgId}`,
+        firstName: 'API',
+        lastName: 'Test API key',
+        isMember: true,
+      };
+    } else {
+      req.user = { id: 'user_test', email: 'test@example.com', isMember: true };
+    }
     next();
   },
   optionalAuth: (req: any, _res: unknown, next: () => void) => {
@@ -70,7 +88,7 @@ vi.mock('../../src/db/brand-logo-db.js', () => ({
 }));
 
 vi.mock('../../src/db/users-db.js', () => ({
-  resolvePrimaryOrganization: vi.fn().mockResolvedValue('org_test'),
+  resolvePrimaryOrganization: (...args: unknown[]) => mocks.resolvePrimaryOrganization(...args),
 }));
 
 vi.mock('../../src/services/brand-logo-service.js', async () => {
@@ -130,6 +148,8 @@ describe('POST /api/brands/:domain/logos write authority', () => {
     mocks.countPendingDomainsForUser.mockResolvedValue(0);
     mocks.setSlackThreadTs.mockReset();
     mocks.setSlackThreadTs.mockResolvedValue(undefined);
+    mocks.resolvePrimaryOrganization.mockReset();
+    mocks.resolvePrimaryOrganization.mockResolvedValue('org_test');
     mocks.insertLogo.mockImplementation(async (input) => ({
       id: 'logo_test_id',
       ...input,
@@ -152,6 +172,22 @@ describe('POST /api/brands/:domain/logos write authority', () => {
     expect(mocks.insertLogo).not.toHaveBeenCalled();
   });
 
+  it('returns 403 when an API key belongs to a different org than the verified owner', async () => {
+    const { app } = makeApp({
+      hostedBrand: { workos_organization_id: 'org_owner', domain_verified: true },
+      isOwner: false,
+    });
+    const res = await request(app)
+      .post('/api/brands/example.com/logos')
+      .set('x-test-api-key-org-id', 'org_other')
+      .field('tags', 'primary')
+      .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('verified_owner_required');
+    expect(mocks.insertLogo).not.toHaveBeenCalled();
+  });
+
   it('auto-approves uploads from a verified owner', async () => {
     const { app } = makeApp({
       hostedBrand: { workos_organization_id: 'org_owner', domain_verified: true },
@@ -171,6 +207,32 @@ describe('POST /api/brands/:domain/logos write authority', () => {
       }),
     );
     // Owner-attested uploads don't need a moderator nudge.
+    expect(mocks.notifyPendingBrandLogo).not.toHaveBeenCalled();
+  });
+
+  it('auto-approves API-key uploads from the verified owner org', async () => {
+    const { app } = makeApp({
+      hostedBrand: { workos_organization_id: 'org_owner', domain_verified: true },
+      isOwner: false,
+    });
+    const res = await request(app)
+      .post('/api/brands/example.com/logos')
+      .set('x-test-api-key-org-id', 'org_owner')
+      .field('tags', 'primary')
+      .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.review_status).toBe('approved');
+    expect(mocks.insertLogo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'brand_owner',
+        review_status: 'approved',
+        uploaded_by_user_id: 'api_key_key_test',
+        uploaded_by_org_id: 'org_owner',
+        uploaded_by_email: 'api-key@org-org_owner',
+      }),
+    );
+    expect(mocks.resolvePrimaryOrganization).not.toHaveBeenCalled();
     expect(mocks.notifyPendingBrandLogo).not.toHaveBeenCalled();
   });
 
@@ -211,5 +273,27 @@ describe('POST /api/brands/:domain/logos write authority', () => {
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(201);
     expect(res.body.review_status).toBe('pending');
+  });
+
+  it('uses API key owner org as community upload provenance', async () => {
+    const { app } = makeApp({ hostedBrand: null, isOwner: false });
+    const res = await request(app)
+      .post('/api/brands/example.com/logos')
+      .set('x-test-api-key-org-id', 'org_registry')
+      .field('tags', 'primary')
+      .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.review_status).toBe('pending');
+    expect(mocks.insertLogo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'community',
+        review_status: 'pending',
+        uploaded_by_user_id: 'api_key_key_test',
+        uploaded_by_org_id: 'org_registry',
+        uploaded_by_email: 'api-key@org-org_registry',
+      }),
+    );
+    expect(mocks.resolvePrimaryOrganization).not.toHaveBeenCalled();
   });
 });

@@ -4,7 +4,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import multer from 'multer';
-import { requireAuth, optionalAuth } from '../middleware/auth.js';
+import { requireAuth, optionalAuth, type ValidatedApiKey } from '../middleware/auth.js';
 import { logoUploadRateLimiter } from '../middleware/rate-limit.js';
 import { BrandLogoDatabase } from '../db/brand-logo-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
@@ -75,6 +75,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
       try {
         const domain = req.params.domain.toLowerCase();
         const user = (req as any).user;
+        const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
 
         if (!logoDomainPattern.test(domain)) {
           return res.status(400).json({ error: 'Invalid domain' });
@@ -101,7 +102,12 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         // claimed. When no owner has verified yet, community uploads stay
         // allowed but queue for moderation (see review_status below).
         const hostedForOwnership = await brandDb.getHostedBrandByDomain(domain);
-        const isOwner = await isVerifiedBrandOwner(user.id, domain, brandDb);
+        const isApiKeyOwner = !!(
+          apiKey?.organizationId &&
+          hostedForOwnership?.domain_verified &&
+          hostedForOwnership.workos_organization_id === apiKey.organizationId
+        );
+        const isOwner = isApiKeyOwner || (await isVerifiedBrandOwner(user.id, domain, brandDb));
         if (!isOwner) {
           if (hostedForOwnership?.domain_verified && hostedForOwnership.workos_organization_id) {
             return res.status(403).json({
@@ -207,11 +213,11 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         // Original filename
         const originalFilename = req.file.originalname?.slice(0, 255);
         const uploaderOrgId = isOwner
-          ? hostedForOwnership?.workos_organization_id ?? null
-          : await resolvePrimaryOrganization(user.id).catch((err) => {
-            logger.warn({ err, userId: user.id }, 'Failed to resolve uploader org for brand-logo provenance');
-            return null;
-          });
+          ? hostedForOwnership?.workos_organization_id ?? apiKey?.organizationId ?? null
+          : apiKey?.organizationId ?? (await resolvePrimaryOrganization(user.id).catch((err) => {
+              logger.warn({ err, userId: user.id }, 'Failed to resolve uploader org for brand-logo provenance');
+              return null;
+            }));
 
         // Verified owners are auto-approved — domain control is the attestation.
         // Community uploads (only allowed when no owner has verified yet) queue
