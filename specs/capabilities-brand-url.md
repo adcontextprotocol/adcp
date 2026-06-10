@@ -82,19 +82,19 @@ For any signature verification on a request from agent URL `A`:
 
 ## Multi-tenant operators
 
-An agent has exactly one `brand_url` — pointing to its **operator's** brand.json. Per-advertiser identity (an agency running on behalf of multiple advertisers) rides on **per-principal keys**, not on multiple `brand_url` values. The flow:
+An agent endpoint has exactly one `brand_url` — pointing to its **operator's** brand.json. Multi-tenant operators MAY publish multiple `agents[]` entries with the same `type` when each entry has a distinct `url`. Tenant, publisher, or property scope is represented by distinct endpoint URLs, such as one `type: "sales"` entry per publisher tenant at `/mcp/{publisher}`, under the same operator brand.json. Same-URL duplicates remain ambiguous and are rejected by verifier algorithm step 5.
 
-- The agency is the operator. Its brand.json `agents[]` lists the agent endpoint(s) it runs.
-- For per-advertiser key isolation, the operator declares `identity.per_principal_key_isolation: true` on capabilities and scopes signing keys per-principal in the JWKS (existing schema, response:1017–1021).
-- The agency's brand.json MAY declare `authorized_operators[]` granting other domains permission to operate on its behalf (existing schema, brand.json:663).
-- For the SaaS-platform case (Scope3 runs an agent at `agent.scope3.com/mcp` on behalf of Nike, whose brand.json is at `nike.com`): Nike's brand.json `agents[]` lists `agent.scope3.com/mcp`, and Nike's `authorized_operators[]` lists `scope3.com`. The verifier algorithm step 3 accepts the cross-domain agent because of the explicit delegation.
+Each `agents[]` entry can carry its own `jwks_uri`. A1-style per-tenant static shards are valid: `/.well-known/jwks/{tenant}.json` files with a small key set per tenant satisfy this spec and do not require a dynamic key-routing endpoint. A2-style routing endpoints remain an implementation option, not a protocol mandate.
 
-This keeps "one agent → one brand.json" without forcing per-advertiser endpoint proliferation.
+Per-advertiser or per-principal identity on a shared endpoint still rides on **per-principal keys**, not on multiple `brand_url` values. The operator declares `identity.per_principal_key_isolation: true` on capabilities and scopes signing keys per-principal in the JWKS (existing schema, response:1017-1021). If another domain operates an endpoint on behalf of the brand, the brand.json MAY declare `authorized_operators[]` granting that domain permission to operate on its behalf (existing schema, brand.json:663). For example, if Example Platform runs an agent at `agent.example-platform.test/mcp` on behalf of Acme Media, Acme Media's brand.json lists `agent.example-platform.test/mcp`, and `authorized_operators[]` lists `example-platform.test`. The verifier algorithm step 3 accepts the cross-domain agent because of the explicit delegation.
+
+This keeps "one endpoint → one brand.json" without forcing a single JWKS for every tenant or requiring dynamic key routing when pre-rendered shards are sufficient.
 
 ## What stays the same
 
 - `adagents.json signing_keys` precedence is unchanged: publisher pin > operator brand.json `jwks_uri` for sell-side webhooks.
-- brand.json schema is unchanged. Existing `agents[].jwks_uri` and the `/.well-known/jwks.json` origin default are unchanged.
+- brand.json validation semantics are unchanged. Existing `agents[].jwks_uri` and the `/.well-known/jwks.json` origin default are unchanged.
+- Multiple same-type `agents[]` entries remain valid when they identify distinct endpoint URLs for tenant/property scopes.
 - Webhook-signing key publication is unchanged (`security.mdx:1176`).
 - `sponsored_intelligence.brand_url` is **kept**, not deprecated. It serves a distinct rendering role and may resolve to a different URL than the trust-root `brand_url`.
 
@@ -365,7 +365,8 @@ What we lose vs. the hosted shape: the three-line `createRemoteJWKSet(aaoUrl)` i
 - **Protocol (error-code naming)**: prefixed with `request_signature_*` to join the existing family.
 - **Protocol (cross-protocol coverage gap)**: consistency check is purpose-generic — covers `webhook_signing`, `governance_signing`, `tmp_signing` not just request-signing.
 - **Protocol (SI brand_url deprecation)**: reverted — kept as a distinct rendering pointer.
-- **Product (multi-tenant agencies)**: explicit §Multi-tenant operators section — agent's `brand_url` = operator; per-advertiser identity rides on per-principal keys; `authorized_operators[]` covers the SaaS-platform case.
+- **Product (multi-tenant agencies/operators)**: explicit §Multi-tenant operators section — endpoint `brand_url` = operator; per-advertiser identity rides on per-principal keys; `authorized_operators[]` covers the SaaS-platform case.
+- **Product (multi-tenant seller-agent operators)**: clarified that multiple same-type `agents[]` entries are permitted for distinct tenant/publisher/property scopes, and that A1-style per-entry static JWKS shards satisfy the spec without mandating a dynamic key-routing endpoint.
 - **Product (AAO as SPOF)**: reframed AAO resolver as a self-hostable reference implementation; trust posture moved to the top of the §Hosted resolver section; native example first in caller integration.
 - **Product (bulk endpoint premature)**: dropped from v1 (open question 5).
 - **DX (JOSE example gotchas)**: native example shown first with explicit `algorithms`, `cacheMaxAge`, `cooldownDuration`, `issuer`; `kid` required on every JWK in resolver responses.
