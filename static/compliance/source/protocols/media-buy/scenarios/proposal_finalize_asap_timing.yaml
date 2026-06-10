@@ -252,7 +252,7 @@ phases:
             amount: 50000
             currency: "USD"
           start_time: "asap"
-          end_time: "2026-06-30T23:59:59Z"
+          end_time: "2099-06-30T23:59:59Z"
           io_acceptance:
             io_id: "$context.io_id"
             accepted_at: "2026-03-15T14:30:00Z"

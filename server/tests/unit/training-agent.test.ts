@@ -10538,8 +10538,8 @@ describe('context echo', () => {
     const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
       context: TEST_CONTEXT,
       idempotency_key: 'ctx-reversed-key-01',
-      start_time: '2026-12-31T00:00:00Z',
-      end_time: '2026-01-01T00:00:00Z',
+      start_time: '2099-12-31T00:00:00Z',
+      end_time: '2099-01-01T00:00:00Z',
       packages: [{ product_id: 'test-product', budget: 1000, pricing_option_id: 'test-pricing' }],
     });
     expect(isError).toBe(true);

@@ -543,8 +543,8 @@ describe('comply_test_controller', () => {
           fixture: {
             status: 'active',
             currency: 'USD',
-            start_time: '2026-05-01T00:00:00Z',
-            end_time: '2026-07-31T23:59:59Z',
+            start_time: '2099-05-01T00:00:00Z',
+            end_time: '2099-07-31T23:59:59Z',
             available_actions: [{
               action: 'extend_flight',
               mode: 'requires_approval',
@@ -556,8 +556,8 @@ describe('comply_test_controller', () => {
               pricing_option_id: 'seeded_pricing',
               budget: 10000,
               creative_assignments: ['seeded_creative_1'],
-              start_time: '2026-05-01T00:00:00Z',
-              end_time: '2026-07-31T23:59:59Z',
+              start_time: '2099-05-01T00:00:00Z',
+              end_time: '2099-07-31T23:59:59Z',
             }],
           },
         },
@@ -582,7 +582,7 @@ describe('comply_test_controller', () => {
         account: ACCOUNT,
         brand: BRAND,
         media_buy_id: 'seeded_action_surface_mb',
-        end_time: '2026-08-15T23:59:59Z',
+        end_time: '2099-08-15T23:59:59Z',
       });
       const error = (rejected as any).errors?.[0];
       expect(error?.code).toBe('ACTION_NOT_ALLOWED');
