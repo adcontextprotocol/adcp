@@ -70,14 +70,13 @@ async function createMediaBuy(server: ReturnType<typeof createTrainingAgentServe
   const pricingOption = product.pricing_options[0];
   if (!pricingOption) throw new Error(`No pricing options for product ${product.product_id}`);
 
-  const now = new Date();
-  const endTime = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const endTime = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
   const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
     idempotency_key: crypto.randomUUID(),
     account: ACCOUNT,
     brand: BRAND,
-    start_time: now.toISOString(),
+    start_time: 'asap',
     end_time: endTime.toISOString(),
     packages: [{
       product_id: product.product_id,
@@ -1286,13 +1285,12 @@ describe('comply_test_controller', () => {
         brand: BRAND,
       });
       const product = (products as any).products[0];
-      const now = new Date();
-      const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const end = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
       const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
         account: ACCT_WITH_ID,
         brand: BRAND,
-        start_time: now.toISOString(),
+        start_time: 'asap',
         end_time: end.toISOString(),
         packages: [{
           product_id: product.product_id,

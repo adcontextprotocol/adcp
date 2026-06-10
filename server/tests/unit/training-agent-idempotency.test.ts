@@ -49,8 +49,8 @@ async function call(
 const basePayload = () => ({
   account: ACCOUNT,
   brand: BRAND,
-  start_time: '2026-06-01T00:00:00Z',
-  end_time: '2026-06-30T23:59:59Z',
+  start_time: 'asap',
+  end_time: '2027-06-30T23:59:59Z',
   packages: [{ product_id: 'test-product', budget: 5000, pricing_option_id: 'test-pricing' }],
 });
 
@@ -210,7 +210,7 @@ describe('training agent idempotency middleware', () => {
 
       const conflict = await call(server, 'create_media_buy', {
         ...basePayload(),
-        end_time: '2026-09-30T23:59:59Z',
+        end_time: '2027-09-30T23:59:59Z',
         packages: [{ product_id: productId, budget: 5000, pricing_option_id: pricingOptionId }],
         idempotency_key: key,
       });
@@ -297,8 +297,8 @@ describe('training agent idempotency middleware', () => {
       const payloadA = {
         account: { brand: { domain: 'caller-a.example' }, operator: 'op' },
         brand: { domain: 'caller-a.example' },
-        start_time: '2026-06-01T00:00:00Z',
-        end_time: '2026-06-30T23:59:59Z',
+        start_time: 'asap',
+        end_time: '2027-06-30T23:59:59Z',
         packages: [pkg],
         idempotency_key: key,
       };
