@@ -639,6 +639,7 @@ async function main() {
           const targetUrl = agentUrl.replace(/\/mcp$/, variant.routeSuffix);
           const result = await runStoryboard(targetUrl, storyboard, {
             ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
+            ...(complianceOptions?.schemaRoot && { schemaRoot: complianceOptions.schemaRoot }),
             auth,
             allow_http: true,
             contracts: ['webhook_receiver_runner'],
@@ -684,6 +685,7 @@ async function main() {
         // calls keep working.
         const result = await runStoryboard(agentUrl, storyboard, {
           ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
+          ...(complianceOptions?.schemaRoot && { schemaRoot: complianceOptions.schemaRoot }),
           auth,
           allow_http: true,
           contracts: ['webhook_receiver_runner'],
