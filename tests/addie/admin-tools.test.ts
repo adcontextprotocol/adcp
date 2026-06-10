@@ -450,12 +450,19 @@ function makeTxClient(
   overrides: {
     previewRow?: Record<string, unknown>;
     org?: ReturnType<typeof makeOrg>;
+    failOn?: "audit_insert";
   } = {},
 ) {
   const calls: Array<{ sql: string; params?: unknown[] }> = [];
   const client = {
     query: vi.fn(async (sql: string, params?: unknown[]) => {
       calls.push({ sql, params });
+      if (
+        overrides.failOn === "audit_insert" &&
+        sql.startsWith("INSERT INTO registry_audit_log")
+      ) {
+        throw new Error("audit INSERT failed");
+      }
       if (sql.includes("DELETE FROM admin_stripe_customer_update_previews")) {
         return { rows: [overrides.previewRow ?? makePreviewRow()] };
       }
@@ -715,6 +722,77 @@ describe("org Stripe customer update handlers", () => {
       metadata: { workos_organization_id: "" },
     });
     expect(mockInvalidateMembershipCache).toHaveBeenCalledWith("org_test_123");
+  });
+
+  it("does not commit a relink when target customer metadata cannot be stamped", async () => {
+    mockGetOrganization.mockResolvedValue(
+      makeOrg({ stripe_customer_id: "cus_old_123" }),
+    );
+    mockCustomersUpdate.mockRejectedValueOnce(new Error("Stripe metadata outage"));
+
+    const handlers = createAdminToolHandlers(adminMemberContext);
+    const preview = JSON.parse(
+      await handlers.get("preview_org_stripe_customer_update")!({
+        org_id: "org_test_123",
+        new_customer_id: "cus_new_123",
+      }),
+    );
+
+    const confirm = JSON.parse(
+      await handlers.get("confirm_org_stripe_customer_update")!({
+        preview_token: preview.preview_token,
+        confirm: true,
+        reason: "Correct duplicate Stripe customer linkage",
+      }),
+    );
+
+    expect(confirm.success).toBe(false);
+    expect(confirm.error).toContain("relink was not committed");
+    expect(mockCustomersUpdate).toHaveBeenCalledWith("cus_new_123", {
+      metadata: { workos_organization_id: "org_test_123" },
+    });
+    expect(mockPoolConnect).toHaveBeenCalled();
+  });
+
+  it("restores target customer metadata when the local relink transaction fails", async () => {
+    mockGetOrganization.mockResolvedValue(
+      makeOrg({ stripe_customer_id: "cus_old_123" }),
+    );
+    mockCustomersRetrieve.mockResolvedValue(
+      makeStripeCustomer({ metadata: { workos_organization_id: "org_previous" } }),
+    );
+    const tx = makeTxClient({
+      failOn: "audit_insert",
+      org: makeOrg({ stripe_customer_id: "cus_old_123" }),
+    });
+    mockPoolConnect.mockResolvedValue(tx.client);
+
+    const handlers = createAdminToolHandlers(adminMemberContext);
+    const preview = JSON.parse(
+      await handlers.get("preview_org_stripe_customer_update")!({
+        org_id: "org_test_123",
+        new_customer_id: "cus_new_123",
+      }),
+    );
+    mockPoolConnect.mockResolvedValue(tx.client);
+
+    const confirm = JSON.parse(
+      await handlers.get("confirm_org_stripe_customer_update")!({
+        preview_token: preview.preview_token,
+        confirm: true,
+        reason: "Correct duplicate Stripe customer linkage",
+      }),
+    );
+
+    expect(confirm.success).toBe(false);
+    expect(confirm.error).toContain("audit INSERT failed");
+    expect(tx.calls.map((call) => call.sql)).toContain("ROLLBACK");
+    expect(mockCustomersUpdate).toHaveBeenCalledWith("cus_new_123", {
+      metadata: { workos_organization_id: "org_test_123" },
+    });
+    expect(mockCustomersUpdate).toHaveBeenCalledWith("cus_new_123", {
+      metadata: { workos_organization_id: "org_previous" },
+    });
   });
 
   it("rejects confirm calls without a valid preview token", async () => {
