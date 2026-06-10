@@ -35,10 +35,15 @@ describe('normalizeBasicAuthForStorage', () => {
     expect(normalizeBasicAuthForStorage('nopairhere').ok).toBe(false);
   });
 
-  it('rejects raw or encoded basic credentials with a blank side', () => {
-    expect(normalizeBasicAuthForStorage('user:').ok).toBe(false);
+  it('accepts empty passwords and rejects empty usernames', () => {
+    const rawEmptyPassword = normalizeBasicAuthForStorage('user:');
+    expect(rawEmptyPassword.ok).toBe(true);
+    if (rawEmptyPassword.ok) {
+      expect(rawEmptyPassword.stored).toBe(Buffer.from('user:', 'utf8').toString('base64'));
+    }
     expect(normalizeBasicAuthForStorage(':pass').ok).toBe(false);
-    expect(normalizeBasicAuthForStorage(Buffer.from('user:', 'utf8').toString('base64')).ok).toBe(false);
+    const encodedEmptyPassword = Buffer.from('user:', 'utf8').toString('base64');
+    expect(normalizeBasicAuthForStorage(encodedEmptyPassword).ok).toBe(true);
     expect(normalizeBasicAuthForStorage(Buffer.from(':pass', 'utf8').toString('base64')).ok).toBe(false);
   });
 });
@@ -74,14 +79,14 @@ describe('buildAuthOption (basic auth)', () => {
     expect(option).toBeUndefined();
   });
 
-  it('returns undefined for an incomplete decoded basic credential', () => {
+  it('decodes a basic credential with an empty password', () => {
     const option = buildAuthOption({
       authToken: Buffer.from('user:', 'utf8').toString('base64'),
       authType: 'basic',
       source: 'saved',
       resolvedUrl: 'https://example.com',
     });
-    expect(option).toBeUndefined();
+    expect(option).toEqual({ type: 'basic', username: 'user', password: '' });
   });
 
   it('splits on the first colon so passwords may contain colons', () => {
@@ -107,13 +112,13 @@ describe('buildAuthOption (basic auth)', () => {
 });
 
 describe('resolveAgentAuth', () => {
-  it('falls through to OAuth when saved basic auth has an empty password', async () => {
+  it('uses saved basic auth when it has an empty password', async () => {
     const agentUrl = 'https://private-agent.example.com/mcp';
     vi.spyOn(AgentContextDatabase.prototype, 'getAuthInfoByOrgAndUrl').mockResolvedValueOnce({
       token: Buffer.from('test-user:', 'utf8').toString('base64'),
       authType: 'basic',
     });
-    vi.spyOn(AgentContextDatabase.prototype, 'getOAuthTokensByOrgAndUrl').mockResolvedValueOnce({
+    const oauthSpy = vi.spyOn(AgentContextDatabase.prototype, 'getOAuthTokensByOrgAndUrl').mockResolvedValueOnce({
       access_token: 'oauth-access',
       refresh_token: 'oauth-refresh',
     });
@@ -121,10 +126,11 @@ describe('resolveAgentAuth', () => {
     const resolved = await resolveAgentAuth(agentUrl, 'org_123');
 
     expect(resolved).toEqual({
-      authToken: 'oauth-access',
-      authType: 'bearer',
-      source: 'oauth',
+      authToken: Buffer.from('test-user:', 'utf8').toString('base64'),
+      authType: 'basic',
+      source: 'saved',
       resolvedUrl: agentUrl,
     });
+    expect(oauthSpy).not.toHaveBeenCalled();
   });
 });

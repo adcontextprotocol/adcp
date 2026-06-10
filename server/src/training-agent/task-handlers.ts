@@ -717,9 +717,9 @@ import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { selectSigningCapability } from './request-signing.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9'] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10'] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
-const CURRENT_ADCP_VERSION = '3.1-rc.9';
+const CURRENT_ADCP_VERSION = '3.1-rc.10';
 const MAX_PACKAGES_PER_BUY = 50;
 
 interface ParsedAdcpReleaseVersion {
@@ -763,7 +763,32 @@ function compareAdcpReleaseVersions(left: ParsedAdcpReleaseVersion, right: Parse
   if (left.prerelease === right.prerelease) return 0;
   if (!left.prerelease) return 1;
   if (!right.prerelease) return -1;
-  return left.prerelease.localeCompare(right.prerelease);
+  return compareAdcpPrerelease(left.prerelease, right.prerelease);
+}
+
+function compareAdcpPrerelease(left: string, right: string): number {
+  const leftParts = left.split('.');
+  const rightParts = right.split('.');
+  const maxParts = Math.max(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < maxParts; index += 1) {
+    const leftPart = leftParts[index];
+    const rightPart = rightParts[index];
+    if (leftPart === undefined) return -1;
+    if (rightPart === undefined) return 1;
+    if (leftPart === rightPart) continue;
+
+    const leftNumeric = /^\d+$/.test(leftPart);
+    const rightNumeric = /^\d+$/.test(rightPart);
+    if (leftNumeric && rightNumeric) {
+      return Number.parseInt(leftPart, 10) - Number.parseInt(rightPart, 10);
+    }
+    if (leftNumeric) return -1;
+    if (rightNumeric) return 1;
+    return leftPart.localeCompare(rightPart);
+  }
+
+  return 0;
 }
 
 const PARSED_SUPPORTED_RELEASE_VERSIONS = SUPPORTED_RELEASE_VERSIONS

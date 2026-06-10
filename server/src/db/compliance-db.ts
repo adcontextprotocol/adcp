@@ -50,10 +50,9 @@ export type ResolvedOwnerAuth =
 
 /**
  * Decode an HTTP Basic Authorization credential (base64(`username:password`))
- * into a typed shape. Returns null when the payload is not complete
- * base64(`username:password`). The storyboard runner requires complete Basic
- * credentials, and passing through malformed rows turns saved-credential
- * issues into platform-looking heartbeat failures.
+ * into a typed shape. Returns null when the payload is not valid RFC 7617
+ * form: missing the colon separator or carrying an empty user-id. Empty
+ * passwords are valid Basic credentials.
  */
 export function decodeBasicCredentials(
   token: string,
@@ -63,7 +62,7 @@ export function decodeBasicCredentials(
   if (colonIndex < 0) return null;
   const username = decoded.slice(0, colonIndex);
   const password = decoded.slice(colonIndex + 1);
-  if (!username || !password) return null;
+  if (!username) return null;
   return {
     type: 'basic',
     username,

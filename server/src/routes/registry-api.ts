@@ -6327,7 +6327,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         const normalized = normalizeBasicAuthForStorage(authTokenToStore);
         if (!normalized.ok) {
           return res.status(400).json({
-            error: 'Basic auth_token must be "user:password" or base64("user:password") with non-empty username and password',
+            error: 'Basic auth_token must be "username:password" with a non-empty username; the password may be empty. The base64-encoded form is also accepted.',
           });
         }
         authTokenToStore = normalized.stored;

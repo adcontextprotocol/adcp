@@ -78,17 +78,17 @@ describe('ComplianceDatabase.resolveOwnerAuth', () => {
     expect(auth).toEqual({ type: 'basic', username, password });
   });
 
-  it('returns undefined when basic-typed token has an empty password', async () => {
-    const malformed = Buffer.from('test-user:', 'utf8').toString('base64');
+  it('decodes static basic auth with an empty password', async () => {
+    const credentials = Buffer.from('test-user:', 'utf8').toString('base64');
     mockRow({ auth_token_encrypted: 'enc_empty_password', auth_token_iv: 'iv_empty_password', auth_type: 'basic' });
-    mockedDecrypt.mockReturnValueOnce(malformed);
+    mockedDecrypt.mockReturnValueOnce(credentials);
 
     const auth = await db.resolveOwnerAuth('https://agent.example.com');
-    expect(auth).toBeUndefined();
+    expect(auth).toEqual({ type: 'basic', username: 'test-user', password: '' });
   });
 
-  it('falls through to OAuth when basic-typed token has an empty password', async () => {
-    const malformed = Buffer.from('test-user:', 'utf8').toString('base64');
+  it('prefers static basic auth with an empty password over OAuth', async () => {
+    const credentials = Buffer.from('test-user:', 'utf8').toString('base64');
     mockRow({
       auth_token_encrypted: 'enc_empty_password',
       auth_token_iv: 'iv_empty_password',
@@ -99,17 +99,15 @@ describe('ComplianceDatabase.resolveOwnerAuth', () => {
       oauth_refresh_token_iv: 'iv_refresh',
     });
     mockedDecrypt.mockImplementation((encrypted: string) => {
-      if (encrypted === 'enc_empty_password') return malformed;
+      if (encrypted === 'enc_empty_password') return credentials;
       if (encrypted === 'enc_access') return 'access-plaintext';
       if (encrypted === 'enc_refresh') return 'refresh-plaintext';
       throw new Error(`unexpected decrypt call: ${encrypted}`);
     });
 
     const auth = await db.resolveOwnerAuth('https://agent.example.com');
-    expect(auth).toEqual({
-      type: 'oauth',
-      tokens: { access_token: 'access-plaintext', refresh_token: 'refresh-plaintext' },
-    });
+    expect(auth).toEqual({ type: 'basic', username: 'test-user', password: '' });
+    expect(mockedDecrypt).toHaveBeenCalledTimes(1);
   });
 
   it('returns undefined when basic-typed token has no colon separator and no fallback auth exists', async () => {
