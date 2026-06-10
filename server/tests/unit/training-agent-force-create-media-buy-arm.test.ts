@@ -53,13 +53,11 @@ async function getValidPackage(server: ReturnType<typeof createTrainingAgentServ
 }
 
 function buildCreateMediaBuyArgs(pkg: { product_id: string; pricing_option_id: string }): Record<string, unknown> {
-  const now = new Date();
-  const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
   return {
     account: ACCOUNT,
     brand: BRAND,
-    start_time: now.toISOString(),
-    end_time: end.toISOString(),
+    start_time: 'asap',
+    end_time: '2099-07-01T00:00:00Z',
     packages: [{ ...pkg, budget: 10000 }],
   };
 }
