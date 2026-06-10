@@ -10508,12 +10508,13 @@ describe('context echo', () => {
     const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
       context: TEST_CONTEXT,
       idempotency_key: 'ctx-neg-budget-01',
-      start_time: '2026-05-01T00:00:00Z',
-      end_time: '2026-05-31T23:59:59Z',
+      start_time: 'asap',
+      end_time: '2099-05-31T23:59:59Z',
       packages: [{ product_id: 'test-product', budget: -500, pricing_option_id: 'test-pricing' }],
     });
     expect(isError).toBe(true);
     expect(parsed.adcp_error).toBeDefined();
+    expect(parsed.adcp_error.code).toBe('BUDGET_TOO_LOW');
     expect(parsed.context).toEqual(TEST_CONTEXT);
   });
 
@@ -10522,12 +10523,13 @@ describe('context echo', () => {
     const { parsed, isError } = await simulateCallToolRaw(server, 'create_media_buy', {
       context: TEST_CONTEXT,
       idempotency_key: 'ctx-nonexistent-01',
-      start_time: '2026-05-01T00:00:00Z',
-      end_time: '2026-05-31T23:59:59Z',
+      start_time: 'asap',
+      end_time: '2099-05-31T23:59:59Z',
       packages: [{ product_id: 'NONEXISTENT_PRODUCT_ID_12345', budget: 1000, pricing_option_id: 'nonexistent-pricing' }],
     });
     expect(isError).toBe(true);
     expect(parsed.adcp_error).toBeDefined();
+    expect(parsed.adcp_error.code).toBe('PRODUCT_NOT_FOUND');
     expect(parsed.context).toEqual(TEST_CONTEXT);
   });
 

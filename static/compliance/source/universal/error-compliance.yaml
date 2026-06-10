@@ -118,8 +118,8 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           idempotency_key: "$generate:uuid_v4#error-negative-budget"
-          start_time: "2026-05-01T00:00:00Z"
-          end_time: "2026-05-31T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-05-31T23:59:59Z"
           packages:
             - product_id: "test-product"
               budget: -500
@@ -166,8 +166,8 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           idempotency_key: "$generate:uuid_v4#error-nonexistent-product"
-          start_time: "2026-05-01T00:00:00Z"
-          end_time: "2026-05-31T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-05-31T23:59:59Z"
           packages:
             - product_id: "nonexistent-product-id-xyz"
               budget: 10000

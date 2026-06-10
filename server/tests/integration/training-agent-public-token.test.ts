@@ -117,8 +117,8 @@ describe('Training Agent documented public token', () => {
             idempotency_key: `strict-create-${randomUUID()}`,
             brand: { domain: 'strict-create.example' },
             packages: [{ product_id: 'pkg_streamhaus_ctv_prime', budget: { amount: 1000, currency: 'USD' } }],
-            start_time: '2026-06-15T00:00:00Z',
-            end_time: '2026-06-30T00:00:00Z',
+            start_time: 'asap',
+            end_time: '2099-06-30T00:00:00Z',
           },
         },
       });
