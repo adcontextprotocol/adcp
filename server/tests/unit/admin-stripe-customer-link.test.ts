@@ -324,6 +324,31 @@ describe('POST /api/admin/stripe-customers/:customerId/link', () => {
     });
   });
 
+  it('does not commit the org link when target customer metadata cannot be stamped', async () => {
+    mockPoolQuery
+      .mockResolvedValueOnce({ rows: [makeOrgRow()] })
+      .mockResolvedValueOnce({ rows: [] });
+    mockCustomersRetrieve.mockResolvedValueOnce(makeMembershipCustomer());
+    mockSubscriptionsList.mockResolvedValueOnce({ data: [] });
+    mockCustomersUpdate.mockRejectedValueOnce(new Error('Stripe metadata outage'));
+    const tx = makeTxClient();
+    mockPoolConnect.mockResolvedValueOnce(tx.client);
+    const app = await buildApp();
+
+    const res = await request(app)
+      .post(`/api/admin/stripe-customers/${CUSTOMER_ID}/link`)
+      .send({ org_id: ORG_ID, reason: LINK_REASON });
+
+    expect(res.status).toBe(502);
+    expect(res.body.error).toBe('Stripe metadata update failed');
+    expect(mockCustomersUpdate).toHaveBeenCalledWith(CUSTOMER_ID, {
+      metadata: { workos_organization_id: ORG_ID },
+    });
+    expect(mockPoolConnect).toHaveBeenCalled();
+    expect(tx.calls).toEqual([]);
+    expect(tx.release).toHaveBeenCalled();
+  });
+
   it('force-replaces an existing link, clears stale subscription state, and audits the replacement', async () => {
     const previousCustomerId = 'cus_previous_link';
     mockPoolQuery
@@ -427,7 +452,7 @@ describe('POST /api/admin/stripe-customers/:customerId/link', () => {
     mockPoolQuery
       .mockResolvedValueOnce({ rows: [makeOrgRow()] })
       .mockResolvedValueOnce({ rows: [] });
-    const customer = makeMembershipCustomer();
+    const customer = makeMembershipCustomer({ metadata: {} });
     mockCustomersRetrieve.mockResolvedValueOnce(customer);
     mockSubscriptionsList.mockResolvedValueOnce({ data: (customer as any).subscriptions.data });
     const tx = makeTxClient({ failOn: 'INSERT' });
@@ -441,6 +466,12 @@ describe('POST /api/admin/stripe-customers/:customerId/link', () => {
     expect(res.status).toBe(500);
     expect(tx.calls.map((call) => call.sql)).toContain('ROLLBACK');
     expect(tx.calls.map((call) => call.sql)).not.toContain('COMMIT');
+    expect(mockCustomersUpdate).toHaveBeenCalledWith(CUSTOMER_ID, {
+      metadata: { workos_organization_id: ORG_ID },
+    });
+    expect(mockCustomersUpdate).toHaveBeenCalledWith(CUSTOMER_ID, {
+      metadata: { workos_organization_id: '' },
+    });
     expect(tx.release).toHaveBeenCalled();
   });
 

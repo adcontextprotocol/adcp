@@ -4860,34 +4860,50 @@ export class HTTPServer {
             }
 
             if (customerId && workosOrgId) {
+              // Ensure the Stripe customer has org metadata so that subsequent
+              // subscription and invoice webhooks can find the org. Do this
+              // before linking the customer locally; otherwise an external
+              // Stripe metadata failure can create a DB→Stripe invariant split.
+              let customerMetadataReady = false;
+              try {
+                const customerRaw = await stripe.customers.retrieve(customerId) as Stripe.Customer | Stripe.DeletedCustomer;
+                if ('deleted' in customerRaw && customerRaw.deleted) {
+                  logger.warn({ customerId, workosOrgId }, 'Stripe customer was deleted, cannot update metadata');
+                } else {
+                  const stampedOrgId = (customerRaw as Stripe.Customer).metadata?.workos_organization_id;
+                  if (stampedOrgId && stampedOrgId !== workosOrgId) {
+                    logger.warn(
+                      { customerId, workosOrgId, stampedOrgId },
+                      'Stripe customer metadata points to a different org; not linking checkout customer locally',
+                    );
+                  } else {
+                    if (!stampedOrgId) {
+                      await stripe.customers.update(customerId, {
+                        metadata: { workos_organization_id: workosOrgId },
+                      });
+                      logger.info({ customerId, workosOrgId }, 'Added workos_organization_id metadata to Stripe customer');
+                    }
+                    customerMetadataReady = true;
+                  }
+                }
+              } catch (err) {
+                logger.error({ err, customerId, workosOrgId }, 'Failed to update Stripe customer metadata from checkout session');
+                throw err;
+              }
+
               // Ensure the Stripe customer is linked to the organization.
               // This catches cases where the checkout session was created with
               // customerEmail instead of customerId, causing Stripe to create
-              // a new customer without workos_organization_id metadata.
+              // a new customer. Only link after the metadata pointer is in
+              // place so the bidirectional invariant remains true.
               const org = await orgDb.getOrganization(workosOrgId);
-              if (org && !org.stripe_customer_id) {
+              if (org && !org.stripe_customer_id && customerMetadataReady) {
                 try {
                   await orgDb.setStripeCustomerId(workosOrgId, customerId);
                   logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to org from checkout.session.completed');
                 } catch (err) {
                   logger.warn({ err, workosOrgId, customerId }, 'Could not link Stripe customer to org from checkout (possible conflict)');
                 }
-              }
-
-              // Ensure the Stripe customer has org metadata so that subsequent
-              // subscription and invoice webhooks can find the org.
-              try {
-                const customerRaw = await stripe.customers.retrieve(customerId) as Stripe.Customer | Stripe.DeletedCustomer;
-                if ('deleted' in customerRaw && customerRaw.deleted) {
-                  logger.warn({ customerId, workosOrgId }, 'Stripe customer was deleted, cannot update metadata');
-                } else if (!(customerRaw as Stripe.Customer).metadata?.workos_organization_id) {
-                  await stripe.customers.update(customerId, {
-                    metadata: { workos_organization_id: workosOrgId },
-                  });
-                  logger.info({ customerId, workosOrgId }, 'Added workos_organization_id metadata to Stripe customer');
-                }
-              } catch (err) {
-                logger.error({ err, customerId, workosOrgId }, 'Failed to update Stripe customer metadata from checkout session');
               }
             }
             break;
