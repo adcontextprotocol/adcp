@@ -211,7 +211,7 @@ phases:
           brand:
             domain: "acmeoutdoor.example"
           start_time: "asap"
-          end_time: "2026-09-30T23:59:59Z"
+          end_time: "2099-09-30T23:59:59Z"
           packages:
             - product_id: "$context.product_id"
               budget: 10000

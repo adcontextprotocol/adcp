@@ -80,7 +80,7 @@ describe('ADCP task registry account validation', () => {
     brand: { domain: 'acme.example' },
     packages: [{ product_id: 'prod_123', pricing_option_id: 'cpm', budget: 1000 }],
     start_time: 'asap',
-    end_time: '2026-07-31T23:59:59Z',
+    end_time: '2099-07-31T23:59:59Z',
   };
 
   it('requires account on create_media_buy', () => {
@@ -128,7 +128,7 @@ describe('ADCP task registry account validation', () => {
       proposal_id: 'proposal_123',
       total_budget: { amount: 50000, currency: 'USD' },
       start_time: 'asap',
-      end_time: '2026-07-31T23:59:59Z',
+      end_time: '2099-07-31T23:59:59Z',
     })).toBeNull();
   });
 
@@ -140,7 +140,7 @@ describe('ADCP task registry account validation', () => {
       brand: { domain: 'acme.example' },
       proposal_id: 'proposal_123',
       start_time: 'asap',
-      end_time: '2026-07-31T23:59:59Z',
+      end_time: '2099-07-31T23:59:59Z',
     })).toContain('total_budget is required');
   });
 
@@ -168,7 +168,7 @@ describe('ADCP task registry account validation', () => {
       proposal_id: '',
       total_budget: { amount: 50000, currency: 'USD' },
       start_time: 'asap',
-      end_time: '2026-07-31T23:59:59Z',
+      end_time: '2099-07-31T23:59:59Z',
     })).toContain('proposal_id must be a non-empty string');
 
     expect(validate?.({
@@ -178,7 +178,7 @@ describe('ADCP task registry account validation', () => {
       proposal_id: 'proposal_123',
       total_budget: {},
       start_time: 'asap',
-      end_time: '2026-07-31T23:59:59Z',
+      end_time: '2099-07-31T23:59:59Z',
     })).toContain('total_budget.amount must be a non-negative number');
   });
 
@@ -226,7 +226,7 @@ describe('call_adcp_task handler validation boundary', () => {
         proposal_id: 'proposal_123',
         total_budget: { amount: 50000, currency: 'USD' },
         start_time: 'asap',
-        end_time: '2026-07-31T23:59:59Z',
+        end_time: '2099-07-31T23:59:59Z',
       },
     })).resolves.toContain('Invalid agent URL format');
   });
@@ -243,7 +243,7 @@ describe('call_adcp_task handler validation boundary', () => {
         proposal_id: 'proposal_123',
         total_budget: { amount: 50000, currency: 'USD' },
         start_time: 'asap',
-        end_time: '2026-07-31T23:59:59Z',
+        end_time: '2099-07-31T23:59:59Z',
       },
     })).resolves.toContain('Use either packages array or proposal_id + total_budget, not both');
   });
@@ -257,7 +257,7 @@ describe('call_adcp_task handler validation boundary', () => {
         brand: { domain: 'acme.example' },
         packages: [{ product_id: 'prod_123', pricing_option_id: 'cpm', budget: 1000 }],
         start_time: 'asap',
-        end_time: '2026-07-31T23:59:59Z',
+        end_time: '2099-07-31T23:59:59Z',
       },
     })).resolves.toContain('idempotency_key is required');
   });

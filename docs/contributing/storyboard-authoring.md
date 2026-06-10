@@ -226,7 +226,7 @@ Aliased codes pass the lint as **warnings** during the deprecation window, givin
 
 ## Asserting on branchable behaviors
 
-Some spec requirements allow multiple conformant agent behaviors — e.g. a past `start_time` on `create_media_buy` MAY be rejected with `INVALID_REQUEST` OR accepted-and-adjusted forward. A single-assertion validator that asserts only one branch forces a conformant agent that picked the other branch to silently fail.
+Some spec requirements allow multiple conformant agent behaviors — e.g. an operation may return immediate success OR `pending_review` depending on seller policy. A single-assertion validator that asserts only one branch forces a conformant agent that picked the other branch to silently fail.
 
 When the spec allows a branchable outcome, split the storyboard into parallel optional phases and resolve via `assert_contribution`:
 
@@ -266,7 +266,7 @@ Failures inside an `optional: true` phase do NOT fail the storyboard — only th
 
 The non-chosen branch's failing steps MUST be reported by the runner with skip reason `peer_branch_taken`, not `failed`. This keeps runner summaries accurate for conformant agents (the other-branch failures were not real failures) and keeps dashboard coverage signals clean (`peer_branch_taken` is runtime routing; `not_applicable` is for protocol coverage gaps). See `universal/storyboard-schema.yaml` § "Per-step grading in any_of branch patterns" and `universal/runner-output-contract.yaml` > `skip_result.reasons.peer_branch_taken` for the normative rule.
 
-Canonical example: `past_start_reject_path` / `past_start_adjust_path` / `past_start_enforcement` in `universal/schema-validation.yaml`. Use the same shape for any spec `MAY` / `any_of` where observable outcomes differ across branches.
+Use this shape for any spec `MAY` / `any_of` where observable outcomes differ across branches. Do not use it for `create_media_buy.start_time` in the past; that case is now reject-only with `INVALID_REQUEST`.
 
 Single-code `check: error_code` is still correct when the spec mandates a canonical code for a scenario (e.g. `GOVERNANCE_DENIED` on a governance-denied outcome, `NOT_CANCELLABLE` on re-cancel). The split-phase pattern applies only when the spec itself leaves the outcome branchable.
 

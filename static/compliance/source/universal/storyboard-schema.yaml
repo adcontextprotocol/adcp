@@ -140,7 +140,7 @@
 #   different topologies.)
 #
 # requires: string[] (optional — storyboard-level runtime requirement gate.
-#   Known values: controller | seeded_state | real_wire (forward-compat:
+#   Known values: controller | seeded_state | real_wire | webhook_receiver (forward-compat:
 #   unrecognized values are NOT schema violations — runners emit
 #   requirement_unmet at runtime; see Forward compatibility below).
 #   Default when absent: [real_wire] — untagged storyboards run unchanged.
@@ -213,6 +213,19 @@
 #                    semantics are defined.
 #                    Harnesses that consume this value MUST account for the
 #                    skip-direction inversion when --mock-only support lands.
+#
+#     webhook_receiver
+#                  — gate on the runner hosting a webhook receiver for this run.
+#                    Available when the runner is configured with the webhook
+#                    receiver contract (for example
+#                    `webhook_receiver: { mode: "loopback_mock" }` or an
+#                    operator-supplied proxy URL). When unmet, the runner MUST
+#                    emit skip_result.reason: requirement_unmet with detail
+#                    naming "webhook_receiver" rather than sending unresolved
+#                    `{{runner.webhook_url:...}}` placeholders to the agent.
+#                    This value may be declared explicitly on storyboards such
+#                    as webhook-emission; runners may also infer it from
+#                    webhook URL substitutions in sample_request payloads.
 #
 #   Forward compatibility: runners encountering a requires value they do not
 #   recognize MUST emit skip_result.reason: requirement_unmet (not fail-load)
@@ -598,6 +611,13 @@
 #                                                         → use a per-run random JWT-shaped bogus Bearer token.
 #                                                           Runner generates `<base64url random>.<base64url random>.<base64url random>` per run.
 #
+#   Positive credential checks SHOULD use the runner's normal transport auth
+#   and initialized protocol session rather than step-level `auth:`. In MCP
+#   terms: authenticate the Streamable HTTP session, call `initialize`, then
+#   call the protected task. `auth:` overrides are intended for negative probes
+#   that deliberately strip credentials or send invalid values, where a raw
+#   unauthenticated-session rejection is acceptable evidence of rejection.
+#
 # DISALLOWED: `auth: { type: ..., value: "<literal>" }` — literal credentials in
 # storyboard YAML are a code smell (they bind the storyboard to a specific value,
 # can't rotate without rewriting, and leak plaintext identity into source).
@@ -868,42 +888,43 @@
 #
 # Branch sets:
 #   A branch set is a group of peer optional phases exercising mutually
-#   exclusive agent behaviors for the same trigger — e.g., an agent that
-#   rejects a past start_time vs. an agent that accepts-and-adjusts. A
-#   later `assert_contribution` step over the set's `branch_set.id` fails
-#   the storyboard only when NO branch contributed.
+#   exclusive agent behaviors for the same trigger — e.g., an operation whose
+#   spec permits either an immediate success response or a pending-review
+#   response depending on seller policy. A later `assert_contribution` step
+#   over the set's `branch_set.id` fails the storyboard only when NO branch
+#   contributed.
 #
 #   Minimal example — two peer phases and the assertion that grades them:
 #
 #     phases:
-#       - id: past_start_reject_path
+#       - id: immediate_success_path
 #         optional: true
 #         branch_set:
-#           id: past_start_handled
+#           id: operation_handled
 #           semantics: any_of
 #         steps:
-#           - id: create_buy_past_start_reject
-#             task: create_media_buy
-#             contributes_to: past_start_handled
-#             # ... expect INVALID_REQUEST ...
+#           - id: submit_immediate_success
+#             task: example_operation
+#             contributes_to: operation_handled
+#             # ... expect status: "accepted" ...
 #
-#       - id: past_start_adjust_path
+#       - id: pending_review_path
 #         optional: true
 #         branch_set:
-#           id: past_start_handled
+#           id: operation_handled
 #           semantics: any_of
 #         steps:
-#           - id: create_buy_past_start_adjust
-#             task: create_media_buy
-#             contributes_to: past_start_handled
-#             # ... expect media_buy_id ...
+#           - id: submit_pending_review
+#             task: example_operation
+#             contributes_to: operation_handled
+#             # ... expect status: "pending_review" ...
 #
-#       - id: past_start_enforcement
+#       - id: operation_enforcement
 #         steps:
 #           - task: assert_contribution
 #             validations:
 #               - check: any_of
-#                 allowed_values: [past_start_handled]
+#                 allowed_values: [operation_handled]
 #
 #   `@adcp/client` 5.8.0+ also accepts the boolean shorthand
 #   `contributes: true` on a step inside a branch_set phase — the runner's

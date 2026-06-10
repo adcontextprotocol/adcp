@@ -186,8 +186,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          start_time: "2026-06-01T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: "reach_ctv_q2"
               budget: 50000
@@ -256,8 +256,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          start_time: "2026-06-01T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: "reach_ctv_q2"
               budget: 10000
@@ -382,8 +382,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          start_time: "2026-06-01T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: "reach_ctv_q2"
               budget: 10000
@@ -497,8 +497,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          start_time: "2026-06-01T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: "reach_ctv_q2"
               budget: 10000
@@ -619,8 +619,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          start_time: "2026-06-01T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: "reach_ctv_q2"
               budget: 10000
@@ -743,8 +743,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          start_time: "2026-06-01T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: "reach_ctv_q2"
               budget: 10000

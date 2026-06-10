@@ -10,7 +10,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
+const fs = require('node:fs');
 const path = require('node:path');
+const yaml = require('js-yaml');
 
 const {
   lintAll,
@@ -23,6 +25,71 @@ const {
   normalizeSubstitutions,
   STORYBOARD_DIR,
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
+
+const CONCRETE_2026_RE = /^2026-\d{2}-\d{2}T/;
+const ALLOWED_TEMPORAL_NEGATIVE_STEPS = new Set([
+  'universal/schema-validation.yaml#past_start_rejection/create_buy_past_start_reject',
+]);
+
+function isExplicitTemporalNegativeStep(rel, phase, step) {
+  const key = `${rel}#${phase.id}/${step.id}`;
+  if (ALLOWED_TEMPORAL_NEGATIVE_STEPS.has(key)) return true;
+  return step.expect_error === true && step.negative_path === 'payload_well_formed' && step.comply_scenario === 'temporal_validation';
+}
+
+function storyboardFiles(dir = STORYBOARD_DIR) {
+  const files = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...storyboardFiles(fullPath));
+    } else if (entry.isFile() && (entry.name.endsWith('.yaml') || entry.name.endsWith('.yml'))) {
+      files.push(fullPath);
+    }
+  }
+  return files;
+}
+
+function collectConcrete2026CreateMediaBuyDates() {
+  const violations = [];
+  for (const file of storyboardFiles()) {
+    const rel = path.relative(STORYBOARD_DIR, file);
+    const doc = yaml.load(fs.readFileSync(file, 'utf8'));
+    for (const phase of doc?.phases || []) {
+      for (const step of phase?.steps || []) {
+        if (!step || typeof step !== 'object') continue;
+        const candidates = [];
+        if (step.task === 'create_media_buy') {
+          candidates.push(['sample_request', step.sample_request]);
+        }
+        if (step.sample_request?.tool === 'create_media_buy') {
+          candidates.push(['sample_request.payload', step.sample_request.payload]);
+        }
+        if (step.rate_limit_trip?.trip_target_task === 'create_media_buy') {
+          candidates.push(['rate_limit_trip.trip_target_sample_request', step.rate_limit_trip.trip_target_sample_request]);
+        }
+        for (const [location, payload] of candidates) {
+          if (isExplicitTemporalNegativeStep(rel, phase, step)) continue;
+          for (const field of ['start_time', 'end_time']) {
+            const value = payload?.[field];
+            if (typeof value === 'string' && CONCRETE_2026_RE.test(value)) {
+              violations.push(`${rel} :: ${phase.id}/${step.id} ${location}.${field} = ${JSON.stringify(value)}`);
+            }
+          }
+          for (const [index, pkg] of Object.entries(payload?.packages || [])) {
+            for (const field of ['start_time', 'end_time']) {
+              const value = pkg?.[field];
+              if (typeof value === 'string' && CONCRETE_2026_RE.test(value)) {
+                violations.push(`${rel} :: ${phase.id}/${step.id} ${location}.packages[${index}].${field} = ${JSON.stringify(value)}`);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return violations;
+}
 
 test('no storyboard YAML parse errors', async () => {
   const { parseErrors } = await lintAll();
@@ -60,6 +127,17 @@ test('allowlist has no stale entries', async () => {
         'Regenerate the allowlist:\n' +
         '  node scripts/lint-storyboard-sample-request-schema.cjs --write-allowlist\n\n' +
         rendered,
+    );
+  }
+});
+
+test('create_media_buy sample requests avoid concrete 2026 flight dates', () => {
+  const violations = collectConcrete2026CreateMediaBuyDates();
+  if (violations.length > 0) {
+    assert.fail(
+      `${violations.length} create_media_buy sample_request flight date value(s) hard-code 2026 outside explicit temporal negative tests.\n` +
+        'Use start_time: "asap" and far-future end_time values for durable positive-path samples, or far-future reversed dates for temporal negatives:\n' +
+        violations.map((v) => `  ${v}`).join('\n'),
     );
   }
 });
