@@ -33,6 +33,21 @@ describe('storyboard runner option helpers', () => {
     });
   });
 
+  it('threads Basic test-kit auth with an empty password into security_baseline transport auth', () => {
+    const kit: LoadedTestKit = {
+      auth: {
+        basic: { username: 'agent-user', password: '' },
+        probe_task: 'list_creatives',
+      },
+    };
+
+    expect(authForStoryboard('security_baseline', kit, 'default-token')).toEqual({
+      type: 'basic',
+      username: 'agent-user',
+      password: '',
+    });
+  });
+
   it('parses Basic credentials pairs without truncating passwords that contain colons', () => {
     const kit: LoadedTestKit = {
       auth: {
@@ -45,6 +60,21 @@ describe('storyboard runner option helpers', () => {
       type: 'basic',
       username: 'agent-user',
       password: 'pass:with:colons',
+    });
+  });
+
+  it('parses Basic credentials pairs with an empty password', () => {
+    const kit: LoadedTestKit = {
+      auth: {
+        basic: { credentials: 'agent-user:' },
+        probe_task: 'list_creatives',
+      },
+    };
+
+    expect(authForStoryboard('security_baseline', kit, 'default-token')).toEqual({
+      type: 'basic',
+      username: 'agent-user',
+      password: '',
     });
   });
 

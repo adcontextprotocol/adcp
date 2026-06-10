@@ -176,10 +176,30 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
         .toBe(Buffer.from('test-user:test-password', 'utf8').toString('base64'));
     });
 
-    it('rejects Basic credentials with a blank password', async () => {
+    it('normalizes raw Basic credentials with a blank password before storing', async () => {
       const res = await request(app).put(url).send({ auth_token: 'test-user:', auth_type: 'basic' });
+      expect(res.status).toBe(200);
+
+      const stored = await pool.query(
+        `SELECT auth_token_encrypted, auth_token_iv, auth_type, auth_token_hint
+         FROM agent_contexts
+         WHERE organization_id = $1 AND agent_url = $2`,
+        [TEST_ORG_ID, TEST_AGENT_URL],
+      );
+      expect(stored.rows).toHaveLength(1);
+      expect(stored.rows[0].auth_type).toBe('basic');
+      expect(stored.rows[0].auth_token_hint).toBe('test-user:****');
+      expect(decrypt(stored.rows[0].auth_token_encrypted, stored.rows[0].auth_token_iv, TEST_ORG_ID))
+        .toBe(Buffer.from('test-user:', 'utf8').toString('base64'));
+    });
+
+    it.each([
+      ['raw', ':test-password'],
+      ['base64', Buffer.from(':test-password', 'utf8').toString('base64')],
+    ])('rejects %s Basic credentials with a blank username', async (_label, authToken) => {
+      const res = await request(app).put(url).send({ auth_token: authToken, auth_type: 'basic' });
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/Basic auth_token/);
+      expect(res.body.error).toMatch(/non-empty username/);
 
       const stored = await pool.query(
         `SELECT id FROM agent_contexts WHERE organization_id = $1 AND agent_url = $2`,

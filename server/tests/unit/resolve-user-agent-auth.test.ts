@@ -63,18 +63,17 @@ describe('resolveUserAgentAuth', () => {
     expect(auth).toEqual({ type: 'basic', username, password });
   });
 
-  it('returns undefined when static basic auth has an empty password and no fallback auth exists', async () => {
+  it('decodes static basic auth with an empty password', async () => {
     const encoded = Buffer.from('test-user:', 'utf8').toString('base64');
     db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce({ token: encoded, authType: 'basic' });
-    db.getByOrgAndUrl.mockResolvedValueOnce(null);
 
     const auth = await call();
 
-    expect(auth).toBeUndefined();
-    expect(db.getByOrgAndUrl).toHaveBeenCalledWith(ORG, URL);
+    expect(auth).toEqual({ type: 'basic', username: 'test-user', password: '' });
+    expect(db.getByOrgAndUrl).not.toHaveBeenCalled();
   });
 
-  it('falls through to OAuth when static basic auth has an empty password', async () => {
+  it('prefers static basic auth with an empty password over OAuth', async () => {
     const encoded = Buffer.from('test-user:', 'utf8').toString('base64');
     db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce({ token: encoded, authType: 'basic' });
     db.getByOrgAndUrl.mockResolvedValueOnce({ id: 'ctx_1', has_oauth_token: true });
@@ -86,14 +85,9 @@ describe('resolveUserAgentAuth', () => {
 
     const auth = await call();
 
-    expect(auth).toEqual({
-      type: 'oauth',
-      tokens: { access_token: 'access', refresh_token: 'refresh' },
-    });
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ agentUrl: URL, orgId: ORG }),
-      expect.stringContaining('malformed saved Basic auth'),
-    );
+    expect(auth).toEqual({ type: 'basic', username: 'test-user', password: '' });
+    expect(db.getByOrgAndUrl).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it('returns undefined when basic auth has no colon separator and no fallback auth exists', async () => {
