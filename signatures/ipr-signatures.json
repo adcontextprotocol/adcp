@@ -389,6 +389,16 @@
       "pullRequestNo": 5407,
       "comment_id": 4645063753,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/5407#issuecomment-4645063753"
+    },
+    {
+      "name": "jstar0",
+      "id": 54024410,
+      "created_at": "2026-06-10T14:03:50Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 5452,
+      "comment_id": 4671078441,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/5452#issuecomment-4671078441"
     }
   ]
 }
