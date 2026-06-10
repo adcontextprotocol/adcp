@@ -91,7 +91,7 @@ Badges render as a single shields.io-style image with the qualifiers in parens:
 
 The badge URL is stable per agent + role. As an agent earns or loses an axis, the SVG content updates without changing the URL — embedded badges automatically reflect the current state.
 
-## How agents earn each axis
+## Declare specialisms
 
 ```json
 // agent declares its claims in get_adcp_capabilities
@@ -104,6 +104,13 @@ The badge URL is stable per agent + role. As an agent earns or loses an axis, th
   ]
 }
 ```
+
+`specialisms` is the badge-routing field. Omitting it means the agent still runs
+the universal and protocol-baseline storyboards implied by `supported_protocols`,
+but no specialism badge can be issued because the verification engine has no
+narrow claim to evaluate.
+
+## How agents earn each axis
 
 The axes are verification profiles over storyboard evidence, not separate runner implementations. The runner records what passed, failed, or skipped and why; the Spec and Sandbox profiles decide whether that evidence is sufficient for the public qualifier.
 
