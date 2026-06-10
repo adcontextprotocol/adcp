@@ -14,6 +14,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 OVERLAY=1
 COMPLIANCE_DIR=""
+SCHEMA_ROOT="${ADCP_SCHEMA_ROOT:-}"
 LABEL="current compliance source"
 FLOOR_SET="current"
 RELEASE_BASE_REF="${ADCP_RELEASE_BASE_REF:-origin/3.0.x}"
@@ -116,7 +117,7 @@ NODE
         node "${SCRIPT_DIR}/patch-3-0-compat-bundle.cjs" "${COMPLIANCE_DIR}"
         if git -C "${REPO_ROOT}" cat-file -e "${RELEASE_GIT_REF}:dist/schemas/${latest_3_0}/index.json" 2>/dev/null; then
           git -C "${REPO_ROOT}" archive "${RELEASE_GIT_REF}" "dist/schemas/${latest_3_0}" | tar -x -C "${bundle_tmp}"
-          bash "${SCRIPT_DIR}/stage-sdk-schema-bundle.sh" "${bundle_tmp}/dist/schemas/${latest_3_0}" "${latest_3_0}"
+          SCHEMA_ROOT="${bundle_tmp}/dist/schemas/${latest_3_0}"
         fi
       else
         bundle_tmp=$(mktemp -d -t "storyboards-3-0-compat.XXXXXX")
@@ -125,8 +126,12 @@ NODE
         COMPLIANCE_DIR="${bundle_tmp}/dist/compliance/${latest_3_0}"
         node "${SCRIPT_DIR}/patch-3-0-compat-bundle.cjs" "${COMPLIANCE_DIR}"
         if [ -f "${REPO_ROOT}/dist/schemas/${latest_3_0}/index.json" ]; then
-          bash "${SCRIPT_DIR}/stage-sdk-schema-bundle.sh" "${REPO_ROOT}/dist/schemas/${latest_3_0}" "${latest_3_0}"
+          SCHEMA_ROOT="${REPO_ROOT}/dist/schemas/${latest_3_0}"
         fi
+      fi
+      if [ -z "${SCHEMA_ROOT}" ]; then
+        echo "::error::No dist/schemas/${latest_3_0} bundle found"
+        exit 1
       fi
       LABEL="released compliance bundle: ${latest_3_0}"
       FLOOR_SET="3.0-compat"
@@ -165,6 +170,17 @@ NODE
   if [[ "${bundle_version}" =~ ^3\.0\.[0-9]+$ ]]; then
     FLOOR_SET="3.0-compat"
   fi
+fi
+
+if [ -n "${SCHEMA_ROOT}" ]; then
+  if [ "${SCHEMA_ROOT#/}" = "${SCHEMA_ROOT}" ]; then
+    SCHEMA_ROOT="${REPO_ROOT}/${SCHEMA_ROOT}"
+  fi
+  if [ ! -f "${SCHEMA_ROOT}/index.json" ]; then
+    echo "::error::Schema bundle not found at ${SCHEMA_ROOT}"
+    exit 1
+  fi
+  export ADCP_SCHEMA_ROOT="${SCHEMA_ROOT}"
 fi
 
 restore_sdk_generated_schema
