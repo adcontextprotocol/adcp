@@ -116,6 +116,8 @@ For the **network-as-RP** case (Mechanism B), the `rp_id` is the *network's* ent
 
 The attestation rides the **request** (publisher → buyer), is verified, and informs eligibility. It does **not** round-trip through the `tmpx` exposure token and is not bound by the `maxItems: 3` / ~120-byte TMPX plaintext budget. Receivers MUST bound attestation size and count to prevent DoS amplification (same class of concern as oversized `package_ids[]`).
 
+The *proof bundle* does not round-trip, but the resolved *identifier* does — and a nullifier is meaningful only within its `rp_id`. So the `world_id_nullifier` TMPX entry is itself relying-party-scoped: it carries a digest of the `rp_id` alongside the nullifier (see [TMPX binary format](/docs/trusted-match/specification#binary-format)), letting the out-of-band impression tracker attribute the exposure to its relying party and key frequency state on `(rp_id, nullifier)` without the cleartext `rp_id` crossing into the token. The digest width is a working-group open item.
+
 ## Mechanism B — Sealed cross-RP credential (pass-through, network-as-RP)
 
 The publisher is the *surface*, not the relying party. In the same user ceremony, the user mints a second proof scoped to a **network's** `rp_id` (e.g. an interchange). That proof is HPKE-sealed to the network's key, so the publisher relays it but **cannot read it** — the network-scoped nullifier is opaque to the publisher by construction, and verifiable only by the named audience.

@@ -650,8 +650,11 @@ The TMPX plaintext is a compact binary structure. The type ID implicitly defines
 | 7 | pairid | 32 bytes |
 | 8 | hashed_email | 32 bytes |
 | 9 | publisher_first_party | 32 bytes |
+| 10 | world_id_nullifier | 48 bytes (16-byte relying-party digest + 32-byte nullifier) |
 
 Type IDs are stable — new types append, existing IDs never change. Tokens are stored in binary (UUIDs as 16 bytes, base64-encoded tokens decoded). RampID has two entries because maintained (XY, 32 bytes) and derived (Xi, 48 bytes) forms differ in size.
+
+`world_id_nullifier` is **relying-party-scoped**: its token is the 16-byte SHA-256 digest of the proof's `relying_party_id` followed by the 32-byte nullifier. A World ID nullifier is meaningful only within the `rp_id` it was minted for (see [Verified Identity Attestation](#verified-identity-attestation)), and that `rp_id` rides the request-side `attestation`, which does not round-trip into the token. Carrying the `rp_id` digest in the token lets the out-of-band impression tracker attribute the nullifier to its relying party — by matching the digest against the relying parties it accepts — and key frequency state on the `(rp_id, nullifier)` pair, so a nullifier under one relying party never shares cap state with another. The token carries no `rp_id` cleartext, and the digest width is a working-group open item.
 
 If a parser encounters an unknown Type ID, it MUST stop parsing and treat the remaining entries as absent. The header Count field indicates total entries, but implementations MUST NOT assume all entries are parseable — forward compatibility requires graceful degradation when newer Type IDs are present.
 
