@@ -182,14 +182,25 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     await pool.query(
       `INSERT INTO agent_storyboard_status (
          agent_url, storyboard_id, status, last_tested_at, run_id,
-         steps_passed, steps_total, triggered_by
-       ) VALUES ($1, 'debug_storyboard', 'failing', NOW(), $2, 1, 2, 'owner_test')
+         steps_passed, steps_total, failure_count, skipped_count,
+         first_failed_step_id, first_failed_step_title, first_failed_step_task, first_failure_message,
+         triggered_by
+       ) VALUES (
+         $1, 'debug_storyboard', 'failing', NOW(), $2, 1, 2, 1, 1,
+         'debug_step', 'Debug step', 'get_products', 'debug failure', 'owner_test'
+       )
        ON CONFLICT (agent_url, storyboard_id) DO UPDATE
          SET status = EXCLUDED.status,
              last_tested_at = EXCLUDED.last_tested_at,
              run_id = EXCLUDED.run_id,
              steps_passed = EXCLUDED.steps_passed,
              steps_total = EXCLUDED.steps_total,
+             failure_count = EXCLUDED.failure_count,
+             skipped_count = EXCLUDED.skipped_count,
+             first_failed_step_id = EXCLUDED.first_failed_step_id,
+             first_failed_step_title = EXCLUDED.first_failed_step_title,
+             first_failed_step_task = EXCLUDED.first_failed_step_task,
+             first_failure_message = EXCLUDED.first_failure_message,
              triggered_by = EXCLUDED.triggered_by`,
       [AGENT_URL, complianceRunId],
     );
@@ -320,6 +331,12 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         status: 'failing',
         steps_passed: 1,
         steps_total: 2,
+        failure_count: 1,
+        skipped_count: 1,
+        first_failed_step_id: 'debug_step',
+        first_failed_step_title: 'Debug step',
+        first_failed_step_task: 'get_products',
+        first_failure_message: 'debug failure',
       }),
     ]));
   });
@@ -337,6 +354,10 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         status: 'failing',
         steps_passed: 1,
         steps_total: 2,
+        failure_count: 1,
+        skipped_count: 1,
+        first_failed_step_id: 'debug_step',
+        first_failure_message: 'debug failure',
       }),
     ]));
   });

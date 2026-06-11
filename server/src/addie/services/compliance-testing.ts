@@ -499,20 +499,36 @@ export function deriveStoryboardStatuses(
   result: ComplianceResult,
   storyboardIds?: string[],
 ): StoryboardStatusEntry[] {
+  interface FirstFailure {
+    stepId: string | null;
+    title: string | null;
+    task: string | null;
+    message: string | null;
+  }
   interface Aggregate {
     stepsPassed: number;
     stepsTotal: number;
     stepLessPhasesPassed: number;
     stepLessPhasesTotal: number;
     controllerSkipped: number;
+    failureCount: number;
+    skippedCount: number;
+    firstFailure: FirstFailure | null;
   }
   const branchSkipReasons = new Set<string>([
     'peer_branch_taken',
     'peer_substituted',
   ]);
+  const cascadeSkipReasons = new Set<string>([
+    'prerequisite_failed',
+  ]);
   const isControllerSkip = (step: { skip_reason?: string; requirement?: string }): boolean =>
     step.skip_reason === 'missing_test_controller' ||
     (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller');
+  const isBranchSkip = (step: { skip_reason?: string }): boolean =>
+    branchSkipReasons.has(step.skip_reason ?? '');
+  const isCascadeSkip = (step: { skip_reason?: string }): boolean =>
+    cascadeSkipReasons.has(step.skip_reason ?? '');
   const perStoryboard = new Map<string, Aggregate>();
   // Storyboard ids in `static/compliance/source/**/index.yaml` are flat
   // identifiers (no `/`); splitting on the first `/` therefore always yields
@@ -533,6 +549,9 @@ export function deriveStoryboardStatuses(
           stepLessPhasesPassed: 0,
           stepLessPhasesTotal: 0,
           controllerSkipped: 0,
+          failureCount: 0,
+          skippedCount: 0,
+          firstFailure: null,
         };
         perStoryboard.set(sbId, agg);
       }
@@ -543,23 +562,39 @@ export function deriveStoryboardStatuses(
       // discard resource-resolution failures when other phases have steps.
       if (!Array.isArray(s.steps) || s.steps.length === 0) {
         agg.stepLessPhasesTotal++;
-        if (s.overall_passed) agg.stepLessPhasesPassed++;
+        if (s.overall_passed) {
+          agg.stepLessPhasesPassed++;
+        } else {
+          agg.failureCount++;
+          if (!agg.firstFailure) agg.firstFailure = summarizeStoryboardPhaseFailure(s);
+        }
         continue;
       }
       for (const step of s.steps) {
         if (step.skipped) {
-          if (branchSkipReasons.has(step.skip_reason ?? '')) {
+          if (isBranchSkip(step)) {
             continue;
           }
           if (isControllerSkip(step)) {
             agg.controllerSkipped++;
             continue;
           }
+          if (isCascadeSkip(step)) {
+            agg.skippedCount++;
+          } else {
+            agg.failureCount++;
+            if (!agg.firstFailure) agg.firstFailure = summarizeStoryboardStepFailure(step);
+          }
           agg.stepsTotal++;
           continue;
         }
         agg.stepsTotal++;
-        if (step.passed) agg.stepsPassed++;
+        if (step.passed) {
+          agg.stepsPassed++;
+        } else {
+          agg.failureCount++;
+          if (!agg.firstFailure) agg.firstFailure = summarizeStoryboardStepFailure(step);
+        }
       }
     }
   }
@@ -599,15 +634,78 @@ export function deriveStoryboardStatuses(
       status = 'partial';
     }
 
-    entries.push({
+    const entry: StoryboardStatusEntry = {
       storyboard_id: sbId,
       status,
       steps_passed: passed,
       steps_total: total,
-    });
+    };
+    if (agg.failureCount > 0 || agg.skippedCount > 0) {
+      entry.failure_count = agg.failureCount;
+      entry.skipped_count = agg.skippedCount;
+    }
+    if (agg.firstFailure) {
+      entry.first_failed_step_id = agg.firstFailure.stepId;
+      entry.first_failed_step_title = agg.firstFailure.title;
+      entry.first_failed_step_task = agg.firstFailure.task;
+      entry.first_failure_message = agg.firstFailure.message;
+    }
+    entries.push(entry);
   }
 
   return entries;
+}
+
+function summarizeStoryboardStepFailure(step: {
+  step?: unknown;
+  step_id?: unknown;
+  task?: unknown;
+  error?: unknown;
+  details?: unknown;
+  warnings?: unknown;
+  skip_reason?: unknown;
+}): {
+  stepId: string | null;
+  title: string | null;
+  task: string | null;
+  message: string | null;
+} {
+  const title = firstString(step.step) ?? null;
+  const stepId = firstString(step.step_id, title ? slugifyStepId(title) : undefined) ?? null;
+  const task = firstString(step.task) ?? null;
+  const warnings = Array.isArray(step.warnings)
+    ? step.warnings.find((w): w is string => typeof w === 'string' && w.trim().length > 0)
+    : undefined;
+  const rawMessage = firstString(step.error, step.details, warnings, step.skip_reason);
+  const message = redactDiagnosticText(rawMessage) ?? null;
+  return { stepId, title, task, message };
+}
+
+function summarizeStoryboardPhaseFailure(phase: {
+  scenario?: unknown;
+  summary?: unknown;
+  error?: unknown;
+  details?: unknown;
+}): {
+  stepId: string | null;
+  title: string | null;
+  task: string | null;
+  message: string | null;
+} {
+  const storyboardId = scenarioStoryboardIdForFallback(phase.scenario);
+  const phaseId = firstString(phaseIdFromScenario(phase.scenario, storyboardId), phase.scenario, 'phase') ?? 'phase';
+  const rawMessage = firstString(
+    phase.error,
+    phase.details,
+    phase.summary,
+    'Phase failed before step results were captured',
+  );
+  return {
+    stepId: phaseId,
+    title: phaseId,
+    task: null,
+    message: redactDiagnosticText(rawMessage) ?? null,
+  };
 }
 
 // ── Verification Status Derivation ───────────────────────────────

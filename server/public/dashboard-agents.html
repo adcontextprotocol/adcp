@@ -130,6 +130,7 @@
       background: var(--color-bg-subtle);
       border-radius: var(--radius-sm);
       cursor: help;
+      flex-wrap: wrap;
     }
 
     .agent-storyboard-summary-count {
@@ -786,7 +787,7 @@
     .storyboard-map-item {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       gap: var(--space-3);
       padding: var(--space-2) var(--space-3);
       border: 1px solid var(--color-border);
@@ -847,6 +848,49 @@
     .storyboard-map-item--failing .storyboard-map-item-summary {
       color: var(--color-error-fg);
     }
+    .storyboard-map-drilldown {
+      margin-top: var(--space-2);
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+    .storyboard-map-drilldown summary {
+      cursor: pointer;
+      font-weight: var(--font-semibold);
+      color: var(--color-text);
+    }
+    .storyboard-map-detail-row {
+      margin-top: var(--space-2);
+      padding: var(--space-2);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-card);
+    }
+    .storyboard-map-detail-label {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 6px;
+      border-radius: var(--radius-full);
+      font-size: 10px;
+      font-weight: var(--font-semibold);
+      margin-right: var(--space-1);
+    }
+    .storyboard-map-detail-label--failure {
+      background: var(--color-error-bg);
+      color: var(--color-error-fg);
+    }
+    .storyboard-map-detail-label--skip {
+      background: var(--color-warning-bg);
+      color: var(--color-warning-fg);
+    }
+    .storyboard-map-detail-title {
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+    }
+    .storyboard-map-detail-message {
+      margin-top: 2px;
+      color: var(--color-text-secondary);
+      overflow-wrap: anywhere;
+    }
     .storyboard-map-status {
       display: inline-flex;
       align-items: center;
@@ -875,7 +919,7 @@
       color: var(--color-text-secondary);
       border: 1px solid var(--color-border);
     }
-    .storyboard-map-actions { display: flex; gap: var(--space-2); align-items: center; flex-shrink: 0; }
+    .storyboard-map-actions { display: flex; gap: var(--space-2); align-items: center; align-self: flex-start; flex-shrink: 0; }
     .storyboard-map-actions button {
       font-size: var(--text-xs);
       padding: 2px var(--space-2);
@@ -895,6 +939,31 @@
     .storyboard-map-actions .btn-run:hover {
       background: var(--color-primary-700);
       text-decoration: none;
+    }
+    @media (max-width: 640px) {
+      .storyboard-map-item {
+        flex-direction: column;
+      }
+      .storyboard-map-item-row1 {
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .storyboard-map-item-title {
+        flex-basis: 100%;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+      }
+      .storyboard-map-item-summary,
+      .storyboard-map-next-step {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+      }
+      .storyboard-map-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
     }
 
     .step-runner { margin-top: var(--space-3); }
@@ -1569,6 +1638,25 @@
       return 'Not tested';
     }
 
+    function finiteCount(value) {
+      const n = Number(value);
+      return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+    }
+
+    function pluralizeCount(count, singular, plural) {
+      return `${count} ${count === 1 ? singular : plural || singular + 's'}`;
+    }
+
+    function storyboardIssueSummary(statusInfo) {
+      if (!statusInfo || !storyboardStatusNeedsAttention(statusInfo)) return '';
+      const failures = finiteCount(statusInfo.failure_count);
+      const skipped = finiteCount(statusInfo.skipped_count);
+      const parts = [];
+      if (failures > 0) parts.push(pluralizeCount(failures, 'failure'));
+      if (skipped > 0) parts.push(pluralizeCount(skipped, 'skipped'));
+      return parts.join(', ');
+    }
+
     function storyboardStatusSteps(statusInfo) {
       if (!statusInfo) return '';
       const passed = Number.isFinite(statusInfo.steps_passed) ? statusInfo.steps_passed : null;
@@ -1600,10 +1688,55 @@
     function storyboardNextStep(statusInfo) {
       if (!statusInfo) return 'Next step: run this storyboard to check current behavior.';
       const status = normalizeStoryboardStatus(statusInfo.status);
-      if (status === 'failing') return 'Next step: preview or run to inspect the failing checks, then re-test.';
-      if (status === 'partial') return 'Next step: review incomplete checks, then re-test.';
+      const failedStep = statusInfo.first_failed_step_title || statusInfo.first_failed_step_id;
+      if (status === 'failing') return failedStep ? `Next step: review ${failedStep}, then re-test.` : 'Next step: preview or run to inspect the failing checks, then re-test.';
+      if (status === 'partial') return failedStep ? `Next step: review ${failedStep}, then re-test.` : 'Next step: review incomplete checks, then re-test.';
       if (status === 'untested') return 'Next step: run this storyboard.';
       return '';
+    }
+
+    function storyboardDrilldownHtml(statusInfo) {
+      if (!storyboardStatusNeedsAttention(statusInfo)) return '';
+      const failures = finiteCount(statusInfo.failure_count);
+      const skipped = finiteCount(statusInfo.skipped_count);
+      const hasFailureDetail = failures > 0 && (
+        statusInfo.first_failed_step_id ||
+        statusInfo.first_failed_step_title ||
+        statusInfo.first_failed_step_task ||
+        statusInfo.first_failure_message
+      );
+      if (!hasFailureDetail && skipped === 0) return '';
+
+      const issueSummary = storyboardIssueSummary(statusInfo);
+      const summary = issueSummary ? `Show failure details (${issueSummary})` : 'Show failure details';
+      let html = '<details class="storyboard-map-drilldown">';
+      html += '<summary>' + escapeHtml(summary) + '</summary>';
+      if (hasFailureDetail) {
+        const stepTitle = statusInfo.first_failed_step_title || statusInfo.first_failed_step_id || 'Failed step';
+        const stepMeta = [statusInfo.first_failed_step_id, statusInfo.first_failed_step_task]
+          .filter(Boolean)
+          .join(' · ');
+        html += '<div class="storyboard-map-detail-row">';
+        html += '<span class="storyboard-map-detail-label storyboard-map-detail-label--failure">First failed step</span>';
+        html += '<span class="storyboard-map-detail-title">' + escapeHtml(stepTitle) + '</span>';
+        if (stepMeta) html += '<div>' + escapeHtml(stepMeta) + '</div>';
+        if (statusInfo.first_failure_message) {
+          html += '<div class="storyboard-map-detail-message">' + escapeHtml(statusInfo.first_failure_message) + '</div>';
+        }
+        const additionalFailures = Math.max(0, failures - 1);
+        if (additionalFailures > 0) {
+          html += '<div class="storyboard-map-detail-message">Showing the first failing step; ' + escapeHtml(pluralizeCount(additionalFailures, 'more failure')) + ' remain.</div>';
+        }
+        html += '</div>';
+      }
+      if (skipped > 0) {
+        html += '<div class="storyboard-map-detail-row">';
+        html += '<span class="storyboard-map-detail-label storyboard-map-detail-label--skip">Blocked after earlier failure</span>';
+        html += '<span class="storyboard-map-detail-title">' + escapeHtml(pluralizeCount(skipped, 'step')) + ' skipped after an earlier step failed</span>';
+        html += '</div>';
+      }
+      html += '</details>';
+      return html;
     }
 
     function cachedStoryboardStatuses(agentUrl) {
@@ -1653,14 +1786,34 @@
       return `<div class="storyboard-map-status-summary">Saved results are available for ${statuses.length} storyboard${statuses.length === 1 ? '' : 's'}.</div>`;
     }
 
+    function scenarioCounts(cs) {
+      const details = Array.isArray(cs?.track_details) ? cs.track_details : [];
+      if (details.length === 0) return null;
+      let passing = 0;
+      let total = 0;
+      for (const track of details) {
+        const passed = Number(track?.passed_count);
+        const count = Number(track?.scenario_count);
+        if (!Number.isFinite(passed) || !Number.isFinite(count) || count <= 0) continue;
+        passing += Math.max(0, Math.floor(passed));
+        total += Math.max(0, Math.floor(count));
+      }
+      return total > 0 ? { passing, total } : null;
+    }
+
     function buildStoryboardSummaryTitle(cs) {
       const passing = Number.isFinite(cs?.storyboards_passing) ? cs.storyboards_passing : null;
       const total = Number.isFinite(cs?.storyboards_total) ? cs.storyboards_total : null;
+      const scenarios = scenarioCounts(cs);
       const rows = Array.isArray(cs?.storyboard_statuses) ? cs.storyboard_statuses : [];
       const notPassing = rows.filter(s => normalizeStoryboardStatus(s.status) !== 'passing');
       const lines = [];
+      if (scenarios) {
+        lines.push(`${scenarios.passing} of ${scenarios.total} scenarios passing.`);
+      }
       if (passing !== null && total !== null) {
         lines.push(`${passing} of ${total} applicable storyboards passing.`);
+        lines.push('A storyboard fails if any scenario within it fails.');
       }
       if (notPassing.length > 0) {
         lines.push(`${notPassing.length} need attention:`);
@@ -1877,9 +2030,14 @@
         // storyboard count is the one to trust.
         const sbPassing = Number.isFinite(cs.storyboards_passing) ? cs.storyboards_passing : null;
         const sbTotal = Number.isFinite(cs.storyboards_total) ? cs.storyboards_total : null;
+        const scenarios = scenarioCounts(cs);
         const storyboardSummaryTitle = buildStoryboardSummaryTitle(cs);
         const storyboardSummary = (sbPassing !== null && sbTotal !== null && sbTotal > 0)
           ? `<div class="agent-storyboard-summary" title="${escapeHtml(storyboardSummaryTitle)}">`
+            + (scenarios
+              ? `<span class="agent-storyboard-summary-count">${scenarios.passing} / ${scenarios.total}</span>`
+                + `<span class="agent-storyboard-summary-label"> scenarios passing,</span>`
+              : '')
             + `<span class="agent-storyboard-summary-count">${sbPassing} / ${sbTotal}</span>`
             + `<span class="agent-storyboard-summary-label"> storyboards passing</span>`
             + `</div>`
@@ -3493,6 +3651,7 @@
                 html += '</div>';
                 if (sb.summary) html += '<div class="storyboard-map-item-summary" title="' + escapeHtml(sb.summary) + '">' + escapeHtml(sb.summary) + '</div>';
                 if (nextStep) html += '<div class="storyboard-map-next-step">' + escapeHtml(nextStep) + '</div>';
+                html += storyboardDrilldownHtml(knownStatus);
                 html += '</div>';
                 html += '<div class="storyboard-map-actions">';
                 html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Preview</button>';
@@ -3522,6 +3681,7 @@
                 html += '</div>';
                 html += '<div class="storyboard-map-item-summary">Saved result from the latest compliance run. It is not in the current capability-discovery list, but still needs review.</div>';
                 if (nextStep) html += '<div class="storyboard-map-next-step">' + escapeHtml(nextStep) + '</div>';
+                html += storyboardDrilldownHtml(statusInfo);
                 html += '</div>';
                 html += '<div class="storyboard-map-actions">';
                 html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(statusInfo.storyboard_id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Preview</button>';

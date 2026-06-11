@@ -186,7 +186,18 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
       ...minimalInput('heartbeat'),
       replace_storyboard_statuses: true,
       storyboard_statuses: [
-        { storyboard_id: 'fresh_storyboard', status: 'passing', steps_passed: 3, steps_total: 3 },
+        {
+          storyboard_id: 'fresh_storyboard',
+          status: 'partial',
+          steps_passed: 2,
+          steps_total: 5,
+          failure_count: 1,
+          skipped_count: 2,
+          first_failed_step_id: 'create_buy',
+          first_failed_step_title: 'Create media buy',
+          first_failed_step_task: 'create_media_buy',
+          first_failure_message: 'Expected media_buy_id',
+        },
       ],
     });
 
@@ -200,6 +211,25 @@ describe('ComplianceDatabase — last-write-wins on agent_compliance_status', ()
     expect(insertIndex).toBeGreaterThan(deleteIndex);
     expect(client.query.mock.calls[deleteIndex][0]).toContain('NOT (storyboard_id = ANY($2::text[]))');
     expect(client.query.mock.calls[deleteIndex][1]).toEqual([AGENT_URL, ['fresh_storyboard']]);
+    expect(client.query.mock.calls[insertIndex][0]).toContain('failure_count');
+    expect(client.query.mock.calls[insertIndex][0]).toContain('first_failure_message');
+    expect(client.query.mock.calls[insertIndex][1]).toEqual([
+      AGENT_URL,
+      ['fresh_storyboard'],
+      ['partial'],
+      'run-001',
+      [2],
+      [5],
+      [1],
+      [2],
+      ['create_buy'],
+      ['Create media buy'],
+      ['create_media_buy'],
+      ['Expected media_buy_id'],
+      'heartbeat',
+      null,
+      null,
+    ]);
   });
 
   it('zero-row authoritative compliance writes clear all materialized storyboard rows', async () => {
