@@ -108,13 +108,7 @@ type SanitizedElement = {
 
 type SanitizedFragment = {
   querySelectorAll(selector: string): { forEach(callback: (el: SanitizedElement) => void): void };
-  ownerDocument: {
-    createElement(tagName: string): {
-      appendChild(node: unknown): void;
-      innerHTML: string;
-    };
-  };
-  cloneNode(deep?: boolean): unknown;
+  innerHTML: string;
 };
 
 function markdownToTrackedEmailHtml(md: string, trackingId: string, tagPrefix = 'pasted_body'): string {
@@ -140,9 +134,7 @@ function markdownToTrackedEmailHtml(md: string, trackingId: string, tagPrefix = 
   dom.querySelectorAll('h2').forEach((el) => el.setAttribute('style', 'font-size: 18px; margin: 18px 0 8px 0; color: #1a1a2e;'));
   dom.querySelectorAll('h3').forEach((el) => el.setAttribute('style', 'font-size: 16px; margin: 16px 0 8px 0; color: #1a1a2e;'));
 
-  const container = dom.ownerDocument.createElement('div');
-  container.appendChild(dom.cloneNode(true));
-  return container.innerHTML;
+  return dom.innerHTML;
 }
 
 function markdownToPlainText(md: string): string {

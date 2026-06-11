@@ -155,6 +155,7 @@ describe('digest editor note link formatting', () => {
       expect(html).toContain('tracked:recipient-1:pasted_body_1:https://example.com/brief');
       expect(html).toContain('Extra note');
       expect(html).toContain('tracked:recipient-1:custom_1_1:https://example.com/more');
+      expect(html).not.toContain('<body');
       expect(text).toContain('Lead');
       expect(text).toContain('Extra note');
       expect(text).toContain('more (https://example.com/more)');
