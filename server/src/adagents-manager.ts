@@ -5,6 +5,11 @@ import { canonicalizePublisherDomain } from './services/publisher-domain.js';
 
 const MCP_ACCEPT_HEADER = 'application/json, text/event-stream';
 const ADS_TXT_MAX_REDIRECTS = 5;
+// The initial /.well-known/adagents.json fetch follows same-registrable-domain
+// redirects only (apex↔www, HTTPS-preserving), capped at 3 hops, so standard
+// apex→www hosting resolves. Cross-domain hops are refused — see
+// docs/governance/property/managed-networks#why-not-http-redirects.
+const ADAGENTS_WELL_KNOWN_MAX_REDIRECTS = 3;
 const MCP_PREFLIGHT_INITIALIZE_BODY = {
   jsonrpc: '2.0',
   method: 'initialize',
@@ -243,6 +248,8 @@ export class AdAgentsManager {
       // unauthenticated and reachable on view (see PR #4128 / issue #4129).
       const response = await safeFetchAxiosLike(url, {
         timeoutMs: 10000,
+        maxRedirects: ADAGENTS_WELL_KNOWN_MAX_REDIRECTS,
+        sameSiteRedirectsOnly: true,
         headers: {
           'Accept': 'application/json',
           'User-Agent': AAO_UA_VALIDATOR,
@@ -540,20 +547,23 @@ export class AdAgentsManager {
         return null;
       }
 
-      // Fetch the authoritative file. safeFetch follows redirects with
-      // per-hop SSRF validation, which matters more here than on the
-      // /.well-known fetch — the authoritative_location URL was named
-      // by the publisher and could redirect anywhere.
+      // Fetch the authoritative file with redirects REFUSED. The named URL is
+      // the publisher's declared authoritative location; a redirect away from
+      // it changes that declaration, so it is treated as an error rather than
+      // followed (unlike the initial /.well-known fetch, which follows
+      // same-registrable-domain hosting redirects). See
+      // docs/governance/property/managed-networks#security-considerations.
       const response = await safeFetchAxiosLike(url, {
         timeoutMs: 10000,
+        maxRedirects: 0,
         headers: {
           'Accept': 'application/json',
           'User-Agent': AAO_UA_VALIDATOR,
         },
       });
 
-      // Overwrite the resolved URL — when authoritative_location is
-      // followed, the canonical document body came from THIS fetch,
+      // Overwrite the resolved URL — when the authoritative_location pointer
+      // is dereferenced, the canonical document body came from THIS fetch,
       // not the original /.well-known. Verifiers should pin trust to
       // the authoritative location's TLS chain, not the publisher's.
       // Bytes likewise reflect the canonical body, not the stub.
@@ -563,7 +573,9 @@ export class AdAgentsManager {
       if (response.status !== 200) {
         const statusMessage = response.status === 404
           ? `File not found at ${url}`
-          : `HTTP ${response.status} error fetching ${url}`;
+          : [301, 302, 303, 307, 308].includes(response.status)
+            ? `Redirect (HTTP ${response.status}) from authoritative_location ${url}; redirects on the authoritative file are refused because they change the declared location`
+            : `HTTP ${response.status} error fetching ${url}`;
         result.errors.push({
           field: 'authoritative_location',
           message: statusMessage,
