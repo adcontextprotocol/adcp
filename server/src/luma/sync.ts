@@ -466,6 +466,7 @@ export function startLumaSync(): void {
   intervalId = setInterval(() => {
     syncLumaCalendar(false).catch(err => logger.error({ err }, 'Luma calendar sync failed'));
   }, SYNC_INTERVAL_MS);
+  intervalId?.unref();
 
   logger.info({ intervalMs: SYNC_INTERVAL_MS }, 'Started Luma calendar sync');
 }
