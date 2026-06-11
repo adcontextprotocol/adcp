@@ -6,8 +6,6 @@
   <link rel="icon" href="/sage-icon.svg" type="image/svg+xml">
   <title>Admin - Newsletter</title>
   <script src="/admin-sidebar.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js" integrity="sha384-b5hg04N6F0rvyz1a/GVoPPY0JcqGTARCmEuFCqwQKX3zq7LsxhV+n+6Ykh2pQOCH" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js" integrity="sha384-eEu5CTj3qGvu9PdJuS+YlkNi7d2XxQROAFYOr59zgObtlcux1ae1Il3u7jvdCSWu" crossorigin="anonymous"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
     :root { --nl-primary: #0d9488; --nl-light: #f0fdfa; --nl-dark: #1a1a2e; }
@@ -32,7 +30,8 @@
 
     .editable { padding: 8px 12px; border: 1px solid transparent; border-radius: 4px; min-height: 20px; line-height: 1.5; cursor: pointer; }
     .editable:hover { border-color: #d1d5db; }
-    .editable[contenteditable="true"] { border-color: var(--nl-primary); outline: none; background: var(--nl-light); }
+    .editable a { pointer-events: none; }
+    .editable[contenteditable="true"] { border-color: var(--nl-primary); outline: none; background: var(--nl-light); cursor: text; white-space: pre-wrap; }
 
     .item-card { padding: 12px; border: 1px solid var(--color-border, #e5e5e5); border-radius: 6px; margin-bottom: 8px; }
     .item-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; color: white; margin-right: 8px; }
@@ -58,7 +57,14 @@
 
     .custom-section-card { border: 2px dashed var(--nl-primary); border-radius: 8px; padding: 16px; margin-bottom: 16px; background: var(--nl-light); }
     .custom-section-card h3 { margin: 0 0 8px 0; font-size: 15px; color: var(--nl-primary); }
-    .custom-section-body { white-space: pre-wrap; font-size: 14px; color: #333; line-height: 1.6; }
+    .custom-section-body { font-size: 14px; color: #333; line-height: 1.6; }
+    .markdown-content p { margin: 0 0 8px 0; }
+    .markdown-content p:last-child { margin-bottom: 0; }
+    .markdown-content ul, .markdown-content ol { margin: 8px 0; padding-left: 22px; }
+    .markdown-content li { margin-bottom: 4px; }
+    .markdown-content blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid var(--nl-primary); color: var(--color-text-secondary); }
+    .markdown-content code { background: var(--color-bg-subtle); padding: 2px 4px; border-radius: var(--radius-sm); font-size: 0.92em; }
+    .markdown-content pre { background: var(--color-bg-subtle); padding: 10px 12px; border-radius: var(--radius-md); overflow-x: auto; }
 
     .paste-area { width: 100%; min-height: 200px; font-family: monospace; font-size: 13px; padding: 12px; border: 1px solid var(--color-border-strong); border-radius: 6px; resize: vertical; box-sizing: border-box; }
     .paste-area:focus { border-color: var(--nl-primary); outline: none; }
@@ -103,7 +109,7 @@
       <div id="pasteMode" style="display:none;">
         <div class="section">
           <h2>Paste Your Newsletter</h2>
-          <p class="section-hint"><strong>Replaces all auto-generated sections in this edition.</strong> Use **bold**, [links](url), and `code` markdown.</p>
+          <p class="section-hint">Replaces all auto-generated sections. Use **bold**, [links](url), and `code` markdown.</p>
           <div style="margin-bottom:12px;">
             <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;">Subject line override (optional)</label>
             <input type="text" id="pasteSubject" placeholder="Leave blank to auto-generate" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;box-sizing:border-box;">
@@ -183,6 +189,7 @@
     let currentSubject = '';
     let uiConfig = null;
     let recipientCount = null;
+    let activeEditable = null;
 
     function esc(s) {
       const d = document.createElement('div');
@@ -197,19 +204,249 @@
       setTimeout(() => el.classList.remove('show'), duration);
     }
 
-    function renderMarkdown(text) {
-      if (!text) return '';
-      if (window.marked && window.DOMPurify) {
-        return DOMPurify.sanitize(marked.parse(text, { breaks: true, gfm: true, async: false }));
-      }
-      return esc(text).replace(/\n/g, '<br>');
-    }
-
     async function api(path, opts = {}) {
       return AdminSidebar.fetch(API_BASE + path, {
         headers: { 'Content-Type': 'application/json', ...opts.headers },
         ...opts,
       });
+    }
+
+    // ─── Formatting helpers ─────────────────────────────────────────
+
+    function isSafeHttpUrl(url) {
+      try {
+        const parsed = new URL(url, window.location.origin);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    }
+
+    function decodeHtml(html) {
+      const textarea = document.createElement('textarea');
+      textarea.innerHTML = html;
+      return textarea.value;
+    }
+
+    function renderInlineMarkdown(text) {
+      return esc(text)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_match, label, escapedUrl) => {
+          const url = decodeHtml(escapedUrl);
+          if (!isSafeHttpUrl(url)) return label;
+          return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+        })
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    }
+
+    function renderMarkdown(markdown) {
+      const text = String(markdown || '');
+      if (!text.trim()) return '';
+
+      const lines = text.replace(/\r\n?/g, '\n').split('\n');
+      const out = [];
+      let paragraph = [];
+
+      function flushParagraph() {
+        if (paragraph.length === 0) return;
+        out.push(`<p>${renderInlineMarkdown(paragraph.join('\n')).replace(/\n/g, '<br>')}</p>`);
+        paragraph = [];
+      }
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+
+        if (trimmed.startsWith('```')) {
+          flushParagraph();
+          const code = [];
+          i++;
+          while (i < lines.length && !lines[i].trim().startsWith('```')) {
+            code.push(lines[i]);
+            i++;
+          }
+          out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`);
+          continue;
+        }
+
+        if (!trimmed) {
+          flushParagraph();
+          continue;
+        }
+
+        const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+        if (heading) {
+          flushParagraph();
+          const level = heading[1].length;
+          out.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+          continue;
+        }
+
+        if (/^[-*]\s+/.test(trimmed)) {
+          flushParagraph();
+          const items = [];
+          while (i < lines.length && /^[-*]\s+/.test(lines[i].trim())) {
+            items.push(`<li>${renderInlineMarkdown(lines[i].trim().replace(/^[-*]\s+/, ''))}</li>`);
+            i++;
+          }
+          i--;
+          out.push(`<ul>${items.join('')}</ul>`);
+          continue;
+        }
+
+        if (/^\d+\.\s+/.test(trimmed)) {
+          flushParagraph();
+          const items = [];
+          while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
+            items.push(`<li>${renderInlineMarkdown(lines[i].trim().replace(/^\d+\.\s+/, ''))}</li>`);
+            i++;
+          }
+          i--;
+          out.push(`<ol>${items.join('')}</ol>`);
+          continue;
+        }
+
+        if (/^>\s?/.test(trimmed)) {
+          flushParagraph();
+          const quote = [];
+          while (i < lines.length && /^>\s?/.test(lines[i].trim())) {
+            quote.push(lines[i].trim().replace(/^>\s?/, ''));
+            i++;
+          }
+          i--;
+          out.push(`<blockquote><p>${renderInlineMarkdown(quote.join('\n')).replace(/\n/g, '<br>')}</p></blockquote>`);
+          continue;
+        }
+
+        paragraph.push(line);
+      }
+
+      flushParagraph();
+      return out.join('');
+    }
+
+    function htmlToMarkdown(html) {
+      if (!html) return '';
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const ignored = new Set(['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'svg', 'math']);
+
+      function compactInline(text) {
+        return text.replace(/[ \t\r\n]+/g, ' ').trim();
+      }
+
+      function childrenToMarkdown(node) {
+        return Array.from(node.childNodes).map(nodeToMarkdown).join('');
+      }
+
+      function nodeToMarkdown(node) {
+        if (node.nodeType === Node.TEXT_NODE) return node.nodeValue || '';
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+        const tag = node.tagName.toLowerCase();
+        if (ignored.has(tag)) return '';
+
+        const childMarkdown = childrenToMarkdown(node);
+        const inline = compactInline(childMarkdown);
+
+        switch (tag) {
+          case 'br':
+            return '\n';
+          case 'strong':
+          case 'b':
+            return inline ? `**${inline}**` : '';
+          case 'em':
+          case 'i':
+            return inline ? `*${inline}*` : '';
+          case 'code':
+            return inline ? `\`${inline}\`` : '';
+          case 'pre':
+            return `\n\n\`\`\`\n${(node.textContent || '').trim()}\n\`\`\`\n\n`;
+          case 'a': {
+            const href = node.getAttribute('href') || '';
+            return inline && isSafeHttpUrl(href) ? `[${inline}](${href})` : inline;
+          }
+          case 'li':
+            return inline ? `- ${inline}\n` : '';
+          case 'ul':
+          case 'ol':
+            return `\n${childMarkdown}\n`;
+          case 'blockquote':
+            return inline ? `\n\n${inline.split('\n').map(line => `> ${line}`).join('\n')}\n\n` : '';
+          case 'h1':
+            return inline ? `\n\n# ${inline}\n\n` : '';
+          case 'h2':
+            return inline ? `\n\n## ${inline}\n\n` : '';
+          case 'h3':
+            return inline ? `\n\n### ${inline}\n\n` : '';
+          case 'p':
+          case 'div':
+          case 'section':
+          case 'article':
+            return inline ? `\n\n${inline}\n\n` : '';
+          default:
+            return childMarkdown;
+        }
+      }
+
+      return childrenToMarkdown(doc.body)
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
+
+    function insertTextAtCursor(text) {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return false;
+      selection.deleteFromDocument();
+      const range = selection.getRangeAt(0);
+      const node = document.createTextNode(text);
+      range.insertNode(node);
+      range.setStartAfter(node);
+      range.setEndAfter(node);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return true;
+    }
+
+    function handleRichTextPaste(event) {
+      const html = event.clipboardData?.getData('text/html');
+      if (!html || !html.trim()) return;
+      const markdown = htmlToMarkdown(html);
+      const safeText = markdown || event.clipboardData?.getData('text/plain') || '';
+      event.preventDefault();
+
+      const el = event.currentTarget;
+      if (typeof el.selectionStart === 'number' && typeof el.selectionEnd === 'number') {
+        const start = el.selectionStart;
+        const end = el.selectionEnd;
+        el.value = `${el.value.slice(0, start)}${safeText}${el.value.slice(end)}`;
+        const caret = start + safeText.length;
+        el.setSelectionRange(caret, caret);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return;
+      }
+
+      insertTextAtCursor(safeText);
+    }
+
+    function wireRichTextPaste(textareaId) {
+      const el = document.getElementById(textareaId);
+      if (!el) return;
+      el.addEventListener('paste', handleRichTextPaste);
+    }
+
+    function editableText(el) {
+      return (el.innerText || el.textContent || '').replace(/\u00a0/g, ' ').trim();
+    }
+
+    function placeCaretAtEnd(el) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
     }
 
     // ─── Mode switching ─────────────────────────────────────────────
@@ -319,71 +556,74 @@
         fieldsEl.innerHTML += `
           <div class="section">
             <h2>${esc(label)}</h2>
-            <div class="editable" contenteditable="false" onclick="startEdit(this, '${field}')">${esc(val) || '<em style="color:#888;">Click to edit</em>'}</div>
+            <div class="editable markdown-content" contenteditable="false" onclick="startEdit(this, '${field}')">${renderMarkdown(val) || '<em style="color:#888;">Click to edit</em>'}</div>
           </div>`;
       }
 
       // Sections from uiConfig — cherry-pick interface
       const container = document.getElementById('sectionsContainer');
       container.innerHTML = '';
-      if (c.pastedContent) {
+      if (String(c.pastedContent || '').trim()) {
         container.innerHTML = `
           <div class="section">
-            <h2>Pasted newsletter</h2>
-            <p class="section-hint">This custom body replaces the auto-generated sections for this edition.</p>
-            <div class="section-content">${renderMarkdown(c.pastedContent)}</div>
-          </div>`;
-      }
-      let halfBuffer = [];
-      for (const sec of c.pastedContent ? [] : uiConfig.sections) {
-        const isHidden = hidden.has(sec.key);
-        const hasCandidates = sec.candidateCount > 0;
-        const hasIncluded = sec.includedCount > 0;
-
-        // Build candidate pool HTML with include/dismiss buttons per item
-        let candidatePoolHtml = '';
-        if (hasCandidates) {
-          candidatePoolHtml = `
-            <div style="margin-top:12px;padding-top:12px;border-top:1px dashed #d1d5db;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                <span style="font-size:12px;font-weight:600;color:#888;text-transform:uppercase;">Available (${sec.candidateCount})</span>
-                <button class="btn btn-outline btn-sm" onclick="includeAll('${sec.key}')">Include All</button>
-              </div>
-              <div class="candidate-pool" data-section="${sec.key}">${sec.candidateHtml}</div>
-            </div>`;
-        }
-
-        const card = `
-          <div class="section${isHidden ? ' hidden-section' : ''}" id="section_${sec.key}">
             <div class="section-toggle">
-              <label><input type="checkbox" ${isHidden ? '' : 'checked'} onchange="toggleSection('${sec.key}', this.checked)"> Include in email</label>
+              ${status === 'draft' ? '<button class="btn btn-outline btn-sm" onclick="clearPastedContent()">Clear pasted content</button>' : ''}
             </div>
-            <h2>${esc(sec.label)} ${hasIncluded ? `<span class="count">(${sec.includedCount} included)</span>` : ''}</h2>
-            ${sec.hint ? `<p class="section-hint">${esc(sec.hint)}</p>` : ''}
-            <div class="included-items section-content" data-section="${sec.key}">${sec.includedHtml}</div>
-            ${candidatePoolHtml}
+            <h2>Pasted content</h2>
+            <div class="custom-section-body markdown-content">${renderMarkdown(c.pastedContent)}</div>
           </div>`;
+      } else {
+        let halfBuffer = [];
+        for (const sec of uiConfig.sections) {
+          const isHidden = hidden.has(sec.key);
+          const hasCandidates = sec.candidateCount > 0;
+          const hasIncluded = sec.includedCount > 0;
 
-        if (sec.layout === 'half') {
-          halfBuffer.push(card);
-          if (halfBuffer.length === 2) {
-            container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
-            halfBuffer = [];
+          // Build candidate pool HTML with include/dismiss buttons per item
+          let candidatePoolHtml = '';
+          if (hasCandidates) {
+            candidatePoolHtml = `
+              <div style="margin-top:12px;padding-top:12px;border-top:1px dashed #d1d5db;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                  <span style="font-size:12px;font-weight:600;color:#888;text-transform:uppercase;">Available (${sec.candidateCount})</span>
+                  <button class="btn btn-outline btn-sm" onclick="includeAll('${sec.key}')">Include All</button>
+                </div>
+                <div class="candidate-pool" data-section="${sec.key}">${sec.candidateHtml}</div>
+              </div>`;
           }
-        } else {
-          if (halfBuffer.length > 0) {
-            container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
-            halfBuffer = [];
+
+          const card = `
+            <div class="section${isHidden ? ' hidden-section' : ''}" id="section_${sec.key}">
+              <div class="section-toggle">
+                <label><input type="checkbox" ${isHidden ? '' : 'checked'} onchange="toggleSection('${sec.key}', this.checked)"> Include in email</label>
+              </div>
+              <h2>${esc(sec.label)} ${hasIncluded ? `<span class="count">(${sec.includedCount} included)</span>` : ''}</h2>
+              ${sec.hint ? `<p class="section-hint">${esc(sec.hint)}</p>` : ''}
+              <div class="included-items section-content" data-section="${sec.key}">${sec.includedHtml}</div>
+              ${candidatePoolHtml}
+            </div>`;
+
+          if (sec.layout === 'half') {
+            halfBuffer.push(card);
+            if (halfBuffer.length === 2) {
+              container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
+              halfBuffer = [];
+            }
+          } else {
+            if (halfBuffer.length > 0) {
+              container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
+              halfBuffer = [];
+            }
+            container.innerHTML += card;
           }
-          container.innerHTML += card;
         }
-      }
-      if (halfBuffer.length > 0) {
-        container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
+        if (halfBuffer.length > 0) {
+          container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
+        }
       }
 
       // Add action buttons to each item card
-      if (status === 'draft') {
+      if (status === 'draft' && !String(c.pastedContent || '').trim()) {
         // Included items get a "Remove" button
         document.querySelectorAll('.included-items .item-card[data-id]').forEach(card => {
           const id = card.getAttribute('data-id');
@@ -429,7 +669,7 @@
               <h3><span class="item-badge badge-custom">CUSTOM</span> ${esc(cs.title || 'Untitled')}</h3>
               <button class="btn btn-danger btn-sm" onclick="deleteCustomSection('${esc(cs.id)}')">Remove</button>
             </div>
-            <div class="custom-section-body">${esc(cs.body)}</div>
+            <div class="custom-section-body markdown-content">${renderMarkdown(cs.body)}</div>
           </div>`;
       }
     }
@@ -438,6 +678,7 @@
       if (data.digest) currentDigest = data.digest;
       if (data.subject) currentSubject = data.subject;
       if (data.uiConfig) uiConfig = data.uiConfig;
+      if (activeEditable?.dataset.editing === 'true') return;
       render();
     }
 
@@ -445,36 +686,70 @@
 
     function startEdit(el, field) {
       if (currentDigest?.status !== 'draft') return;
-      if (el.contentEditable === 'true') return;
-      el.innerHTML = esc(currentDigest.content[field] || '');
+      if (el.dataset.editing === 'true') return;
+      if (activeEditable && activeEditable !== el) activeEditable.blur();
+
+      const previousValue = currentDigest.content[field];
+      const previousSubject = currentSubject;
+      const originalText = currentDigest.content[field] || '';
+
+      activeEditable = el;
+      el.dataset.editing = 'true';
+      el.innerHTML = esc(originalText);
       el.contentEditable = 'true';
       el.focus();
-      let saved = false;
+      placeCaretAtEnd(el);
+
+      let finished = false;
+
+      function cleanup() {
+        el.contentEditable = 'false';
+        delete el.dataset.editing;
+        el.removeEventListener('keydown', onKey);
+        el.removeEventListener('paste', handleRichTextPaste);
+        if (activeEditable === el) activeEditable = null;
+      }
 
       function save() {
-        if (saved) return;
-        saved = true;
-        el.contentEditable = 'false';
-        el.removeEventListener('blur', save);
-        el.removeEventListener('keydown', onKey);
-        const value = el.textContent.trim();
-        currentDigest.content[field] = value;
+        if (finished) return;
+        finished = true;
+        const value = editableText(el);
+        currentDigest.content[field] = value || undefined;
+        if (field === 'emailSubject' && value) currentSubject = value;
+        cleanup();
+        el.innerHTML = renderMarkdown(value) || '<em style="color:#888;">Click to edit</em>';
+
         api('/editions/' + currentDigest.id + '/edit', {
           method: 'POST',
           body: JSON.stringify({ field, value }),
-        }).then(r => r.json()).then(data => {
+        }).then(async r => {
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.error || 'Save failed');
+          return data;
+        }).then(data => {
           updateFromResponse(data);
           toast('Saved');
-        }).catch(() => toast('Save failed'));
+        }).catch((err) => {
+          currentDigest.content[field] = previousValue;
+          currentSubject = previousSubject;
+          if (activeEditable?.dataset.editing !== 'true') render();
+          toast('Save failed: ' + esc(err.message));
+        });
       }
 
       function onKey(e) {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
-        if (e.key === 'Escape') { el.contentEditable = 'false'; el.removeEventListener('blur', save); el.removeEventListener('keydown', onKey); render(); }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); el.blur(); }
+        if (e.key === 'Escape') {
+          finished = true;
+          el.removeEventListener('blur', save);
+          cleanup();
+          render();
+        }
       }
 
       el.addEventListener('blur', save, { once: true });
       el.addEventListener('keydown', onKey);
+      el.addEventListener('paste', handleRichTextPaste);
     }
 
     // ─── Cherry-pick actions ───────────────────────────────────────
@@ -602,6 +877,16 @@
       } catch (err) { toast('Paste failed: ' + esc(err.message)); }
     }
 
+    async function clearPastedContent() {
+      try {
+        const res = await api('/editions/' + currentDigest.id + '/paste-content', { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        updateFromResponse(data);
+        toast('Pasted content cleared');
+      } catch (err) { toast('Clear failed: ' + esc(err.message)); }
+    }
+
     // ─── Instruction editing ────────────────────────────────────────
 
     async function applyInstruction() {
@@ -697,6 +982,8 @@
       } catch (err) { toast('Send failed: ' + esc(err.message)); }
     }
 
+    wireRichTextPaste('pasteBody');
+    wireRichTextPaste('newSectionBody');
     loadEdition();
   </script>
 </body>
