@@ -278,6 +278,8 @@ class JobScheduler {
 
     // Schedule periodic runs
     job.intervalId = setInterval(runJob, toMilliseconds(config.interval));
+    // Background loop; never block process (or a vitest worker) exit.
+    job.intervalId?.unref();
 
     this.runningJobs.set(name, job);
     logger.debug(
