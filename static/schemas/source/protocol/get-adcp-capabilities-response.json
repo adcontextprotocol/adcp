@@ -683,7 +683,7 @@
         },
         "content_standards": {
           "type": "object",
-          "description": "Content standards implementation details. Presence of this object indicates the seller supports content_standards configuration including sampling rates and category filtering. Gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities.",
+          "description": "Content standards implementation details. Presence of this object indicates the seller supports content_standards configuration including sampling rates and category filtering. Gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities. Governance agents providing content standards services declare `specialisms: [\"content-standards\"]` instead.",
           "properties": {
             "supports_local_evaluation": {
               "type": "boolean",

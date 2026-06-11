@@ -83,6 +83,14 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "signals"
+            description: "Agent declares signals protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "signal-marketplace"
+            description: "Agent declares signal-marketplace specialism"
 
           - check: field_present
             path: "context"
