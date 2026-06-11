@@ -33,6 +33,16 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 | `pagination` | object | No | Pagination envelope. `pagination.max_results` (max: 100, default: 50) controls page size; `pagination.cursor` (opaque token from previous response) advances pages. Required for wholesale (signals feeds may be large). |
 | `push_notification_config` | PushNotificationConfig | No | Optional webhook channel for async terminal completion/failure notifications on `brief` semantic discovery. `submitted` responses with a `task_id` remain pollable through `get_task_status` (legacy `tasks/get`) whether or not this field is present. If the request includes this field and the agent returns `submitted`, the agent MUST deliver at least the terminal completion/failure notification to the configured webhook; intermediate progress notifications are MAY. If the agent cannot honor the webhook channel, it MUST reject the request with a structured error instead of silently accepting. Ignored for `wholesale`; agents MUST NOT route wholesale reads through the Submitted arm because this field is present. |
 
+<Note>
+`discovery_mode: "wholesale"` is an AdCP 3.1+ discovery shape. When the
+caller cannot assume a 3.1+ signals surface or wholesale support, clients
+should first call [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)
+and confirm that `signals.discovery_modes` includes `"wholesale"` before
+issuing a wholesale request. If the field is absent or lists only `"brief"`,
+treat the agent as brief-only and use `signal_spec`, `signal_refs`, or
+deprecated `signal_ids`.
+</Note>
+
 ### Async discovery
 
 `discovery_mode: "brief"` MAY return `submitted` when semantic discovery depends on slow provider queries or review that cannot finish before the initial response. Polling `get_task_status` (legacy `tasks/get`) with `task_id` is always valid. If `push_notification_config` is present and the agent returns `submitted`, the agent also sends at least the terminal completion/failure notification to that webhook; intermediate progress notifications are optional. `discovery_mode: "wholesale"` remains a synchronous feed read and reports partial completion via `incomplete[]`, not `submitted`.
@@ -815,7 +825,7 @@ For media-buy product targeting, product options and package groups use the same
 
 ## Wholesale signals feed
 
-When a consumer (storefront, federated marketplace, registry) needs to mirror a signals agent's full priced signals feed, set `discovery_mode: "wholesale"` and omit `signal_spec` / `signal_refs` / deprecated `signal_ids`. Wholesale enumeration is symmetric with [`get_products` `buying_mode: "wholesale"`](/docs/media-buy/task-reference/get_products): synchronous, paginated, firm-priced, with partial completion declared via `incomplete[]`.
+When a consumer (storefront, federated marketplace, registry) needs to mirror a signals agent's full priced signals feed, set `discovery_mode: "wholesale"` and omit `signal_spec` / `signal_refs` / deprecated `signal_ids`. When the caller cannot assume a 3.1+ signals surface or wholesale support, first check `get_adcp_capabilities.signals.discovery_modes` for `"wholesale"`. Wholesale enumeration is symmetric with [`get_products` `buying_mode: "wholesale"`](/docs/media-buy/task-reference/get_products): synchronous, paginated, firm-priced, with partial completion declared via `incomplete[]`.
 
 ### Request
 
@@ -888,7 +898,7 @@ Signals agents declare wholesale support in [`get_adcp_capabilities`](/docs/prot
 }
 ```
 
-Agents not declaring `"wholesale"` MAY return `INVALID_REQUEST` for wholesale calls. The capability declaration is the canonical signal — callers SHOULD probe before issuing wholesale requests.
+Agents not declaring `"wholesale"` MAY return `INVALID_REQUEST` for wholesale calls. Because wholesale discovery is AdCP 3.1+, the capability declaration is the canonical support signal when a caller cannot assume a 3.1+ signals surface or wholesale support; callers SHOULD probe before issuing wholesale requests.
 
 ## Wholesale feed versioning
 
