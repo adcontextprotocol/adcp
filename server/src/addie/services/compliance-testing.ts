@@ -441,7 +441,14 @@ function effectiveRunStatus(result: ComplianceResult): {
   tracks_partial: number;
 } {
   const activeTracks = result.tracks.filter((t: TrackResult) => t.status !== 'skip');
-  const hasCoverageGapSkip = result.tracks.some(trackHasCoverageGapSkip);
+  // Only a *track-level* skip (status === 'skip') counts as a coverage gap that
+  // blocks promotion. Step-level skips inside an active (pass/silent) track —
+  // e.g. a signals-only agent skipping controller-gated media-buy pagination
+  // storyboards with `missing_test_controller` — are expected and must not
+  // degrade an otherwise all-pass run (#5429, regression of #5328).
+  const hasCoverageGapSkip = result.tracks
+    .filter((t: TrackResult) => t.status === 'skip')
+    .some(trackHasCoverageGapSkip);
   if (
     !hasCoverageGapSkip &&
     activeTracks.length > 0 &&
