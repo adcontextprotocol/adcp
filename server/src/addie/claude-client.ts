@@ -22,6 +22,7 @@ import { notifySystemError, notifyToolError } from './error-notifier.js';
 import { ToolError } from './tool-error.js';
 import { checkCostCap, recordCost, formatCapExceededMessage, type UserTier } from './claude-cost-tracker.js';
 import { EMPTY_RESPONSE_FALLBACK, applyResponsePipeline, stripBannedRituals } from './response-postprocess.js';
+import type { AddieInputAttachment } from './chat-attachments.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
@@ -155,6 +156,71 @@ function buildMultimodalContentBlocks(
 
   const summary = `Loaded ${multimodal.type}: ${multimodal.filename || 'file'}`;
   return { content: contentBlocks, summary };
+}
+
+function buildInputAttachmentBlocks(
+  attachments?: AddieInputAttachment[]
+): Anthropic.ContentBlockParam[] {
+  if (!attachments || attachments.length === 0) return [];
+
+  const blocks: Anthropic.ContentBlockParam[] = [];
+  for (const attachment of attachments) {
+    if (attachment.type === 'image') {
+      if (!isAllowedImageType(attachment.media_type)) {
+        logger.warn({ mediaType: attachment.media_type }, 'Addie: Invalid image media type in user attachment');
+        continue;
+      }
+      blocks.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: attachment.media_type,
+          data: attachment.data,
+        },
+      });
+      blocks.push({
+        type: 'text',
+        text: `[Uploaded image: ${attachment.filename || 'image'}]`,
+      });
+    } else if (attachment.type === 'document') {
+      blocks.push({
+        type: 'document',
+        source: {
+          type: 'base64',
+          media_type: 'application/pdf',
+          data: attachment.data,
+        },
+      });
+      blocks.push({
+        type: 'text',
+        text: `[Uploaded PDF: ${attachment.filename || 'document'}]`,
+      });
+    }
+  }
+  return blocks;
+}
+
+function appendInputAttachments(
+  messages: Anthropic.MessageParam[],
+  attachments?: AddieInputAttachment[]
+): Anthropic.MessageParam[] {
+  const attachmentBlocks = buildInputAttachmentBlocks(attachments);
+  if (attachmentBlocks.length === 0) return messages;
+
+  const nextMessages = messages.map((message) => ({ ...message }));
+  let currentTurn = nextMessages[nextMessages.length - 1];
+  if (!currentTurn || currentTurn.role !== 'user') {
+    currentTurn = { role: 'user', content: [] };
+    nextMessages.push(currentTurn);
+  }
+
+  const currentContent = Array.isArray(currentTurn.content)
+    ? currentTurn.content
+    : currentTurn.content.trim()
+      ? [{ type: 'text' as const, text: currentTurn.content }]
+      : [];
+  currentTurn.content = [...currentContent, ...attachmentBlocks];
+  return nextMessages;
 }
 
 /**
@@ -373,6 +439,12 @@ export interface ProcessMessageOptions {
    * admin may reply mid-thread to a non-member's question.
    */
   currentSpeakerName?: string;
+  /**
+   * Current-turn files uploaded through the web chat composer. These are
+   * passed to Claude for this request only; persisted thread history remains
+   * textual to avoid storing base64 blobs in the conversation table.
+   */
+  inputAttachments?: AddieInputAttachment[];
 }
 
 /**
@@ -767,7 +839,10 @@ export class AddieClaudeClient {
       }
     }
 
-    const messages: Anthropic.MessageParam[] = toAnthropicMessages(messageTurnsResult.messages);
+    const messages: Anthropic.MessageParam[] = appendInputAttachments(
+      toAnthropicMessages(messageTurnsResult.messages),
+      options?.inputAttachments,
+    );
 
     // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
     // Mark the last custom tool with cache_control so Anthropic caches all tool definitions.
@@ -1366,7 +1441,10 @@ export class AddieClaudeClient {
       }
     }
 
-    const messages: Anthropic.MessageParam[] = toAnthropicMessages(messageTurnsResult.messages);
+    const messages: Anthropic.MessageParam[] = appendInputAttachments(
+      toAnthropicMessages(messageTurnsResult.messages),
+      options?.inputAttachments,
+    );
 
     // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
     // Mark the last tool with cache_control so Anthropic caches all tool definitions.
