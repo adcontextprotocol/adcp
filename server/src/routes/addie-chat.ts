@@ -125,6 +125,11 @@ import { UsersDatabase } from "../db/users-db.js";
 import { isRetriesExhaustedError } from "../utils/anthropic-retry.js";
 import * as relationshipDb from "../db/relationship-db.js";
 import * as personEvents from "../db/person-events-db.js";
+import {
+  ChatAttachmentValidationError,
+  summarizeAttachmentsForMessage,
+  validateChatAttachments,
+} from "../addie/chat-attachments.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -725,21 +730,26 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         });
       }
 
-      const { message, conversation_id, user_name, message_source: rawMessageSource } = req.body;
+      const { message, conversation_id, user_name, message_source: rawMessageSource, attachments: rawAttachments } = req.body;
+      const attachments = validateChatAttachments(rawAttachments);
 
-      if (!message || typeof message !== "string") {
+      if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
         return res.status(400).json({ error: "Message is required" });
       }
+      const attachmentSummary = summarizeAttachmentsForMessage(attachments);
+      const messageForStorage = message.trim()
+        ? `${message.trim()}${attachmentSummary ? `\n\n${attachmentSummary}` : ''}`
+        : attachmentSummary || "[Uploaded attachment]";
 
       // Sanitize input
-      const inputValidation = sanitizeInput(message);
+      const inputValidation = sanitizeInput(messageForStorage);
       if (inputValidation.flagged) {
         logger.warn({ reason: inputValidation.reason }, "Addie Chat: Input flagged");
       }
 
       // Heuristic click telemetry: if the incoming message text matches a
       // known suggested-prompt verbatim, record a click against that rule.
-      const matchedRuleId = matchRuleIdFromMessage(message);
+      const matchedRuleId = matchRuleIdFromMessage(message.trim());
       if (matchedRuleId && req.user?.id) {
         void recordPromptClicked(req.user.id, matchedRuleId);
       }
@@ -816,7 +826,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       await threadService.addMessage({
         thread_id: thread.thread_id,
         role: 'user',
-        content: message,
+        content: messageForStorage,
         content_sanitized: inputValidation.sanitized,
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason,
@@ -887,6 +897,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
           threadId: thread.thread_id,
           userDisplayName: displayName || undefined,
           currentSpeakerName: displayName || undefined,
+          inputAttachments: attachments,
           costScope: authedScope ?? { userId: `anon:${hashIp(req.ip)}`, tier: 'anonymous' as const },
         });
       } catch (error) {
@@ -963,6 +974,12 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         si_session: siSession,
       });
     } catch (error) {
+      if (error instanceof ChatAttachmentValidationError) {
+        return res.status(error.statusCode).json({
+          error: "Invalid attachment",
+          message: error.message,
+        });
+      }
       logger.error({ err: error }, "Addie Chat: Error handling message");
       res.status(500).json({
         error: "Internal server error",
@@ -1021,23 +1038,28 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         return;
       }
 
-      const { message, conversation_id, user_name, message_source: rawMessageSourceStream } = req.body;
+      const { message, conversation_id, user_name, message_source: rawMessageSourceStream, attachments: rawAttachmentsStream } = req.body;
+      const attachments = validateChatAttachments(rawAttachmentsStream);
 
-      if (!message || typeof message !== "string") {
+      if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
         sendEvent("error", { error: "Message is required" });
         res.end();
         return;
       }
+      const attachmentSummary = summarizeAttachmentsForMessage(attachments);
+      const messageForStorage = message.trim()
+        ? `${message.trim()}${attachmentSummary ? `\n\n${attachmentSummary}` : ''}`
+        : attachmentSummary || "[Uploaded attachment]";
 
       // Sanitize input
-      const inputValidation = sanitizeInput(message);
+      const inputValidation = sanitizeInput(messageForStorage);
       if (inputValidation.flagged) {
         logger.warn({ reason: inputValidation.reason }, "Addie Chat Stream: Input flagged");
       }
 
       // Heuristic click telemetry: if the incoming message text matches a
       // known suggested-prompt verbatim, record a click against that rule.
-      const matchedRuleId = matchRuleIdFromMessage(message);
+      const matchedRuleId = matchRuleIdFromMessage(message.trim());
       if (matchedRuleId && req.user?.id) {
         void recordPromptClicked(req.user.id, matchedRuleId);
       }
@@ -1105,7 +1127,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       await threadService.addMessage({
         thread_id: thread.thread_id,
         role: 'user',
-        content: message,
+        content: messageForStorage,
         content_sanitized: inputValidation.sanitized,
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason,
@@ -1170,9 +1192,10 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         ...processOptions,
         requestContext,
         threadId: thread.thread_id,
-        userDisplayName: displayName || undefined,
-        currentSpeakerName: displayName || undefined,
-        ...(streamAuthedScope
+          userDisplayName: displayName || undefined,
+          currentSpeakerName: displayName || undefined,
+          inputAttachments: attachments,
+          ...(streamAuthedScope
           ? { costScope: streamAuthedScope }
           : externalId
             ? { costScope: { userId: `anon:${externalId}`, tier: 'anonymous' as const } }
@@ -1284,7 +1307,11 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       res.end();
     } catch (error) {
       logger.error({ err: error }, "Addie Chat Stream: Error handling message");
-      sendEvent("error", { error: "Internal server error" });
+      if (error instanceof ChatAttachmentValidationError) {
+        sendEvent("error", { error: error.message });
+      } else {
+        sendEvent("error", { error: "Internal server error" });
+      }
       res.end();
     }
   });
