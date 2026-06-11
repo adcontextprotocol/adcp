@@ -66,6 +66,15 @@
       "uniqueItems": true,
       "minItems": 1
     },
+    "audio_feed_types": {
+      "type": "array",
+      "description": "Declared audio feed types for this product placement, using IAB Tech Lab/OpenRTB 2.6 Audio.feed definitions with AdCP-native names. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "/schemas/enums/audio-feed-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
     "sponsored_placement_types": {
       "type": "array",
       "description": "Declared sponsored-placement types for this product placement, distinguishing where the catalog-driven retail-media placement renders on the retailer surface. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",

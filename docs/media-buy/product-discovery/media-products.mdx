@@ -20,6 +20,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `publisher_properties` (list[PublisherPropertySelector], required): Publisher properties covered by this product. See [Property Targeting](#property-targeting).
 - `channels` (list[string], optional): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD declare `channels` on products that span non-obvious channels, particularly retail media, CTV/OLV, and multi-channel bundles. Product channels SHOULD be a subset of the union of their properties' `supported_channels`. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
 - `video_placement_types` (list[string], optional): Declared video placement types that may be included in this product, using IAB Tech Lab/OpenRTB 2.6 `video.plcmt` definitions with AdCP-native names: `instream`, `accompanying_content`, `interstitial`, and `standalone`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
+- `audio_feed_types` (list[string], optional): Declared audio feed types that may be included in this product, using IAB Tech Lab/OpenRTB 2.6 `Audio.feed` definitions with AdCP-native names: `music_streaming_service`, `fm_am_broadcast`, `podcast`, `catch_up_radio`, `web_radio`, `video_game`, and `text_to_speech`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
 - `sponsored_placement_types` (list[string], optional): Declared sponsored-placement types for catalog-driven retail-media products: `sponsored_search`, `sponsored_display`, and `sponsored_native`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
 - `social_placement_surfaces` (list[string], optional): Declared social-placement surfaces for social products: `feed`, `stories`, `short_video`, `explore`, and `search`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
 - `format_ids` (list[FormatID], conditional): Legacy named-format references. Products must include `format_ids`, `format_options`, or both. See [Creative Formats](/docs/creative/formats).
@@ -198,6 +199,7 @@ Products can optionally declare specific public ad placements within their inven
 - **`mode: "targetable"`** - The buyer may reference this publisher-scoped placement when assigning creatives or otherwise selecting placements within the product
 - **`mode: "included"`** - The public placement is part of the product's described composition, but the buyer cannot cherry-pick it by `placement_id`
 - **`video_placement_types`** - Declared video placement types for OLV and other video placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
+- **`audio_feed_types`** - Declared audio feed types for radio, streaming-audio, podcast, gaming, and other audio placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
 - **`sponsored_placement_types`** - Declared sponsored-placement types for catalog-driven retail-media placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
 - **`social_placement_surfaces`** - Declared social-placement surfaces for social placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
 - **Publisher reference rule** - Publisher-referenced product placements resolve to `{publisher_domain, placement_id}` in the publisher's `adagents.json`
@@ -226,6 +228,24 @@ Video products can declare `video_placement_types` at the product level, placeme
 The field is an array because a sellable product can aggregate multiple placement types. For example, an OLV network product might include both `instream` and `accompanying_content`, while individual targetable placements narrow to one type. When both product and placement declarations are present, the product-level array should be the union of the video placement types the seller may deliver under that product.
 
 This is a discovery signal, not a verification claim. Buyers can filter for products that can satisfy a requested type with `get_products.filters.video_placement_types`, but sellers should not return mixed, non-targetable bundles for an instream-only filter unless they can constrain delivery to instream inventory during planning or purchase.
+
+#### Audio feed types
+
+Audio products can declare `audio_feed_types` at the product level, placement level, or both. The vocabulary follows the IAB Tech Lab/OpenRTB 2.6 `Audio.feed` definitions, but AdCP uses readable field and value names rather than the OpenRTB numeric codes:
+
+| Value | Meaning |
+|---|---|
+| `music_streaming_service` | Music streaming service |
+| `fm_am_broadcast` | FM/AM broadcast, including live content broadcast over the air and also available via online streaming |
+| `podcast` | Original, pre-recorded content distributed as episodes in a series |
+| `catch_up_radio` | Recorded segment of a radio show that was originally broadcast live |
+| `web_radio` | Live audio content only available via online streaming, not as FM/AM broadcast |
+| `video_game` | Background audio in video games |
+| `text_to_speech` | Text-to-speech audio such as audio books or website/plugin article narration |
+
+This field describes execution and distribution details inside the buyer-facing `radio`, `streaming_audio`, `podcast`, or `gaming` channel. It does not rename channels and it does not change `adagents.json` `property_type` semantics, which remain tied to authorizable inventory surfaces. The field is an array because a sellable product can aggregate multiple audio feed types. When both product and placement declarations are present, the product-level array should be the union of the audio feed types the seller may deliver under that product.
+
+This is a discovery signal, not a verification claim. Buyers can filter for products that can satisfy a requested type with `get_products.filters.audio_feed_types`, but sellers should not return mixed, non-targetable bundles unless they can constrain delivery to the requested audio feed type during planning or purchase.
 
 #### Sponsored placement types
 
