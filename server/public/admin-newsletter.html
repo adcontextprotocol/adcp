@@ -732,7 +732,7 @@
         }).catch((err) => {
           currentDigest.content[field] = previousValue;
           currentSubject = previousSubject;
-          render();
+          if (activeEditable?.dataset.editing !== 'true') render();
           toast('Save failed: ' + esc(err.message));
         });
       }
