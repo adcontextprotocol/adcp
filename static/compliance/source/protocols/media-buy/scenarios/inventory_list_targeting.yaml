@@ -238,6 +238,23 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches update-media-buy-response.json schema"
+          - check: field_present
+            path: "affected_packages"
+            description: "Package-mutating update returns affected_packages"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.package_id"
+              product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              targeting_overlay:
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_no_match_v1"
+                collection_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_no_match_collections_v1"
+            description: "Update response returns the affected package with complete post-update targeting state"
 
       - id: get_after_update
         title: "Confirm swap persisted"

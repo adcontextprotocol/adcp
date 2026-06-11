@@ -276,6 +276,18 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches update-media-buy-response.json schema"
+          - check: field_present
+            path: "affected_packages"
+            description: "Package-mutating update returns affected_packages"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.package_id"
+              product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              creative_assignments:
+                - creative_id: "acme_dep_banner_001"
+            description: "Update response returns the affected package with complete creative assignment state"
 
       - id: force_creative_approved
         title: "Force the creative to approved baseline"
@@ -579,6 +591,18 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches update-media-buy-response.json schema"
+          - check: field_present
+            path: "affected_packages"
+            description: "Package-mutating update returns affected_packages"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.package_id"
+              product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              creative_assignments:
+                - creative_id: "acme_dep_banner_002"
+            description: "Update response returns the affected package with complete replacement assignment state"
 
       - id: get_buy_recovered
         title: "Read the buy — health: ok, impairments[] cleared via swap"
