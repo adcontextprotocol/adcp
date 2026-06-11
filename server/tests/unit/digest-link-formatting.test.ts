@@ -160,6 +160,16 @@ describe('digest editor note link formatting', () => {
       expect(text).toContain('more (https://example.com/more)');
     });
 
+    it('tracks markdown links with query-string ampersands once', () => {
+      const content = makeContent({
+        pastedContent: 'Read [the brief](https://example.com/brief?utm=a&src=b).',
+      });
+      const { html } = renderDigestEmail(content, 'recipient-1', '2026-04-01', 'both');
+
+      expect(html).toContain('tracked:recipient-1:pasted_body_1:https://example.com/brief?utm=a&amp;src=b');
+      expect(html).not.toContain('&amp;amp;');
+    });
+
     it('renders pasted content in Slack instead of generated sections', () => {
       const content = makeContent({
         pastedContent: 'Pasted **body** with [brief](https://example.com/brief).',

@@ -101,31 +101,48 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#x27;');
 }
 
-function decodeHtmlAttribute(value: string): string {
-  return value
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
-}
+type SanitizedElement = {
+  getAttribute(name: string): string | null;
+  setAttribute(name: string, value: string): void;
+};
+
+type SanitizedFragment = {
+  querySelectorAll(selector: string): { forEach(callback: (el: SanitizedElement) => void): void };
+  ownerDocument: {
+    createElement(tagName: string): {
+      appendChild(node: unknown): void;
+      innerHTML: string;
+    };
+  };
+  cloneNode(deep?: boolean): unknown;
+};
 
 function markdownToTrackedEmailHtml(md: string, trackingId: string, tagPrefix = 'pasted_body'): string {
   let linkIndex = 0;
-  return renderMarkdownToEmailHtml(md)
-    .replace(/<a href="([^"]+)">/g, (_match, href) => {
-      linkIndex += 1;
-      const trackedHref = trackLink(trackingId, `${tagPrefix}_${linkIndex}`, decodeHtmlAttribute(href));
-      return `<a href="${escapeHtml(trackedHref)}" style="color: #2563eb; text-decoration: underline;">`;
-    })
-    .replace(/<p>/g, '<p style="margin: 0 0 12px 0;">')
-    .replace(/<ul>/g, '<ul style="margin: 8px 0 12px 0; padding-left: 20px;">')
-    .replace(/<ol>/g, '<ol style="margin: 8px 0 12px 0; padding-left: 20px;">')
-    .replace(/<li>/g, '<li style="margin-bottom: 4px;">')
-    .replace(/<code>/g, '<code style="background:#f1f5f9;padding:2px 4px;border-radius:3px;font-size:13px;">')
-    .replace(/<h1>/g, '<h1 style="font-size: 22px; margin: 20px 0 8px 0; color: #1a1a2e;">')
-    .replace(/<h2>/g, '<h2 style="font-size: 18px; margin: 18px 0 8px 0; color: #1a1a2e;">')
-    .replace(/<h3>/g, '<h3 style="font-size: 16px; margin: 16px 0 8px 0; color: #1a1a2e;">');
+  const dom = DOMPurify.sanitize(renderMarkdownToEmailHtml(md), {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li', 'code', 'pre', 'h1', 'h2', 'h3'],
+    ALLOWED_ATTR: ['href'],
+    RETURN_DOM: true,
+  }) as unknown as SanitizedFragment;
+
+  dom.querySelectorAll('a[href]').forEach((anchor) => {
+    linkIndex += 1;
+    const href = anchor.getAttribute('href') || '';
+    anchor.setAttribute('href', trackLink(trackingId, `${tagPrefix}_${linkIndex}`, href));
+    anchor.setAttribute('style', 'color: #2563eb; text-decoration: underline;');
+  });
+  dom.querySelectorAll('p').forEach((el) => el.setAttribute('style', 'margin: 0 0 12px 0;'));
+  dom.querySelectorAll('ul').forEach((el) => el.setAttribute('style', 'margin: 8px 0 12px 0; padding-left: 20px;'));
+  dom.querySelectorAll('ol').forEach((el) => el.setAttribute('style', 'margin: 8px 0 12px 0; padding-left: 20px;'));
+  dom.querySelectorAll('li').forEach((el) => el.setAttribute('style', 'margin-bottom: 4px;'));
+  dom.querySelectorAll('code').forEach((el) => el.setAttribute('style', 'background:#f1f5f9;padding:2px 4px;border-radius:3px;font-size:13px;'));
+  dom.querySelectorAll('h1').forEach((el) => el.setAttribute('style', 'font-size: 22px; margin: 20px 0 8px 0; color: #1a1a2e;'));
+  dom.querySelectorAll('h2').forEach((el) => el.setAttribute('style', 'font-size: 18px; margin: 18px 0 8px 0; color: #1a1a2e;'));
+  dom.querySelectorAll('h3').forEach((el) => el.setAttribute('style', 'font-size: 16px; margin: 16px 0 8px 0; color: #1a1a2e;'));
+
+  const container = dom.ownerDocument.createElement('div');
+  container.appendChild(dom.cloneNode(true));
+  return container.innerHTML;
 }
 
 function markdownToPlainText(md: string): string {
