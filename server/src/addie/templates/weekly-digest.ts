@@ -1,7 +1,8 @@
 import type { DigestContent, DigestInsiderGroup, PersonaCluster, DigestEmailRecipient } from '../../db/digest-db.js';
 import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
 import { trackedUrl } from '../../notifications/email.js';
-import { isSectionHidden } from '../../newsletters/config.js';
+import { getCustomSections, getPastedContent, isSectionHidden } from '../../newsletters/config.js';
+import { markdownToEmailHtml as renderMarkdownToEmailHtml } from '../../utils/markdown.js';
 import { pickNudge } from '../services/digest-nudge.js';
 import DOMPurify from 'isomorphic-dompurify';
 
@@ -100,6 +101,66 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#x27;');
 }
 
+function decodeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function markdownToTrackedEmailHtml(md: string, trackingId: string, tagPrefix = 'pasted_body'): string {
+  let linkIndex = 0;
+  return renderMarkdownToEmailHtml(md)
+    .replace(/<a href="([^"]+)">/g, (_match, href) => {
+      linkIndex += 1;
+      const trackedHref = trackLink(trackingId, `${tagPrefix}_${linkIndex}`, decodeHtmlAttribute(href));
+      return `<a href="${escapeHtml(trackedHref)}" style="color: #2563eb; text-decoration: underline;">`;
+    })
+    .replace(/<p>/g, '<p style="margin: 0 0 12px 0;">')
+    .replace(/<ul>/g, '<ul style="margin: 8px 0 12px 0; padding-left: 20px;">')
+    .replace(/<ol>/g, '<ol style="margin: 8px 0 12px 0; padding-left: 20px;">')
+    .replace(/<li>/g, '<li style="margin-bottom: 4px;">')
+    .replace(/<code>/g, '<code style="background:#f1f5f9;padding:2px 4px;border-radius:3px;font-size:13px;">')
+    .replace(/<h1>/g, '<h1 style="font-size: 22px; margin: 20px 0 8px 0; color: #1a1a2e;">')
+    .replace(/<h2>/g, '<h2 style="font-size: 18px; margin: 18px 0 8px 0; color: #1a1a2e;">')
+    .replace(/<h3>/g, '<h3 style="font-size: 16px; margin: 16px 0 8px 0; color: #1a1a2e;">');
+}
+
+function markdownToPlainText(md: string): string {
+  return htmlToPlainText(renderMarkdownToEmailHtml(md));
+}
+
+function markdownToSlackMrkdwn(md: string): string {
+  return escapeSlackMrkdwnPreserveLinks(htmlToSlackMrkdwn(renderMarkdownToEmailHtml(md)));
+}
+
+function renderCustomSectionsEmail(content: DigestContent, trackingId: string): string {
+  return getCustomSections(content)
+    .map((section, index) => `
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
+    ${section.title ? `<h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">${escapeHtml(section.title)}</h2>` : ''}
+    <div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToTrackedEmailHtml(section.body, trackingId, `custom_${index + 1}`)}</div>
+    `)
+    .join('');
+}
+
+function appendCustomSectionsText(lines: string[], content: DigestContent) {
+  for (const section of getCustomSections(content)) {
+    if (section.title) lines.push(section.title, '');
+    lines.push(markdownToPlainText(section.body), '');
+  }
+}
+
+function appendCustomSectionsSlack(blocks: SlackBlock[], content: DigestContent) {
+  for (const section of getCustomSections(content)) {
+    blocks.push({ type: 'divider' });
+    const title = section.title ? `*${escapeSlackMrkdwn(section.title)}*\n\n` : '';
+    appendSlackMrkdwnSections(blocks, `${title}${markdownToSlackMrkdwn(section.body)}`);
+  }
+}
+
 function escapeSlackMrkdwn(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -163,6 +224,39 @@ function escapeSlackMrkdwnPreserveLinks(text: string): string {
   return parts.join('');
 }
 
+function appendSlackMrkdwnSections(blocks: SlackBlock[], mrkdwn: string, maxLength = 2800) {
+  const paragraphs = mrkdwn.split(/\n{2,}/);
+  let current = '';
+  const flush = () => {
+    if (!current.trim()) return;
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: current.trim() },
+    });
+    current = '';
+  };
+
+  for (const paragraph of paragraphs) {
+    const next = current ? `${current}\n\n${paragraph}` : paragraph;
+    if (next.length <= maxLength) {
+      current = next;
+      continue;
+    }
+    flush();
+    if (paragraph.length <= maxLength) {
+      current = paragraph;
+      continue;
+    }
+    for (let i = 0; i < paragraph.length; i += maxLength) {
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: paragraph.slice(i, i + maxLength) },
+      });
+    }
+  }
+  flush();
+}
+
 export type DigestSegment = 'website_only' | 'slack_only' | 'both' | 'active';
 
 // ─── Email HTML Rendering ───────────────────────────────────────────────
@@ -184,6 +278,62 @@ export function renderDigestEmail(
   const t = (linkTag: string, url: string) => trackLink(trackingId, linkTag, url);
   const viewInBrowserUrl = t('view_browser', `${BASE_URL}/perspectives/the-prompt-${editionDate}`);
   const greeting = firstName ? `Hi ${escapeHtml(firstName)},` : '';
+  const pasted = getPastedContent(content);
+
+  if (pasted) {
+    const html = `
+  <div style="display:none;font-size:1px;color:#ffffff;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">
+    ${escapeHtml(content.openingTake)}
+  </div>
+  <div style="max-width: 560px; margin: 0 auto;">
+    <p style="font-size: 12px; color: #888; text-align: center; margin-bottom: 24px;">
+      <a href="${viewInBrowserUrl}" style="color: #888; text-decoration: underline;">View in browser</a>
+    </p>
+
+    ${content.coverImageUrl ? `
+    <div style="margin-bottom: 16px; border-radius: 8px; overflow: hidden;">
+      <img src="${escapeHtml(content.coverImageUrl)}" alt="The Prompt — ${escapeHtml(formatDate(editionDate))}" style="width: 100%; height: auto; display: block;">
+    </div>
+    ` : ''}
+    <h1 style="font-size: 22px; color: #1a1a2e; margin-bottom: 0;">The Prompt</h1>
+    <p style="font-size: 14px; color: #666; margin-top: 4px;">from Addie &middot; ${formatDate(editionDate)}</p>
+
+    ${greeting ? `<p style="font-size: 15px; color: #333; margin-bottom: 0;">${greeting}</p>` : ''}
+
+    <p style="font-size: 15px; color: #333; line-height: 1.6;">${escapeHtml(content.openingTake)}</p>
+
+    ${content.editorsNote ? `
+    <div style="margin: 20px 0; padding: 16px 20px; background: #f0f4ff; border-left: 4px solid #2563eb; border-radius: 0 6px 6px 0;">
+      <div style="font-size: 15px; color: #1a1a2e; margin: 0; line-height: 1.6;">${
+        isHtml(content.editorsNote)
+          ? htmlToEmailHtml(content.editorsNote)
+          : slackLinksToHtml(content.editorsNote).replace(/\n/g, '<br>')
+      }</div>
+    </div>
+    ` : ''}
+
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
+
+    <div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToTrackedEmailHtml(pasted, trackingId)}</div>
+
+    ${renderCustomSectionsEmail(content, trackingId)}
+
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
+
+    <p style="font-size: 15px; color: #333; line-height: 1.6; margin-bottom: 4px;">
+      We're building this together. If something here resonated, pass it along — every share brings in someone new.
+    </p>
+    <p style="font-size: 15px; color: #333; margin-top: 8px;">
+      Let's keep building,<br>
+      Addie<br>
+      <span style="font-size: 13px; color: #666;">AgenticAdvertising.org</span>
+    </p>
+
+    ${renderCta(segment, trackingId)}
+  </div>`.trim();
+    const text = renderDigestText(content, editionDate, segment, firstName, userWorkingGroupNames);
+    return { html, text };
+  }
 
   const html = `
   <div style="display:none;font-size:1px;color:#ffffff;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">
@@ -507,6 +657,19 @@ function renderDigestText(
     );
   }
 
+  const pasted = getPastedContent(content);
+  if (pasted) {
+    lines.push(markdownToPlainText(pasted), '');
+    appendCustomSectionsText(lines, content);
+    lines.push('---', '');
+    lines.push("We're building this together. If something here resonated, pass it along.", '');
+    lines.push("Let's keep building,");
+    lines.push('Addie');
+    lines.push('AgenticAdvertising.org', '');
+    lines.push(`Read online: ${BASE_URL}/perspectives/the-prompt-${editionDate}`);
+    return lines.join('\n');
+  }
+
   if (content.newMembers.length > 0) {
     lines.push(`Welcome to ${content.newMembers.map((m) => m.name).join(', ')} who joined this week.`, '');
   }
@@ -637,6 +800,25 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
       type: 'section',
       text: { type: 'mrkdwn', text: mrkdwn.split('\n').map((line) => `> ${line}`).join('\n') },
     });
+  }
+
+  const pasted = getPastedContent(content);
+  if (pasted) {
+    blocks.push({ type: 'divider' });
+    appendSlackMrkdwnSections(blocks, markdownToSlackMrkdwn(pasted));
+    appendCustomSectionsSlack(blocks, content);
+    blocks.push({ type: 'divider' });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: "Let's keep building,\nAddie\nAgenticAdvertising.org" },
+    });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `<${webUrl}|Read the full Prompt>` },
+    });
+
+    const fallbackText = `The Prompt — ${formatDate(editionDate)}: ${content.openingTake}`;
+    return { text: fallbackText, blocks };
   }
 
   // Official content (with takeaways)

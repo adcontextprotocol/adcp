@@ -838,6 +838,24 @@
       border-color: var(--color-success-500);
     }
 
+    .user-copy-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 8px;
+    }
+
+    .user-copy-actions .copy-btn {
+      color: var(--color-text-on-dark-secondary);
+      border-color: color-mix(in srgb, var(--color-text-on-dark) 35%, transparent);
+      margin-left: 0;
+    }
+
+    .user-copy-actions .copy-btn:hover {
+      background: color-mix(in srgb, var(--color-text-on-dark) 12%, transparent);
+      color: var(--color-text-on-dark);
+      border-color: color-mix(in srgb, var(--color-text-on-dark) 65%, transparent);
+    }
+
     .feedback-expand {
       background: none;
       border: none;
@@ -3818,6 +3836,11 @@
         if (role === 'assistant' && messageId) {
           const feedbackDiv = createFeedbackUI(messageId, content);
           contentDiv.appendChild(feedbackDiv);
+        } else if (role === 'user') {
+          const actionsDiv = document.createElement('div');
+          actionsDiv.className = 'user-copy-actions';
+          actionsDiv.appendChild(createCopyButton(content, 'Copy message'));
+          contentDiv.appendChild(actionsDiv);
         }
 
         messageDiv.appendChild(avatarDiv);
@@ -3850,6 +3873,28 @@
         } finally {
           document.body.removeChild(textarea);
         }
+      }
+
+      function createCopyButton(text, title) {
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-btn';
+        copyBtn.textContent = 'Copy';
+        copyBtn.title = title;
+        copyBtn.addEventListener('click', () => {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => {
+              copyBtn.textContent = 'Copied!';
+              copyBtn.classList.add('copied');
+              setTimeout(() => {
+                copyBtn.textContent = 'Copy';
+                copyBtn.classList.remove('copied');
+              }, 1500);
+            }).catch(() => fallbackCopy(text, copyBtn));
+          } else {
+            fallbackCopy(text, copyBtn);
+          }
+        });
+        return copyBtn;
       }
 
       // Create feedback UI for a message
@@ -3937,25 +3982,7 @@
         });
 
         if (rawContent) {
-          const copyBtn = document.createElement('button');
-          copyBtn.className = 'copy-btn';
-          copyBtn.textContent = 'Copy';
-          copyBtn.title = 'Copy response';
-          copyBtn.addEventListener('click', () => {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-              navigator.clipboard.writeText(rawContent).then(() => {
-                copyBtn.textContent = 'Copied!';
-                copyBtn.classList.add('copied');
-                setTimeout(() => {
-                  copyBtn.textContent = 'Copy';
-                  copyBtn.classList.remove('copied');
-                }, 1500);
-              }).catch(() => fallbackCopy(rawContent, copyBtn));
-            } else {
-              fallbackCopy(rawContent, copyBtn);
-            }
-          });
-          container.appendChild(copyBtn);
+          container.appendChild(createCopyButton(rawContent, 'Copy response'));
         }
 
         return container;

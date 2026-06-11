@@ -6,6 +6,8 @@
   <link rel="icon" href="/sage-icon.svg" type="image/svg+xml">
   <title>Admin - Newsletter</title>
   <script src="/admin-sidebar.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js" integrity="sha384-b5hg04N6F0rvyz1a/GVoPPY0JcqGTARCmEuFCqwQKX3zq7LsxhV+n+6Ykh2pQOCH" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js" integrity="sha384-eEu5CTj3qGvu9PdJuS+YlkNi7d2XxQROAFYOr59zgObtlcux1ae1Il3u7jvdCSWu" crossorigin="anonymous"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
     :root { --nl-primary: #0d9488; --nl-light: #f0fdfa; --nl-dark: #1a1a2e; }
@@ -101,7 +103,7 @@
       <div id="pasteMode" style="display:none;">
         <div class="section">
           <h2>Paste Your Newsletter</h2>
-          <p class="section-hint">Replaces all auto-generated sections. Use **bold**, [links](url), and `code` markdown.</p>
+          <p class="section-hint"><strong>Replaces all auto-generated sections in this edition.</strong> Use **bold**, [links](url), and `code` markdown.</p>
           <div style="margin-bottom:12px;">
             <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;">Subject line override (optional)</label>
             <input type="text" id="pasteSubject" placeholder="Leave blank to auto-generate" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;box-sizing:border-box;">
@@ -193,6 +195,14 @@
       el.textContent = msg;
       el.classList.add('show');
       setTimeout(() => el.classList.remove('show'), duration);
+    }
+
+    function renderMarkdown(text) {
+      if (!text) return '';
+      if (window.marked && window.DOMPurify) {
+        return DOMPurify.sanitize(marked.parse(text, { breaks: true, gfm: true, async: false }));
+      }
+      return esc(text).replace(/\n/g, '<br>');
     }
 
     async function api(path, opts = {}) {
@@ -316,8 +326,16 @@
       // Sections from uiConfig — cherry-pick interface
       const container = document.getElementById('sectionsContainer');
       container.innerHTML = '';
+      if (c.pastedContent) {
+        container.innerHTML = `
+          <div class="section">
+            <h2>Pasted newsletter</h2>
+            <p class="section-hint">This custom body replaces the auto-generated sections for this edition.</p>
+            <div class="section-content">${renderMarkdown(c.pastedContent)}</div>
+          </div>`;
+      }
       let halfBuffer = [];
-      for (const sec of uiConfig.sections) {
+      for (const sec of c.pastedContent ? [] : uiConfig.sections) {
         const isHidden = hidden.has(sec.key);
         const hasCandidates = sec.candidateCount > 0;
         const hasIncluded = sec.includedCount > 0;
@@ -427,15 +445,20 @@
 
     function startEdit(el, field) {
       if (currentDigest?.status !== 'draft') return;
+      if (el.contentEditable === 'true') return;
       el.innerHTML = esc(currentDigest.content[field] || '');
       el.contentEditable = 'true';
       el.focus();
+      let saved = false;
 
       function save() {
+        if (saved) return;
+        saved = true;
         el.contentEditable = 'false';
         el.removeEventListener('blur', save);
         el.removeEventListener('keydown', onKey);
         const value = el.textContent.trim();
+        currentDigest.content[field] = value;
         api('/editions/' + currentDigest.id + '/edit', {
           method: 'POST',
           body: JSON.stringify({ field, value }),
@@ -450,7 +473,7 @@
         if (e.key === 'Escape') { el.contentEditable = 'false'; el.removeEventListener('blur', save); el.removeEventListener('keydown', onKey); render(); }
       }
 
-      el.addEventListener('blur', save);
+      el.addEventListener('blur', save, { once: true });
       el.addEventListener('keydown', onKey);
     }
 

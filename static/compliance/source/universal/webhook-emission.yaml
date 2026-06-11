@@ -156,6 +156,9 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares its supported AdCP protocols"
+        context_outputs:
+          - name: webhook_replay_key
+            generate: uuid_v4
 
   - id: idempotency_key_presence
     title: "Every webhook payload carries idempotency_key"
@@ -324,7 +327,7 @@ phases:
           push_notification_config:
             url: "{{runner.webhook_url:trigger_idempotent_webhook_initial}}"
             operation_id: "op_webhook_idempotency_replay"
-          idempotency_key: "$generate:uuid_v4#webhook_emission_replay_key"
+          idempotency_key: "$context.webhook_replay_key"
           context:
             correlation_id: "webhook_emission--idempotent_replay_initial"
         expected: |
@@ -349,7 +352,7 @@ phases:
           push_notification_config:
             url: "{{runner.webhook_url:trigger_idempotent_webhook_initial}}"
             operation_id: "op_webhook_idempotency_replay"
-          idempotency_key: "$generate:uuid_v4#webhook_emission_replay_key"
+          idempotency_key: "$context.webhook_replay_key"
           context:
             correlation_id: "webhook_emission--idempotent_replay_replay"
         validations:

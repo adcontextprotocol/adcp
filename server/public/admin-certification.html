@@ -336,17 +336,18 @@
         </table>
       </div>
 
-      <!-- Stuck attempts -->
+      <!-- Attempts needing attention -->
       <div class="section" id="stuck-section" style="display:none;">
-        <h2>Stuck attempts</h2>
-        <p style="color:var(--color-text-secondary);font-size:14px;margin-bottom:16px;">Capstone attempts in progress for 7+ days. These block learners from starting new exams.</p>
+        <h2>Attempts needing attention</h2>
+        <p style="color:var(--color-text-secondary);font-size:14px;margin-bottom:16px;">Capstone attempts in progress for 7+ days, plus passed attempts that still need credential reconciliation.</p>
         <table id="stuck-table">
           <thead>
             <tr>
               <th>Learner</th>
               <th>Module</th>
+              <th>Status</th>
               <th>Started</th>
-              <th class="text-right">Days stuck</th>
+              <th class="text-right">Age</th>
               <th class="text-right">Actions</th>
             </tr>
           </thead>
@@ -539,17 +540,22 @@
         tbody.innerHTML = data.attempts.map(a => `
           <tr id="stuck-row-${escapeHtml(a.id)}">
             <td>${escapeHtml(a.name)}<br><span style="font-size:12px;color:var(--color-text-secondary);">${escapeHtml(a.email)}</span></td>
-            <td>${escapeHtml(a.module_id || a.track_id)}</td>
+            <td>${escapeHtml(a.module_id || a.track_id)}${a.credential_name ? `<br><span style="font-size:12px;color:var(--color-text-secondary);">${escapeHtml(a.credential_name)}</span>` : ''}</td>
+            <td><span class="badge ${a.status === 'passed' ? 'badge-active' : 'badge-stuck'}">${escapeHtml(a.status)}</span></td>
             <td>${new Date(a.started_at).toLocaleDateString()}</td>
-            <td class="text-right"><span class="badge badge-stuck">${escapeHtml(String(a.days_stuck))}d</span></td>
+            <td class="text-right">${a.status === 'passed' ? '-' : `<span class="badge badge-stuck">${escapeHtml(String(a.days_stuck))}d</span>`}</td>
             <td class="text-right">
-              <button data-attempt-id="${escapeHtml(a.id)}" class="cancel-stuck-btn" style="padding:6px 12px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg-card);color:var(--color-text-heading);cursor:pointer;font-size:13px;">Cancel</button>
+              ${a.status === 'passed'
+                ? `<button data-attempt-id="${escapeHtml(a.id)}" class="complete-stuck-btn" style="padding:6px 12px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg-card);color:var(--color-text-heading);cursor:pointer;font-size:13px;">Reconcile credentials</button>`
+                : `<button data-attempt-id="${escapeHtml(a.id)}" class="cancel-stuck-btn" style="padding:6px 12px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg-card);color:var(--color-text-heading);cursor:pointer;font-size:13px;">Cancel</button>`}
             </td>
           </tr>
         `).join('');
         tbody.addEventListener('click', (e) => {
           const btn = e.target.closest('.cancel-stuck-btn');
           if (btn) cancelStuckAttempt(btn.dataset.attemptId);
+          const completeBtn = e.target.closest('.complete-stuck-btn');
+          if (completeBtn) completeStuckAttempt(completeBtn.dataset.attemptId);
         });
       } catch (err) {
         console.error('Error loading stuck attempts:', err);
@@ -578,6 +584,37 @@
         loadOverview();
       } catch (err) {
         alert('Failed to cancel attempt');
+      }
+    }
+
+    async function completeStuckAttempt(attemptId) {
+      if (!confirm('Re-run completion and credential reconciliation for this passed attempt?')) return;
+      try {
+        const response = await AdminSidebar.fetch(`/api/admin/certification/attempts/${encodeURIComponent(attemptId)}/resolve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'complete', reason: 'Admin reconciled passed attempt missing credential from dashboard' }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          alert(data.error || 'Failed to complete attempt');
+          return;
+        }
+        if (data.warnings && data.warnings.length > 0) {
+          alert(`Attempt reconciled with warnings: ${data.warnings.join(', ')}`);
+          loadStuckAttempts();
+          loadOverview();
+          return;
+        }
+        const row = document.getElementById(`stuck-row-${attemptId}`);
+        if (row) row.remove();
+        const tbody = document.querySelector('#stuck-table tbody');
+        if (!tbody.children.length) {
+          document.getElementById('stuck-section').style.display = 'none';
+        }
+        loadOverview();
+      } catch (err) {
+        alert('Failed to complete attempt');
       }
     }
 

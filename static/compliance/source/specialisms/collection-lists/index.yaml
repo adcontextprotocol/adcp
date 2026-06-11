@@ -85,6 +85,14 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "governance"
+            description: "Agent declares governance protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "collection-lists"
+            description: "Agent declares collection-lists specialism"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
