@@ -441,7 +441,14 @@ function effectiveRunStatus(result: ComplianceResult): {
   tracks_partial: number;
 } {
   const activeTracks = result.tracks.filter((t: TrackResult) => t.status !== 'skip');
-  const hasCoverageGapSkip = result.tracks.some(trackHasCoverageGapSkip);
+  // Only a *track-level* skip (status === 'skip') counts as a coverage gap that
+  // blocks promotion. Step-level skips inside an active (pass/silent) track —
+  // e.g. a signals-only agent skipping controller-gated media-buy pagination
+  // storyboards with `missing_test_controller` — are expected and must not
+  // degrade an otherwise all-pass run (#5429, regression of #5328).
+  const hasCoverageGapSkip = result.tracks
+    .filter((t: TrackResult) => t.status === 'skip')
+    .some(trackHasCoverageGapSkip);
   if (
     !hasCoverageGapSkip &&
     activeTracks.length > 0 &&
@@ -574,9 +581,12 @@ export function deriveStoryboardStatuses(
 
     const passed = agg.stepsPassed + agg.stepLessPhasesPassed;
     const executableTotal = agg.stepsTotal + agg.stepLessPhasesTotal;
-    const total = executableTotal === 0 && agg.controllerSkipped > 0
-      ? 0
-      : executableTotal + agg.controllerSkipped;
+    // Controller-only gaps are selected coverage gaps, not failed seller
+    // assertions. Keep them visible via tracks_json.has_coverage_gap_skip,
+    // but do not put them in the storyboard pass denominator. Otherwise a
+    // storyboard like stale_response_advisory becomes partial even though its
+    // only executable non-controller phase passed.
+    const total = executableTotal;
 
     let status: StoryboardStatusEntry['status'];
     if (total === 0) {
@@ -906,6 +916,13 @@ function capDiagnosticPayload(value: unknown): unknown {
   return capPayload(redactForDiagnostics(value));
 }
 
+function redactDiagnosticText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const redacted = redactForDiagnostics(value);
+  const text = typeof redacted === 'string' ? redacted : '[redacted]';
+  return text.length > 1000 ? `${text.slice(0, 1000)}...` : text;
+}
+
 function stripValidationRequestResponse(value: unknown): unknown {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const { request: _request, response: _response, ...rest } = value as Record<string, unknown>;
@@ -975,7 +992,7 @@ export function extractFailingStepDiagnostics(result: ComplianceResult): StepDia
           response_jsonb: capDiagnosticPayload(responsePayload),
           extraction_path: extraction?.path,
           extraction_note: extraction?.note,
-          error_text: typeof step.error === 'string' ? step.error : undefined,
+          error_text: redactDiagnosticText(step.error),
           adcp_error_jsonb: capDiagnosticPayload(step.adcp_error),
           failed_validations_jsonb: failedValidations && failedValidations.length > 0
             ? capDiagnosticPayload(failedValidations.map(stripValidationRequestResponse))

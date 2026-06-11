@@ -296,6 +296,44 @@ async function runTests() {
     return validateRegistryConsistency();
   });
 
+  // Test 4A: Validate brand.json permits same-type agents for scoped endpoints
+  await test('brand.json permits multiple same-type agents for scoped endpoints', async () => {
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validateBrand = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'brand.json')));
+    const manifest = {
+      $schema: '/schemas/brand.json',
+      version: '1.0',
+      agents: [
+        {
+          type: 'sales',
+          url: 'https://seller.example/mcp/northwind',
+          id: 'sales_northwind',
+          jwks_uri: 'https://seller.example/.well-known/jwks/northwind.json'
+        },
+        {
+          type: 'sales',
+          url: 'https://seller.example/mcp/southridge',
+          id: 'sales_southridge',
+          jwks_uri: 'https://seller.example/.well-known/jwks/southridge.json'
+        }
+      ]
+    };
+
+    if (!validateBrand(manifest)) {
+      return validateBrand.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
+    }
+
+    return true;
+  });
+
   // Test 4B: Validate ADCP open-payload annotations
   await test('x-adcp-open-payload annotations use currently supported values', () => {
     for (const [schemaPath, schema] of schemas) {

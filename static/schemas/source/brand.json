@@ -594,7 +594,7 @@
         },
         "agents": {
           "$ref": "#/definitions/agents",
-          "description": "Agents authorized to act on behalf of this brand. Overrides house-level agents of the same type."
+          "description": "Agents authorized to act on behalf of this brand. Consumers resolving an agent by URL use the matching brand-level entry; do not infer a type-wide override of unrelated house-level entries when multiple same-type entries exist."
         },
         "brand_agent": {
           "$ref": "#/definitions/brand_agent",
@@ -827,7 +827,7 @@
     },
     "agents": {
       "type": "array",
-      "description": "Agents declared by this brand or house. One agent per type.",
+      "description": "Agents declared by this brand or house. Multiple entries with the same type are permitted when they have distinct url values, such as one endpoint URL per tenant or property scope.",
       "items": { "$ref": "#/definitions/brand_agent_entry" },
       "maxItems": 20
     },

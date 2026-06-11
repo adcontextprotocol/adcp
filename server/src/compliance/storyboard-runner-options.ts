@@ -72,8 +72,10 @@ export function authForStoryboard(
 
   if (storyboardId === 'security_baseline' && kit?.auth?.basic) {
     const { username, password, credentials } = kit.auth.basic;
-    if (username && password) return { type: 'basic', username, password };
-    if (credentials) {
+    if (typeof username === 'string' && username && typeof password === 'string') {
+      return { type: 'basic', username, password };
+    }
+    if (typeof credentials === 'string') {
       const colonIndex = credentials.indexOf(':');
       if (colonIndex > 0) {
         return {
@@ -83,7 +85,7 @@ export function authForStoryboard(
         };
       }
     }
-    throw new Error('security_baseline auth.basic must provide username/password or credentials in "username:password" form');
+    throw new Error('security_baseline auth.basic must provide a non-empty username and a password string, or credentials in "username:password" form; the password may be empty');
   }
 
   return { type: 'bearer', token: defaultBearerToken };

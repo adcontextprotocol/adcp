@@ -130,9 +130,9 @@ describe('deriveStoryboardStatuses', () => {
 
     expect(entry).toEqual({
       storyboard_id: 'pagination_integrity_creative_formats',
-      status: 'partial',
+      status: 'passing',
       steps_passed: 3,
-      steps_total: 5,
+      steps_total: 3,
     });
   });
 
@@ -244,7 +244,7 @@ describe('deriveStoryboardStatuses', () => {
       storyboard_id: 'mixed_storyboard',
       status: 'failing',
       steps_passed: 0,
-      steps_total: 2,
+      steps_total: 1,
     });
   });
 

@@ -9392,8 +9392,68 @@ paths:
                     type: array
                     items:
                       type: string
+                  run_id:
+                    type: string
+                    description: Compliance run id written by this owner-triggered storyboard run.
+                  storyboard_status:
+                    type: object
+                    properties:
+                      storyboard_id:
+                        type: string
+                      status:
+                        type: string
+                        enum:
+                          - passing
+                          - failing
+                          - partial
+                          - untested
+                      steps_passed:
+                        type: integer
+                      steps_total:
+                        type: integer
+                    required:
+                      - storyboard_id
+                      - status
+                      - steps_passed
+                      - steps_total
+                    description: Persisted storyboard verdict for this run, using the same executable-step semantics as agent_storyboard_status.
                   phases: {}
                   summary: {}
+                  diagnostics:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        run_id:
+                          type: string
+                        agent_url:
+                          type: string
+                        storyboard_id:
+                          type: string
+                        phase_id:
+                          type: string
+                        step_id:
+                          type: string
+                        task:
+                          type: string
+                        response_status:
+                          type:
+                            - integer
+                            - "null"
+                        error_text:
+                          type:
+                            - string
+                            - "null"
+                        failed_validations_jsonb: {}
+                        adcp_error_jsonb: {}
+                      required:
+                        - run_id
+                        - agent_url
+                        - storyboard_id
+                        - phase_id
+                        - step_id
+                        - task
+                    description: Owner-scoped failing-step validation summary for this run. Full request/response diagnostics remain available via /compliance/diagnostics?run_id=...
                   observations: {}
                   total_duration_ms:
                     type: number
@@ -9405,6 +9465,9 @@ paths:
                   - requested_compliance_target
                   - badge_eligible
                   - badge_eligible_adcp_versions
+                  - run_id
+                  - storyboard_status
+                  - diagnostics
                   - total_duration_ms
         "400":
           description: Invalid agent URL

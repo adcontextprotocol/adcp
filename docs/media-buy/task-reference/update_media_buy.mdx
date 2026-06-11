@@ -264,7 +264,7 @@ Configure automated delivery reporting for this media buy:
 | `invoice_recipient` | Updated invoice recipient, echoed from request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
 | `valid_actions` | Flat-vocabulary actions the buyer can perform after this update. Saves a round-trip to `get_media_buys`. Deprecated in favor of `available_actions[]` and removed in 4.0. |
 | `available_actions` | Structured per-buy resolution of actions available after this update, each entry with action, resolved `mode`, optional `sla`, optional `terms_ref`. Authoritative — buyer SDKs SHOULD prefer this over `valid_actions` when both are present. |
-| `affected_packages` | Array of full Package objects showing complete state after update |
+| `affected_packages` | For package-level updates, array of full Package objects showing complete post-update state for each directly modified package. This is a state snapshot, not a sparse delta: sellers MUST NOT return `{ package_id }`-only stubs. Campaign-level updates that do not modify packages may return an empty array. |
 
 ### Error Response
 
@@ -766,7 +766,7 @@ Some updates require seller approval and return pending status:
 - **Targeting changes** that alter campaign scope
 - **Creative changes** requiring policy review
 
-When approval is needed, `implementation_date` will be `null` and `affected_packages` contains the proposed state of each package that would be modified:
+When approval is needed, `implementation_date` will be `null` and `affected_packages` contains the proposed full post-update state of each package that would be modified:
 
 ```json
 {
@@ -775,8 +775,14 @@ When approval is needed, `implementation_date` will be `null` and `affected_pack
   "affected_packages": [
     {
       "package_id": "pkg_abc123",
+      "product_id": "sports_display_auction",
+      "pricing_option_id": "cpm_auction",
       "budget": 50000,
-      "status": "pending_start"
+      "bid_price": 7.25,
+      "pacing": "even",
+      "creative_assignments": [
+        { "creative_id": "creative_video_v2" }
+      ]
     }
   ]
 }
@@ -836,8 +842,14 @@ Updates may be asynchronous, especially with seller approval.
   "affected_packages": [
     {
       "package_id": "pkg_abc123",
+      "product_id": "sports_display_auction",
+      "pricing_option_id": "cpm_auction",
       "budget": 50000,
-      "status": "active"
+      "bid_price": 7.25,
+      "pacing": "even",
+      "creative_assignments": [
+        { "creative_id": "creative_video_v2" }
+      ]
     }
   ]
 }

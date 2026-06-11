@@ -273,6 +273,27 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches update-media-buy-response.json schema"
+          - check: field_present
+            path: "affected_packages"
+            description: "Package-mutating update returns affected_packages"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.package_a_id"
+              product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              creative_assignments:
+                - creative_id: "acme_card_banner_a"
+            description: "First affected package includes complete assignment state"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.package_b_id"
+              product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              creative_assignments:
+                - creative_id: "acme_card_banner_b"
+            description: "Second affected package includes complete assignment state"
 
       - id: force_both_approved
         title: "Baseline: force both creatives to approved"
@@ -624,6 +645,18 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches update-media-buy-response.json schema"
+          - check: field_present
+            path: "affected_packages"
+            description: "Package-mutating update returns affected_packages"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.package_a_id"
+              product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              creative_assignments:
+                - creative_id: "acme_card_banner_c"
+            description: "Affected package includes complete replacement assignment state"
 
       - id: verify_cardinality_back_to_one
         title: "Read the buy — exactly one impairment remaining (B on package_b)"
@@ -766,6 +799,18 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches update-media-buy-response.json schema"
+          - check: field_present
+            path: "affected_packages"
+            description: "Package-mutating update returns affected_packages"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.package_b_id"
+              product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              creative_assignments:
+                - creative_id: "acme_card_banner_d"
+            description: "Affected package includes complete replacement assignment state"
 
       - id: verify_cardinality_zero
         title: "Read the buy — impairments[] cleared, health: ok"

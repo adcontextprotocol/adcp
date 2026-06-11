@@ -194,7 +194,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const isAgentTimeout = /timed?\s*out/i.test(errorMessage);
-      const isSavedAuthConfigError = /step\.auth\.basic\.(?:username|password) must be a non-empty string/i.test(errorMessage);
+      const isSavedAuthConfigError = /step\.auth\.basic\.username must be a non-empty string/i.test(errorMessage);
       const capsError = classifyCapabilityResolutionError(error);
 
       // Classify failure. Timeouts and capability-config faults are expected
@@ -213,11 +213,11 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         observationMessage = headline;
         logger.warn({ agentUrl: agent.agent_url }, `Compliance check timed out for agent: ${agent.agent_url}`);
       } else if (isSavedAuthConfigError) {
-        headline = 'Saved Basic auth credentials are incomplete';
+        headline = 'Saved Basic auth credentials are malformed';
         observationCategory = 'authentication';
         observationSeverity = 'warning';
-        observationMessage = 'The saved Basic auth credentials for this agent must include both username and password.';
-        logger.warn({ agentUrl: agent.agent_url }, 'Compliance check skipped complete Basic auth due to incomplete saved credentials');
+        observationMessage = 'The saved Basic auth credentials for this agent must include a non-empty username.';
+        logger.warn({ agentUrl: agent.agent_url }, 'Compliance check skipped Basic auth due to malformed saved credentials');
       } else if (capsError) {
         const presentation = presentCapabilityResolutionError(capsError);
         headline = presentation.headline;

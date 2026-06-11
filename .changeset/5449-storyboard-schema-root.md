@@ -1,4 +1,4 @@
 ---
 ---
 
-Forward the pinned compliance schema root through the manual storyboard runner when running released compliance bundles, keeping storyboard and AJV schema versions aligned.
+Add a regression guard that keeps released-bundle storyboard runs forwarding the pinned compliance schema root, so storyboard and AJV schema versions stay aligned.

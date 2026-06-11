@@ -3357,6 +3357,26 @@ registry.registerPath({
   },
 });
 
+const StoryboardRunStatusResponseSchema = z.object({
+  storyboard_id: z.string(),
+  status: z.enum(["passing", "failing", "partial", "untested"]),
+  steps_passed: z.number().int(),
+  steps_total: z.number().int(),
+});
+
+const StoryboardRunDiagnosticResponseSchema = z.object({
+  run_id: z.string(),
+  agent_url: z.string(),
+  storyboard_id: z.string(),
+  phase_id: z.string(),
+  step_id: z.string(),
+  task: z.string(),
+  response_status: z.number().int().nullable().optional(),
+  error_text: z.string().nullable().optional(),
+  failed_validations_jsonb: z.any().optional(),
+  adcp_error_jsonb: z.any().optional(),
+});
+
 registry.registerPath({
   method: "post",
   path: "/api/registry/agents/{encodedUrl}/storyboard/{storyboardId}/run",
@@ -3392,8 +3412,11 @@ registry.registerPath({
             requested_compliance_target: z.string(),
             badge_eligible: z.boolean(),
             badge_eligible_adcp_versions: z.array(z.string()),
+            run_id: z.string().openapi({ description: "Compliance run id written by this owner-triggered storyboard run." }),
+            storyboard_status: StoryboardRunStatusResponseSchema.openapi({ description: "Persisted storyboard verdict for this run, using the same executable-step semantics as agent_storyboard_status." }),
             phases: z.any(),
             summary: z.any(),
+            diagnostics: z.array(StoryboardRunDiagnosticResponseSchema).openapi({ description: "Owner-scoped failing-step validation summary for this run. Full request/response diagnostics remain available via /compliance/diagnostics?run_id=..." }),
             observations: z.any(),
             total_duration_ms: z.number(),
             test_kit: z.any().nullable(),
@@ -6327,7 +6350,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         const normalized = normalizeBasicAuthForStorage(authTokenToStore);
         if (!normalized.ok) {
           return res.status(400).json({
-            error: 'Basic auth_token must be "user:password" or base64("user:password") with non-empty username and password',
+            error: 'Basic auth_token must be "username:password" with a non-empty username; the password may be empty. The base64-encoded form is also accepted.',
           });
         }
         authTokenToStore = normalized.stored;
@@ -6928,11 +6951,17 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // matches evaluate_agent_quality semantics: owner_test, not the legacy
         // 'manual' label.
         const metadata = await complianceDb.getRegistryMetadata(agentUrl);
-        await complianceDb.recordComplianceRun({
-          ...complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "owner_test", [req.params.storyboardId]),
-          triggered_org_id: orgId,
-        },
+        const dbInput = complianceResultToDbInput(
+          complyResult,
+          agentUrl,
+          metadata?.lifecycle_stage || "development",
+          "owner_test",
+          [req.params.storyboardId],
         );
+        const { run } = await complianceDb.recordComplianceRun({
+          ...dbInput,
+          triggered_org_id: orgId,
+        });
 
         // Fan out badge issuance on the canonical write so an owner who
         // just fixed a single storyboard sees the badge update on their
@@ -6964,6 +6993,35 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           }
         }
 
+        const storyboardStatus = dbInput.storyboard_statuses?.find(s => s.storyboard_id === req.params.storyboardId) ?? {
+          storyboard_id: req.params.storyboardId,
+          status: 'untested' as const,
+          steps_passed: 0,
+          steps_total: 0,
+        };
+        const isControllerCoverageGapScenario = (scenario: { steps?: any[] }): boolean => {
+          const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
+          return steps.length > 0 && steps.every((step) => {
+            if (!step?.skipped) return false;
+            return step.skip_reason === 'peer_branch_taken' ||
+              step.skip_reason === 'peer_substituted' ||
+              step.skip_reason === 'missing_test_controller' ||
+              (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller');
+          });
+        };
+        const uiDiagnostics = (dbInput.step_diagnostics ?? []).map((diagnostic) => ({
+          run_id: run.id,
+          agent_url: agentUrl,
+          storyboard_id: diagnostic.storyboard_id,
+          phase_id: diagnostic.phase_id,
+          step_id: diagnostic.step_id,
+          task: diagnostic.task,
+          response_status: diagnostic.response_status ?? null,
+          error_text: diagnostic.error_text ?? null,
+          failed_validations_jsonb: diagnostic.failed_validations_jsonb,
+          adcp_error_jsonb: diagnostic.adcp_error_jsonb,
+        }));
+
         // Annotate storyboard phases with comply results
         const annotatedPhases = storyboard.phases.map((phase) => ({
           ...phase,
@@ -6974,9 +7032,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
                   t.scenarios.filter((s) => s.scenario === step.comply_scenario),
                 )
               : [];
+            const executableScenarios = matchingScenarios.filter((s) => !isControllerCoverageGapScenario(s));
 
-            const passed = matchingScenarios.length > 0
-              ? matchingScenarios.every((s) => s.overall_passed)
+            const passed = executableScenarios.length > 0
+              ? executableScenarios.every((s) => s.overall_passed)
               : null;
 
             return {
@@ -6984,6 +7043,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               result: {
                 passed,
                 scenarios: matchingScenarios,
+                coverage_gap_skipped: matchingScenarios.length > 0 && executableScenarios.length === 0,
               },
             };
           }),
@@ -7005,8 +7065,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           requested_compliance_target: runTarget.requested,
           adcp_version: complyResult.adcp_version,
           ...badgeEligibilityMetadata(runBadgeEligibleVersions),
+          run_id: run.id,
+          storyboard_status: storyboardStatus,
           phases: annotatedPhases,
           summary: complyResult.summary,
+          diagnostics: uiDiagnostics,
           observations: complyResult.observations,
           total_duration_ms: complyResult.total_duration_ms,
           test_kit: testKit || null,

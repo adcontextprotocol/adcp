@@ -61,7 +61,7 @@
         },
         "affected_packages": {
           "type": "array",
-          "description": "Array of packages that were modified with complete state information",
+          "description": "For package-level updates, array of full Package objects showing complete post-update state for each directly modified package. This is a state snapshot, not a sparse delta: sellers MUST NOT return package_id-only stubs. Campaign-level updates that do not modify packages may return an empty array.",
           "items": {
             "$ref": "/schemas/core/package.json"
           }

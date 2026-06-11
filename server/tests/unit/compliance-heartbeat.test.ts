@@ -84,8 +84,8 @@ describe('runComplianceHeartbeatJob', () => {
     mocks.recordComplianceRun.mockResolvedValue({});
   });
 
-  it('counts incomplete saved Basic auth as a checked failure', async () => {
-    mocks.comply.mockRejectedValueOnce(new Error('step.auth.basic.password must be a non-empty string'));
+  it('counts malformed saved Basic auth as a checked failure', async () => {
+    mocks.comply.mockRejectedValueOnce(new Error('step.auth.basic.username must be a non-empty string'));
 
     const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
     const result = await runComplianceHeartbeatJob({ limit: 1 });
@@ -95,11 +95,11 @@ describe('runComplianceHeartbeatJob', () => {
       expect.objectContaining({
         agent_url: 'https://agent.example.com/mcp',
         overall_status: 'failing',
-        headline: 'Saved Basic auth credentials are incomplete',
+        headline: 'Saved Basic auth credentials are malformed',
         observations_json: [{
           category: 'authentication',
           severity: 'warning',
-          message: 'The saved Basic auth credentials for this agent must include both username and password.',
+          message: 'The saved Basic auth credentials for this agent must include a non-empty username.',
         }],
       }),
     );
