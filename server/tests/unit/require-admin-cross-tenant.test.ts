@@ -15,21 +15,26 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
-// requireAdmin reads ADMIN_EMAILS lazily; populate before import so the
-// SSO-admin branch is reachable in tests that want it. WorkOS init
-// happens at module-load — give it placeholder env so the import works.
-process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
-process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
+// requireAdmin imports WorkOS at module load. Keep these local defaults so
+// this file runs under both root Vitest config and server/vitest.config.ts.
+process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'sk_test_mock_key';
+process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_mock_id';
 process.env.WORKOS_COOKIE_PASSWORD =
   process.env.WORKOS_COOKIE_PASSWORD ??
-  'placeholder-cookie-password-32-bytes-min';
+  'test-cookie-password-at-least-32-chars-long';
+
+const {
+  requireAdmin,
+  requireAuth,
+  requireGlobalAdmin,
+  refuseAnyApiKeyOnGlobalAdmin,
+  refuseCrossTenantAdminApiKey,
+} = await import('../../src/middleware/auth.js');
 
 describe('requireAdmin cross-tenant API key defense', () => {
   let app: express.Application;
 
-  beforeAll(async () => {
-    const { requireAdmin } = await import('../../src/middleware/auth.js');
-
+  beforeAll(() => {
     app = express();
 
     // Helper that lets each test set req.apiKey and req.params.orgId
@@ -155,10 +160,7 @@ describe('requireAdmin cross-tenant API key defense', () => {
 describe('refuseCrossTenantAdminApiKey + refuseAnyApiKeyOnGlobalAdmin helpers', () => {
   let app: express.Application;
 
-  beforeAll(async () => {
-    const { refuseCrossTenantAdminApiKey, refuseAnyApiKeyOnGlobalAdmin } =
-      await import('../../src/middleware/auth.js');
-
+  beforeAll(() => {
     app = express();
 
     app.use((req, _res, next) => {
@@ -239,10 +241,7 @@ describe('requireGlobalAdmin composite middleware', () => {
   // requireAuth has a real session to validate; here we pin the
   // composition shape so a future refactor doesn't silently re-order
   // or drop a middleware from the chain.
-  it('is a 3-element middleware array in the documented order', async () => {
-    const { requireGlobalAdmin, requireAuth, requireAdmin } = await import(
-      '../../src/middleware/auth.js'
-    );
+  it('is a 3-element middleware array in the documented order', () => {
     expect(requireGlobalAdmin).toHaveLength(3);
     // First and last are the existing requireAuth / requireAdmin
     // exports; the middle is the chain's new contribution. Pinning
@@ -255,7 +254,6 @@ describe('requireGlobalAdmin composite middleware', () => {
   });
 
   it('the middle middleware refuses an apiKey-bearing request and short-circuits next()', async () => {
-    const { requireGlobalAdmin } = await import('../../src/middleware/auth.js');
     const middle = requireGlobalAdmin[1];
 
     let nextCalled = false;
@@ -280,7 +278,6 @@ describe('requireGlobalAdmin composite middleware', () => {
   });
 
   it('the middle middleware calls next() when no apiKey is present', async () => {
-    const { requireGlobalAdmin } = await import('../../src/middleware/auth.js');
     const middle = requireGlobalAdmin[1];
 
     let nextCalled = false;
