@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "name": "adagents.json discovery redirect handling",
+  "specification": "https://adcontextprotocol.org/docs/governance/property/managed-networks#why-not-http-redirects",
+  "description": "Cross-SDK conformance vectors for HTTP redirect handling when a validator resolves adagents.json. Two distinct fetches with deliberately different policies. (1) The INITIAL fetch of `/.well-known/adagents.json` MUST follow same-registrable-domain (eTLD+1) redirects — apex↔www and any host on the same registrable domain — HTTPS-preserving, re-validating SSRF controls on every hop, capped at 3 hops, and MUST refuse cross-registrable-domain redirects; the same-domain comparison is anchored on the ORIGINALLY-requested domain at every hop, not the previous hop. (2) The `authoritative_location` dereference (second hop) MUST refuse all redirects, because the named URL is the declared authoritative location and a redirect away from it changes that declaration. Registrable-domain comparison MUST use the Public Suffix List INCLUDING its PRIVATE section (e.g. tldts.getDomain with allowPrivateDomains:true): the ICANN section handles multi-label public TLDs like co.uk, and the PRIVATE section is the registrant boundary on shared hosting (github.io, pages.dev, herokuapp.com, …) so two unrelated tenants are not collapsed to one registrable domain and a cross-tenant redirect is correctly refused. The normative assertion of each vector is `result` (resolved vs refused); `reason` is advisory explanation that implementations need not surface verbatim. Each vector has a stable `id` (the cross-SDK reference; kebab-case), a `target` (which fetch), the `origin_url`, an ordered `redirect_chain` of `{ status, location }` hops the origin would return, and the `expected` outcome. Downstream tests SHOULD look up vectors by `id`; `description` prose may be revised without notice.",
+  "vectors": [
+    {
+      "id": "well-known-apex-to-www-followed",
+      "target": "well_known",
+      "description": "Apex 301-redirects to www on the same registrable domain — the default managed-hosting/CDN pattern. MUST be followed.",
+      "origin_url": "https://ladepeche.fr/.well-known/adagents.json",
+      "redirect_chain": [
+        { "status": 301, "location": "https://www.ladepeche.fr/.well-known/adagents.json" }
+      ],
+      "expected": { "result": "resolved", "final_url": "https://www.ladepeche.fr/.well-known/adagents.json" }
+    },
+    {
+      "id": "well-known-www-to-apex-followed",
+      "target": "well_known",
+      "description": "www 301-redirects to apex on the same registrable domain. MUST be followed (the rule is symmetric).",
+      "origin_url": "https://www.example.com/.well-known/adagents.json",
+      "redirect_chain": [
+        { "status": 301, "location": "https://example.com/.well-known/adagents.json" }
+      ],
+      "expected": { "result": "resolved", "final_url": "https://example.com/.well-known/adagents.json" }
+    },
+    {
+      "id": "well-known-subdomain-same-registrable-domain-followed",
+      "target": "well_known",
+      "description": "Redirect to a different subdomain on the same eTLD+1 (cdn.pub.example). Same registrable domain — MUST be followed.",
+      "origin_url": "https://pub.example/.well-known/adagents.json",
+      "redirect_chain": [
+        { "status": 302, "location": "https://cdn.pub.example/.well-known/adagents.json" }
+      ],
+      "expected": { "result": "resolved", "final_url": "https://cdn.pub.example/.well-known/adagents.json" }
+    },
+    {
+      "id": "well-known-multi-label-tld-same-domain-followed",
+      "target": "well_known",
+      "description": "PSL correctness: example.co.uk -> www.example.co.uk share registrable domain example.co.uk (co.uk is a public suffix). MUST be followed. A naive last-two-labels comparison would wrongly treat co.uk as the registrable domain.",
+      "origin_url": "https://example.co.uk/.well-known/adagents.json",
+      "redirect_chain": [
+        { "status": 301, "location": "https://www.example.co.uk/.well-known/adagents.json" }
+      ],
+      "expected": { "result": "resolved", "final_url": "https://www.example.co.uk/.well-known/adagents.json" }
+    },
+    {
+      "id": "well-known-cross-registrable-domain-refused",
+      "target": "well_known",
+      "description": "Redirect to a different registrable domain (ladepeche.fr -> claire.pub). This is an unscoped delegation signal — MUST be refused. The off-domain hop MUST NOT be dialed.",
+      "origin_url": "https://ladepeche.fr/.well-known/adagents.json",
+      "redirect_chain": [
+        { "status": 302, "location": "https://claire.pub/.well-known/adagents.json" }
+      ],
+      "expected": { "result": "refused", "reason": "cross_registrable_domain" }
+    },
+    {
+      "id": "well-known-multi-label-tld-cross-domain-refused",
+      "target": "well_known",
+      "description": "PSL correctness: example.co.uk -> example.com is a cross-registrable-domain hop. MUST be refused.",
+      "origin_url": "https://example.co.uk/.well-known/adagents.json",
+      "redirect_chain": [
+        { "status": 302, "location": "https://example.com/.well-known/adagents.json" }
+      ],
+      "expected": { "result": "refused", "reason": "cross_registrable_domain" }
+    },
+    {
+      "id": "well-known-private-suffix-cross-tenant-refused",
+      "target": "well_known",
+      "description": "PSL PRIVATE-section boundary: victim.github.io -> attacker.github.io are different registrants on a shared-hosting public suffix (github.io). They MUST be treated as cross-registrable-domain and refused. A PSL lookup that ignores the private section collapses both to 'github.io' and would wrongly follow the attacker's file as authoritative for the victim — the bypass this vector exists to catch.",
+      "origin_url": "https://victim.github.io/.well-known/adagents.json",
+      "redirect_chain": [
+        { "status": 302, "location": "https://attacker.github.io/.well-known/adagents.json" }
+      ],
+      "expected": { "result": "refused", "reason": "cross_registrable_domain" }
+    },
+    {
+      "id": "well-known-private-suffix-same-tenant-followed",
+      "target": "well_known",
+      "description": "PSL PRIVATE-section boundary, same tenant: victim.github.io -> www.victim.github.io stay within the same registrant (victim.github.io). MUST be followed, so apex↔www normalization still works for publishers on shared hosting.",
+      "origin_url": "https://victim.github.io/.well-known/adagents.json",
+      "redirect_chain": [
+        { "status": 301, "location": "https://www.victim.github.io/.well-known/adagents.json" }
+      ],
+      "expected": { "result": "resolved", "final_url": "https://www.victim.github.io/.well-known/adagents.json" }
+    },
+    {
+      "id": "well-known-same-then-cross-refused-anchored-on-origin",
+      "target": "well_known",
+      "description": "Two-hop chain: pub.example -> www.pub.example (same) -> attacker.example (cross). The second hop MUST be refused. Anchoring the comparison on the immediately-preceding hop instead of the originally-requested domain MUST NOT allow this chain to escape.",
+      "origin_url": "https://pub.example/.well-known/adagents.json",
+      "redirect_chain": [
+        { "status": 301, "location": "https://www.pub.example/.well-known/adagents.json" },
+        { "status": 302, "location": "https://attacker.example/.well-known/adagents.json" }
+      ],
+      "expected": { "result": "refused", "reason": "cross_registrable_domain" }
+    },
+    {
+      "id": "well-known-https-downgrade-refused",
+      "target": "well_known",
+      "description": "Redirect downgrades the scheme to http on the same registrable domain. MUST be refused — redirects on this fetch are HTTPS-preserving.",
+      "origin_url": "https://pub.example/.well-known/adagents.json",
+      "redirect_chain": [
+        { "status": 302, "location": "http://pub.example/.well-known/adagents.json" }
+      ],
+      "expected": { "result": "refused", "reason": "scheme_downgrade" }
+    },
+    {
+      "id": "well-known-hop-cap-exceeded-refused",
+      "target": "well_known",
+      "description": "Four consecutive same-registrable-domain redirects with a 3-hop cap. The chain MUST NOT resolve — the validator stops at the cap and treats the unresolved chain as a failure rather than following indefinitely.",
+      "origin_url": "https://a.pub.example/.well-known/adagents.json",
+      "redirect_chain": [
+        { "status": 301, "location": "https://b.pub.example/.well-known/adagents.json" },
+        { "status": 301, "location": "https://c.pub.example/.well-known/adagents.json" },
+        { "status": 301, "location": "https://d.pub.example/.well-known/adagents.json" },
+        { "status": 301, "location": "https://e.pub.example/.well-known/adagents.json" }
+      ],
+      "expected": { "result": "refused", "reason": "too_many_redirects" }
+    },
+    {
+      "id": "authoritative-location-any-redirect-refused",
+      "target": "authoritative_location",
+      "description": "The authoritative_location dereference (second hop) MUST refuse redirects entirely — even a same-registrable-domain one. The named URL is the declared authoritative location; a redirect away from it changes that declaration and is treated as an error.",
+      "origin_url": "https://network.example/authoritative/adagents.json",
+      "redirect_chain": [
+        { "status": 301, "location": "https://www.network.example/authoritative/adagents.json" }
+      ],
+      "expected": { "result": "refused", "reason": "redirect_on_authoritative_location" }
+    }
+  ]
+}

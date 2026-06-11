@@ -74,6 +74,14 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "brand"
+            description: "Agent declares brand protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "brand-rights"
+            description: "Agent declares brand-rights specialism"
 
           - check: field_present
             path: "context"

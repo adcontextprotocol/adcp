@@ -271,6 +271,35 @@ export async function completeModule(
   return result.rows[0];
 }
 
+export async function reconcilePassedAttemptModule(
+  attempt: CertificationAttempt,
+  moduleId: string,
+  score: Record<string, number>,
+): Promise<LearnerProgress> {
+  const result = await query<LearnerProgress>(
+    `INSERT INTO learner_progress (workos_user_id, module_id, status, started_at, completed_at, score)
+     VALUES ($1, $2, 'completed', COALESCE($4, NOW()), COALESCE($5, NOW()), $3)
+     ON CONFLICT (workos_user_id, module_id) DO UPDATE
+       SET status = 'completed',
+           completed_at = COALESCE(learner_progress.completed_at, EXCLUDED.completed_at),
+           score = COALESCE(learner_progress.score, EXCLUDED.score),
+           updated_at = NOW()
+     RETURNING *`,
+    [
+      attempt.workos_user_id,
+      moduleId,
+      JSON.stringify(score),
+      attempt.started_at || null,
+      attempt.completed_at || null,
+    ],
+  );
+  if (!result.rows[0]) {
+    throw new Error(`Failed to reconcile progress for attempt ${attempt.id}, module ${moduleId}`);
+  }
+  void refreshEngagementTime();
+  return result.rows[0];
+}
+
 /**
  * Mark a module as tested out (user demonstrated knowledge without formal coursework).
  */
@@ -494,6 +523,8 @@ export async function getStuckAttempts(staleDays: number = 7): Promise<Array<{
   email: string;
   track_id: string;
   module_id: string | null;
+  status: 'in_progress' | 'passed' | 'failed';
+  credential_name: string | null;
   started_at: string;
   days_stuck: number;
 }>> {
@@ -504,18 +535,44 @@ export async function getStuckAttempts(staleDays: number = 7): Promise<Array<{
     email: string;
     track_id: string;
     module_id: string | null;
+    status: 'in_progress' | 'passed' | 'failed';
+    credential_name: string | null;
     started_at: string;
     days_stuck: number;
   }>(
     `SELECT ca.id, ca.workos_user_id,
             COALESCE(u.first_name || ' ' || u.last_name, u.email) AS name,
-            u.email, ca.track_id, ca.module_id, ca.started_at,
+            u.email, ca.track_id, COALESCE(ca.module_id, fallback_module.id) AS module_id,
+            ca.status, cc.name AS credential_name, ca.started_at,
             EXTRACT(DAY FROM NOW() - ca.started_at)::int AS days_stuck
      FROM certification_attempts ca
      JOIN users u ON u.workos_user_id = ca.workos_user_id
-     WHERE ca.status = 'in_progress'
-       AND ca.started_at < NOW() - make_interval(days => $1)
-     ORDER BY ca.started_at ASC`,
+     LEFT JOIN LATERAL (
+       SELECT cm.id
+       FROM certification_modules cm
+       WHERE cm.track_id = ca.track_id AND cm.format = 'capstone'
+       ORDER BY cm.sort_order
+       LIMIT 1
+     ) fallback_module ON ca.module_id IS NULL
+     LEFT JOIN certification_credentials cc ON COALESCE(ca.module_id, fallback_module.id) = ANY(cc.required_modules)
+     WHERE (
+         ca.status = 'in_progress'
+         AND ca.started_at < NOW() - make_interval(days => $1)
+       )
+       OR (
+         ca.status = 'passed'
+         AND ca.passing = true
+         AND COALESCE(ca.module_id, fallback_module.id) IS NOT NULL
+         AND cc.id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM user_credentials uc
+           WHERE uc.workos_user_id = ca.workos_user_id
+             AND uc.credential_id = cc.id
+         )
+       )
+     ORDER BY
+       CASE WHEN ca.status = 'passed' THEN 0 ELSE 1 END,
+       ca.started_at ASC`,
     [staleDays]
   );
   return result.rows;

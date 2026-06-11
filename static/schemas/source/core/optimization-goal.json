@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/optimization-goal.json",
   "title": "Optimization Goal",
-  "description": "A single optimization target for a package. Packages accept an array of optimization_goals. When multiple goals are present, priority determines which the seller focuses on — 1 is highest priority (primary goal); higher numbers are secondary. Duplicate priority values result in undefined seller behavior.",
+  "description": "A single optimization target for a package. Packages accept an array of optimization_goals. When multiple goals are present, priority determines which the seller focuses on — 1 is highest priority (primary goal); higher numbers are secondary. When priorities are present but no goal is priority 1, the goal with the lowest priority value is primary (e.g., priorities of 2 and 3 mean 2 is primary). Duplicate priority values result in undefined seller behavior.",
   "discriminator": {
     "propertyName": "kind"
   },

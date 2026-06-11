@@ -36,6 +36,24 @@ const workos = AUTH_ENABLED
   ? new WorkOS(process.env.WORKOS_API_KEY!, { clientId: process.env.WORKOS_CLIENT_ID! })
   : null;
 
+function extractNumericScores(value: unknown): Record<string, number> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const entries = Object.entries(value)
+    .filter((entry): entry is [string, number] => {
+      const [key, score] = entry;
+      return !key.startsWith('_') && typeof score === 'number' && Number.isFinite(score);
+    });
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+async function resolveCapstoneModuleIdForAttempt(
+  attempt: certDb.CertificationAttempt,
+): Promise<string | null> {
+  if (attempt.module_id) return attempt.module_id;
+  const modules = await certDb.getModulesForTrack(attempt.track_id);
+  return modules.find(m => m.format === 'capstone')?.id || null;
+}
+
 /**
  * Check if a user belongs to an organization.
  * In dev mode, checks local DB. In production, calls WorkOS API.
@@ -1032,12 +1050,14 @@ export function createCertificationRouters() {
         return res.status(400).json({ error: 'action must be "cancel" or "complete"' });
       }
 
-      // Verify attempt exists and is in_progress
+      // Verify attempt exists. Admin repair may re-run completion for a
+      // previously-passed attempt whose module/credential reconciliation failed.
       const attempt = await certDb.getAttempt(attemptId);
       if (!attempt) {
         return res.status(404).json({ error: 'Attempt not found' });
       }
-      if (attempt.status !== 'in_progress') {
+      const isPassedRepair = action === 'complete' && attempt.status === 'passed' && attempt.passing === true;
+      if (attempt.status !== 'in_progress' && !isPassedRepair) {
         return res.status(409).json({ error: `Attempt is already ${attempt.status}` });
       }
 
@@ -1054,10 +1074,40 @@ export function createCertificationRouters() {
       }
 
       // action === 'complete'
-      if (!scores || Array.isArray(scores) || typeof scores !== 'object' || Object.keys(scores).length === 0) {
+      if (isPassedRepair) {
+        if (scores !== undefined) {
+          return res.status(400).json({ error: 'scores are not accepted when repairing a passed attempt' });
+        }
+        const preservedScores = extractNumericScores(attempt.scores);
+        if (!preservedScores) {
+          return res.status(409).json({ error: 'Attempt is missing recorded scores' });
+        }
+        const moduleId = await resolveCapstoneModuleIdForAttempt(attempt);
+        if (!moduleId) {
+          return res.status(409).json({ error: 'Attempt has no capstone module to reconcile' });
+        }
+
+        const warnings: string[] = [];
+        try {
+          await certDb.reconcilePassedAttemptModule(attempt, moduleId, preservedScores);
+        } catch (modError) {
+          warnings.push('Module completion failed — run backfill');
+          logger.error({ error: modError, attemptId, moduleId }, 'Failed to reconcile module completion after admin repair');
+        }
+        try {
+          await certDb.checkAndAwardCredentials(attempt.workos_user_id);
+        } catch (credError) {
+          warnings.push('Credential check failed — run backfill');
+          logger.error({ error: credError, attemptId }, 'Failed to check credentials after admin repair');
+        }
+        return res.json({ attempt, ...(warnings.length > 0 && { warnings }) });
+      }
+
+      const effectiveScores = scores;
+      if (!effectiveScores || Array.isArray(effectiveScores) || typeof effectiveScores !== 'object' || Object.keys(effectiveScores).length === 0) {
         return res.status(400).json({ error: 'scores must be a non-empty object' });
       }
-      const scoreValues = Object.values(scores);
+      const scoreValues = Object.values(effectiveScores);
       if (!scoreValues.every(s => typeof s === 'number' && Number.isFinite(s))) {
         return res.status(400).json({ error: 'All score values must be finite numbers' });
       }
@@ -1072,10 +1122,10 @@ export function createCertificationRouters() {
 
       let updated;
       try {
-        updated = await certDb.adminCompleteAttempt(attemptId, scores, overallScore, passing, reason.trim());
+        updated = await certDb.adminCompleteAttempt(attemptId, effectiveScores, overallScore, passing, reason.trim());
       } catch (err) {
         if (err instanceof Error && err.message.includes('not in_progress')) {
-          return res.status(409).json({ error: 'Attempt is no longer in_progress' });
+          return res.status(409).json({ error: 'Attempt can no longer be completed' });
         }
         throw err;
       }
@@ -1084,7 +1134,7 @@ export function createCertificationRouters() {
       const warnings: string[] = [];
       if (passing && updated.module_id) {
         try {
-          await certDb.completeModule(updated.workos_user_id, updated.module_id, scores);
+          await certDb.completeModule(updated.workos_user_id, updated.module_id, effectiveScores);
         } catch (modError) {
           warnings.push('Module completion failed — run backfill');
           logger.error({ error: modError, attemptId, moduleId: updated.module_id }, 'Failed to mark module complete after admin resolve');

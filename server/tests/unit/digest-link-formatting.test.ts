@@ -2,10 +2,18 @@ import { describe, it, expect, vi } from 'vitest';
 
 // Mock dependencies before importing
 vi.mock('../../src/notifications/email.js', () => ({
-  trackedUrl: (_id: string, _tag: string, url: string) => url,
+  trackedUrl: (id: string, tag: string, url: string) => `tracked:${id}:${tag}:${url}`,
 }));
 
 vi.mock('../../src/utils/markdown.js', () => ({
+  markdownToEmailHtml: (text: string) => text
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2">$1</a>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .split(/\n{2,}/)
+    .map(part => /^<h2>/.test(part) ? part : `<p>${part.replace(/\n/g, '<br>')}</p>`)
+    .join('\n'),
   markdownToEmailHtmlInline: (text: string) => text,
 }));
 
@@ -132,6 +140,56 @@ describe('digest editor note link formatting', () => {
       const headerBlock = message.blocks?.find((b) => b.type === 'header');
       expect(headerBlock).toBeTruthy();
       expect((headerBlock!.text as { text: string }).text).toContain('The Prompt');
+    });
+  });
+
+  describe('pasted content mode', () => {
+    it('renders pasted markdown and custom sections in email with tracked links', () => {
+      const content = makeContent({
+        pastedContent: '## Lead\n\nRead [the brief](https://example.com/brief).',
+        customSections: [{ id: 'custom-1', title: 'Extra note', body: 'See [more](https://example.com/more)', position: 0 }],
+      });
+      const { html, text } = renderDigestEmail(content, 'recipient-1', '2026-04-01', 'both');
+
+      expect(html).toContain('Lead');
+      expect(html).toContain('tracked:recipient-1:pasted_body_1:https://example.com/brief');
+      expect(html).toContain('Extra note');
+      expect(html).toContain('tracked:recipient-1:custom_1_1:https://example.com/more');
+      expect(html).not.toContain('<body');
+      expect(text).toContain('Lead');
+      expect(text).toContain('Extra note');
+      expect(text).toContain('more (https://example.com/more)');
+    });
+
+    it('tracks markdown links with query-string ampersands once', () => {
+      const content = makeContent({
+        pastedContent: 'Read [the brief](https://example.com/brief?utm=a&src=b).',
+      });
+      const { html } = renderDigestEmail(content, 'recipient-1', '2026-04-01', 'both');
+
+      expect(html).toContain('tracked:recipient-1:pasted_body_1:https://example.com/brief?utm=a&amp;src=b');
+      expect(html).not.toContain('&amp;amp;');
+    });
+
+    it('renders pasted content in Slack instead of generated sections', () => {
+      const content = makeContent({
+        pastedContent: 'Pasted **body** with [brief](https://example.com/brief).',
+        customSections: [{ id: 'custom-1', title: 'Extra note', body: 'Custom body', position: 0 }],
+        whatToWatch: [{
+          title: 'Generated article',
+          url: 'https://example.com/generated',
+          summary: 'Generated summary',
+          whyItMatters: 'Generated rationale',
+        }],
+      });
+      const message = renderDigestSlack(content, '2026-04-01');
+      const rendered = JSON.stringify(message.blocks);
+
+      expect(rendered).toContain('Pasted');
+      expect(rendered).toContain('https://example.com/brief');
+      expect(rendered).toContain('Extra note');
+      expect(rendered).toContain('Custom body');
+      expect(rendered).not.toContain('Generated article');
     });
   });
 });

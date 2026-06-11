@@ -696,7 +696,8 @@ export function setupAccountRoutes(
               last_name,
               role,
               seat_type,
-              created_at
+              created_at,
+              updated_at
             FROM organization_memberships
             WHERE workos_organization_id = $1
             ORDER BY created_at ASC
@@ -1060,6 +1061,7 @@ export function setupAccountRoutes(
             role: m.role || "member",
             seat_type: m.seat_type || "contributor",
             joined_at: m.created_at,
+            updated_at: m.updated_at,
           })),
           member_count: membersResult.rows.length,
           working_groups: workingGroupResult.rows,
@@ -2681,13 +2683,44 @@ export function setupAccountRoutes(
           });
         }
 
-        // Update local cache
-        await pool.query(
-          `UPDATE organization_memberships
-           SET role = $1, updated_at = NOW()
-           WHERE workos_organization_id = $2 AND workos_user_id = $3`,
-          [role, orgId, userId]
-        );
+        // Update local cache from WorkOS so owner transfers don't keep an old
+        // local owner visible until the webhook reconciles.
+        try {
+          let after: string | undefined;
+          do {
+            const syncedMemberships =
+              await workos.userManagement.listOrganizationMemberships({
+                organizationId: orgId,
+                limit: 100,
+                after,
+              });
+            for (const syncedMembership of syncedMemberships.data) {
+              await pool.query(
+                `UPDATE organization_memberships
+                 SET role = $1, workos_membership_id = $2, updated_at = NOW()
+                 WHERE workos_organization_id = $3 AND workos_user_id = $4`,
+                [
+                  syncedMembership.role?.slug || "member",
+                  syncedMembership.id,
+                  orgId,
+                  syncedMembership.userId,
+                ]
+              );
+            }
+            after = syncedMemberships.listMetadata?.after ?? undefined;
+          } while (after);
+        } catch (syncError) {
+          logger.warn(
+            { err: syncError, orgId, userId, role },
+            "Failed to sync WorkOS membership roles after role update; updating target local row only"
+          );
+          await pool.query(
+            `UPDATE organization_memberships
+             SET role = $1, updated_at = NOW()
+             WHERE workos_organization_id = $2 AND workos_user_id = $3`,
+            [role, orgId, userId]
+          );
+        }
 
         logger.info(
           {

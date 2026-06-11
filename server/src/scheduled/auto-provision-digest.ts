@@ -55,6 +55,7 @@ export function startAutoProvisionDigest(workos: WorkOS): void {
         logger.error({ err }, 'Auto-provision digest failed'),
       );
     }, CHECK_INTERVAL_MS);
+    intervalId?.unref();
   }, INITIAL_DELAY_MS);
 
   logger.info('Auto-provision digest scheduler started');
