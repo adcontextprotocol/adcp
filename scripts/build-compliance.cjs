@@ -702,6 +702,17 @@ function main() {
     process.exit(1);
   }
 
+  // update_media_buy affected_packages lint: package-mutating update
+  // storyboards must assert full affected package state, not just package IDs.
+  try {
+    execSync('node scripts/lint-update-media-buy-affected-packages.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Raw-mode-required lint: storyboards setting attestation_mode_required:
   // "raw" on an upstream_traffic check MUST declare at least one
   // payload_must_contain clause. Otherwise the raw flag has no operational

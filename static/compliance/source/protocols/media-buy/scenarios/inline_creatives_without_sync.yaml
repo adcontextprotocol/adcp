@@ -231,7 +231,8 @@ phases:
         stateful: true
         expected: |
           Replace the package's inline creative body with the new creative_id and
-          return the affected package.
+          return the affected package. The replacement creative is verified on
+          the standardized creative_approvals readback surface below.
         sample_request:
           account:
             brand:
@@ -268,6 +269,16 @@ phases:
             path: "affected_packages[0].package_id"
             context_key: "canonical_package_id"
             description: "Update response includes the affected package"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.canonical_package_id"
+              product_id: "$context.canonical_product_id"
+              pricing_option_id: "$context.canonical_pricing_option_id"
+              budget: 7500
+              context:
+                buyer_ref: "inline-creative-canonical-line-001"
+            description: "Affected package includes complete post-update package state for the canonical inline creative line"
           - check: field_value
             path: "context.correlation_id"
             value: "inline_creatives_without_sync--update_canonical"
@@ -400,7 +411,8 @@ phases:
         stateful: true
         expected: |
           Replace the package's inline creative body with the new creative_id and
-          return the affected package.
+          return the affected package. The replacement creative is verified on
+          the standardized creative_approvals readback surface below.
         sample_request:
           account:
             brand:
@@ -437,6 +449,16 @@ phases:
             path: "affected_packages[0].package_id"
             context_key: "legacy_package_id"
             description: "Update response includes the affected package"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.legacy_package_id"
+              product_id: "$context.legacy_product_id"
+              pricing_option_id: "$context.legacy_pricing_option_id"
+              budget: 7500
+              context:
+                buyer_ref: "inline-creative-legacy-line-001"
+            description: "Affected package includes complete post-update package state for the legacy inline creative line"
           - check: field_value
             path: "context.correlation_id"
             value: "inline_creatives_without_sync--update_legacy"

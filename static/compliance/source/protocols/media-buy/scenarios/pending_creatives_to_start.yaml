@@ -238,6 +238,18 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches update-media-buy-response.json schema"
+          - check: field_present
+            path: "affected_packages"
+            description: "Package-mutating update returns affected_packages"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.package_id"
+              product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              creative_assignments:
+                - creative_id: "acme-outdoor-display-q3"
+            description: "Update response returns the affected package with the assigned creative state"
           - check: field_value
             path: "media_buy_status"
             allowed_values: ["pending_start", "active"]
