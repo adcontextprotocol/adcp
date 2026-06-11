@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/enums/audio-feed-type.json",
-  "title": "Audio Feed Type",
-  "description": "Declared audio feed classification for radio, streaming-audio, podcast, and other audio inventory, using IAB Tech Lab/OpenRTB 2.6 Audio.feed definitions with AdCP-native value names. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+  "$id": "/schemas/enums/audio-distribution-type.json",
+  "title": "Audio Distribution Type",
+  "description": "Declared audio distribution classification for radio, streaming-audio, podcast, and other audio inventory, using IAB Tech Lab/OpenRTB 2.6 Audio.feed definitions with AdCP-native value names. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
   "type": "string",
   "enum": [
     "music_streaming_service",
