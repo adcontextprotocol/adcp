@@ -80,6 +80,10 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "content-standards"
+            description: "Agent declares content-standards specialism"
 
           - check: field_present
             path: "context"
