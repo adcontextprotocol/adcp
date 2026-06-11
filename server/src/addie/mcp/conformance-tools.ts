@@ -86,6 +86,7 @@ const MAX_VALIDATION_STRING_CHARS = 200;
 type PublicValidationValue = string | number | boolean | null | '[undefined]' | '[redacted]';
 
 interface PublicValidationResult {
+  id?: string;
   check: string;
   passed: false;
   description: string;
@@ -143,7 +144,21 @@ function optionalSanitizedString(value: unknown): string | undefined {
 function safeAgentText(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const sanitized = cleanValidationText(value, 160);
-  return sanitized === '[redacted]' ? sanitized : `"${sanitized}"`;
+  return sanitized;
+}
+
+function safeValidationId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const sanitized = value
+    .replace(/[\r\n`\u0000-\u001f\u007f\u0085\u2028\u2029]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160);
+  if (!sanitized) return undefined;
+  if (SENSITIVE_VALUE_PATTERN.test(sanitized) || PROMPT_INJECTION_PATTERN.test(sanitized)) {
+    return '[redacted]';
+  }
+  return sanitized;
 }
 
 function hasOwn(value: object, key: string): boolean {
@@ -153,6 +168,7 @@ function hasOwn(value: object, key: string): boolean {
 function compactValidationForOutput(validation: ValidationResult): PublicValidationResult {
   const remediation = optionalSanitizedString(validation.remediation);
   return {
+    ...(hasOwn(validation, 'id') && { id: safeValidationId(validation.id) ?? '[redacted]' }),
     check: safeAgentText(validation.check) ?? 'validation',
     passed: false,
     description: safeAgentText(validation.description) ?? 'Validation failed',
@@ -254,7 +270,7 @@ export const CONFORMANCE_TOOLS: AddieTool[] = [
   {
     name: 'run_conformance_against_my_agent',
     description:
-      'Run a compliance storyboard against the adopter MCP server connected to this Addie session via Socket Mode. The adopter must have started `@adcp/sdk/server` ConformanceClient with a token issued in this same chat session — the channel routes by WorkOS organization id. Returns a markdown report with phase/step pass/fail/skipped status and trimmed error text on failures. Use this after the user confirms their conformance client shows `status=connected`.',
+      'Run a compliance storyboard against the adopter MCP server connected to this Addie session via Socket Mode. The adopter must have started `@adcp/sdk/server` ConformanceClient with a token issued in this same chat session — the channel routes by WorkOS organization id. Returns a markdown report with phase/step pass/fail/skipped status, trimmed error text, and sanitized failed-validation details such as id, expected, and actual on failures. Use this after the user confirms their conformance client shows `status=connected`.',
     usage_hints:
       'use for "run conformance on my agent", "test my agent against media-buy storyboards", "check my creative agent compliance". Requires a live conformance connection — if there isn\'t one, the tool returns a hint pointing the user at issue_conformance_token first.',
     input_schema: {

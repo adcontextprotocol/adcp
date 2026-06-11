@@ -212,6 +212,7 @@ describe('run_conformance_against_my_agent Addie tool', () => {
                   description: 'Response matches schema',
                 },
                 {
+                  id: 'check_extend_flight_mode',
                   check: 'field_value',
                   passed: false,
                   path: 'products[0].allowed_actions[1].mode',
@@ -224,6 +225,7 @@ describe('run_conformance_against_my_agent Addie tool', () => {
                   response: { payload: { secret_response: 'do-not-print' } },
                 },
                 {
+                  id: 'authorization_header_missing',
                   check: 'field_value',
                   passed: false,
                   path: 'errors[0].details',
@@ -232,6 +234,7 @@ describe('run_conformance_against_my_agent Addie tool', () => {
                   description: 'Structured error details are present',
                 },
                 {
+                  id: 'sk_live_1234567890abcdefghijkl',
                   check: 'field_value',
                   passed: false,
                   path: 'errors[0].message',
@@ -254,6 +257,10 @@ describe('run_conformance_against_my_agent Addie tool', () => {
     expect(out).toMatch(/FAILED/);
     expect(out).toMatch(/expected status 200, got 500/);
     expect(out).toMatch(/failed validations/);
+    expect(out).toMatch(/"id": "check_extend_flight_mode"/);
+    expect(out).toMatch(/"id": "authorization_header_missing"/);
+    expect(out).toMatch(/"id": "\[redacted\]"/);
+    expect(out).not.toMatch(/\\"check_extend_flight_mode\\"/);
     expect(out).toMatch(/products\[0\]\.allowed_actions\[1\]\.mode/);
     expect(out).toMatch(/requires_approval/);
     expect(out).toMatch(/\[undefined\]/);
