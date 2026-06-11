@@ -27,6 +27,7 @@ import { sendChannelMessage, isSlackConfigured } from '../slack/client.js';
 import { reindexDocument } from '../addie/jobs/committee-document-indexer.js';
 import { refreshWorkingGroupDocs } from '../addie/mcp/docs-indexer.js';
 import { isUuid } from '../utils/uuid.js';
+import { notifySystemError } from '../addie/error-notifier.js';
 import type { WorkingGroupServiceUser } from './working-group-membership-service.js';
 
 const logger = createLogger('working-group-content-service');
@@ -255,6 +256,10 @@ export async function createWorkingGroupPost(input: CreateWorkingGroupPostInput)
     isMembersOnly: finalMembersOnly,
   }).catch((err) => {
     logger.warn({ err }, 'Failed to send Slack channel notification for working group post');
+    notifySystemError({
+      source: 'wg-post-publish',
+      errorMessage: `Failed to notify Slack for working group post: group=${slug}, post_slug=${postSlug}, error=${err instanceof Error ? err.message : String(err)}`,
+    });
   });
 
   return { post: inserted, groupName: group.name, groupSlug: group.slug };

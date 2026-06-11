@@ -11,6 +11,7 @@ import { requireGlobalAdmin } from '../../middleware/auth.js';
 import { getPool } from '../../db/client.js';
 import * as illustrationDb from '../../db/illustration-db.js';
 import { generateIllustration } from '../../services/illustration-generator.js';
+import { notifySystemError } from '../../addie/error-notifier.js';
 
 const logger = createLogger('admin-illustrations');
 
@@ -119,6 +120,10 @@ export function setupIllustrationRoutes(apiRouter: Router): void {
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           logger.error({ err, slug: perspective.slug }, 'Failed to generate illustration');
+          notifySystemError({
+            source: 'admin-illustration-generate',
+            errorMessage: `Failed to generate perspective illustration for slug=${perspective.slug}: ${message}`,
+          });
           results.push({ slug: perspective.slug, title: perspective.title, status: 'error', error: message });
         }
       }
@@ -183,6 +188,10 @@ export function setupIllustrationRoutes(apiRouter: Router): void {
       });
     } catch (err) {
       logger.error({ err, slug: req.params.slug }, 'Failed to regenerate illustration');
+      notifySystemError({
+        source: 'admin-illustration-regenerate',
+        errorMessage: `Failed to regenerate perspective illustration for slug=${req.params.slug}: ${err instanceof Error ? err.message : String(err)}`,
+      });
       res.status(500).json({ error: 'Failed to regenerate illustration' });
     }
   });
