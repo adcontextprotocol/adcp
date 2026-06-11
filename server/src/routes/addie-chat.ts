@@ -133,6 +133,8 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const ATTACHMENT_VALIDATION_CLIENT_MESSAGE =
+  "Attachment could not be processed. Use PNG, JPEG, GIF, WebP, or PDF files under the size limits.";
 
 const logger = createLogger("addie-chat-routes");
 
@@ -975,9 +977,10 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       });
     } catch (error) {
       if (error instanceof ChatAttachmentValidationError) {
+        logger.warn({ reason: error.message }, "Addie Chat: Invalid attachment");
         return res.status(error.statusCode).json({
           error: "Invalid attachment",
-          message: error.message,
+          message: ATTACHMENT_VALIDATION_CLIENT_MESSAGE,
         });
       }
       logger.error({ err: error }, "Addie Chat: Error handling message");
@@ -1308,7 +1311,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
     } catch (error) {
       logger.error({ err: error }, "Addie Chat Stream: Error handling message");
       if (error instanceof ChatAttachmentValidationError) {
-        sendEvent("error", { error: error.message });
+        logger.warn({ reason: error.message }, "Addie Chat Stream: Invalid attachment");
+        sendEvent("error", { error: ATTACHMENT_VALIDATION_CLIENT_MESSAGE });
       } else {
         sendEvent("error", { error: "Internal server error" });
       }
