@@ -91,6 +91,14 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "creative"
+            description: "Agent declares creative protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "creative-transformers"
+            description: "Agent declares creative-transformers specialism"
           - check: field_value
             path: "creative.supports_transformers"
             value: true

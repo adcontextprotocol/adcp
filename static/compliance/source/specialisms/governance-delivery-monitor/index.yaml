@@ -130,6 +130,14 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "governance"
+            description: "Agent declares governance protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "governance-delivery-monitor"
+            description: "Agent declares governance-delivery-monitor specialism"
 
           - check: field_present
             path: "context"

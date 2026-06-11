@@ -34,19 +34,7 @@
             "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$"
           },
           "minItems": 1,
-          "examples": [
-            [
-              "3.0"
-            ],
-            [
-              "3.0",
-              "3.1"
-            ],
-            [
-              "3.0",
-              "3.1-beta"
-            ]
-          ]
+          "examples": [["3.0"], ["3.0", "3.1"], ["3.0", "3.1-beta"]]
         },
         "build_version": {
           "type": "string",
@@ -90,10 +78,7 @@
                   "default": false
                 }
               },
-              "required": [
-                "supported",
-                "replay_ttl_seconds"
-              ]
+              "required": ["supported", "replay_ttl_seconds"]
             },
             {
               "title": "IdempotencyUnsupported",
@@ -104,20 +89,14 @@
                   "description": "Discriminator. False means the seller does not deduplicate retries."
                 }
               },
-              "required": [
-                "supported"
-              ],
+              "required": ["supported"],
               "not": {
                 "anyOf": [
                   {
-                    "required": [
-                      "replay_ttl_seconds"
-                    ]
+                    "required": ["replay_ttl_seconds"]
                   },
                   {
-                    "required": [
-                      "in_flight_max_seconds"
-                    ]
+                    "required": ["in_flight_max_seconds"]
                   }
                 ]
               }
@@ -125,10 +104,7 @@
           ]
         }
       },
-      "required": [
-        "major_versions",
-        "idempotency"
-      ]
+      "required": ["major_versions", "idempotency"]
     },
     "supported_protocols": {
       "type": "array",
@@ -185,9 +161,7 @@
           "default": false
         }
       },
-      "required": [
-        "supported_billing"
-      ]
+      "required": ["supported_billing"]
     },
     "media_buy": {
       "type": "object",
@@ -207,27 +181,18 @@
           "description": "Buying modes this seller supports on get_products. 'brief' (semantic discovery driven by the brief) is universally supported and implicit. 'wholesale' (raw wholesale product feed enumeration — caller omits brief and the seller returns the full priced product feed, paginated) is opt-in and SHOULD be declared explicitly so buyers can probe before issuing wholesale calls. 'refine' lets buyers iterate on prior products/proposals and is also the vehicle for finalizing draft proposals when the seller returns them. Sellers MAY declare ['brief', 'wholesale'] to signal wholesale support; absent declaration is treated as ['brief'] for wholesale-feed probing purposes and sellers MAY return INVALID_REQUEST for wholesale calls they do not support. Symmetric with signals.discovery_modes.",
           "items": {
             "type": "string",
-            "enum": [
-              "brief",
-              "wholesale",
-              "refine"
-            ]
+            "enum": ["brief", "wholesale", "refine"]
           },
           "minItems": 1,
           "uniqueItems": true,
-          "default": [
-            "brief"
-          ]
+          "default": ["brief"]
         },
         "reporting_delivery_methods": {
           "type": "array",
           "description": "How this seller delivers reporting data to buyers. Polling via get_media_buy_delivery is always available as a baseline regardless of this field. This array declares additional push-based delivery methods the seller supports. 'webhook': seller pushes to buyer-provided URL (configured per buy via reporting_webhook). 'offline': seller pushes batch files to a cloud storage bucket (seller-provisioned per account via reporting_bucket on the account object). When absent, only polling is available.",
           "items": {
             "type": "string",
-            "enum": [
-              "webhook",
-              "offline"
-            ]
+            "enum": ["webhook", "offline"]
           },
           "minItems": 1,
           "uniqueItems": true
@@ -251,25 +216,16 @@
           "description": "Where this seller surfaces dependency-resource impairments (creative suspended/rejected post-approval, audience suspended, catalog item withdrawn, event source insufficient, property depublished) to buyers. Non-exclusive: a seller mirroring impairments on both the buy snapshot AND firing webhooks declares `[\"snapshot\", \"webhook\"]` (the common case for premium guaranteed sellers). Each value names one surface where buyers can observe an impairment:\n\n- **`snapshot`** — seller propagates resource transitions into `media_buy.health` and `media_buy.impairments[]` on the next `get_media_buys` read. The `impairment.coherence` compliance assertion grades this surface; storyboards that exercise it (`media_buy_seller/dependency_impairment`, `media_buy_seller/dependency_impairment_cardinality`) require `\"snapshot\"` to be declared, else they grade `not_applicable`.\n- **`webhook`** — seller fires `notification-type: impairment` webhooks (configured via `push_notification_config`). Sellers declaring `\"webhook\"` MUST satisfy the persistent-channel webhook contract for the impairment event type. A seller declaring `[\"webhook\"]` without `\"snapshot\"` is webhook-only — buyers reconcile state from the push channel alone, and snapshot-coherence storyboards grade `not_applicable`.\n- **`out_of_band`** — seller propagates via channels outside the AdCP protocol surface entirely (email to trafficker, separate dashboard, partner-specific notification feed). Long-tail and enterprise-bundled platforms commonly use this when impairment workflows are managed in human channels. Sellers declaring only `[\"out_of_band\"]` are not graded by snapshot or webhook compliance — their bar is the offline agreement, not a protocol assertion. If a seller has impairment data in their API under a non-AdCP field name (a mapping gap, not truly out-of-band), they SHOULD document the mapping rather than declare `out_of_band` — the spec's gap, not the seller's posture, is what `out_of_band` legitimately covers.\n\nDefault: `[\"snapshot\"]` when absent (preserves the existing snapshot-coherence contract for sellers that don't declare). Empty array `[]` is invalid (`minItems: 1`) — omit the field to inherit the default rather than declaring no surfaces. Pick the surfaces that honestly describe where buyers will see impairments on this agent. Mixing is normative — `[\"snapshot\", \"webhook\"]` is the documented common case; `[\"snapshot\", \"webhook\", \"out_of_band\"]` is valid for sellers that ship all three surfaces (rare but legal). See lifecycle.mdx § Compliance for the per-surface contract.",
           "items": {
             "type": "string",
-            "enum": [
-              "snapshot",
-              "webhook",
-              "out_of_band"
-            ]
+            "enum": ["snapshot", "webhook", "out_of_band"]
           },
           "uniqueItems": true,
           "minItems": 1,
-          "default": [
-            "snapshot"
-          ]
+          "default": ["snapshot"]
         },
         "creative_approval_mode": {
           "type": "string",
           "description": "Tenant-wide applicability signal for media-buy creative approval behavior. This is not a notification or new approval workflow. `auto_approve` means human review does not block serving eligibility after creatives are assigned and automated validation passes. `require_human` means one or more products/accounts may require manual review before creatives become eligible to serve; buyers and compliance runners MUST treat this as a worst-case ceiling across this seller's portfolio unless a future product-level override says otherwise. Compliance runners use this mainly to decide whether auto-approval-dependent storyboards apply. When absent, approval behavior is legacy-unspecified; runners SHOULD NOT treat omission as an affirmative auto-approval claim. `ai_assisted` is intentionally not part of the enum until a behavioral contract is defined.",
-          "enum": [
-            "auto_approve",
-            "require_human"
-          ]
+          "enum": ["auto_approve", "require_human"]
         },
         "features": {
           "$ref": "/schemas/core/media-buy-features.json"
@@ -410,9 +366,7 @@
                       "minItems": 1
                     }
                   },
-                  "required": [
-                    "supported_match_types"
-                  ]
+                  "required": ["supported_match_types"]
                 },
                 "negative_keywords": {
                   "type": "object",
@@ -427,9 +381,7 @@
                       "minItems": 1
                     }
                   },
-                  "required": [
-                    "supported_match_types"
-                  ]
+                  "required": ["supported_match_types"]
                 },
                 "geo_proximity": {
                   "type": "object",
@@ -470,10 +422,7 @@
               "description": "PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports.",
               "items": {
                 "type": "string",
-                "enum": [
-                  "hashed_email",
-                  "hashed_phone"
-                ]
+                "enum": ["hashed_email", "hashed_phone"]
               },
               "minItems": 1
             },
@@ -510,10 +459,7 @@
               "additionalProperties": false
             }
           },
-          "required": [
-            "supported_identifier_types",
-            "minimum_audience_size"
-          ],
+          "required": ["supported_identifier_types", "minimum_audience_size"],
           "additionalProperties": true
         },
         "supported_optimization_metrics": {
@@ -547,10 +493,7 @@
               "description": "Target kinds this seller can support for vendor_metric optimization goals on at least one product. Values match optimization_goals[].target.kind for kind: vendor_metric. A target-less vendor_metric goal maximizes the metric within budget and does not require a target-kind declaration.",
               "items": {
                 "type": "string",
-                "enum": [
-                  "cost_per",
-                  "threshold_rate"
-                ]
+                "enum": ["cost_per", "threshold_rate"]
               },
               "minItems": 1,
               "uniqueItems": true
@@ -583,11 +526,7 @@
               "description": "Event-goal target kinds this seller can compute against. Buyers should only submit event-kind optimization goals whose target.kind is listed here — sellers MUST reject goals with unlisted target kinds. When omitted, only target-less event goals (maximize conversion count within budget) are guaranteed; sellers MAY accept specific target kinds but buyers should not rely on it. Named to parallel `metric_optimization.supported_targets` at the product level — same concept (which target kinds are supported), one at seller-capability granularity and one at product granularity.",
               "items": {
                 "type": "string",
-                "enum": [
-                  "cost_per",
-                  "per_ad_spend",
-                  "maximize_value"
-                ]
+                "enum": ["cost_per", "per_ad_spend", "maximize_value"]
               },
               "minItems": 1,
               "uniqueItems": true
@@ -605,10 +544,7 @@
               "description": "Hashed PII types accepted for user matching. Buyers must hash before sending (SHA-256, normalized).",
               "items": {
                 "type": "string",
-                "enum": [
-                  "hashed_email",
-                  "hashed_phone"
-                ]
+                "enum": ["hashed_email", "hashed_phone"]
               },
               "minItems": 1
             },
@@ -647,9 +583,7 @@
                     "minItems": 1
                   }
                 },
-                "required": [
-                  "post_click"
-                ],
+                "required": ["post_click"],
                 "additionalProperties": true
               }
             }
@@ -683,7 +617,7 @@
         },
         "content_standards": {
           "type": "object",
-          "description": "Content standards implementation details. Presence of this object indicates the seller supports content_standards configuration including sampling rates and category filtering. Gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities. This is a seller-side media-buy capability; governance agents providing content standards services declare specialisms: [\"content-standards\"] instead.",
+          "description": "Content standards implementation details. Presence of this object indicates the seller supports content_standards configuration including sampling rates and category filtering. Gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities. This is a seller-side media-buy capability; governance agents providing content standards services declare `specialisms: [\"content-standards\"]` instead.",
           "properties": {
             "supports_local_evaluation": {
               "type": "boolean",
@@ -742,9 +676,7 @@
               "maxLength": 10000
             }
           },
-          "required": [
-            "publisher_domains"
-          ]
+          "required": ["publisher_domains"]
         }
       }
     },
@@ -766,16 +698,11 @@
           "description": "Discovery modes this signals agent supports on get_signals. 'brief' (default — every signals agent supports this): semantic discovery driven by signal_spec or signal_refs, with deprecated signal_ids accepted for older clients. 'wholesale': raw wholesale signals feed enumeration — caller omits signal_spec, signal_refs, and signal_ids and the agent returns its full priced signals feed, paginated, scoped by filters/account/destinations/countries. Agents that do not declare 'wholesale' MAY return INVALID_REQUEST for wholesale calls. Absent declaration is treated as ['brief'].",
           "items": {
             "type": "string",
-            "enum": [
-              "brief",
-              "wholesale"
-            ]
+            "enum": ["brief", "wholesale"]
           },
           "minItems": 1,
           "uniqueItems": true,
-          "default": [
-            "brief"
-          ]
+          "default": ["brief"]
         },
         "features": {
           "type": "object",
@@ -815,11 +742,7 @@
               },
               "type": {
                 "type": "string",
-                "enum": [
-                  "binary",
-                  "quantitative",
-                  "categorical"
-                ],
+                "enum": ["binary", "quantitative", "categorical"],
                 "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
               },
               "range": {
@@ -835,10 +758,7 @@
                     "description": "Maximum value"
                   }
                 },
-                "required": [
-                  "min",
-                  "max"
-                ]
+                "required": ["min", "max"]
               },
               "categories": {
                 "type": "array",
@@ -857,10 +777,7 @@
                 "description": "URL to documentation explaining how this feature is calculated or measured. Helps buyers understand and compare methodologies across vendors."
               }
             },
-            "required": [
-              "feature_id",
-              "type"
-            ]
+            "required": ["feature_id", "type"]
           }
         },
         "creative_features": {
@@ -875,11 +792,7 @@
               },
               "type": {
                 "type": "string",
-                "enum": [
-                  "binary",
-                  "quantitative",
-                  "categorical"
-                ],
+                "enum": ["binary", "quantitative", "categorical"],
                 "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
               },
               "range": {
@@ -895,10 +808,7 @@
                     "description": "Maximum value"
                   }
                 },
-                "required": [
-                  "min",
-                  "max"
-                ]
+                "required": ["min", "max"]
               },
               "categories": {
                 "type": "array",
@@ -917,10 +827,7 @@
                 "description": "URL to documentation explaining how this feature is calculated or measured."
               }
             },
-            "required": [
-              "feature_id",
-              "type"
-            ]
+            "required": ["feature_id", "type"]
           }
         }
       }
@@ -942,10 +849,7 @@
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "mcp",
-                      "a2a"
-                    ],
+                    "enum": ["mcp", "a2a"],
                     "description": "Protocol transport type"
                   },
                   "url": {
@@ -954,26 +858,18 @@
                     "description": "Agent endpoint URL for this transport"
                   }
                 },
-                "required": [
-                  "type",
-                  "url"
-                ],
+                "required": ["type", "url"],
                 "additionalProperties": true
               },
               "minItems": 1
             },
             "preferred": {
               "type": "string",
-              "enum": [
-                "mcp",
-                "a2a"
-              ],
+              "enum": ["mcp", "a2a"],
               "description": "Preferred transport when host supports multiple"
             }
           },
-          "required": [
-            "transports"
-          ]
+          "required": ["transports"]
         },
         "capabilities": {
           "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",
@@ -985,10 +881,7 @@
           "description": "URL to brand.json with colors, fonts, logos, tone"
         }
       },
-      "required": [
-        "endpoint",
-        "capabilities"
-      ]
+      "required": ["endpoint", "capabilities"]
     },
     "brand": {
       "type": "object",
@@ -1122,7 +1015,13 @@
               "description": "Which variant_axis.dimension values this agent supports.",
               "items": {
                 "type": "string",
-                "enum": ["voice", "theme", "best_of_n", "transformer_config", "custom"]
+                "enum": [
+                  "voice",
+                  "theme",
+                  "best_of_n",
+                  "transformer_config",
+                  "custom"
+                ]
               },
               "uniqueItems": true
             },
@@ -1153,9 +1052,7 @@
                 "description": "Format declaration this agent can produce. Same shape as a product's inline `format_options[i]`: `format_kind` + `params` + `slots`."
               }
             },
-            "required": [
-              "format"
-            ],
+            "required": ["format"],
             "additionalProperties": true
           }
         },
@@ -1182,11 +1079,7 @@
         },
         "covers_content_digest": {
           "type": "string",
-          "enum": [
-            "required",
-            "forbidden",
-            "either"
-          ],
+          "enum": ["required", "forbidden", "either"],
           "description": "Policy for content-digest coverage in request signatures. 'required': signers MUST cover content-digest (body is bound to the signature); body-unbound signatures rejected with request_signature_components_incomplete. 'forbidden': signers MUST NOT cover content-digest; body-bound signatures rejected with request_signature_components_unexpected. This is an opt-out for the narrow case of legacy infrastructure that cannot preserve body bytes. 'either' (default): signer chooses per-request; verifier accepts both covered and uncovered forms. 'required' is recommended for spend-committing operations in production; 4.0 recommends 'required' for those operations.",
           "default": "either"
         },
@@ -1262,9 +1155,7 @@
           }
         }
       },
-      "required": [
-        "supported"
-      ]
+      "required": ["supported"]
     },
     "webhook_signing": {
       "type": "object",
@@ -1298,9 +1189,7 @@
         },
         "profile": {
           "type": "string",
-          "enum": [
-            "adcp/webhook-signing/v1"
-          ],
+          "enum": ["adcp/webhook-signing/v1"],
           "description": "Identifier of the webhook-signing profile version the agent emits. Value MUST match the `tag=` parameter emitted in the RFC 9421 `Signature-Input` header (see docs/building/implementation/webhooks.mdx) so receivers can statically validate the declared profile against the on-wire tag. Closed enum; future profile revisions will extend this enum in a follow-up schema bump."
         },
         "algorithms": {
@@ -1308,10 +1197,7 @@
           "description": "Signature algorithms this agent uses on outbound webhooks. 3.0 profile permits 'ed25519' and 'ecdsa-p256-sha256' only; other values are reserved for future profile versions and MUST NOT be emitted under adcp/webhook-signing/v1.",
           "items": {
             "type": "string",
-            "enum": [
-              "ed25519",
-              "ecdsa-p256-sha256"
-            ]
+            "enum": ["ed25519", "ecdsa-p256-sha256"]
           },
           "minItems": 1,
           "uniqueItems": true
@@ -1322,9 +1208,7 @@
           "default": false
         }
       },
-      "required": [
-        "supported"
-      ]
+      "required": ["supported"]
     },
     "identity": {
       "type": "object",
@@ -1494,9 +1378,7 @@
                       "description": "Optional URL pointing at the accrediting body's public listing for this certification (the buyer's path to verify the claim independently)."
                     }
                   },
-                  "required": [
-                    "accrediting_body"
-                  ],
+                  "required": ["accrediting_body"],
                   "additionalProperties": false
                 },
                 "uniqueItems": true
@@ -1526,28 +1408,20 @@
               "methodology_version": {
                 "type": "string",
                 "description": "Optional version identifier (semver, ISO date, or vendor-defined version string) for the methodology this metric currently implements. When present, buyer agents pin the contracted version on `committed_metrics` so silent vendor methodology changes are detectable; absence means the vendor does not version their methodology and buyers MUST treat any change as untracked.",
-                "examples": [
-                  "v2.1",
-                  "2026-Q1",
-                  "1.0"
-                ]
+                "examples": ["v2.1", "2026-Q1", "1.0"]
               },
               "ext": {
                 "$ref": "/schemas/core/ext.json"
               }
             },
-            "required": [
-              "metric_id"
-            ],
+            "required": ["metric_id"],
             "additionalProperties": false
           },
           "minItems": 1,
           "uniqueItems": true
         }
       },
-      "required": [
-        "metrics"
-      ]
+      "required": ["metrics"]
     },
     "compliance_testing": {
       "type": "object",
@@ -1562,9 +1436,7 @@
           "minItems": 1
         }
       },
-      "required": [
-        "scenarios"
-      ],
+      "required": ["scenarios"],
       "additionalProperties": true
     },
     "specialisms": {
@@ -1612,9 +1484,7 @@
           "description": "Whether the agent ever returns cache_scope: 'account' (i.e., publishes per-account overlays distinct from the public rate card). When true, buyers MUST be prepared to maintain account-overlay caches alongside the public layer. When false or absent, all responses are cache_scope: 'public' regardless of whether account was provided — the agent's rate card is universal. Confidentiality note: declaring true advertises that the agent runs custom-pricing deals (low-grade market-posture signal); agents preferring not to disclose this MAY omit the field and let consumers detect-on-call via cache_scope on response."
         }
       },
-      "required": [
-        "supported"
-      ]
+      "required": ["supported"]
     },
     "last_updated": {
       "type": "string",
@@ -1689,15 +1559,10 @@
           }
         }
       },
-      "required": [
-        "supported"
-      ],
+      "required": ["supported"],
       "additionalProperties": true
     }
   },
-  "required": [
-    "adcp",
-    "supported_protocols"
-  ],
+  "required": ["adcp", "supported_protocols"],
   "additionalProperties": true
 }
