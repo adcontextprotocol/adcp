@@ -187,6 +187,33 @@ StreamHaus confirms the relationship in `https://streamhaus.example/.well-known/
 
 Northwind's `brand.json` alone is not authorization. Any operator can claim a property. The publisher's matching `adagents.json` entry is what turns the claim into an authorized supply path.
 
+### Multi-tenant sales agents
+
+Operators that host one sales-agent deployment for many publisher tenants MAY publish one `agents[]` entry per tenant or property-scoped endpoint, even when every entry has `type: "sales"`. Each entry is selected by its concrete `url`, not by `type`, so a path-routed deployment can publish per-tenant JWKS shards. Agent URLs MUST be unique within the `agents[]` array.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "agents": [
+    {
+      "type": "sales",
+      "id": "sales_streamhaus",
+      "url": "https://northwind.example/mcp/streamhaus",
+      "jwks_uri": "https://northwind.example/.well-known/jwks/streamhaus.json"
+    },
+    {
+      "type": "sales",
+      "id": "sales_pinnacle_news",
+      "url": "https://northwind.example/mcp/pinnacle_news",
+      "jwks_uri": "https://northwind.example/.well-known/jwks/pinnacle_news.json"
+    }
+  ]
+}
+```
+
+Signature verifiers MUST resolve keys from the agent URL being authenticated using the request-signing discovery algorithm: match exactly one `brand.json` `agents[].url` entry, use that entry's `jwks_uri` or the default `/.well-known/jwks.json` on the agent URL's origin, then resolve `keyid`. They MUST reject duplicate matching entries as ambiguous, MUST NOT choose a JWKS by agent `type` alone, and MUST NOT rely on a tenant identifier supplied inside the request payload to decide which key set to trust.
+
 ## Setup checklist
 
 1. Publish `brand.json` for each organization that operates an AdCP sales agent at `https://{seller-domain}/.well-known/brand.json`.
