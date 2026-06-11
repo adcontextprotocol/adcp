@@ -155,6 +155,204 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const logger = createLogger('http-server');
+const PUBLIC_SITE_URL = 'https://agenticadvertising.org';
+const PERSPECTIVES_CRAWLER_LIMIT = 200;
+
+interface PublicPerspectiveCrawlerItem {
+  slug: string;
+  content_type: string;
+  title: string;
+  excerpt: string | null;
+  external_url: string | null;
+  author_name: string | null;
+  published_at: Date | string | null;
+  updated_at: Date | string | null;
+}
+
+function escapeXml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function compactPlainText(value: unknown): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function escapeMarkdownText(value: unknown): string {
+  return compactPlainText(value).replace(/([\\[\]()])/g, '\\$1');
+}
+
+function coerceDate(value: unknown): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatRssDate(value: unknown): string {
+  return (coerceDate(value) ?? new Date()).toUTCString();
+}
+
+function buildPerspectiveUrl(slug: string): string {
+  return `${PUBLIC_SITE_URL}/perspectives/${encodeURIComponent(slug)}`;
+}
+
+function getPerspectiveCrawlerUrl(item: PublicPerspectiveCrawlerItem): string {
+  return item.content_type === 'link' && item.external_url
+    ? item.external_url
+    : buildPerspectiveUrl(item.slug);
+}
+
+async function getPublicPerspectiveCrawlerItems(limit = PERSPECTIVES_CRAWLER_LIMIT): Promise<PublicPerspectiveCrawlerItem[]> {
+  const pool = getPool();
+  const result = await pool.query<PublicPerspectiveCrawlerItem>(
+    `SELECT
+        p.slug,
+        p.content_type,
+        p.title,
+        p.excerpt,
+        p.external_url,
+        p.author_name,
+        COALESCE(p.published_at, p.created_at) AS published_at,
+        p.updated_at
+     FROM perspectives p
+     LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+     WHERE p.status = 'published'
+       AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
+       AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
+     ORDER BY p.published_at DESC NULLS LAST, p.created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+  return result.rows;
+}
+
+function buildLlmsTxt(items: PublicPerspectiveCrawlerItem[]): string {
+  const lines = [
+    '# AgenticAdvertising.org',
+    '',
+    '> AgenticAdvertising.org is the member organization that maintains AdCP and publishes community perspectives on agentic advertising.',
+    '',
+    '## Discoverability',
+    '',
+    `- [Sitemap](${PUBLIC_SITE_URL}/sitemap.xml)`,
+    `- [Perspectives RSS feed](${PUBLIC_SITE_URL}/perspectives/feed.xml)`,
+    '',
+    '## Perspectives',
+    '',
+  ];
+
+  if (items.length === 0) {
+    lines.push(`- [Latest perspectives](${PUBLIC_SITE_URL}/latest/perspectives)`);
+  } else {
+    for (const item of items) {
+      const title = escapeMarkdownText(item.title);
+      const excerpt = escapeMarkdownText(item.excerpt);
+      lines.push(`- [${title}](${getPerspectiveCrawlerUrl(item)})${excerpt ? `: ${excerpt}` : ''}`);
+    }
+  }
+
+  lines.push('');
+  return lines.join('\n');
+}
+
+function buildPerspectivesRss(items: PublicPerspectiveCrawlerItem[]): string {
+  const latestDate = items
+    .map((item) => coerceDate(item.updated_at) ?? coerceDate(item.published_at))
+    .filter((date): date is Date => date !== null)
+    .sort((a, b) => b.getTime() - a.getTime())[0] ?? new Date();
+
+  const entries = items.map((item) => {
+    const url = getPerspectiveCrawlerUrl(item);
+    const author = compactPlainText(item.author_name) || 'AgenticAdvertising.org';
+    return `    <item>
+      <title>${escapeXml(item.title)}</title>
+      <link>${escapeXml(url)}</link>
+      <guid isPermaLink="true">${escapeXml(url)}</guid>
+      <dc:creator>${escapeXml(author)}</dc:creator>
+      <pubDate>${formatRssDate(item.published_at)}</pubDate>
+      <description>${escapeXml(item.excerpt)}</description>
+    </item>`;
+  }).join('\n');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>AgenticAdvertising.org Perspectives</title>
+    <link>${PUBLIC_SITE_URL}/latest/perspectives</link>
+    <description>Published perspectives from AgenticAdvertising.org members and contributors.</description>
+    <language>en-us</language>
+    <lastBuildDate>${latestDate.toUTCString()}</lastBuildDate>
+    <atom:link href="${PUBLIC_SITE_URL}/perspectives/feed.xml" rel="self" type="application/rss+xml" />
+${entries}
+  </channel>
+</rss>`;
+}
+
+function buildRobotsTxt(baseUrl: string, hostLabel: string): string {
+  return `# robots.txt for ${hostLabel}
+# AdCP - Ad Context Protocol by AgenticAdvertising.org
+
+# Allow all standard crawlers
+User-agent: *
+Allow: /
+Disallow: /aao-w9.pdf
+
+# Explicitly allow AI crawlers
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+User-agent: Meta-ExternalAgent
+Allow: /
+
+# Block known bad bots
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: BLEXBot
+Disallow: /
+
+# Sitemap and LLMs.txt
+Sitemap: ${baseUrl}/sitemap.xml
+Llms-txt: ${baseUrl}/llms.txt
+`;
+}
 
 function isPendingWorkOSMembershipError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
@@ -891,6 +1089,35 @@ export class HTTPServer {
         return res.redirect(301, target);
       }
       next();
+    });
+
+    // Host-aware robots.txt must run before public static files so AAO and
+    // AdCP advertise crawl surfaces on their own domains.
+    this.app.get('/robots.txt', (req, res) => {
+      const isAdcp = this.isAdcpDomain(req);
+      const baseUrl = isAdcp ? 'https://adcontextprotocol.org' : PUBLIC_SITE_URL;
+      const hostLabel = isAdcp ? 'adcontextprotocol.org' : 'agenticadvertising.org';
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.send(buildRobotsTxt(baseUrl, hostLabel));
+    });
+
+    // Serve AAO llms.txt dynamically before public static files so the crawler
+    // inventory includes the latest published Perspectives. AdCP falls through
+    // to the static protocol overview at server/public/llms.txt.
+    this.app.get(['/llms.txt', '/.well-known/llms.txt'], async (req, res, next) => {
+      if (this.isAdcpDomain(req)) {
+        return next();
+      }
+      try {
+        const items = await getPublicPerspectiveCrawlerItems();
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.send(buildLlmsTxt(items));
+      } catch (error) {
+        logger.error({ err: error }, 'Generate llms.txt error:');
+        res.status(500).send('Error generating llms.txt');
+      }
     });
 
     this.app.use(express.static(publicPath, {
@@ -2573,6 +2800,20 @@ export class HTTPServer {
     // Perspectives index redirects to perspectives section
     this.app.get("/perspectives", (req, res) => {
       res.redirect(301, "/latest/perspectives");
+    });
+
+    // RSS feed for published editorial Perspectives. Must be registered before
+    // /perspectives/:slug so feed.xml is not treated as an article slug.
+    this.app.get("/perspectives/feed.xml", async (_req, res) => {
+      try {
+        const items = await getPublicPerspectiveCrawlerItems();
+        res.setHeader('Content-Type', 'application/rss+xml; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.send(buildPerspectivesRss(items));
+      } catch (error) {
+        logger.error({ err: error }, 'Generate perspectives RSS error:');
+        res.status(500).send('Error generating perspectives RSS feed');
+      }
     });
 
     // Perspectives detail page - serves article content with SSR meta tags for social sharing
@@ -5704,7 +5945,7 @@ export class HTTPServer {
     this.app.use('/api/me/meetings', meetingsUserRouter);
 
     // ========================================
-    // SEO Routes (sitemap.xml, robots.txt)
+    // SEO Routes (sitemap.xml)
     // ========================================
 
     // GET /sitemap.xml - Dynamic sitemap including all published perspectives
@@ -5719,7 +5960,9 @@ export class HTTPServer {
            FROM perspectives p
            LEFT JOIN working_groups wg ON wg.id = p.working_group_id
            WHERE p.status = 'published'
+             AND p.content_type = 'article'
              AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
+             AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
            ORDER BY p.published_at DESC`
         );
 
@@ -5768,25 +6011,6 @@ export class HTTPServer {
         logger.error({ err: error }, 'Generate sitemap error:');
         res.status(500).send('Error generating sitemap');
       }
-    });
-
-    // GET /robots.txt - Robots file with sitemap reference
-    this.app.get('/robots.txt', (req, res) => {
-      const baseUrl = 'https://agenticadvertising.org';
-      const robotsTxt = `# AgenticAdvertising.org Robots.txt
-User-agent: *
-Allow: /
-
-# Sitemaps
-Sitemap: ${baseUrl}/sitemap.xml
-
-# Disallow admin pages
-Disallow: /admin/
-Disallow: /auth/
-Disallow: /api/admin/
-`;
-      res.set('Content-Type', 'text/plain');
-      res.send(robotsTxt);
     });
 
     // ========================================
