@@ -48,7 +48,7 @@ jobs:
           repositories: adcp
 
       - name: Checkout default branch
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
         with:
           ref: main
           fetch-depth: 1
