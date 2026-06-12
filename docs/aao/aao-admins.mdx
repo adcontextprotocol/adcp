@@ -39,6 +39,16 @@ Members and visitors can ask Addie to escalate when she can't help. Escalations 
 - **Comp / discount membership.** Use `send_payment_request` with a $0 product or a coupon. For unusual cases (chapter leads, contributors), escalate or coordinate with billing manually.
 - **Promote / demote within an org.** Today this is a database operation; CLI scripts under `scripts/` cover the common cases. We're working on a tool surface.
 
+## Portrait management
+
+Members can manage their own illustrated portrait from their profile page. Addie's member-scoped portrait tools (`check_portrait_status`, `offer_portrait_generation`) only operate on the caller's own member organization context.
+
+Admin moderation uses the admin portrait API:
+
+- **List portraits.** `GET /api/admin/portraits?status=generated` returns generated portraits for review. Use `status=approved` or omit `status` to inspect other queues.
+- **Map active portraits.** `GET /api/admin/portraits/map` returns the lightweight user-to-portrait mapping for directory checks.
+- **Remove a portrait.** `DELETE /api/admin/portraits/:id` rejects the portrait and clears it from the member if it is their active portrait.
+
 ## System settings
 
 - **Escalation channel.** `system_settings.escalation_channel` controls where Addie posts escalation notifications. Update via the admin web UI.

@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent registry profile</title>
+    <link rel="stylesheet" href="/design-system.css" />
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: var(--font-sans);
+        color: var(--color-text);
+        background: var(--color-bg-page);
+      }
+
+      .page {
+        width: min(1120px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 32px 0 56px;
+      }
+
+      .nav {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+
+      .nav a {
+        color: var(--color-brand);
+        font-weight: var(--font-semibold);
+        text-decoration: none;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+        gap: 20px;
+        align-items: stretch;
+        margin-bottom: 20px;
+      }
+
+      .panel {
+        background: var(--color-bg-card);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+        padding: 20px;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--color-text-secondary);
+        font-size: 0.82rem;
+        font-weight: var(--font-semibold);
+        letter-spacing: 0;
+      }
+
+      h1 {
+        margin: 0;
+        color: var(--color-text-heading);
+        font-size: clamp(1.75rem, 2vw, 2.5rem);
+        line-height: 1.1;
+        overflow-wrap: anywhere;
+      }
+
+      h2 {
+        margin: 0 0 14px;
+        color: var(--color-text-heading);
+        font-size: 1rem;
+        line-height: 1.25;
+      }
+
+      .url {
+        margin-top: 12px;
+        color: var(--color-text-secondary);
+        font-family: var(--font-mono);
+        font-size: 0.9rem;
+        overflow-wrap: anywhere;
+      }
+
+      .status-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 18px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 4px 10px;
+        border-radius: var(--radius-full);
+        font-size: 0.82rem;
+        font-weight: var(--font-semibold);
+        background: var(--color-info-bg);
+        color: var(--color-info-fg);
+        border: 1px solid var(--color-info-200);
+        white-space: nowrap;
+      }
+
+      .pill.success {
+        background: var(--color-success-bg);
+        color: var(--color-success-fg);
+        border-color: var(--color-success-200);
+      }
+
+      .pill.warning {
+        background: var(--color-warning-bg);
+        color: var(--color-warning-fg);
+        border-color: var(--color-warning-200);
+      }
+
+      .pill.error {
+        background: var(--color-error-bg);
+        color: var(--color-error-fg);
+        border-color: var(--color-error-200);
+      }
+
+      .badge-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .badge-item {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-subtle);
+      }
+
+      .badge-item img {
+        max-width: 100%;
+        height: 40px;
+        object-fit: contain;
+        object-position: left center;
+      }
+
+      .badge-meta {
+        color: var(--color-text-secondary);
+        font-size: 0.84rem;
+        line-height: 1.45;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+        margin-top: 16px;
+      }
+
+      .metric {
+        display: grid;
+        gap: 6px;
+      }
+
+      .metric-label {
+        color: var(--color-text-secondary);
+        font-size: 0.8rem;
+        font-weight: var(--font-semibold);
+      }
+
+      .metric-value {
+        color: var(--color-text-heading);
+        font-size: 1.05rem;
+        font-weight: var(--font-semibold);
+        overflow-wrap: anywhere;
+      }
+
+      .section-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-top: 16px;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .empty,
+      .error-message {
+        color: var(--color-text-secondary);
+        line-height: 1.5;
+      }
+
+      .error-message {
+        color: var(--color-error-fg);
+      }
+
+      .loading {
+        color: var(--color-text-secondary);
+      }
+
+      @media (max-width: 840px) {
+        .hero,
+        .section-grid,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .page {
+          width: min(100% - 24px, 1120px);
+          padding-top: 20px;
+        }
+
+        .nav {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <nav class="nav" aria-label="Registry navigation">
+        <a href="/registry?tab=agents">Agent directory</a>
+        <a id="openAgentLink" href="#" target="_blank" rel="noopener"
+          >Open agent URL</a
+        >
+      </nav>
+
+      <section class="hero">
+        <div class="panel">
+          <p class="eyebrow">Agent registry profile</p>
+          <h1 id="agentTitle">Loading agent</h1>
+          <div id="agentUrl" class="url"></div>
+          <div id="statusRow" class="status-row">
+            <span class="pill">Loading</span>
+          </div>
+        </div>
+
+        <aside class="panel" aria-labelledby="badgesHeading">
+          <h2 id="badgesHeading">Verification badges</h2>
+          <div id="badgeList" class="badge-list">
+            <div class="loading">Loading badges...</div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="panel" aria-labelledby="complianceHeading">
+        <h2 id="complianceHeading">Compliance summary</h2>
+        <div id="metrics" class="grid">
+          <div class="loading">Loading compliance status...</div>
+        </div>
+      </section>
+
+      <section class="section-grid">
+        <div class="panel" aria-labelledby="specialismsHeading">
+          <h2 id="specialismsHeading">Declared specialisms</h2>
+          <div id="specialisms" class="chips"></div>
+        </div>
+
+        <div class="panel" aria-labelledby="tracksHeading">
+          <h2 id="tracksHeading">Tracks</h2>
+          <div id="tracks" class="chips"></div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        agentUrl: "",
+        encoded: "",
+      };
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function labelize(value) {
+        const text = String(value || "unknown")
+          .replaceAll("_", " ")
+          .replaceAll("-", " ")
+          .toLowerCase();
+        return text.charAt(0).toUpperCase() + text.slice(1);
+      }
+
+      function formatDate(value) {
+        if (!value) return "Never";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "Unknown";
+        return date.toLocaleString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        });
+      }
+
+      function statusClass(status) {
+        if (status === "passing" || status === "verified") return "success";
+        if (status === "failing") return "error";
+        if (
+          status === "partial" ||
+          status === "unknown" ||
+          status === "opted_out"
+        )
+          return "warning";
+        return "";
+      }
+
+      function pill(text, kind = "") {
+        const className = kind ? `pill ${kind}` : "pill";
+        return `<span class="${className}">${escapeHtml(text)}</span>`;
+      }
+
+      async function fetchJson(path) {
+        const response = await fetch(path);
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            body.error || `Request failed with status ${response.status}`
+          );
+        }
+        return body;
+      }
+
+      function parseAgentUrl() {
+        const marker = "/registry/agents/";
+        const index = window.location.pathname.indexOf(marker);
+        state.encoded =
+          index === -1
+            ? ""
+            : window.location.pathname.slice(index + marker.length);
+        state.agentUrl = decodeURIComponent(state.encoded || "");
+        return state.agentUrl;
+      }
+
+      function renderShell() {
+        let title = state.agentUrl || "Unknown agent";
+        try {
+          title = new URL(state.agentUrl).hostname;
+        } catch (_) {
+          title = state.agentUrl || "Unknown agent";
+        }
+
+        document.title = `${title} - Agent registry profile`;
+        document.getElementById("agentTitle").textContent = title;
+        document.getElementById("agentUrl").textContent = state.agentUrl;
+        const openLink = document.getElementById("openAgentLink");
+        openLink.href = state.agentUrl || "#";
+        openLink.hidden = !state.agentUrl;
+      }
+
+      function renderBadges(verification) {
+        const badgeList = document.getElementById("badgeList");
+        const badges = verification.badges || [];
+
+        if (!badges.length) {
+          badgeList.innerHTML =
+            '<div class="empty">No verification badges have been issued for this agent.</div>';
+          return;
+        }
+
+        badgeList.innerHTML = badges
+          .map(
+            (badge) => `
+        <div class="badge-item">
+          <img src="${escapeHtml(badge.badge_url)}" alt="${escapeHtml(
+              labelize(badge.role)
+            )} badge">
+          <div class="badge-meta">
+            ${escapeHtml(labelize(badge.role))}${
+              badge.adcp_version
+                ? ` for AdCP ${escapeHtml(badge.adcp_version)}`
+                : ""
+            }<br>
+            Verified ${escapeHtml(formatDate(badge.verified_at))}
+          </div>
+        </div>
+      `
+          )
+          .join("");
+      }
+
+      function renderCompliance(compliance, verification) {
+        const statusRow = document.getElementById("statusRow");
+        const status = compliance.status || "unknown";
+        const verified = verification.verified ? "verified" : "unverified";
+        statusRow.innerHTML = [
+          pill(labelize(status), statusClass(status)),
+          pill(labelize(verified), statusClass(verified)),
+          compliance.adcp_version
+            ? pill(`AdCP ${compliance.adcp_version}`)
+            : "",
+          compliance.lifecycle_stage
+            ? pill(labelize(compliance.lifecycle_stage))
+            : "",
+        ]
+          .filter(Boolean)
+          .join("");
+
+        document.getElementById("metrics").innerHTML = [
+          [
+            "Storyboards",
+            `${compliance.storyboards_passing ?? 0} / ${
+              compliance.storyboards_total ?? 0
+            }`,
+          ],
+          ["Last checked", formatDate(compliance.last_checked_at)],
+          [
+            "Check interval",
+            compliance.check_interval_hours
+              ? `${compliance.check_interval_hours} hours`
+              : "Unknown",
+          ],
+          ["Current streak", `${compliance.streak_days ?? 0} days`],
+          ["Opt-out", compliance.compliance_opt_out ? "Yes" : "No"],
+          ["Target", compliance.requested_compliance_target || "Default"],
+        ]
+          .map(
+            ([label, value]) => `
+        <div class="metric">
+          <div class="metric-label">${escapeHtml(label)}</div>
+          <div class="metric-value">${escapeHtml(value)}</div>
+        </div>
+      `
+          )
+          .join("");
+
+        const specialisms = compliance.declared_specialisms || [];
+        document.getElementById("specialisms").innerHTML = specialisms.length
+          ? specialisms
+              .map((item) =>
+                pill(
+                  labelize(item),
+                  statusClass(compliance.specialism_status?.[item])
+                )
+              )
+              .join("")
+          : '<div class="empty">No specialisms declared in the latest compliance run.</div>';
+
+        const tracks = compliance.tracks || {};
+        const trackEntries = Object.entries(tracks);
+        document.getElementById("tracks").innerHTML = trackEntries.length
+          ? trackEntries
+              .map(([name, track]) => {
+                const status =
+                  typeof track === "string"
+                    ? track
+                    : track.status || track.overall_status || "unknown";
+                return pill(
+                  `${labelize(name)}: ${labelize(status)}`,
+                  statusClass(status)
+                );
+              })
+              .join("")
+          : '<div class="empty">No track summary is available yet.</div>';
+      }
+
+      async function init() {
+        parseAgentUrl();
+        renderShell();
+
+        if (!state.agentUrl) {
+          document.getElementById("statusRow").innerHTML = pill(
+            "Invalid agent URL",
+            "error"
+          );
+          document.getElementById("badgeList").innerHTML =
+            '<div class="error-message">This registry URL is missing an encoded agent URL.</div>';
+          document.getElementById("metrics").innerHTML =
+            '<div class="error-message">Unable to load this agent profile.</div>';
+          return;
+        }
+
+        try {
+          const [verification, compliance] = await Promise.all([
+            fetchJson(`/api/registry/agents/${state.encoded}/verification`),
+            fetchJson(`/api/registry/agents/${state.encoded}/compliance`),
+          ]);
+
+          renderBadges(verification);
+          renderCompliance(compliance, verification);
+        } catch (error) {
+          document.getElementById("statusRow").innerHTML = pill(
+            "Load failed",
+            "error"
+          );
+          document.getElementById(
+            "badgeList"
+          ).innerHTML = `<div class="error-message">${escapeHtml(
+            error.message
+          )}</div>`;
+          document.getElementById(
+            "metrics"
+          ).innerHTML = `<div class="error-message">${escapeHtml(
+            error.message
+          )}</div>`;
+        }
+      }
+
+      init();
+    </script>
+  </body>
+</html>

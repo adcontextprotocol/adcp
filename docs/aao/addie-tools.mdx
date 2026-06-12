@@ -422,7 +422,7 @@ Issue a short-lived JWT (1h TTL) the adopter pastes into their `@adcp/sdk/server
 
 ### `run_conformance_against_my_agent`
 
-Run a compliance storyboard against the adopter MCP server connected to this Addie session via Socket Mode. The adopter must have started `@adcp/sdk/server` ConformanceClient with a token issued in this same chat session — the channel routes by WorkOS organization id. Returns a markdown report with phase/step pass/fail/skipped status and trimmed error text on failures. Use this after the user confirms their conformance client shows `status=connected`.
+Run a compliance storyboard against the adopter MCP server connected to this Addie session via Socket Mode. The adopter must have started `@adcp/sdk/server` ConformanceClient with a token issued in this same chat session — the channel routes by WorkOS organization id. Returns a markdown report with phase/step pass/fail/skipped status, trimmed error text, and sanitized failed-validation details such as id, expected, and actual on failures. Use this after the user confirms their conformance client shows `status=connected`.
 
 *Source: `server/src/addie/mcp/conformance-tools.ts`*
 
