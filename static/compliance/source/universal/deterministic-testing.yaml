@@ -306,6 +306,9 @@ phases:
     # runner's default "depend on all prior phases" from cascade-skipping when
     # an unrelated upstream phase trips on missing_tool.
     depends_on: []
+    requires_capability:
+      path: supported_protocols
+      contains: media_buy
 
     steps:
       - id: sync_accounts_for_state
@@ -544,6 +547,9 @@ phases:
     # runner's default "depend on all prior phases" from cascade-skipping when
     # an unrelated upstream phase trips on missing_tool.
     depends_on: []
+    requires_capability:
+      path: supported_protocols
+      contains: media_buy
 
     steps:
       - id: create_media_buy
@@ -775,6 +781,9 @@ phases:
     # default "depend on all prior phases" from cascade-skipping when an
     # unrelated upstream phase trips on missing_tool.
     depends_on: []
+    requires_capability:
+      path: supported_protocols
+      contains: creative
 
     steps:
       - id: sync_creative_for_state
@@ -1052,6 +1061,9 @@ phases:
     # prevents the runner's default "depend on all prior phases" from
     # cascade-skipping this phase when an unrelated upstream phase trips.
     depends_on: []
+    requires_capability:
+      path: supported_protocols
+      contains: sponsored_intelligence
 
     steps:
       - id: initiate_session
@@ -1181,6 +1193,9 @@ phases:
     # cascade-skip when deterministic_session skips for missing si_initiate_session
     # on non-SI sellers (adcp-client#1711 follow-up).
     depends_on: []
+    requires_capability:
+      path: supported_protocols
+      contains: media_buy
 
     steps:
       - id: create_media_buy_for_delivery
@@ -1322,6 +1337,9 @@ phases:
     # cascade-skip when deterministic_session skips for missing si_initiate_session
     # on non-SI sellers (adcp-client#1711 follow-up).
     depends_on: []
+    requires_capability:
+      path: supported_protocols
+      contains: media_buy
 
     steps:
       - id: create_media_buy_for_budget

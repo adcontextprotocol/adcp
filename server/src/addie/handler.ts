@@ -105,6 +105,10 @@ import {
   createSocialDraftToolHandlers,
 } from './mcp/social-draft-tools.js';
 import {
+  PORTRAIT_TOOLS,
+  createPortraitToolHandlers,
+} from './mcp/portrait-tools.js';
+import {
   IMAGE_TOOLS,
   createImageToolHandlers,
 } from './mcp/image-tools.js';
@@ -372,6 +376,12 @@ async function createUserScopedTools(
     const socialDraftHandlers = createSocialDraftToolHandlers(memberContext);
     allTools.push(...SOCIAL_DRAFT_TOOLS);
     for (const [name, handler] of socialDraftHandlers) {
+      allHandlers.set(name, handler);
+    }
+
+    const portraitHandlers = createPortraitToolHandlers(memberContext);
+    allTools.push(...PORTRAIT_TOOLS);
+    for (const [name, handler] of portraitHandlers) {
       allHandlers.set(name, handler);
     }
   }

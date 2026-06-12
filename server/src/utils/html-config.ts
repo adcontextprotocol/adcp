@@ -298,6 +298,7 @@ export function injectMetaTagsIntoHtml(html: string, metaTags: MetaTagData): str
   // Replace meta tags and canonical URL using indexOf-based matching
   result = replaceTag(result, '<meta name="description"', `<meta name="description" id="pageDescription" content="${safeDesc}"`);
 
+  result = replaceTag(result, '<meta property="og:type"', `<meta property="og:type" content="${escapeHtmlAttr(metaTags.type || 'website')}"`);
   result = replaceTag(result, '<meta property="og:url"', `<meta property="og:url" id="ogUrl" content="${safeUrl}"`);
   result = replaceTag(result, '<meta property="og:title"', `<meta property="og:title" id="ogTitle" content="${safeTitle}"`);
   result = replaceTag(result, '<meta property="og:description"', `<meta property="og:description" id="ogDescription" content="${safeDesc}"`);

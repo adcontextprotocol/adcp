@@ -243,6 +243,28 @@
 #   individual steps at execution time. Both may be declared on the same
 #   storyboard.)
 #
+# requires_capability: object (optional — storyboard-level applicability gate
+#   evaluated against the agent's `get_adcp_capabilities` response before
+#   executing phases. When the predicate is not satisfied, the runner skips the
+#   storyboard with skip_result.reason: not_applicable and detail naming the
+#   predicate path and declared value.
+#
+#   Shape:
+#     path: string (dot path into get_adcp_capabilities, e.g.
+#       "media_buy.supports_proposals" or "supported_protocols")
+#     equals: JSON value (optional — predicate passes when the path value is
+#       strictly equal to this value)
+#     contains: JSON value (optional — predicate passes when the path value is
+#       an array containing this value)
+#     present: boolean (optional — predicate passes when the path exists when
+#       true, or is absent when false)
+#
+#   Exactly one of equals, contains, or present SHOULD be declared. Runners
+#   that support stricter validation MAY fail-load a gate with no matcher or
+#   multiple matchers. The same field is also legal on a phase; phase-level
+#   gates skip only that phase and are useful when a universal storyboard
+#   contains protocol-specific phase families.)
+#
 # required_any_of_tools: array (optional — declarative one-of-N tool-advertisement
 #   gate at storyboard load time. Each array entry is an OR-family object:
 #
@@ -521,6 +543,12 @@
 # id: string (unique within storyboard)
 # title: string (human-readable phase title)
 # narrative: string (paragraph explaining this phase from the caller's perspective)
+#
+# requires_capability: object (optional — same shape as the storyboard-level
+#   field above, but scoped to this phase. When the predicate is not satisfied,
+#   the runner skips the phase as not_applicable and MUST NOT treat the skipped
+#   phase as a prerequisite failure for independent sibling phases that declare
+#   `depends_on: []`.)
 #
 # depends_on: string[] (optional — overrides the cross-phase cascade default)
 #   Default semantics (field absent or undefined): "all prior phases." Every

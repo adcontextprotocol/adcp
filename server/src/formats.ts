@@ -3,6 +3,8 @@ import type { Agent, FormatInfo } from "./types.js";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
 
+type AdCPClientInstance = InstanceType<typeof AdCPClient>;
+
 export interface AgentFormatsProfile {
   agent_url: string;
   protocol: "mcp" | "a2a";
@@ -13,6 +15,8 @@ export interface AgentFormatsProfile {
 
 export class FormatsService {
   private cache: Map<string, AgentFormatsProfile> = new Map();
+  private clients: Map<string, AdCPClientInstance> = new Map();
+  private authedClients: WeakMap<SdkAuth, Map<string, AdCPClientInstance>> = new WeakMap();
   private readonly CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
   async getFormatsForAgent(agent: Agent, auth?: SdkAuth): Promise<AgentFormatsProfile> {
@@ -27,14 +31,7 @@ export class FormatsService {
     let error: string | undefined;
 
     try {
-      const agentConfig = {
-        id: agent.name,
-        name: agent.name,
-        agent_uri: agent.url,
-        protocol: (agent.protocol || "mcp") as "mcp" | "a2a",
-        ...agentConfigAuthFields(auth),
-      };
-      const multiClient = new AdCPClient([agentConfig], { userAgent: AAO_UA_DISCOVERY });
+      const multiClient = this.getClient(agent, auth);
       const client = multiClient.agent(agent.name);
       const result = await client.executeTask("list_creative_formats", {});
 
@@ -74,6 +71,38 @@ export class FormatsService {
     // cache feeds unauthed callers.
     if (!auth) this.cache.set(agent.url, profile);
     return profile;
+  }
+
+  private getClient(agent: Agent, auth?: SdkAuth): AdCPClientInstance {
+    const key = this.clientCacheKey(agent);
+    const clientPool = auth ? this.getAuthedClientPool(auth) : this.clients;
+    const cached = clientPool.get(key);
+    if (cached) return cached;
+
+    const agentConfig = {
+      id: agent.name,
+      name: agent.name,
+      agent_uri: agent.url,
+      protocol: (agent.protocol || "mcp") as "mcp" | "a2a",
+      ...agentConfigAuthFields(auth),
+    };
+    const client = new AdCPClient([agentConfig], { userAgent: AAO_UA_DISCOVERY });
+    clientPool.set(key, client);
+    return client;
+  }
+
+  private getAuthedClientPool(auth: SdkAuth): Map<string, AdCPClientInstance> {
+    let pool = this.authedClients.get(auth);
+    if (!pool) {
+      pool = new Map();
+      this.authedClients.set(auth, pool);
+    }
+    return pool;
+  }
+
+  private clientCacheKey(agent: Agent): string {
+    const protocol = agent.protocol || "mcp";
+    return `${agent.name}:${protocol}:${agent.url}`;
   }
 
   private normalizeFormat(format: any): FormatInfo {

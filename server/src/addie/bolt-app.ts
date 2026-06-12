@@ -158,6 +158,7 @@ import { BRAND_CANONICAL_TOOLS, createBrandCanonicalToolHandlers } from './mcp/b
 import { BRAND_PROPERTY_TOOLS, createBrandPropertyToolHandlers } from './mcp/brand-property-tools.js';
 import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/collaboration-tools.js';
 import { SOCIAL_DRAFT_TOOLS, createSocialDraftToolHandlers } from './mcp/social-draft-tools.js';
+import { PORTRAIT_TOOLS, createPortraitToolHandlers } from './mcp/portrait-tools.js';
 import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
 import { PROPERTY_TOOLS, createPropertyToolHandlers } from './mcp/property-tools.js';
 import { SCHEMA_TOOLS, createSchemaToolHandlers } from './mcp/schema-tools.js';
@@ -1117,6 +1118,12 @@ async function createUserScopedTools(
     const socialDraftHandlers = createSocialDraftToolHandlers(memberContext);
     allTools.push(...SOCIAL_DRAFT_TOOLS);
     for (const [name, handler] of socialDraftHandlers) {
+      allHandlers.set(name, handler);
+    }
+
+    const portraitHandlers = createPortraitToolHandlers(memberContext);
+    allTools.push(...PORTRAIT_TOOLS);
+    for (const [name, handler] of portraitHandlers) {
       allHandlers.set(name, handler);
     }
   }

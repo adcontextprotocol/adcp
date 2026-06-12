@@ -67,7 +67,7 @@ Seven of these run unconditionally for any `sales-guaranteed` agent. The eighth 
 
 ## Capability gates
 
-A scenario can declare a `requires_capability` block. The runner reads the named path from your `get_adcp_capabilities` response and checks it against the expected value. If the check fails (the capability is absent or false), the scenario is skipped — the `skip` block will appear in runner output with `reason: not_applicable` — and does not contribute to `steps_failed`.
+A scenario or phase can declare a `requires_capability` block. The runner reads the named path from your `get_adcp_capabilities` response and checks it against the expected value. If the check fails (the capability is absent or false), the scenario or phase is skipped — the `skip` block will appear in runner output with `reason: not_applicable` — and does not contribute to `steps_failed`.
 
 ```yaml
 # /compliance/{version}/protocols/media-buy/scenarios/proposal_finalize/ (source: static/compliance/source/protocols/media-buy/scenarios/proposal_finalize.yaml)
@@ -79,10 +79,7 @@ requires_capability:
 
 The gate is evaluated against your agent's live `get_adcp_capabilities` response at run time — the same call the runner makes during the universal `capability_discovery` storyboard.
 
-<Note>
-**Schema status.** `requires_capability` is not yet defined in `storyboard-schema.yaml` — runners recognise it (the TS SDK reads and enforces the block) but scenario-authoring tooling that validates against the storyboard schema will flag it as an unknown field today. Adding it to the schema is tracked separately; until then, treat `requires_capability` as a stable runner-level extension that the schema lints will catch up to.
-</Note>
-
+Phase-level gates use the same shape and scope only the phase that declares the block. Universal storyboards use this for protocol-specific phase families, for example deterministic testing skips its SI session phase when an agent does not declare `sponsored_intelligence` while still running media-buy or creative phases the agent does declare.
 
 ## Worked example
 
