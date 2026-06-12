@@ -69,6 +69,7 @@ import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import {
   hostedComplianceTarget,
   hostedComplianceOptions,
+  HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
   hostedAuthProbeTaskForProfile,
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
@@ -3928,6 +3929,7 @@ export function createMemberToolHandlers(
 
     const complyOptions: ComplyOptions = {
       test_session_id: `quality-eval-${Date.now()}`,
+      timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
       auth: authOption,
     };
     if (tracks) complyOptions.tracks = tracks;

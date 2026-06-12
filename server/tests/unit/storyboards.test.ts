@@ -14,6 +14,7 @@ import {
 import {
   DEFAULT_HOSTED_COMPLIANCE_LINE,
   DEFAULT_HOSTED_COMPLIANCE_VERSION,
+  HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
   badgeEligibleVersionsForHostedComplianceTarget,
   hostedAuthProbeTaskForProfile,
   hostedComplianceOptions,
@@ -169,6 +170,7 @@ describe('wrapper contract', () => {
     expect(index.adcp_version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
     expect(DEFAULT_HOSTED_COMPLIANCE_VERSION).toBe('3.0.14');
     expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.0');
+    expect(HOSTED_FULL_COMPLIANCE_TIMEOUT_MS).toBe(600_000);
     expect(target.requested).toBe(DEFAULT_HOSTED_COMPLIANCE_LINE);
     expect(target.version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
     expect(target.version).toMatch(/^3\.0\.\d+$/);

@@ -16,6 +16,14 @@ export const HOSTED_COMPLIANCE_TARGET_PREFERENCE = [
   '3.1-beta',
   DEFAULT_HOSTED_COMPLIANCE_LINE,
 ] as const;
+// Budget for a full-suite comply() assessment. @adcp/sdk 9.0.0-beta.28 applies
+// this value as the wall-clock budget for the *entire* pre-flight assessment
+// (not per-call), and a capability-rich agent legitimately runs ~117s — the SDK
+// default (120s) grades such agents "unreachable" with 0 steps. 600s clears
+// that ceiling. Revisit when the SDK restores per-call timeout semantics
+// (adcontextprotocol/adcp-client#2221): a per-call ceiling this large would let
+// a single hung call hold a connection for 10 minutes.
+export const HOSTED_FULL_COMPLIANCE_TIMEOUT_MS = 600_000;
 
 export interface HostedComplianceTarget {
   requested: string;

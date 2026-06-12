@@ -18,7 +18,7 @@ import {
   complianceResultToDbInput,
   type ComplyOptions,
 } from '../addie/services/compliance-testing.js';
-import { hostedComplianceTarget } from '../services/hosted-compliance-version.js';
+import { hostedComplianceTarget, HOSTED_FULL_COMPLIANCE_TIMEOUT_MS } from '../services/hosted-compliance-version.js';
 
 const urls = process.argv.slice(2).filter(a => !a.startsWith('--'));
 const complianceTarget = hostedComplianceTarget();
@@ -34,7 +34,7 @@ async function probe(agentUrl: string): Promise<void> {
 
   const opts: ComplyOptions = {
     test_session_id: `local-probe-${Date.now()}`,
-    timeout_ms: 90_000,
+    timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
     userAgent: AAO_UA_COMPLIANCE,
   };
 

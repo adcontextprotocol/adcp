@@ -18,6 +18,7 @@ import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { AAO_UA_COMPLIANCE } from '../../src/config/user-agents.js';
+import { HOSTED_FULL_COMPLIANCE_TIMEOUT_MS } from '../../src/services/hosted-compliance-version.js';
 
 const RUN_SUFFIX = Math.random().toString(36).slice(2, 8);
 const OWNER_USER_ID = `user_test_refresh_owner_${RUN_SUFFIX}`;
@@ -264,7 +265,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     expect(complyMock).toHaveBeenCalledWith(
       agentUrl,
       expect.objectContaining({
-        timeout_ms: 90_000,
+        timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
         userAgent: AAO_UA_COMPLIANCE,
         test_session_id: expect.stringMatching(/^owner-refresh-\d+-[0-9a-f-]{36}$/),
       }),
@@ -309,7 +310,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     expect(complyMock).toHaveBeenCalledWith(
       agentUrl,
       expect.objectContaining({
-        timeout_ms: 90_000,
+        timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
         userAgent: AAO_UA_COMPLIANCE,
       }),
     );
