@@ -69,6 +69,15 @@
       "uniqueItems": true,
       "minItems": 1
     },
+    "audio_distribution_types": {
+      "type": "array",
+      "description": "Declared audio distribution types that may be included in this product, using IAB Tech Lab/OpenRTB 2.6 audio.feed definitions with AdCP-native names. Use on radio, streaming-audio, podcast, gaming, and other audio products when buyers need to distinguish music streaming services, FM/AM broadcast, podcasts, catch-up radio, web radio, video-game audio, and text-to-speech inventory without changing the buyer-facing channel or adagents.json property type. Aggregate products and ad-network products MAY declare multiple values. When `placements[]` also carry `audio_distribution_types`, this product-level array SHOULD be the union of the placement-level declarations the seller may deliver under the product. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "/schemas/enums/audio-distribution-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
     "sponsored_placement_types": {
       "type": "array",
       "description": "Declared sponsored-placement types that may be included in this product, distinguishing where catalog-driven retail-media placements render on the retailer surface (sponsored search, sponsored display, or sponsored native). Use on retail-media products when buyers need to distinguish search-keyed, display, and native in-grid sponsored inventory. Aggregate products and ad-network products MAY declare multiple values. When `placements[]` also carry `sponsored_placement_types`, this product-level array SHOULD be the union of the placement-level declarations the seller may deliver under the product. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",

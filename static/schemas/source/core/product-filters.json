@@ -148,6 +148,16 @@
       "minItems": 1,
       "x-canonicalization": "set"
     },
+    "audio_distribution_types": {
+      "type": "array",
+      "description": "Filter audio products by acceptable declared audio distribution types, using IAB Tech Lab/OpenRTB 2.6 audio.feed definitions with AdCP-native names. Sellers SHOULD return only products they can satisfy with at least one requested type. Products whose only available delivery is a mixed, non-targetable bundle that includes unrequested audio distribution types SHOULD NOT match unless the seller can constrain delivery to the requested type during planning or purchase. This filter has set semantics for wholesale feed canonicalization.",
+      "items": {
+        "$ref": "/schemas/enums/audio-distribution-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1,
+      "x-canonicalization": "set"
+    },
     "sponsored_placement_types": {
       "type": "array",
       "description": "Filter retail-media products by acceptable declared sponsored-placement types (sponsored search, sponsored display, or sponsored native). Sellers SHOULD return only products they can satisfy with at least one requested type. Products whose only available delivery is a mixed, non-targetable bundle that includes unrequested sponsored-placement types SHOULD NOT match unless the seller can constrain delivery to the requested type during planning or purchase. This filter has set semantics for wholesale feed canonicalization.",

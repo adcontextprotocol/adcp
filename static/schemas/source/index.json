@@ -724,6 +724,10 @@
           "$ref": "/schemas/enums/video-placement-type.json",
           "description": "Declared video placement classifications using IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions"
         },
+        "audio-distribution-type": {
+          "$ref": "/schemas/enums/audio-distribution-type.json",
+          "description": "Declared audio distribution classifications using IAB Tech Lab/OpenRTB 2.6 audio.feed definitions"
+        },
         "sponsored-placement-type": {
           "$ref": "/schemas/enums/sponsored-placement-type.json",
           "description": "Declared sponsored-placement classifications for catalog-driven retail-media inventory"
