@@ -89,6 +89,20 @@ export interface LearnerProgress {
   attempts: number;
 }
 
+export interface AdminModuleCompletion {
+  id: string;
+  workos_user_id: string;
+  module_id: string;
+  admin_user_id: string;
+  completed_by: 'admin';
+  addie_thread_id: string;
+  score: Record<string, number>;
+  note: string | null;
+  teaching_checkpoint_id: string | null;
+  learner_progress_id: string | null;
+  created_at: string;
+}
+
 export interface CertificationAttempt {
   id: string;
   workos_user_id: string;
@@ -269,6 +283,71 @@ export async function completeModule(
   // Refresh engagement time view so admin metrics reflect the completion (errors logged internally)
   void refreshEngagementTime();
   return result.rows[0];
+}
+
+export async function adminCompleteModule(input: {
+  userId: string;
+  moduleId: string;
+  adminUserId: string;
+  addieThreadId: string;
+  score: Record<string, number>;
+  note?: string | null;
+  teachingCheckpointId?: string | null;
+}): Promise<{ progress: LearnerProgress; audit: AdminModuleCompletion }> {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const progressResult = await client.query<LearnerProgress>(
+      `INSERT INTO learner_progress
+         (workos_user_id, module_id, status, started_at, completed_at, score, addie_thread_id)
+       VALUES ($1, $2, 'completed', NOW(), NOW(), $3, $4)
+       ON CONFLICT (workos_user_id, module_id) DO UPDATE
+         SET status = 'completed',
+             started_at = COALESCE(learner_progress.started_at, EXCLUDED.started_at),
+             completed_at = NOW(),
+             score = EXCLUDED.score,
+             addie_thread_id = EXCLUDED.addie_thread_id,
+             updated_at = NOW()
+       RETURNING *`,
+      [input.userId, input.moduleId, JSON.stringify(input.score), input.addieThreadId]
+    );
+    const progress = progressResult.rows[0];
+    if (!progress) {
+      throw new Error(`Failed to upsert admin completion for user ${input.userId}, module ${input.moduleId}`);
+    }
+
+    const auditResult = await client.query<AdminModuleCompletion>(
+      `INSERT INTO admin_module_completions
+         (workos_user_id, module_id, admin_user_id, completed_by, addie_thread_id, score, note,
+          teaching_checkpoint_id, learner_progress_id)
+       VALUES ($1, $2, $3, 'admin', $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        input.userId,
+        input.moduleId,
+        input.adminUserId,
+        input.addieThreadId,
+        JSON.stringify(input.score),
+        input.note || null,
+        input.teachingCheckpointId || null,
+        progress.id,
+      ]
+    );
+    const audit = auditResult.rows[0];
+    if (!audit) {
+      throw new Error(`Failed to audit admin completion for user ${input.userId}, module ${input.moduleId}`);
+    }
+
+    await client.query('COMMIT');
+    void refreshEngagementTime();
+    return { progress, audit };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function reconcilePassedAttemptModule(
@@ -1491,6 +1570,20 @@ export async function getLatestCheckpoint(
   return result.rows[0] || null;
 }
 
+export async function getLatestCheckpointForThread(
+  userId: string,
+  moduleId: string,
+  threadId: string
+): Promise<TeachingCheckpoint | null> {
+  const result = await query<TeachingCheckpoint>(
+    `SELECT * FROM teaching_checkpoints
+     WHERE workos_user_id = $1 AND module_id = $2 AND thread_id = $3
+     ORDER BY created_at DESC LIMIT 1`,
+    [userId, moduleId, threadId]
+  );
+  return result.rows[0] || null;
+}
+
 // =====================================================
 // ADMIN ANALYTICS
 // =====================================================
@@ -1677,7 +1770,7 @@ export async function getAdminLearnerList(options: {
   const limit = Math.min(options.limit || 20, 100);
   const offset = (page - 1) * limit;
 
-  let whereClause = 'WHERE lp.id IS NOT NULL'; // has any progress
+  let whereClause = 'WHERE (lp.id IS NOT NULL OR tc.id IS NOT NULL)'; // has progress or teaching evidence
   const params: (string | number)[] = [];
   let paramIdx = 1;
 
@@ -1699,7 +1792,8 @@ export async function getAdminLearnerList(options: {
   const countResult = await query<{ count: string }>(
     `SELECT COUNT(DISTINCT u.workos_user_id)::text AS count
      FROM users u
-     JOIN learner_progress lp ON lp.workos_user_id = u.workos_user_id
+     LEFT JOIN learner_progress lp ON lp.workos_user_id = u.workos_user_id
+     LEFT JOIN teaching_checkpoints tc ON tc.workos_user_id = u.workos_user_id
      ${whereClause}`,
     params
   );
@@ -1715,14 +1809,21 @@ export async function getAdminLearnerList(options: {
        u.first_name,
        u.last_name,
        u.email,
-       COUNT(CASE WHEN lp.status IN ('completed', 'tested_out') THEN 1 END)::text AS modules_completed,
-       COUNT(CASE WHEN lp.status = 'in_progress' THEN 1 END)::text AS modules_in_progress,
-       MAX(COALESCE(lp.completed_at, lp.started_at))::text AS last_active
+       COUNT(DISTINCT CASE WHEN lp.status IN ('completed', 'tested_out') THEN lp.id END)::text AS modules_completed,
+       COUNT(DISTINCT CASE WHEN lp.status = 'in_progress' THEN lp.id END)::text AS modules_in_progress,
+       MAX(GREATEST(
+         COALESCE(lp.completed_at, lp.started_at, 'epoch'::timestamptz),
+         COALESCE(tc.created_at, 'epoch'::timestamptz)
+       ))::text AS last_active
      FROM users u
-     JOIN learner_progress lp ON lp.workos_user_id = u.workos_user_id
+     LEFT JOIN learner_progress lp ON lp.workos_user_id = u.workos_user_id
+     LEFT JOIN teaching_checkpoints tc ON tc.workos_user_id = u.workos_user_id
      ${whereClause}
      GROUP BY u.workos_user_id, u.first_name, u.last_name, u.email
-     ORDER BY MAX(COALESCE(lp.completed_at, lp.started_at)) DESC NULLS LAST
+     ORDER BY MAX(GREATEST(
+       COALESCE(lp.completed_at, lp.started_at, 'epoch'::timestamptz),
+       COALESCE(tc.created_at, 'epoch'::timestamptz)
+     )) DESC NULLS LAST
      LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
     [...params, limit, offset]
   );
@@ -1775,10 +1876,14 @@ export interface AdminLearnerDetail {
   }>;
   credentials: Array<{ name: string; tier: number; awarded_at: string; certifier_credential_id: string | null }>;
   checkpoints: Array<{
+    id: string;
     module_id: string;
+    thread_id: string | null;
     current_phase: string;
     concepts_covered: string[];
     concepts_remaining: string[];
+    preliminary_scores: Record<string, number> | null;
+    demonstrations_verified: string[];
     notes: string | null;
     created_at: string;
   }>;
@@ -1814,11 +1919,14 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
       [userId]
     ),
     query<{
-      module_id: string; current_phase: string;
+      id: string; module_id: string; thread_id: string | null; current_phase: string;
       concepts_covered: string[]; concepts_remaining: string[];
+      preliminary_scores: Record<string, number> | null; demonstrations_verified: string[];
       notes: string | null; created_at: string;
     }>(
-      `SELECT DISTINCT ON (module_id) module_id, current_phase, concepts_covered, concepts_remaining, notes, created_at
+      `SELECT DISTINCT ON (module_id)
+          id, module_id, thread_id, current_phase, concepts_covered, concepts_remaining,
+          preliminary_scores, demonstrations_verified, notes, created_at
        FROM teaching_checkpoints
        WHERE workos_user_id = $1
        ORDER BY module_id, created_at DESC`,

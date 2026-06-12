@@ -28,6 +28,17 @@ const reviewRequestLimiter = rateLimit({
   validate: { keyGeneratorIpFallback: false },
 });
 
+// Low-volume admin repair endpoint. Key by admin identity rather than learner.
+const adminModuleCompletionLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('cert-admin-module-complete:'),
+  keyGenerator: (req) => req.user?.id || req.ip || 'unknown',
+  validate: { keyGeneratorIpFallback: false },
+});
+
 const AUTH_ENABLED = !!(
   process.env.WORKOS_API_KEY &&
   process.env.WORKOS_CLIENT_ID
@@ -44,6 +55,106 @@ function extractNumericScores(value: unknown): Record<string, number> | null {
       return !key.startsWith('_') && typeof score === 'number' && Number.isFinite(score);
     });
   return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+function parseAdminModuleScores(value: unknown): Record<string, number> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const entries = Object.entries(value);
+  if (entries.length === 0) return null;
+  if (!entries.every(([, score]) => typeof score === 'number' && Number.isFinite(score))) {
+    return null;
+  }
+  return Object.fromEntries(entries) as Record<string, number>;
+}
+
+function validateModuleCompletionScores(
+  scores: Record<string, number>,
+  ac: certDb.AssessmentCriteria | null | undefined,
+): string | { weightedAvg: number } {
+  if (!ac?.dimensions?.length) {
+    return 'This module has no assessment criteria defined. Cannot validate scores.';
+  }
+
+  const scoreValues = Object.values(scores);
+  if (scoreValues.length === 0 || !scoreValues.every(v => v >= 0 && v <= 100)) {
+    return 'All score values must be numbers between 0 and 100.';
+  }
+
+  const definedDims = new Set(ac.dimensions.map(d => d.name));
+  const submittedDims = new Set(Object.keys(scores));
+  const missing = [...definedDims].filter(d => !submittedDims.has(d));
+  if (missing.length > 0) {
+    return `Missing required score dimensions: ${missing.join(', ')}. All defined dimensions must be scored.`;
+  }
+  const extra = [...submittedDims].filter(d => !definedDims.has(d));
+  if (extra.length > 0) {
+    return `Unknown score dimensions: ${extra.join(', ')}. Use only the defined dimensions: ${[...definedDims].join(', ')}`;
+  }
+
+  const belowFloor = Object.entries(scores).filter(([, score]) => score < 50);
+  if (belowFloor.length > 0) {
+    const dims = belowFloor.map(([dim]) => dim.replace(/_/g, ' ')).join(', ');
+    return `The learner has not yet demonstrated mastery in: ${dims}.`;
+  }
+
+  const weightMap = new Map(ac.dimensions.map(d => [d.name, d.weight]));
+  const weightedAvg = Object.entries(scores).reduce(
+    (sum, [dim, score]) => sum + score * ((weightMap.get(dim) ?? 0) / 100),
+    0,
+  );
+  const passingThreshold = ac.passing_threshold || 70;
+  if (weightedAvg < passingThreshold) {
+    return `Scores do not meet the module mastery threshold of ${passingThreshold}.`;
+  }
+
+  return { weightedAvg };
+}
+
+function getCriterionIds(mod: certDb.CertificationModule | null): string[] {
+  const exerciseDefs = mod?.exercise_definitions as certDb.ExerciseDefinition[] | null;
+  return (exerciseDefs ?? []).flatMap(ex =>
+    ex.success_criteria.map(sc => typeof sc === 'string' ? sc : sc.id)
+  );
+}
+
+function checkRequiredDemonstrations(
+  mod: certDb.CertificationModule | null,
+  checkpoint: certDb.TeachingCheckpoint,
+): string | null {
+  const requiredIds = getCriterionIds(mod);
+  if (requiredIds.length === 0) return null;
+
+  const verified = new Set(checkpoint.demonstrations_verified ?? []);
+  const missing = requiredIds.filter(id => !verified.has(id));
+  if (missing.length === 0) return null;
+
+  const exerciseDefs = mod?.exercise_definitions as certDb.ExerciseDefinition[] | null;
+  const idToText = new Map<string, string>();
+  for (const ex of exerciseDefs ?? []) {
+    for (const sc of ex.success_criteria) {
+      if (typeof sc === 'string') idToText.set(sc, sc);
+      else idToText.set(sc.id, sc.text);
+    }
+  }
+  const details = missing.map(id => `${id}: ${idToText.get(id) || id}`);
+  return `Required demonstrations not yet verified: ${details.join('; ')}`;
+}
+
+function validatePreliminaryScoreConsistency(
+  scores: Record<string, number>,
+  checkpoint: certDb.TeachingCheckpoint,
+): string | null {
+  if (!checkpoint.preliminary_scores) {
+    return 'The matching teaching checkpoint has no preliminary_scores.';
+  }
+  const jumps = Object.entries(scores)
+    .filter(([dim, score]) => {
+      const prelim = checkpoint.preliminary_scores![dim];
+      return prelim !== undefined && score - prelim > 20;
+    })
+    .map(([dim]) => dim.replace(/_/g, ' '));
+  if (jumps.length === 0) return null;
+  return `Score inconsistency detected in: ${jumps.join(', ')}. These dimensions changed >20 points from the checkpoint.`;
 }
 
 async function resolveCapstoneModuleIdForAttempt(
@@ -1150,6 +1261,104 @@ export function createCertificationRouters() {
       return res.json({ attempt: updated, ...(warnings.length > 0 && { warnings }) });
     } catch (error) {
       logger.error({ error, attemptId: req.params.attemptId }, 'Failed to resolve stuck attempt');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/certification/learners/:userId/modules/:moduleId/complete — admin repair for module completion
+  adminRouter.post('/learners/:userId/modules/:moduleId/complete', adminModuleCompletionLimiter, async (req, res) => {
+    const userId = req.params.userId;
+    const moduleId = req.params.moduleId.toUpperCase();
+    try {
+      const { scores, addie_thread_id, note } = req.body as {
+        scores?: unknown;
+        addie_thread_id?: unknown;
+        note?: unknown;
+      };
+
+      const adminUserId = req.user?.id;
+      if (!adminUserId) {
+        return res.status(401).json({ error: 'Admin user identity is required' });
+      }
+
+      const addieThreadId = typeof addie_thread_id === 'string' ? addie_thread_id.trim() : '';
+      if (!addieThreadId) {
+        return res.status(400).json({ error: 'addie_thread_id is required' });
+      }
+      if (addieThreadId.length > 500) {
+        return res.status(400).json({ error: 'addie_thread_id must be under 500 characters' });
+      }
+
+      let trimmedNote: string | null = null;
+      if (note !== undefined && note !== null) {
+        if (typeof note !== 'string') {
+          return res.status(400).json({ error: 'note must be a string when provided' });
+        }
+        trimmedNote = note.trim() || null;
+        if (trimmedNote && trimmedNote.length > 1000) {
+          return res.status(400).json({ error: 'note must be under 1000 characters' });
+        }
+      }
+
+      const effectiveScores = parseAdminModuleScores(scores);
+      if (!effectiveScores) {
+        return res.status(400).json({ error: 'scores must be a non-empty object of finite numbers' });
+      }
+
+      const mod = await certDb.getModule(moduleId);
+      if (!mod) {
+        return res.status(404).json({ error: 'Module not found' });
+      }
+
+      const scoreResult = validateModuleCompletionScores(effectiveScores, mod.assessment_criteria);
+      if (typeof scoreResult === 'string') {
+        return res.status(422).json({ error: scoreResult });
+      }
+
+      const checkpoint = await certDb.getLatestCheckpointForThread(userId, moduleId, addieThreadId);
+      if (!checkpoint) {
+        return res.status(409).json({
+          error: 'No teaching checkpoint found for this learner, module, and addie_thread_id',
+        });
+      }
+
+      const consistencyError = validatePreliminaryScoreConsistency(effectiveScores, checkpoint);
+      if (consistencyError) {
+        return res.status(409).json({ error: consistencyError });
+      }
+
+      const demoError = checkRequiredDemonstrations(mod, checkpoint);
+      if (demoError) {
+        return res.status(409).json({ error: demoError });
+      }
+
+      const { progress, audit } = await certDb.adminCompleteModule({
+        userId,
+        moduleId,
+        adminUserId,
+        addieThreadId,
+        score: effectiveScores,
+        note: trimmedNote,
+        teachingCheckpointId: checkpoint.id,
+      });
+
+      const warnings: string[] = [];
+      let credentialsAwarded: string[] = [];
+      try {
+        credentialsAwarded = await certDb.checkAndAwardCredentials(userId);
+      } catch (credError) {
+        warnings.push('Credential check failed — run backfill');
+        logger.error({ error: credError, userId, moduleId }, 'Failed to check credentials after admin module completion');
+      }
+
+      return res.json({
+        progress,
+        audit,
+        credentials_awarded: credentialsAwarded,
+        ...(warnings.length > 0 && { warnings }),
+      });
+    } catch (error) {
+      logger.error({ error, userId, moduleId }, 'Failed to admin-complete certification module');
       res.status(500).json({ error: 'Internal server error' });
     }
   });

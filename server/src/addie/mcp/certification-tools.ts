@@ -1939,8 +1939,27 @@ export function createCertificationToolHandlers(
 
     try {
       const moduleId = (input.module_id as string).toUpperCase();
-      const scores = input.scores as Record<string, number>;
 
+      // Verify module is in-progress before allowing completion
+      const progress = await certDb.getProgress(userId);
+      const moduleProgress = progress.find(p => p.module_id === moduleId);
+      if (moduleProgress?.status === 'completed') {
+        const lines = [
+          `Module ${moduleId} completed! This module was already recorded as complete.`,
+          '',
+          'Congratulate them warmly — they earned this. Do NOT share any scores or percentages with the learner.',
+        ];
+        try {
+          lines.push(...await checkAndFormatCredentials(userId, memberContext));
+        } catch (credError) {
+          logger.error({ error: credError }, 'Failed to check credential eligibility');
+        }
+        lines.push('');
+        lines.push('Check your progress with "show my certification progress".');
+        return lines.join('\n');
+      }
+
+      const scores = input.scores as Record<string, number>;
       if (!scores || typeof scores !== 'object') return 'Scores are required to complete a module.';
 
       const mod = await certDb.getModule(moduleId);
@@ -1950,9 +1969,6 @@ export function createCertificationToolHandlers(
       const scoreResult = await validateCompletionScores(scores, ac);
       if (typeof scoreResult === 'string') return notCompleted(moduleId, 'score', scoreResult);
 
-      // Verify module is in-progress before allowing completion
-      const progress = await certDb.getProgress(userId);
-      const moduleProgress = progress.find(p => p.module_id === moduleId);
       if (!moduleProgress || moduleProgress.status !== 'in_progress') {
         const status = moduleProgress?.status || 'not started';
         return notCompleted(moduleId, 'state', `Module is ${status}. Only in-progress modules can be completed. Start the module first via start_certification_module.`);
