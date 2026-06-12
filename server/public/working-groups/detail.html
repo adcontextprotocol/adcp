@@ -1443,9 +1443,9 @@
     let postsData = [];
 
     async function init() {
-      // Get slug from URL
-      const pathParts = window.location.pathname.split('/');
-      currentSlug = pathParts[pathParts.length - 1];
+      // Get slug from either /working-groups/:slug or /working-groups/:slug/posts/:postSlug.
+      const pathInfo = parseWorkingGroupPath();
+      currentSlug = pathInfo.groupSlug;
 
       if (!currentSlug || currentSlug === 'detail.html') {
         showError();
@@ -1457,6 +1457,28 @@
 
       // Load working group data
       await loadWorkingGroup();
+    }
+
+    function safeDecodeURIComponent(value) {
+      try {
+        return decodeURIComponent(value || '');
+      } catch {
+        return value || '';
+      }
+    }
+
+    function parseWorkingGroupPath() {
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
+      const workingGroupsIndex = pathParts.indexOf('working-groups');
+      if (workingGroupsIndex === -1) {
+        return { groupSlug: '', postSlug: null };
+      }
+
+      const groupSlug = safeDecodeURIComponent(pathParts[workingGroupsIndex + 1]);
+      const postSlug = pathParts[workingGroupsIndex + 2] === 'posts'
+        ? safeDecodeURIComponent(pathParts[workingGroupsIndex + 3])
+        : null;
+      return { groupSlug, postSlug };
     }
 
     async function checkAuth() {
@@ -1717,7 +1739,7 @@
           } else {
             const articleSlug = post.source_group ? post.source_group.slug : currentSlug;
             return `
-              <a href="/working-groups/${escapeHtml(articleSlug)}#post-${escapeHtml(post.slug)}" id="post-${escapeHtml(post.slug)}" class="post-card article-link" data-post-slug="${escapeHtml(post.slug)}">
+              <a href="/working-groups/${escapeHtml(articleSlug)}/posts/${escapeHtml(post.slug)}" id="post-${escapeHtml(post.slug)}" class="post-card article-link" data-post-slug="${escapeHtml(post.slug)}">
                 <div class="post-title">${escapeHtml(post.title)}</div>
                 <div class="post-meta">
                   <span>${formatDate(post.published_at)}</span>
@@ -2424,26 +2446,39 @@
 
     function handlePostAnchor() {
       const hash = window.location.hash;
-      if (hash && hash.startsWith('#post-')) {
-        const postSlug = hash.substring(6); // Remove '#post-'
-        const post = postsData.find(p => p.slug === postSlug);
-        if (post) {
-          if (post.content_type === 'link' && post.external_url) {
-            // For link posts, redirect to external URL
-            window.open(post.external_url, '_blank', 'noopener,noreferrer');
-          } else {
-            // For article posts, open the article view
-            openArticle(postSlug);
-          }
+      const pathInfo = parseWorkingGroupPath();
+      const canonicalPostSlug = pathInfo.groupSlug === currentSlug ? pathInfo.postSlug : null;
+      const postSlug = canonicalPostSlug || (hash && hash.startsWith('#post-') ? hash.substring(6) : null);
+
+      if (postSlug) {
+        const decodedPostSlug = safeDecodeURIComponent(postSlug);
+        const post = postsData.find(p => p.slug === decodedPostSlug);
+        if (!post) return;
+
+        if (post.content_type === 'link' && post.external_url) {
+          // For link posts, redirect to external URL
+          window.open(post.external_url, '_blank', 'noopener,noreferrer');
+        } else {
+          // For article posts, open the article view
+          openArticle(decodedPostSlug);
         }
       }
+    }
+
+    function hasRequestedPostInLocation() {
+      const hash = window.location.hash;
+      const pathInfo = parseWorkingGroupPath();
+      return Boolean(
+        (hash && hash.startsWith('#post-')) ||
+        (pathInfo.groupSlug === currentSlug && pathInfo.postSlug)
+      );
     }
 
     let currentArticleSlug = null;
 
     function articlePermalinkForPost(post) {
       const groupSlug = post.source_group?.slug || currentSlug;
-      return `/working-groups/${encodeURIComponent(groupSlug)}#post-${encodeURIComponent(post.slug)}`;
+      return `/working-groups/${encodeURIComponent(groupSlug)}/posts/${encodeURIComponent(post.slug)}`;
     }
 
     function openArticle(postSlug) {
@@ -2517,13 +2552,15 @@
       });
     }
 
-    function closeArticleView() {
+    function closeArticleView(updateUrl = true) {
       document.getElementById('articleViewModal').style.display = 'none';
       document.body.style.overflow = '';
       currentArticleSlug = null;
 
       // Update URL to remove anchor
-      history.pushState(null, '', `/working-groups/${encodeURIComponent(currentSlug)}`);
+      if (updateUrl) {
+        history.pushState(null, '', `/working-groups/${encodeURIComponent(currentSlug)}`);
+      }
     }
 
     function editCurrentArticle() {
@@ -2656,11 +2693,10 @@
 
     // Handle browser back/forward
     window.addEventListener('popstate', () => {
-      const hash = window.location.hash;
-      if (hash && hash.startsWith('#post-') && postsData.length > 0) {
+      if (hasRequestedPostInLocation() && postsData.length > 0) {
         handlePostAnchor();
       } else {
-        closeArticleView();
+        closeArticleView(false);
       }
     });
 

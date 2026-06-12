@@ -1155,7 +1155,7 @@
               </div>
             </div>
             <div class="post-actions">
-              ${post.status === 'published' ? `<a href="/working-groups/${currentSlug}#post-${post.slug}" target="_blank" class="btn btn-secondary btn-small">View</a>` : ''}
+              ${post.status === 'published' ? `<a href="/working-groups/${currentSlug}/posts/${post.slug}" target="_blank" class="btn btn-secondary btn-small">View</a>` : ''}
               <button class="btn btn-primary btn-small" onclick="editPost('${post.id}')">Edit</button>
               <button class="btn btn-danger btn-small" onclick="showDeleteModal('${post.id}', '${escapeHtml(post.title).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')">Delete</button>
             </div>

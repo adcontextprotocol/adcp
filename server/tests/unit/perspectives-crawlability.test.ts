@@ -172,4 +172,38 @@ describe('Perspectives crawlability routes', () => {
     expect(res.text).toContain('<link>https://partner.example/field-notes</link>');
     expect(res.text).toContain('<pubDate>Mon, 01 Jun 2026 12:00:00 GMT</pubDate>');
   });
+
+  it('serves working group post canonical pages with server-rendered social meta tags', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [{
+        title: 'Audio as a Native SI Surface',
+        subtitle: null,
+        excerpt: 'Why sponsored intelligence needs audio-native formats.',
+        content: 'Fallback content should not be used when an excerpt exists.',
+        featured_image_url: '/api/perspectives/audio-as-a-native-si-surface/assets/cover.png',
+        author_name: 'Riley Author',
+        published_at: new Date('2026-06-08T14:00:00Z'),
+        updated_at: new Date('2026-06-09T14:00:00Z'),
+        group_name: 'Sponsored Intelligence',
+        group_description: 'Working group description.',
+        group_slug: 'sponsored-intelligence',
+      }],
+    });
+
+    const res = await request(app())
+      .get('/working-groups/sponsored-intelligence/posts/audio-as-a-native-si-surface')
+      .set('Host', 'agenticadvertising.org');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(queryMock).toHaveBeenCalledWith(expect.stringContaining('wg.slug = $1'), [
+      'sponsored-intelligence',
+      'audio-as-a-native-si-surface',
+    ]);
+    expect(res.text).toContain('<meta property="og:type" content="article">');
+    expect(res.text).toContain('<meta property="og:title" id="ogTitle" content="Audio as a Native SI Surface | Sponsored Intelligence">');
+    expect(res.text).toContain('<meta property="og:description" id="ogDescription" content="Why sponsored intelligence needs audio-native formats.">');
+    expect(res.text).toContain('<meta property="og:image" id="ogImage" content="https://agenticadvertising.org/api/perspectives/audio-as-a-native-si-surface/assets/cover.png">');
+    expect(res.text).toContain('<link rel="canonical" id="canonicalUrl" href="https://agenticadvertising.org/working-groups/sponsored-intelligence/posts/audio-as-a-native-si-surface">');
+  });
 });

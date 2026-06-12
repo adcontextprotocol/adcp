@@ -169,6 +169,46 @@ interface PublicPerspectiveCrawlerItem {
   updated_at: Date | string | null;
 }
 
+interface WorkingGroupPostMetaData {
+  title: string;
+  subtitle?: string | null;
+  excerpt?: string | null;
+  content?: string | null;
+  featured_image_url?: string | null;
+  author_name?: string | null;
+  published_at?: Date | string | null;
+  updated_at?: Date | string | null;
+  group_name: string;
+  group_description?: string | null;
+  group_slug: string;
+}
+
+function textForMetaDescription(value: string | null | undefined, fallback: string): string {
+  const text = String(value || fallback)
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[#>*_~|]/g, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (text.length <= 160) return text;
+  return `${text.slice(0, 157).trimEnd()}...`;
+}
+
+function absolutePublicUrl(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith('/')) return `${PUBLIC_SITE_URL}${value}`;
+  return undefined;
+}
+
+function metaDate(value: Date | string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  return value instanceof Date ? value.toISOString() : value;
+}
+
 function escapeXml(value: unknown): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -2913,6 +2953,48 @@ export class HTTPServer {
     });
     this.app.get("/working-groups/editorial/manage", (_req, res) => {
       res.redirect(301, '/dashboard/content');
+    });
+
+    this.app.get("/working-groups/:slug/posts/:postSlug", async (req, res) => {
+      const { slug, postSlug } = req.params;
+
+      let post: WorkingGroupPostMetaData | null = null;
+      try {
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT p.title, p.subtitle, p.excerpt, p.content, p.featured_image_url,
+                  p.author_name, p.published_at, p.updated_at,
+                  wg.name AS group_name, wg.description AS group_description, wg.slug AS group_slug
+           FROM perspectives p
+           JOIN working_groups wg ON wg.id = p.working_group_id
+           WHERE wg.slug = $1
+             AND p.slug = $2
+             AND wg.status = 'active'
+             AND wg.is_private = false
+             AND p.status = 'published'
+             AND p.is_members_only = false`,
+          [slug, postSlug]
+        );
+        if (result.rows.length > 0) {
+          post = result.rows[0];
+        }
+      } catch (error) {
+        logger.warn({ error, slug, postSlug }, 'Failed to fetch working group post for meta tags');
+      }
+
+      await serveHtmlWithMetaTags(req, res, 'working-groups/detail.html', post ? {
+        title: `${post.title} | ${post.group_name}`,
+        description: textForMetaDescription(
+          post.excerpt || post.subtitle || post.content || post.group_description,
+          post.title
+        ),
+        image: absolutePublicUrl(post.featured_image_url) || 'https://agenticadvertising.org/AAo-social.png',
+        url: `${PUBLIC_SITE_URL}/working-groups/${encodeURIComponent(post.group_slug)}/posts/${encodeURIComponent(postSlug)}`,
+        type: 'article',
+        author: post.author_name || undefined,
+        publishedAt: metaDate(post.published_at),
+        modifiedAt: metaDate(post.updated_at),
+      } : undefined);
     });
 
     this.app.get("/working-groups/:slug", async (req, res) => {
