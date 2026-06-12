@@ -8,6 +8,12 @@ required_tools:
   - get_products
   - create_media_buy
 
+# `media_buy.supports_proposals` is defined in the 3.1 schema. On 3.0.x,
+# absence is treated as false so non-proposal sellers skip this scenario.
+requires_capability:
+  path: media_buy.supports_proposals
+  equals: true
+
 narrative: |
   Proposals are curated media plans that the seller generates alongside products. The buyer
   reviews proposals, refines them (adjust budget splits, swap products, add constraints),
