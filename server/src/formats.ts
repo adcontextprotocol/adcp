@@ -1,10 +1,11 @@
 import { AdCPClient } from "@adcp/sdk";
-import { createHash } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import type { Agent, FormatInfo } from "./types.js";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
 
 type AdCPClientInstance = InstanceType<typeof AdCPClient>;
+const CLIENT_POOL_AUTH_KEY = randomBytes(32);
 
 export interface AgentFormatsProfile {
   agent_url: string;
@@ -95,7 +96,7 @@ export class FormatsService {
     const base = `${agent.name}:${protocol}:${agent.url}`;
     if (!auth) return `public:${base}`;
 
-    const fingerprint = createHash("sha256")
+    const fingerprint = createHmac("sha256", CLIENT_POOL_AUTH_KEY)
       .update(JSON.stringify(agentConfigAuthFields(auth)))
       .digest("hex");
     return `auth:${base}:${fingerprint}`;
