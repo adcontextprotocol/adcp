@@ -1731,6 +1731,18 @@
         "si-ui-element": {
           "$ref": "/schemas/sponsored-intelligence/si-ui-element.json",
           "description": "Standard visual components (text, link, image, product_card, carousel, action_button, app_handoff)"
+        },
+        "si-context-use": {
+          "$ref": "/schemas/sponsored-intelligence/si-context-use.json",
+          "description": "Declared host-side use mode for sponsored context entering an SI boundary"
+        },
+        "si-sponsored-context": {
+          "$ref": "/schemas/sponsored-intelligence/si-sponsored-context.json",
+          "description": "Declaration linking paying principal, context use, and disclosure obligation for sponsored context"
+        },
+        "si-sponsored-context-receipt": {
+          "$ref": "/schemas/sponsored-intelligence/si-sponsored-context-receipt.json",
+          "description": "Host receipt recording accepted use mode and disclosure commitment for sponsored context"
         }
       },
       "tasks": {

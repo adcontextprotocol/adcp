@@ -132,6 +132,36 @@ When `include_products` is true and `intent` is provided, the response MAY inclu
 
 This enables hosts to show rich previews before session initiation.
 
+### Sponsored Context Accountability
+
+Offering responses and session responses MAY include `sponsored_context` when the returned offering, matching products, message, or UI elements are sponsored context entering the host boundary. The declaration separates three facts:
+
+| Field | Purpose |
+|-------|---------|
+| `paying_principal` | Economic accountability: the brand that funded or sponsored the context, with optional account/operator context |
+| `context_use` | Declared host-side use mode: `presentation_only`, `comparison_set`, or `reasoning_context` |
+| `disclosure_obligation` | Disclosure the host must either accept and satisfy or reject before using the context |
+
+| `context_use` | Applies when |
+|---------------|--------------|
+| `presentation_only` | The context is rendered or offered as a distinct labeled unit, such as a sponsored card, answer block, or brand-agent handoff. |
+| `comparison_set` | The context forms a sponsored candidate set for comparison, ranking, or selection. This applies naturally to `matching_products`: the returned products may shape comparison even when not every item is rendered. |
+| `reasoning_context` | The context is intended to be available to the host model or orchestration layer for answer generation, planning, ranking, or other reasoning. |
+
+The declaration applies to the returned offering and `matching_products` package as a whole unless a future extension narrows it to individual items.
+
+Hosts that accept sponsored context SHOULD retain an audit record linking the `paying_principal`, declared `context_use`, `disclosure_obligation`, and host receipt. When the host subsequently calls `si_initiate_session` or `si_send_message`, it MAY include `sponsored_context_receipt` to make that acceptance visible to the brand/seller. The receipt records the receiving-surface accountability fact: what use mode the host accepted and what disclosure commitment it made.
+
+For accepted receipts:
+
+- `accepted_context_use` MUST match the declaration's `context_use`
+- `disclosure_commitment.status` MUST be `accepted` when `disclosure_obligation.required` is true
+- `disclosure_commitment.status` MAY be `not_required` only when `disclosure_obligation.required` is false
+
+A host that cannot honor the declared use mode or satisfy a required disclosure obligation MUST reject the sponsored context instead of sending an accepted receipt.
+
+This is a boundary contract. AdCP does not inspect hidden model reasoning, standardize chain-of-thought, or guarantee how a host model internally uses context after receipt. A conforming host that cannot honor the declared use mode or disclosure obligation MUST reject the sponsored context rather than silently down-scope or use it without disclosure.
+
 ## Session Lifecycle
 
 ### Session States
@@ -210,6 +240,7 @@ Hosts MAY include:
 - `media_buy_id` - AdCP media buy ID if triggered by advertising
 - `offering_id` - Brand-specific offering to apply
 - `placement` - Where this session was triggered
+- `sponsored_context_receipt` - Host receipt for sponsored context accepted before session initiation
 
 #### Response Requirements
 
@@ -221,6 +252,7 @@ Brand agents SHOULD return:
 
 - `response.message` - Initial conversational message
 - `negotiated_capabilities` - Intersection of brand and host capabilities
+- `sponsored_context` - Declaration for sponsored context in the initial brand-agent response
 
 ### Send Message
 
@@ -237,6 +269,10 @@ Hosts MUST include one of:
 - `message` - User's text message
 - `action_response` - Response to a UI action
 
+Hosts MAY include:
+
+- `sponsored_context_receipt` - Host receipt for sponsored context accepted from a prior SI response in this session
+
 #### Response Requirements
 
 Brand agents MUST return:
@@ -247,6 +283,7 @@ Brand agents MUST return:
 Brand agents SHOULD return:
 
 - `response.message` - Conversational response
+- `sponsored_context` - Declaration for sponsored context in the response message or UI elements
 
 If `session_status` is `pending_handoff`, the response MUST include:
 

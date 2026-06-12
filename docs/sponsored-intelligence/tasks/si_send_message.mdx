@@ -17,6 +17,7 @@ Send a message within an active SI session. The host invokes this task to relay 
 | `session_id` | string | Yes | Session ID from `si_initiate_session` |
 | `message` | string | No | User's text message |
 | `action_response` | object | No | Response to a UI action (button click, form submit) |
+| `sponsored_context_receipt` | object | No | Host receipt for sponsored context accepted from a prior SI response |
 
 At least one of `message` or `action_response` must be provided.
 
@@ -37,6 +38,7 @@ When the user interacts with a UI element:
 | `session_id` | string | Confirms the active session |
 | `response` | object | Brand agent's response |
 | `session_status` | string | Current session state |
+| `sponsored_context` | object | Sponsored-context declaration for sponsored context in this response |
 | `handoff` | object | Present when session_status is "pending_handoff" |
 
 ### Session Status Values

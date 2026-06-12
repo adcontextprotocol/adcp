@@ -151,6 +151,159 @@ async function runTests() {
     await validateExample(example.data, example.schema, example.description);
   }
 
+  const sponsoredContext = {
+    paying_principal: {
+      brand: { domain: 'acme-running.example' },
+      display_name: 'Acme Running'
+    },
+    context_use: 'comparison_set',
+    disclosure_obligation: {
+      required: true,
+      label_text: 'Sponsored results from Acme Running',
+      timing: 'near_each_influenced_output',
+      proximity: 'near_influenced_output'
+    },
+    declared_by: {
+      agent_url: 'https://agent.acme-running.example/si',
+      role: 'brand_agent'
+    },
+    declared_at: '2025-01-19T10:00:00Z'
+  };
+
+  await validateExample(
+    sponsoredContext,
+    '/schemas/sponsored-intelligence/si-sponsored-context.json',
+    'SI sponsored context example'
+  );
+
+  await validateExample(
+    {
+      sponsored_context: sponsoredContext,
+      host_receipt: {
+        status: 'accepted',
+        accepted_context_use: 'comparison_set',
+        received_at: '2025-01-19T10:00:02Z',
+        host_surface: 'assistant_comparison',
+        disclosure_commitment: {
+          status: 'accepted',
+          label_text: 'Sponsored results from Acme Running'
+        }
+      }
+    },
+    '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
+    'SI sponsored context receipt example'
+  );
+
+  const sponsoredContextReceipt = {
+    sponsored_context: sponsoredContext,
+    host_receipt: {
+      status: 'accepted',
+      accepted_context_use: 'comparison_set',
+      received_at: '2025-01-19T10:00:02Z',
+      host_surface: 'assistant_comparison',
+      disclosure_commitment: {
+        status: 'accepted',
+        label_text: 'Sponsored results from Acme Running'
+      }
+    }
+  };
+
+  await validateExample(
+    {
+      status: 'completed',
+      available: true,
+      offering_token: 'offering_abc123xyz',
+      matching_products: [
+        {
+          product_id: 'trail-pace-14',
+          name: 'Trail Pace 14'
+        }
+      ],
+      sponsored_context: sponsoredContext
+    },
+    '/schemas/sponsored-intelligence/si-get-offering-response.json',
+    'SI get offering response with sponsored context'
+  );
+
+  await validateExample(
+    {
+      idempotency_key: 'f6a7b8c9-d0e1-4234-f567-234567890123',
+      intent: 'User wants more detail about the sponsored trail shoe preview',
+      identity: {
+        consent_granted: false,
+        anonymous_session_id: 'anon_sess_123'
+      },
+      offering_token: 'offering_abc123xyz',
+      sponsored_context_receipt: sponsoredContextReceipt
+    },
+    '/schemas/sponsored-intelligence/si-initiate-session-request.json',
+    'SI initiate session request with sponsored context receipt'
+  );
+
+  await expectInvalid(
+    {
+      sponsored_context: sponsoredContext,
+      host_receipt: {
+        status: 'accepted',
+        received_at: '2025-01-19T10:00:02Z'
+      }
+    },
+    '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
+    'SI sponsored context accepted receipt requires use mode and disclosure commitment',
+    ['must have required property']
+  );
+
+  await expectInvalid(
+    {
+      sponsored_context: sponsoredContext,
+      host_receipt: {
+        status: 'accepted',
+        accepted_context_use: 'comparison_set',
+        received_at: '2025-01-19T10:00:02Z',
+        disclosure_commitment: {
+          status: 'rejected'
+        }
+      }
+    },
+    '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
+    'SI sponsored context accepted receipt rejects contradictory disclosure commitment',
+    ['must be equal to one of the allowed values']
+  );
+
+  await expectInvalid(
+    {
+      sponsored_context: sponsoredContext,
+      host_receipt: {
+        status: 'accepted',
+        accepted_context_use: 'presentation_only',
+        received_at: '2025-01-19T10:00:02Z',
+        disclosure_commitment: {
+          status: 'accepted'
+        }
+      }
+    },
+    '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
+    'SI sponsored context accepted receipt cannot change declared context use',
+    ['must be equal to constant']
+  );
+
+  await expectInvalid(
+    {
+      sponsored_context: sponsoredContext,
+      host_receipt: {
+        status: 'accepted',
+        accepted_context_use: 'comparison_set',
+        received_at: '2025-01-19T10:00:02Z',
+        disclosure_commitment: {
+          status: 'not_required'
+        }
+      }
+    },
+    '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
+    'SI sponsored context accepted receipt cannot decline required disclosure',
+    ['must be equal to constant']
+  );
+
   for (const fixture of [
     {
       path: 'static/examples/brand-json/riverton-kitchen-guidelines.json',
