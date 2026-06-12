@@ -2310,6 +2310,26 @@ components:
                 type: integer
               steps_total:
                 type: integer
+              failure_count:
+                type: integer
+              skipped_count:
+                type: integer
+              first_failed_step_id:
+                type:
+                  - string
+                  - "null"
+              first_failed_step_title:
+                type:
+                  - string
+                  - "null"
+              first_failed_step_task:
+                type:
+                  - string
+                  - "null"
+              first_failure_message:
+                type:
+                  - string
+                  - "null"
               last_tested_at:
                 type:
                   - string
@@ -2326,6 +2346,12 @@ components:
               - status
               - steps_passed
               - steps_total
+              - failure_count
+              - skipped_count
+              - first_failed_step_id
+              - first_failed_step_title
+              - first_failed_step_task
+              - first_failure_message
               - last_tested_at
               - last_passed_at
           description: Owner-scoped per-storyboard diagnostics used by the dashboard. Empty for non-owners.
@@ -2511,6 +2537,32 @@ components:
           type: integer
         steps_total:
           type: integer
+        failure_count:
+          type: integer
+          description: Root failing or actionable skipped step count. Cascaded prerequisite skips are excluded.
+        skipped_count:
+          type: integer
+          description: Cascaded prerequisite skip count for this storyboard verdict.
+        first_failed_step_id:
+          type:
+            - string
+            - "null"
+          description: First root failing or actionable skipped step id, when captured.
+        first_failed_step_title:
+          type:
+            - string
+            - "null"
+          description: First root failing or actionable skipped step title, when captured.
+        first_failed_step_task:
+          type:
+            - string
+            - "null"
+          description: Task/tool name for the first root failing or actionable skipped step, when captured.
+        first_failure_message:
+          type:
+            - string
+            - "null"
+          description: Runner error/detail text for the first root failing or actionable skipped step, when captured.
         last_tested_at:
           type:
             - string
@@ -2527,6 +2579,12 @@ components:
         - status
         - steps_passed
         - steps_total
+        - failure_count
+        - skipped_count
+        - first_failed_step_id
+        - first_failed_step_title
+        - first_failed_step_task
+        - first_failure_message
         - last_tested_at
         - last_passed_at
     ComplianceRun:
@@ -9411,11 +9469,37 @@ paths:
                         type: integer
                       steps_total:
                         type: integer
+                      failure_count:
+                        type: integer
+                      skipped_count:
+                        type: integer
+                      first_failed_step_id:
+                        type:
+                          - string
+                          - "null"
+                      first_failed_step_title:
+                        type:
+                          - string
+                          - "null"
+                      first_failed_step_task:
+                        type:
+                          - string
+                          - "null"
+                      first_failure_message:
+                        type:
+                          - string
+                          - "null"
                     required:
                       - storyboard_id
                       - status
                       - steps_passed
                       - steps_total
+                      - failure_count
+                      - skipped_count
+                      - first_failed_step_id
+                      - first_failed_step_title
+                      - first_failed_step_task
+                      - first_failure_message
                     description: Persisted storyboard verdict for this run, using the same executable-step semantics as agent_storyboard_status.
                   phases: {}
                   summary: {}

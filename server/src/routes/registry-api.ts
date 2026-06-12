@@ -361,11 +361,68 @@ const complianceDb = new ComplianceDatabase();
 const agentSnapshotDb = new AgentSnapshotDatabase();
 const agentContextDb = new AgentContextDatabase();
 
-function isUndefinedTableError(err: unknown): boolean {
-  return typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code?: unknown }).code === "42P01";
+function isStoryboardStatusSchemaUnavailable(err: unknown): boolean {
+  if (typeof err !== "object" || err === null || !("code" in err)) return false;
+  const code = (err as { code?: unknown }).code;
+  return code === "42P01" || code === "42703";
+}
+
+type StoryboardStatusLike = {
+  storyboard_id: string;
+  requested_compliance_target?: string | null;
+  adcp_version?: string | null;
+  status: "passing" | "failing" | "partial" | "untested" | string;
+  steps_passed: number;
+  steps_total: number;
+  failure_count?: number | null;
+  skipped_count?: number | null;
+  first_failed_step_id?: string | null;
+  first_failed_step_title?: string | null;
+  first_failed_step_task?: string | null;
+  first_failure_message?: string | null;
+  last_tested_at?: Date | string | null;
+  last_passed_at?: Date | string | null;
+};
+
+function serializeDate(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+function serializeStoryboardRunStatus(
+  s: StoryboardStatusLike,
+  options: { includeDiagnostics?: boolean } = {},
+) {
+  const includeDiagnostics = options.includeDiagnostics ?? true;
+  return {
+    storyboard_id: s.storyboard_id,
+    status: s.status,
+    steps_passed: s.steps_passed,
+    steps_total: s.steps_total,
+    failure_count: s.failure_count ?? 0,
+    skipped_count: s.skipped_count ?? 0,
+    first_failed_step_id: includeDiagnostics ? s.first_failed_step_id ?? null : null,
+    first_failed_step_title: includeDiagnostics ? s.first_failed_step_title ?? null : null,
+    first_failed_step_task: includeDiagnostics ? s.first_failed_step_task ?? null : null,
+    first_failure_message: includeDiagnostics ? s.first_failure_message ?? null : null,
+  };
+}
+
+function serializeStoryboardStatus(
+  s: StoryboardStatusLike,
+  options: { includeDiagnostics?: boolean } = {},
+) {
+  const sb = getStoryboard(s.storyboard_id);
+  return {
+    ...serializeStoryboardRunStatus(s, options),
+    requested_compliance_target: s.requested_compliance_target ?? null,
+    adcp_version: s.adcp_version ?? null,
+    title: sb?.title || s.storyboard_id,
+    category: sb?.category || null,
+    track: sb?.track || null,
+    last_tested_at: serializeDate(s.last_tested_at),
+    last_passed_at: serializeDate(s.last_passed_at),
+  };
 }
 
 interface PublicComplianceObservation {
@@ -3363,6 +3420,12 @@ const StoryboardRunStatusResponseSchema = z.object({
   status: z.enum(["passing", "failing", "partial", "untested"]),
   steps_passed: z.number().int(),
   steps_total: z.number().int(),
+  failure_count: z.number().int(),
+  skipped_count: z.number().int(),
+  first_failed_step_id: z.string().nullable(),
+  first_failed_step_title: z.string().nullable(),
+  first_failed_step_task: z.string().nullable(),
+  first_failure_message: z.string().nullable(),
 });
 
 const StoryboardRunDiagnosticResponseSchema = z.object({
@@ -5007,8 +5070,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       try {
         statusWithCounts = await complianceDb.getComplianceStatusWithStoryboardCounts(agentUrl);
       } catch (err) {
-        if (!isUndefinedTableError(err)) throw err;
-        logger.warn({ err, agentUrl }, "Storyboard status query skipped because table is missing");
+        if (!isStoryboardStatusSchemaUnavailable(err)) throw err;
+        logger.warn({ err, agentUrl }, "Storyboard status query skipped because schema is unavailable");
         const fallbackStatus = await complianceDb.getComplianceStatus(agentUrl);
         statusWithCounts = fallbackStatus
           ? { status: fallbackStatus, storyboardCounts: { passing: 0, total: 0 } }
@@ -5096,8 +5159,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       try {
         storyboardStatuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForLatestRun: true });
       } catch (err) {
-        if (!isUndefinedTableError(err)) throw err;
-        logger.warn({ err, agentUrl }, "Storyboard status query skipped because table is missing");
+        if (!isStoryboardStatusSchemaUnavailable(err)) throw err;
+        logger.warn({ err, agentUrl }, "Storyboard status query skipped because schema is unavailable");
       }
       if (declaredSpecialisms.length > 0) {
         specialismStatus = computeSpecialismStatus(
@@ -5148,22 +5211,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       const encodedUrl = encodeURIComponent(agentUrl);
       const storyboardStatusesForOwner = ownerMembership.is_owner
-        ? storyboardStatuses.map(s => {
-          const sb = getStoryboard(s.storyboard_id);
-          return {
-            storyboard_id: s.storyboard_id,
-            requested_compliance_target: s.requested_compliance_target ?? null,
-            adcp_version: s.adcp_version ?? null,
-            title: sb?.title || s.storyboard_id,
-            category: sb?.category || null,
-            track: sb?.track || null,
-            status: s.status,
-            steps_passed: s.steps_passed,
-            steps_total: s.steps_total,
-            last_tested_at: s.last_tested_at?.toISOString() || null,
-            last_passed_at: s.last_passed_at?.toISOString() || null,
-          };
-        })
+        ? storyboardStatuses.map(s => serializeStoryboardStatus(s))
         : [];
 
       res.json({
@@ -5585,26 +5633,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         try {
           statuses = await complianceDb.getStoryboardStatuses(agentUrl, { requireRowsForLatestRun: true });
         } catch (err) {
-          if (!isUndefinedTableError(err)) throw err;
-          logger.warn({ err, agentUrl }, "Storyboard status query skipped because table is missing");
+          if (!isStoryboardStatusSchemaUnavailable(err)) throw err;
+          logger.warn({ err, agentUrl }, "Storyboard status query skipped because schema is unavailable");
         }
 
-        const enriched = statuses.map(s => {
-          const sb = getStoryboard(s.storyboard_id);
-          return {
-            storyboard_id: s.storyboard_id,
-            requested_compliance_target: s.requested_compliance_target ?? null,
-            adcp_version: s.adcp_version ?? null,
-            title: sb?.title || s.storyboard_id,
-            category: sb?.category || null,
-            track: sb?.track || null,
-            status: s.status,
-            steps_passed: s.steps_passed,
-            steps_total: s.steps_total,
-            last_tested_at: s.last_tested_at?.toISOString() || null,
-            last_passed_at: s.last_passed_at?.toISOString() || null,
-          };
-        });
+        const includeDiagnostics = await canViewAgentDebugData(req, agentUrl);
+        const enriched = statuses.map(s => serializeStoryboardStatus(s, { includeDiagnostics }));
 
         res.json({
           agent_url: agentUrl,
@@ -5657,33 +5691,23 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         try {
           statusMap = await complianceDb.bulkGetStoryboardStatuses(nonOptedOut);
         } catch (err) {
-          if (!isUndefinedTableError(err)) throw err;
-          logger.warn({ err }, "Bulk storyboard status query skipped because table is missing");
+          if (!isStoryboardStatusSchemaUnavailable(err)) throw err;
+          logger.warn({ err }, "Bulk storyboard status query skipped because schema is unavailable");
         }
 
         const results: Record<string, any> = {};
+        const includeDiagnosticsByUrl = new Map<string, boolean>();
+        await Promise.all(nonOptedOut.map(async (url: string) => {
+          includeDiagnosticsByUrl.set(url, await canViewAgentDebugData(req, url));
+        }));
         for (const url of validUrls) {
           if (optedOut.has(url)) {
             results[url] = { status: "opted_out" };
             continue;
           }
           const statuses = statusMap.get(url) || [];
-          results[url] = statuses.map(s => {
-            const sb = getStoryboard(s.storyboard_id);
-            return {
-              storyboard_id: s.storyboard_id,
-              requested_compliance_target: s.requested_compliance_target ?? null,
-              adcp_version: s.adcp_version ?? null,
-              title: sb?.title || s.storyboard_id,
-              category: sb?.category || null,
-              track: sb?.track || null,
-              status: s.status,
-              steps_passed: s.steps_passed,
-              steps_total: s.steps_total,
-              last_tested_at: s.last_tested_at?.toISOString() || null,
-              last_passed_at: s.last_passed_at?.toISOString() || null,
-            };
-          });
+          const includeDiagnostics = includeDiagnosticsByUrl.get(url) ?? false;
+          results[url] = statuses.map(s => serializeStoryboardStatus(s, { includeDiagnostics }));
         }
 
         const invalidCount = agent_urls.length - validUrls.length;
@@ -7004,6 +7028,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           steps_passed: 0,
           steps_total: 0,
         };
+        const serializedStoryboardStatus = serializeStoryboardRunStatus(storyboardStatus);
         const isControllerCoverageGapScenario = (scenario: { steps?: any[] }): boolean => {
           const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
           return steps.length > 0 && steps.every((step) => {
@@ -7071,7 +7096,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           adcp_version: complyResult.adcp_version,
           ...badgeEligibilityMetadata(runBadgeEligibleVersions),
           run_id: run.id,
-          storyboard_status: storyboardStatus,
+          storyboard_status: serializedStoryboardStatus,
           phases: annotatedPhases,
           summary: complyResult.summary,
           diagnostics: uiDiagnostics,

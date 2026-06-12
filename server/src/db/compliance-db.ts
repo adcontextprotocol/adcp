@@ -206,6 +206,12 @@ export interface StoryboardStatusEntry {
   status: StoryboardStatus;
   steps_passed: number;
   steps_total: number;
+  failure_count?: number;
+  skipped_count?: number;
+  first_failed_step_id?: string | null;
+  first_failed_step_title?: string | null;
+  first_failed_step_task?: string | null;
+  first_failure_message?: string | null;
 }
 
 /**
@@ -504,20 +510,30 @@ export class ComplianceDatabase {
             const sbStatuses = input.storyboard_statuses.map(s => s.status);
             const sbStepsPassed = input.storyboard_statuses.map(s => s.steps_passed);
             const sbStepsTotal = input.storyboard_statuses.map(s => s.steps_total);
+            const sbFailureCounts = input.storyboard_statuses.map(s => s.failure_count ?? 0);
+            const sbSkippedCounts = input.storyboard_statuses.map(s => s.skipped_count ?? 0);
+            const sbFirstFailedStepIds = input.storyboard_statuses.map(s => s.first_failed_step_id ?? null);
+            const sbFirstFailedStepTitles = input.storyboard_statuses.map(s => s.first_failed_step_title ?? null);
+            const sbFirstFailedStepTasks = input.storyboard_statuses.map(s => s.first_failed_step_task ?? null);
+            const sbFirstFailureMessages = input.storyboard_statuses.map(s => s.first_failure_message ?? null);
 
             await client.query(
               `INSERT INTO agent_storyboard_status (
                 agent_url, storyboard_id, status, last_tested_at,
                 last_passed_at, last_failed_at, run_id,
-                steps_passed, steps_total, triggered_by, requested_compliance_target, adcp_version, updated_at
+                steps_passed, steps_total, failure_count, skipped_count,
+                first_failed_step_id, first_failed_step_title, first_failed_step_task, first_failure_message,
+                triggered_by, requested_compliance_target, adcp_version, updated_at
               )
               SELECT
                 $1, sb_id, sb_status, NOW(),
                 CASE WHEN sb_status = 'passing' THEN NOW() ELSE NULL END,
                 CASE WHEN sb_status IN ('failing', 'partial') THEN NOW() ELSE NULL END,
-                $4, sb_passed, sb_total, $7, $8, $9, NOW()
-              FROM unnest($2::text[], $3::text[], $5::int[], $6::int[])
-                AS t(sb_id, sb_status, sb_passed, sb_total)
+                $4, sb_passed, sb_total, sb_failures, sb_skips,
+                sb_first_failed_step_id, sb_first_failed_step_title, sb_first_failed_step_task, sb_first_failure_message,
+                $13, $14, $15, NOW()
+              FROM unnest($2::text[], $3::text[], $5::int[], $6::int[], $7::int[], $8::int[], $9::text[], $10::text[], $11::text[], $12::text[])
+                AS t(sb_id, sb_status, sb_passed, sb_total, sb_failures, sb_skips, sb_first_failed_step_id, sb_first_failed_step_title, sb_first_failed_step_task, sb_first_failure_message)
               ON CONFLICT (agent_url, storyboard_id) DO UPDATE SET
                 status = EXCLUDED.status,
                 last_tested_at = NOW(),
@@ -532,6 +548,12 @@ export class ComplianceDatabase {
                 run_id = EXCLUDED.run_id,
                 steps_passed = EXCLUDED.steps_passed,
                 steps_total = EXCLUDED.steps_total,
+                failure_count = EXCLUDED.failure_count,
+                skipped_count = EXCLUDED.skipped_count,
+                first_failed_step_id = EXCLUDED.first_failed_step_id,
+                first_failed_step_title = EXCLUDED.first_failed_step_title,
+                first_failed_step_task = EXCLUDED.first_failed_step_task,
+                first_failure_message = EXCLUDED.first_failure_message,
                 triggered_by = EXCLUDED.triggered_by,
                 requested_compliance_target = EXCLUDED.requested_compliance_target,
                 adcp_version = EXCLUDED.adcp_version,
@@ -543,6 +565,12 @@ export class ComplianceDatabase {
                 run.id,
                 sbStepsPassed,
                 sbStepsTotal,
+                sbFailureCounts,
+                sbSkippedCounts,
+                sbFirstFailedStepIds,
+                sbFirstFailedStepTitles,
+                sbFirstFailedStepTasks,
+                sbFirstFailureMessages,
                 input.triggered_by ?? 'heartbeat',
                 input.requested_compliance_target ?? null,
                 input.adcp_version ?? null,
@@ -1020,6 +1048,12 @@ export class ComplianceDatabase {
     last_failed_at: Date | null;
     steps_passed: number;
     steps_total: number;
+    failure_count: number;
+    skipped_count: number;
+    first_failed_step_id: string | null;
+    first_failed_step_title: string | null;
+    first_failed_step_task: string | null;
+    first_failure_message: string | null;
     triggered_by: string | null;
   }>> {
     const result = await query(
@@ -1032,7 +1066,9 @@ export class ComplianceDatabase {
          LIMIT 1
        )
        SELECT storyboard_id, requested_compliance_target, adcp_version, status, last_tested_at, last_passed_at, last_failed_at,
-              steps_passed, steps_total, triggered_by
+              steps_passed, steps_total, failure_count, skipped_count,
+              first_failed_step_id, first_failed_step_title, first_failed_step_task, first_failure_message,
+              triggered_by
        FROM agent_storyboard_status s
        WHERE s.agent_url = $1
          AND ($2::uuid IS NULL OR s.run_id = $2::uuid)
@@ -1109,6 +1145,12 @@ export class ComplianceDatabase {
     last_passed_at: Date | null;
     steps_passed: number;
     steps_total: number;
+    failure_count: number;
+    skipped_count: number;
+    first_failed_step_id: string | null;
+    first_failed_step_title: string | null;
+    first_failed_step_task: string | null;
+    first_failure_message: string | null;
   }>>> {
     if (agentUrls.length === 0) return new Map();
 
@@ -1131,7 +1173,8 @@ export class ComplianceDatabase {
          FROM latest_runs lr
        )
        SELECT s.agent_url, s.storyboard_id, s.requested_compliance_target, s.adcp_version, s.status, s.last_tested_at, s.last_passed_at,
-              s.steps_passed, s.steps_total
+              s.steps_passed, s.steps_total, s.failure_count, s.skipped_count,
+              s.first_failed_step_id, s.first_failed_step_title, s.first_failed_step_task, s.first_failure_message
        FROM agent_storyboard_status s
        LEFT JOIN latest_run_flags lf ON lf.agent_url = s.agent_url
        WHERE s.agent_url = ANY($1)
@@ -1144,6 +1187,9 @@ export class ComplianceDatabase {
       storyboard_id: string; requested_compliance_target: string | null; adcp_version: string | null; status: string;
       last_tested_at: Date | null; last_passed_at: Date | null;
       steps_passed: number; steps_total: number;
+      failure_count: number; skipped_count: number;
+      first_failed_step_id: string | null; first_failed_step_title: string | null;
+      first_failed_step_task: string | null; first_failure_message: string | null;
     }>>();
     for (const row of result.rows) {
       if (!map.has(row.agent_url)) map.set(row.agent_url, []);

@@ -13,7 +13,18 @@ function makeResult(
   scenarios: Array<{
     scenario: string;
     passed: boolean;
-    steps?: Array<{ passed: boolean; step?: string; skipped?: boolean; skip_reason?: string; requirement?: string }>;
+    steps?: Array<{
+      passed: boolean;
+      step?: string;
+      step_id?: string;
+      task?: string;
+      error?: string;
+      details?: string;
+      warnings?: string[];
+      skipped?: boolean;
+      skip_reason?: string;
+      requirement?: string;
+    }>;
   }>,
 ): ComplianceResult {
   return {
@@ -33,6 +44,11 @@ function makeResult(
           overall_passed: s.passed,
           steps: s.steps?.map(step => ({
             step: step.step ?? 'step',
+            ...(step.step_id && { step_id: step.step_id }),
+            ...(step.task && { task: step.task }),
+            ...(step.error && { error: step.error }),
+            ...(step.details && { details: step.details }),
+            ...(step.warnings && { warnings: step.warnings }),
             passed: step.passed,
             ...(step.skipped && { skipped: true }),
             ...(step.skip_reason && { skip_reason: step.skip_reason }),
@@ -111,6 +127,41 @@ describe('deriveStoryboardStatuses', () => {
     expect(entry).toMatchObject({ status: 'failing', steps_passed: 0, steps_total: 3 });
   });
 
+  it('separates root failures from cascaded prerequisite skips', () => {
+    const result = makeResult([
+      {
+        scenario: 'signal_owned/discovery',
+        passed: false,
+        steps: [
+          {
+            passed: false,
+            step: 'Create signal',
+            step_id: 'create_signal',
+            task: 'create_signal',
+            error: 'Expected created signal id',
+          },
+          { passed: true, skipped: true, skip_reason: 'prerequisite_failed', step: 'Activate signal' },
+          { passed: true, skipped: true, skip_reason: 'prerequisite_failed', step: 'Read signal' },
+        ],
+      },
+    ]);
+
+    const [entry] = deriveStoryboardStatuses(result);
+
+    expect(entry).toMatchObject({
+      storyboard_id: 'signal_owned',
+      status: 'failing',
+      steps_passed: 0,
+      steps_total: 3,
+      failure_count: 1,
+      skipped_count: 2,
+      first_failed_step_id: 'create_signal',
+      first_failed_step_title: 'Create signal',
+      first_failed_step_task: 'create_signal',
+      first_failure_message: 'Expected created signal id',
+    });
+  });
+
   it('keeps comply_test_controller skips as coverage gaps when mixed with executed steps', () => {
     const result = makeResult([
       {
@@ -175,6 +226,12 @@ describe('deriveStoryboardStatuses', () => {
       status: 'failing',
       steps_passed: 0,
       steps_total: 1,
+      failure_count: 1,
+      skipped_count: 0,
+      first_failed_step_id: 'get_delivery',
+      first_failed_step_title: 'get_delivery',
+      first_failed_step_task: null,
+      first_failure_message: 'missing_tool',
     });
   });
 
@@ -196,6 +253,12 @@ describe('deriveStoryboardStatuses', () => {
       status: 'failing',
       steps_passed: 0,
       steps_total: 1,
+      failure_count: 1,
+      skipped_count: 0,
+      first_failed_step_id: 'required_tool_family_missing',
+      first_failed_step_title: 'required_tool_family_missing',
+      first_failed_step_task: null,
+      first_failure_message: 'requirement_unmet',
     });
   });
 
@@ -245,6 +308,12 @@ describe('deriveStoryboardStatuses', () => {
       status: 'failing',
       steps_passed: 0,
       steps_total: 1,
+      failure_count: 1,
+      skipped_count: 0,
+      first_failed_step_id: 'resource_resolution',
+      first_failed_step_title: 'resource_resolution',
+      first_failed_step_task: null,
+      first_failure_message: 'fixture',
     });
   });
 
