@@ -189,7 +189,7 @@ Northwind's `brand.json` alone is not authorization. Any operator can claim a pr
 
 ### Multi-tenant sales agents
 
-Operators that host one sales-agent deployment for many publisher tenants MAY publish one `agents[]` entry per tenant or property-scoped endpoint, even when every entry has `type: "sales"`. Each entry is selected by its concrete `url`, not by `type`, so a path-routed deployment can publish per-tenant JWKS shards. Agent URLs MUST be unique within the `agents[]` array.
+Operators that host one sales-agent deployment for many publisher tenants MAY publish one `agents[]` entry per tenant or property-scoped endpoint, even when every entry has `type: "sales"`. Each entry is selected by its concrete `url`, not by `type`, so a path-routed deployment can publish per-tenant JWKS shards. The tenant or property scope is carried by the concrete agent URL being authenticated, such as `/mcp/{tenant}`; it is not selected from a tenant identifier inside the signed request body. Agent URLs MUST be unique within the `agents[]` array.
 
 ```json
 {
