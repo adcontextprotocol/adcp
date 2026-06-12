@@ -1,0 +1,165 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.13/brand/verify-brand-claim-request.json",
+  "title": "Verify Brand Claim Request",
+  "description": "Ask a brand-agent a verification question — does the brand's own data confirm or reject a specific claim about a facet of its identity? The unified replacement for the per-dimension verify_* tools. claim_type discriminates the kind of question (subsidiary / parent / property / trademark); the claim payload carries the question. Read-only; naturally idempotent — the brand's internal bookkeeping deduplicates per {caller_identity, claim_type, claim-target}.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "claim_type"
+  },
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-rc.13/core/version-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "title": "VerifySubsidiaryClaim",
+      "description": "House-side: is this brand a subsidiary of mine? Used by consumers detecting a leaf claiming `house_domain` pointing at this house.",
+      "properties": {
+        "claim_type": {
+          "type": "string",
+          "const": "subsidiary"
+        },
+        "claim": {
+          "type": "object",
+          "properties": {
+            "subsidiary_domain": {
+              "type": "string",
+              "format": "hostname",
+              "description": "Domain of the leaf brand whose `house_domain` claim is being verified."
+            },
+            "subsidiary_brand_id": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+$",
+              "description": "Stable brand identifier the leaf uses for itself. Optional but recommended."
+            },
+            "observed_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the caller observed the leaf's claim."
+            }
+          },
+          "required": ["subsidiary_domain"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["claim_type", "claim"],
+      "additionalProperties": true
+    },
+    {
+      "title": "VerifyParentClaim",
+      "description": "Leaf-side mirror: is this brand my parent house? The symmetric path that lets a leaf's brand-agent authoritatively confirm or reject a third party's claim about its parentage. Mutual assertion can complete at the agent layer (both house and leaf answer) rather than requiring a static-file crawl.",
+      "properties": {
+        "claim_type": {
+          "type": "string",
+          "const": "parent"
+        },
+        "claim": {
+          "type": "object",
+          "properties": {
+            "parent_domain": {
+              "type": "string",
+              "format": "hostname",
+              "description": "Domain of the house claimed as this brand's parent."
+            },
+            "claimant_says": {
+              "type": "string",
+              "description": "Optional context — what the claimant published or said. Helps the agent disambiguate competing claims."
+            },
+            "observed_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": ["parent_domain"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["claim_type", "claim"],
+      "additionalProperties": true
+    },
+    {
+      "title": "VerifyPropertyClaim",
+      "description": "Is this property (website, app, podcast, etc.) one of mine? Used at inventory-onboarding, creative-clearance, and fraud-escalation gates.",
+      "properties": {
+        "claim_type": {
+          "type": "string",
+          "const": "property"
+        },
+        "claim": {
+          "type": "object",
+          "properties": {
+            "property": {
+              "type": "object",
+              "description": "Shape matches brand.json properties[] entry.",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio"]
+                },
+                "identifier": { "type": "string" },
+                "store": {
+                  "type": "string",
+                  "enum": ["apple", "google", "amazon", "roku", "fire_tv", "samsung", "lg", "vizio", "other"]
+                },
+                "region": { "type": "string" }
+              },
+              "required": ["type", "identifier"],
+              "additionalProperties": true
+            },
+            "use_case": {
+              "type": "string",
+              "maxLength": 100,
+              "description": "Optional caller-declared use case. The agent MAY scope its answer."
+            }
+          },
+          "required": ["property"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["claim_type", "claim"],
+      "additionalProperties": true
+    },
+    {
+      "title": "VerifyTrademarkClaim",
+      "description": "Is this trademark mine? Returns ownership plus licensing posture and authorized use cases — the differentiator vs registry crawls.",
+      "properties": {
+        "claim_type": {
+          "type": "string",
+          "const": "trademark"
+        },
+        "claim": {
+          "type": "object",
+          "properties": {
+            "mark": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "registry": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "number": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "countries": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 2, "maxLength": 2 }
+            },
+            "use_case": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          "required": ["mark"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["claim_type", "claim"],
+      "additionalProperties": true
+    }
+  ]
+}

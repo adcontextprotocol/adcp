@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.13/core/forecast-dimension-placement.json",
+  "title": "Placement Forecast Dimension",
+  "description": "A placement dimension for a ForecastPoint row. Variant of ForecastPoint dimensions; see forecast-point-dimensions.json for dispatch rules.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "placement",
+      "description": "Dimension family discriminator."
+    },
+    "placement_ref": {
+      "$ref": "/schemas/3.1.0-rc.13/core/placement-ref.json",
+      "description": "Structured placement reference for this forecast row. References an entry from the product's placements array."
+    },
+    "placement_name": {
+      "type": "string",
+      "description": "Human-readable placement name, useful when the buyer has not resolved the placement catalog."
+    }
+  },
+  "required": ["kind", "placement_ref"],
+  "additionalProperties": false
+}

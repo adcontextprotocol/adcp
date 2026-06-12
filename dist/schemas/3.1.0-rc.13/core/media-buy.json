@@ -1,0 +1,147 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.13/core/media-buy.json",
+  "title": "Media Buy",
+  "description": "Represents a purchased advertising campaign",
+  "type": "object",
+  "properties": {
+    "media_buy_id": {
+      "type": "string",
+      "description": "Seller's unique identifier for the media buy",
+      "x-entity": "media_buy"
+    },
+    "account": {
+      "$ref": "/schemas/3.1.0-rc.13/core/account.json",
+      "description": "Account billed for this media buy"
+    },
+    "status": {
+      "$ref": "/schemas/3.1.0-rc.13/enums/media-buy-status.json"
+    },
+    "health": {
+      "allOf": [{ "$ref": "/schemas/3.1.0-rc.13/enums/media-buy-health.json" }],
+      "default": "ok",
+      "description": "Aggregate health based on open impairments[]. Orthogonal to status — a paused, pending, or active buy can each be impaired. Defaults to 'ok' when impairments[] is empty."
+    },
+    "impairments": {
+      "type": "array",
+      "description": "Open impairments — upstream dependency state changes that affect delivery for at least one package on this buy. Empty when health is 'ok'. Sellers MUST add an entry on next sync/poll response after a referenced resource transitions to an offline state, and MUST remove the entry (flipping health to 'ok' when the array empties) when the resource returns to a serviceable state. Staleness budget: the snapshot MUST reflect the impairment within 5 minutes of impairment.observed_at regardless of buyer poll cadence — sellers cannot rely on rare buyer polls to defer write propagation. See impairment.coherence assertion for the cross-resource invariant.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.13/core/impairment.json"
+      }
+    },
+    "rejection_reason": {
+      "type": "string",
+      "description": "Reason provided by the seller when status is 'rejected'. Present only when status is 'rejected'."
+    },
+    "confirmed_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller committed to this media buy. May be null until seller commitment occurs in deferred/manual approval flows. Once populated, remains stable through later pause, resume, activation, completion, cancellation, and reporting transitions."
+    },
+    "cancellation": {
+      "type": "object",
+      "description": "Cancellation metadata. Present only when status is 'canceled'.",
+      "required": ["canceled_at", "canceled_by"],
+      "properties": {
+        "canceled_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this media buy was canceled."
+        },
+        "canceled_by": {
+          "$ref": "/schemas/3.1.0-rc.13/enums/canceled-by.json",
+          "description": "Which party initiated the cancellation. 'buyer' when canceled via update_media_buy; 'seller' when the seller cancels (e.g., policy violation, inventory withdrawal)."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason provided when the media buy was canceled.",
+          "maxLength": 500
+        }
+      },
+      "additionalProperties": false
+    },
+    "total_budget": {
+      "type": "number",
+      "description": "Total budget amount",
+      "minimum": 0
+    },
+    "packages": {
+      "type": "array",
+      "description": "Array of packages within this media buy",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.13/core/package.json"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-rc.13/core/context.json",
+      "description": "Opaque media-buy-level correlation data echoed unchanged from the create_media_buy request. Sellers MUST include persisted context on read surfaces such as get_media_buys when the media buy was created through AdCP with context, so buyers can reconcile seller-assigned media_buy_id values with their own tracking state. Sellers MAY omit context for media buys created outside AdCP or created without context. Sellers MUST NOT parse this object for business logic."
+    },
+    "invoice_recipient": {
+      "$ref": "/schemas/3.1.0-rc.13/core/business-entity.json",
+      "description": "Per-buy override for who receives the invoice. When provided, the seller invoices this entity instead of the account's default billing_entity. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
+    },
+    "creative_deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp for creative upload deadline"
+    },
+    "revision": {
+      "type": "integer",
+      "description": "Monotonically increasing optimistic concurrency token. Incremented on every mutating state change or update; reads, validation-only calls, and exact idempotency replays do not increment it. Callers SHOULD include this in update_media_buy requests intended to change state — when provided, sellers MUST reject with CONFLICT if the revision does not match the current value, and MUST enforce that comparison atomically with the write.",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Creation timestamp"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last update timestamp"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-rc.13/core/ext.json"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "confirmed_at": {
+            "type": "null"
+          }
+        },
+        "required": ["confirmed_at"]
+      },
+      "then": {
+        "not": {
+          "properties": {
+            "status": {
+              "const": "active"
+            }
+          },
+          "required": ["status"]
+        },
+        "properties": {
+          "packages": {
+            "items": {
+              "not": {
+                "required": ["committed_metrics"]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "required": [
+    "media_buy_id",
+    "status",
+    "confirmed_at",
+    "revision",
+    "total_budget",
+    "packages"
+  ],
+  "additionalProperties": true
+}
