@@ -6,11 +6,12 @@
  * one starts at Stripe and verifies our DB caught up.
  *
  * "Reflected" means the row's `subscription_status` is entitled AND its
- * `stripe_subscription_id` and tier-resolving product fields
- * (`subscription_price_lookup_key` or `subscription_amount`) are populated.
+ * `stripe_subscription_id` and a tier-resolving product field
+ * (`membership_tier`, `subscription_price_lookup_key`, or
+ * `subscription_amount`) are populated.
  * Status alone is not enough: a row with `status='active'` but NULL
- * stripe_subscription_id / NULL lookup_key passes the gate but leaves the
- * tier resolver returning null, which the dashboard renders as an
+ * stripe_subscription_id and no resolvable tier field passes the gate but
+ * leaves the tier resolver returning null, which the dashboard renders as an
  * Explorer/upgrade-to-Professional upsell to a paying member.
  *
  * Motivating incidents:
@@ -62,6 +63,7 @@ interface OrgRow {
   stripe_customer_id: string;
   subscription_status: string | null;
   stripe_subscription_id: string | null;
+  membership_tier: string | null;
   subscription_price_lookup_key: string | null;
   subscription_amount: number | null;
 }
@@ -69,18 +71,17 @@ interface OrgRow {
 /**
  * "Reflected in the org row" means more than `subscription_status` being set.
  * The tier resolver and the dashboard depend on `stripe_subscription_id` and
- * a tier-resolving product field (`subscription_price_lookup_key` or
- * `subscription_amount`). A row with `status='active'` but those NULL is the
- * partial-truth state founding-era orgs sat in for months: entitled by gate,
- * but the dashboard renders an Explorer/upgrade-to-Professional teaser
- * because tier resolves to null. Treat the row as reflected only when all
- * three conditions hold.
+ * at least one tier-resolving field. Modern rows resolve via lookup_key,
+ * amount-bearing rows can fall back to amount inference, and founding-era
+ * $0 rows can resolve via `membership_tier` copied from Stripe product
+ * metadata by the canonical subscription writer. Treat the row as reflected
+ * only when status, subscription id, and one of those tier signals are present.
  */
 function isReflected(org: OrgRow): boolean {
   if (!org.subscription_status) return false;
   if (!ENTITLED_STATUSES.has(org.subscription_status as Stripe.Subscription.Status)) return false;
   if (!org.stripe_subscription_id) return false;
-  if (!org.subscription_price_lookup_key && (org.subscription_amount ?? 0) <= 0) return false;
+  if (!org.membership_tier && !org.subscription_price_lookup_key && (org.subscription_amount ?? 0) <= 0) return false;
   return true;
 }
 
@@ -134,7 +135,7 @@ export const stripeSubReflectedInOrgRowInvariant: Invariant = {
 
     const orgsResult = await pool.query<OrgRow>(
       `SELECT workos_organization_id, name, stripe_customer_id,
-              subscription_status, stripe_subscription_id,
+              subscription_status, stripe_subscription_id, membership_tier,
               subscription_price_lookup_key, subscription_amount
          FROM organizations
         WHERE stripe_customer_id = ANY($1::text[])`,
@@ -207,6 +208,7 @@ export const stripeSubReflectedInOrgRowInvariant: Invariant = {
           ? `Org "${org.name}" has paid membership subscription ${sub.id} live in Stripe ` +
             `(${sub.status}) but DB row is partial-truth: status=${JSON.stringify(org.subscription_status)}, ` +
             `stripe_subscription_id=${JSON.stringify(org.stripe_subscription_id)}, ` +
+            `membership_tier=${JSON.stringify(org.membership_tier)}, ` +
             `lookup_key=${JSON.stringify(org.subscription_price_lookup_key)}. ` +
             `Tier resolver returns null, dashboard renders the wrong upsell.`
           : `Org "${org.name}" has paid membership subscription ${sub.id} live in Stripe ` +
@@ -219,6 +221,7 @@ export const stripeSubReflectedInOrgRowInvariant: Invariant = {
           stripe_status: sub.status,
           db_subscription_status: org.subscription_status,
           db_stripe_subscription_id: org.stripe_subscription_id,
+          db_membership_tier: org.membership_tier,
           db_subscription_price_lookup_key: org.subscription_price_lookup_key,
           db_subscription_amount: org.subscription_amount,
           partial_truth: !!isPartialTruth,

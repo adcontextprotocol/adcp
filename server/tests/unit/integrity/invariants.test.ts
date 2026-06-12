@@ -934,6 +934,37 @@ describe('stripe-sub-reflected-in-org-row partial-truth', () => {
     const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
     expect(result.violations).toEqual([]);
   });
+
+  it('does not flag Advertible-shape: $0 founding sub resolved via membership_tier', async () => {
+    mockSubsListWith([
+      membershipSub({
+        id: 'sub_advertible',
+        customer: 'cus_advertible',
+        lookup_key: null,
+        unit_amount: 0,
+        product: 'prod_founding',
+      }),
+    ]);
+    mockStripeProductsRetrieve.mockResolvedValueOnce({
+      id: 'prod_founding',
+      metadata: { category: 'membership', tier: 'company_standard' },
+    });
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [{
+        workos_organization_id: 'org_advertible',
+        name: 'Advertible',
+        stripe_customer_id: 'cus_advertible',
+        subscription_status: 'active',
+        stripe_subscription_id: 'sub_advertible',
+        membership_tier: 'company_standard',
+        subscription_price_lookup_key: null,
+        subscription_amount: 0,
+      }],
+    });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+    expect(result.violations).toEqual([]);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────
