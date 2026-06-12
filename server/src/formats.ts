@@ -1,11 +1,9 @@
 import { AdCPClient } from "@adcp/sdk";
-import { createHmac, randomBytes } from "node:crypto";
 import type { Agent, FormatInfo } from "./types.js";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
 
 type AdCPClientInstance = InstanceType<typeof AdCPClient>;
-const CLIENT_POOL_AUTH_KEY = randomBytes(32);
 
 export interface AgentFormatsProfile {
   agent_url: string;
@@ -18,6 +16,7 @@ export interface AgentFormatsProfile {
 export class FormatsService {
   private cache: Map<string, AgentFormatsProfile> = new Map();
   private clients: Map<string, AdCPClientInstance> = new Map();
+  private authedClients: WeakMap<SdkAuth, Map<string, AdCPClientInstance>> = new WeakMap();
   private readonly CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
   async getFormatsForAgent(agent: Agent, auth?: SdkAuth): Promise<AgentFormatsProfile> {
@@ -75,8 +74,9 @@ export class FormatsService {
   }
 
   private getClient(agent: Agent, auth?: SdkAuth): AdCPClientInstance {
-    const key = this.clientCacheKey(agent, auth);
-    const cached = this.clients.get(key);
+    const key = this.clientCacheKey(agent);
+    const clientPool = auth ? this.getAuthedClientPool(auth) : this.clients;
+    const cached = clientPool.get(key);
     if (cached) return cached;
 
     const agentConfig = {
@@ -87,19 +87,22 @@ export class FormatsService {
       ...agentConfigAuthFields(auth),
     };
     const client = new AdCPClient([agentConfig], { userAgent: AAO_UA_DISCOVERY });
-    this.clients.set(key, client);
+    clientPool.set(key, client);
     return client;
   }
 
-  private clientCacheKey(agent: Agent, auth?: SdkAuth): string {
-    const protocol = agent.protocol || "mcp";
-    const base = `${agent.name}:${protocol}:${agent.url}`;
-    if (!auth) return `public:${base}`;
+  private getAuthedClientPool(auth: SdkAuth): Map<string, AdCPClientInstance> {
+    let pool = this.authedClients.get(auth);
+    if (!pool) {
+      pool = new Map();
+      this.authedClients.set(auth, pool);
+    }
+    return pool;
+  }
 
-    const fingerprint = createHmac("sha256", CLIENT_POOL_AUTH_KEY)
-      .update(JSON.stringify(agentConfigAuthFields(auth)))
-      .digest("hex");
-    return `auth:${base}:${fingerprint}`;
+  private clientCacheKey(agent: Agent): string {
+    const protocol = agent.protocol || "mcp";
+    return `${agent.name}:${protocol}:${agent.url}`;
   }
 
   private normalizeFormat(format: any): FormatInfo {
