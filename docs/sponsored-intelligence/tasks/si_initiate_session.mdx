@@ -42,7 +42,7 @@ The token lets the brand agent know exactly what products were shown to the user
 
 ### Sponsored Context Receipt
 
-If the host accepted sponsored context from a pre-session lookup, include `sponsored_context_receipt` to make the host's boundary commitment visible to the brand/seller:
+If the host accepted or explicitly rejected sponsored context from a pre-session lookup, include `sponsored_context_receipt` to make the host's boundary decision visible to the brand/seller:
 
 ```json
 {
@@ -73,7 +73,7 @@ If the host accepted sponsored context from a pre-session lookup, include `spons
 }
 ```
 
-The receipt records what the host accepted and committed to honor. It does not assert that AdCP can inspect hidden model reasoning.
+The receipt records whether the host accepted or rejected the sponsored context. For accepted receipts, it records what the host committed to honor. It does not assert that AdCP can inspect hidden model reasoning.
 
 | Receipt field | Description |
 |---------------|-------------|
@@ -83,7 +83,7 @@ The receipt records what the host accepted and committed to honor. It does not a
 | `host_receipt.disclosure_commitment` | Required for accepted receipts; records the host's disclosure commitment |
 | `host_receipt.rejection_reason` | Optional explanation when the host rejects the sponsored context |
 
-An accepted receipt cannot down-scope the use mode or decline a required disclosure. A host that cannot honor either condition rejects the sponsored context instead.
+An accepted receipt cannot down-scope the use mode or decline a required disclosure. A host that cannot honor either condition rejects the sponsored context instead. Rejected receipts must omit `accepted_context_use` and `disclosure_commitment`.
 
 ### Identity Object
 

@@ -106,7 +106,7 @@ When the returned offering or `matching_products` are sponsored context entering
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `paying_principal` | object | Brand economically accountable for the sponsored context, with optional account/operator context |
+| `paying_principal` | object | Brand economically accountable for the sponsored context, with optional seller account/operator context |
 | `context_use` | string | Declared host-side use mode: `presentation_only`, `comparison_set`, or `reasoning_context` |
 | `disclosure_obligation` | object | Disclosure the host must either accept and satisfy or reject before using the context |
 
@@ -368,7 +368,7 @@ When the offering response included `sponsored_context` and the host accepted it
 }
 ```
 
-An accepted receipt means the host honored the declaration. `accepted_context_use` must match the original `context_use`, and `disclosure_commitment.status` must be `accepted` when the declaration required disclosure. If the host cannot honor either condition, it rejects the sponsored context instead of sending an accepted receipt.
+An accepted receipt means the host honored the declaration. `accepted_context_use` must match the original `context_use`, and `disclosure_commitment.status` must be `accepted` when the declaration required disclosure. If the host cannot honor either condition, it rejects the sponsored context instead of sending an accepted receipt. A rejected receipt may still be sent to make the rejection audit-visible, but it must omit `accepted_context_use` and `disclosure_commitment`.
 
 ## Key Points
 

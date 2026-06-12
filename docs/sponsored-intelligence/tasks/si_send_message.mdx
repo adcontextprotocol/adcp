@@ -17,7 +17,7 @@ Send a message within an active SI session. The host invokes this task to relay 
 | `session_id` | string | Yes | Session ID from `si_initiate_session` |
 | `message` | string | No | User's text message |
 | `action_response` | object | No | Response to a UI action (button click, form submit) |
-| `sponsored_context_receipt` | object | No | Host receipt for sponsored context accepted from a prior SI response |
+| `sponsored_context_receipt` | object | No | Host receipt for sponsored context accepted or explicitly rejected from a prior SI response |
 
 At least one of `message` or `action_response` must be provided.
 
@@ -40,6 +40,14 @@ When the user interacts with a UI element:
 | `session_status` | string | Current session state |
 | `sponsored_context` | object | Sponsored-context declaration for sponsored context in this response |
 | `handoff` | object | Present when session_status is "pending_handoff" |
+
+### Sponsored Context Receipts
+
+If a prior `si_initiate_session` or `si_send_message` response included `sponsored_context`, the host decides whether it can honor the declared `context_use` and `disclosure_obligation` before presenting, comparing, or otherwise using that context. On a subsequent `si_send_message` request, the host MAY include `sponsored_context_receipt` alongside a normal `message` or `action_response` to make that decision visible to the brand/seller.
+
+For accepted receipts, `accepted_context_use` must match the declaration's `context_use`, and `disclosure_commitment.status` must be `accepted` when disclosure was required. For rejected receipts, omit `accepted_context_use` and `disclosure_commitment`; use `rejection_reason` when the host wants to explain why the context was not accepted or used.
+
+When a `si_send_message` response includes new `sponsored_context`, the same acceptance or rejection decision applies before the host uses that response context on the receiving surface. The host can include the receipt on the next turn, or retain it in its own audit record when there is no next SI call.
 
 ### Session Status Values
 

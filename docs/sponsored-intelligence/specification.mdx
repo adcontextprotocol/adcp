@@ -138,7 +138,7 @@ Offering responses and session responses MAY include `sponsored_context` when th
 
 | Field | Purpose |
 |-------|---------|
-| `paying_principal` | Economic accountability: the brand that funded or sponsored the context, with optional account/operator context |
+| `paying_principal` | Economic accountability: the brand that funded or sponsored the context, with optional seller account/operator context |
 | `context_use` | Declared host-side use mode: `presentation_only`, `comparison_set`, or `reasoning_context` |
 | `disclosure_obligation` | Disclosure the host must either accept and satisfy or reject before using the context |
 
@@ -150,7 +150,7 @@ Offering responses and session responses MAY include `sponsored_context` when th
 
 The declaration applies to the returned offering and `matching_products` package as a whole unless a future extension narrows it to individual items.
 
-Hosts that accept sponsored context SHOULD retain an audit record linking the `paying_principal`, declared `context_use`, `disclosure_obligation`, and host receipt. When the host subsequently calls `si_initiate_session` or `si_send_message`, it MAY include `sponsored_context_receipt` to make that acceptance visible to the brand/seller. The receipt records the receiving-surface accountability fact: what use mode the host accepted and what disclosure commitment it made.
+Hosts SHOULD retain an audit record linking the `paying_principal`, declared `context_use`, `disclosure_obligation`, and host receipt when they accept or explicitly reject sponsored context. When the host subsequently calls `si_initiate_session` or `si_send_message`, it MAY include `sponsored_context_receipt` to make that decision visible to the brand/seller. The receipt records the receiving-surface accountability fact: whether the host accepted the context, and for accepted receipts, what use mode and disclosure commitment it made.
 
 For accepted receipts:
 
@@ -159,6 +159,8 @@ For accepted receipts:
 - `disclosure_commitment.status` MAY be `not_required` only when `disclosure_obligation.required` is false
 
 A host that cannot honor the declared use mode or satisfy a required disclosure obligation MUST reject the sponsored context instead of sending an accepted receipt.
+
+For rejected receipts, `accepted_context_use` and `disclosure_commitment` MUST be absent. A rejected receipt records that the host did not accept or use the sponsored context, with optional `rejection_reason` explaining why.
 
 This is a boundary contract. AdCP does not inspect hidden model reasoning, standardize chain-of-thought, or guarantee how a host model internally uses context after receipt. A conforming host that cannot honor the declared use mode or disclosure obligation MUST reject the sponsored context rather than silently down-scope or use it without disclosure.
 

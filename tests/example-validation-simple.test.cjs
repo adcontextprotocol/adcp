@@ -154,6 +154,7 @@ async function runTests() {
   const sponsoredContext = {
     paying_principal: {
       brand: { domain: 'acme-running.example' },
+      account: { account_id: 'acct_acme_running_001' },
       display_name: 'Acme Running'
     },
     context_use: 'comparison_set',
@@ -192,6 +193,20 @@ async function runTests() {
     },
     '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
     'SI sponsored context receipt example'
+  );
+
+  await validateExample(
+    {
+      sponsored_context: sponsoredContext,
+      host_receipt: {
+        status: 'rejected',
+        received_at: '2025-01-19T10:00:02Z',
+        host_surface: 'assistant_comparison',
+        rejection_reason: 'Host cannot satisfy the declared disclosure obligation'
+      }
+    },
+    '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
+    'SI sponsored context rejected receipt example'
   );
 
   const sponsoredContextReceipt = {
@@ -238,6 +253,45 @@ async function runTests() {
     },
     '/schemas/sponsored-intelligence/si-initiate-session-request.json',
     'SI initiate session request with sponsored context receipt'
+  );
+
+  await validateExample(
+    {
+      status: 'completed',
+      session_id: 'si_sess_abc123',
+      session_status: 'active',
+      response: {
+        message: 'I can help compare trail shoes from Acme Running.'
+      },
+      sponsored_context: sponsoredContext
+    },
+    '/schemas/sponsored-intelligence/si-initiate-session-response.json',
+    'SI initiate session response with sponsored context'
+  );
+
+  await validateExample(
+    {
+      idempotency_key: 'a7b8c9d0-e1f2-4567-8901-345678901234',
+      session_id: 'si_sess_abc123',
+      message: 'Show me more waterproof options',
+      sponsored_context_receipt: sponsoredContextReceipt
+    },
+    '/schemas/sponsored-intelligence/si-send-message-request.json',
+    'SI send message request with sponsored context receipt'
+  );
+
+  await validateExample(
+    {
+      status: 'completed',
+      session_id: 'si_sess_abc123',
+      session_status: 'active',
+      response: {
+        message: 'Here are the waterproof trail options.'
+      },
+      sponsored_context: sponsoredContext
+    },
+    '/schemas/sponsored-intelligence/si-send-message-response.json',
+    'SI send message response with sponsored context'
   );
 
   await expectInvalid(
@@ -302,6 +356,24 @@ async function runTests() {
     '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
     'SI sponsored context accepted receipt cannot decline required disclosure',
     ['must be equal to constant']
+  );
+
+  await expectInvalid(
+    {
+      sponsored_context: sponsoredContext,
+      host_receipt: {
+        status: 'rejected',
+        accepted_context_use: 'comparison_set',
+        received_at: '2025-01-19T10:00:02Z',
+        disclosure_commitment: {
+          status: 'accepted'
+        },
+        rejection_reason: 'Host cannot satisfy the declared disclosure obligation'
+      }
+    },
+    '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
+    'SI sponsored context rejected receipt cannot include accepted-only fields',
+    ['must NOT be valid']
   );
 
   for (const fixture of [

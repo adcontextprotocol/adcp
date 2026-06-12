@@ -3,6 +3,7 @@
   "$id": "/schemas/sponsored-intelligence/si-context-use.json",
   "title": "SI Context Use",
   "description": "Declared use mode for sponsored context crossing into a Sponsored Intelligence host boundary. This is a boundary declaration, not a claim that AdCP can inspect hidden model reasoning after the host receives the context.",
+  "x-status": "experimental",
   "type": "string",
   "enum": [
     "presentation_only",

@@ -3,6 +3,7 @@
   "$id": "/schemas/sponsored-intelligence/si-sponsored-context-receipt.json",
   "title": "SI Sponsored Context Receipt",
   "description": "Host receipt for sponsored context previously delivered into an SI host boundary. The receipt records what use mode the host accepted and what disclosure commitment it made; it does not claim that AdCP inspected hidden model reasoning.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "sponsored_context": {
@@ -87,6 +88,34 @@
               "accepted_context_use",
               "disclosure_commitment"
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "rejected"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "accepted_context_use"
+                  ]
+                },
+                {
+                  "required": [
+                    "disclosure_commitment"
+                  ]
+                }
+              ]
+            }
           }
         }
       ]

@@ -3,6 +3,7 @@
   "$id": "/schemas/sponsored-intelligence/si-sponsored-context.json",
   "title": "SI Sponsored Context",
   "description": "Declaration attached to sponsored context delivered into an SI host boundary. Separates the economic accountability fact (`paying_principal`) from the host's receipt/acceptance record, which is carried separately by si-sponsored-context-receipt.json.",
+  "x-status": "experimental",
   "type": "object",
   "properties": {
     "paying_principal": {
@@ -14,8 +15,19 @@
           "description": "Brand economically accountable for the sponsored context."
         },
         "account": {
-          "$ref": "/schemas/core/account-ref.json",
-          "description": "Optional account reference when the seller or network has an account namespace for the paying principal."
+          "type": "object",
+          "description": "Optional seller-assigned account context for the paying principal. This intentionally carries only an account_id so the canonical economic principal remains paying_principal.brand.",
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "description": "Seller-assigned account identifier for the paying principal.",
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
         },
         "operator": {
           "type": "string",
