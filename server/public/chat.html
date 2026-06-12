@@ -977,8 +977,8 @@
     }
 
     .copy-btn.copied {
-      color: var(--color-success-600);
-      border-color: var(--color-success-500);
+      color: var(--color-success-fg);
+      border-color: var(--color-success-fg);
     }
 
     .user-copy-actions {
@@ -987,16 +987,55 @@
       margin-top: 8px;
     }
 
+    @media (min-width: 601px) and (hover: hover) and (pointer: fine) {
+      .message--user .message-content {
+        position: relative;
+      }
+
+      .message--user .user-copy-actions {
+        position: absolute;
+        top: 50%;
+        right: calc(100% + 8px);
+        margin-top: 0;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-50%);
+        transition: opacity 0.2s;
+        z-index: 1;
+      }
+
+      .message--user:hover .user-copy-actions,
+      .message--user:focus-within .user-copy-actions {
+        opacity: 1;
+        pointer-events: auto;
+      }
+    }
+
+    @media (any-pointer: coarse) {
+      .message--user .message-content {
+        position: static;
+      }
+
+      .message--user .user-copy-actions {
+        position: static;
+        margin-top: 8px;
+        opacity: 1;
+        pointer-events: auto;
+        transform: none;
+      }
+    }
+
     .user-copy-actions .copy-btn {
-      color: var(--color-text-on-dark-secondary);
-      border-color: color-mix(in srgb, var(--color-text-on-dark) 35%, transparent);
+      background: var(--color-bg-card);
+      color: var(--color-text-heading);
+      border-color: var(--color-border-strong);
       margin-left: 0;
     }
 
     .user-copy-actions .copy-btn:hover {
-      background: color-mix(in srgb, var(--color-text-on-dark) 12%, transparent);
-      color: var(--color-text-on-dark);
-      border-color: color-mix(in srgb, var(--color-text-on-dark) 65%, transparent);
+      background: var(--color-bg-subtle);
+      color: var(--color-brand);
+      border-color: var(--color-brand);
     }
 
     .feedback-expand {
@@ -4239,9 +4278,11 @@
 
       function createCopyButton(text, title) {
         const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
         copyBtn.className = 'copy-btn';
         copyBtn.textContent = 'Copy';
         copyBtn.title = title;
+        copyBtn.setAttribute('aria-label', title);
         copyBtn.addEventListener('click', () => {
           if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(() => {
