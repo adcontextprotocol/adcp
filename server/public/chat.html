@@ -987,6 +987,18 @@
       margin-top: 8px;
     }
 
+    @media (hover: hover) and (pointer: fine) {
+      .user-copy-actions {
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+
+      .message--user:hover .user-copy-actions,
+      .message--user:focus-within .user-copy-actions {
+        opacity: 1;
+      }
+    }
+
     .user-copy-actions .copy-btn {
       color: var(--color-text-on-dark-secondary);
       border-color: color-mix(in srgb, var(--color-text-on-dark) 35%, transparent);
