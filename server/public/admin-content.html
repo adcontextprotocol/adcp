@@ -83,6 +83,8 @@
     .badge-link { background: var(--color-primary-100); color: var(--color-primary-700); }
     .badge-committee { background: var(--color-primary-50); color: var(--color-primary-700); }
     .badge-author { background: var(--color-info-50); color: var(--color-info-700); }
+    .badge-hero-ready { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-hero-manual { background: var(--color-primary-100); color: var(--color-primary-700); }
     .badge-proposer { background: var(--color-warning-50); color: var(--color-warning-700); }
     .badge-owner { background: var(--color-success-50); color: var(--color-success-700); }
     .authors-list { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-top: var(--space-1); }
@@ -362,6 +364,7 @@
               <th data-sort="author_name" onclick="sortAdminTable('author_name')">Author <span class="sort-arrow">&#9650;</span></th>
               <th data-sort="committee_name" onclick="sortAdminTable('committee_name')">Committee <span class="sort-arrow">&#9650;</span></th>
               <th data-sort="status" onclick="sortAdminTable('status')">Status <span class="sort-arrow">&#9650;</span></th>
+              <th>Hero</th>
               <th data-sort="published_at" onclick="sortAdminTable('published_at')">Published <span class="sort-arrow">&#9660;</span></th>
             </tr></thead>
             <tbody id="adminTableBody"></tbody>
@@ -1126,7 +1129,7 @@
 
       const tbody = document.getElementById('adminTableBody');
       if (pageItems.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No content matches filters.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No content matches filters.</td></tr>';
         document.getElementById('adminPagination').innerHTML = '';
         return;
       }
@@ -1135,6 +1138,14 @@
         const statusClass = 'badge-' + esc(item.status || 'draft');
         const date = item.published_at ? new Date(item.published_at).toLocaleDateString() : '-';
         const sectionLabel = SECTION_LABELS[item.content_origin] || item.content_origin || '-';
+        const isArticle = item.content_type === 'article';
+        const heroState = isArticle
+          ? (item.featured_image_url
+            ? '<span class="badge badge-hero-manual">Manual hero</span>'
+            : item.illustration_id
+              ? '<span class="badge badge-hero-ready">AI hero</span>'
+              : `<button class="btn btn-small btn-outline" type="button" onclick="regenerateHeroFromTable(event, '${safeId(item.id)}')">Generate Hero</button>`)
+          : 'N/A';
         return `<tr onclick="openDetailModal('${safeId(item.id)}')">
           <td class="content-title-cell">${esc(item.title)}</td>
           <td>${esc(sectionLabel)}</td>
@@ -1142,6 +1153,7 @@
           <td>${esc(item.author_name || '-')}</td>
           <td>${esc(item.committee_name || '-')}</td>
           <td><span class="badge ${statusClass}">${formatStatus(item.status)}</span></td>
+          <td>${heroState}</td>
           <td>${esc(date)}</td>
         </tr>`;
       }).join('');
@@ -1289,6 +1301,43 @@
         openDetailModal(currentDetailItem.id);
       } catch (e) { alert('Failed to generate hero'); }
       finally { btn.disabled = false; document.getElementById('heroBtnLabel').textContent = 'Generate Hero'; }
+    }
+
+    async function regenerateHeroFromTable(event, id) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const rowBtn = event.currentTarget;
+      const item = adminContent.find(i => String(i.id) === String(id));
+      if (!item || !item.slug) {
+        alert('Cannot regenerate hero for this item.');
+        return;
+      }
+
+      const originalText = rowBtn?.textContent || 'Generate Hero';
+      if (rowBtn) {
+        rowBtn.disabled = true;
+        rowBtn.textContent = 'Generating...';
+      }
+
+      try {
+        const res = await fetch(`/api/admin/illustrations/regenerate/${encodeURIComponent(item.slug)}`, { method: 'POST', credentials: 'include' });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Failed to generate hero');
+        }
+        await loadAdminContent();
+        if (currentDetailItem && String(currentDetailItem.id) === String(item.id)) {
+          await openDetailModal(currentDetailItem.id);
+        }
+      } catch (e) {
+        alert(e.message || 'Failed to generate hero');
+      } finally {
+        if (rowBtn) {
+          rowBtn.disabled = false;
+          rowBtn.textContent = originalText;
+        }
+      }
     }
 
     async function deleteArticle() {
