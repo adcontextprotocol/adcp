@@ -726,7 +726,7 @@
         },
         "audio-distribution-type": {
           "$ref": "/schemas/enums/audio-distribution-type.json",
-          "description": "Declared audio distribution classifications using IAB Tech Lab/OpenRTB 2.6 Audio.feed definitions"
+          "description": "Declared audio distribution classifications using IAB Tech Lab/OpenRTB 2.6 audio.feed definitions"
         },
         "sponsored-placement-type": {
           "$ref": "/schemas/enums/sponsored-placement-type.json",

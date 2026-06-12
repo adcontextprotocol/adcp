@@ -96,7 +96,7 @@
     },
     "audio_distribution_types": {
       "type": "array",
-      "description": "Declared audio distribution types for this publisher placement, using IAB Tech Lab/OpenRTB 2.6 Audio.feed definitions with AdCP-native names. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. Product-level placement declarations may narrow this set but SHOULD NOT broaden it. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "description": "Declared audio distribution types for this publisher placement, using IAB Tech Lab/OpenRTB 2.6 audio.feed definitions with AdCP-native names. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. Product-level placement declarations may narrow this set but SHOULD NOT broaden it. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
       "items": {
         "$ref": "/schemas/enums/audio-distribution-type.json"
       },
