@@ -10,7 +10,7 @@
  * Addie can only modify data on behalf of the user she's talking to.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { createLogger } from '../../logger.js';
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
@@ -26,7 +26,7 @@ import type { MemberContext } from '../member-context.js';
 import { ToolError } from '../tool-error.js';
 import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { isUuid } from '../../utils/uuid.js';
-import { neutralizeAndTruncate } from './untrusted-input.js';
+import { neutralizeAndTruncate, wrapUntrustedInput } from './untrusted-input.js';
 import { coerceStringArray } from './input-coercion.js';
 import {
   isCompleteStoredBasicCredential,
@@ -586,6 +586,270 @@ function sanitizeAgentField(value: unknown, maxLen = 200): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maxLen);
+}
+
+const SENSITIVE_VALIDATION_ID_PATTERN = /\b(?:sk_(?:live|test)_[A-Za-z0-9_]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{12,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/;
+const SENSITIVE_VALIDATION_TEXT_PATTERN =
+  /(?:-----BEGIN [A-Z ]+PRIVATE KEY-----|\bbearer\s+\S+|\b(?:authorization|auth|cookie|set-cookie|session(?:[_ -]?id)?|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret|password|credential|private[_ -]?key|signing[_ -]?key|client[_ -]?secret|oauth[_ -]?(?:code|verifier)|jwt)\b\s*[:=]\s*\S+)/i;
+const SENSITIVE_VALIDATION_KEY_PATTERN =
+  /^(?:authorization|auth|token|secret|password|cookie|set-cookie|session(?:[_-]?id)?|credential|api[_-]?key|access[_-]?(?:key|token)|refresh[_-]?token|private[_-]?key|signing[_-]?key|client[_-]?secret|oauth[_-]?(?:code|verifier)|jwt)$/i;
+const BASIC_AUTH_PATTERN = /\bbasic\s+[A-Za-z0-9+/=]{8,}\b/i;
+const PROMPT_INJECTION_VALIDATION_ID_PATTERN = /(ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions|system\s*[:\s]prompt|\bsystem\s*:|developer\s+message|\bdeveloper\s*:|tool\s+result|reveal\s+(?:the\s+)?(?:secret|prompt)|exfiltrate|<\s*system\b|<\s*\/?\s*context\b)/i;
+const VALIDATION_ID_PATTERN = /^[a-z0-9._:-]{1,160}$/i;
+const STORYBOARD_KEY_PATTERN = /^[a-z0-9._:$\-[\] ]{1,160}$/i;
+const STORYBOARD_CONTEXT_REF_TTL_MS = 15 * 60 * 1000;
+const STORYBOARD_CONTEXT_REF_VERSION = 'sctx1';
+const STORYBOARD_CONTEXT_REF_DEV_SECRET = randomBytes(32);
+
+interface StoryboardContextRefMeta {
+  agentUrl: string;
+  orgId: string | null;
+  slackUserId: string | null;
+  storyboardId: string;
+  workosUserId: string | null;
+}
+
+interface SealedStoryboardContextRef {
+  v: 1;
+  context: StoryboardContext;
+  exp: number;
+  meta: StoryboardContextRefMeta;
+}
+
+function formatValidationId(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const cleaned = sanitizeAgentField(value, 160);
+  if (!cleaned) return '';
+  if (
+    !VALIDATION_ID_PATTERN.test(cleaned) ||
+    SENSITIVE_VALIDATION_ID_PATTERN.test(cleaned) ||
+    SENSITIVE_VALIDATION_TEXT_PATTERN.test(cleaned) ||
+    BASIC_AUTH_PATTERN.test(cleaned) ||
+    PROMPT_INJECTION_VALIDATION_ID_PATTERN.test(cleaned)
+  ) {
+    return 'id=[redacted] ';
+  }
+  return `id=${cleaned} `;
+}
+
+function redactStoryboardText(value: unknown, maxLen = RUNNER_ERROR_MAX_LEN): string {
+  const cleaned = sanitizeAgentField(value, maxLen);
+  if (!cleaned) return '';
+  if (
+    SENSITIVE_VALIDATION_ID_PATTERN.test(cleaned) ||
+    SENSITIVE_VALIDATION_TEXT_PATTERN.test(cleaned) ||
+    BASIC_AUTH_PATTERN.test(cleaned) ||
+    PROMPT_INJECTION_VALIDATION_ID_PATTERN.test(cleaned)
+  ) {
+    return '[redacted]';
+  }
+  return cleaned;
+}
+
+function renderStoryboardDiagnostic(value: unknown, maxLen = RUNNER_ERROR_MAX_LEN): string {
+  const redacted = redactStoryboardText(value, maxLen);
+  if (!redacted) return '[redacted]';
+  return redacted === '[redacted]' ? redacted : wrapUntrustedInput(redacted, maxLen);
+}
+
+function sanitizeStoryboardKey(key: string): string {
+  const cleaned = sanitizeAgentField(key, 160);
+  if (
+    !cleaned ||
+    cleaned === '__proto__' ||
+    cleaned === 'constructor' ||
+    cleaned === 'prototype' ||
+    !STORYBOARD_KEY_PATTERN.test(cleaned) ||
+    SENSITIVE_VALIDATION_KEY_PATTERN.test(cleaned) ||
+    SENSITIVE_VALIDATION_ID_PATTERN.test(cleaned) ||
+    SENSITIVE_VALIDATION_TEXT_PATTERN.test(cleaned) ||
+    PROMPT_INJECTION_VALIDATION_ID_PATTERN.test(cleaned)
+  ) {
+    return '[redacted]';
+  }
+  return cleaned;
+}
+
+function sanitizeStoryboardPayload(value: unknown, depth = 0): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'string') {
+    const redacted = redactStoryboardText(value, 200);
+    if (!redacted || redacted === '[redacted]') return '[redacted]';
+    return wrapUntrustedInput(redacted, 200);
+  }
+  if (typeof value !== 'object') return value;
+  if (depth > 12) return '[redacted]';
+  if (Array.isArray(value)) return value.map(item => sanitizeStoryboardPayload(item, depth + 1));
+
+  const out: Record<string, unknown> = Object.create(null);
+  let redactedKeyCount = 0;
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const safeKey = sanitizeStoryboardKey(key);
+    const outputKey = safeKey === '[redacted]' ? `[redacted_${++redactedKeyCount}]` : safeKey;
+    out[outputKey] = safeKey === '[redacted]' ? '[redacted]' : sanitizeStoryboardPayload(child, depth + 1);
+  }
+  return out;
+}
+
+function storyboardContextRefMeta(
+  memberContext: MemberContext | null,
+  storyboardId: string,
+  agentUrl: string,
+): StoryboardContextRefMeta {
+  return {
+    agentUrl,
+    orgId: memberContext?.organization?.workos_organization_id ?? null,
+    slackUserId: memberContext?.slack_user?.slack_user_id ?? null,
+    storyboardId,
+    workosUserId: memberContext?.workos_user?.workos_user_id ?? null,
+  };
+}
+
+function storyboardContextSecret(): Buffer {
+  const configuredSecret =
+    process.env.STORYBOARD_CONTEXT_REF_SECRET ||
+    process.env.WORKOS_COOKIE_PASSWORD ||
+    process.env.CONFORMANCE_JWT_SECRET;
+  if (!configuredSecret) return STORYBOARD_CONTEXT_REF_DEV_SECRET;
+  return scryptSync(configuredSecret, 'addie-storyboard-context-ref-v1', 32);
+}
+
+function encodeBase64Url(value: Buffer): string {
+  return value.toString('base64url');
+}
+
+function decodeBase64Url(value: string): Buffer {
+  return Buffer.from(value, 'base64url');
+}
+
+function metaMatches(a: StoryboardContextRefMeta, b: StoryboardContextRefMeta): boolean {
+  return (
+    a.agentUrl === b.agentUrl &&
+    a.orgId === b.orgId &&
+    a.slackUserId === b.slackUserId &&
+    a.storyboardId === b.storyboardId &&
+    a.workosUserId === b.workosUserId
+  );
+}
+
+function isStoryboardContextRefMeta(value: unknown): value is StoryboardContextRefMeta {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.agentUrl === 'string' &&
+    typeof record.storyboardId === 'string' &&
+    (record.orgId === null || typeof record.orgId === 'string') &&
+    (record.slackUserId === null || typeof record.slackUserId === 'string') &&
+    (record.workosUserId === null || typeof record.workosUserId === 'string')
+  );
+}
+
+function isSealedStoryboardContextRef(value: unknown): value is SealedStoryboardContextRef {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    record.v === 1 &&
+    typeof record.exp === 'number' &&
+    isStoryboardContextRefMeta(record.meta) &&
+    typeof record.context === 'object' &&
+    record.context !== null &&
+    !Array.isArray(record.context)
+  );
+}
+
+function storeStoryboardContextRef(
+  context: StoryboardContext,
+  meta: StoryboardContextRefMeta,
+): { context_ref: string } {
+  const now = Date.now();
+  const payload: SealedStoryboardContextRef = {
+    v: 1,
+    context,
+    exp: now + STORYBOARD_CONTEXT_REF_TTL_MS,
+    meta,
+  };
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', storyboardContextSecret(), iv);
+  cipher.setAAD(Buffer.from(STORYBOARD_CONTEXT_REF_VERSION, 'utf8'));
+  const encrypted = Buffer.concat([
+    cipher.update(JSON.stringify(payload), 'utf8'),
+    cipher.final(),
+  ]);
+  const contextRef = [
+    STORYBOARD_CONTEXT_REF_VERSION,
+    encodeBase64Url(iv),
+    encodeBase64Url(cipher.getAuthTag()),
+    encodeBase64Url(encrypted),
+  ].join('.');
+  return { context_ref: contextRef };
+}
+
+function resolveStoryboardInputContext(
+  inputContext: unknown,
+  meta: StoryboardContextRefMeta,
+): StoryboardContext {
+  if (!inputContext) return {};
+  if (typeof inputContext !== 'object') {
+    throw new ToolError('Pass the opaque context_ref returned by the previous run_storyboard_step call.');
+  }
+  const contextRef = (inputContext as { context_ref?: unknown }).context_ref;
+  const keys = Object.keys(inputContext as Record<string, unknown>);
+  if (typeof contextRef !== 'string' || keys.some(key => key !== 'context_ref')) {
+    throw new ToolError('Pass the opaque context_ref returned by the previous run_storyboard_step call.');
+  }
+
+  const refParts = contextRef.split('.');
+  const [version, ivPart, tagPart, encryptedPart] = refParts;
+  if (
+    refParts.length !== 4 ||
+    version !== STORYBOARD_CONTEXT_REF_VERSION ||
+    !ivPart ||
+    !tagPart ||
+    !encryptedPart
+  ) {
+    throw new ToolError(
+      'Storyboard context reference expired or was not found. Re-run the previous step and pass the new context_ref.',
+    );
+  }
+
+  let sealed: unknown;
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', storyboardContextSecret(), decodeBase64Url(ivPart));
+    decipher.setAAD(Buffer.from(STORYBOARD_CONTEXT_REF_VERSION, 'utf8'));
+    decipher.setAuthTag(decodeBase64Url(tagPart));
+    const plaintext = Buffer.concat([
+      decipher.update(decodeBase64Url(encryptedPart)),
+      decipher.final(),
+    ]).toString('utf8');
+    sealed = JSON.parse(plaintext);
+  } catch {
+    throw new ToolError(
+      'Storyboard context reference expired or was not found. Re-run the previous step and pass the new context_ref.',
+    );
+  }
+
+  if (!isSealedStoryboardContextRef(sealed) || sealed.exp <= Date.now()) {
+    throw new ToolError(
+      'Storyboard context reference expired or was not found. Re-run the previous step and pass the new context_ref.',
+    );
+  }
+  if (!metaMatches(sealed.meta, meta)) {
+    throw new ToolError('Storyboard context_ref is not valid for this caller or run.');
+  }
+  return sealed.context;
+}
+
+function formatStoryboardValidationLine(
+  validation: { id?: unknown; passed?: boolean; description?: string; error?: unknown },
+  options: { includeStatus?: boolean } = {},
+): string {
+  const status = options.includeStatus === false ? '' : `${validation.passed ? 'PASS' : 'FAIL'}: `;
+  const id = formatValidationId(validation.id);
+  const description = renderStoryboardDiagnostic(validation.description, RUNNER_ERROR_MAX_LEN);
+  const error = validation.error
+    ? ` — ${renderStoryboardDiagnostic(validation.error, RUNNER_ERROR_MAX_LEN)}`
+    : '';
+  return `${status}${id}${description}${error}`;
 }
 
 /**
@@ -1447,7 +1711,15 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL to test' },
         storyboard_id: { type: 'string', description: 'Storyboard ID' },
         step_id: { type: 'string', description: 'Step ID to run (from storyboard detail or previous step\'s next.step_id)' },
-        context: { type: 'object', description: 'Accumulated context from previous step (pass the context field from the previous run_storyboard_step result)', additionalProperties: true },
+        context: {
+          type: 'object',
+          description: 'Opaque context reference from the previous run_storyboard_step result',
+          properties: {
+            context_ref: { type: 'string', description: 'Server-generated context reference from the previous step' },
+          },
+          required: ['context_ref'],
+          additionalProperties: false,
+        },
         dry_run: { type: 'boolean', description: 'If true (default), use test data', default: true },
         compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit non-3.0 targets are diagnostic-only and only run when the agent advertises support.' },
       },
@@ -4734,10 +5006,10 @@ export function createMemberToolHandlers(
 
           if (!step.passed && !step.skipped) {
             if (step.error) {
-              output += `  Error: ${sanitizeAgentField(step.error, RUNNER_ERROR_MAX_LEN)}\n`;
+              output += `  Error: ${renderStoryboardDiagnostic(step.error, RUNNER_ERROR_MAX_LEN)}\n`;
             }
             for (const v of step.validations.filter(v => !v.passed)) {
-              output += `  Failed: ${v.description}${v.error ? ` — ${sanitizeAgentField(v.error, RUNNER_ERROR_MAX_LEN)}` : ''}\n`;
+              output += `  Failed: ${formatStoryboardValidationLine(v, { includeStatus: false })}\n`;
             }
           }
           // Hints are diagnostic-only and don't flip pass/fail per the
@@ -4798,7 +5070,6 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const storyboardId = input.storyboard_id as string;
     const stepId = input.step_id as string;
-    const context = (input.context as StoryboardContext) || {};
     const dryRun = input.dry_run !== false;
     let runTarget = targetFromInput(input);
 
@@ -4808,6 +5079,8 @@ export function createMemberToolHandlers(
     const organizationId = memberContext?.organization?.workos_organization_id;
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
     const authOption = buildAuthOption(resolved);
+    const contextRefMeta = storyboardContextRefMeta(memberContext, storyboardId, resolved.resolvedUrl);
+    const context = resolveStoryboardInputContext(input.context, contextRefMeta);
 
     if (!hasExplicitComplianceTarget(input)) {
       runTarget = await selectComplianceTargetForAgent(
@@ -4907,12 +5180,12 @@ export function createMemberToolHandlers(
         if (result.validations.length > 0) {
           output += `\n**Validations:**\n`;
           for (const v of result.validations) {
-            output += `- ${v.passed ? 'PASS' : 'FAIL'}: ${v.description}${v.error ? ` — ${sanitizeAgentField(v.error, RUNNER_ERROR_MAX_LEN)}` : ''}\n`;
+            output += `- ${formatStoryboardValidationLine(v)}\n`;
           }
         }
 
         if (result.error) {
-          output += `\n**Error:** ${sanitizeAgentField(result.error, RUNNER_ERROR_MAX_LEN)}\n`;
+          output += `\n**Error:** ${renderStoryboardDiagnostic(result.error, RUNNER_ERROR_MAX_LEN)}\n`;
         }
 
         // Hints are diagnostic-only and don't flip pass/fail per the
@@ -4930,7 +5203,7 @@ export function createMemberToolHandlers(
         }
 
         if (result.response) {
-          const responseStr = JSON.stringify(result.response, null, 2);
+          const responseStr = JSON.stringify(sanitizeStoryboardPayload(result.response), null, 2);
           if (responseStr.length <= 2000) {
             output += `\n**Response:**\n\`\`\`json\n${responseStr}\n\`\`\`\n`;
           } else {
@@ -4942,14 +5215,15 @@ export function createMemberToolHandlers(
       if (result.next) {
         output += `\n### Next step\n`;
         output += `**${result.next.title}** (\`${result.next.step_id}\`) — \`${result.next.task}\`\n`;
-        if (result.next.narrative) output += `${sanitizeAgentField(result.next.narrative, RUNNER_ERROR_MAX_LEN)}\n`;
+        if (result.next.narrative) output += `${renderStoryboardDiagnostic(result.next.narrative, RUNNER_ERROR_MAX_LEN)}\n`;
         output += `\nTo continue, call \`run_storyboard_step\` with \`step_id: "${result.next.step_id}"\` and pass the context below.\n`;
       } else {
         output += `\nThis was the last step in the storyboard.\n`;
       }
 
-      // Include context for the next step call
-      output += `\n<context>\n${JSON.stringify(result.context)}\n</context>`;
+      // Include an opaque encrypted reference for the next step call so
+      // agent-controlled context cannot break out of this handoff surface.
+      output += `\n<context>\n${JSON.stringify(storeStoryboardContextRef(result.context, contextRefMeta), null, 2)}\n</context>`;
 
       return output;
     } catch (error) {

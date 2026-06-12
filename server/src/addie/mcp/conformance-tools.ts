@@ -30,6 +30,7 @@ import {
 } from '../../conformance/index.js';
 import type { StoryboardResult, ValidationResult } from '@adcp/sdk/testing';
 import { createLogger } from '../../logger.js';
+import { wrapUntrustedInput } from './untrusted-input.js';
 
 const logger = createLogger('addie-conformance-tools');
 
@@ -86,6 +87,7 @@ const MAX_VALIDATION_STRING_CHARS = 200;
 type PublicValidationValue = string | number | boolean | null | '[undefined]' | '[redacted]';
 
 interface PublicValidationResult {
+  id?: string;
   check: string;
   passed: false;
   description: string;
@@ -102,9 +104,12 @@ interface FormattedFailedValidations {
   note?: string;
 }
 
-const SENSITIVE_VALIDATION_PATTERN = /(authorization|token|secret|password|cookie|credential|api[_-]?key|access[_-]?key|refresh[_-]?token)/i;
+const SENSITIVE_VALIDATION_TEXT_PATTERN =
+  /(?:-----BEGIN [A-Z ]+PRIVATE KEY-----|\bbearer\s+\S+|\bbasic\s+[A-Za-z0-9+/=]{8,}|\b(?:authorization|auth|cookie|set-cookie|session(?:[_ -]?id)?|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret|password|credential|private[_ -]?key|signing[_ -]?key|client[_ -]?secret|oauth[_ -]?(?:code|verifier)|jwt)\b\s*[:=]\s*\S+)/i;
 const SENSITIVE_VALUE_PATTERN = /\b(?:sk_(?:live|test)_[A-Za-z0-9_]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{12,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/;
-const PROMPT_INJECTION_PATTERN = /(ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions|system\s+prompt|developer\s+message|tool\s+result|reveal\s+(?:the\s+)?(?:secret|prompt)|exfiltrate|<\s*system\b)/i;
+const BASIC_AUTH_PATTERN = /\bbasic\s+[A-Za-z0-9+/=]{8,}\b/i;
+const PROMPT_INJECTION_PATTERN = /(ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions|system\s*[:\s]prompt|\bsystem\s*:|developer\s+message|\bdeveloper\s*:|tool\s+result|reveal\s+(?:the\s+)?(?:secret|prompt)|exfiltrate|<\s*system\b|<\s*\/?\s*context\b)/i;
+const VALIDATION_ID_PATTERN = /^[a-z0-9._:-]{1,160}$/i;
 
 function cleanValidationText(value: string, max = MAX_VALIDATION_STRING_CHARS): string | '[redacted]' {
   const cleaned = value
@@ -114,8 +119,9 @@ function cleanValidationText(value: string, max = MAX_VALIDATION_STRING_CHARS): 
     .slice(0, max);
   if (!cleaned) return '[redacted]';
   if (
-    SENSITIVE_VALIDATION_PATTERN.test(cleaned) ||
+    SENSITIVE_VALIDATION_TEXT_PATTERN.test(cleaned) ||
     SENSITIVE_VALUE_PATTERN.test(cleaned) ||
+    BASIC_AUTH_PATTERN.test(cleaned) ||
     PROMPT_INJECTION_PATTERN.test(cleaned)
   ) {
     return '[redacted]';
@@ -134,6 +140,16 @@ function sanitizeValidationValue(value: unknown): PublicValidationValue {
   return '[redacted]';
 }
 
+function sanitizeObservedValidationValue(value: unknown): PublicValidationValue {
+  if (value === undefined) return '[undefined]';
+  if (value === null || typeof value === 'boolean' || typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const sanitized = cleanValidationText(value);
+    return sanitized === '[redacted]' ? sanitized : wrapUntrustedInput(sanitized, MAX_VALIDATION_STRING_CHARS);
+  }
+  return '[redacted]';
+}
+
 function optionalSanitizedString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const sanitized = sanitizeValidationString(value);
@@ -143,7 +159,31 @@ function optionalSanitizedString(value: unknown): string | undefined {
 function safeAgentText(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const sanitized = cleanValidationText(value, 160);
-  return sanitized === '[redacted]' ? sanitized : `"${sanitized}"`;
+  return sanitized;
+}
+
+function safeDiagnosticText(value: unknown, max = MAX_VALIDATION_STRING_CHARS): string | '[redacted]' {
+  if (typeof value !== 'string') return '[redacted]';
+  const sanitized = cleanValidationText(value, max);
+  return sanitized === '[redacted]' ? sanitized : wrapUntrustedInput(sanitized, max);
+}
+
+function safeValidationId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const sanitized = value
+    .replace(/[\r\n`\u0000-\u001f\u007f\u0085\u2028\u2029]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160);
+  if (!sanitized) return undefined;
+  if (
+    !VALIDATION_ID_PATTERN.test(sanitized) ||
+    SENSITIVE_VALUE_PATTERN.test(sanitized) ||
+    PROMPT_INJECTION_PATTERN.test(sanitized)
+  ) {
+    return '[redacted]';
+  }
+  return sanitized;
 }
 
 function hasOwn(value: object, key: string): boolean {
@@ -153,14 +193,15 @@ function hasOwn(value: object, key: string): boolean {
 function compactValidationForOutput(validation: ValidationResult): PublicValidationResult {
   const remediation = optionalSanitizedString(validation.remediation);
   return {
+    ...(hasOwn(validation, 'id') && { id: safeValidationId(validation.id) ?? '[redacted]' }),
     check: safeAgentText(validation.check) ?? 'validation',
     passed: false,
-    description: safeAgentText(validation.description) ?? 'Validation failed',
+    description: safeDiagnosticText(validation.description),
     ...(validation.path && { path: safeAgentText(validation.path) ?? '[redacted]' }),
     ...(validation.json_pointer !== undefined && { json_pointer: safeAgentText(validation.json_pointer) ?? '[redacted]' }),
     ...(hasOwn(validation, 'expected') && { expected: sanitizeValidationValue(validation.expected) }),
-    ...(hasOwn(validation, 'actual') && { actual: sanitizeValidationValue(validation.actual) }),
-    ...(hasOwn(validation, 'error') && { error: typeof validation.error === 'string' ? safeAgentText(validation.error) ?? '[redacted]' : sanitizeValidationValue(validation.error) }),
+    ...(hasOwn(validation, 'actual') && { actual: sanitizeObservedValidationValue(validation.actual) }),
+    ...(hasOwn(validation, 'error') && { error: typeof validation.error === 'string' ? safeDiagnosticText(validation.error) : sanitizeValidationValue(validation.error) }),
     ...(remediation && { remediation }),
   };
 }
@@ -214,8 +255,7 @@ function formatStoryboardResult(result: StoryboardResult): string {
       if (!step.passed && !step.skipped) {
         const errMsg = (step as unknown as { error?: string }).error;
         if (errMsg) {
-          const trimmed = errMsg.length > 240 ? errMsg.slice(0, 240) + '…' : errMsg;
-          lines.push(`  - error: ${trimmed}`);
+          lines.push(`  - error: ${safeDiagnosticText(errMsg, 240)}`);
         }
         const failedValidations = formatFailedValidations(step.validations);
         if (failedValidations) {
@@ -254,7 +294,7 @@ export const CONFORMANCE_TOOLS: AddieTool[] = [
   {
     name: 'run_conformance_against_my_agent',
     description:
-      'Run a compliance storyboard against the adopter MCP server connected to this Addie session via Socket Mode. The adopter must have started `@adcp/sdk/server` ConformanceClient with a token issued in this same chat session — the channel routes by WorkOS organization id. Returns a markdown report with phase/step pass/fail/skipped status and trimmed error text on failures. Use this after the user confirms their conformance client shows `status=connected`.',
+      'Run a compliance storyboard against the adopter MCP server connected to this Addie session via Socket Mode. The adopter must have started `@adcp/sdk/server` ConformanceClient with a token issued in this same chat session — the channel routes by WorkOS organization id. Returns a markdown report with phase/step pass/fail/skipped status, trimmed error text, and sanitized failed-validation details such as id, expected, and actual on failures. Use this after the user confirms their conformance client shows `status=connected`.',
     usage_hints:
       'use for "run conformance on my agent", "test my agent against media-buy storyboards", "check my creative agent compliance". Requires a live conformance connection — if there isn\'t one, the tool returns a hint pointing the user at issue_conformance_token first.',
     input_schema: {
