@@ -137,6 +137,11 @@ describe('admin module completion repair', () => {
       notes: 'Admin-visible checkpoint evidence',
     });
 
+    const checkpointOnlyLearners = await request(app)
+      .get('/api/admin/certification/learners?search=learner%40test.example');
+    expect(checkpointOnlyLearners.status).toBe(200);
+    expect(checkpointOnlyLearners.body.learners.map((l: { workos_user_id: string }) => l.workos_user_id)).toContain(TEST_USER);
+
     for (const note of ['Escalation #5414', 'Escalation #5414 rerun']) {
       const response = await request(app)
         .post(`/api/admin/certification/learners/${TEST_USER}/modules/${MODULE_ID}/complete`)

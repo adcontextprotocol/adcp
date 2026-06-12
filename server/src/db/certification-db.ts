@@ -1770,7 +1770,7 @@ export async function getAdminLearnerList(options: {
   const limit = Math.min(options.limit || 20, 100);
   const offset = (page - 1) * limit;
 
-  let whereClause = 'WHERE lp.id IS NOT NULL'; // has any progress
+  let whereClause = 'WHERE (lp.id IS NOT NULL OR tc.id IS NOT NULL)'; // has progress or teaching evidence
   const params: (string | number)[] = [];
   let paramIdx = 1;
 
@@ -1792,7 +1792,8 @@ export async function getAdminLearnerList(options: {
   const countResult = await query<{ count: string }>(
     `SELECT COUNT(DISTINCT u.workos_user_id)::text AS count
      FROM users u
-     JOIN learner_progress lp ON lp.workos_user_id = u.workos_user_id
+     LEFT JOIN learner_progress lp ON lp.workos_user_id = u.workos_user_id
+     LEFT JOIN teaching_checkpoints tc ON tc.workos_user_id = u.workos_user_id
      ${whereClause}`,
     params
   );
@@ -1808,14 +1809,21 @@ export async function getAdminLearnerList(options: {
        u.first_name,
        u.last_name,
        u.email,
-       COUNT(CASE WHEN lp.status IN ('completed', 'tested_out') THEN 1 END)::text AS modules_completed,
-       COUNT(CASE WHEN lp.status = 'in_progress' THEN 1 END)::text AS modules_in_progress,
-       MAX(COALESCE(lp.completed_at, lp.started_at))::text AS last_active
+       COUNT(DISTINCT CASE WHEN lp.status IN ('completed', 'tested_out') THEN lp.id END)::text AS modules_completed,
+       COUNT(DISTINCT CASE WHEN lp.status = 'in_progress' THEN lp.id END)::text AS modules_in_progress,
+       MAX(GREATEST(
+         COALESCE(lp.completed_at, lp.started_at, 'epoch'::timestamptz),
+         COALESCE(tc.created_at, 'epoch'::timestamptz)
+       ))::text AS last_active
      FROM users u
-     JOIN learner_progress lp ON lp.workos_user_id = u.workos_user_id
+     LEFT JOIN learner_progress lp ON lp.workos_user_id = u.workos_user_id
+     LEFT JOIN teaching_checkpoints tc ON tc.workos_user_id = u.workos_user_id
      ${whereClause}
      GROUP BY u.workos_user_id, u.first_name, u.last_name, u.email
-     ORDER BY MAX(COALESCE(lp.completed_at, lp.started_at)) DESC NULLS LAST
+     ORDER BY MAX(GREATEST(
+       COALESCE(lp.completed_at, lp.started_at, 'epoch'::timestamptz),
+       COALESCE(tc.created_at, 'epoch'::timestamptz)
+     )) DESC NULLS LAST
      LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
     [...params, limit, offset]
   );
@@ -1868,10 +1876,14 @@ export interface AdminLearnerDetail {
   }>;
   credentials: Array<{ name: string; tier: number; awarded_at: string; certifier_credential_id: string | null }>;
   checkpoints: Array<{
+    id: string;
     module_id: string;
+    thread_id: string | null;
     current_phase: string;
     concepts_covered: string[];
     concepts_remaining: string[];
+    preliminary_scores: Record<string, number> | null;
+    demonstrations_verified: string[];
     notes: string | null;
     created_at: string;
   }>;
@@ -1907,11 +1919,14 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
       [userId]
     ),
     query<{
-      module_id: string; current_phase: string;
+      id: string; module_id: string; thread_id: string | null; current_phase: string;
       concepts_covered: string[]; concepts_remaining: string[];
+      preliminary_scores: Record<string, number> | null; demonstrations_verified: string[];
       notes: string | null; created_at: string;
     }>(
-      `SELECT DISTINCT ON (module_id) module_id, current_phase, concepts_covered, concepts_remaining, notes, created_at
+      `SELECT DISTINCT ON (module_id)
+          id, module_id, thread_id, current_phase, concepts_covered, concepts_remaining,
+          preliminary_scores, demonstrations_verified, notes, created_at
        FROM teaching_checkpoints
        WHERE workos_user_id = $1
        ORDER BY module_id, created_at DESC`,
