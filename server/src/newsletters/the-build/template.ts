@@ -9,24 +9,67 @@ import type { BuildContent } from '../../db/build-db.js';
 import type { SlackBlockMessage } from '../../slack/types.js';
 import { escapeHtml, trackLink, formatDate, renderEmailShell } from '../email-layout.js';
 import { isSectionHidden, getCustomSections, getPastedContent } from '../config.js';
+import { markdownToEmailHtml as renderMarkdownToEmailHtml } from '../../utils/markdown.js';
+import DOMPurify from 'isomorphic-dompurify';
 import { BUILD_PALETTE } from './index.js';
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 
 export type BuildSegment = 'website_only' | 'slack_only' | 'both' | 'active';
 
-/** Simple markdown-to-HTML for pasted/custom content. Only allows http(s) URLs. */
-function markdownToHtml(md: string): string {
-  return escapeHtml(md)
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, text, url) => {
-      // After escapeHtml, "https://" stays as "https://" (no special chars).
-      // Reject anything that doesn't start with the escaped http(s) prefix.
-      if (!/^https?:\/\//i.test(url)) return text as string;
-      return `<a href="${url}" style="color: ${BUILD_PALETTE.primary}; text-decoration: none;">${text}</a>`;
-    })
-    .replace(/`([^`]+)`/g, '<code style="background:#f1f5f9;padding:2px 4px;border-radius:3px;font-size:13px;">$1</code>')
-    .replace(/\n/g, '<br>');
+type SanitizedElement = {
+  getAttribute(name: string): string | null;
+  setAttribute(name: string, value: string): void;
+};
+
+type SanitizedFragment = {
+  querySelectorAll(selector: string): { forEach(callback: (el: SanitizedElement) => void): void };
+  innerHTML: string;
+};
+
+function markdownToTrackedEmailHtml(md: string, trackingId: string, tagPrefix = 'pasted_body'): string {
+  let linkIndex = 0;
+  const dom = DOMPurify.sanitize(renderMarkdownToEmailHtml(md), {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'a', 'ul', 'ol', 'li', 'code', 'pre', 'h1', 'h2', 'h3'],
+    ALLOWED_ATTR: ['href'],
+    RETURN_DOM: true,
+  }) as unknown as SanitizedFragment;
+
+  dom.querySelectorAll('a[href]').forEach((anchor) => {
+    linkIndex += 1;
+    const href = anchor.getAttribute('href') || '';
+    anchor.setAttribute('href', trackLink(trackingId, `${tagPrefix}_${linkIndex}`, href));
+    anchor.setAttribute('style', `color: ${BUILD_PALETTE.primary}; text-decoration: none;`);
+  });
+  dom.querySelectorAll('p').forEach((el) => el.setAttribute('style', 'margin: 0 0 12px 0;'));
+  dom.querySelectorAll('ul').forEach((el) => el.setAttribute('style', 'margin: 8px 0 12px 0; padding-left: 20px;'));
+  dom.querySelectorAll('ol').forEach((el) => el.setAttribute('style', 'margin: 8px 0 12px 0; padding-left: 20px;'));
+  dom.querySelectorAll('li').forEach((el) => el.setAttribute('style', 'margin-bottom: 4px;'));
+  dom.querySelectorAll('code').forEach((el) => el.setAttribute('style', 'background:#f1f5f9;padding:2px 4px;border-radius:3px;font-size:13px;'));
+  dom.querySelectorAll('h1').forEach((el) => el.setAttribute('style', `font-size: 22px; margin: 20px 0 8px 0; color: ${BUILD_PALETTE.dark};`));
+  dom.querySelectorAll('h2').forEach((el) => el.setAttribute('style', `font-size: 18px; margin: 18px 0 8px 0; color: ${BUILD_PALETTE.dark};`));
+  dom.querySelectorAll('h3').forEach((el) => el.setAttribute('style', `font-size: 16px; margin: 16px 0 8px 0; color: ${BUILD_PALETTE.dark};`));
+
+  return dom.innerHTML;
+}
+
+function markdownToPlainText(md: string): string {
+  return md
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function appendCustomSectionsText(lines: string[], content: BuildContent) {
+  for (const section of getCustomSections(content)) {
+    if (section.title) lines.push(section.title, '');
+    lines.push(markdownToPlainText(section.body), '');
+  }
 }
 
 // ─── Email Rendering ───────────────────────────────────────────────────
@@ -42,6 +85,7 @@ export function renderBuildEmail(
 
   // Build the body sections
   const sections: string[] = [];
+  const customSections = getCustomSections(content);
 
   // Status line
   sections.push(`<p style="font-size: 15px; color: #333; line-height: 1.6;">${escapeHtml(content.statusLine)}</p>`);
@@ -58,14 +102,14 @@ export function renderBuildEmail(
   const pasted = getPastedContent(content);
   if (pasted) {
     sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
-    sections.push(`<div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToHtml(pasted)}</div>`);
+    sections.push(`<div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToTrackedEmailHtml(pasted, trackingId)}</div>`);
 
     // Also render any custom sections
-    for (const cs of getCustomSections(content)) {
+    for (const [index, cs] of customSections.entries()) {
       if (cs.title) {
         sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">${escapeHtml(cs.title)}</h2>`);
       }
-      sections.push(`<div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToHtml(cs.body)}</div>`);
+      sections.push(`<div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToTrackedEmailHtml(cs.body, trackingId, `custom_${index + 1}`)}</div>`);
       sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
     }
 
@@ -75,15 +119,18 @@ export function renderBuildEmail(
       perspectiveSlugPrefix: 'the-build', signOff: { text: "That's the cycle. If something broke, file an issue. If something's missing, open a PR.", attribution: 'Sage', domain: 'docs.adcontextprotocol.org' },
       preheaderText: content.statusLine, editionDate, trackingId, segment, firstName, coverImageUrl: content.coverImageUrl, bodyHtml,
     });
-    return { html, text: `The Build — ${formatDate(editionDate)}\n\n${content.statusLine}\n\n${pasted}` };
+    const textLines = [`The Build — ${formatDate(editionDate)}`, '', content.statusLine, '', markdownToPlainText(pasted), ''];
+    appendCustomSectionsText(textLines, content);
+    return { html, text: textLines.join('\n').trim() };
   }
 
   sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
 
   // Render custom sections positioned before auto sections (position 0)
-  for (const cs of getCustomSections(content).filter(s => s.position === 0)) {
+  for (const [index, cs] of customSections.entries()) {
+    if (cs.position !== 0) continue;
     if (cs.title) sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">${escapeHtml(cs.title)}</h2>`);
-    sections.push(`<div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToHtml(cs.body)}</div>`);
+    sections.push(`<div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToTrackedEmailHtml(cs.body, trackingId, `custom_${index + 1}`)}</div>`);
     sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
   }
 
@@ -183,9 +230,10 @@ export function renderBuildEmail(
   }
 
   // Custom sections at end (position > 0, not already rendered)
-  for (const cs of getCustomSections(content).filter(s => s.position > 0)) {
+  for (const [index, cs] of customSections.entries()) {
+    if (cs.position <= 0) continue;
     if (cs.title) sections.push(`<h2 style="font-size: 17px; color: ${BUILD_PALETTE.dark}; margin-bottom: 16px;">${escapeHtml(cs.title)}</h2>`);
-    sections.push(`<div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToHtml(cs.body)}</div>`);
+    sections.push(`<div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToTrackedEmailHtml(cs.body, trackingId, `custom_${index + 1}`)}</div>`);
     sections.push('<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">');
   }
 

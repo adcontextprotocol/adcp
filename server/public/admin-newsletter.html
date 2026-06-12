@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/sage-icon.svg" type="image/svg+xml">
   <title>Admin - Newsletter</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <script src="/admin-sidebar.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
@@ -65,9 +67,15 @@
     .markdown-content blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid var(--nl-primary); color: var(--color-text-secondary); }
     .markdown-content code { background: var(--color-bg-subtle); padding: 2px 4px; border-radius: var(--radius-sm); font-size: 0.92em; }
     .markdown-content pre { background: var(--color-bg-subtle); padding: 10px 12px; border-radius: var(--radius-md); overflow-x: auto; }
+    .markdown-content h1, .markdown-content h2, .markdown-content h3 { color: var(--color-text-heading); line-height: 1.25; margin: 14px 0 8px; }
+    .markdown-content h1 { font-size: 20px; }
+    .markdown-content h2 { font-size: 17px; }
+    .markdown-content h3 { font-size: 15px; }
+    .rendered-pasted-content { cursor: default; }
 
     .paste-area { width: 100%; min-height: 200px; font-family: monospace; font-size: 13px; padding: 12px; border: 1px solid var(--color-border-strong); border-radius: 6px; resize: vertical; box-sizing: border-box; }
     .paste-area:focus { border-color: var(--nl-primary); outline: none; }
+    .paste-warning { background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-left: 4px solid var(--color-warning-500); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; color: var(--color-warning-800); font-size: 13px; line-height: 1.45; }
 
     .mode-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid var(--color-border); }
     .mode-tab { padding: 8px 16px; font-size: 14px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; background: none; }
@@ -101,14 +109,17 @@
 
     <div id="editorContent" style="display:none;">
       <div class="mode-tabs">
-        <button class="mode-tab active" onclick="switchMode('edit')">Edit Sections</button>
-        <button class="mode-tab" onclick="switchMode('paste')">Paste Content</button>
+        <button class="mode-tab active" onclick="switchMode('edit')">Edit sections</button>
+        <button class="mode-tab" onclick="switchMode('paste')">Paste content</button>
       </div>
 
       <!-- Paste mode -->
       <div id="pasteMode" style="display:none;">
         <div class="section">
-          <h2>Paste Your Newsletter</h2>
+          <h2>Paste your newsletter</h2>
+          <div class="paste-warning">
+            Replace content hides the auto-generated body sections and sends this pasted body instead. Custom sections still send unless you remove them separately.
+          </div>
           <p class="section-hint">Replaces all auto-generated sections. Use **bold**, [links](url), and `code` markdown.</p>
           <div style="margin-bottom:12px;">
             <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;">Subject line override (optional)</label>
@@ -121,7 +132,7 @@
           <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;">Body</label>
           <textarea id="pasteBody" class="paste-area" placeholder="Paste your newsletter content here..."></textarea>
           <div style="margin-top:12px;display:flex;gap:8px;">
-            <button class="btn btn-nl" onclick="submitPaste()">Replace Content</button>
+            <button class="btn btn-nl" onclick="submitPaste()">Replace content</button>
             <button class="btn btn-outline" onclick="switchMode('edit')">Cancel</button>
           </div>
         </div>
@@ -190,6 +201,8 @@
     let uiConfig = null;
     let recipientCount = null;
     let activeEditable = null;
+    let editSaveChain = Promise.resolve();
+    let pendingEditSaves = 0;
 
     function esc(s) {
       const d = document.createElement('div');
@@ -326,6 +339,24 @@
       return out.join('');
     }
 
+    function renderPastedMarkdown(markdown) {
+      const text = String(markdown || '');
+      if (!text.trim()) return '';
+      if (window.marked?.parse && window.DOMPurify?.sanitize) {
+        const renderer = new window.marked.Renderer();
+        renderer.html = (token) => esc(typeof token === 'string' ? token : token?.text || '');
+        renderer.image = () => '';
+        renderer.link = (hrefOrToken, _title, linkText) => {
+          const href = typeof hrefOrToken === 'object' ? hrefOrToken.href : hrefOrToken;
+          const textValue = typeof hrefOrToken === 'object' ? hrefOrToken.text : linkText;
+          if (!isSafeHttpUrl(href || '')) return textValue || '';
+          return `<a href="${esc(href)}">${textValue || esc(href)}</a>`;
+        };
+        return window.DOMPurify.sanitize(window.marked.parse(text, { renderer }));
+      }
+      return renderMarkdown(text);
+    }
+
     function htmlToMarkdown(html) {
       if (!html) return '';
       const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -337,6 +368,30 @@
 
       function childrenToMarkdown(node) {
         return Array.from(node.childNodes).map(nodeToMarkdown).join('');
+      }
+
+      function blockMarkdown(markdown) {
+        const block = markdown
+          .replace(/[ \t]+\n/g, '\n')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+        return block ? `\n\n${block}\n\n` : '';
+      }
+
+      function listItemMarkdown(node, marker) {
+        const text = childrenToMarkdown(node)
+          .replace(/[ \t]+\n/g, '\n')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+        if (!text) return '';
+        const lines = text.split('\n');
+        return `${marker} ${lines[0]}${lines.slice(1).map(line => `\n  ${line}`).join('')}\n`;
+      }
+
+      function listMarkdown(node, ordered) {
+        const items = Array.from(node.children).filter(child => child.tagName.toLowerCase() === 'li');
+        const markdown = items.map((item, index) => listItemMarkdown(item, ordered ? `${index + 1}.` : '-')).join('');
+        return markdown ? `\n${markdown}\n` : '';
       }
 
       function nodeToMarkdown(node) {
@@ -367,12 +422,13 @@
             return inline && isSafeHttpUrl(href) ? `[${inline}](${href})` : inline;
           }
           case 'li':
-            return inline ? `- ${inline}\n` : '';
+            return listItemMarkdown(node, '-');
           case 'ul':
+            return listMarkdown(node, false);
           case 'ol':
-            return `\n${childMarkdown}\n`;
+            return listMarkdown(node, true);
           case 'blockquote':
-            return inline ? `\n\n${inline.split('\n').map(line => `> ${line}`).join('\n')}\n\n` : '';
+            return childMarkdown.trim() ? `\n\n${childMarkdown.trim().split('\n').map(line => line.trim() ? `> ${line}` : '>').join('\n')}\n\n` : '';
           case 'h1':
             return inline ? `\n\n# ${inline}\n\n` : '';
           case 'h2':
@@ -383,7 +439,7 @@
           case 'div':
           case 'section':
           case 'article':
-            return inline ? `\n\n${inline}\n\n` : '';
+            return blockMarkdown(childMarkdown);
           default:
             return childMarkdown;
         }
@@ -457,6 +513,15 @@
       });
       document.getElementById('editMode').style.display = mode === 'edit' ? 'block' : 'none';
       document.getElementById('pasteMode').style.display = mode === 'paste' ? 'block' : 'none';
+      if (mode === 'paste') populatePasteForm();
+    }
+
+    function populatePasteForm() {
+      if (!currentDigest?.content) return;
+      const c = currentDigest.content;
+      document.getElementById('pasteSubject').value = c.emailSubject || '';
+      document.getElementById('pasteStatusLine').value = c.statusLine || c.openingTake || '';
+      document.getElementById('pasteBody').value = c.pastedContent || '';
     }
 
     // ─── Load ───────────────────────────────────────────────────────
@@ -570,7 +635,7 @@
               ${status === 'draft' ? '<button class="btn btn-outline btn-sm" onclick="clearPastedContent()">Clear pasted content</button>' : ''}
             </div>
             <h2>Pasted content</h2>
-            <div class="custom-section-body markdown-content">${renderMarkdown(c.pastedContent)}</div>
+            <div class="custom-section-body markdown-content rendered-pasted-content" contenteditable="false">${renderPastedMarkdown(c.pastedContent)}</div>
           </div>`;
       } else {
         let halfBuffer = [];
@@ -678,6 +743,7 @@
       if (data.digest) currentDigest = data.digest;
       if (data.subject) currentSubject = data.subject;
       if (data.uiConfig) uiConfig = data.uiConfig;
+      if (pendingEditSaves > 0) return;
       if (activeEditable?.dataset.editing === 'true') return;
       render();
     }
@@ -686,6 +752,7 @@
 
     function startEdit(el, field) {
       if (currentDigest?.status !== 'draft') return;
+      if (el.contentEditable === 'true') return;
       if (el.dataset.editing === 'true') return;
       if (activeEditable && activeEditable !== el) activeEditable.blur();
 
@@ -719,17 +786,23 @@
         cleanup();
         el.innerHTML = renderMarkdown(value) || '<em style="color:#888;">Click to edit</em>';
 
-        api('/editions/' + currentDigest.id + '/edit', {
+        const request = editSaveChain.catch(() => {}).then(() => api('/editions/' + currentDigest.id + '/edit', {
           method: 'POST',
           body: JSON.stringify({ field, value }),
-        }).then(async r => {
+        })).then(async r => {
           const data = await r.json();
           if (!r.ok) throw new Error(data.error || 'Save failed');
           return data;
-        }).then(data => {
+        });
+        editSaveChain = request.catch(() => {});
+
+        pendingEditSaves += 1;
+        request.then(data => {
+          pendingEditSaves -= 1;
           updateFromResponse(data);
           toast('Saved');
         }).catch((err) => {
+          pendingEditSaves -= 1;
           currentDigest.content[field] = previousValue;
           currentSubject = previousSubject;
           if (activeEditable?.dataset.editing !== 'true') render();
@@ -878,6 +951,7 @@
     }
 
     async function clearPastedContent() {
+      if (!window.confirm('Clear pasted content and return to auto-generated sections?')) return;
       try {
         const res = await api('/editions/' + currentDigest.id + '/paste-content', { method: 'DELETE' });
         const data = await res.json();
