@@ -1,0 +1,160 @@
+---
+title: Schema Extensions
+sidebarTitle: Schema Extensions
+description: "Reference for AdCP-specific `x-` prefixed schema annotations."
+"og:title": "AdCP — Schema Extensions"
+---
+
+AdCP schemas carry several `x-` prefixed annotation keywords that supplement the JSON Schema vocabulary. JSON Schema validators ignore unknown `x-` keywords per [draft-07 §6](https://json-schema.org/draft-07/schema), so adding these keys is wire-compatible with any conforming validator.
+
+This page is the canonical reference for those annotations. Codegen consumers (TypeScript / Python / Go type generators), the storyboard runner, and the AdCP SDK family read these annotations programmatically; verifiers MAY read them but the normative behavior they describe is also documented in the relevant section of [security.mdx](/dist/docs/3.1.0-rc.13/building/by-layer/L1/security) or the field's own description.
+
+## `x-status`
+
+Marks a schema or property as **experimental** — part of the core protocol but not yet frozen. Sellers implementing experimental surfaces declare the feature id in `experimental_features` on `get_adcp_capabilities`. See [Experimental Status](/dist/docs/3.1.0-rc.13/reference/experimental-status) for the full graduation policy.
+
+```jsonc
+"trusted_match": {
+  "type": "object",
+  "x-status": "experimental",
+  "description": "Trusted Match Protocol support..."
+}
+```
+
+Allowed values: `"experimental"`. The keyword is omitted on stable surfaces.
+
+## `x-adcp-validation`
+
+Lifts structured normative constraints out of prose descriptions into a machine-readable shape. Storyboard runners and SDK validators consume the structured rules; codegen consumers can ignore the annotation and read the human description.
+
+The keyword is most useful for fields whose description currently carries a "MUST be present when..." or "MUST equal the host of..." clause that the storyboard runner cannot enforce by parsing English.
+
+### Shape
+
+```jsonc
+"some_field": {
+  "type": "string",
+  "format": "uri",
+  "description": "Brief one or two sentences for codegen JSDoc; full constraints live in x-adcp-validation and the linked spec.",
+  "x-adcp-validation": {
+    "trust_root": true,
+    "required_when": { "any_of": [ ... ] },
+    "schema_required_when": { ... },
+    "verifier_constraints": { ... },
+    "distinct_from": "other.field.path",
+    "spec": "docs/.../section.mdx#anchor"
+  }
+}
+```
+
+### Sub-keys
+
+| Key | Type | Purpose |
+|---|---|---|
+| `trust_root` | boolean | Field is load-bearing for signature verification; verifiers MUST treat as authoritative. |
+| `required_when` | object wrapping `any_of` / `all_of` | Storyboard-enforced required-when rules (3.x). The object has exactly one of `any_of` (OR-joined) or `all_of` (AND-joined), each containing an array of leaf conditions. Each leaf is one of: `{ "field": "...", "non_empty": true }`, `{ "field": "...", "equals": <value> }`, `{ "field": "...", "any_subfield_present": true }`. The wrapping object mirrors JSON Schema's `anyOf`/`allOf` precedent so tooling readers can reuse familiar boolean-combinator semantics. Bare arrays are NOT accepted — always wrap. |
+| `schema_required_when` | condition | When the rule promotes from storyboard-enforced to schema-required. Typically keyed on `adcp.supported_versions` matching a version pattern via `any_item_matches_pattern` (e.g., `"^4\\."` for the 4.0 cutover and any 4.x patch). |
+| `forbidden_when` | object wrapping `any_of` / `all_of` | Inverse of `required_when`. The field MUST be absent (or `false`/empty, depending on type) when the wrapped condition holds. Same leaf shape as `required_when`. Use for fields whose presence is mutually exclusive with another posture. |
+| `disjoint_with` | string (dotted path) or array of dotted paths | Item-level mutual exclusion: no value in this field's array MAY appear in any of the named arrays. Storyboard runners assert set-disjointness on each. Example: `request_signing.warn_for` carries `disjoint_with: "request_signing.required_for"` because an operation can be in one or the other, never both. |
+| `subset_of` | string (dotted path) | Item-level subset constraint: every value in this field's array MUST also appear in the named array. Example: `request_signing.required_for` carries `subset_of: "request_signing.supported_for"` — an operation can't be required without being supported. |
+| `verifier_constraints` | object | Free-form key-value map of verifier-side rules that don't fit the structured sub-keys above. Keys are normative (e.g., `agent_url_match: "byte_equal"`); the storyboard runner enforces these against test vectors. Prefer the structured sub-keys (`required_when`, `forbidden_when`, `disjoint_with`, `subset_of`) when they fit; reach for `verifier_constraints` only for one-off rules that don't generalize. |
+| `distinct_from` | string (dotted path) | Names another field that has a similar shape but different semantics, to defuse name confusion (e.g., `identity.brand_json_url` distinct from `sponsored_intelligence.brand_url`). Verifiers MUST NOT substitute one for the other. |
+| `spec` | string (relative path with anchor) | Pointer to the normative section in the docs that defines the field's full semantics. Always required when other sub-keys are present. |
+
+### Conformance
+
+- Validators MUST ignore unknown sub-keys for forward-compatibility (the schema may add new entries in a minor release).
+- The storyboard runner consumes `required_when`, `schema_required_when`, and `verifier_constraints` to generate test cases per release; runners that don't yet recognize a sub-key MUST skip it and emit an "unrecognized validation rule" warning.
+- Codegen consumers (TypeScript / Python / Go type generators) MAY surface `x-adcp-validation.spec` as a `@see` JSDoc link but otherwise treat the annotation as opaque.
+
+### Current usage
+
+Representative usage:
+
+| Field | Sub-keys used | Rule |
+|---|---|---|
+| `identity.brand_json_url` | `trust_root`, `required_when`, `schema_required_when`, `verifier_constraints`, `distinct_from` | Trust-root pointer for signing-key discovery; required-when tied to signing posture; schema-required in 4.0; distinct from `sponsored_intelligence.brand_url`. See [security.mdx §Discovering an agent's signing keys](/dist/docs/3.1.0-rc.13/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url). |
+| `identity.key_origins` | `verifier_constraints` (`purpose_anchoring`) | Every purpose listed MUST have a corresponding signing posture declared elsewhere on the response. Cross-field rule. See [security.mdx §Origin separation](/dist/docs/3.1.0-rc.13/building/by-layer/L1/security#origin-separation). |
+| `request_signing.required_for` | `subset_of` | Every operation listed MUST also appear in `supported_for` — an operation can't be required without being supported. |
+| `request_signing.warn_for` | `disjoint_with`, `subset_of` | An operation MUST NOT appear in both `warn_for` and `required_for`. Every operation listed MUST also appear in `supported_for`. |
+| `webhook_signing.supported` | `verifier_constraints` (`must_equal_when`) | When the seller advertises mutating-webhook emission (`media_buy.reporting_delivery_methods` includes `webhook` OR `media_buy.content_standards.supports_webhook_delivery: true`), `supported` MUST be `true`. Closes a downgrade vector. |
+| `wholesale_feed_webhooks.event_types` | `verifier_constraints` (`wholesale_feed_webhook_capability_consistency`) | `product.*` event types require wholesale `get_products`; `signal.*` event types require wholesale `get_signals`; `wholesale_feed.bulk_change` requires at least one declared wholesale repair path and must name only a repairable feed family. |
+| `get_products.wholesale_feed_version` / `get_signals.wholesale_feed_version` | `verifier_constraints` (`required_for_wholesale_request`) | Version tokens are required on wholesale read responses, but the shared response schemas cannot infer the request's `buying_mode` / `discovery_mode` from the response body alone. |
+
+Already enforced natively by JSON Schema and excluded from migration:
+- **`adcp.idempotency`** — the discriminated `oneOf` already requires `replay_ttl_seconds` in the supported branch and forbids it in the unsupported branch.
+- **`webhook_signing.algorithms`** — the `enum: ["ed25519", "ecdsa-p256-sha256"]` on each item already enforces the allowlist.
+
+Migration history tracked at [adcontextprotocol/adcp#3827](https://github.com/adcontextprotocol/adcp/issues/3827).
+
+## `x-adcp-open-payload`
+
+Classifies fields that look open-ended to SDK generators. The annotation is documentary and non-validating; the field's JSON Schema still controls wire validation.
+
+Allowed authoring values:
+
+| Value | Meaning for schema authors and generators |
+|---|---|
+| `true` | The field intentionally carries free-form payload data. Generators MAY model the object/decoded-JSON arm as `Record<string, unknown>` or another generic JSON container without warning. |
+| Omitted | Unclassified. Generators and schema lint rules SHOULD NOT infer either `true` or `false`; they MAY warn on unannotated `additionalProperties: true` object fields during review. |
+
+`false` is reserved for a future structured-but-extension-tolerant marker. Source schemas MUST NOT set `x-adcp-open-payload: false` until the repository defines at least one canonical use site and the generator contract for that value.
+
+For mixed fields, the annotation applies only to the object or decoded-JSON payload arm. Scalar arms still follow their declared schema. For example, an upstream recorded body may be a decoded JSON object when the content type is JSON-shaped and a string otherwise; `x-adcp-open-payload: true` marks the decoded JSON payload as intentionally open, not the string arm as an object model.
+
+```jsonc
+"breakdown": {
+  "type": "object",
+  "x-adcp-open-payload": true,
+  "additionalProperties": true
+}
+```
+
+Use omission for legacy or not-yet-classified fields; do not use omission to mean "closed".
+
+## `x-adcp-hoist`
+
+Build-time directive that marks a source schema as a canonically shared type. The schema bundler hoists every inline occurrence into a single root `$defs` entry and replaces inline copies with `$ref` pointers; the directive itself is stripped from bundled output. Wire-irrelevant — validators MUST ignore it (draft-07 §6 unknown-keyword semantics) and conforming consumers SHOULD NOT observe it on bundled artifacts.
+
+```jsonc
+{
+  "$id": "/schemas/core/price-block.json",
+  "title": "Price Block",
+  "x-adcp-hoist": true,
+  "type": "object",
+  "properties": {
+    "cpm": { "type": "number" },
+    "currency": { "type": "string" }
+  }
+}
+```
+
+### Why opt-in for complex objects
+
+Pure enums hoist automatically (see [`hoistDuplicateInlineEnums`](https://github.com/adcontextprotocol/adcp/pull/3170)) because merging two structurally-identical enums is semantics-preserving. Complex objects are different — structural identity ≠ semantic identity. `BriefAsset` (proposed creative spec) and `VASTAsset` (delivered video creative) currently share fields but represent different lifecycle concepts; auto-merging them would create cross-tool coupling the source schemas don't express, and would be hard to unwind once SDKs codegen against the merged type. `x-adcp-hoist` makes the share-or-split decision deliberate per schema.
+
+### Bundler behavior
+
+- **Hoists at any occurrence count (≥1).** The directive declares intent — "this is a canonical named type" — so adding a second reference later never changes the codegen surface.
+- **`title` is required.** Missing or empty title → build-time error. The directive is meant to be deliberate.
+- **Same title + different shape is a build-time error.** Two marked schemas authored with the same `title` but distinct fields would otherwise silently suffix one to `Foo2`, defeating the directive's "canonical name" guarantee.
+- **Collision with a pre-existing `$defs` key is suffixed** (`PriceBlock2`), matching the convention used by the pure-enum hoist.
+- **Stripped from bundled output** — both from the canonical `$defs` entry and from any stray marker that was authored inside a pre-existing `$defs` block.
+
+### SDK / codegen impact
+
+Adding `x-adcp-hoist` to a previously-inlined source schema is wire-compatible (the bundled schema still validates the same payloads) but is a codegen-shape change: TypeScript / Python / Go type generators that previously emitted an anonymous inline type (often `Foo1`, `Foo2`, …) will now emit a single named type. SDK adopters maintain rename aliases per their own deprecation policy — see [adcp-client#942](https://github.com/adcontextprotocol/adcp-client/issues/942) for the client-side rename/alias tracking.
+
+### Conformance
+
+- Validators MUST ignore `x-adcp-hoist` per draft-07 §6 (unknown keywords are tolerated). The directive has no wire semantics.
+- Source-tree consumers (third parties that dereference `static/schemas/source/...` directly rather than the bundled artifacts) MUST treat `x-adcp-hoist: true` as a no-op annotation. The schema's content is the contract.
+- Bundlers other than `scripts/build-schemas.cjs` MAY honor the directive or ignore it; a bundler that ignores it produces a wire-compatible bundle with un-deduped inline copies.
+
+### History
+
+- Introduced in [#4557](https://github.com/adcontextprotocol/adcp/issues/4557). Successor to [#3145](https://github.com/adcontextprotocol/adcp/issues/3145) phase 2.
+
+## Future extensions
+
+New `x-adcp-*` keywords are added in minor releases. Consumers MUST tolerate unknown `x-` keywords without erroring. The convention reserves the `x-adcp-` namespace; vendor-specific or deployment-specific annotations SHOULD use a vendor-specific prefix (e.g., `x-yourorg-`) to avoid collision.
