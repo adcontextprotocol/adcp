@@ -5,20 +5,18 @@ vi.mock('../../src/notifications/email.js', () => ({
   trackedUrl: (id: string, tag: string, url: string) => `tracked:${id}:${tag}:${url}`,
 }));
 
-vi.mock('../../src/utils/markdown.js', () => ({
-  markdownToEmailHtml: (text: string) => text
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2">$1</a>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .split(/\n{2,}/)
-    .map(part => /^<h2>/.test(part) ? part : `<p>${part.replace(/\n/g, '<br>')}</p>`)
-    .join('\n'),
-  markdownToEmailHtmlInline: (text: string) => text,
-}));
+vi.mock('../../src/utils/markdown.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/markdown.js')>();
+  return {
+    ...actual,
+    markdownToEmailHtmlInline: (text: string) => text,
+  };
+});
 
 import { renderDigestEmail, renderDigestSlack } from '../../src/addie/templates/weekly-digest.js';
+import { renderBuildEmail } from '../../src/newsletters/the-build/template.js';
 import type { DigestContent } from '../../src/db/digest-db.js';
+import type { BuildContent } from '../../src/db/build-db.js';
 
 function makeContent(overrides: Partial<DigestContent> = {}): DigestContent {
   return {
@@ -28,6 +26,20 @@ function makeContent(overrides: Partial<DigestContent> = {}): DigestContent {
     fromTheInside: [],
     voices: [],
     newMembers: [],
+    generatedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+function makeBuildContent(overrides: Partial<BuildContent> = {}): BuildContent {
+  return {
+    contentVersion: 1,
+    statusLine: 'Test status line.',
+    decisions: [],
+    whatShipped: [],
+    deepDive: null,
+    helpNeeded: [],
+    contributorSpotlight: [],
     generatedAt: new Date().toISOString(),
     ...overrides,
   };
@@ -191,5 +203,36 @@ describe('digest editor note link formatting', () => {
       expect(rendered).toContain('Custom body');
       expect(rendered).not.toContain('Generated article');
     });
+  });
+});
+
+describe('Build pasted content mode', () => {
+  it('renders pasted markdown and custom sections in email with tracked links', () => {
+    const content = makeBuildContent({
+      pastedContent: '## Lead\n\nPasted **body** with [brief](https://example.com/brief).',
+      customSections: [{ id: 'custom-1', title: 'Extra note', body: 'See [more](https://example.com/more)', position: 0 }],
+    });
+    const { html, text } = renderBuildEmail(content, 'recipient-1', '2026-04-01', 'both');
+
+    expect(html).toContain('Lead');
+    expect(html).toContain('<strong>body</strong>');
+    expect(html).toContain('tracked:recipient-1:pasted_body_1:https://example.com/brief');
+    expect(html).toContain('Extra note');
+    expect(html).toContain('tracked:recipient-1:custom_1_1:https://example.com/more');
+    expect(text).toContain('Extra note');
+    expect(text).toContain('more (https://example.com/more)');
+  });
+
+  it('keeps custom section tracking tags unique before and after generated content', () => {
+    const content = makeBuildContent({
+      customSections: [
+        { id: 'custom-1', title: 'Before', body: 'See [before](https://example.com/before)', position: 0 },
+        { id: 'custom-2', title: 'After', body: 'See [after](https://example.com/after)', position: 2 },
+      ],
+    });
+    const { html } = renderBuildEmail(content, 'recipient-1', '2026-04-01', 'both');
+
+    expect(html).toContain('tracked:recipient-1:custom_1_1:https://example.com/before');
+    expect(html).toContain('tracked:recipient-1:custom_2_1:https://example.com/after');
   });
 });
